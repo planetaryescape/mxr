@@ -1,7 +1,8 @@
 /*
- * Single host for the surface-based composer (inline / overlay /
- * fullscreen). Mounted once in AppShell so the compose session survives
- * surface switches and route changes. The inline surface portals the
+ * The one compose surface (inline / overlay / fullscreen). Every entry
+ * point opens it: `c`, the compose launcher, reply/forward, drafts, and the
+ * /compose/* deep links. Mounted once in AppShell so the compose session
+ * survives surface switches and route changes. The inline surface portals the
  * editor into the thread reader's slot (#inline-composer-slot); when no
  * slot exists (user navigated away) it falls back to the overlay so the
  * draft is never hidden.
@@ -15,6 +16,7 @@ import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ComposeEditorPanel } from "./ComposeEditorPanel";
+import { htmlDraftRefusal, HtmlDraftNotice } from "./HtmlDraftNotice";
 import { useComposeUi, type ComposeSurface } from "./composeUiStore";
 import { useComposeSession, type ComposeIntent } from "./useComposeSession";
 
@@ -33,9 +35,16 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [slot, setSlot] = useState<HTMLElement | null>(null);
 
+  // A send finishes after its undo window, possibly once the user has moved
+  // on to another composer; only close the surface if it still shows this
+  // session.
+  const closeThisSession = () => {
+    if (useComposeUi.getState().intent?.key === intent.key) closeCompose();
+  };
   const controller = useComposeSession(intent, {
-    onSent: closeCompose,
-    onDiscarded: closeCompose,
+    onSent: closeThisSession,
+    onDiscarded: closeThisSession,
+    onClose: closeThisSession,
   });
 
   // The inline slot lives at the bottom of the thread reader; re-resolve
@@ -52,10 +61,15 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     }
   }, [surface, pathname]);
 
+  // An HTML-bodied draft is a permanent refusal, not a transient failure:
+  // retrying can only fail again. Show the document instead.
+  const htmlDraft = htmlDraftRefusal(controller.sessionError);
   const body = controller.sessionLoading ? (
     <div className="flex h-40 items-center justify-center text-xs text-muted-foreground">
       Opening {intent.title.toLowerCase()}…
     </div>
+  ) : htmlDraft ? (
+    <HtmlDraftNotice refusal={htmlDraft} />
   ) : controller.sessionError ? (
     <div className="flex h-40 flex-col items-center justify-center gap-2 text-xs">
       <span className="text-destructive">{controller.sessionError.message}</span>
@@ -106,8 +120,9 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Close composer (draft is saved)"
-            onClick={closeCompose}
+            aria-label="Close composer (saves draft)"
+            title="Close composer (saves draft)"
+            onClick={() => void controller.requestClose()}
           >
             <X className="size-3.5" />
           </Button>

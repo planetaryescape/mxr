@@ -14,13 +14,19 @@ export interface UndoState {
   pendingSendCancel: (() => void) | null;
   setLastMutationId: (id: string) => void;
   setPendingSendCancel: (cancel: (() => void) | null) => void;
+  /** Clear the pending-send cancel only if it is still `cancel`, so one
+   * compose session finishing never drops another session's undo. */
+  clearPendingSendCancel: (cancel: () => void) => void;
   clear: () => void;
 }
 
-export const useUndo = create<UndoState>((set) => ({
+export const useUndo = create<UndoState>((set, get) => ({
   lastMutationId: null,
   pendingSendCancel: null,
   setLastMutationId: (id) => set({ lastMutationId: id }),
   setPendingSendCancel: (pendingSendCancel) => set({ pendingSendCancel }),
+  clearPendingSendCancel: (cancel) => {
+    if (get().pendingSendCancel === cancel) set({ pendingSendCancel: null });
+  },
   clear: () => set({ lastMutationId: null }),
 }));

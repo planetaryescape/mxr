@@ -36,6 +36,8 @@ interface RecipientFieldProps {
   inputRef?: Ref<HTMLInputElement>;
   /** Optional controls rendered at the trailing edge of the row (e.g. Cc/Bcc toggles). */
   trailing?: ReactNode;
+  /** Fired when the address input loses focus (after any dangling token commits). */
+  onBlur?: () => void;
 }
 
 export function RecipientField({
@@ -44,6 +46,7 @@ export function RecipientField({
   onChange,
   inputRef,
   trailing,
+  onBlur,
 }: RecipientFieldProps) {
   const id = `compose-${label.toLowerCase()}`;
   const listboxId = useId();
@@ -255,6 +258,7 @@ export function RecipientField({
                 // Commit a dangling token so addresses are not silently dropped.
                 if (pending.trim()) addToken(pending);
                 blurTimer.current = setTimeout(() => setFocused(false), 120);
+                onBlur?.();
               }}
             />
           </div>

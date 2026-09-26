@@ -45,7 +45,9 @@ export const useUiPrefs = create<UiPrefsState>()(
       theme: "midnight",
       density: "regular",
       sidebarCollapsed: false,
-      composeEditor: "tiptap",
+      // Locked product decision (docs/web-app.md): CodeMirror + vim is the
+      // default. Only the default changes; a persisted choice is kept as is.
+      composeEditor: "codemirror-vim",
       emailHtmlTheme: "dark",
       readerLayout: "split",
       notificationsEnabled: false,

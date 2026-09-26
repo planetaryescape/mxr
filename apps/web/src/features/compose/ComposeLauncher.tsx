@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
 import { Mail, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -13,13 +12,13 @@ import {
 } from "@/features/analytics/api";
 import { cn } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
+import { prefilledMessageIntent, useComposeUi } from "./composeUiStore";
 
 type ComposeStep = "to" | "subject";
 type RecipientContact = Required<Pick<ContactRow, "email">> &
   Pick<ContactRow, "display_name" | "inbound" | "outbound">;
 
 export function ComposeLauncher() {
-  const navigate = useNavigate();
   const open = useModals((state) => state.composeLauncherOpen);
   const setOpen = useModals((state) => state.setComposeLauncherOpen);
   const [step, setStep] = useState<ComposeStep>("to");
@@ -54,15 +53,11 @@ export function ComposeLauncher() {
     setStep("subject");
   }
 
+  // Hands off to the one compose surface; the launcher is only a fast way
+  // to fill To and Subject first.
   function openCompose() {
     close();
-    void navigate({
-      to: "/compose/new",
-      search: {
-        ...(to.trim() ? { to: to.trim() } : {}),
-        ...(subject.trim() ? { subject: subject.trim() } : {}),
-      },
-    });
+    useComposeUi.getState().openCompose(prefilledMessageIntent(to, subject), "overlay");
   }
 
   const isToStep = step === "to";

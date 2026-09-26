@@ -1,15 +1,37 @@
-import { Clock, Loader2, Paperclip, Send } from "lucide-react";
+import { Archive, BellRing, ChevronDown, Clock, Loader2, Paperclip, Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import type { ComposeEditor } from "@/state/uiPrefsStore";
 import { DraftQualityBadges } from "./DraftQualityBadges";
+import { parseSendLater } from "./sendLater";
 import type { DraftSuggestionResponse } from "./types";
+
+/** "Send and remind me if no reply in..." presets (TUI `n` parity). */
+const REMIND_PRESETS = [
+  { label: "1 day", input: "in 1 day" },
+  { label: "3 days", input: "in 3 days" },
+  { label: "1 week", input: "in 7 days" },
+] as const;
 
 interface ComposeActionBarProps {
   onSend: () => void;
   onSendLater: () => void;
+  /** Present only for replies: a new message has no conversation to archive. */
+  onSendAndArchive?: () => void;
+  onSendAndRemind: (at: Date, label: string) => void;
+  onSendAndRemindCustom: () => void;
   onAttach: () => void;
   uploading: number;
   busy: boolean;
@@ -25,6 +47,9 @@ interface ComposeActionBarProps {
 export function ComposeActionBar({
   onSend,
   onSendLater,
+  onSendAndArchive,
+  onSendAndRemind,
+  onSendAndRemindCustom,
   onAttach,
   uploading,
   busy,
@@ -46,6 +71,56 @@ export function ComposeActionBar({
             ⌘↵
           </kbd>
         </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={busy}
+              aria-label="More send options"
+              title="More send options"
+            >
+              <ChevronDown className="size-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-64">
+            <DropdownMenuItem onSelect={() => onSendLater()}>
+              <Clock className="size-3.5" />
+              Send later...
+              <DropdownMenuShortcut>⇧⌘L</DropdownMenuShortcut>
+            </DropdownMenuItem>
+            {onSendAndArchive ? (
+              <DropdownMenuItem onSelect={() => onSendAndArchive()}>
+                <Archive className="size-3.5" />
+                Send and archive
+                <DropdownMenuShortcut>⇧⌘↵</DropdownMenuShortcut>
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <BellRing className="size-3.5" />
+                Send and remind me if no reply in
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {REMIND_PRESETS.map((preset) => (
+                  <DropdownMenuItem
+                    key={preset.input}
+                    onSelect={() => {
+                      const parsed = parseSendLater(preset.input);
+                      if (parsed) onSendAndRemind(parsed.at, parsed.label);
+                    }}
+                  >
+                    {preset.label}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuItem onSelect={() => onSendAndRemindCustom()}>
+                  Custom...
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button
           type="button"
           variant="ghost"
@@ -90,7 +165,7 @@ export function ComposeActionBar({
           {saveError ? (
             <span role="alert" className="flex min-w-0 items-center gap-1.5">
               <span className="truncate text-2xs font-medium text-destructive" title={saveError}>
-                Not saved — {saveError}
+                Not saved: {saveError}
               </span>
               <Button
                 type="button"

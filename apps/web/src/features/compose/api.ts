@@ -62,13 +62,25 @@ export interface ComposeAttachmentUploadResponse {
 
 export type ComposeKind = "new" | "reply" | "reply_all" | "forward";
 
+/** Calendar invite response carried by an `invite_reply` compose session. */
+export type InviteReplyAction = "accept" | "tentative" | "decline";
+
+/** Kinds the bridge can open a compose session for. `invite_reply` is a
+ * reply with an attached iCal REPLY; it is not a stored-draft intent. */
+export type ComposeSessionKind = ComposeKind | "invite_reply";
+
 export function startComposeSession(
-  kind: ComposeKind,
+  kind: ComposeSessionKind,
   messageId?: string,
+  inviteAction?: InviteReplyAction,
 ): Promise<ComposeSessionResponse> {
   return apiFetch<ComposeSessionResponse>("/api/v1/mail/compose/session", {
     method: "POST",
-    body: { kind, message_id: messageId },
+    body: {
+      kind,
+      message_id: messageId,
+      ...(kind === "invite_reply" && inviteAction ? { action: inviteAction } : {}),
+    },
   });
 }
 
@@ -122,12 +134,20 @@ export async function fetchContactsAutocomplete(
   return data.contacts ?? [];
 }
 
+export interface ComposeSendResponse {
+  ok: boolean;
+  draft_id?: string;
+  /** Local id of the message just sent (the daemon's SendReceipt). Needed
+   * to set a no-reply reminder; absent when the bridge doesn't return it. */
+  local_message_id?: string;
+}
+
 export function sendComposeSession(
   draftPath: string,
   accountId: string,
   overrideSafetyToken?: string,
-): Promise<{ ok: boolean }> {
-  return apiFetch<{ ok: boolean }>("/api/v1/mail/compose/session/send", {
+): Promise<ComposeSendResponse> {
+  return apiFetch<ComposeSendResponse>("/api/v1/mail/compose/session/send", {
     method: "POST",
     body: {
       draft_path: draftPath,
@@ -202,6 +222,8 @@ export interface DraftAddress {
 export interface LocalDraftPayload {
   id: string;
   account_id: string;
+  /** Send-as override; omitted to send from the account's primary address. */
+  from?: DraftAddress;
   intent: ComposeKind;
   to: DraftAddress[];
   cc: DraftAddress[];
@@ -224,6 +246,27 @@ export function createScheduledSend(draftId: string, sendAt: Date): Promise<unkn
   return apiFetch<unknown>("/api/v1/mail/scheduled-sends", {
     method: "POST",
     body: { draft_id: draftId, send_at: sendAt.toISOString() },
+  });
+}
+
+/** "Remind me if no reply by `remindAt`" for a message already sent. */
+export function setAutoReminder(sentMessageId: string, remindAt: Date): Promise<unknown> {
+  return apiFetch<unknown>("/api/v1/mail/reminders", {
+    method: "POST",
+    body: { sent_message_id: sentMessageId, remind_at: remindAt.toISOString() },
+  });
+}
+
+export function cancelAutoReminder(sentMessageId: string): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/mail/reminders/${encodeURIComponent(sentMessageId)}`, {
+    method: "DELETE",
+  });
+}
+
+/** Cancel a scheduled send. The stored draft itself is kept. */
+export function cancelScheduledSend(draftId: string): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/mail/scheduled-sends/${encodeURIComponent(draftId)}`, {
+    method: "DELETE",
   });
 }
 

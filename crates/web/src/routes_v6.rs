@@ -39,7 +39,8 @@ use std::str::FromStr;
 // query helpers
 
 fn parse_account_id(raw: &str) -> Result<AccountId, BridgeError> {
-    AccountId::from_str(raw).map_err(|err| BridgeError::BadRequest(format!("invalid account_id: {err}")))
+    AccountId::from_str(raw)
+        .map_err(|err| BridgeError::BadRequest(format!("invalid account_id: {err}")))
 }
 
 async fn dispatch(
@@ -369,7 +370,9 @@ async fn analytics_stale_threads(
         "mine" | "user" => StaleBallInCourt::Mine,
         "theirs" | "counterparty" => StaleBallInCourt::Theirs,
         other => {
-            return Err(BridgeError::BadRequest(format!("unknown perspective={other}")));
+            return Err(BridgeError::BadRequest(format!(
+                "unknown perspective={other}"
+            )));
         }
     };
     let account = query
@@ -504,7 +507,9 @@ async fn analytics_response_time(
         }
         Some("i_replied" | "i-replied" | "incoming") => ResponseTimeDirection::IReplied,
         Some(other) => {
-            return Err(BridgeError::BadRequest(format!("unknown direction={other}")));
+            return Err(BridgeError::BadRequest(format!(
+                "unknown direction={other}"
+            )));
         }
     };
     let account = query
@@ -2361,7 +2366,11 @@ async fn activity_stats(
             mxr_protocol::ActivityStatGroupBy::TargetKind
         }
         "hour" => mxr_protocol::ActivityStatGroupBy::Hour,
-        other => return Err(BridgeError::BadRequest(format!("unknown group_by '{other}'"))),
+        other => {
+            return Err(BridgeError::BadRequest(format!(
+                "unknown group_by '{other}'"
+            )))
+        }
     };
     let response = dispatch(
         &state,

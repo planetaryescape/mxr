@@ -15,10 +15,7 @@ pub(super) enum BridgeError {
     /// The daemon answered with an error. `kind` is the daemon's own failure
     /// class, so the HTTP status follows it instead of blaming the gateway.
     #[error("{message}")]
-    Daemon {
-        message: String,
-        kind: IpcErrorKind,
-    },
+    Daemon { message: String, kind: IpcErrorKind },
     /// The HTTP request itself is malformed (bad id, unknown enum value,
     /// missing lens parameter). Never reaches the daemon.
     #[error("{0}")]

@@ -54,6 +54,14 @@ pub(crate) struct MessageRowView {
     pub(crate) has_attachments: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) message_count: Option<u32>,
+    /// Thread rows only: ids of the thread's messages in the current lens,
+    /// oldest first, so a thread-level action can target all of them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) message_ids: Option<Vec<String>>,
+    /// Thread rows only: distinct senders in the thread, capped at
+    /// `THREAD_ROW_PARTICIPANT_LIMIT`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) participants: Option<Vec<mxr_core::Address>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) attachment_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -69,6 +77,8 @@ pub(crate) struct MessageRowView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) triage_line: Option<String>,
 }
+
+pub(crate) const THREAD_ROW_PARTICIPANT_LIMIT: usize = 5;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct MessageGroupView {
@@ -124,9 +134,12 @@ pub(crate) fn describe_sync_state(
     (label, message)
 }
 
+/// `account_id` scopes labels and subscriptions to one account; `None` keeps
+/// the daemon default (its default account's labels).
 pub(crate) async fn build_bridge_chrome(
     socket_path: &Path,
     active_lens: &MailboxLensRequest,
+    account_id: Option<&AccountId>,
 ) -> Result<BridgeChrome, BridgeError> {
     let (accounts, total_messages, sync_statuses, repair_required, degraded) =
         match ipc_request(socket_path, Request::GetStatus).await? {
@@ -147,7 +160,14 @@ pub(crate) async fn build_bridge_chrome(
             _ => return Err(BridgeError::UnexpectedResponse),
         };
 
-    let labels = match ipc_request(socket_path, Request::ListLabels { account_id: None }).await? {
+    let labels = match ipc_request(
+        socket_path,
+        Request::ListLabels {
+            account_id: account_id.cloned(),
+        },
+    )
+    .await?
+    {
         ResponseData::Labels { labels } => labels,
         _ => return Err(BridgeError::UnexpectedResponse),
     };
@@ -160,7 +180,7 @@ pub(crate) async fn build_bridge_chrome(
     let subscriptions = match ipc_request(
         socket_path,
         Request::ListSubscriptions {
-            account_id: None,
+            account_id: account_id.cloned(),
             limit: 8,
         },
     )
@@ -375,13 +395,20 @@ pub(crate) async fn load_mailbox_selection(
     socket_path: &Path,
     chrome: &BridgeChrome,
     lens: &MailboxLensRequest,
+    account_id: Option<&AccountId>,
     limit: u32,
     offset: u32,
 ) -> Result<MailboxSelection, BridgeError> {
     match lens.kind {
         MailboxLensKind::Inbox => {
-            let envelopes =
-                list_envelopes(socket_path, chrome.inbox_label_id.clone(), limit, offset).await?;
+            let envelopes = list_envelopes(
+                socket_path,
+                chrome.inbox_label_id.clone(),
+                account_id,
+                limit,
+                offset,
+            )
+            .await?;
             Ok(MailboxSelection {
                 lens_label: find_inbox_label(&chrome.labels)
                     .map_or_else(|| "Inbox".to_string(), |label| label.name.clone()),
@@ -390,7 +417,7 @@ pub(crate) async fn load_mailbox_selection(
             })
         }
         MailboxLensKind::AllMail => {
-            let envelopes = list_envelopes(socket_path, None, limit, offset).await?;
+            let envelopes = list_envelopes(socket_path, None, account_id, limit, offset).await?;
             let counts = chrome
                 .labels
                 .iter()
@@ -416,8 +443,14 @@ pub(crate) async fn load_mailbox_selection(
                 .as_deref()
                 .ok_or_else(|| BridgeError::BadRequest("label lens missing label_id".into()))
                 .and_then(parse_label_id)?;
-            let envelopes =
-                list_envelopes(socket_path, Some(label_id.clone()), limit, offset).await?;
+            let envelopes = list_envelopes(
+                socket_path,
+                Some(label_id.clone()),
+                account_id,
+                limit,
+                offset,
+            )
+            .await?;
             let label = chrome
                 .labels
                 .iter()
@@ -437,11 +470,10 @@ pub(crate) async fn load_mailbox_selection(
             })
         }
         MailboxLensKind::SavedSearch => {
-            let name = lens
-                .saved_search
-                .as_deref()
-                .ok_or_else(|| BridgeError::BadRequest("saved search lens missing saved_search".into()))?;
-            let envelopes = run_saved_search(socket_path, name, limit).await?;
+            let name = lens.saved_search.as_deref().ok_or_else(|| {
+                BridgeError::BadRequest("saved search lens missing saved_search".into())
+            })?;
+            let envelopes = run_saved_search(socket_path, name, account_id, limit).await?;
             Ok(MailboxSelection {
                 lens_label: chrome
                     .searches
@@ -458,7 +490,8 @@ pub(crate) async fn load_mailbox_selection(
                 // supports offset, so this lens paginates (unlike the saved-search
                 // and subscription-overview lenses, whose IPC variants take no
                 // offset).
-                let envelopes = search_envelopes(socket_path, sender_email, limit, offset).await?;
+                let envelopes =
+                    search_envelopes(socket_path, sender_email, account_id, limit, offset).await?;
                 return Ok(MailboxSelection {
                     lens_label: chrome
                         .subscriptions

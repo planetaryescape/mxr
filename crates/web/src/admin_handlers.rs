@@ -47,7 +47,7 @@ pub(super) async fn shell(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let lens = MailboxLensRequest::default();
-    let chrome = build_bridge_chrome(&state.config.socket_path, &lens).await?;
+    let chrome = build_bridge_chrome(&state.config.socket_path, &lens, None).await?;
     Ok(Json(json!({
         "shell": chrome.shell,
         "sidebar": chrome.sidebar,

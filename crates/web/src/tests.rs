@@ -733,8 +733,81 @@ async fn legacy_paths_return_permanent_redirect_to_v1() {
             .headers()
             .get(reqwest::header::LOCATION)
             .and_then(|v| v.to_str().ok())
-            .expect("301 must include Location header");
+            .expect("308 must include Location header");
         assert_eq!(location, new, "Location header for {old} should be {new}");
+    }
+}
+
+/// Legacy paths that double as SPA routes (`/drafts`, `/search`, ...) must
+/// not redirect a browser page load, or a hard refresh on the SPA lands on a
+/// JSON endpoint. API clients (token header, or no HTML in `Accept`) still
+/// get the 308.
+#[tokio::test]
+async fn legacy_paths_do_not_redirect_browser_navigations() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let _ipc = spawn_fake_ipc_server(&socket_path, |_| None, None).await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    for path in ["/drafts", "/search", "/rules", "/accounts", "/diagnostics"] {
+        let browser = client
+            .get(format!("http://{addr}{path}"))
+            .header(
+                reqwest::header::ACCEPT,
+                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            )
+            .header("sec-fetch-mode", "navigate")
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            !browser.status().is_redirection(),
+            "browser navigation to {path} must reach the SPA, got {}",
+            browser.status()
+        );
+        #[cfg(feature = "web-ui")]
+        assert_eq!(
+            browser.status(),
+            reqwest::StatusCode::OK,
+            "embedded SPA must serve {path}"
+        );
+
+        let api = client
+            .get(format!("http://{addr}{path}"))
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            api.status(),
+            reqwest::StatusCode::PERMANENT_REDIRECT,
+            "API client on {path} must still be redirected"
+        );
+
+        let api_with_token = client
+            .get(format!("http://{addr}{path}"))
+            .header(reqwest::header::ACCEPT, "text/html")
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            api_with_token.status(),
+            reqwest::StatusCode::PERMANENT_REDIRECT,
+            "a bearer token marks {path} as an API call even when HTML is accepted"
+        );
     }
 }
 
@@ -1214,7 +1287,7 @@ async fn mailbox_endpoint_lists_envelopes() {
     .unwrap();
 
     let response = reqwest::Client::new()
-        .get(format!("http://{addr}/mailbox"))
+        .get(format!("http://{addr}/mailbox?view=messages"))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
         .await
@@ -1310,7 +1383,9 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
     .unwrap();
 
     let response = reqwest::Client::new()
-        .get(format!("http://{addr}/mailbox?lens_kind=all_mail"))
+        .get(format!(
+            "http://{addr}/mailbox?lens_kind=all_mail&view=messages"
+        ))
         .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
         .send()
         .await
@@ -1344,6 +1419,9 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
     second.subject = "Mailroom follow-up".into();
     second.snippet = "Same thread, newer message".into();
     second.has_attachments = true;
+    let mut thread = sample_thread(&first);
+    thread.message_count = 2;
+    thread.message_ids = vec![first.id.clone(), second.id.clone()];
     let commitment = CommitmentData {
         id: "commitment-1".into(),
         account_id: first.account_id.clone(),
@@ -1408,6 +1486,25 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
             } if label_id == inbox_label_id => Some(Response::Ok {
                 data: ResponseData::Envelopes {
                     envelopes: vec![first.clone(), second.clone()],
+                },
+            }),
+            Request::ListThreads {
+                label_id: Some(label_id),
+                account_id: None,
+                limit: 200,
+                offset: 0,
+                ..
+            } if label_id == inbox_label_id => Some(Response::Ok {
+                data: ResponseData::Threads {
+                    threads: vec![thread.clone()],
+                },
+            }),
+            Request::ListEnvelopesByIds { message_ids } => Some(Response::Ok {
+                data: ResponseData::Envelopes {
+                    envelopes: [first.clone(), second.clone()]
+                        .into_iter()
+                        .filter(|envelope| message_ids.contains(&envelope.id))
+                        .collect(),
                 },
             }),
             Request::ListCommitments {
@@ -1740,6 +1837,9 @@ async fn search_endpoint_proxies_results() {
                     envelopes: vec![envelope.clone()],
                 },
             }),
+            Request::ListLabels { .. } => Some(Response::Ok {
+                data: ResponseData::Labels { labels: Vec::new() },
+            }),
             _ => None,
         },
         None,
@@ -1796,7 +1896,10 @@ fn group_envelopes_keeps_web_specific_date_buckets_out_of_ipc() {
     older.subject = "gamma".into();
     older.date = today_noon - chrono::Duration::days(3);
 
-    let groups = group_envelopes(vec![same_day_a, same_day_b, older]);
+    let groups = group_envelopes(
+        vec![same_day_a, same_day_b, older],
+        &row_labels::LabelCatalog::default(),
+    );
 
     assert_eq!(groups.len(), 2);
     assert_eq!(groups[0].id, "today");
@@ -1942,6 +2045,9 @@ async fn search_endpoint_supports_mode_sort_and_explain() {
                     },
                 })
             }
+            Request::ListLabels { .. } => Some(Response::Ok {
+                data: ResponseData::Labels { labels: Vec::new() },
+            }),
             _ => None,
         },
         None,
@@ -2034,6 +2140,9 @@ async fn search_endpoint_dedupes_threads_by_thread_id() {
                     },
                 })
             }
+            Request::ListLabels { .. } => Some(Response::Ok {
+                data: ResponseData::Labels { labels: Vec::new() },
+            }),
             _ => None,
         },
         None,
@@ -2118,6 +2227,9 @@ async fn search_endpoint_returns_attachment_rows_for_attachment_scope() {
                     },
                 })
             }
+            Request::ListLabels { .. } => Some(Response::Ok {
+                data: ResponseData::Labels { labels: Vec::new() },
+            }),
             _ => None,
         },
         None,
@@ -3914,4 +4026,1031 @@ fn degraded_status_is_not_reported_as_a_quiet_mailbox() {
     let (label, message) = describe_sync_state(false, false, &[]);
     assert_eq!(label, "Synced");
     assert_eq!(message, "Local-first and ready");
+}
+
+/// Daemon-reported errors carry an `IpcErrorKind`; the bridge maps it to an
+/// HTTP status instead of blaming the gateway for every failure. The body
+/// keeps `{"error": ...}` and adds the daemon's machine-readable `code`.
+#[tokio::test]
+async fn daemon_error_kinds_map_to_http_statuses() {
+    use mxr_protocol::IpcErrorKind;
+
+    let cases = [
+        (
+            IpcErrorKind::InvalidRequest,
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            IpcErrorKind::Policy,
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            IpcErrorKind::Unsupported,
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (IpcErrorKind::NotFound, reqwest::StatusCode::NOT_FOUND),
+        (
+            IpcErrorKind::RateLimited,
+            reqwest::StatusCode::TOO_MANY_REQUESTS,
+        ),
+        (IpcErrorKind::Auth, reqwest::StatusCode::BAD_GATEWAY),
+        (IpcErrorKind::Provider, reqwest::StatusCode::BAD_GATEWAY),
+        (
+            IpcErrorKind::Store,
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+        ),
+        (
+            IpcErrorKind::Internal,
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+        ),
+    ];
+
+    for (kind, expected) in cases {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            move |_| Some(Response::error_kinded("daemon said no", kind)),
+            None,
+        )
+        .await;
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let response = reqwest::Client::new()
+            .get(format!("http://{addr}/api/v1/admin/status"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected, "kind {kind:?}");
+        let json: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(json["error"], "daemon said no", "kind {kind:?}");
+        assert_eq!(json["code"], kind.as_code(), "kind {kind:?}");
+    }
+}
+
+/// Malformed request input is the caller's fault (400) and never reaches the
+/// daemon; an unreachable daemon socket is 503, not a generic 502.
+#[tokio::test]
+async fn bad_input_is_400_and_missing_daemon_is_503() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let requests = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = requests.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |_| {
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            None
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let response = reqwest::Client::new()
+        .get(format!("http://{addr}/api/v1/mail/threads/not-a-uuid"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(json["error"], "invalid thread id: not-a-uuid");
+    assert_eq!(json["code"], "bad_request");
+    assert_eq!(
+        requests.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "a malformed id must not reach the daemon"
+    );
+
+    let missing = TempDir::new().unwrap();
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(missing.path().join("absent.sock"), TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let response = reqwest::Client::new()
+        .get(format!("http://{addr}/api/v1/admin/status"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert!(json["error"]
+        .as_str()
+        .unwrap()
+        .starts_with("failed to connect to mxr daemon"));
+    assert_eq!(json["code"], "connect");
+}
+
+fn sample_status() -> ResponseData {
+    ResponseData::Status {
+        uptime_secs: 1,
+        accounts: vec!["personal".into()],
+        total_messages: 10,
+        daemon_pid: None,
+        sync_statuses: Vec::new(),
+        protocol_version: IPC_PROTOCOL_VERSION,
+        daemon_version: None,
+        daemon_build_id: None,
+        repair_required: false,
+        semantic_runtime: None,
+        feature_health: None,
+        degraded: false,
+    }
+}
+
+/// Answers the shell/sidebar requests every mailbox load makes, and records
+/// the account each label/subscription lookup was scoped to.
+fn chrome_fake_response(
+    request: &Request,
+    labels: &[Label],
+    seen_accounts: &std::sync::Mutex<Vec<Option<AccountId>>>,
+) -> Option<Response> {
+    let data = match request {
+        Request::GetStatus => sample_status(),
+        Request::ListLabels { account_id } => {
+            seen_accounts.lock().unwrap().push(account_id.clone());
+            ResponseData::Labels {
+                labels: labels.to_vec(),
+            }
+        }
+        Request::ListSavedSearches => ResponseData::SavedSearches {
+            searches: Vec::new(),
+        },
+        Request::ListSubscriptions { account_id, .. } => {
+            seen_accounts.lock().unwrap().push(account_id.clone());
+            ResponseData::Subscriptions {
+                subscriptions: Vec::new(),
+            }
+        }
+        _ => return None,
+    };
+    Some(Response::Ok { data })
+}
+
+fn thread_of(envelopes: &[&Envelope], unread_count: u32) -> Thread {
+    let latest = envelopes
+        .iter()
+        .max_by_key(|envelope| envelope.date)
+        .unwrap();
+    Thread {
+        id: envelopes[0].thread_id.clone(),
+        account_id: envelopes[0].account_id.clone(),
+        subject: envelopes[0].subject.clone(),
+        participants: envelopes
+            .iter()
+            .map(|envelope| envelope.from.clone())
+            .collect(),
+        message_count: envelopes.len() as u32,
+        unread_count,
+        latest_date: latest.date,
+        snippet: latest.snippet.clone(),
+        message_ids: envelopes
+            .iter()
+            .map(|envelope| envelope.id.clone())
+            .collect(),
+    }
+}
+
+/// `account` scopes search, triage, search groups and the mailbox (labels,
+/// subscriptions and the envelope list) to one account id.
+#[tokio::test]
+async fn account_param_scopes_search_triage_groups_and_mailbox() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account = AccountId::new();
+    let labels = sample_labels(&account);
+    let inbox_label_id = labels[0].id.clone();
+    let seen_accounts = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen_for_ipc = seen_accounts.clone();
+    let scoped = account.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| {
+            if let Some(response) = chrome_fake_response(&request, &labels, &seen_for_ipc) {
+                return Some(response);
+            }
+            let data = match request {
+                Request::Search { account_id, .. } => {
+                    assert_eq!(account_id.as_ref(), Some(&scoped), "search scope");
+                    ResponseData::SearchResults {
+                        results: Vec::new(),
+                        explain: None,
+                        has_more: false,
+                        total: 0,
+                        next_offset: None,
+                    }
+                }
+                Request::TriageSearch { account_id, .. } => {
+                    assert_eq!(account_id.as_ref(), Some(&scoped), "triage scope");
+                    ResponseData::TriageResults {
+                        messages: Vec::new(),
+                        total: 0,
+                        has_more: false,
+                        next_offset: None,
+                        llm_calls: 0,
+                        prompt_version: "v1".into(),
+                    }
+                }
+                Request::SearchAggregation {
+                    account_id,
+                    group_by,
+                    ..
+                } => {
+                    assert_eq!(account_id.as_ref(), Some(&scoped), "groups scope");
+                    ResponseData::SearchAggregation {
+                        query: "q".into(),
+                        group_by,
+                        total: 0,
+                        groups: Vec::new(),
+                    }
+                }
+                Request::ListEnvelopes {
+                    account_id,
+                    label_id,
+                    ..
+                } => {
+                    assert_eq!(account_id.as_ref(), Some(&scoped), "mailbox scope");
+                    assert_eq!(label_id.as_ref(), Some(&inbox_label_id));
+                    ResponseData::Envelopes {
+                        envelopes: Vec::new(),
+                    }
+                }
+                _ => return Some(Response::error("unexpected request")),
+            };
+            Some(Response::Ok { data })
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+
+    for path in [
+        format!("/api/v1/mail/search?q=invoice&account={account}"),
+        format!("/api/v1/mail/triage?q=invoice&account={account}"),
+        format!("/api/v1/mail/search/groups?q=invoice&account={account}"),
+        format!("/api/v1/mail/mailbox?view=messages&account={account}"),
+        // `account_id` is accepted as an alias for API-client consistency.
+        format!("/api/v1/mail/search?q=invoice&account_id={account}"),
+    ] {
+        let response = client
+            .get(format!("http://{addr}{path}"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK, "{path}");
+    }
+    assert_eq!(
+        *seen_accounts.lock().unwrap(),
+        vec![Some(account.clone()), Some(account.clone())],
+        "mailbox chrome must load the scoped account's labels and subscriptions"
+    );
+
+    let response = client
+        .get(format!("http://{addr}/api/v1/mail/search?q=x&account=nope"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+}
+
+/// Thread view pages whole threads through `ListThreads`: a thread whose
+/// messages would have straddled two envelope pages appears once, with its
+/// true `message_count`, the ids of its in-lens messages, and participants.
+/// `has_more`/`next_offset` count threads.
+#[tokio::test]
+async fn mailbox_thread_view_pages_whole_threads() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account = AccountId::new();
+    let labels = sample_labels(&account);
+    let inbox_label_id = labels[0].id.clone();
+    let now = Utc::now();
+
+    let message = |thread: &ThreadId, minutes_ago: i64, from: &str, inbox: bool| {
+        let mut envelope = sample_envelope();
+        envelope.account_id = account.clone();
+        envelope.thread_id = thread.clone();
+        envelope.date = now - chrono::Duration::minutes(minutes_ago);
+        envelope.from = Address {
+            name: Some(from.to_string()),
+            email: format!("{}@example.com", from.to_ascii_lowercase()),
+        };
+        envelope.flags = MessageFlags::READ;
+        envelope.label_provider_ids = if inbox {
+            vec!["INBOX".into()]
+        } else {
+            vec!["SENT".into()]
+        };
+        envelope
+    };
+
+    // Thread A: two inbox messages around one sent reply, newest first in
+    // the listing. Thread B: one message. Thread C (page 2): two messages.
+    let thread_a = ThreadId::new();
+    let a1 = message(&thread_a, 50, "Alice", true);
+    let mut a2 = message(&thread_a, 40, "Me", false);
+    a2.flags = MessageFlags::READ | MessageFlags::STARRED;
+    a2.label_provider_ids.push("follow-up".into());
+    let mut a3 = message(&thread_a, 5, "Bob", true);
+    a3.flags = MessageFlags::empty();
+    a3.subject = "Re: Launch".into();
+    let thread_b = ThreadId::new();
+    let b1 = message(&thread_b, 10, "Carol", true);
+    let thread_c = ThreadId::new();
+    let c1 = message(&thread_c, 90, "Dan", true);
+    let c2 = message(&thread_c, 60, "Erin", true);
+
+    let threads = [
+        thread_of(&[&a1, &a2, &a3], 1),
+        thread_of(&[&b1], 0),
+        thread_of(&[&c1, &c2], 0),
+    ];
+    let all = [
+        a1.clone(),
+        a2.clone(),
+        a3.clone(),
+        b1.clone(),
+        c1.clone(),
+        c2.clone(),
+    ];
+
+    let seen_accounts = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen_for_ipc = seen_accounts.clone();
+    let list_envelopes_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let list_envelopes_seen = list_envelopes_calls.clone();
+    let scoped = account.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| {
+            if let Some(response) = chrome_fake_response(&request, &labels, &seen_for_ipc) {
+                return Some(response);
+            }
+            let data = match request {
+                Request::ListThreads {
+                    account_id,
+                    label_id,
+                    limit,
+                    offset,
+                    ..
+                } => {
+                    assert_eq!(account_id.as_ref(), Some(&scoped));
+                    assert_eq!(label_id.as_ref(), Some(&inbox_label_id));
+                    ResponseData::Threads {
+                        threads: threads
+                            .iter()
+                            .skip(offset as usize)
+                            .take(limit as usize)
+                            .cloned()
+                            .collect(),
+                    }
+                }
+                Request::ListEnvelopesByIds { message_ids } => ResponseData::Envelopes {
+                    envelopes: all
+                        .iter()
+                        .filter(|envelope| message_ids.contains(&envelope.id))
+                        .cloned()
+                        .collect(),
+                },
+                Request::ListEnvelopes { .. } => {
+                    list_envelopes_seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    ResponseData::Envelopes {
+                        envelopes: Vec::new(),
+                    }
+                }
+                _ => return Some(Response::error("unexpected request")),
+            };
+            Some(Response::Ok { data })
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+
+    let rows_of = |json: &serde_json::Value| -> Vec<serde_json::Value> {
+        json["mailbox"]["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|group| group["rows"].as_array().unwrap().clone())
+            .collect()
+    };
+
+    let page1: serde_json::Value = client
+        .get(format!(
+            "http://{addr}/api/v1/mail/mailbox?view=threads&limit=2&account={account}"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let rows = rows_of(&page1);
+    assert_eq!(rows.len(), 2, "{page1}");
+    assert_eq!(page1["mailbox"]["has_more"], true);
+    assert_eq!(page1["mailbox"]["next_offset"], 2);
+
+    let row_a = &rows[0];
+    assert_eq!(row_a["kind"], "thread");
+    assert_eq!(row_a["thread_id"], thread_a.to_string());
+    assert_eq!(
+        row_a["id"],
+        a3.id.to_string(),
+        "row is the newest in-lens message"
+    );
+    assert_eq!(row_a["subject"], "Re: Launch");
+    assert_eq!(
+        row_a["message_count"], 3,
+        "true thread count, not page-local"
+    );
+    assert_eq!(
+        row_a["message_ids"],
+        serde_json::json!([a1.id.to_string(), a3.id.to_string()]),
+        "inbox lens excludes the sent reply"
+    );
+    assert_eq!(row_a["unread"], true);
+    assert_eq!(
+        row_a["starred"], true,
+        "any starred message stars the thread"
+    );
+    assert_eq!(row_a["participants"].as_array().unwrap().len(), 3);
+    assert_eq!(row_a["participants"][0]["email"], "alice@example.com");
+    let label_names = |row: &serde_json::Value| -> Vec<String> {
+        row["labels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|label| label["name"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(
+        label_names(row_a),
+        vec!["Inbox".to_string(), "Follow Up".to_string()],
+        "thread row labels are the union across the thread's messages"
+    );
+
+    let row_b = &rows[1];
+    assert_eq!(row_b["message_count"], 1);
+    assert_eq!(label_names(row_b), vec!["Inbox".to_string()]);
+    assert_eq!(row_b["unread"], false);
+    assert_eq!(row_b["message_ids"], serde_json::json!([b1.id.to_string()]));
+
+    let page2: serde_json::Value = client
+        .get(format!(
+            "http://{addr}/api/v1/mail/mailbox?view=threads&limit=2&offset=2&account={account}"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let rows = rows_of(&page2);
+    assert_eq!(rows.len(), 1, "{page2}");
+    assert_eq!(rows[0]["thread_id"], thread_c.to_string());
+    assert_eq!(rows[0]["message_count"], 2);
+    assert_eq!(rows[0]["id"], c2.id.to_string());
+    assert_eq!(page2["mailbox"]["has_more"], false);
+    assert!(page2["mailbox"]["next_offset"].is_null());
+
+    // Thread view pages through ListThreads, never the envelope list.
+    assert_eq!(
+        list_envelopes_calls.load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
+}
+
+/// The parity routes forward to the right daemon request with the query/body
+/// fields mapped by name, fall back to the default account when `account` is
+/// absent, and pass the daemon payload through.
+#[tokio::test]
+async fn parity_routes_dispatch_daemon_requests() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let default_account = AccountId::new();
+    let other_account = AccountId::new();
+    let saved_search_id = mxr_core::SavedSearchId::new();
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Request>::new()));
+    let seen_for_ipc = seen.clone();
+    let account_for_ipc = default_account.clone();
+    let search_for_ipc = saved_search_id.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| {
+            let data = match &request {
+                Request::ListAccounts => ResponseData::Accounts {
+                    accounts: vec![sample_account(&account_for_ipc)],
+                },
+                Request::ListOwedReplies { .. } => ResponseData::OwedReplies { rows: Vec::new() },
+                Request::ListSavedSearchUnreadCounts => ResponseData::SavedSearchUnreadCounts {
+                    counts: [(search_for_ipc.clone(), 4)].into_iter().collect(),
+                },
+                Request::ListCadenceDrift { .. } => {
+                    ResponseData::CadenceDriftList { rows: Vec::new() }
+                }
+                Request::ListCadenceWatch { .. } => ResponseData::CadenceWatchList {
+                    entries: Vec::new(),
+                },
+                Request::StartMutationJob { .. } => ResponseData::JobStarted {
+                    job: mxr_protocol::JobData {
+                        job_id: "job-7".into(),
+                        kind: "archive".into(),
+                        status: mxr_protocol::JobStatusData::Queued,
+                        progress: mxr_protocol::JobProgressData {
+                            total: 1,
+                            completed: 0,
+                            succeeded: 0,
+                            skipped: 0,
+                            failed: 0,
+                        },
+                        undo_ids: Vec::new(),
+                        error: None,
+                        started_at: 0,
+                        finished_at: None,
+                        result: None,
+                    },
+                },
+                // Whois, send-time, archive-ask and (un)watch payloads are
+                // passed through untouched; Ack keeps the fixture small.
+                Request::ExplainEntity { .. }
+                | Request::SendTimeRecommendation { .. }
+                | Request::ArchiveAsk { .. }
+                | Request::WatchCadence { .. }
+                | Request::UnwatchCadence { .. } => ResponseData::Ack,
+                _ => return Some(Response::error("unexpected request")),
+            };
+            seen_for_ipc.lock().unwrap().push(request);
+            Some(Response::Ok { data })
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+    let get = |path: String| {
+        let client = client.clone();
+        async move {
+            let response = client
+                .get(format!("http://{addr}{path}"))
+                .bearer_auth(TEST_AUTH_TOKEN)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::OK, "{path}");
+            response.json::<serde_json::Value>().await.unwrap()
+        }
+    };
+    let post = |path: &'static str, body: serde_json::Value| {
+        let client = client.clone();
+        async move {
+            let response = client
+                .post(format!("http://{addr}{path}"))
+                .bearer_auth(TEST_AUTH_TOKEN)
+                .json(&body)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::OK, "{path}");
+            response.json::<serde_json::Value>().await.unwrap()
+        }
+    };
+
+    let json = get("/api/v1/mail/owed?older_than_days=3&limit=5".into()).await;
+    assert_eq!(json["kind"], "OwedReplies");
+    get(format!(
+        "/api/v1/mail/owed?account={other_account}&within_days=30"
+    ))
+    .await;
+    let json = get(format!(
+        "/api/v1/mail/whois?query=alice%40example.com&account={other_account}"
+    ))
+    .await;
+    assert_eq!(json["kind"], "Ack");
+    get("/api/v1/mail/send-time?to=a%40example.com,%20b%40example.com".into()).await;
+    let json = get("/api/v1/platform/saved-searches/unread-counts".into()).await;
+    assert_eq!(json["counts"][saved_search_id.to_string()], 4);
+    let json = get("/api/v1/platform/analytics/cadence-drift".into()).await;
+    assert_eq!(json["kind"], "CadenceDriftList");
+    let json = get(format!(
+        "/api/v1/platform/cadence/watch?account={other_account}"
+    ))
+    .await;
+    assert_eq!(json["kind"], "CadenceWatchList");
+    let json = post(
+        "/api/v1/platform/cadence/watch",
+        serde_json::json!({ "email": "mum@example.com", "expected_days": 7.0 }),
+    )
+    .await;
+    assert_eq!(json["ok"], true);
+    post(
+        "/api/v1/platform/cadence/unwatch",
+        serde_json::json!({ "account_id": other_account.to_string(), "email": "mum@example.com" }),
+    )
+    .await;
+    let message_id = MessageId::new();
+    let json = post(
+        "/api/v1/mail/mutation-jobs",
+        serde_json::json!({ "mutation": "Archive", "message_ids": [message_id.to_string()] }),
+    )
+    .await;
+    assert_eq!(json["kind"], "JobStarted");
+    assert_eq!(json["job_id"], "job-7");
+    assert_eq!(json["job"]["job_id"], "job-7");
+    post(
+        "/api/v1/mail/archive-ask",
+        serde_json::json!({ "question": "When did we agree the launch date?", "filters": { "from": "alice@example.com" } }),
+    )
+    .await;
+
+    let seen = seen.lock().unwrap();
+    let requests = seen
+        .iter()
+        .filter(|request| !matches!(request, Request::ListAccounts))
+        .collect::<Vec<_>>();
+    assert!(matches!(
+        requests[0],
+        Request::ListOwedReplies { account_id, older_than_days: Some(3), within_days: None, limit: 5 }
+            if account_id == &default_account
+    ));
+    assert!(matches!(
+        requests[1],
+        Request::ListOwedReplies { account_id, within_days: Some(30), limit: 50, .. }
+            if account_id == &other_account
+    ));
+    assert!(matches!(
+        requests[2],
+        Request::ExplainEntity { account_id, query, limit: 10 }
+            if account_id == &other_account && query == "alice@example.com"
+    ));
+    assert!(matches!(
+        requests[3],
+        Request::SendTimeRecommendation { account_id, recipients, proposed_at: None }
+            if account_id == &default_account
+                && recipients == &vec!["a@example.com".to_string(), "b@example.com".to_string()]
+    ));
+    assert!(matches!(requests[4], Request::ListSavedSearchUnreadCounts));
+    assert!(matches!(
+        requests[5],
+        Request::ListCadenceDrift { account_id } if account_id == &default_account
+    ));
+    assert!(matches!(
+        requests[6],
+        Request::ListCadenceWatch { account_id } if account_id == &other_account
+    ));
+    assert!(matches!(
+        requests[7],
+        Request::WatchCadence { account_id, email, expected_days: Some(days), allow_list_sender: false, .. }
+            if account_id == &default_account && email == "mum@example.com" && (*days - 7.0).abs() < f64::EPSILON
+    ));
+    assert!(matches!(
+        requests[8],
+        Request::UnwatchCadence { account_id, .. } if account_id == &other_account
+    ));
+    assert!(matches!(
+        requests[9],
+        Request::StartMutationJob {
+            mutation: mxr_protocol::MutationCommand::Archive { message_ids },
+            ..
+        } if message_ids == &vec![message_id.clone()]
+    ));
+    assert!(matches!(
+        requests[10],
+        Request::ArchiveAsk { question, filters, limit: 8 }
+            if question.starts_with("When did") && filters.from.as_deref() == Some("alice@example.com")
+    ));
+}
+
+/// Bad input on the parity routes is a 400 that never reaches the daemon.
+#[tokio::test]
+async fn parity_routes_reject_bad_input() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let _ipc =
+        spawn_fake_ipc_server(&socket_path, |_| Some(Response::error("unexpected")), None).await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+    for path in [
+        "/api/v1/mail/owed?account=not-a-uuid",
+        "/api/v1/mail/whois?query=%20%20",
+        "/api/v1/mail/send-time?to=,",
+    ] {
+        let response = client
+            .get(format!("http://{addr}{path}"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::BAD_REQUEST,
+            "{path}"
+        );
+    }
+    let response = client
+        .post(format!("http://{addr}/api/v1/mail/archive-ask"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "question": "" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let response = client
+        .get(format!("http://{addr}/api/v1/mail/owed"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+}
+
+/// `dry_run: true` on unsubscribe-purge returns the would-affect selection
+/// (`status: "preview"`, `message_count`, `message_ids`) without mutating.
+#[tokio::test]
+async fn unsubscribe_purge_dry_run_returns_would_affect_ids() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let message_ids = vec![MessageId::new(), MessageId::new()];
+    let ids_for_ipc = message_ids.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::UnsubscribePurge {
+                address,
+                dry_run: true,
+                ..
+            } => Some(Response::Ok {
+                data: ResponseData::UnsubscribePurgeResult {
+                    result: mxr_protocol::UnsubscribePurgeResultData {
+                        address,
+                        query: "from:news@example.com".into(),
+                        account_id: None,
+                        dry_run: true,
+                        method: UnsubscribeMethod::None,
+                        status: mxr_protocol::UnsubscribePurgeStatusData::Preview,
+                        message_count: ids_for_ipc.len() as u32,
+                        archived_count: 0,
+                        message_ids: ids_for_ipc.clone(),
+                        mutation_id: None,
+                        error: None,
+                    },
+                },
+            }),
+            _ => Some(Response::error("dry run must not mutate")),
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let json: serde_json::Value = reqwest::Client::new()
+        .post(format!(
+            "http://{addr}/api/v1/mail/actions/unsubscribe-purge"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "address": "news@example.com", "dry_run": true }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["result"]["status"], "preview");
+    assert_eq!(json["result"]["dry_run"], true);
+    assert_eq!(json["result"]["message_count"], 2);
+    assert_eq!(json["result"]["archived_count"], 0);
+    assert_eq!(
+        json["result"]["message_ids"],
+        serde_json::json!([message_ids[0].to_string(), message_ids[1].to_string()])
+    );
+}
+
+/// The events socket answers `{"type":"ping"}` and, once the browser goes
+/// away, drops its daemon connection straight away instead of waiting for
+/// the next daemon event to fail.
+#[tokio::test]
+async fn websocket_events_answer_ping_and_release_daemon_on_close() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let listener = UnixListener::bind(&socket_path).unwrap();
+    let (closed_tx, closed_rx) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut framed = Framed::new(stream, IpcCodec::new());
+        // Never emit an event: only the client side can end this session.
+        while let Some(Ok(_)) = framed.next().await {}
+        let _ = closed_tx.send(());
+    });
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let (mut stream, _) = tokio_tungstenite::connect_async(format!(
+        "ws://{addr}/api/v1/events?token={TEST_AUTH_TOKEN}"
+    ))
+    .await
+    .unwrap();
+
+    stream
+        .send(Message::Text(r#"{"type":"ping"}"#.into()))
+        .await
+        .unwrap();
+    let reply = tokio::time::timeout(Duration::from_secs(5), stream.next())
+        .await
+        .expect("pong within 5s")
+        .unwrap()
+        .unwrap();
+    match reply {
+        Message::Text(text) => assert_eq!(text.as_str(), r#"{"type":"pong"}"#),
+        other => panic!("expected pong text frame, got {other:?}"),
+    }
+
+    stream.close(None).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), closed_rx)
+        .await
+        .expect("bridge must release the daemon connection when the browser closes")
+        .unwrap();
+}
+
+/// Message rows (mailbox messages view and search) carry the resolved labels
+/// of the message they show. Labels come from one `ListLabels` per account in
+/// the page, reusing the chrome's list when it already covers the account.
+#[tokio::test]
+async fn mailbox_and_search_rows_carry_labels() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account = AccountId::new();
+    let labels = sample_labels(&account);
+    let inbox_label_id = labels[0].id.clone();
+    let mut first = sample_envelope();
+    first.account_id = account.clone();
+    first.label_provider_ids = vec!["INBOX".into(), "follow-up".into()];
+    let mut second = sample_envelope();
+    second.id = MessageId::new();
+    second.account_id = account.clone();
+    second.label_provider_ids = vec!["INBOX".into()];
+    let envelopes = vec![first.clone(), second.clone()];
+    let results = envelopes
+        .iter()
+        .map(|envelope| SearchResultItem {
+            message_id: envelope.id.clone(),
+            account_id: envelope.account_id.clone(),
+            thread_id: envelope.thread_id.clone(),
+            score: 1.0,
+            mode: SearchMode::Lexical,
+        })
+        .collect::<Vec<_>>();
+
+    let label_lookups = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let lookups_for_ipc = label_lookups.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| {
+            if let Some(response) = chrome_fake_response(&request, &labels, &lookups_for_ipc) {
+                return Some(response);
+            }
+            let data = match request {
+                Request::ListEnvelopes {
+                    label_id: Some(label_id),
+                    ..
+                } if label_id == inbox_label_id => ResponseData::Envelopes {
+                    envelopes: envelopes.clone(),
+                },
+                Request::Search { .. } => ResponseData::SearchResults {
+                    results: results.clone(),
+                    explain: None,
+                    has_more: false,
+                    total: 2,
+                    next_offset: None,
+                },
+                Request::ListEnvelopesByIds { .. } => ResponseData::Envelopes {
+                    envelopes: envelopes.clone(),
+                },
+                _ => return Some(Response::error("unexpected request")),
+            };
+            Some(Response::Ok { data })
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+    let label_names = |row: &serde_json::Value| -> Vec<String> {
+        row["labels"]
+            .as_array()
+            .map(|labels| {
+                labels
+                    .iter()
+                    .map(|label| label["name"].as_str().unwrap().to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    let mailbox: serde_json::Value = client
+        .get(format!("http://{addr}/api/v1/mail/mailbox?view=messages"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let rows = mailbox["mailbox"]["groups"][0]["rows"].as_array().unwrap();
+    assert_eq!(
+        label_names(&rows[0]),
+        vec!["Inbox".to_string(), "Follow Up".to_string()]
+    );
+    assert_eq!(rows[0]["labels"][1]["kind"], "user");
+    assert_eq!(label_names(&rows[1]), vec!["Inbox".to_string()]);
+    // Chrome's own ListLabels + ListSubscriptions, nothing per row.
+    assert_eq!(label_lookups.lock().unwrap().len(), 2);
+
+    label_lookups.lock().unwrap().clear();
+    let search: serde_json::Value = client
+        .get(format!(
+            "http://{addr}/api/v1/mail/search?q=mailroom&scope=messages"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let rows = search["groups"][0]["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        label_names(&rows[0]),
+        vec!["Inbox".to_string(), "Follow Up".to_string()]
+    );
+    assert_eq!(
+        *label_lookups.lock().unwrap(),
+        vec![Some(account.clone())],
+        "search resolves labels with one ListLabels per account"
+    );
 }

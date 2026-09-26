@@ -9,11 +9,14 @@
 
 mod chrome;
 mod envelope_list;
+mod insight_routes;
 mod legacy;
+mod mailbox_threads;
 mod middleware;
 mod openapi;
 mod request_types;
 mod routes_v6;
+mod row_labels;
 #[cfg(feature = "web-ui")]
 mod spa;
 
@@ -148,42 +151,82 @@ async fn mailbox(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, query.token.as_deref(), &state.config.auth_token)?;
     let lens = query.lens();
-    let chrome = build_bridge_chrome(&state.config.socket_path, &lens).await?;
-    let mailbox = load_mailbox_selection(
-        &state.config.socket_path,
-        &chrome,
-        &lens,
-        query.limit,
-        query.offset,
-    )
-    .await?;
-    let envelope_page_size = mailbox.envelopes.len() as u32;
+    let account_id = query.account.as_deref().map(parse_account_id).transpose()?;
+    let chrome = build_bridge_chrome(&state.config.socket_path, &lens, account_id.as_ref()).await?;
     let view = query.view;
-    let commitment_counts =
-        open_commitment_counts(&state.config.socket_path, &mailbox.envelopes).await;
-    let mut rows = match view {
-        MailboxView::Threads => mailbox_thread_rows(mailbox.envelopes),
-        MailboxView::Messages => mailbox_message_rows(mailbox.envelopes),
+    let thread_page = if view == MailboxView::Threads {
+        mailbox_threads::load_thread_page(
+            &state.config.socket_path,
+            &chrome,
+            &lens,
+            account_id.as_ref(),
+            query.limit,
+            query.offset,
+        )
+        .await?
+    } else {
+        None
     };
+    let (lens_label, counts, mut rows, row_envelopes, page_size) = match thread_page {
+        Some(page) => (
+            page.lens_label,
+            page.counts,
+            page.rows,
+            page.row_envelopes,
+            page.thread_count as u32,
+        ),
+        None => {
+            let mailbox = load_mailbox_selection(
+                &state.config.socket_path,
+                &chrome,
+                &lens,
+                account_id.as_ref(),
+                query.limit,
+                query.offset,
+            )
+            .await?;
+            let page_size = mailbox.envelopes.len() as u32;
+            let mut rows = match view {
+                MailboxView::Threads => mailbox_thread_rows(mailbox.envelopes.clone()),
+                MailboxView::Messages => mailbox_message_rows(mailbox.envelopes.clone()),
+            };
+            let catalog = row_labels::LabelCatalog::load(
+                &state.config.socket_path,
+                &mailbox.envelopes,
+                &chrome.labels,
+            )
+            .await;
+            row_labels::annotate_row_labels(&mut rows, &mailbox.envelopes, &catalog);
+            (
+                mailbox.lens_label,
+                mailbox.counts,
+                rows,
+                mailbox.envelopes,
+                page_size,
+            )
+        }
+    };
+    let commitment_counts = open_commitment_counts(&state.config.socket_path, &row_envelopes).await;
     annotate_open_commitment_counts(&mut rows, &commitment_counts);
     let groups = group_row_views(rows);
     // Saved-search and subscription-overview lenses can't paginate: their IPC
     // variants (RunSavedSearch, ListSubscriptions) take no offset. A subscription
     // drilldown (sender_email present) runs through Request::Search, which does.
+    // Thread pages count threads, envelope pages count envelopes.
     let supports_pagination = matches!(
         lens.kind,
         MailboxLensKind::Inbox | MailboxLensKind::AllMail | MailboxLensKind::Label
     ) || (lens.kind == MailboxLensKind::Subscription
         && lens.sender_email.is_some());
-    let has_more = supports_pagination && envelope_page_size == query.limit;
+    let has_more = supports_pagination && page_size == query.limit;
     let next_offset = has_more.then(|| query.offset.saturating_add(query.limit));
     Ok(Json(json!({
         "shell": chrome.shell,
         "sidebar": chrome.sidebar,
         "mailbox": {
-            "lensLabel": mailbox.lens_label,
+            "lensLabel": lens_label,
             "view": view.as_str(),
-            "counts": mailbox.counts,
+            "counts": counts,
             "has_more": has_more,
             "next_offset": next_offset,
             "groups": groups,
@@ -381,6 +424,7 @@ async fn search(
     if scope == "triage" {
         return triage_response(state, query).await;
     }
+    let account_id = query.account.as_deref().map(parse_account_id).transpose()?;
     let thread_scope = scope == "threads";
     let attachment_scope = scope == "attachments";
 
@@ -390,7 +434,7 @@ async fn search(
             query: query.q,
             limit: query.limit,
             offset: query.offset,
-            account_id: None,
+            account_id,
             mode: query.mode,
             sort: Some(sort),
             explain: query.explain,
@@ -441,11 +485,14 @@ async fn search(
             } else {
                 Vec::new()
             };
+            let catalog =
+                row_labels::LabelCatalog::load(&state.config.socket_path, &envelopes, &[]).await;
             let groups = if attachment_scope {
-                let rows = attachment_search_rows(&envelopes, &bodies);
+                let mut rows = attachment_search_rows(&envelopes, &bodies);
+                row_labels::annotate_row_labels(&mut rows, &envelopes, &catalog);
                 group_row_views(rows)
             } else {
-                group_envelopes(envelopes)
+                group_envelopes(envelopes, &catalog)
             };
 
             Ok(Json(json!({
@@ -490,13 +537,14 @@ async fn triage_response(
     }
 
     let mode = query.mode;
+    let account_id = query.account.as_deref().map(parse_account_id).transpose()?;
     let response = ipc_request(
         &state.config.socket_path,
         Request::TriageSearch {
             query: query.q,
             limit: query.limit,
             offset: query.offset,
-            account_id: None,
+            account_id,
             mode,
             sort: Some(SortOrder::DateDesc),
         },
@@ -545,10 +593,11 @@ async fn triage_response(
         .iter()
         .map(|message| (message.message_id.to_string(), message))
         .collect::<HashMap<_, _>>();
-    let rows = envelopes
-        .into_iter()
+    let catalog = row_labels::LabelCatalog::load(&state.config.socket_path, &envelopes, &[]).await;
+    let mut rows = envelopes
+        .iter()
         .map(|envelope| {
-            let mut row = message_row_view_with_labels(&envelope, &[]);
+            let mut row = message_row_view_with_labels(envelope, &[]);
             if let Some(message) = triage_by_message.get(&envelope.id.to_string()) {
                 row.triage_verdict = Some(message.verdict_token.clone());
                 row.triage_reason = Some(message.reason.clone());
@@ -557,6 +606,7 @@ async fn triage_response(
             (envelope.date, row)
         })
         .collect::<Vec<_>>();
+    row_labels::annotate_row_labels(&mut rows, &envelopes, &catalog);
 
     Ok(Json(json!({
         "scope": "triage",
@@ -588,11 +638,12 @@ async fn search_groups(
             "groups": [],
         })));
     }
+    let account_id = query.account.as_deref().map(parse_account_id).transpose()?;
     match ipc_request(
         &state.config.socket_path,
         Request::SearchAggregation {
             query: query.q,
-            account_id: None,
+            account_id,
             mode: query.mode,
             group_by,
             limit: Some(query.limit),
@@ -988,7 +1039,7 @@ async fn upload_compose_attachment(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let bytes = general_purpose::STANDARD
         .decode(request.content_base64)
-        .map_err(|error| BridgeError::Ipc(format!("invalid attachment content: {error}")))?;
+        .map_err(|error| BridgeError::BadRequest(format!("invalid attachment content: {error}")))?;
     let filename = safe_attachment_filename(&request.filename);
     let path = compose_attachment_path(Path::new(&request.draft_path), &filename)?;
     if let Some(parent) = path.parent() {
@@ -1762,7 +1813,7 @@ async fn ipc_request_with_id(
 fn map_bridge_error(error: ClientError) -> BridgeError {
     match error {
         ClientError::Connect { source, .. } => BridgeError::Connect(source.to_string()),
-        ClientError::Daemon { message, .. } => BridgeError::Ipc(message),
+        ClientError::Daemon { message, kind, .. } => BridgeError::Daemon { message, kind },
         ClientError::Closed => BridgeError::Ipc("connection closed".into()),
         ClientError::Io(source) => BridgeError::Ipc(source.to_string()),
         // A non-response frame kept mapping to UnexpectedResponse before, so
@@ -1780,7 +1831,7 @@ fn map_bridge_error(error: ClientError) -> BridgeError {
         } => BridgeError::Ipc(format!(
             "unexpected response id {frame_id} while awaiting {expected_id}"
         )),
-        ClientError::Timeout(duration) => BridgeError::Ipc(format!(
+        ClientError::Timeout(duration) => BridgeError::Timeout(format!(
             "IPC request timed out after {} seconds",
             duration.as_secs()
         )),
@@ -1811,46 +1862,78 @@ async fn bridge_events(mut socket: WebSocket, socket_path: PathBuf) {
             }
         };
 
-    while let Ok(message) = connection.next_event().await {
-        let IpcPayload::Event(event) = message.payload else {
-            continue;
-        };
-        let payload = match serde_json::to_string(&event) {
-            Ok(payload) => payload,
-            Err(_) => break,
-        };
-        if socket
-            .send(WebSocketMessage::Text(payload.into()))
-            .await
-            .is_err()
-        {
-            break;
+    // Read the browser side too: without it a closed tab keeps the daemon
+    // socket open until the next event happens to fail its send. Both
+    // `next_event` and `recv` are cancel-safe, so `select!` loses no frame.
+    loop {
+        tokio::select! {
+            event = connection.next_event() => {
+                let Ok(message) = event else {
+                    break;
+                };
+                let IpcPayload::Event(event) = message.payload else {
+                    continue;
+                };
+                let Ok(payload) = serde_json::to_string(&event) else {
+                    break;
+                };
+                if socket
+                    .send(WebSocketMessage::Text(payload.into()))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            frame = socket.recv() => match frame {
+                None | Some(Err(_) | Ok(WebSocketMessage::Close(_))) => break,
+                Some(Ok(WebSocketMessage::Text(text))) if is_app_ping(&text) => {
+                    let pong = json!({ "type": "pong" }).to_string();
+                    if socket
+                        .send(WebSocketMessage::Text(pong.into()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                // Protocol-level pings are answered by axum; other client
+                // frames carry nothing the bridge acts on.
+                Some(Ok(_)) => {}
+            },
         }
     }
+}
+
+/// Application-level keepalive: browsers cannot send WebSocket ping frames,
+/// so the SPA may send `{"type":"ping"}` and expect `{"type":"pong"}`.
+fn is_app_ping(text: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(text)
+        .is_ok_and(|value| value.get("type").and_then(serde_json::Value::as_str) == Some("ping"))
 }
 
 fn parse_thread_id(value: &str) -> Result<ThreadId, BridgeError> {
     Uuid::parse_str(value)
         .map(ThreadId::from_uuid)
-        .map_err(|_| BridgeError::Ipc(format!("invalid thread id: {value}")))
+        .map_err(|_| BridgeError::BadRequest(format!("invalid thread id: {value}")))
 }
 
 fn parse_message_id(value: &str) -> Result<MessageId, BridgeError> {
     Uuid::parse_str(value)
         .map(MessageId::from_uuid)
-        .map_err(|_| BridgeError::Ipc(format!("invalid message id: {value}")))
+        .map_err(|_| BridgeError::BadRequest(format!("invalid message id: {value}")))
 }
 
 fn parse_draft_id(value: &str) -> Result<DraftId, BridgeError> {
     Uuid::parse_str(value)
         .map(DraftId::from_uuid)
-        .map_err(|_| BridgeError::Ipc(format!("invalid draft id: {value}")))
+        .map_err(|_| BridgeError::BadRequest(format!("invalid draft id: {value}")))
 }
 
 fn parse_attachment_id(value: &str) -> Result<mxr_core::AttachmentId, BridgeError> {
     Uuid::parse_str(value)
         .map(mxr_core::AttachmentId::from_uuid)
-        .map_err(|_| BridgeError::Ipc(format!("invalid attachment id: {value}")))
+        .map_err(|_| BridgeError::BadRequest(format!("invalid attachment id: {value}")))
 }
 
 fn parse_message_ids(values: &[String]) -> Result<Vec<MessageId>, BridgeError> {
@@ -1863,13 +1946,13 @@ fn parse_message_ids(values: &[String]) -> Result<Vec<MessageId>, BridgeError> {
 fn parse_account_id(value: &str) -> Result<AccountId, BridgeError> {
     Uuid::parse_str(value)
         .map(AccountId::from_uuid)
-        .map_err(|_| BridgeError::Ipc(format!("invalid account id: {value}")))
+        .map_err(|_| BridgeError::BadRequest(format!("invalid account id: {value}")))
 }
 
 fn parse_label_id(value: &str) -> Result<LabelId, BridgeError> {
     Uuid::parse_str(value)
         .map(LabelId::from_uuid)
-        .map_err(|_| BridgeError::Ipc(format!("invalid label id: {value}")))
+        .map_err(|_| BridgeError::BadRequest(format!("invalid label id: {value}")))
 }
 
 async fn create_compose_session(
@@ -1898,10 +1981,9 @@ async fn create_compose_session(
             from,
         ),
         ComposeSessionKindRequest::Reply | ComposeSessionKindRequest::ReplyAll => {
-            let message_id = request
-                .message_id
-                .as_deref()
-                .ok_or_else(|| BridgeError::Ipc("compose reply missing message_id".into()))?;
+            let message_id = request.message_id.as_deref().ok_or_else(|| {
+                BridgeError::BadRequest("compose reply missing message_id".into())
+            })?;
             let envelope = envelope_for_message(socket_path, message_id).await?;
             let response = ipc_request(
                 socket_path,
@@ -1933,10 +2015,9 @@ async fn create_compose_session(
             )
         }
         ComposeSessionKindRequest::Forward => {
-            let message_id = request
-                .message_id
-                .as_deref()
-                .ok_or_else(|| BridgeError::Ipc("compose forward missing message_id".into()))?;
+            let message_id = request.message_id.as_deref().ok_or_else(|| {
+                BridgeError::BadRequest("compose forward missing message_id".into())
+            })?;
             let envelope = envelope_for_message(socket_path, message_id).await?;
             let response = ipc_request(
                 socket_path,
@@ -1962,17 +2043,20 @@ async fn create_compose_session(
         }
         ComposeSessionKindRequest::InviteReply => {
             let message_id = request.message_id.as_deref().ok_or_else(|| {
-                BridgeError::Ipc("compose invite_reply missing message_id".into())
+                BridgeError::BadRequest("compose invite_reply missing message_id".into())
             })?;
-            let action_str = request
-                .action
-                .as_deref()
-                .ok_or_else(|| BridgeError::Ipc("compose invite_reply missing action".into()))?;
+            let action_str = request.action.as_deref().ok_or_else(|| {
+                BridgeError::BadRequest("compose invite_reply missing action".into())
+            })?;
             let action = match action_str.to_ascii_lowercase().as_str() {
                 "accept" => mxr_protocol::CalendarInviteActionData::Accept,
                 "tentative" | "maybe" => mxr_protocol::CalendarInviteActionData::Tentative,
                 "decline" => mxr_protocol::CalendarInviteActionData::Decline,
-                other => return Err(BridgeError::Ipc(format!("invalid invite action: {other}"))),
+                other => {
+                    return Err(BridgeError::BadRequest(format!(
+                        "invalid invite action: {other}"
+                    )))
+                }
             };
             let envelope = envelope_for_message(socket_path, message_id).await?;
             let response = ipc_request(
@@ -2624,7 +2708,7 @@ fn resolve_snooze_until(
     config: &mxr_config::SnoozeConfig,
 ) -> Result<DateTime<Utc>, BridgeError> {
     mxr_config::snooze::parse_snooze_until(until, config)
-        .ok_or_else(|| BridgeError::Ipc(format!("invalid snooze time: {until}")))
+        .ok_or_else(|| BridgeError::BadRequest(format!("invalid snooze time: {until}")))
 }
 
 // --- Feature parity routes ---
@@ -3029,7 +3113,7 @@ async fn scan_deliveries(
 fn parse_delivery_id(value: &str) -> Result<mxr_core::DeliveryId, BridgeError> {
     Uuid::parse_str(value)
         .map(mxr_core::DeliveryId::from_uuid)
-        .map_err(|_| BridgeError::Ipc(format!("invalid delivery id: {value}")))
+        .map_err(|_| BridgeError::BadRequest(format!("invalid delivery id: {value}")))
 }
 
 async fn trigger_sync(

@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 pub(crate) async fn list_envelopes(
     socket_path: &Path,
     label_id: Option<LabelId>,
+    account_id: Option<&AccountId>,
     limit: u32,
     offset: u32,
 ) -> Result<Vec<Envelope>, BridgeError> {
@@ -15,7 +16,7 @@ pub(crate) async fn list_envelopes(
         socket_path,
         Request::ListEnvelopes {
             label_id,
-            account_id: None,
+            account_id: account_id.cloned(),
             limit,
             offset,
         },
@@ -70,6 +71,7 @@ pub(crate) async fn list_bodies_by_message_ids(
 pub(crate) async fn run_saved_search(
     socket_path: &Path,
     name: &str,
+    account_id: Option<&AccountId>,
     limit: u32,
 ) -> Result<Vec<Envelope>, BridgeError> {
     match ipc_request(
@@ -77,7 +79,7 @@ pub(crate) async fn run_saved_search(
         Request::RunSavedSearch {
             name: name.to_string(),
             limit,
-            account_id: None,
+            account_id: account_id.cloned(),
         },
     )
     .await?
@@ -92,6 +94,7 @@ pub(crate) async fn run_saved_search(
 pub(crate) async fn search_envelopes(
     socket_path: &Path,
     query: &str,
+    account_id: Option<&AccountId>,
     limit: u32,
     offset: u32,
 ) -> Result<Vec<Envelope>, BridgeError> {
@@ -101,7 +104,7 @@ pub(crate) async fn search_envelopes(
             query: query.to_string(),
             limit,
             offset,
-            account_id: None,
+            account_id: account_id.cloned(),
             mode: Some(SearchMode::Lexical),
             sort: Some(SortOrder::DateDesc),
             explain: false,
@@ -140,16 +143,16 @@ pub(crate) async fn search_result_envelopes(
     }
 }
 
-pub(crate) fn group_envelopes(envelopes: Vec<Envelope>) -> Vec<MessageGroupView> {
-    group_row_views(
-        envelopes
-            .into_iter()
-            .map(|envelope| {
-                let date = envelope.date;
-                (date, message_row_view(&envelope))
-            })
-            .collect(),
-    )
+pub(crate) fn group_envelopes(
+    envelopes: Vec<Envelope>,
+    catalog: &super::row_labels::LabelCatalog,
+) -> Vec<MessageGroupView> {
+    let mut rows = envelopes
+        .iter()
+        .map(|envelope| (envelope.date, message_row_view(envelope)))
+        .collect::<Vec<_>>();
+    super::row_labels::annotate_row_labels(&mut rows, &envelopes, catalog);
+    group_row_views(rows)
 }
 
 pub(crate) fn group_row_views(rows: Vec<(DateTime<Utc>, MessageRowView)>) -> Vec<MessageGroupView> {
@@ -186,11 +189,16 @@ pub(crate) fn mailbox_message_rows(
         .collect()
 }
 
+/// Envelope-page fallback for lenses without a daemon thread listing
+/// (saved searches, subscriptions). Counts, `message_ids` and participants
+/// are page-local here.
 pub(crate) fn mailbox_thread_rows(
     envelopes: Vec<Envelope>,
 ) -> Vec<(DateTime<Utc>, MessageRowView)> {
     let mut message_counts = HashMap::new();
     let mut thread_has_attachments = HashMap::new();
+    let mut thread_message_ids = HashMap::<ThreadId, Vec<String>>::new();
+    let mut thread_participants = HashMap::<ThreadId, Vec<mxr_core::Address>>::new();
     for envelope in &envelopes {
         *message_counts
             .entry(envelope.thread_id.clone())
@@ -198,6 +206,20 @@ pub(crate) fn mailbox_thread_rows(
         *thread_has_attachments
             .entry(envelope.thread_id.clone())
             .or_insert(false) |= envelope.has_attachments;
+        thread_message_ids
+            .entry(envelope.thread_id.clone())
+            .or_default()
+            .push(envelope.id.to_string());
+        let participants = thread_participants
+            .entry(envelope.thread_id.clone())
+            .or_default();
+        if participants.len() < super::chrome::THREAD_ROW_PARTICIPANT_LIMIT
+            && !participants
+                .iter()
+                .any(|known| known.email.eq_ignore_ascii_case(&envelope.from.email))
+        {
+            participants.push(envelope.from.clone());
+        }
     }
 
     let mut seen = HashSet::new();
@@ -211,6 +233,8 @@ pub(crate) fn mailbox_thread_rows(
             let mut row = message_row_view(&envelope);
             row.kind = "thread";
             row.message_count = message_counts.get(&envelope.thread_id).copied();
+            row.message_ids = thread_message_ids.remove(&envelope.thread_id);
+            row.participants = thread_participants.remove(&envelope.thread_id);
             row.has_attachments = thread_has_attachments
                 .get(&envelope.thread_id)
                 .copied()
@@ -289,6 +313,8 @@ pub(crate) fn message_row_view(envelope: &Envelope) -> MessageRowView {
         starred: envelope.flags.contains(MessageFlags::STARRED),
         has_attachments: envelope.has_attachments,
         message_count: None,
+        message_ids: None,
+        participants: None,
         attachment_id: None,
         attachment_filename: None,
         attachment_size_bytes: None,
@@ -355,7 +381,7 @@ fn plural(value: i64, unit: &str) -> String {
     }
 }
 
-fn message_labels(envelope: &Envelope, labels: &[Label]) -> Vec<MessageLabelView> {
+pub(crate) fn message_labels(envelope: &Envelope, labels: &[Label]) -> Vec<MessageLabelView> {
     if envelope.label_provider_ids.is_empty() {
         return Vec::new();
     }

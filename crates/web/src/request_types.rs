@@ -18,6 +18,10 @@ pub(super) struct MailboxQuery {
     pub(super) saved_search: Option<String>,
     #[serde(default)]
     pub(super) sender_email: Option<String>,
+    /// Scope the mailbox to one account id. Absent means the daemon default
+    /// (labels) or all accounts (envelope/thread lists).
+    #[serde(default, alias = "account_id")]
+    pub(super) account: Option<String>,
     #[serde(default)]
     pub(super) token: Option<String>,
 }
@@ -93,6 +97,9 @@ pub(super) struct SearchQuery {
     pub(super) verdict: Option<String>,
     #[serde(default)]
     pub(super) group_by: Option<mxr_protocol::SearchAggregationGroupBy>,
+    /// Restrict results to one account id; absent searches every account.
+    #[serde(default, alias = "account_id")]
+    pub(super) account: Option<String>,
     #[serde(default)]
     pub(super) token: Option<String>,
 }

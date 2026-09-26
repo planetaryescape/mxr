@@ -28,8 +28,9 @@ use mxr_core::{
     SearchMode,
 };
 use mxr_protocol::{
-    AccountConfigData, CommitmentStatusData, DraftLengthHintData, DraftRefineKnobsData, Request,
-    ResponseData, ScreenerDispositionData, SignatureContextData, VoiceRegisterData,
+    AccountConfigData, CommitmentStatusData, DraftLengthHintData, DraftRefineKnobsData,
+    MutationCommand, Request, ResponseData, ScreenerDispositionData, SignatureContextData,
+    VoiceRegisterData,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -39,10 +40,11 @@ use std::str::FromStr;
 // query helpers
 
 fn parse_account_id(raw: &str) -> Result<AccountId, BridgeError> {
-    AccountId::from_str(raw).map_err(|err| BridgeError::Ipc(format!("invalid account_id: {err}")))
+    AccountId::from_str(raw)
+        .map_err(|err| BridgeError::BadRequest(format!("invalid account_id: {err}")))
 }
 
-async fn dispatch(
+pub(crate) async fn dispatch(
     state: &AppState,
     headers: &HeaderMap,
     token_query: Option<&str>,
@@ -55,7 +57,7 @@ async fn dispatch(
 /// Pass through the raw ResponseData JSON for variants where the bridge
 /// doesn't add shape on top of what the daemon already produces. The
 /// OpenAPI spec from slice 2 already documents the variant layouts.
-fn passthrough(response: ResponseData) -> Result<Json<Value>, BridgeError> {
+pub(crate) fn passthrough(response: ResponseData) -> Result<Json<Value>, BridgeError> {
     serde_json::to_value(&response)
         .map(Json)
         .map_err(|err| BridgeError::Ipc(format!("response serialize: {err}")))
@@ -276,7 +278,7 @@ async fn analytics_storage_breakdown(
         Some("mimetype" | "mime") => StorageGroupBy::Mimetype,
         Some("label") => StorageGroupBy::Label,
         Some(other) => {
-            return Err(BridgeError::Ipc(format!("unknown group_by={other}")));
+            return Err(BridgeError::BadRequest(format!("unknown group_by={other}")));
         }
     };
     let account = query
@@ -369,7 +371,9 @@ async fn analytics_stale_threads(
         "mine" | "user" => StaleBallInCourt::Mine,
         "theirs" | "counterparty" => StaleBallInCourt::Theirs,
         other => {
-            return Err(BridgeError::Ipc(format!("unknown perspective={other}")));
+            return Err(BridgeError::BadRequest(format!(
+                "unknown perspective={other}"
+            )));
         }
     };
     let account = query
@@ -504,7 +508,9 @@ async fn analytics_response_time(
         }
         Some("i_replied" | "i-replied" | "incoming") => ResponseTimeDirection::IReplied,
         Some(other) => {
-            return Err(BridgeError::Ipc(format!("unknown direction={other}")));
+            return Err(BridgeError::BadRequest(format!(
+                "unknown direction={other}"
+            )));
         }
     };
     let account = query
@@ -559,6 +565,21 @@ async fn analytics_rebuild(
 
 // ---------------------------------------------------------------------------
 // platform — saved searches (list + run)
+
+async fn saved_search_unread_counts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::ListSavedSearchUnreadCounts,
+    )
+    .await?;
+    passthrough(response)
+}
 
 async fn list_saved_searches(
     State(state): State<AppState>,
@@ -861,6 +882,45 @@ async fn undo_mutation(
     passthrough(response)
 }
 
+/// Body for `POST /mail/mutation-jobs`: a `MutationCommand` in its wire
+/// shape (`{"mutation": "Archive", "message_ids": [...]}`) plus an optional
+/// correlation id echoed into daemon logs.
+#[derive(Debug, Deserialize)]
+struct StartMutationJobBody {
+    #[serde(flatten)]
+    mutation: MutationCommand,
+    #[serde(default)]
+    client_correlation_id: Option<String>,
+}
+
+/// Starts the mutation as a daemon background job and returns at once. The
+/// top-level `job_id` duplicates `job.job_id` so a client can poll
+/// `/mail/jobs/{job_id}` without digging into the job payload.
+async fn start_mutation_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<StartMutationJobBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::StartMutationJob {
+            mutation: body.mutation,
+            client_correlation_id: body.client_correlation_id,
+        },
+    )
+    .await?;
+    let job_id = match &response {
+        ResponseData::JobStarted { job } => job.job_id.clone(),
+        _ => return Err(BridgeError::UnexpectedResponse),
+    };
+    let Json(mut value) = passthrough(response)?;
+    value["job_id"] = Value::String(job_id);
+    Ok(Json(value))
+}
+
 async fn list_jobs(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -906,7 +966,7 @@ async fn count_messages(
         Some("hybrid") => Some(SearchMode::Hybrid),
         Some("semantic") => Some(SearchMode::Semantic),
         Some(other) => {
-            return Err(BridgeError::Ipc(format!("unknown mode={other}")));
+            return Err(BridgeError::BadRequest(format!("unknown mode={other}")));
         }
     };
     let response = dispatch(
@@ -954,7 +1014,7 @@ async fn unsnooze(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = MessageId::from_str(&message_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid message_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid message_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -982,7 +1042,7 @@ async fn set_reply_later(
     Json(body): Json<SetReplyLaterBody>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = MessageId::from_str(&message_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid message_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid message_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -1024,7 +1084,7 @@ async fn set_auto_reminder(
     Json(body): Json<SetAutoReminderBody>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = MessageId::from_str(&body.sent_message_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid sent_message_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid sent_message_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -1045,7 +1105,7 @@ async fn cancel_auto_reminder(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = MessageId::from_str(&message_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid message_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid message_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -1071,7 +1131,7 @@ async fn schedule_send(
     Json(body): Json<ScheduleSendBody>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = DraftId::from_str(&body.draft_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid draft_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid draft_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -1092,7 +1152,7 @@ async fn cancel_scheduled_send(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = DraftId::from_str(&draft_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid draft_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid draft_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -1369,7 +1429,7 @@ async fn get_thread_briefing(
     Query(query): Query<ThreadBriefingQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = ThreadId::from_str(&thread_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid thread_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid thread_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -1571,7 +1631,7 @@ async fn summarize_thread(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = ThreadId::from_str(&thread_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid thread_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid thread_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -1620,13 +1680,13 @@ async fn draft_compose(
         .as_deref()
         .map(MessageId::from_str)
         .transpose()
-        .map_err(|err| BridgeError::Ipc(format!("invalid source_message_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid source_message_id: {err}")))?;
     let thread_id = body
         .thread_id
         .as_deref()
         .map(ThreadId::from_str)
         .transpose()
-        .map_err(|err| BridgeError::Ipc(format!("invalid thread_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid thread_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -1658,7 +1718,7 @@ async fn draft_refine(
     Json(body): Json<DraftRefineBody>,
 ) -> Result<Json<Value>, BridgeError> {
     let draft_id = DraftId::from_str(&body.draft_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid draft_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid draft_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -1771,7 +1831,7 @@ async fn get_message_body(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = MessageId::from_str(&message_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid message_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid message_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -1797,7 +1857,7 @@ async fn get_html_image_assets(
     Query(query): Query<HtmlImagesQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = MessageId::from_str(&message_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid message_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid message_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -1818,7 +1878,7 @@ async fn get_message_headers_ipc(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = MessageId::from_str(&message_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid message_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid message_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -1842,9 +1902,9 @@ async fn set_message_flags(
     Json(body): Json<SetFlagsBody>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = MessageId::from_str(&message_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid message_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid message_id: {err}")))?;
     let flags = MessageFlags::from_bits(body.flags).ok_or_else(|| {
-        BridgeError::Ipc(format!(
+        BridgeError::BadRequest(format!(
             "invalid MessageFlags bits 0x{:x} (unknown bits set)",
             body.flags
         ))
@@ -1910,7 +1970,7 @@ async fn reset_orphaned_draft(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = DraftId::from_str(&draft_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid draft_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid draft_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -1928,7 +1988,7 @@ async fn send_stored_draft(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = DraftId::from_str(&draft_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid draft_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid draft_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -1963,7 +2023,10 @@ async fn save_draft_local(
     .await
     {
         Ok(response) => passthrough(response),
-        Err(BridgeError::Ipc(message)) if message.to_lowercase().contains("not found") => {
+        Err(BridgeError::Daemon { kind, message })
+            if kind == mxr_protocol::IpcErrorKind::NotFound
+                || message.to_lowercase().contains("not found") =>
+        {
             let response = dispatch(
                 &state,
                 &headers,
@@ -1984,7 +2047,7 @@ async fn delete_draft_stored(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = DraftId::from_str(&draft_id)
-        .map_err(|err| BridgeError::Ipc(format!("invalid draft_id: {err}")))?;
+        .map_err(|err| BridgeError::BadRequest(format!("invalid draft_id: {err}")))?;
     let response = dispatch(
         &state,
         &headers,
@@ -2358,7 +2421,11 @@ async fn activity_stats(
             mxr_protocol::ActivityStatGroupBy::TargetKind
         }
         "hour" => mxr_protocol::ActivityStatGroupBy::Hour,
-        other => return Err(BridgeError::Ipc(format!("unknown group_by '{other}'"))),
+        other => {
+            return Err(BridgeError::BadRequest(format!(
+                "unknown group_by '{other}'"
+            )))
+        }
     };
     let response = dispatch(
         &state,
@@ -2393,7 +2460,7 @@ async fn export_activity(
         "csv" => mxr_protocol::ActivityExportFormat::Csv,
         "json" => mxr_protocol::ActivityExportFormat::Json,
         "ndjson" => mxr_protocol::ActivityExportFormat::Ndjson,
-        other => return Err(BridgeError::Ipc(format!("unknown format '{other}'"))),
+        other => return Err(BridgeError::BadRequest(format!("unknown format '{other}'"))),
     };
     let response = dispatch(
         &state,
@@ -2656,6 +2723,7 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/signatures/default", post(set_signature_default))
         .route("/signatures/{name}", delete(delete_signature))
         .route("/mutations/undo", post(undo_mutation))
+        .route("/mutation-jobs", post(start_mutation_job))
         .route("/jobs", get(list_jobs))
         .route("/jobs/{job_id}", get(get_job))
         .route("/count", get(count_messages))
@@ -2729,6 +2797,10 @@ pub fn extend_platform(router: Router<AppState>) -> Router<AppState> {
         .route("/analytics/rebuild", post(analytics_rebuild))
         // saved searches list + run
         .route("/saved-searches", get(list_saved_searches))
+        .route(
+            "/saved-searches/unread-counts",
+            get(saved_search_unread_counts),
+        )
         .route("/saved-searches/run", post(run_saved_search))
         // accounts: config / lifecycle
         .route("/accounts/config", get(list_accounts_config))

@@ -1837,6 +1837,9 @@ async fn search_endpoint_proxies_results() {
                     envelopes: vec![envelope.clone()],
                 },
             }),
+            Request::ListLabels { .. } => Some(Response::Ok {
+                data: ResponseData::Labels { labels: Vec::new() },
+            }),
             _ => None,
         },
         None,
@@ -1893,7 +1896,10 @@ fn group_envelopes_keeps_web_specific_date_buckets_out_of_ipc() {
     older.subject = "gamma".into();
     older.date = today_noon - chrono::Duration::days(3);
 
-    let groups = group_envelopes(vec![same_day_a, same_day_b, older]);
+    let groups = group_envelopes(
+        vec![same_day_a, same_day_b, older],
+        &row_labels::LabelCatalog::default(),
+    );
 
     assert_eq!(groups.len(), 2);
     assert_eq!(groups[0].id, "today");
@@ -2039,6 +2045,9 @@ async fn search_endpoint_supports_mode_sort_and_explain() {
                     },
                 })
             }
+            Request::ListLabels { .. } => Some(Response::Ok {
+                data: ResponseData::Labels { labels: Vec::new() },
+            }),
             _ => None,
         },
         None,
@@ -2131,6 +2140,9 @@ async fn search_endpoint_dedupes_threads_by_thread_id() {
                     },
                 })
             }
+            Request::ListLabels { .. } => Some(Response::Ok {
+                data: ResponseData::Labels { labels: Vec::new() },
+            }),
             _ => None,
         },
         None,
@@ -2215,6 +2227,9 @@ async fn search_endpoint_returns_attachment_rows_for_attachment_scope() {
                     },
                 })
             }
+            Request::ListLabels { .. } => Some(Response::Ok {
+                data: ResponseData::Labels { labels: Vec::new() },
+            }),
             _ => None,
         },
         None,
@@ -4362,6 +4377,7 @@ async fn mailbox_thread_view_pages_whole_threads() {
     let a1 = message(&thread_a, 50, "Alice", true);
     let mut a2 = message(&thread_a, 40, "Me", false);
     a2.flags = MessageFlags::READ | MessageFlags::STARRED;
+    a2.label_provider_ids.push("follow-up".into());
     let mut a3 = message(&thread_a, 5, "Bob", true);
     a3.flags = MessageFlags::empty();
     a3.subject = "Re: Launch".into();
@@ -4494,9 +4510,23 @@ async fn mailbox_thread_view_pages_whole_threads() {
     );
     assert_eq!(row_a["participants"].as_array().unwrap().len(), 3);
     assert_eq!(row_a["participants"][0]["email"], "alice@example.com");
+    let label_names = |row: &serde_json::Value| -> Vec<String> {
+        row["labels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|label| label["name"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(
+        label_names(row_a),
+        vec!["Inbox".to_string(), "Follow Up".to_string()],
+        "thread row labels are the union across the thread's messages"
+    );
 
     let row_b = &rows[1];
     assert_eq!(row_b["message_count"], 1);
+    assert_eq!(label_names(row_b), vec!["Inbox".to_string()]);
     assert_eq!(row_b["unread"], false);
     assert_eq!(row_b["message_ids"], serde_json::json!([b1.id.to_string()]));
 
@@ -4898,4 +4928,129 @@ async fn websocket_events_answer_ping_and_release_daemon_on_close() {
         .await
         .expect("bridge must release the daemon connection when the browser closes")
         .unwrap();
+}
+
+/// Message rows (mailbox messages view and search) carry the resolved labels
+/// of the message they show. Labels come from one `ListLabels` per account in
+/// the page, reusing the chrome's list when it already covers the account.
+#[tokio::test]
+async fn mailbox_and_search_rows_carry_labels() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account = AccountId::new();
+    let labels = sample_labels(&account);
+    let inbox_label_id = labels[0].id.clone();
+    let mut first = sample_envelope();
+    first.account_id = account.clone();
+    first.label_provider_ids = vec!["INBOX".into(), "follow-up".into()];
+    let mut second = sample_envelope();
+    second.id = MessageId::new();
+    second.account_id = account.clone();
+    second.label_provider_ids = vec!["INBOX".into()];
+    let envelopes = vec![first.clone(), second.clone()];
+    let results = envelopes
+        .iter()
+        .map(|envelope| SearchResultItem {
+            message_id: envelope.id.clone(),
+            account_id: envelope.account_id.clone(),
+            thread_id: envelope.thread_id.clone(),
+            score: 1.0,
+            mode: SearchMode::Lexical,
+        })
+        .collect::<Vec<_>>();
+
+    let label_lookups = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let lookups_for_ipc = label_lookups.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| {
+            if let Some(response) = chrome_fake_response(&request, &labels, &lookups_for_ipc) {
+                return Some(response);
+            }
+            let data = match request {
+                Request::ListEnvelopes {
+                    label_id: Some(label_id),
+                    ..
+                } if label_id == inbox_label_id => ResponseData::Envelopes {
+                    envelopes: envelopes.clone(),
+                },
+                Request::Search { .. } => ResponseData::SearchResults {
+                    results: results.clone(),
+                    explain: None,
+                    has_more: false,
+                    total: 2,
+                    next_offset: None,
+                },
+                Request::ListEnvelopesByIds { .. } => ResponseData::Envelopes {
+                    envelopes: envelopes.clone(),
+                },
+                _ => return Some(Response::error("unexpected request")),
+            };
+            Some(Response::Ok { data })
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+    let label_names = |row: &serde_json::Value| -> Vec<String> {
+        row["labels"]
+            .as_array()
+            .map(|labels| {
+                labels
+                    .iter()
+                    .map(|label| label["name"].as_str().unwrap().to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    let mailbox: serde_json::Value = client
+        .get(format!("http://{addr}/api/v1/mail/mailbox?view=messages"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let rows = mailbox["mailbox"]["groups"][0]["rows"].as_array().unwrap();
+    assert_eq!(
+        label_names(&rows[0]),
+        vec!["Inbox".to_string(), "Follow Up".to_string()]
+    );
+    assert_eq!(rows[0]["labels"][1]["kind"], "user");
+    assert_eq!(label_names(&rows[1]), vec!["Inbox".to_string()]);
+    // Chrome's own ListLabels + ListSubscriptions, nothing per row.
+    assert_eq!(label_lookups.lock().unwrap().len(), 2);
+
+    label_lookups.lock().unwrap().clear();
+    let search: serde_json::Value = client
+        .get(format!(
+            "http://{addr}/api/v1/mail/search?q=mailroom&scope=messages"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let rows = search["groups"][0]["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        label_names(&rows[0]),
+        vec!["Inbox".to_string(), "Follow Up".to_string()]
+    );
+    assert_eq!(
+        *label_lookups.lock().unwrap(),
+        vec![Some(account.clone())],
+        "search resolves labels with one ListLabels per account"
+    );
 }

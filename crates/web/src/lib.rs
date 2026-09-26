@@ -16,6 +16,7 @@ mod middleware;
 mod openapi;
 mod request_types;
 mod routes_v6;
+mod row_labels;
 #[cfg(feature = "web-ui")]
 mod spa;
 
@@ -185,10 +186,17 @@ async fn mailbox(
             )
             .await?;
             let page_size = mailbox.envelopes.len() as u32;
-            let rows = match view {
+            let mut rows = match view {
                 MailboxView::Threads => mailbox_thread_rows(mailbox.envelopes.clone()),
                 MailboxView::Messages => mailbox_message_rows(mailbox.envelopes.clone()),
             };
+            let catalog = row_labels::LabelCatalog::load(
+                &state.config.socket_path,
+                &mailbox.envelopes,
+                &chrome.labels,
+            )
+            .await;
+            row_labels::annotate_row_labels(&mut rows, &mailbox.envelopes, &catalog);
             (
                 mailbox.lens_label,
                 mailbox.counts,
@@ -477,11 +485,14 @@ async fn search(
             } else {
                 Vec::new()
             };
+            let catalog =
+                row_labels::LabelCatalog::load(&state.config.socket_path, &envelopes, &[]).await;
             let groups = if attachment_scope {
-                let rows = attachment_search_rows(&envelopes, &bodies);
+                let mut rows = attachment_search_rows(&envelopes, &bodies);
+                row_labels::annotate_row_labels(&mut rows, &envelopes, &catalog);
                 group_row_views(rows)
             } else {
-                group_envelopes(envelopes)
+                group_envelopes(envelopes, &catalog)
             };
 
             Ok(Json(json!({
@@ -582,10 +593,11 @@ async fn triage_response(
         .iter()
         .map(|message| (message.message_id.to_string(), message))
         .collect::<HashMap<_, _>>();
-    let rows = envelopes
-        .into_iter()
+    let catalog = row_labels::LabelCatalog::load(&state.config.socket_path, &envelopes, &[]).await;
+    let mut rows = envelopes
+        .iter()
         .map(|envelope| {
-            let mut row = message_row_view_with_labels(&envelope, &[]);
+            let mut row = message_row_view_with_labels(envelope, &[]);
             if let Some(message) = triage_by_message.get(&envelope.id.to_string()) {
                 row.triage_verdict = Some(message.verdict_token.clone());
                 row.triage_reason = Some(message.reason.clone());
@@ -594,6 +606,7 @@ async fn triage_response(
             (envelope.date, row)
         })
         .collect::<Vec<_>>();
+    row_labels::annotate_row_labels(&mut rows, &envelopes, &catalog);
 
     Ok(Json(json!({
         "scope": "triage",

@@ -10,6 +10,7 @@
 use super::chrome::{derived_counts, find_inbox_label, matches_system_label, BridgeChrome};
 use super::chrome::{MessageRowView, THREAD_ROW_PARTICIPANT_LIMIT};
 use super::envelope_list::{list_envelopes_by_message_ids, message_row_view};
+use super::row_labels::{annotate_row_labels, LabelCatalog};
 use super::*;
 use mxr_core::{MessageFlags, Thread};
 
@@ -141,8 +142,12 @@ pub(crate) async fn load_thread_page(
         }
     }
 
+    let page_envelopes = envelopes_by_id.values().cloned().collect::<Vec<_>>();
+    let catalog = LabelCatalog::load(socket_path, &page_envelopes, &chrome.labels).await;
+    annotate_row_labels(&mut rows, &page_envelopes, &catalog);
+
     let counts = thread_lens.count_label.map_or_else(
-        || derived_counts(&envelopes_by_id.values().cloned().collect::<Vec<_>>()),
+        || derived_counts(&page_envelopes),
         |label| {
             json!({
                 "unread": label.unread_count,

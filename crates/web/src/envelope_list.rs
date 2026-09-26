@@ -143,16 +143,16 @@ pub(crate) async fn search_result_envelopes(
     }
 }
 
-pub(crate) fn group_envelopes(envelopes: Vec<Envelope>) -> Vec<MessageGroupView> {
-    group_row_views(
-        envelopes
-            .into_iter()
-            .map(|envelope| {
-                let date = envelope.date;
-                (date, message_row_view(&envelope))
-            })
-            .collect(),
-    )
+pub(crate) fn group_envelopes(
+    envelopes: Vec<Envelope>,
+    catalog: &super::row_labels::LabelCatalog,
+) -> Vec<MessageGroupView> {
+    let mut rows = envelopes
+        .iter()
+        .map(|envelope| (envelope.date, message_row_view(envelope)))
+        .collect::<Vec<_>>();
+    super::row_labels::annotate_row_labels(&mut rows, &envelopes, catalog);
+    group_row_views(rows)
 }
 
 pub(crate) fn group_row_views(rows: Vec<(DateTime<Utc>, MessageRowView)>) -> Vec<MessageGroupView> {
@@ -381,7 +381,7 @@ fn plural(value: i64, unit: &str) -> String {
     }
 }
 
-fn message_labels(envelope: &Envelope, labels: &[Label]) -> Vec<MessageLabelView> {
+pub(crate) fn message_labels(envelope: &Envelope, labels: &[Label]) -> Vec<MessageLabelView> {
     if envelope.label_provider_ids.is_empty() {
         return Vec::new();
     }

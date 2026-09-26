@@ -9,6 +9,7 @@
 
 mod chrome;
 mod envelope_list;
+mod insight_routes;
 mod legacy;
 mod mailbox_threads;
 mod middleware;

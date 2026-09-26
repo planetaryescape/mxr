@@ -4525,3 +4525,258 @@ async fn mailbox_thread_view_pages_whole_threads() {
         0
     );
 }
+
+/// The parity routes forward to the right daemon request with the query/body
+/// fields mapped by name, fall back to the default account when `account` is
+/// absent, and pass the daemon payload through.
+#[tokio::test]
+async fn parity_routes_dispatch_daemon_requests() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let default_account = AccountId::new();
+    let other_account = AccountId::new();
+    let saved_search_id = mxr_core::SavedSearchId::new();
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Request>::new()));
+    let seen_for_ipc = seen.clone();
+    let account_for_ipc = default_account.clone();
+    let search_for_ipc = saved_search_id.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| {
+            let data = match &request {
+                Request::ListAccounts => ResponseData::Accounts {
+                    accounts: vec![sample_account(&account_for_ipc)],
+                },
+                Request::ListOwedReplies { .. } => ResponseData::OwedReplies { rows: Vec::new() },
+                Request::ListSavedSearchUnreadCounts => ResponseData::SavedSearchUnreadCounts {
+                    counts: [(search_for_ipc.clone(), 4)].into_iter().collect(),
+                },
+                Request::ListCadenceDrift { .. } => {
+                    ResponseData::CadenceDriftList { rows: Vec::new() }
+                }
+                Request::ListCadenceWatch { .. } => ResponseData::CadenceWatchList {
+                    entries: Vec::new(),
+                },
+                Request::StartMutationJob { .. } => ResponseData::JobStarted {
+                    job: mxr_protocol::JobData {
+                        job_id: "job-7".into(),
+                        kind: "archive".into(),
+                        status: mxr_protocol::JobStatusData::Queued,
+                        progress: mxr_protocol::JobProgressData {
+                            total: 1,
+                            completed: 0,
+                            succeeded: 0,
+                            skipped: 0,
+                            failed: 0,
+                        },
+                        undo_ids: Vec::new(),
+                        error: None,
+                        started_at: 0,
+                        finished_at: None,
+                        result: None,
+                    },
+                },
+                // Whois, send-time, archive-ask and (un)watch payloads are
+                // passed through untouched; Ack keeps the fixture small.
+                Request::ExplainEntity { .. }
+                | Request::SendTimeRecommendation { .. }
+                | Request::ArchiveAsk { .. }
+                | Request::WatchCadence { .. }
+                | Request::UnwatchCadence { .. } => ResponseData::Ack,
+                _ => return Some(Response::error("unexpected request")),
+            };
+            seen_for_ipc.lock().unwrap().push(request);
+            Some(Response::Ok { data })
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+    let get = |path: String| {
+        let client = client.clone();
+        async move {
+            let response = client
+                .get(format!("http://{addr}{path}"))
+                .bearer_auth(TEST_AUTH_TOKEN)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::OK, "{path}");
+            response.json::<serde_json::Value>().await.unwrap()
+        }
+    };
+    let post = |path: &'static str, body: serde_json::Value| {
+        let client = client.clone();
+        async move {
+            let response = client
+                .post(format!("http://{addr}{path}"))
+                .bearer_auth(TEST_AUTH_TOKEN)
+                .json(&body)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), reqwest::StatusCode::OK, "{path}");
+            response.json::<serde_json::Value>().await.unwrap()
+        }
+    };
+
+    let json = get("/api/v1/mail/owed?older_than_days=3&limit=5".into()).await;
+    assert_eq!(json["kind"], "OwedReplies");
+    get(format!(
+        "/api/v1/mail/owed?account={other_account}&within_days=30"
+    ))
+    .await;
+    let json = get(format!(
+        "/api/v1/mail/whois?query=alice%40example.com&account={other_account}"
+    ))
+    .await;
+    assert_eq!(json["kind"], "Ack");
+    get("/api/v1/mail/send-time?to=a%40example.com,%20b%40example.com".into()).await;
+    let json = get("/api/v1/platform/saved-searches/unread-counts".into()).await;
+    assert_eq!(json["counts"][saved_search_id.to_string()], 4);
+    let json = get("/api/v1/platform/analytics/cadence-drift".into()).await;
+    assert_eq!(json["kind"], "CadenceDriftList");
+    let json = get(format!(
+        "/api/v1/platform/cadence/watch?account={other_account}"
+    ))
+    .await;
+    assert_eq!(json["kind"], "CadenceWatchList");
+    let json = post(
+        "/api/v1/platform/cadence/watch",
+        serde_json::json!({ "email": "mum@example.com", "expected_days": 7.0 }),
+    )
+    .await;
+    assert_eq!(json["ok"], true);
+    post(
+        "/api/v1/platform/cadence/unwatch",
+        serde_json::json!({ "account_id": other_account.to_string(), "email": "mum@example.com" }),
+    )
+    .await;
+    let message_id = MessageId::new();
+    let json = post(
+        "/api/v1/mail/mutation-jobs",
+        serde_json::json!({ "mutation": "Archive", "message_ids": [message_id.to_string()] }),
+    )
+    .await;
+    assert_eq!(json["kind"], "JobStarted");
+    assert_eq!(json["job_id"], "job-7");
+    assert_eq!(json["job"]["job_id"], "job-7");
+    post(
+        "/api/v1/mail/archive-ask",
+        serde_json::json!({ "question": "When did we agree the launch date?", "filters": { "from": "alice@example.com" } }),
+    )
+    .await;
+
+    let seen = seen.lock().unwrap();
+    let requests = seen
+        .iter()
+        .filter(|request| !matches!(request, Request::ListAccounts))
+        .collect::<Vec<_>>();
+    assert!(matches!(
+        requests[0],
+        Request::ListOwedReplies { account_id, older_than_days: Some(3), within_days: None, limit: 5 }
+            if account_id == &default_account
+    ));
+    assert!(matches!(
+        requests[1],
+        Request::ListOwedReplies { account_id, within_days: Some(30), limit: 50, .. }
+            if account_id == &other_account
+    ));
+    assert!(matches!(
+        requests[2],
+        Request::ExplainEntity { account_id, query, limit: 10 }
+            if account_id == &other_account && query == "alice@example.com"
+    ));
+    assert!(matches!(
+        requests[3],
+        Request::SendTimeRecommendation { account_id, recipients, proposed_at: None }
+            if account_id == &default_account
+                && recipients == &vec!["a@example.com".to_string(), "b@example.com".to_string()]
+    ));
+    assert!(matches!(requests[4], Request::ListSavedSearchUnreadCounts));
+    assert!(matches!(
+        requests[5],
+        Request::ListCadenceDrift { account_id } if account_id == &default_account
+    ));
+    assert!(matches!(
+        requests[6],
+        Request::ListCadenceWatch { account_id } if account_id == &other_account
+    ));
+    assert!(matches!(
+        requests[7],
+        Request::WatchCadence { account_id, email, expected_days: Some(days), allow_list_sender: false, .. }
+            if account_id == &default_account && email == "mum@example.com" && (*days - 7.0).abs() < f64::EPSILON
+    ));
+    assert!(matches!(
+        requests[8],
+        Request::UnwatchCadence { account_id, .. } if account_id == &other_account
+    ));
+    assert!(matches!(
+        requests[9],
+        Request::StartMutationJob {
+            mutation: mxr_protocol::MutationCommand::Archive { message_ids },
+            ..
+        } if message_ids == &vec![message_id.clone()]
+    ));
+    assert!(matches!(
+        requests[10],
+        Request::ArchiveAsk { question, filters, limit: 8 }
+            if question.starts_with("When did") && filters.from.as_deref() == Some("alice@example.com")
+    ));
+}
+
+/// Bad input on the parity routes is a 400 that never reaches the daemon.
+#[tokio::test]
+async fn parity_routes_reject_bad_input() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let _ipc =
+        spawn_fake_ipc_server(&socket_path, |_| Some(Response::error("unexpected")), None).await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+    for path in [
+        "/api/v1/mail/owed?account=not-a-uuid",
+        "/api/v1/mail/whois?query=%20%20",
+        "/api/v1/mail/send-time?to=,",
+    ] {
+        let response = client
+            .get(format!("http://{addr}{path}"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::BAD_REQUEST,
+            "{path}"
+        );
+    }
+    let response = client
+        .post(format!("http://{addr}/api/v1/mail/archive-ask"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "question": "" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let response = client
+        .get(format!("http://{addr}/api/v1/mail/owed"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+}
+

@@ -28,8 +28,9 @@ use mxr_core::{
     SearchMode,
 };
 use mxr_protocol::{
-    AccountConfigData, CommitmentStatusData, DraftLengthHintData, DraftRefineKnobsData, Request,
-    ResponseData, ScreenerDispositionData, SignatureContextData, VoiceRegisterData,
+    AccountConfigData, CommitmentStatusData, DraftLengthHintData, DraftRefineKnobsData,
+    MutationCommand, Request, ResponseData, ScreenerDispositionData, SignatureContextData,
+    VoiceRegisterData,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -43,7 +44,7 @@ fn parse_account_id(raw: &str) -> Result<AccountId, BridgeError> {
         .map_err(|err| BridgeError::BadRequest(format!("invalid account_id: {err}")))
 }
 
-async fn dispatch(
+pub(crate) async fn dispatch(
     state: &AppState,
     headers: &HeaderMap,
     token_query: Option<&str>,
@@ -56,7 +57,7 @@ async fn dispatch(
 /// Pass through the raw ResponseData JSON for variants where the bridge
 /// doesn't add shape on top of what the daemon already produces. The
 /// OpenAPI spec from slice 2 already documents the variant layouts.
-fn passthrough(response: ResponseData) -> Result<Json<Value>, BridgeError> {
+pub(crate) fn passthrough(response: ResponseData) -> Result<Json<Value>, BridgeError> {
     serde_json::to_value(&response)
         .map(Json)
         .map_err(|err| BridgeError::Ipc(format!("response serialize: {err}")))
@@ -565,6 +566,21 @@ async fn analytics_rebuild(
 // ---------------------------------------------------------------------------
 // platform — saved searches (list + run)
 
+async fn saved_search_unread_counts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::ListSavedSearchUnreadCounts,
+    )
+    .await?;
+    passthrough(response)
+}
+
 async fn list_saved_searches(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -864,6 +880,45 @@ async fn undo_mutation(
     )
     .await?;
     passthrough(response)
+}
+
+/// Body for `POST /mail/mutation-jobs`: a `MutationCommand` in its wire
+/// shape (`{"mutation": "Archive", "message_ids": [...]}`) plus an optional
+/// correlation id echoed into daemon logs.
+#[derive(Debug, Deserialize)]
+struct StartMutationJobBody {
+    #[serde(flatten)]
+    mutation: MutationCommand,
+    #[serde(default)]
+    client_correlation_id: Option<String>,
+}
+
+/// Starts the mutation as a daemon background job and returns at once. The
+/// top-level `job_id` duplicates `job.job_id` so a client can poll
+/// `/mail/jobs/{job_id}` without digging into the job payload.
+async fn start_mutation_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<StartMutationJobBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::StartMutationJob {
+            mutation: body.mutation,
+            client_correlation_id: body.client_correlation_id,
+        },
+    )
+    .await?;
+    let job_id = match &response {
+        ResponseData::JobStarted { job } => job.job_id.clone(),
+        _ => return Err(BridgeError::UnexpectedResponse),
+    };
+    let Json(mut value) = passthrough(response)?;
+    value["job_id"] = Value::String(job_id);
+    Ok(Json(value))
 }
 
 async fn list_jobs(
@@ -2668,6 +2723,7 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/signatures/default", post(set_signature_default))
         .route("/signatures/{name}", delete(delete_signature))
         .route("/mutations/undo", post(undo_mutation))
+        .route("/mutation-jobs", post(start_mutation_job))
         .route("/jobs", get(list_jobs))
         .route("/jobs/{job_id}", get(get_job))
         .route("/count", get(count_messages))
@@ -2741,6 +2797,10 @@ pub fn extend_platform(router: Router<AppState>) -> Router<AppState> {
         .route("/analytics/rebuild", post(analytics_rebuild))
         // saved searches list + run
         .route("/saved-searches", get(list_saved_searches))
+        .route(
+            "/saved-searches/unread-counts",
+            get(saved_search_unread_counts),
+        )
         .route("/saved-searches/run", post(run_saved_search))
         // accounts: config / lifecycle
         .route("/accounts/config", get(list_accounts_config))

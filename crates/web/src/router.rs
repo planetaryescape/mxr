@@ -195,8 +195,14 @@ pub fn app(config: WebServerConfig) -> Router {
         .route("/auth/local-token", get(local_token_handshake))
         .route("/i18n", get(i18n_bundle))
         .nest("/admin", routes_v6::extend_admin(admin_router()))
-        .nest("/mail", routes_v6::extend_mail(mail_router()))
-        .nest("/platform", routes_v6::extend_platform(platform_router()))
+        .nest(
+            "/mail",
+            insight_routes::extend_mail(routes_v6::extend_mail(mail_router())),
+        )
+        .nest(
+            "/platform",
+            insight_routes::extend_platform(routes_v6::extend_platform(platform_router())),
+        )
         .nest("/client", client_router())
         .route("/events", get(events))
         .with_state(state.clone());

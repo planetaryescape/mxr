@@ -232,6 +232,14 @@ export function useComposeSend({
     const current = draftRef.current;
     if (!current) return;
     if (sendLockRef.current) return;
+    // Scheduling stores the draft through save-local, which has no field for
+    // the iCal REPLY; the scheduled message would go out without the answer.
+    if (intent.kind === "invite_reply") {
+      toast.info("Send later isn't available for invite replies", {
+        description: "The calendar response would be lost. Send it now instead.",
+      });
+      return;
+    }
     markSendAttempted();
     if (hasBlockingIssues(current)) {
       onValidationBlocked();

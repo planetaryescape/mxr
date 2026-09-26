@@ -9,7 +9,7 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useUndo } from "@/state/undoStore";
 import type { ComposeSessionResponse, DraftSafetyReport } from "./api";
 import { ComposeHost } from "./ComposeHost";
-import { useComposeUi } from "./composeUiStore";
+import { inviteReplyIntent, useComposeUi } from "./composeUiStore";
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn<(options: unknown) => Promise<void>>(),
@@ -620,5 +620,23 @@ describe("ComposeHost send and remind", () => {
     );
     expect(api.sendComposeSession).toHaveBeenCalledTimes(1);
     expect(api.setAutoReminder).not.toHaveBeenCalled();
+  });
+});
+
+describe("ComposeHost invite replies", () => {
+  test("open a session carrying the invite action, and refuse send later", async () => {
+    renderHost();
+    act(() => {
+      useComposeUi.getState().openCompose(inviteReplyIntent("m-3", "tentative"), "overlay");
+    });
+
+    expect((await screen.findAllByText("Tentative with comment"))[0]).toBeVisible();
+    expect(api.startComposeSession).toHaveBeenCalledWith("invite_reply", "m-3", "tentative");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Send later" }));
+    expect(toasts.info).toHaveBeenCalledWith("Send later isn't available for invite replies", {
+      description: "The calendar response would be lost. Send it now instead.",
+    });
+    expect(screen.queryByRole("dialog", { name: "Send later" })).not.toBeInTheDocument();
   });
 });

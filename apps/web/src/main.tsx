@@ -4,7 +4,12 @@ import { registerSW } from "virtual:pwa-register";
 
 import App from "@/App";
 import { bootstrapFromHash } from "@/lib/tokenStorage";
-import { applyDensityAttribute, applyThemeAttribute, useUiPrefs } from "@/state/uiPrefsStore";
+import {
+  applyDensityAttribute,
+  applyThemeAttribute,
+  useUiPrefs,
+  watchSystemTheme,
+} from "@/state/uiPrefsStore";
 import "@/styles/app.css";
 
 // Bootstrap auth + UI prefs synchronously so we don't flash unstyled UI.
@@ -12,6 +17,7 @@ bootstrapFromHash();
 const prefs = useUiPrefs.getState();
 applyThemeAttribute(prefs.theme);
 applyDensityAttribute(prefs.density);
+watchSystemTheme();
 
 useUiPrefs.subscribe((state, prev) => {
   if (state.theme !== prev.theme) applyThemeAttribute(state.theme);

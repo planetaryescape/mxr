@@ -548,7 +548,7 @@ function WrappedDashboard({ range }: { range: AnalyticsRange }) {
         <WrappedStory tiles={tiles} />
       ) : (
         <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-          <section className="relative overflow-hidden rounded-2xl border border-border bg-[radial-gradient(circle_at_top_left,color-mix(in_oklch,var(--chart-1)_22%,transparent),transparent_34%),hsl(var(--surface))] p-8">
+          <section className="relative overflow-hidden rounded-2xl border border-border bg-[radial-gradient(circle_at_top_left,color-mix(in_oklch,var(--chart-1)_22%,transparent),transparent_34%),var(--surface)] p-8">
             <div className="font-mono text-2xs uppercase tracking-wide text-muted-foreground">
               mxr wrapped
             </div>
@@ -591,7 +591,7 @@ function WrappedStory({
   return (
     <section
       data-testid="wrapped-story"
-      className="relative overflow-hidden rounded-2xl border border-border bg-[radial-gradient(circle_at_top_right,color-mix(in_oklch,var(--chart-2)_28%,transparent),transparent_40%),hsl(var(--surface))] p-12 text-center"
+      className="relative overflow-hidden rounded-2xl border border-border bg-[radial-gradient(circle_at_top_right,color-mix(in_oklch,var(--chart-2)_28%,transparent),transparent_40%),var(--surface)] p-12 text-center"
     >
       <div className="font-mono text-2xs uppercase tracking-wide text-muted-foreground">
         {index + 1} / {tiles.length} · j/k to advance

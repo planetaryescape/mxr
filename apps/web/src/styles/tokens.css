@@ -1,293 +1,403 @@
 /*
- * mxr web — design tokens.
+ * mxr web — design tokens. The single source for colour, type, radius,
+ * spacing, density and motion. Nothing else in the app declares theme
+ * colours; components reach them through Tailwind (`bg-background`,
+ * `text-muted-foreground`) or `var(--token)` in CSS.
  *
- * Palette designed for the web app. Dark by default; light theme available.
- *
- * Token naming follows shadcn/ui's HSL-channel convention so shadcn
- * components drop in unchanged. Density tokens drive row heights for
- * the mailbox and other dense lists.
+ * Colours are complete values, not HSL channels, so `var(--x)` works
+ * anywhere without a wrapper. The default theme follows DESIGN.md: navy
+ * ink surfaces, cyan signal, a small yellow cue, and Recursive for every
+ * voice (its MONO axis supplies the monospace).
  */
 
 @import "tailwindcss";
+@import "@fontsource-variable/recursive/mono.css";
 
 @theme {
-  /* type */
-  --font-sans:
-    "Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-mono:
-    "JetBrains Mono", "SF Mono", "Menlo", "Consolas", "Liberation Mono", "Courier New", monospace;
+  --font-sans: "Recursive Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Recursive Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Recursive Variable", ui-monospace, "SF Mono", Menlo, monospace;
 
-  --text-2xs: 0.6875rem; /* 11px - meta/timestamps */
-  --text-xs: 0.75rem; /* 12px - chip text, secondary */
-  --text-sm: 0.8125rem; /* 13px - body default */
-  --text-base: 0.875rem; /* 14px - reader body */
-  --text-md: 0.9375rem; /* 15px - subjects */
-  --text-lg: 1.0625rem; /* 17px - reading pane h1 */
-  --text-xl: 1.25rem; /* 20px - page titles */
-  --text-2xl: 1.5rem; /* 24px - dashboard headers */
-  --text-3xl: 2rem; /* 32px - wrapped story mode */
-  --text-4xl: 3rem; /* 48px - wrapped slides */
+  --text-2xs: 0.6875rem; /* 11px meta, timestamps */
+  --text-xs: 0.75rem; /* 12px chips, secondary */
+  --text-sm: 0.8125rem; /* 13px body default */
+  --text-base: 0.875rem; /* 14px reader chrome */
+  --text-md: 0.9375rem; /* 15px subjects */
+  --text-lg: 1.0625rem; /* 17px reader title */
+  --text-xl: 1.25rem; /* 20px page titles */
+  --text-2xl: 1.5rem;
+  --text-3xl: 2rem;
+  --text-4xl: 3rem;
 
-  /* spacing */
   --spacing: 0.25rem;
 
-  /* radii */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 7px;
+  --radius-xl: 10px;
+  --radius-2xl: 14px;
 
-  /* density (row heights) */
-  --row-height-compact: 32px;
-  --row-height-regular: 52px;
-  --row-height-comfortable: 68px;
+  --row-height-compact: 34px;
+  --row-height-regular: 56px;
+  --row-height-comfortable: 72px;
 
-  /* shell dimensions */
-  --shell-sidebar-w: 264px;
+  --shell-sidebar-w: 248px;
   --shell-sidebar-collapsed-w: 56px;
-  --shell-topbar-h: 44px;
+  --shell-topbar-h: 48px;
   --shell-statusbar-h: 28px;
   --shell-rightrail-w: 380px;
+  --shell-list-w: 420px;
 
-  /* motion */
   --motion-duration-fast: 120ms;
   --motion-duration-base: 180ms;
   --motion-duration-slow: 280ms;
   --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --reading-measure: 72ch;
 }
 
 /*
- * Default theme = "midnight". Deep near-black with a subtle blue cast,
- * sky-cyan accent. Designed to feel like a terminal at 11pm without
- * being grim about it.
+ * Tailwind colour utilities, mapped once to the theme variables below.
  */
-[data-theme="dark"],
-[data-theme="midnight"],
-:root {
-  --background: 220 16% 6%;
-  --foreground: 220 14% 92%;
-
-  --surface: 220 14% 9%;
-  --surface-elevated: 220 14% 12%;
-
-  --muted: 220 12% 14%;
-  --muted-foreground: 220 8% 60%;
-
-  --subtle: 220 10% 18%;
-  --subtle-foreground: 220 8% 45%;
-
-  --border: 220 10% 17%;
-  --border-strong: 220 10% 24%;
-  --input: 220 12% 14%;
-
-  --primary: 199 89% 74%;
-  --primary-foreground: 220 30% 8%;
-  --primary-muted: 199 50% 20%;
-
-  --accent: 199 89% 74%;
-  --accent-foreground: 220 30% 8%;
-
-  --destructive: 0 70% 70%;
-  --destructive-foreground: 0 0% 100%;
-
-  --success: 142 70% 70%;
-  --success-foreground: 220 30% 8%;
-
-  --warning: 42 90% 65%;
-  --warning-foreground: 220 30% 8%;
-
-  --vip: 42 95% 60%;
-  --vip-foreground: 220 30% 8%;
-
-  --pending: 258 80% 80%;
-  --pending-foreground: 220 30% 8%;
-
-  --ring: 199 89% 74%;
-
-  --card: 220 14% 9%;
-  --card-foreground: 220 14% 92%;
-  --popover: 220 14% 12%;
-  --popover-foreground: 220 14% 92%;
-
-  /* email semantic colors */
-  --unread-marker: 199 89% 74%;
-  --star: 42 95% 60%;
-  --vip-marker: 42 95% 60%;
-  --thread-line: 220 10% 28%;
-
-  /* charts */
-  --chart-1: 199 89% 74%;
-  --chart-2: 270 70% 75%;
-  --chart-3: 142 70% 70%;
-  --chart-4: 42 95% 65%;
-  --chart-5: 12 80% 70%;
-  --chart-6: 180 55% 65%;
-}
-
-[data-theme="light"] {
-  --background: 0 0% 100%;
-  --foreground: 220 30% 10%;
-
-  --surface: 220 20% 98%;
-  --surface-elevated: 0 0% 100%;
-
-  --muted: 220 15% 95%;
-  --muted-foreground: 220 8% 35%;
-
-  --subtle: 220 12% 90%;
-  --subtle-foreground: 220 8% 45%;
-
-  --border: 220 15% 88%;
-  --border-strong: 220 12% 80%;
-  --input: 220 15% 95%;
-
-  --primary: 199 89% 42%;
-  --primary-foreground: 0 0% 100%;
-  --primary-muted: 199 50% 90%;
-
-  --accent: 199 89% 42%;
-  --accent-foreground: 0 0% 100%;
-
-  --destructive: 0 65% 50%;
-  --destructive-foreground: 0 0% 100%;
-
-  --success: 142 60% 35%;
-  --success-foreground: 0 0% 100%;
-
-  --warning: 36 90% 45%;
-  --warning-foreground: 0 0% 100%;
-
-  --vip: 36 95% 50%;
-  --vip-foreground: 0 0% 100%;
-
-  --pending: 258 70% 60%;
-  --pending-foreground: 0 0% 100%;
-
-  --ring: 199 89% 42%;
-
-  --card: 0 0% 100%;
-  --card-foreground: 220 30% 10%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 220 30% 10%;
-
-  --unread-marker: 199 89% 42%;
-  --star: 36 95% 50%;
-  --vip-marker: 36 95% 50%;
-  --thread-line: 220 15% 80%;
-
-  --chart-1: 199 89% 42%;
-  --chart-2: 270 70% 50%;
-  --chart-3: 142 60% 40%;
-  --chart-4: 36 90% 50%;
-  --chart-5: 12 80% 50%;
-  --chart-6: 180 55% 40%;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle: var(--subtle);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-faint: var(--faint);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-muted: var(--primary-muted);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-vip: var(--vip);
+  --color-vip-foreground: var(--vip-foreground);
+  --color-pending: var(--pending);
+  --color-pending-foreground: var(--pending-foreground);
+  --color-unread-marker: var(--unread-marker);
+  --color-star: var(--star);
+  --color-vip-marker: var(--vip);
+  --color-thread-line: var(--thread-line);
+  --color-selection: var(--selection);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
 }
 
 /*
- * "Eclipse" — cool, very dark, near monochromatic with magenta accent.
- * For users who want a stronger night feel.
+ * Midnight (default). DESIGN.md dark: navy ink, never #000; cyan signal on
+ * focus, selection and primary actions; yellow only for stars and small
+ * status cues.
+ */
+:root,
+[data-theme="dark"],
+[data-theme="midnight"] {
+  color-scheme: dark;
+
+  --background: #071522;
+  --foreground: #eef5fa;
+
+  --surface: #0a1a29;
+  --surface-elevated: #0d2234;
+  --card: #0a1a29;
+  --card-foreground: #eef5fa;
+  --popover: #0d2234;
+  --popover-foreground: #eef5fa;
+
+  --muted: #10263a;
+  --muted-foreground: #8fa8bc;
+  --subtle: #132c42;
+  --subtle-foreground: #7690a6;
+  --faint: #587088;
+
+  --border: #173249;
+  --border-strong: #294963;
+  --input: #10263a;
+  --ring: #57d5ff;
+
+  --primary: #57d5ff;
+  --primary-foreground: #04121c;
+  --primary-muted: #0b3a4b;
+  --secondary: #132c42;
+  --secondary-foreground: #d7e6f0;
+  --accent: #10263a;
+  --accent-foreground: #eef5fa;
+
+  --destructive: #ff7b86;
+  --destructive-foreground: #1c0508;
+  --success: #62dba0;
+  --success-foreground: #04170d;
+  --warning: #ffd166;
+  --warning-foreground: #1d1500;
+  --vip: #ffd166;
+  --vip-foreground: #1d1500;
+  --pending: #b9a6ff;
+  --pending-foreground: #120a2b;
+
+  --unread-marker: #57d5ff;
+  --star: #ffd166;
+  --thread-line: #294963;
+  --selection: #0b3a4b;
+
+  --sidebar: #06121e;
+  --sidebar-foreground: #c7d8e5;
+  --sidebar-primary: #57d5ff;
+  --sidebar-primary-foreground: #04121c;
+  --sidebar-accent: #0f2436;
+  --sidebar-accent-foreground: #f4f9fc;
+  --sidebar-border: #132c42;
+  --sidebar-ring: #57d5ff;
+
+  --chart-1: #57d5ff;
+  --chart-2: #b9a6ff;
+  --chart-3: #62dba0;
+  --chart-4: #ffd166;
+  --chart-5: #ff9e7a;
+  --chart-6: #6fe3d6;
+}
+
+/*
+ * Light. DESIGN.md light: pale blue paper, deep navy text, darker cyan.
+ */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --background: #f4f9fc;
+  --foreground: #10263b;
+
+  --surface: #fafcfe;
+  --surface-elevated: #fdfeff;
+  --card: #fafcfe;
+  --card-foreground: #10263b;
+  --popover: #fdfeff;
+  --popover-foreground: #10263b;
+
+  --muted: #e5f0f6;
+  --muted-foreground: #4b6479;
+  --subtle: #d7e7f0;
+  --subtle-foreground: #5b7489;
+  --faint: #8aa0b2;
+
+  --border: #d7e5ed;
+  --border-strong: #b9cedc;
+  --input: #e5f0f6;
+  --ring: #006f93;
+
+  --primary: #006f93;
+  --primary-foreground: #f4f9fc;
+  --primary-muted: #d5eff7;
+  --secondary: #e5f0f6;
+  --secondary-foreground: #10263b;
+  --accent: #e9f3f8;
+  --accent-foreground: #10263b;
+
+  --destructive: #c2323f;
+  --destructive-foreground: #fdf4f5;
+  --success: #1d7a4c;
+  --success-foreground: #f0fbf5;
+  --warning: #7a5400;
+  --warning-foreground: #fff8e5;
+  --vip: #9a6a00;
+  --vip-foreground: #fff8e5;
+  --pending: #5b45c4;
+  --pending-foreground: #f4f1ff;
+
+  --unread-marker: #006f93;
+  --star: #b07800;
+  --thread-line: #b9cedc;
+  --selection: #d5eff7;
+
+  --sidebar: #eaf3f8;
+  --sidebar-foreground: #344f66;
+  --sidebar-primary: #006f93;
+  --sidebar-primary-foreground: #f4f9fc;
+  --sidebar-accent: #dcebf3;
+  --sidebar-accent-foreground: #10263b;
+  --sidebar-border: #d7e5ed;
+  --sidebar-ring: #006f93;
+
+  --chart-1: #006f93;
+  --chart-2: #5b45c4;
+  --chart-3: #1d7a4c;
+  --chart-4: #b07800;
+  --chart-5: #c2553a;
+  --chart-6: #16837a;
+}
+
+/*
+ * Eclipse. Near-monochrome black-violet with a magenta accent, for users
+ * who want a stronger night feel.
  */
 [data-theme="eclipse"] {
-  --background: 240 8% 4%;
-  --foreground: 240 6% 92%;
+  color-scheme: dark;
 
-  --surface: 240 8% 7%;
-  --surface-elevated: 240 8% 10%;
+  --background: hsl(240 8% 4%);
+  --foreground: hsl(240 6% 92%);
 
-  --muted: 240 6% 13%;
-  --muted-foreground: 240 6% 60%;
+  --surface: hsl(240 8% 7%);
+  --surface-elevated: hsl(240 8% 10%);
+  --card: hsl(240 8% 7%);
+  --card-foreground: hsl(240 6% 92%);
+  --popover: hsl(240 8% 10%);
+  --popover-foreground: hsl(240 6% 92%);
 
-  --subtle: 240 6% 17%;
-  --subtle-foreground: 240 6% 45%;
+  --muted: hsl(240 6% 12%);
+  --muted-foreground: hsl(240 6% 62%);
+  --subtle: hsl(240 6% 16%);
+  --subtle-foreground: hsl(240 6% 52%);
+  --faint: hsl(240 6% 38%);
 
-  --border: 240 6% 16%;
-  --border-strong: 240 6% 22%;
-  --input: 240 6% 13%;
+  --border: hsl(240 6% 15%);
+  --border-strong: hsl(240 6% 22%);
+  --input: hsl(240 6% 12%);
+  --ring: hsl(312 85% 75%);
 
-  --primary: 312 85% 75%;
-  --primary-foreground: 240 30% 5%;
-  --primary-muted: 312 50% 20%;
+  --primary: hsl(312 85% 75%);
+  --primary-foreground: hsl(240 30% 5%);
+  --primary-muted: hsl(312 40% 18%);
+  --secondary: hsl(240 6% 14%);
+  --secondary-foreground: hsl(240 6% 88%);
+  --accent: hsl(240 6% 11%);
+  --accent-foreground: hsl(240 6% 92%);
 
-  --accent: 312 85% 75%;
-  --accent-foreground: 240 30% 5%;
+  --destructive: hsl(0 80% 70%);
+  --destructive-foreground: hsl(240 30% 5%);
+  --success: hsl(142 60% 65%);
+  --success-foreground: hsl(240 30% 5%);
+  --warning: hsl(42 90% 65%);
+  --warning-foreground: hsl(240 30% 5%);
+  --vip: hsl(42 95% 60%);
+  --vip-foreground: hsl(240 30% 5%);
+  --pending: hsl(280 80% 80%);
+  --pending-foreground: hsl(240 30% 5%);
 
-  --destructive: 0 80% 70%;
-  --destructive-foreground: 0 0% 100%;
-  --success: 142 70% 70%;
-  --success-foreground: 240 30% 5%;
-  --warning: 42 90% 65%;
-  --warning-foreground: 240 30% 5%;
-  --vip: 42 95% 60%;
-  --vip-foreground: 240 30% 5%;
-  --pending: 280 80% 80%;
-  --pending-foreground: 240 30% 5%;
-  --ring: 312 85% 75%;
-  --card: 240 8% 7%;
-  --card-foreground: 240 6% 92%;
-  --popover: 240 8% 10%;
-  --popover-foreground: 240 6% 92%;
-  --unread-marker: 312 85% 75%;
-  --star: 42 95% 60%;
-  --vip-marker: 42 95% 60%;
-  --thread-line: 240 6% 25%;
-  --chart-1: 312 85% 75%;
-  --chart-2: 199 89% 70%;
-  --chart-3: 142 70% 65%;
-  --chart-4: 42 95% 65%;
-  --chart-5: 12 80% 70%;
-  --chart-6: 270 70% 75%;
+  --unread-marker: hsl(312 85% 75%);
+  --star: hsl(42 95% 60%);
+  --thread-line: hsl(240 6% 25%);
+  --selection: hsl(312 40% 18%);
+
+  --sidebar: hsl(240 8% 3%);
+  --sidebar-foreground: hsl(240 6% 80%);
+  --sidebar-primary: hsl(312 85% 75%);
+  --sidebar-primary-foreground: hsl(240 30% 5%);
+  --sidebar-accent: hsl(240 6% 10%);
+  --sidebar-accent-foreground: hsl(240 6% 95%);
+  --sidebar-border: hsl(240 6% 12%);
+  --sidebar-ring: hsl(312 85% 75%);
+
+  --chart-1: hsl(312 85% 75%);
+  --chart-2: hsl(199 89% 70%);
+  --chart-3: hsl(142 60% 65%);
+  --chart-4: hsl(42 95% 65%);
+  --chart-5: hsl(12 80% 70%);
+  --chart-6: hsl(270 70% 75%);
 }
 
 /*
- * "Paper" — warm, off-white, low-contrast for daytime reading.
+ * Paper. Warm off-white with a rust accent, low glare for daytime reading.
  */
 [data-theme="paper"] {
-  --background: 36 30% 96%;
-  --foreground: 30 18% 18%;
+  color-scheme: light;
 
-  --surface: 36 30% 98%;
-  --surface-elevated: 36 30% 99%;
+  --background: hsl(36 30% 96%);
+  --foreground: hsl(30 18% 16%);
 
-  --muted: 36 20% 92%;
-  --muted-foreground: 30 10% 38%;
+  --surface: hsl(36 30% 98%);
+  --surface-elevated: hsl(36 30% 99%);
+  --card: hsl(36 30% 98%);
+  --card-foreground: hsl(30 18% 16%);
+  --popover: hsl(36 30% 99%);
+  --popover-foreground: hsl(30 18% 16%);
 
-  --subtle: 36 20% 88%;
-  --subtle-foreground: 30 10% 50%;
+  --muted: hsl(36 22% 91%);
+  --muted-foreground: hsl(30 12% 34%);
+  --subtle: hsl(36 20% 87%);
+  --subtle-foreground: hsl(30 10% 42%);
+  --faint: hsl(30 10% 62%);
 
-  --border: 36 20% 84%;
-  --border-strong: 30 15% 75%;
-  --input: 36 20% 92%;
+  --border: hsl(36 20% 85%);
+  --border-strong: hsl(30 15% 74%);
+  --input: hsl(36 22% 92%);
+  --ring: hsl(14 75% 42%);
 
-  --primary: 14 80% 45%;
-  --primary-foreground: 0 0% 100%;
-  --primary-muted: 14 60% 90%;
+  --primary: hsl(14 75% 42%);
+  --primary-foreground: hsl(36 30% 98%);
+  --primary-muted: hsl(14 60% 91%);
+  --secondary: hsl(36 22% 91%);
+  --secondary-foreground: hsl(30 18% 16%);
+  --accent: hsl(36 25% 93%);
+  --accent-foreground: hsl(30 18% 16%);
 
-  --accent: 14 80% 45%;
-  --accent-foreground: 0 0% 100%;
+  --destructive: hsl(0 65% 42%);
+  --destructive-foreground: hsl(36 30% 98%);
+  --success: hsl(140 50% 30%);
+  --success-foreground: hsl(36 30% 98%);
+  --warning: hsl(36 80% 32%);
+  --warning-foreground: hsl(36 30% 98%);
+  --vip: hsl(36 90% 38%);
+  --vip-foreground: hsl(36 30% 98%);
+  --pending: hsl(258 50% 48%);
+  --pending-foreground: hsl(36 30% 98%);
 
-  --destructive: 0 65% 45%;
-  --destructive-foreground: 0 0% 100%;
-  --success: 140 50% 35%;
-  --success-foreground: 0 0% 100%;
-  --warning: 36 80% 40%;
-  --warning-foreground: 0 0% 100%;
-  --vip: 36 90% 45%;
-  --vip-foreground: 0 0% 100%;
-  --pending: 258 60% 55%;
-  --pending-foreground: 0 0% 100%;
-  --ring: 14 80% 45%;
-  --card: 36 30% 99%;
-  --card-foreground: 30 18% 18%;
-  --popover: 36 30% 99%;
-  --popover-foreground: 30 18% 18%;
-  --unread-marker: 14 80% 45%;
-  --star: 36 90% 45%;
-  --vip-marker: 36 90% 45%;
-  --thread-line: 30 15% 75%;
-  --chart-1: 14 80% 45%;
-  --chart-2: 199 89% 38%;
-  --chart-3: 140 50% 35%;
-  --chart-4: 36 80% 45%;
-  --chart-5: 270 50% 50%;
-  --chart-6: 180 45% 35%;
+  --unread-marker: hsl(14 75% 42%);
+  --star: hsl(36 90% 40%);
+  --thread-line: hsl(30 15% 74%);
+  --selection: hsl(14 60% 91%);
+
+  --sidebar: hsl(36 24% 93%);
+  --sidebar-foreground: hsl(30 14% 28%);
+  --sidebar-primary: hsl(14 75% 42%);
+  --sidebar-primary-foreground: hsl(36 30% 98%);
+  --sidebar-accent: hsl(36 22% 89%);
+  --sidebar-accent-foreground: hsl(30 18% 14%);
+  --sidebar-border: hsl(36 20% 85%);
+  --sidebar-ring: hsl(14 75% 42%);
+
+  --chart-1: hsl(14 75% 42%);
+  --chart-2: hsl(199 80% 34%);
+  --chart-3: hsl(140 50% 32%);
+  --chart-4: hsl(36 80% 40%);
+  --chart-5: hsl(270 45% 48%);
+  --chart-6: hsl(180 45% 32%);
+}
+
+/*
+ * Recursive MONO axis presets. Weight stays on `font-weight` (a `wght`
+ * entry here would override every bold in the app). The loaded file has
+ * only the wght and MONO axes, so UI text is the linear voice.
+ */
+:root {
+  --rec-ui: "MONO" 0;
+  --rec-mono: "MONO" 1;
 }

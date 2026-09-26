@@ -25,10 +25,9 @@ html {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "cv05", "cv11", "ss01";
-  font-variant-numeric: tabular-nums;
+  font-variation-settings: var(--rec-ui);
   text-size-adjust: 100%;
-  scrollbar-color: hsl(var(--border-strong)) transparent;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 body {
@@ -61,9 +60,19 @@ select {
   font-feature-settings: "tnum";
 }
 
-/* Mono for IDs, ages, technical strings */
+/* Mono for IDs, ages, technical strings. Recursive draws its monospace
+ * from the MONO axis of the same family, so every mono context sets it. */
 .mono {
   font-family: var(--font-mono);
+}
+
+.mono,
+.font-mono,
+code,
+kbd,
+pre,
+samp {
+  font-variation-settings: var(--rec-mono);
 }
 
 /* Visually hidden but accessible to screen readers */
@@ -116,7 +125,7 @@ a:focus-visible {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--border-strong));
+  background: var(--border-strong);
   border-radius: 5px;
   border: 2px solid var(--background);
 }

@@ -97,15 +97,31 @@ function uiPrefsStorage(): StateStorage {
   };
 }
 
+const LIGHT_THEMES = new Set<Theme>(["light", "paper"]);
+
+export function resolveTheme(theme: Theme): Exclude<Theme, "system"> {
+  if (theme !== "system") return theme;
+  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "midnight";
+}
+
 export function applyThemeAttribute(theme: Theme): void {
   if (typeof document === "undefined") return;
-  const resolved =
-    theme === "system"
-      ? window.matchMedia("(prefers-color-scheme: light)").matches
-        ? "light"
-        : "midnight"
-      : theme;
+  const resolved = resolveTheme(theme);
   document.documentElement.setAttribute("data-theme", resolved);
+  // `dark:` utilities key off the scheme, so custom dark themes get them too.
+  document.documentElement.setAttribute("data-scheme", LIGHT_THEMES.has(resolved) ? "light" : "dark");
+}
+
+/** Re-resolve the "system" theme when the OS appearance changes. */
+export function watchSystemTheme(): () => void {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const media = window.matchMedia("(prefers-color-scheme: light)");
+  const onChange = () => {
+    const { theme } = useUiPrefs.getState();
+    if (theme === "system") applyThemeAttribute(theme);
+  };
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
 }
 
 export function applyDensityAttribute(density: Density): void {

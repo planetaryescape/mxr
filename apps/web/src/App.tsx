@@ -42,7 +42,10 @@ export default function App() {
         <RealtimeBootstrap />
         <RouterProvider router={router} />
         <Toaster />
-        {import.meta.env.DEV ? <ReactQueryDevtools buttonPosition="bottom-right" /> : null}
+        {/* Opt-in: the floating button covers the reader's corner in normal dev use. */}
+        {import.meta.env.DEV && import.meta.env.VITE_MXR_DEVTOOLS === "1" ? (
+          <ReactQueryDevtools buttonPosition="bottom-left" />
+        ) : null}
       </TooltipProvider>
     </QueryClientProvider>
   );

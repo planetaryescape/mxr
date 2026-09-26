@@ -733,8 +733,81 @@ async fn legacy_paths_return_permanent_redirect_to_v1() {
             .headers()
             .get(reqwest::header::LOCATION)
             .and_then(|v| v.to_str().ok())
-            .expect("301 must include Location header");
+            .expect("308 must include Location header");
         assert_eq!(location, new, "Location header for {old} should be {new}");
+    }
+}
+
+/// Legacy paths that double as SPA routes (`/drafts`, `/search`, ...) must
+/// not redirect a browser page load, or a hard refresh on the SPA lands on a
+/// JSON endpoint. API clients (token header, or no HTML in `Accept`) still
+/// get the 308.
+#[tokio::test]
+async fn legacy_paths_do_not_redirect_browser_navigations() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let _ipc = spawn_fake_ipc_server(&socket_path, |_| None, None).await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    for path in ["/drafts", "/search", "/rules", "/accounts", "/diagnostics"] {
+        let browser = client
+            .get(format!("http://{addr}{path}"))
+            .header(
+                reqwest::header::ACCEPT,
+                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            )
+            .header("sec-fetch-mode", "navigate")
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            !browser.status().is_redirection(),
+            "browser navigation to {path} must reach the SPA, got {}",
+            browser.status()
+        );
+        #[cfg(feature = "web-ui")]
+        assert_eq!(
+            browser.status(),
+            reqwest::StatusCode::OK,
+            "embedded SPA must serve {path}"
+        );
+
+        let api = client
+            .get(format!("http://{addr}{path}"))
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            api.status(),
+            reqwest::StatusCode::PERMANENT_REDIRECT,
+            "API client on {path} must still be redirected"
+        );
+
+        let api_with_token = client
+            .get(format!("http://{addr}{path}"))
+            .header(reqwest::header::ACCEPT, "text/html")
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            api_with_token.status(),
+            reqwest::StatusCode::PERMANENT_REDIRECT,
+            "a bearer token marks {path} as an API call even when HTML is accepted"
+        );
     }
 }
 

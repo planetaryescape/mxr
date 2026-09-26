@@ -5,6 +5,7 @@ import type { MouseEvent } from "react";
 import { toast } from "sonner";
 
 import { deleteDraft, fetchDrafts, type DraftSummary } from "./api";
+import { OrphanedDrafts } from "./OrphanedDrafts";
 import { EmptyState } from "@/components/EmptyState";
 import {
   AlertDialog,
@@ -67,6 +68,8 @@ export function DraftsRoute() {
           New draft
         </Button>
       </header>
+
+      <OrphanedDrafts />
 
       {rows.length === 0 ? (
         <EmptyState

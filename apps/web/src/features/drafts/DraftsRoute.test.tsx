@@ -11,9 +11,12 @@ import { DraftsRoute } from "./DraftsRoute";
 const api = vi.hoisted(() => ({
   deleteDraft: vi.fn<(draftId: string) => Promise<unknown>>(),
   fetchDrafts: vi.fn<() => Promise<unknown>>(),
+  fetchOrphanedDrafts: vi.fn<() => Promise<unknown[]>>(),
+  resetOrphanedDraft: vi.fn<(draftId: string) => Promise<unknown>>(),
+  sendStoredDraft: vi.fn<(draftId: string) => Promise<unknown>>(),
 }));
 
-vi.mock("./api", () => ({ deleteDraft: api.deleteDraft, fetchDrafts: api.fetchDrafts }));
+vi.mock("./api", () => api);
 vi.mock("sonner", () => ({
   toast: { error: vi.fn<() => void>(), success: vi.fn<() => void>() },
 }));
@@ -44,6 +47,12 @@ describe("DraftsRoute", () => {
     api.deleteDraft.mockReset();
     api.deleteDraft.mockResolvedValue({ ok: true });
     api.fetchDrafts.mockReset();
+    api.fetchOrphanedDrafts.mockReset();
+    api.fetchOrphanedDrafts.mockResolvedValue([]);
+    api.resetOrphanedDraft.mockReset();
+    api.resetOrphanedDraft.mockResolvedValue({ kind: "Ack" });
+    api.sendStoredDraft.mockReset();
+    api.sendStoredDraft.mockResolvedValue({ kind: "SendReceipt" });
   });
 
   test("lists mxr-local drafts and opens the stored draft composer", async () => {
@@ -111,5 +120,53 @@ describe("DraftsRoute", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete draft" }));
 
     await waitFor(() => expect(api.deleteDraft.mock.calls[0]?.[0]).toBe("draft-1"));
+  });
+
+  describe("drafts stuck mid-send", () => {
+    const orphan = {
+      id: "draft-7",
+      account_id: "account-1",
+      subject: "Contract signed",
+      to: [{ name: "Lee", email: "lee@example.com" }],
+      updated_at: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+    };
+
+    beforeEach(() => {
+      api.fetchDrafts.mockResolvedValue({ drafts: [] });
+    });
+
+    test("stay out of the way when there are none", async () => {
+      renderWithClient(<DraftsRoute />);
+      expect(await screen.findByText("No saved drafts")).toBeVisible();
+      expect(screen.queryByText("Needs attention")).not.toBeInTheDocument();
+    });
+
+    test("can be reset back to an editable draft", async () => {
+      api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
+      renderWithClient(<DraftsRoute />);
+
+      expect(await screen.findByText("Needs attention")).toBeVisible();
+      expect(screen.getByText(/Lee · stuck since/)).toBeVisible();
+      fireEvent.click(screen.getByRole("button", { name: "Reset Contract signed" }));
+
+      await waitFor(() => expect(api.resetOrphanedDraft).toHaveBeenCalledWith("draft-7"));
+      expect(api.sendStoredDraft).not.toHaveBeenCalled();
+    });
+
+    test("send asks first, then resets and sends", async () => {
+      api.fetchOrphanedDrafts.mockResolvedValue([orphan]);
+      renderWithClient(<DraftsRoute />);
+
+      fireEvent.click(await screen.findByRole("button", { name: "Send Contract signed" }));
+      expect(await screen.findByText(/may already have been delivered/)).toBeVisible();
+      expect(api.sendStoredDraft).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Send now" }));
+      await waitFor(() => expect(api.sendStoredDraft).toHaveBeenCalledWith("draft-7"));
+      expect(api.resetOrphanedDraft).toHaveBeenCalledWith("draft-7");
+      expect(api.resetOrphanedDraft.mock.invocationCallOrder[0]).toBeLessThan(
+        api.sendStoredDraft.mock.invocationCallOrder[0] ?? 0,
+      );
+    });
   });
 });

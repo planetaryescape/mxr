@@ -363,8 +363,14 @@ export function useComposeSession(
   const visibleIssues = draft ? (dirty ? localComposeIssues(draft) : draft.issues) : [];
   const recipientCount = draft ? countRecipients(draft.frontmatter) : 0;
   const canServerSave = Boolean(selectedAccount?.capabilities?.supports_server_drafts);
+  // A send in flight (including its undo window) counts as busy so Send,
+  // Send later and the shortcuts cannot start a second one.
   const busy =
-    autosave.saving || send.sendPending || discardSession.isPending || attachments.uploading > 0;
+    autosave.saving ||
+    send.sendLocked ||
+    send.sendPending ||
+    discardSession.isPending ||
+    attachments.uploading > 0;
 
   function updateFrontmatter<K extends keyof ComposeFrontmatter>(
     field: K,

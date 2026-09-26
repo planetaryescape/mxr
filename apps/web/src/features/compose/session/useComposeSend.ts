@@ -7,7 +7,13 @@
 
 import { useMutation, type QueryClient } from "@tanstack/react-query";
 import type { useNavigate } from "@tanstack/react-router";
-import { useRef, useState, type MutableRefObject } from "react";
+import {
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
 import { toast } from "sonner";
 
 import { archiveMessages } from "@/features/mailbox/api";
@@ -68,6 +74,15 @@ export function useComposeSend({
   // the safety-dialog detour keeps the archive intent and a cancelled undo
   // window drops it.
   const archiveAfterSendRef = useRef(false);
+  // One send per session at a time. Held from the first Send press through
+  // save, safety check, the confirm dialog and the undo window until the
+  // send settles or is cancelled. A ref, not state: two presses in the same
+  // tick must both see it.
+  const sendLockRef = useRef(false);
+  const [sendLocked, setSendLocked] = useState(false);
+  // Every undo-window cancel still open for this session. The lock means
+  // there should only ever be one, but cancel clears them all regardless.
+  const pendingCancelsRef = useRef(new Set<() => void>());
 
   const sendSession = useMutation({
     mutationFn: ({
@@ -116,14 +131,29 @@ export function useComposeSend({
     startSendPipeline(true);
   }
 
+  function acquireSendLock(): boolean {
+    if (sendLockRef.current) return false;
+    sendLockRef.current = true;
+    setSendLocked(true);
+    return true;
+  }
+
+  function releaseSendLock() {
+    sendLockRef.current = false;
+    setSendLocked(false);
+  }
+
   function startSendPipeline(archiveAfterSend: boolean) {
     const current = draftRef.current;
     if (!current) return;
+    // Refuse before validation so a second press never re-runs anything.
+    if (sendLockRef.current) return;
     const errors = localComposeIssues(current).filter((issue) => issue.severity === "error");
     if (errors.length > 0) {
       toast.error("Fix compose errors before sending", { description: errors[0]?.message });
       return;
     }
+    if (!acquireSendLock()) return;
     archiveAfterSendRef.current = archiveAfterSend;
     void runSendPipeline();
   }
@@ -136,6 +166,7 @@ export function useComposeSend({
     });
     const current = draftRef.current;
     if (!current || !isCurrentDraftSaved(current)) {
+      releaseSendLock();
       toast.error("Draft changed while saving", {
         description: "Retry send after the latest save.",
       });
@@ -165,6 +196,7 @@ export function useComposeSend({
   function requestSendLater() {
     const current = draftRef.current;
     if (!current) return;
+    if (sendLockRef.current) return;
     const errors = localComposeIssues(current).filter((issue) => issue.severity === "error");
     if (errors.length > 0) {
       toast.error("Fix compose errors before scheduling", { description: errors[0]?.message });
@@ -205,6 +237,18 @@ export function useComposeSend({
     }
   }
 
+  /** Dialog-facing open setter: closing without confirming abandons this
+   * send attempt, so the lock is released for the next one. */
+  const setSendConfirmOpenFromUi: Dispatch<SetStateAction<boolean>> = (value) => {
+    const next = typeof value === "function" ? value(sendConfirmOpen) : value;
+    setSendConfirmOpen(next);
+    if (!next) {
+      setSafetyReport(null);
+      setSafetyCheckError(null);
+      releaseSendLock();
+    }
+  };
+
   /** Confirm from the safety dialog. Picks up the override token from the
    * report's blocking issue when one exists. */
   async function confirmSend() {
@@ -223,7 +267,10 @@ export function useComposeSend({
    * would silently drop the send. Cancellable via the toast or global z. */
   function dispatchSend(overrideToken?: string) {
     const current = draftRef.current;
-    if (!current) return;
+    if (!current) {
+      releaseSendLock();
+      return;
+    }
     const accountId = current.accountId;
     const draftPath = current.draftPath;
     const windowSeconds = useUiPrefs.getState().undoSendSeconds;
@@ -254,7 +301,10 @@ export function useComposeSend({
           }
         })
         .catch((err: Error) => toast.error("Send failed", { description: err.message }))
-        .finally(() => setPendingSends((count) => Math.max(0, count - 1)));
+        .finally(() => {
+          setPendingSends((count) => Math.max(0, count - 1));
+          releaseSendLock();
+        });
     };
 
     setPendingSends((count) => count + 1);
@@ -264,13 +314,18 @@ export function useComposeSend({
     }
 
     let cancelled = false;
-    const cancel = () => {
+    const cancelThis = () => {
       if (cancelled) return;
       cancelled = true;
       window.clearTimeout(timer);
-      useUndo.getState().setPendingSendCancel(null);
+      pendingCancelsRef.current.delete(cancelThis);
       setPendingSends((count) => Math.max(0, count - 1));
       toast.dismiss(toastId);
+    };
+    const cancel = () => {
+      for (const pending of pendingCancelsRef.current) pending();
+      useUndo.getState().clearPendingSendCancel(cancel);
+      releaseSendLock();
       toast.info("Send cancelled");
     };
     const toastId = toast(`Sending in ${windowSeconds}s`, {
@@ -280,15 +335,20 @@ export function useComposeSend({
     });
     const timer = window.setTimeout(() => {
       if (cancelled) return;
-      useUndo.getState().setPendingSendCancel(null);
+      pendingCancelsRef.current.delete(cancelThis);
+      useUndo.getState().clearPendingSendCancel(cancel);
       fire();
     }, windowSeconds * 1000);
+    pendingCancelsRef.current.add(cancelThis);
     useUndo.getState().setPendingSendCancel(cancel);
   }
 
   return {
     sendConfirmOpen,
-    setSendConfirmOpen,
+    setSendConfirmOpen: setSendConfirmOpenFromUi,
+    /** True from the first Send press until that send settles or is
+     * cancelled, including the whole undo window. */
+    sendLocked,
     sendLaterOpen,
     setSendLaterOpen,
     pendingSends,

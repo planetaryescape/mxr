@@ -1873,7 +1873,7 @@ async fn bridge_events(mut socket: WebSocket, socket_path: PathBuf) {
                 }
             }
             frame = socket.recv() => match frame {
-                None | Some(Err(_)) | Some(Ok(WebSocketMessage::Close(_))) => break,
+                None | Some(Err(_) | Ok(WebSocketMessage::Close(_))) => break,
                 Some(Ok(WebSocketMessage::Text(text))) if is_app_ping(&text) => {
                     let pong = json!({ "type": "pong" }).to_string();
                     if socket

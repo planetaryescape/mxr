@@ -4376,7 +4376,7 @@ async fn mailbox_thread_view_pages_whole_threads() {
         thread_of(&[&b1], 0),
         thread_of(&[&c1, &c2], 0),
     ];
-    let all = vec![
+    let all = [
         a1.clone(),
         a2.clone(),
         a3.clone(),

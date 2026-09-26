@@ -4780,3 +4780,70 @@ async fn parity_routes_reject_bad_input() {
     assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
 }
 
+/// `dry_run: true` on unsubscribe-purge returns the would-affect selection
+/// (`status: "preview"`, `message_count`, `message_ids`) without mutating.
+#[tokio::test]
+async fn unsubscribe_purge_dry_run_returns_would_affect_ids() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let message_ids = vec![MessageId::new(), MessageId::new()];
+    let ids_for_ipc = message_ids.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::UnsubscribePurge {
+                address,
+                dry_run: true,
+                ..
+            } => Some(Response::Ok {
+                data: ResponseData::UnsubscribePurgeResult {
+                    result: mxr_protocol::UnsubscribePurgeResultData {
+                        address,
+                        query: "from:news@example.com".into(),
+                        account_id: None,
+                        dry_run: true,
+                        method: UnsubscribeMethod::None,
+                        status: mxr_protocol::UnsubscribePurgeStatusData::Preview,
+                        message_count: ids_for_ipc.len() as u32,
+                        archived_count: 0,
+                        message_ids: ids_for_ipc.clone(),
+                        mutation_id: None,
+                        error: None,
+                    },
+                },
+            }),
+            _ => Some(Response::error("dry run must not mutate")),
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let json: serde_json::Value = reqwest::Client::new()
+        .post(format!(
+            "http://{addr}/api/v1/mail/actions/unsubscribe-purge"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "address": "news@example.com", "dry_run": true }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["result"]["status"], "preview");
+    assert_eq!(json["result"]["dry_run"], true);
+    assert_eq!(json["result"]["message_count"], 2);
+    assert_eq!(json["result"]["archived_count"], 0);
+    assert_eq!(
+        json["result"]["message_ids"],
+        serde_json::json!([message_ids[0].to_string(), message_ids[1].to_string()])
+    );
+}

@@ -43,6 +43,8 @@ export interface ComposeSessionOptions {
   onSent?: () => void;
   /** Called after a successful discard instead of navigating to inbox. */
   onDiscarded?: () => void;
+  /** Called by `requestClose` once pending edits are saved. */
+  onClose?: () => void;
 }
 
 interface ComposeSendInput {
@@ -53,6 +55,7 @@ interface ComposeSendInput {
   draftRef: MutableRefObject<ComposeDraftState | null>;
   saveCurrentDraft: () => Promise<ComposeSession | undefined>;
   isCurrentDraftSaved: (current: ComposeDraftState) => boolean;
+  markSessionFinished: () => void;
 }
 
 export function useComposeSend({
@@ -63,6 +66,7 @@ export function useComposeSend({
   draftRef,
   saveCurrentDraft,
   isCurrentDraftSaved,
+  markSessionFinished,
 }: ComposeSendInput) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
   const [sendLaterOpen, setSendLaterOpen] = useState(false);
@@ -225,6 +229,7 @@ export function useComposeSend({
       return;
     }
     setSendLaterOpen(false);
+    markSessionFinished();
     forgetActiveDraft(intent.key);
     toast.success("Send scheduled", {
       description: label ? `Sends ${label}` : undefined,
@@ -282,6 +287,7 @@ export function useComposeSend({
       sendSession
         .mutateAsync({ draftPath, accountId, overrideToken })
         .then(async () => {
+          markSessionFinished();
           forgetActiveDraft(intent.key);
           toast.success("Message sent");
           if (archiveSourceId) {

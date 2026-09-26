@@ -156,6 +156,9 @@ export interface ComposeController {
   checkingSafety: boolean;
   requestDiscard: () => void;
   discardDraft: () => Promise<void>;
+  /** Save pending edits, then call `options.onClose`. Stays open (with a
+   * toast) when the save fails, so closing never drops text. */
+  requestClose: () => Promise<void>;
   retrySave: () => void;
   addFiles: (files: FileList | File[]) => Promise<void>;
   /** In-flight upload entries for the attachments strip (cleared when the
@@ -257,6 +260,7 @@ export function useComposeSession(
     draftRef,
     saveCurrentDraft,
     isCurrentDraftSaved,
+    markSessionFinished: autosave.markSessionFinished,
   });
   const attachments = useComposeAttachments({ draftRef, setDraft, setDirty });
   const assist = useDraftAssist({ intent, draftRef, setDraft, setDirty });
@@ -506,6 +510,7 @@ export function useComposeSession(
     const current = draftRef.current;
     if (!current) return;
     await discardSession.mutateAsync(current.draftPath);
+    autosave.markSessionFinished();
     forgetActiveDraft(intent.key);
     setDiscardConfirmOpen(false);
     toast.success("Draft discarded");
@@ -514,6 +519,20 @@ export function useComposeSession(
     } else {
       await navigate({ to: "/m/$mailbox", params: { mailbox: "inbox" } });
     }
+  }
+
+  /** Close the surface without losing the debounce window: save first, and
+   * stay open with the error if the save fails. */
+  async function requestClose() {
+    try {
+      await saveCurrentDraft();
+    } catch (error) {
+      toast.error("Draft not saved, composer kept open", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    options.onClose?.();
   }
 
   function retrySave() {
@@ -608,6 +627,7 @@ export function useComposeSession(
     checkingSafety: send.checkingSafety,
     requestDiscard,
     discardDraft,
+    requestClose,
     retrySave,
     addFiles: attachments.addFiles,
     uploadProgress: attachments.uploadProgress,

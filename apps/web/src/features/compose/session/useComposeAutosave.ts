@@ -51,6 +51,9 @@ export function useComposeAutosave({
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const updateSession = useMutation({ mutationFn: updateComposeSession });
+  // Set once the draft file is gone (sent, scheduled, discarded) so the
+  // unmount flush below never writes to a file that no longer exists.
+  const sessionFinishedRef = useRef(false);
 
   const saveCurrentDraft = useCallback(async () => {
     const current = draftRef.current;
@@ -119,6 +122,25 @@ export function useComposeAutosave({
     return () => document.removeEventListener("visibilitychange", flush);
   }, [draftRef, saveCurrentDraft]);
 
+  // Tearing the session down (closing the surface, switching reply target)
+  // must not drop edits still inside the debounce window. The save is fired
+  // on the way out; the coordinator keeps it ordered with any in-flight one.
+  const saveOnUnmountRef = useRef(saveCurrentDraft);
+  saveOnUnmountRef.current = saveCurrentDraft;
+  useEffect(
+    () => () => {
+      if (sessionFinishedRef.current) return;
+      void saveOnUnmountRef.current().catch((error: Error) => {
+        toast.error("Couldn't save your last edits", { description: error.message });
+      });
+    },
+    [],
+  );
+
+  function markSessionFinished() {
+    sessionFinishedRef.current = true;
+  }
+
   function isCurrentDraftSaved(current: ComposeDraftState): boolean {
     return draftFingerprint(current) === lastSavedFingerprintRef.current;
   }
@@ -132,5 +154,6 @@ export function useComposeAutosave({
     saveError,
     setSaveError,
     saving: updateSession.isPending,
+    markSessionFinished,
   };
 }

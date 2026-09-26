@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -89,6 +89,13 @@ function MockEditor({ value, onSend }: { value: string; onSend: () => void }) {
 vi.mock("./tiptap/TiptapComposeEditor", () => ({ TiptapComposeEditor: MockEditor }));
 vi.mock("./codemirror/CodeMirrorComposeEditor", () => ({ CodeMirrorComposeEditor: MockEditor }));
 
+/** Subjects the daemon was asked to save, in order. */
+function savedSubjects(): string[] {
+  return api.updateComposeSession.mock.calls.map(
+    ([input]) => (input as { frontmatter: { subject: string } }).frontmatter.subject,
+  );
+}
+
 const cleanReport: DraftSafetyReport = { allowed: true, verdict: "SAFE", issues: [] };
 
 function session(overrides: Partial<ComposeSessionResponse["session"]> = {}) {
@@ -151,11 +158,18 @@ beforeEach(() => {
   useUiPrefs.setState({ undoSendSeconds: 5 });
 });
 
-afterEach(() => {
-  vi.useRealTimers();
-  vi.clearAllMocks();
+afterEach(async () => {
+  // Unmount first: tearing a session down legitimately flushes its draft
+  // (asynchronously, through the save queue), and that call must not leak
+  // into the next test's mock history.
+  cleanup();
   act(() => useComposeUi.setState({ intent: null, surface: "overlay" }));
   useUndo.setState({ pendingSendCancel: null });
+  vi.useRealTimers();
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  vi.clearAllMocks();
 });
 
 describe("ComposeHost send safety", () => {
@@ -223,5 +237,61 @@ describe("ComposeHost send safety", () => {
       await vi.advanceTimersByTimeAsync(6000);
     });
     await waitFor(() => expect(api.sendComposeSession).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("ComposeHost never loses typing on the way out", () => {
+  beforeEach(() => {
+    api.updateComposeSession.mockImplementation(async (input) => {
+      const { frontmatter, body } = input as {
+        frontmatter: ComposeSessionResponse["session"]["frontmatter"];
+        body: string;
+      };
+      return session({ frontmatter, bodyMarkdown: body });
+    });
+  });
+
+  test("closing inside the autosave window saves the last edit first", async () => {
+    renderHost();
+    openNewMessage();
+
+    const subject = await screen.findByLabelText("Subject");
+    fireEvent.change(subject, { target: { value: "Quarterly plan v2" } });
+    fireEvent.click(screen.getByRole("button", { name: /close composer/i }));
+
+    await waitFor(() => expect(screen.queryByLabelText("Subject")).not.toBeInTheDocument());
+    expect(savedSubjects()).toEqual(["Quarterly plan v2"]);
+  });
+
+  test("a failed save on close keeps the composer open with the text", async () => {
+    api.updateComposeSession.mockRejectedValue(new Error("daemon unavailable"));
+    renderHost();
+    openNewMessage();
+
+    const subject = await screen.findByLabelText("Subject");
+    fireEvent.change(subject, { target: { value: "Keep me" } });
+    fireEvent.click(screen.getByRole("button", { name: /close composer/i }));
+
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith("Draft not saved, composer kept open", {
+        description: "daemon unavailable",
+      }),
+    );
+    expect(screen.getByLabelText("Subject")).toHaveValue("Keep me");
+  });
+
+  test("switching to another reply target saves the draft being left", async () => {
+    renderHost();
+    openNewMessage();
+
+    const subject = await screen.findByLabelText("Subject");
+    fireEvent.change(subject, { target: { value: "Half-written" } });
+    act(() => {
+      useComposeUi
+        .getState()
+        .openCompose({ key: "compose:reply:m-2", title: "Reply", kind: "reply", messageId: "m-2" });
+    });
+
+    await waitFor(() => expect(savedSubjects()).toEqual(["Half-written"]));
   });
 });

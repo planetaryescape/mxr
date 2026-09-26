@@ -28,7 +28,6 @@ import { Label } from "@/components/ui/label";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import type { ComposeIssue, DraftSafetyReport, RuntimeAccount } from "./api";
 import { ComposeActionBar } from "./ComposeActionBar";
-import { useComposeUi } from "./composeUiStore";
 import { ComposeTopBar } from "./ComposeTopBar";
 import { DraftAssist } from "./DraftAssist";
 import { DraftQualityBadges } from "./DraftQualityBadges";
@@ -53,9 +52,6 @@ const TiptapComposeEditor = lazy(() =>
 export function ComposeEditorPanel({ controller }: { controller: ComposeController }) {
   const editorPreference = useUiPrefs((state) => state.composeEditor);
   const setComposeEditor = useUiPrefs((state) => state.setComposeEditor);
-  // `:q` / `:wq` close the surface-based composer; harmless no-op on the
-  // deep-link route host where no overlay intent is open.
-  const closeCompose = useComposeUi((state) => state.closeCompose);
 
   const [dragActive, setDragActive] = useState(false);
   const dragDepth = useRef(0);
@@ -250,7 +246,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
                 onSave={controller.handleSaveClick}
                 onSend={controller.requestSend}
                 onDiscard={controller.requestDiscard}
-                onClose={closeCompose}
+                onClose={() => void controller.requestClose()}
               />
             )}
           </Suspense>

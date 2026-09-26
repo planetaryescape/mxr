@@ -36,6 +36,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   const controller = useComposeSession(intent, {
     onSent: closeCompose,
     onDiscarded: closeCompose,
+    onClose: closeCompose,
   });
 
   // The inline slot lives at the bottom of the thread reader; re-resolve
@@ -106,8 +107,9 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Close composer (draft is saved)"
-            onClick={closeCompose}
+            aria-label="Close composer (saves draft)"
+            title="Close composer (saves draft)"
+            onClick={() => void controller.requestClose()}
           >
             <X className="size-3.5" />
           </Button>

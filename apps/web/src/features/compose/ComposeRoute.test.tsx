@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -123,7 +123,13 @@ describe("ComposeRoute keyboard flow", () => {
     api.startComposeSession.mockResolvedValue(composeSession);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Unmounting flushes an edited draft through the async save queue; let
+    // that settle before clearing so it can't count against the next test.
+    cleanup();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
     vi.clearAllMocks();
   });
 

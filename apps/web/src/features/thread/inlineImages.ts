@@ -29,12 +29,20 @@ function toDataUri(blob: Blob): Promise<string> {
   });
 }
 
+/**
+ * Point each `cid:` image at its loaded data: URI. One that isn't loaded
+ * (still loading, or the message has no such part) loses its `src` and
+ * shows its alt text: the frame can't fetch `cid:` and the page's CSP
+ * would log every attempt.
+ */
 export function replaceImageSources(html: string, replacements: Map<string, string>): string {
-  if (replacements.size === 0) return html;
   const doc = new DOMParser().parseFromString(html, "text/html");
   for (const image of Array.from(doc.querySelectorAll("img[src]"))) {
-    const replacement = replacements.get(image.getAttribute("src") ?? "");
+    const src = image.getAttribute("src") ?? "";
+    if (!/^cid:/i.test(src.trim())) continue;
+    const replacement = replacements.get(src);
     if (replacement) image.setAttribute("src", replacement);
+    else image.removeAttribute("src");
   }
   return doc.body.innerHTML;
 }
@@ -63,7 +71,7 @@ export function useInlineImages(messageId: string | undefined, html: string | nu
     },
   });
   return useMemo(() => {
-    if (!html) return html;
-    return images.data ? replaceImageSources(html, images.data) : html;
-  }, [html, images.data]);
+    if (!html || sources.length === 0) return html;
+    return replaceImageSources(html, images.data ?? new Map());
+  }, [html, images.data, sources.length]);
 }

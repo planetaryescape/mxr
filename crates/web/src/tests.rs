@@ -5056,3 +5056,108 @@ async fn mailbox_and_search_rows_carry_labels() {
         "search resolves labels with one ListLabels per account"
     );
 }
+
+#[tokio::test]
+async fn inline_image_route_serves_materialized_cid_parts_only() {
+    use mxr_core::types::{HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind};
+
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let image_path = temp.path().join("logo.png");
+    std::fs::write(&image_path, b"\x89PNG fake bytes").unwrap();
+    let message_id = MessageId::new();
+    let served_path = image_path.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::GetHtmlImageAssets {
+                message_id: id,
+                allow_remote,
+            } => {
+                assert!(
+                    !allow_remote,
+                    "the inline route must never fetch remote images"
+                );
+                Some(Response::Ok {
+                    data: ResponseData::HtmlImageAssets {
+                        message_id: id,
+                        assets: vec![
+                            HtmlImageAsset {
+                                source: "cid:logo@acme".into(),
+                                kind: HtmlImageSourceKind::Cid,
+                                status: HtmlImageAssetStatus::Ready,
+                                mime_type: Some("image/png".into()),
+                                path: Some(served_path.clone()),
+                                detail: None,
+                            },
+                            HtmlImageAsset {
+                                source: "https://tracker.example/pixel.gif".into(),
+                                kind: HtmlImageSourceKind::Remote,
+                                status: HtmlImageAssetStatus::Ready,
+                                mime_type: Some("image/gif".into()),
+                                path: Some(served_path.clone()),
+                                detail: None,
+                            },
+                        ],
+                    },
+                })
+            }
+            _ => None,
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+    let url = |source: &str| {
+        format!(
+            "http://{addr}/api/v1/mail/messages/{message_id}/inline-image?source={}",
+            urlencoding(source)
+        )
+    };
+
+    let ok = client
+        .get(url("cid:logo@acme"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ok.status(), reqwest::StatusCode::OK);
+    assert_eq!(ok.headers()["content-type"], "image/png");
+    assert_eq!(ok.bytes().await.unwrap().as_ref(), b"\x89PNG fake bytes");
+
+    let missing = client
+        .get(url("cid:nope"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missing.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // A remote source is never served, even if the daemon reported a file.
+    let remote = client
+        .get(url("https://tracker.example/pixel.gif"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(remote.status(), reqwest::StatusCode::NOT_FOUND);
+}
+
+fn urlencoding(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (byte as char).to_string()
+            }
+            _ => format!("%{byte:02X}"),
+        })
+        .collect()
+}

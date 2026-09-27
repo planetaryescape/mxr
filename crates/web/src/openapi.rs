@@ -68,7 +68,7 @@ use utoipa::{
         analytics_stale_threads, analytics_contact_asymmetry,
         analytics_contact_decay, analytics_response_time,
         analytics_refresh_contacts, analytics_rebuild,
-        mail_message_body, mail_message_html_images, mail_message_raw_headers,
+        mail_message_body, mail_message_html_images, mail_message_inline_image, mail_message_raw_headers,
         mail_message_set_flags, mail_export_search, mail_drafts_orphaned_list,
         mail_drafts_save_local, mail_drafts_reset_orphan, mail_drafts_send_stored,
         mail_drafts_delete_stored, mail_signatures_list, mail_signatures_upsert,
@@ -294,6 +294,7 @@ endpoint!(post cadence_unwatch "/api/v1/platform/cadence/unwatch", "Remove a con
 
 endpoint!(get mail_message_body "/api/v1/mail/messages/{message_id}/body", "Get message body (IPC GetBody)");
 endpoint!(get mail_message_html_images "/api/v1/mail/messages/{message_id}/html-images", "List HTML-linked image assets");
+endpoint!(get mail_message_inline_image "/api/v1/mail/messages/{message_id}/inline-image", "Bytes of one inline (cid:) image, by its HTML src");
 endpoint!(get mail_message_raw_headers "/api/v1/mail/messages/{message_id}/headers", "Raw RFC headers");
 endpoint!(post mail_message_set_flags "/api/v1/mail/messages/{message_id}/flags", "Set message flags bitmask");
 endpoint!(post mail_export_search "/api/v1/mail/export-search", "Export all threads matching a search");

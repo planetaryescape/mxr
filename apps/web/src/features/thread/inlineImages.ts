@@ -1,0 +1,65 @@
+/*
+ * Inline (`cid:`) images in HTML mail. The daemon materializes each part;
+ * the bridge serves its bytes; here they become data: URIs, which the
+ * sanitizer allows for images, so the sandboxed frame can show them.
+ */
+
+import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+
+import { apiFetchBlob } from "@/api/client";
+
+export function inlineImageSources(html: string): string[] {
+  if (typeof DOMParser === "undefined") return [];
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const sources = Array.from(doc.querySelectorAll("img[src]"))
+    .map((image) => image.getAttribute("src") ?? "")
+    .filter((src) => /^cid:/i.test(src.trim()));
+  return [...new Set(sources)];
+}
+
+function toDataUri(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("could not read image"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+export function replaceImageSources(html: string, replacements: Map<string, string>): string {
+  if (replacements.size === 0) return html;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  for (const image of Array.from(doc.querySelectorAll("img[src]"))) {
+    const replacement = replacements.get(image.getAttribute("src") ?? "");
+    if (replacement) image.setAttribute("src", replacement);
+  }
+  return doc.body.innerHTML;
+}
+
+/** The HTML with every loadable inline image resolved to a data: URI. */
+export function useInlineImages(messageId: string | undefined, html: string | null): string | null {
+  const sources = useMemo(() => (html ? inlineImageSources(html) : []), [html]);
+  const images = useQuery({
+    queryKey: ["inline-images", messageId, sources],
+    enabled: Boolean(messageId && sources.length > 0),
+    staleTime: Infinity,
+    queryFn: async ({ signal }) => {
+      const settled = await Promise.allSettled(
+        sources.map(async (source) => {
+          const blob = await apiFetchBlob(
+            `/api/v1/mail/messages/${encodeURIComponent(messageId ?? "")}/inline-image?source=${encodeURIComponent(source)}`,
+            { signal },
+          );
+          return [source, await toDataUri(blob)] as const;
+        }),
+      );
+      // A part that fails to load stays a broken image; the rest still show.
+      return new Map(settled.flatMap((result) => (result.status === "fulfilled" ? [result.value] : [])));
+    },
+  });
+  return useMemo(() => {
+    if (!html) return html;
+    return images.data ? replaceImageSources(html, images.data) : html;
+  }, [html, images.data]);
+}

@@ -34,6 +34,7 @@ import { useUiPrefs, type ReaderView } from "@/state/uiPrefsStore";
 
 import { AttachmentActions } from "./AttachmentActions";
 import { countRemoteImages, splitHtmlQuote } from "./htmlQuote";
+import { useInlineImages } from "./inlineImages";
 import { InviteCard } from "./InviteCard";
 import { MessageBody } from "./MessageBody";
 import { MessageText } from "./MessageText";
@@ -238,7 +239,7 @@ function Body({
   const trustedSenders = useUiPrefs((s) => s.remoteImageSenders);
   const allowSender = useUiPrefs((s) => s.allowRemoteImagesFrom);
   const [showHtmlQuote, setShowHtmlQuote] = useState(false);
-  const html = body?.text_html ?? null;
+  const html = useInlineImages(body?.message_id, body?.text_html ?? null);
   const parts = useMemo(
     () => (html ? splitHtmlQuote(html, { keepSignature: showSignature }) : null),
     [html, showSignature],

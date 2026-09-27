@@ -96,11 +96,25 @@ pub(crate) fn annotate_row_labels(
     }
 }
 
+/// Union of a thread's labels in a stable order: system labels first, then
+/// by name. Envelopes arrive in no guaranteed order, and first-seen order
+/// made a row's label chips reshuffle between refreshes.
 fn union_labels(envelopes: &[&Envelope], catalog: &LabelCatalog) -> Vec<MessageLabelView> {
     let mut seen = HashSet::new();
-    envelopes
+    let mut labels: Vec<MessageLabelView> = envelopes
         .iter()
         .flat_map(|envelope| message_labels(envelope, catalog.labels_for(envelope)))
         .filter(|label| seen.insert(label.id.clone()))
-        .collect()
+        .collect();
+    labels.sort_by(|a, b| {
+        let rank = |label: &MessageLabelView| match label.kind {
+            "system" => 0,
+            "folder" => 1,
+            _ => 2,
+        };
+        rank(a)
+            .cmp(&rank(b))
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    labels
 }

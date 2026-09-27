@@ -1901,6 +1901,78 @@ async fn get_html_image_assets(
     passthrough(response)
 }
 
+#[derive(Debug, Deserialize)]
+struct InlineImageQuery {
+    #[serde(default)]
+    token: Option<String>,
+    /// The image's `src` exactly as the HTML body has it, e.g. `cid:logo@x`.
+    source: String,
+}
+
+/// Largest inline image the bridge will serve. Mail inline images are
+/// logos and screenshots; anything larger is an attachment in disguise.
+const MAX_INLINE_IMAGE_BYTES: u64 = 15 * 1024 * 1024;
+
+/// Bytes of one inline (`cid:`) image, so the browser can render HTML mail
+/// that embeds its pictures. The daemon materializes the part into its
+/// attachment cache and reports the path; the bridge runs on the same host
+/// and only ever reads a path the daemon returned for this message.
+async fn get_inline_image(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(message_id): Path<String>,
+    Query(query): Query<InlineImageQuery>,
+) -> Result<axum::response::Response, BridgeError> {
+    let id = MessageId::from_str(&message_id)
+        .map_err(|err| BridgeError::BadRequest(format!("invalid message_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::GetHtmlImageAssets {
+            message_id: id,
+            allow_remote: false,
+        },
+    )
+    .await?;
+    let ResponseData::HtmlImageAssets { assets, .. } = response else {
+        return Err(BridgeError::UnexpectedResponse);
+    };
+    let asset = assets
+        .into_iter()
+        .find(|asset| {
+            asset.source == query.source
+                && asset.status == mxr_core::types::HtmlImageAssetStatus::Ready
+                && !matches!(asset.kind, mxr_core::types::HtmlImageSourceKind::Remote)
+        })
+        .ok_or_else(|| BridgeError::Daemon {
+            message: format!("no inline image {} in this message", query.source),
+            kind: mxr_protocol::IpcErrorKind::NotFound,
+        })?;
+    let path = asset.path.ok_or(BridgeError::UnexpectedResponse)?;
+    let metadata = tokio::fs::metadata(&path)
+        .await
+        .map_err(|err| BridgeError::Ipc(format!("inline image unreadable: {err}")))?;
+    if metadata.len() > MAX_INLINE_IMAGE_BYTES {
+        return Err(BridgeError::BadRequest(
+            "inline image too large to preview".into(),
+        ));
+    }
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|err| BridgeError::Ipc(format!("inline image unreadable: {err}")))?;
+    let mime = asset
+        .mime_type
+        .filter(|mime| mime.starts_with("image/"))
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    axum::response::Response::builder()
+        .header(axum::http::header::CONTENT_TYPE, mime)
+        .header(axum::http::header::CACHE_CONTROL, "private, max-age=3600")
+        .header("x-content-type-options", "nosniff")
+        .body(axum::body::Body::from(bytes))
+        .map_err(|err| BridgeError::Ipc(format!("response build: {err}")))
+}
+
 async fn get_message_headers_ipc(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2746,6 +2818,7 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
             "/messages/{message_id}/html-images",
             get(get_html_image_assets),
         )
+        .route("/messages/{message_id}/inline-image", get(get_inline_image))
         .route(
             "/messages/{message_id}/headers",
             get(get_message_headers_ipc),

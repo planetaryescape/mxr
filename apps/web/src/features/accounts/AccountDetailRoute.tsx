@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { CheckCircle2, KeyRound, RefreshCw, Trash2 } from "lucide-react";
+import { CheckCircle2, KeyRound, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -20,10 +20,19 @@ import {
   testAccount,
   type AccountConfig,
 } from "./api";
+import { describeAuthSession, isTerminalAuthState } from "./authSession";
 import { claimAccountReauthRequest } from "./reauthRequest";
 import { OnboardingRoute } from "@/features/onboarding/OnboardingRoute";
 import type { RuntimeAccount } from "@/features/compose/api";
-import { EmptyState } from "@/components/EmptyState";
+import { Page, PageSection } from "@/components/Page";
+import {
+  FactList,
+  PageEmpty,
+  PageError,
+  PageSkeleton,
+  RuledList,
+  RuledRow,
+} from "@/components/PageParts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,7 +45,6 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -82,22 +90,19 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
     },
     onError: (error) => toast.error("Repair failed", { description: error.message }),
   });
-  const refresh = () => {
-    void qc.invalidateQueries({ queryKey: ["accounts"] });
-    void qc.invalidateQueries({ queryKey: ["account-addresses", account?.account_id] });
-    toast.success("Refreshed");
-  };
   const addAlias = useMutation({
     mutationFn: () => addAccountAddress(account?.account_id ?? "", alias),
     onSuccess: () => {
       setAlias("");
       void qc.invalidateQueries({ queryKey: ["account-addresses", account?.account_id] });
     },
+    onError: (error) => toast.error("Could not add the address", { description: error.message }),
   });
   const removeAlias = useMutation({
     mutationFn: (email: string) => removeAccountAddress(account?.account_id ?? "", email),
     onSuccess: () =>
       void qc.invalidateQueries({ queryKey: ["account-addresses", account?.account_id] }),
+    onError: (error) => toast.error("Could not remove the address", { description: error.message }),
   });
   const setPrimaryAlias = useMutation({
     mutationFn: (email: string) => setPrimaryAccountAddress(account?.account_id ?? "", email),
@@ -105,6 +110,8 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
       toast.success("Primary address updated");
       void qc.invalidateQueries({ queryKey: ["account-addresses", account?.account_id] });
     },
+    onError: (error) =>
+      toast.error("Could not change the primary address", { description: error.message }),
   });
   const makeDefault = useMutation({
     mutationFn: () => setDefaultAccount(account?.key ?? keyParam),
@@ -112,6 +119,7 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
       toast.success("Default account updated");
       void qc.invalidateQueries({ queryKey: ["accounts"] });
     },
+    onError: (error) => toast.error("Could not change the default", { description: error.message }),
   });
   const disable = useMutation({
     mutationFn: () => disableAccount(account?.key ?? keyParam),
@@ -119,6 +127,8 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
       toast.success("Account disabled");
       void qc.invalidateQueries({ queryKey: ["accounts"] });
     },
+    onError: (error) =>
+      toast.error("Could not disable the account", { description: error.message }),
   });
   const reauth = useMutation({
     mutationFn: () => startAuthSession(accountConfig(account), true),
@@ -148,8 +158,10 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
     mutationFn: () => removeAccount(keyParam, purgeLocalData),
     onSuccess: async () => {
       toast.success("Account removed");
+      void qc.invalidateQueries({ queryKey: ["accounts"] });
       await navigate({ to: "/accounts" });
     },
+    onError: (error) => toast.error("Could not remove the account", { description: error.message }),
   });
 
   useEffect(() => {
@@ -163,112 +175,108 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
     reauth.mutate();
   }, [account, authSessionId, reauth]);
 
-  if (accounts.isLoading)
-    return <div className="p-6 text-xs text-muted-foreground">Loading account...</div>;
+  if (accounts.isPending)
+    return (
+      <Page title="Account" eyebrow="Accounts">
+        <PageSkeleton rows={4} label="Loading account" />
+      </Page>
+    );
   if (accounts.isError)
     return (
-      <EmptyState
-        icon={RefreshCw}
-        title="Account unavailable"
-        description={accounts.error.message}
-      />
+      <Page title="Account" eyebrow="Accounts">
+        <PageError
+          title="Account unavailable"
+          error={accounts.error}
+          onRetry={() => void accounts.refetch()}
+        />
+      </Page>
     );
-  if (!account) return <EmptyState title="Account not found" description={keyParam} />;
+  if (!account)
+    return (
+      <Page title="Account not found" eyebrow="Accounts">
+        <PageEmpty
+          title={`No account called "${keyParam}"`}
+          body="It may have been removed from another client."
+          action={
+            <Button size="sm" variant="outline" onClick={() => void navigate({ to: "/accounts" })}>
+              All accounts
+            </Button>
+          }
+        />
+      </Page>
+    );
+
+  const session = authSession.data?.session;
+  const authStatus = describeAuthSession(session, providerName(account));
+  const signInUrl = session?.verification_uri ?? session?.auth_url;
+  const capabilities = Object.entries(account.capabilities ?? {});
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-background">
-      <header className="flex items-center gap-3 border-b border-border px-6 py-4">
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold tracking-tight">{account.name || account.email}</h1>
-          <p className="text-2xs text-muted-foreground">
-            {account.email} · {account.provider_kind}
-          </p>
-        </div>
-        <Button variant="outline" onClick={() => test.mutate()} disabled={test.isPending}>
-          Test connection
-        </Button>
-        <Button variant="outline" onClick={refresh}>
-          <RefreshCw className="size-3" />
-          Refresh
-        </Button>
-        <Button variant="outline" onClick={() => repair.mutate()} disabled={repair.isPending}>
-          Repair
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => makeDefault.mutate()}
-          disabled={account.is_default || makeDefault.isPending}
-        >
-          <CheckCircle2 className="size-3" />
-          Default
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => reauth.mutate()}
-          disabled={!isOauthAccount(account) || reauth.isPending}
-        >
-          <KeyRound className="size-3" />
-          Re-auth
-        </Button>
-        <Button variant="ghost" onClick={() => disable.mutate()} disabled={disable.isPending}>
-          Disable
-        </Button>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="destructive" disabled={remove.isPending}>
-              <Trash2 className="size-3" />
-              Remove
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Remove account config?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This removes {account.name || account.email} from mxr. Local mail data is only
-                purged when the remove option below is enabled.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                variant="destructive"
-                disabled={remove.isPending}
-                onClick={() => remove.mutate()}
-              >
-                Remove
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </header>
-      <main className="grid gap-4 p-6 lg:grid-cols-2">
-        {authSession.data?.session ? (
-          <Card className="p-4 lg:col-span-2">
-            <h2 className="mb-2 text-sm font-semibold">OAuth session</h2>
-            <div
-              className={`whitespace-pre-wrap text-xs ${
-                authSession.data.session.error ? "text-destructive" : "text-muted-foreground"
-              }`}
+    <Page
+      eyebrow="Accounts"
+      title={account.name || account.email}
+      description={`${account.email} · ${account.provider_kind}${account.is_default ? " · default" : ""}${account.enabled ? "" : " · disabled"}`}
+      actions={
+        <>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => test.mutate()}
+            disabled={test.isPending}
+          >
+            {test.isPending ? "Testing…" : "Test connection"}
+          </Button>
+          {isOauthAccount(account) ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => reauth.mutate()}
+              disabled={reauth.isPending || Boolean(authSessionId)}
             >
-              {authSession.data.session.error ??
-                authSession.data.session.message ??
-                authSession.data.session.state}
+              <KeyRound className="size-3" />
+              Sign in again
+            </Button>
+          ) : null}
+          {!account.is_default ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => makeDefault.mutate()}
+              disabled={makeDefault.isPending}
+            >
+              <CheckCircle2 className="size-3" />
+              Make default
+            </Button>
+          ) : null}
+        </>
+      }
+    >
+      {session ? (
+        <PageSection title="Sign in">
+          {session.user_code ? (
+            <div className="mb-2 font-mono text-2xl tracking-widest text-primary">
+              {session.user_code}
             </div>
-            {authSession.data.session.user_code ? (
-              <div className="mt-2 font-mono text-2xl tracking-widest text-primary">
-                {authSession.data.session.user_code}
-              </div>
-            ) : null}
-            {(authSession.data.session.verification_uri ?? authSession.data.session.auth_url) ? (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
+          ) : null}
+          <p
+            role="status"
+            className={
+              authStatus.tone === "error"
+                ? "text-[13px] text-destructive"
+                : authStatus.tone === "ready"
+                  ? "text-[13px] text-success"
+                  : "text-[13px] text-muted-foreground"
+            }
+          >
+            {authStatus.text}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {signInUrl && !isTerminalAuthState(session.state) ? (
+              <>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    const s = authSession.data?.session;
-                    const url = s?.verification_uri ?? s?.auth_url;
-                    if (url) window.open(url, "_blank", "noopener,noreferrer");
-                  }}
+                  onClick={() => window.open(signInUrl, "_blank", "noopener,noreferrer")}
                 >
                   Open sign-in
                 </Button>
@@ -276,87 +284,191 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    const s = authSession.data?.session;
-                    const url = s?.verification_uri ?? s?.auth_url;
-                    if (url) {
-                      void navigator.clipboard?.writeText(url);
-                      toast.success("Sign-in link copied");
-                    }
+                    navigator.clipboard
+                      ?.writeText(signInUrl)
+                      .then(() => toast.success("Sign-in link copied"))
+                      .catch((error: Error) =>
+                        toast.error("Copy failed", { description: error.message }),
+                      );
                   }}
                 >
                   Copy sign-in link
                 </Button>
-              </div>
+              </>
             ) : null}
             <Button
-              className="mt-3"
-              disabled={authSession.data.session.state !== "authorized" || completeReauth.isPending}
+              size="sm"
+              disabled={session.state !== "authorized" || completeReauth.isPending}
               onClick={() => completeReauth.mutate()}
             >
-              Complete re-auth
-            </Button>
-          </Card>
-        ) : null}
-        <Card className="p-4">
-          <h2 className="mb-3 text-sm font-semibold">Capabilities</h2>
-          <pre className="overflow-auto rounded bg-muted p-3 text-2xs">
-            {JSON.stringify(account.capabilities, null, 2)}
-          </pre>
-        </Card>
-        <Card className="p-4">
-          <h2 className="mb-3 text-sm font-semibold">Aliases</h2>
-          <div className="mb-3 flex gap-2">
-            <Input
-              value={alias}
-              onChange={(event) => setAlias(event.target.value)}
-              placeholder="alias@example.com"
-            />
-            <Button
-              onClick={() => addAlias.mutate()}
-              disabled={!alias.trim() || addAlias.isPending}
-            >
-              Add
+              Finish sign-in
             </Button>
           </div>
-          <div className="divide-y divide-border">
+        </PageSection>
+      ) : null}
+
+      <PageSection title="Connection">
+        <FactList
+          facts={[
+            ["Provider", account.provider_kind],
+            ["Sync", account.sync_kind ?? account.provider_kind],
+            ["Send", account.send_kind ?? (account.capabilities?.supports_send ? "yes" : "no")],
+            ["Status", account.enabled ? "enabled" : "disabled"],
+            ...capabilities.map(([name, value]): [string, string] => [
+              name.replace(/_/g, " "),
+              value ? "yes" : "no",
+            ]),
+          ]}
+        />
+        <div className="mt-3 flex gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => repair.mutate()}
+            disabled={repair.isPending}
+          >
+            Repair sync state
+          </Button>
+        </div>
+      </PageSection>
+
+      <PageSection title="Send-as addresses" description="Extra addresses you can send from.">
+        <form
+          className="mb-3 flex max-w-md gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (alias.trim()) addAlias.mutate();
+          }}
+        >
+          <Input
+            aria-label="New address"
+            value={alias}
+            onChange={(event) => setAlias(event.target.value)}
+            placeholder="alias@example.com"
+            className="h-8 text-xs"
+          />
+          <Button type="submit" size="sm" disabled={!alias.trim() || addAlias.isPending}>
+            Add
+          </Button>
+        </form>
+        {addresses.isPending ? (
+          <PageSkeleton rows={2} label="Loading addresses" />
+        ) : addresses.isError ? (
+          <PageError
+            title="Addresses unavailable"
+            error={addresses.error}
+            onRetry={() => void addresses.refetch()}
+          />
+        ) : (addresses.data?.addresses ?? []).length === 0 ? (
+          <p className="text-[13px] text-muted-foreground">Only {account.email}.</p>
+        ) : (
+          <RuledList label="Send-as addresses">
             {(addresses.data?.addresses ?? []).map((address) => (
-              <div key={address.email} className="flex items-center justify-between py-2 text-xs">
-                <span>
-                  {address.email}
-                  {address.is_primary ? " · primary" : ""}
-                </span>
-                <Button variant="ghost" size="sm" onClick={() => removeAlias.mutate(address.email)}>
-                  Remove
-                </Button>
-                {!address.is_primary ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setPrimaryAlias.mutate(address.email)}
-                  >
-                    Primary
-                  </Button>
-                ) : null}
-              </div>
+              <RuledRow
+                key={address.email}
+                title={address.email}
+                meta={address.is_primary ? "primary" : undefined}
+                actions={
+                  <>
+                    {!address.is_primary ? (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        disabled={setPrimaryAlias.isPending}
+                        onClick={() => setPrimaryAlias.mutate(address.email)}
+                      >
+                        Make primary
+                      </Button>
+                    ) : null}
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      disabled={removeAlias.isPending}
+                      onClick={() => removeAlias.mutate(address.email)}
+                    >
+                      Remove
+                    </Button>
+                  </>
+                }
+              />
             ))}
-          </div>
-        </Card>
-        <Card className="p-4 lg:col-span-2">
-          <h2 className="mb-3 text-sm font-semibold">Remove options</h2>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Checkbox
-              id="purge-local-data"
-              checked={purgeLocalData}
-              onCheckedChange={(checked) => setPurgeLocalData(checked === true)}
-            />
-            <Label htmlFor="purge-local-data" className="text-xs text-muted-foreground">
-              Purge local data for this account when removing config.
-            </Label>
-          </div>
-        </Card>
-      </main>
-    </div>
+          </RuledList>
+        )}
+      </PageSection>
+
+      <PageSection title="Disable or remove">
+        <div className="flex flex-wrap items-center gap-2">
+          {account.enabled ? (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" disabled={disable.isPending}>
+                  Disable
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Disable {account.email}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    The daemon stops syncing and sending for this account. Local mail stays on disk.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction variant="destructive" onClick={() => disable.mutate()}>
+                    Disable
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : null}
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm" disabled={remove.isPending}>
+                <Trash2 className="size-3" />
+                Remove account
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remove {account.name || account.email}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  mxr forgets this account. Choose whether its synced mail is deleted from this
+                  machine too.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="flex items-center gap-2 text-[13px]">
+                <Checkbox
+                  id="purge-local-data"
+                  checked={purgeLocalData}
+                  onCheckedChange={(checked) => setPurgeLocalData(checked === true)}
+                />
+                <Label htmlFor="purge-local-data" className="text-[13px] font-normal">
+                  Also delete this account's local mail
+                </Label>
+              </div>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  disabled={remove.isPending}
+                  onClick={() => remove.mutate()}
+                >
+                  {purgeLocalData ? "Remove and delete mail" : "Remove"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </PageSection>
+    </Page>
   );
+}
+
+function providerName(account: RuntimeAccount): string {
+  const kind = account.sync_kind ?? account.provider_kind;
+  if (kind.includes("gmail")) return "Google";
+  if (kind.includes("outlook")) return "Microsoft";
+  return account.provider_kind;
 }
 
 function isOauthAccount(account: RuntimeAccount): boolean {

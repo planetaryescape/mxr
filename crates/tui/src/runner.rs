@@ -600,7 +600,20 @@ pub async fn run() -> anyhow::Result<()> {
                 let result = match resp {
                     Ok(Response::Ok {
                         data: ResponseData::Drafts { drafts },
-                    }) => Ok(drafts),
+                    }) => {
+                        // Which drafts are scheduled is extra detail: a
+                        // failure here must not hide the drafts themselves.
+                        let sends =
+                            match ipc_call(&bg, Request::ListScheduledSends { account_id: None })
+                                .await
+                            {
+                                Ok(Response::Ok {
+                                    data: ResponseData::ScheduledSends { sends },
+                                }) => sends,
+                                _ => Vec::new(),
+                            };
+                        Ok((drafts, sends))
+                    }
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response to ListDrafts".into())),
@@ -636,6 +649,25 @@ pub async fn run() -> anyhow::Result<()> {
                             _ => Err(MxrError::Ipc("unexpected response to DeleteDraft".into())),
                         };
                         AsyncResult::StoredDraftDeleted { draft_id, result }
+                    }
+                    app::StoredDraftOperation::CancelSchedule { draft, .. } => {
+                        let draft_id = draft.id.clone();
+                        let result = match ipc_call(
+                            &bg,
+                            Request::CancelScheduledSend { draft_id: draft.id },
+                        )
+                        .await
+                        {
+                            Ok(Response::Ok {
+                                data: ResponseData::Ack,
+                            }) => Ok(()),
+                            Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                            Err(error) => Err(error),
+                            _ => Err(MxrError::Ipc(
+                                "unexpected response to CancelScheduledSend".into(),
+                            )),
+                        };
+                        AsyncResult::StoredDraftUnscheduled { draft_id, result }
                     }
                     app::StoredDraftOperation::Push { draft, provider } => {
                         let draft_id = draft.id.clone();
@@ -2109,14 +2141,38 @@ pub async fn run() -> anyhow::Result<()> {
                             app.modals.reply_queue.set_error(e.to_string());
                             app.status_message = Some(format!("Reply queue load failed: {e}"));
                         }
-                        AsyncResult::StoredDraftsLoaded(Ok(drafts)) => {
+                        AsyncResult::StoredDraftsLoaded(Ok((drafts, sends))) => {
                             let count = drafts.len();
                             app.modals.drafts.set_drafts(drafts);
-                            app.status_message = Some(if count == 0 {
-                                "No saved drafts".into()
-                            } else {
-                                format!("{count} draft(s)")
+                            app.modals.drafts.scheduled = sends
+                                .into_iter()
+                                .map(|send| (send.draft_id, send.send_at))
+                                .collect();
+                            let scheduled = app.modals.drafts.scheduled.len();
+                            app.status_message = Some(match (count, scheduled) {
+                                (0, _) => "No saved drafts".into(),
+                                (count, 0) => format!("{count} draft(s)"),
+                                (count, scheduled) => {
+                                    format!("{count} draft(s), {scheduled} scheduled")
+                                }
                             });
+                        }
+                        AsyncResult::StoredDraftUnscheduled {
+                            draft_id,
+                            result: Ok(()),
+                        } => {
+                            app.modals.drafts.finish_operation();
+                            app.modals.drafts.scheduled.remove(&draft_id);
+                            app.status_message =
+                                Some("Scheduled send cancelled; the draft is kept".into());
+                            app.push_toast(crate::app::Toast::success("Scheduled send cancelled"));
+                        }
+                        AsyncResult::StoredDraftUnscheduled { result: Err(e), .. } => {
+                            app.modals.drafts.finish_operation();
+                            app.status_message = Some(format!("Couldn't cancel the send: {e}"));
+                            app.push_toast(crate::app::Toast::error(format!(
+                                "Couldn't cancel the send: {e}"
+                            )));
                         }
                         AsyncResult::StoredDraftsLoaded(Err(e)) => {
                             app.modals.drafts.set_error(e.to_string());

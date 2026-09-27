@@ -191,6 +191,7 @@ pub enum Action {
     StoredDraftsModalEdit,
     /// Preview permanent deletion of the selected local draft.
     StoredDraftsModalPreviewDelete,
+    StoredDraftsModalPreviewCancelSchedule,
     /// Preview a one-way copy of the selected local draft to its provider.
     StoredDraftsModalPreviewPush,
     /// Cancel the active stored-draft mutation preview.

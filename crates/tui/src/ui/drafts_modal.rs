@@ -17,7 +17,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftsModalState, theme: &The
     let modal_area = centered_rect(MODAL_WIDTH_PERCENT, MODAL_HEIGHT_PERCENT, area);
     Clear.render(modal_area, frame.buffer_mut());
 
-    let title = " Drafts — ↑/↓ navigate · Enter/e edit · d delete · p provider sync · Esc close ";
+    let title = " Drafts: ↑/↓ navigate · Enter/e edit · d delete · p provider sync · c cancel scheduled send · Esc close ";
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
@@ -89,11 +89,14 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftsModalState, theme: &The
                 draft.subject.as_str()
             };
             let to = format_addresses(&draft.to);
-            let label = if to.is_empty() {
+            let mut label = if to.is_empty() {
                 format!(" {subject}")
             } else {
                 format!(" {subject} · {to}")
             };
+            if let Some(send_at) = state.scheduled.get(&draft.id) {
+                label.push_str(&format!(" · sends {}", local_time(*send_at)));
+            }
             ListItem::new(label).style(style)
         })
         .collect();
@@ -132,6 +135,15 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftsModalState, theme: &The
             Span::styled("Updated: ", label_style),
             Span::raw(draft.updated_at.format("%Y-%m-%d %H:%M").to_string()),
         ]));
+        if let Some(send_at) = state.scheduled.get(&draft.id) {
+            lines.push(Line::from(vec![
+                Span::styled("Sends:   ", label_style),
+                Span::styled(
+                    format!("{} (c cancels; the draft stays)", local_time(*send_at)),
+                    Style::default().fg(theme.accent),
+                ),
+            ]));
+        }
         if draft.content.is_html() {
             lines.push(Line::from(Span::styled(
                 "HTML body — not editable here",
@@ -156,6 +168,12 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftsModalState, theme: &The
     }
 }
 
+fn local_time(at: chrono::DateTime<chrono::Utc>) -> String {
+    at.with_timezone(&chrono::Local)
+        .format("%a %-d %b %H:%M")
+        .to_string()
+}
+
 fn draw_confirmation(
     frame: &mut Frame,
     area: Rect,
@@ -168,6 +186,12 @@ fn draw_confirmation(
             "This permanently removes the local draft and its linked provider draft, if present.",
             draft,
             "[y] delete",
+        ),
+        StoredDraftOperation::CancelSchedule { draft, .. } => (
+            "Cancel this scheduled send?",
+            "The draft stays in Drafts; it just won't send on its own.",
+            draft,
+            "[y] cancel the send",
         ),
         StoredDraftOperation::Push { draft, provider } => (
             "Sync this draft with the provider?",
@@ -198,6 +222,9 @@ fn draw_confirmation(
     ];
     if let StoredDraftOperation::Push { provider, .. } = operation {
         lines.push(Line::from(format!("Provider: {provider}")));
+    }
+    if let StoredDraftOperation::CancelSchedule { send_at, .. } = operation {
+        lines.push(Line::from(format!("Sends:   {}", local_time(*send_at))));
     }
     lines.extend([
         Line::from(""),

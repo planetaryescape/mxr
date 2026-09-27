@@ -699,8 +699,18 @@ impl ReplyQueueModalState {
 /// mutation target after the user has reviewed it.
 #[derive(Debug, Clone)]
 pub enum StoredDraftOperation {
-    Delete { draft: Draft },
-    Push { draft: Draft, provider: String },
+    Delete {
+        draft: Draft,
+    },
+    Push {
+        draft: Draft,
+        provider: String,
+    },
+    /// Stop a scheduled send; the draft itself stays.
+    CancelSchedule {
+        draft: Draft,
+        send_at: chrono::DateTime<chrono::Utc>,
+    },
 }
 
 /// State for the stored-drafts browser modal: locally-saved drafts across all
@@ -712,6 +722,8 @@ pub struct DraftsModalState {
     pub loading: bool,
     pub operation_in_flight: bool,
     pub drafts: Vec<Draft>,
+    /// When each scheduled draft will send (drafts not listed aren't scheduled).
+    pub scheduled: std::collections::HashMap<mxr_core::DraftId, chrono::DateTime<chrono::Utc>>,
     pub selected_index: usize,
     pub error: Option<String>,
     pub confirmation: Option<StoredDraftOperation>,
@@ -775,6 +787,19 @@ impl DraftsModalState {
             return false;
         };
         self.confirmation = Some(StoredDraftOperation::Delete { draft });
+        true
+    }
+
+    /// Preview cancelling the selected draft's scheduled send. False when
+    /// nothing is selected or it isn't scheduled.
+    pub fn preview_cancel_schedule(&mut self) -> bool {
+        let Some(draft) = self.selected().cloned() else {
+            return false;
+        };
+        let Some(send_at) = self.scheduled.get(&draft.id).copied() else {
+            return false;
+        };
+        self.confirmation = Some(StoredDraftOperation::CancelSchedule { draft, send_at });
         true
     }
 

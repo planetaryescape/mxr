@@ -441,6 +441,7 @@ impl App {
                 (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::StoredDraftsModalPrev),
                 (KeyCode::Enter | KeyCode::Char('e'), _) => Some(Action::StoredDraftsModalEdit),
                 (KeyCode::Char('d'), _) => Some(Action::StoredDraftsModalPreviewDelete),
+                (KeyCode::Char('c'), _) => Some(Action::StoredDraftsModalPreviewCancelSchedule),
                 (KeyCode::Char('p'), _) => Some(Action::StoredDraftsModalPreviewPush),
                 _ => None,
             };

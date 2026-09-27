@@ -849,6 +849,43 @@ fn stored_drafts_delete_previews_then_commits_the_captured_draft() {
 }
 
 #[test]
+fn stored_drafts_cancel_a_scheduled_send_but_keep_the_draft() {
+    let mut app = App::new();
+    let drafts = vec![test_draft("Not scheduled"), test_draft("Goes out Monday")];
+    let scheduled_id = drafts[1].id.clone();
+    let send_at = chrono::Utc::now() + chrono::Duration::days(2);
+    app.modals.drafts.open_loading();
+    app.modals.drafts.set_drafts(drafts);
+    app.modals
+        .drafts
+        .scheduled
+        .insert(scheduled_id.clone(), send_at);
+
+    // `c` on a draft that isn't scheduled says so and queues nothing.
+    let action = app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+    assert_eq!(action, Some(Action::StoredDraftsModalPreviewCancelSchedule));
+    app.apply(action.unwrap());
+    assert!(app.modals.drafts.confirmation.is_none());
+    assert!(app
+        .status_message
+        .clone()
+        .unwrap_or_default()
+        .contains("isn't scheduled"));
+
+    app.modals.drafts.selected_index = 1;
+    app.apply(Action::StoredDraftsModalPreviewCancelSchedule);
+    let action = app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+    app.apply(action.unwrap());
+    assert!(matches!(
+        app.pending_draft_operation,
+        Some(crate::app::StoredDraftOperation::CancelSchedule { ref draft, send_at: at })
+            if draft.id == scheduled_id && at == send_at
+    ));
+    // Cancelling the send never touches the drafts list.
+    assert_eq!(app.modals.drafts.drafts.len(), 2);
+}
+
+#[test]
 fn stored_drafts_delete_preview_can_be_cancelled_without_a_request() {
     let mut app = App::new();
     app.modals.drafts.open_loading();

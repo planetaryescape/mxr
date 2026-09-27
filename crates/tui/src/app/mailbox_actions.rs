@@ -711,6 +711,11 @@ impl App {
                     self.status_message = Some("No draft selected".into());
                 }
             }
+            Action::StoredDraftsModalPreviewCancelSchedule => {
+                if !self.modals.drafts.preview_cancel_schedule() {
+                    self.status_message = Some("That draft isn't scheduled to send".into());
+                }
+            }
             Action::StoredDraftsModalPreviewPush => {
                 let Some(draft) = self.modals.drafts.selected() else {
                     self.status_message = Some("No draft selected".into());
@@ -752,6 +757,9 @@ impl App {
                     }
                     StoredDraftOperation::Push { provider, .. } => {
                         format!("Syncing draft with {provider}...")
+                    }
+                    StoredDraftOperation::CancelSchedule { .. } => {
+                        "Cancelling the scheduled send...".into()
                     }
                 });
                 self.pending_draft_operation = Some(operation);

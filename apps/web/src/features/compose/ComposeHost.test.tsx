@@ -79,6 +79,13 @@ vi.mock("@/features/accounts/api", () => ({
   fetchAccountAddresses: () => Promise.resolve({ addresses: [] }),
 }));
 vi.mock("./api", () => api);
+vi.mock("@/features/time/api", async (importOriginal) => {
+  const { fakeResolvedTime } = await import("@/features/time/testing");
+  return {
+    ...(await importOriginal<typeof import("@/features/time/api")>()),
+    resolveTime: (input: string) => Promise.resolve(fakeResolvedTime(input)),
+  };
+});
 vi.mock("sonner", () => ({ toast: toasts }));
 
 // The mocked editor exposes the editor's own send hotkey (CodeMirror's
@@ -538,7 +545,7 @@ describe("ComposeHost send later", () => {
     openNewMessage();
 
     fireEvent.click(await screen.findByRole("button", { name: "Send later" }));
-    fireEvent.click(await screen.findByRole("button", { name: /In 2 hours/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /In 2 hours.*\d\d:\d\d/ }));
 
     await waitFor(() =>
       expect(toasts.success).toHaveBeenCalledWith("Send scheduled", expect.anything()),
@@ -651,7 +658,7 @@ describe("ComposeHost invite replies", () => {
     // Scheduling goes through the compose session, which carries the RSVP,
     // so invite replies can be sent later like any other reply.
     fireEvent.click(await screen.findByRole("button", { name: "Send later" }));
-    fireEvent.click(await screen.findByRole("button", { name: /In 2 hours/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /In 2 hours.*\d\d:\d\d/ }));
     await waitFor(() => expect(api.scheduleComposeSession).toHaveBeenCalledTimes(1));
   });
 });

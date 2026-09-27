@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Clock } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { fetchSnoozePresets, type SnoozePreset } from "@/features/mailbox/api";
+import { NaturalTimeInput } from "@/features/time/NaturalTimeInput";
+import { useNaturalTime } from "@/features/time/useNaturalTime";
 import { formatLongDate, plural } from "@/lib/format";
 
 import { performMailAction } from "../mailMutations";
@@ -27,8 +28,10 @@ interface SnoozeDialogProps {
 }
 
 /**
- * Presets from the daemon's config (TUI parity), picked with 1-9, plus
- * natural-language times the daemon parses ("in 2h", "monday 9am").
+ * Presets from the daemon's config (TUI parity), picked with 1-9, plus a
+ * natural-language time the daemon resolves live ("fri 3", "in 2d"). Both
+ * store the exact instant the dialog showed, not the words, so the wake time
+ * can't drift between preview and save.
  */
 export function SnoozeDialog({
   open,
@@ -37,7 +40,7 @@ export function SnoozeDialog({
   onOpenChange,
   onSnoozed,
 }: SnoozeDialogProps) {
-  const [custom, setCustom] = useState("");
+  const time = useNaturalTime({ enabled: open });
   const customRef = useRef<HTMLInputElement>(null);
   const presets = useQuery({
     queryKey: ["snooze-presets"],
@@ -51,22 +54,29 @@ export function SnoozeDialog({
     const value = until.trim();
     if (!value || messageIds.length === 0) return;
     onOpenChange(false);
-    setCustom("");
+    time.reset();
     onSnoozed?.();
     void performMailAction("snooze", messageIds, { until: value });
+  }
+
+  async function snoozeTyped() {
+    const choice = await time.commit();
+    if (choice) snooze(choice.at);
   }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) setCustom("");
+        if (!next) time.reset();
         onOpenChange(next);
       }}
     >
       <DialogContent
         // Holding focus itself is a keyboard detail, not a place to ring.
-        className="max-w-md outline-none"
+        // minmax(0, 1fr): a long truncated subject must not widen the grid
+        // past the dialog and push the Snooze button out of view.
+        className="max-w-md grid-cols-[minmax(0,1fr)] outline-none"
         // The dialog itself takes focus, not the time field (the only
         // focusable thing while presets load), so Z then 1 picks a preset.
         onOpenAutoFocus={(event) => {
@@ -79,7 +89,7 @@ export function SnoozeDialog({
           if (/^[1-9]$/.test(event.key)) {
             event.preventDefault();
             const preset = choices[Number(event.key) - 1];
-            if (preset) snooze(presetValue(preset));
+            if (preset) snooze(presetUntil(preset));
             return;
           }
           // Any other typing is a time: send it to the field.
@@ -110,7 +120,7 @@ export function SnoozeDialog({
               <button
                 key={`${presetLabel(preset)}-${wake ?? index}`}
                 type="button"
-                onClick={() => snooze(presetValue(preset))}
+                onClick={() => snooze(presetUntil(preset))}
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-accent focus-visible:bg-accent"
               >
                 <Clock className="size-4 text-muted-foreground" />
@@ -132,21 +142,22 @@ export function SnoozeDialog({
           className="grid gap-1.5"
           onSubmit={(event) => {
             event.preventDefault();
-            snooze(custom);
+            void snoozeTyped();
           }}
         >
           <label htmlFor="snooze-custom" className="text-[13px] font-medium">
             Or type a time
           </label>
-          <div className="flex gap-2">
-            <Input
+          <div className="flex items-start gap-2">
+            <NaturalTimeInput
               id="snooze-custom"
-              ref={customRef}
-              value={custom}
-              onChange={(event) => setCustom(event.target.value)}
-              placeholder="in 2h, tomorrow 9am, monday 17:00"
+              state={time}
+              inputRef={customRef}
+              onCommit={(choice) => snooze(choice.at)}
+              placeholder="fri 3, tomorrow 9am, in 2d"
+              className="min-w-0 flex-1"
             />
-            <Button type="submit" disabled={!custom.trim()}>
+            <Button type="submit" size="sm" disabled={!time.canCommit}>
               Snooze
             </Button>
           </div>
@@ -165,6 +176,11 @@ function presetLabel(preset: SnoozePreset): string {
 
 function presetValue(preset: SnoozePreset): string {
   return preset.id ?? preset.name ?? preset.label ?? "";
+}
+
+/** The instant the row showed, so what the user saw is what is stored. */
+function presetUntil(preset: SnoozePreset): string {
+  return preset.wakeAt ?? preset.wake_at ?? presetValue(preset);
 }
 
 /** "Tonight" is meaningless after tonight has passed. */

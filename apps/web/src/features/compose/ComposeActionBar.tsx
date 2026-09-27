@@ -1,4 +1,5 @@
 import { Archive, BellRing, ChevronDown, Clock, Loader2, Paperclip, Send } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,10 +13,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { defaultChoice, describeChoice, resolveTime } from "@/features/time/api";
 import { cn } from "@/lib/utils";
 import type { ComposeEditor } from "@/state/uiPrefsStore";
 import { DraftQualityBadges } from "./DraftQualityBadges";
-import { parseSendLater } from "./sendLater";
 import type { DraftSuggestionResponse } from "./types";
 
 /** "Send and remind me if no reply in..." presets (TUI `n` parity). */
@@ -106,10 +107,7 @@ export function ComposeActionBar({
                 {REMIND_PRESETS.map((preset) => (
                   <DropdownMenuItem
                     key={preset.input}
-                    onSelect={() => {
-                      const parsed = parseSendLater(preset.input);
-                      if (parsed) onSendAndRemind(parsed.at, parsed.label);
-                    }}
+                    onSelect={() => void remindIn(preset.input, onSendAndRemind)}
                   >
                     {preset.label}
                   </DropdownMenuItem>
@@ -187,4 +185,18 @@ export function ComposeActionBar({
       </div>
     </footer>
   );
+}
+
+/** Offsets resolve exactly, so the menu label is already the preview. */
+async function remindIn(input: string, onSendAndRemind: (at: Date, label: string) => void) {
+  try {
+    const answer = await resolveTime(input);
+    const choice = defaultChoice(answer);
+    if (!choice) throw new Error(answer.error?.message ?? "No time came back.");
+    onSendAndRemind(new Date(choice.at), describeChoice(choice));
+  } catch (error) {
+    toast.error("Couldn't set the reminder time", {
+      description: error instanceof Error ? error.message : String(error),
+    });
+  }
 }

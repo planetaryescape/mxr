@@ -5,6 +5,20 @@ import { openApp, readE2EState } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
+// Snoozes made here must not leak into other specs that share the daemon.
+test.afterEach(async ({ request }) => {
+  const state = readE2EState();
+  const headers = { Authorization: `Bearer ${state.token}` };
+  const response = await request.get(`${state.bridgeUrl}/api/v1/mail/snoozed`, { headers });
+  const { snoozed } = (await response.json()) as { snoozed: { message_id: string }[] };
+  for (const entry of snoozed) {
+    await request.post(
+      `${state.bridgeUrl}/api/v1/mail/snoozed/${encodeURIComponent(entry.message_id)}/wake`,
+      { headers },
+    );
+  }
+});
+
 test('"fri 3" offers 15:00 and 03:00, and the snooze stores the time the preview showed', async ({
   page,
 }) => {
@@ -78,6 +92,28 @@ test('"fri 3" offers 15:00 and 03:00, and the snooze stores the time the preview
   await expect(mailList(page).getByText(shown, { exact: false }).first()).toBeVisible();
 });
 
+test.describe("a browser in another zone than the daemon", () => {
+  test.use({ timezoneId: "Pacific/Kiritimati" });
+
+  test('"fri 3pm" means 15:00 where the browser is', async ({ page }) => {
+    await openList(page, "/m/inbox");
+    await page.keyboard.press("Z");
+    const dialog = page.getByRole("dialog", { name: "Snooze until…" });
+    await dialog.getByLabel("Or type a time").fill("fri 3pm");
+    await expect(dialog.getByRole("status")).toContainText("15:00");
+
+    const snoozeRequest = page.waitForRequest(
+      (request) =>
+        request.url().includes("/api/v1/mail/actions/snooze") && request.method() === "POST",
+    );
+    await dialog.getByLabel("Or type a time").press("Enter");
+    const until = ((await snoozeRequest).postDataJSON() as { until: string }).until;
+    // Kiritimati is UTC+14, so 15:00 there is 01:00 UTC the same day.
+    expect(new Date(until).getUTCHours()).toBe(1);
+    await expect(page.getByText(/^Snoozed until Friday \d+ \w+, 15:00$/)).toBeVisible();
+  });
+});
+
 test("a phrase it can't read says which word, calmly", async ({ page }) => {
   await openList(page, "/m/inbox");
   await page.keyboard.press("Z");
@@ -106,6 +142,11 @@ test("reduced motion keeps the fade and drops the scale", async ({ page }) => {
   });
   // The dialog still runs its enter fade, but no longer grows.
   expect(motion).toEqual({ animation: "enter", scale: "1" });
+
+  // Spinners pulse instead of turning, and nothing running moves.
+  expect(await mountSpinner(page)).toBe("pending-pulse");
+  const moving = await runningTransformAnimations(page);
+  expect(moving).toEqual([]);
 });
 
 test("full motion scales dialogs in, and rows never animate the keyboard cursor", async ({
@@ -129,6 +170,10 @@ test("full motion scales dialogs in, and rows never animate the keyboard cursor"
   );
   expect(scale).not.toBe("1");
   expect(scale).not.toBe("");
+
+  // The detector used in the reduced-motion test does see a turning spinner.
+  expect(await mountSpinner(page)).toBe("spin");
+  expect(await runningTransformAnimations(page)).toContain("spin");
 });
 
 test("the Motion setting overrides the system preference", async ({ page }) => {
@@ -138,6 +183,46 @@ test("the Motion setting overrides the system preference", async ({ page }) => {
   await page.getByRole("option", { name: "Reduced" }).click();
   expect(await page.evaluate(() => document.documentElement.dataset.motion)).toBe("reduced");
 });
+
+/** Add a Tailwind spinner to the page; returns the animation it runs. */
+async function mountSpinner(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const node = document.createElement("span");
+    node.className = "animate-spin";
+    document.body.append(node);
+    return getComputedStyle(node).animationName;
+  });
+}
+
+/**
+ * Names of running animations that move their element: each is paused and
+ * sampled part-way through, and a non-identity transform means movement.
+ */
+async function runningTransformAnimations(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const identity = new Set(["none", "matrix(1, 0, 0, 1, 0, 0)"]);
+    return document
+      .getAnimations()
+      .filter((animation) => animation.playState === "running")
+      .flatMap((animation) => {
+        const effect = animation.effect;
+        const target = effect instanceof KeyframeEffect ? effect.target : null;
+        const duration = Number(effect?.getComputedTiming().duration ?? 0);
+        if (!(target instanceof Element) || !duration) return [];
+        const resume = animation.currentTime;
+        animation.pause();
+        const moves = [0.25, 0.5, 0.75].some((fraction) => {
+          animation.currentTime = duration * fraction;
+          return !identity.has(getComputedStyle(target).transform);
+        });
+        animation.currentTime = resume;
+        animation.play();
+        return moves
+          ? [animation instanceof CSSAnimation ? animation.animationName : "unnamed"]
+          : [];
+      });
+  });
+}
 
 async function cursorToSingleMessageRow(page: Page): Promise<string> {
   for (let step = 0; step < 15; step += 1) {

@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 
 import {
@@ -23,6 +23,33 @@ export function timeResolveQuery(input: string) {
     queryFn: ({ signal }: { signal: AbortSignal }) => resolveTime(input, signal),
     staleTime: 0,
   };
+}
+
+export interface ResolvedPreset {
+  /** The reading the preset stores, once the daemon has answered. */
+  choice: TimeChoice | null;
+  failed: boolean;
+}
+
+/**
+ * Resolve fixed preset phrases ("tomorrow 9am", "in 3 days") so each can show
+ * and store its exact time. Reopening within half a minute reuses answers.
+ */
+export function useResolvedPresets(
+  presets: readonly { input: string }[],
+  { enabled = true }: { enabled?: boolean } = {},
+): ResolvedPreset[] {
+  const answers = useQueries({
+    queries: presets.map((preset) => ({
+      ...timeResolveQuery(preset.input),
+      enabled,
+      staleTime: 30_000,
+    })),
+  });
+  return answers.map((answer) => ({
+    choice: defaultChoice(answer.data),
+    failed: answer.isError,
+  }));
 }
 
 export interface NaturalTimeState {

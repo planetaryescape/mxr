@@ -10,7 +10,13 @@ import { SnoozeDialog } from "./SnoozeDialog";
 const api = vi.hoisted(() => ({
   fetchSnoozePresets: vi.fn<() => Promise<unknown>>(),
   performMailAction:
-    vi.fn<(action: string, ids: string[], options?: { until?: string }) => Promise<unknown>>(),
+    vi.fn<
+      (
+        action: string,
+        ids: string[],
+        options?: { until?: string; payload?: { untilLabel?: string } },
+      ) => Promise<unknown>
+    >(),
 }));
 
 vi.mock("@/features/mailbox/api", async (importOriginal) => ({
@@ -63,9 +69,15 @@ describe("SnoozeDialog", () => {
     fireEvent.click(await screen.findByText("Tomorrow morning"));
 
     await waitFor(() =>
-      expect(api.performMailAction).toHaveBeenCalledWith("snooze", ["msg-1"], {
-        until: "2026-05-12T09:00:00Z",
-      }),
+      expect(api.performMailAction).toHaveBeenCalledWith(
+        "snooze",
+        ["msg-1"],
+        expect.objectContaining({
+          until: "2026-05-12T09:00:00Z",
+          // The toast names the time the row showed.
+          payload: { untilLabel: expect.stringMatching(/\d/) },
+        }),
+      ),
     );
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
@@ -76,9 +88,11 @@ describe("SnoozeDialog", () => {
 
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "1" });
 
-    expect(api.performMailAction).toHaveBeenCalledWith("snooze", ["msg-4"], {
-      until: "2026-05-12T09:00:00Z",
-    });
+    expect(api.performMailAction).toHaveBeenCalledWith(
+      "snooze",
+      ["msg-4"],
+      expect.objectContaining({ until: "2026-05-12T09:00:00Z" }),
+    );
   });
 
   test("a typed time stores the instant the preview showed", async () => {
@@ -112,8 +126,9 @@ describe("SnoozeDialog", () => {
     fireEvent.keyDown(field, { key: "Enter" });
 
     await waitFor(() => expect(api.performMailAction).toHaveBeenCalledTimes(1));
-    const until = api.performMailAction.mock.calls[0]?.[2]?.until ?? "";
-    expect(new Date(until).getHours()).toBe(3);
+    const options = api.performMailAction.mock.calls[0]?.[2];
+    expect(new Date(options?.until ?? "").getHours()).toBe(3);
+    expect(options?.payload?.untilLabel).toMatch(/, 03:00$/);
   });
 
   test("a phrase it can't read says so and can't be submitted", async () => {
@@ -123,7 +138,9 @@ describe("SnoozeDialog", () => {
       target: { value: "frday" },
     });
 
-    expect(await screen.findByText('Didn\'t catch "frday". Try "fri 3pm" or "in 2d".')).toBeVisible();
+    expect(
+      await screen.findByText('Didn\'t catch "frday". Try "fri 3pm" or "in 2d".'),
+    ).toBeVisible();
     expect(screen.getByRole("button", { name: /^snooze$/i })).toBeDisabled();
   });
 

@@ -18,8 +18,17 @@ export type ResolvedTime = Extract<components["schemas"]["ResponseData"], { kind
  * use, in the daemon's local zone with the user's snooze hours.
  */
 export function resolveTime(input: string, signal?: AbortSignal): Promise<ResolvedTime> {
-  const query = new URLSearchParams({ input });
+  const query = new URLSearchParams({ input, time_zone: browserTimeZone() });
   return apiFetch<ResolvedTime>(`/api/v1/mail/time/resolve?${query.toString()}`, { signal });
+}
+
+/**
+ * The browser's IANA zone. Sent with every resolution because the browser
+ * may not be on the daemon's machine (`mxr web --remote-host`), and "9am"
+ * means 9am where the user is.
+ */
+export function browserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 export function timeResolveQueryKey(input: string) {

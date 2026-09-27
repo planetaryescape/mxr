@@ -131,6 +131,16 @@
   }
 
   /*
+   * Keyframe animations that move (spinners, bounces, pings) become a
+   * gentle opacity pulse: still a sign of work, without motion.
+   */
+  :root[data-motion="reduced"] .animate-spin,
+  :root[data-motion="reduced"] .animate-bounce,
+  :root[data-motion="reduced"] .animate-ping {
+    animation: pending-pulse 1500ms var(--motion-ease) infinite !important;
+  }
+
+  /*
    * Press feedback for pointer users only. `:hover:active` skips keyboard
    * activation (Space/Enter on a focused button), so repeated keyboard use
    * never animates, and touch and reduced motion get none.

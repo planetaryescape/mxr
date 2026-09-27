@@ -245,8 +245,9 @@ export function useComposeSend({
     setSendLaterOpen(false);
     markSessionFinished();
     forgetActiveDraft(intent.key);
-    toast.success("Send scheduled", {
-      description: label ? `Sends ${label}` : undefined,
+    // The exact time, so the user sees what was stored whichever way it
+    // was picked.
+    toast.success(label ? `Send scheduled for ${label}` : "Send scheduled", {
       duration: 10_000,
       action: {
         label: "Cancel",
@@ -447,8 +448,8 @@ async function setReminderAfterSend(
     toast.error("Sent, but the reminder failed", { description: errorMessage(error) });
     return;
   }
-  toast.success("Reminder set", {
-    description: `If no reply by ${remind.label}`,
+  toast.success(`Reminder set for ${remind.label}`, {
+    description: "If nobody replies by then.",
     duration: 10_000,
     action: {
       label: "Cancel",

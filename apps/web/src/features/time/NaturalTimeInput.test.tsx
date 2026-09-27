@@ -97,7 +97,9 @@ describe("NaturalTimeInput", () => {
     await act(async () => pending.get("in 2 hours")?.(fakeResolvedTime("in 2 hours")));
     await act(async () => pending.get("in 3 days")?.(fakeResolvedTime("in 3 days")));
 
-    expect(screen.getByRole("status")).toHaveTextContent(/in 2 hours$/);
+    // react-query notifies on its own tick, so wait for the paint.
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/in 2 hours$/));
+    expect(screen.getByRole("status")).not.toHaveTextContent(/days/);
     fireEvent.keyDown(field, { key: "Enter" });
     await waitFor(() => expect(onCommit).toHaveBeenCalledTimes(1));
     const at = new Date(onCommit.mock.calls[0]?.[0].at ?? "").getTime();
@@ -127,5 +129,32 @@ describe("NaturalTimeInput", () => {
     fireEvent.change(field, { target: { value: "tomorrow" } });
 
     expect(await screen.findByText("Couldn't check that time: connection refused")).toBeVisible();
+  });
+});
+
+describe("NaturalTimeInput fast Enter", () => {
+  test("Enter before the debounce resolves the new text, shows it, and commits that", async () => {
+    resolver.resolveTime.mockImplementation((input) => Promise.resolve(fakeResolvedTime(input)));
+    const onCommit = vi.fn<(choice: TimeChoice) => void>();
+    const field = renderField(onCommit);
+
+    fireEvent.change(field, { target: { value: "tomorrow 9am" } });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/09:00/));
+
+    // Change the text and press Enter at once, inside the debounce window.
+    fireEvent.change(field, { target: { value: "fri 3" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    await waitFor(() => expect(onCommit).toHaveBeenCalledTimes(1));
+    const committed = onCommit.mock.calls[0]?.[0];
+    expect(new Date(committed?.at ?? "").getDay()).toBe(5);
+    expect(committed?.time_label).toBe("15:00");
+    // The preview now shows exactly what was committed.
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        `${committed?.date_label}, ${committed?.time_label}`,
+      ),
+    );
+    expect(resolver.resolveTime).toHaveBeenCalledWith("fri 3", expect.anything());
   });
 });

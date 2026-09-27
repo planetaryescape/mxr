@@ -1,5 +1,4 @@
 import { Archive, BellRing, ChevronDown, Clock, Loader2, Paperclip, Send } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { defaultChoice, describeChoice, resolveTime } from "@/features/time/api";
+import { describeChoice } from "@/features/time/api";
+import { useResolvedPresets } from "@/features/time/useNaturalTime";
 import { cn } from "@/lib/utils";
 import type { ComposeEditor } from "@/state/uiPrefsStore";
 import { DraftQualityBadges } from "./DraftQualityBadges";
@@ -104,14 +104,7 @@ export function ComposeActionBar({
                 Send and remind me if no reply in
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                {REMIND_PRESETS.map((preset) => (
-                  <DropdownMenuItem
-                    key={preset.input}
-                    onSelect={() => void remindIn(preset.input, onSendAndRemind)}
-                  >
-                    {preset.label}
-                  </DropdownMenuItem>
-                ))}
+                <RemindPresetItems onSendAndRemind={onSendAndRemind} />
                 <DropdownMenuItem onSelect={() => onSendAndRemindCustom()}>
                   Custom...
                 </DropdownMenuItem>
@@ -187,16 +180,32 @@ export function ComposeActionBar({
   );
 }
 
-/** Offsets resolve exactly, so the menu label is already the preview. */
-async function remindIn(input: string, onSendAndRemind: (at: Date, label: string) => void) {
-  try {
-    const answer = await resolveTime(input);
-    const choice = defaultChoice(answer);
-    if (!choice) throw new Error(answer.error?.message ?? "No time came back.");
-    onSendAndRemind(new Date(choice.at), describeChoice(choice));
-  } catch (error) {
-    toast.error("Couldn't set the reminder time", {
-      description: error instanceof Error ? error.message : String(error),
-    });
-  }
+/**
+ * The remind presets with the exact time each resolves to. Mounted only while
+ * the submenu is open, so the daemon is asked only then; choosing one sends
+ * the instant shown.
+ */
+function RemindPresetItems({
+  onSendAndRemind,
+}: {
+  onSendAndRemind: (at: Date, label: string) => void;
+}) {
+  const times = useResolvedPresets(REMIND_PRESETS);
+  return REMIND_PRESETS.map((preset, index) => {
+    const { choice = null, failed = false } = times[index] ?? {};
+    return (
+      <DropdownMenuItem
+        key={preset.input}
+        disabled={!choice}
+        onSelect={() => {
+          if (choice) onSendAndRemind(new Date(choice.at), describeChoice(choice));
+        }}
+      >
+        {preset.label}
+        <DropdownMenuShortcut className="font-mono tracking-normal tabular-nums">
+          {choice ? describeChoice(choice) : failed ? "Unavailable" : "…"}
+        </DropdownMenuShortcut>
+      </DropdownMenuItem>
+    );
+  });
 }

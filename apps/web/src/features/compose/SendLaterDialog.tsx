@@ -7,7 +7,6 @@
  * for "send and remind me".
  */
 
-import { useQueries } from "@tanstack/react-query";
 import { Clock, Loader2 } from "lucide-react";
 import { useEffect } from "react";
 
@@ -21,9 +20,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { defaultChoice, describeChoice, type TimeChoice } from "@/features/time/api";
+import { describeChoice, type TimeChoice } from "@/features/time/api";
 import { NaturalTimeInput } from "@/features/time/NaturalTimeInput";
-import { timeResolveQuery, useNaturalTime } from "@/features/time/useNaturalTime";
+import { useNaturalTime, useResolvedPresets } from "@/features/time/useNaturalTime";
 
 const PRESETS = [
   { label: "Tomorrow 9am", input: "tomorrow 9am" },
@@ -59,14 +58,7 @@ export function SendLaterDialog({
     if (!open) reset();
   }, [open, reset]);
 
-  const presetAnswers = useQueries({
-    queries: presets.map((preset) => ({
-      ...timeResolveQuery(preset.input),
-      enabled: open,
-      // Reopening the dialog within half a minute reuses these.
-      staleTime: 30_000,
-    })),
-  });
+  const presetTimes = useResolvedPresets(presets, { enabled: open });
 
   function confirm(choice: TimeChoice | null | undefined) {
     if (scheduling || !choice) return;
@@ -87,7 +79,7 @@ export function SendLaterDialog({
 
         <div className="grid gap-2">
           {presets.map((preset, index) => {
-            const choice = defaultChoice(presetAnswers[index]?.data);
+            const choice = presetTimes[index]?.choice;
             return (
               <Button
                 key={preset.input}

@@ -548,7 +548,10 @@ describe("ComposeHost send later", () => {
     fireEvent.click(await screen.findByRole("button", { name: /In 2 hours.*\d\d:\d\d/ }));
 
     await waitFor(() =>
-      expect(toasts.success).toHaveBeenCalledWith("Send scheduled", expect.anything()),
+      expect(toasts.success).toHaveBeenCalledWith(
+        expect.stringMatching(/^Send scheduled for \w+ \d+ \w+, \d\d:\d\d$/),
+        expect.anything(),
+      ),
     );
     // The bridge stores and schedules the compose file itself, so reply
     // headers and the From alias carry over.
@@ -559,8 +562,8 @@ describe("ComposeHost send later", () => {
     // The composer closes like a send.
     await waitFor(() => expect(screen.queryByLabelText("Subject")).not.toBeInTheDocument());
 
-    const options = toasts.success.mock.calls.find(
-      ([title]) => title === "Send scheduled",
+    const options = toasts.success.mock.calls.find(([title]) =>
+      title.startsWith("Send scheduled for "),
     )?.[1] as {
       action: { label: string; onClick: () => void };
     };
@@ -590,7 +593,10 @@ describe("ComposeHost send and remind", () => {
       name: /Send and remind me if no reply in/,
     });
     fireEvent.keyDown(submenu, { key: "ArrowRight" });
-    fireEvent.click(await screen.findByRole("menuitem", { name: label }));
+    // Each preset shows the exact time it resolves to before it is chosen.
+    const item = await screen.findByRole("menuitem", { name: new RegExp(`^${label}`) });
+    await waitFor(() => expect(item).toHaveTextContent(/\d\d:\d\d$/));
+    fireEvent.click(item);
   }
 
   test("sends, then sets a cancellable reminder for the sent message", async () => {
@@ -614,9 +620,14 @@ describe("ComposeHost send and remind", () => {
     expect(days).toBeLessThan(3.01);
 
     await waitFor(() =>
-      expect(toasts.success).toHaveBeenCalledWith("Reminder set", expect.anything()),
+      expect(toasts.success).toHaveBeenCalledWith(
+        expect.stringMatching(/^Reminder set for \w+ \d+ \w+, \d\d:\d\d$/),
+        expect.anything(),
+      ),
     );
-    const options = toasts.success.mock.calls.find(([title]) => title === "Reminder set")?.[1] as {
+    const options = toasts.success.mock.calls.find(([title]) =>
+      title.startsWith("Reminder set for "),
+    )?.[1] as {
       action: { label: string; onClick: () => void };
     };
     act(() => options.action.onClick());

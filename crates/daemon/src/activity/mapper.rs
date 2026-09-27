@@ -644,6 +644,8 @@ pub fn map_request(
         | Request::FindExpert { .. }
         | Request::SuggestCollaborators { .. }
         | Request::GetThreadBriefing { .. }
+        | Request::GetThreadContext { .. }
+        | Request::GetThreadGist { .. }
         | Request::GetRecipientBriefing { .. }
         | Request::SendTimeRecommendation { .. }
         | Request::ArchiveAsk { .. }

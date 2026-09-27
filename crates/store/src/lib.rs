@@ -54,6 +54,7 @@ mod sync_upsert;
 #[cfg(test)]
 mod test_fixtures;
 mod thread;
+mod thread_context;
 mod thread_summary;
 mod triage;
 mod undo;
@@ -98,6 +99,7 @@ pub use voice_samples::{MyReplySample, MySentSample};
 /// this leaves room for the query's other binds and keeps a page-sized id
 /// list from silently outgrowing it.
 pub(crate) const SQLITE_BIND_CHUNK: usize = 500;
+pub use thread_context::CounterpartyExchange;
 pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
 pub use triage::TriageCacheRecord;
 pub use undo::{UndoEntry, UndoEntrySnapshot, UndoableMutationKind};

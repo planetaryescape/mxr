@@ -31,7 +31,7 @@ Commands:
   expert              Find people who have answered similar questions before. Either give the message id of the question OR a free-text query; the daemon ranks answerers (not askers)
   suggest-recipients  Suggest "maybe include" Cc recipients for a draft. Excludes addresses already on the draft and never reveals Bcc'd addresses from prior threads
   whois               Explain an entity (email or term) using local evidence
-  briefing            Render a thread or recipient briefing
+  briefing            Render a thread or recipient briefing, or a conversation's context
   cadence             Manage the cadence watchlist
   send-time           Show the recipient's typical reply-time bucket
   time                Preview how a time phrase resolves before using it

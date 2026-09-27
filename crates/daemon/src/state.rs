@@ -360,14 +360,32 @@ pub(crate) fn relationship_data_allowed(
     if config.allow_cloud_relationship_data {
         return true;
     }
-    let effective = llm_override_entries(&config.overrides)
+    let effective = effective_llm_config_for(config, feature);
+    !effective.enabled || is_local_llm_url(&effective.base_url)
+}
+
+/// Whether the model serving `feature` runs on this machine, for the
+/// provenance line on model-written text. The demo instance answers from
+/// canned text and never leaves the machine.
+pub(crate) fn llm_feature_is_local(
+    config: &mxr_config::LlmConfig,
+    feature: mxr_llm::LlmFeature,
+) -> bool {
+    mxr_config::is_demo_instance()
+        || is_local_llm_url(&effective_llm_config_for(config, feature).base_url)
+}
+
+fn effective_llm_config_for(
+    config: &mxr_config::LlmConfig,
+    feature: mxr_llm::LlmFeature,
+) -> mxr_config::EffectiveLlmConfig {
+    llm_override_entries(&config.overrides)
         .into_iter()
         .find(|(entry, _)| *entry == feature)
         .map_or_else(
             || base_llm_config(config),
             |(_, override_config)| config.effective_override(override_config),
-        );
-    !effective.enabled || is_local_llm_url(&effective.base_url)
+        )
 }
 
 fn is_local_llm_url(base_url: &str) -> bool {

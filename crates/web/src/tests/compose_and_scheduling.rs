@@ -466,3 +466,72 @@ async fn scheduling_a_restored_session_updates_the_stored_draft_in_place() {
         |request| matches!(request, Request::ScheduleSend { draft_id, .. } if *draft_id == stored_id)
     ));
 }
+
+#[tokio::test]
+async fn thread_reader_resolves_labels_from_the_threads_own_account() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let default_account = AccountId::new();
+    let thread_account = AccountId::new();
+    let mut envelope = sample_envelope();
+    envelope.account_id = thread_account.clone();
+    envelope.label_provider_ids = vec!["follow-up".into()];
+    let thread = sample_thread(&envelope);
+    let thread_id = thread.id.clone();
+    let body = sample_body(&envelope);
+    let mut thread_labels = sample_labels(&thread_account);
+    thread_labels[2].name = "Other account follow up".into();
+    // The default account has no label with the thread's provider id, so a
+    // lookup against it leaves the message unlabelled.
+    let default_labels = vec![sample_labels(&default_account)[0].clone()];
+    let label_scopes = Arc::new(Mutex::new(Vec::new()));
+    let scopes_seen = label_scopes.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::GetThread { .. } => ok(ResponseData::Thread {
+                thread: thread.clone(),
+                messages: vec![envelope.clone()],
+                summary: None,
+            }),
+            Request::ListLabels { account_id } => {
+                scopes_seen.lock().unwrap().push(account_id.clone());
+                let labels = if account_id.as_ref() == Some(&thread_account) {
+                    thread_labels.clone()
+                } else {
+                    default_labels.clone()
+                };
+                ok(ResponseData::Labels { labels })
+            }
+            Request::ListBodies { .. } => ok(ResponseData::Bodies {
+                bodies: vec![body.clone()],
+                failures: Vec::new(),
+            }),
+            _ => None,
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket_path).await;
+
+    let json: serde_json::Value = reqwest::Client::new()
+        .get(format!("http://{addr}/api/v1/mail/threads/{thread_id}"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        json["messages"][0]["labels"][0]["name"], "Other account follow up",
+        "{json}"
+    );
+    let thread_account_id = json["thread"]["account_id"].as_str().unwrap().to_string();
+    let scopes = label_scopes.lock().unwrap();
+    assert_eq!(scopes.len(), 1);
+    assert_eq!(
+        scopes[0].as_ref().map(ToString::to_string),
+        Some(thread_account_id)
+    );
+}

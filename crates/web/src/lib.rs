@@ -304,9 +304,13 @@ async fn thread(
             messages,
             summary,
         } => {
+            // Label ids are per account; the default account's labels would
+            // leave a thread from any other account unlabelled.
             let labels = match ipc_request(
                 &state.config.socket_path,
-                Request::ListLabels { account_id: None },
+                Request::ListLabels {
+                    account_id: Some(thread.account_id.clone()),
+                },
             )
             .await?
             {

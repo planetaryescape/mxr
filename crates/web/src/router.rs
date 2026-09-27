@@ -209,9 +209,7 @@ pub fn app(config: WebServerConfig) -> Router {
         .with_state(state.clone());
 
     let docs_router = Router::new()
-        .merge(
-            SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::ApiDoc::openapi()),
-        )
+        .merge(SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::cached_spec()))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::require_bridge_auth,

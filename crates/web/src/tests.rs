@@ -5253,3 +5253,17 @@ async fn label_and_saved_search_create_return_what_the_daemon_created() {
     let saved: serde_json::Value = saved.json().await.unwrap();
     assert_eq!(saved["name"], "Today");
 }
+
+// The daemon builds the bridge router on a Tokio worker (2 MiB stack). The
+// spec for the large protocol enums needs more than that in debug builds, so
+// it must be built off the worker's stack.
+#[test]
+fn openapi_spec_builds_from_a_worker_sized_stack() {
+    let spec = std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(crate::openapi::cached_spec)
+        .unwrap()
+        .join()
+        .expect("building the spec must not overflow a 2 MiB stack");
+    assert!(spec.components.is_some());
+}

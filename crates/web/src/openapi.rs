@@ -346,3 +346,23 @@ impl Modify for BearerSecurity {
         );
     }
 }
+
+/// The bridge's OpenAPI document, built once. utoipa's generated schema
+/// code for the large `Request`/`ResponseData` enums needs a stack frame of
+/// several megabytes in debug builds, more than a Tokio worker's 2 MiB: the
+/// daemon aborted with a stack overflow on startup when the enum grew. It is
+/// built on a thread with room to spare and shared from then on.
+pub fn cached_spec() -> utoipa::openapi::OpenApi {
+    use std::sync::OnceLock;
+    static SPEC: OnceLock<utoipa::openapi::OpenApi> = OnceLock::new();
+    SPEC.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("openapi-spec".into())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(ApiDoc::openapi)
+            .expect("spawn the OpenAPI spec builder thread")
+            .join()
+            .expect("build the OpenAPI spec")
+    })
+    .clone()
+}

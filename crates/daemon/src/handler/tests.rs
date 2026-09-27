@@ -680,3 +680,22 @@ mod html_drafts;
 mod mutations_and_delivery;
 mod platform_and_export;
 mod routing_and_search;
+
+/// The dispatch future holds every request arm's state inline. Past about a
+/// megabyte it overflows a Tokio worker's 2 MiB stack in debug builds (the
+/// daemon aborted on its first request on Linux CI); large handlers box
+/// their futures to keep it small.
+#[tokio::test]
+async fn dispatch_future_stays_well_inside_a_worker_stack() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let msg = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::GetStatus),
+    };
+    let future = handle_request(&state, &msg);
+    let size = std::mem::size_of_val(&future);
+    eprintln!("handle_request future: {size} bytes");
+    assert!(size < 256 * 1024, "handle_request future is {size} bytes");
+    drop(future);
+}

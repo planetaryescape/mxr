@@ -5,15 +5,15 @@
  * comes up at once; undo (or a failed send) puts it back in front.
  */
 
-import { useQueries, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useReducer, useRef } from "react";
 
 import { fetchAccounts } from "@/features/accounts/api";
+import { DESK_FULL_LANE_LIMIT, deskKey, fetchDesk, type DeskRow } from "@/features/desk/api";
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { onSendEvent } from "@/features/compose/session/sendEvents";
 import { invalidateMailQueries } from "@/features/mail-actions/mailMutations";
 import { fetchThread } from "@/features/mailbox/api";
-import { fetchOwedReplies, type OwedReplyRow } from "@/features/owed/api";
 import { fetchReplyQueue } from "@/features/reply-queue/api";
 import { threadContextQuery } from "@/features/thread/context/api";
 import { useUiPrefs } from "@/state/uiPrefsStore";
@@ -30,13 +30,6 @@ export function focusReplyIntent(item: FocusItem) {
   return replyIntent(item.messageId, "single");
 }
 
-/**
- * One sitting's worth of owed replies per account. The daemon has no
- * paging, so a full page means there may be more: the finish says so and
- * offers to continue rather than claiming that's everyone.
- */
-const OWED_PER_ACCOUNT = 500;
-
 /** Account ids a scope covers: that account, or every enabled one. */
 export function useScopeAccountIds(scope: string | null) {
   const accounts = useQuery({
@@ -48,60 +41,37 @@ export function useScopeAccountIds(scope: string | null) {
   const ids = scope
     ? [scope]
     : (accounts.data?.accounts ?? []).filter((a) => a.enabled).map((a) => a.account_id);
-  return { ids, accounts: scope ? null : accounts };
-}
-
-type OwedResult = UseQueryResult<{ rows: OwedReplyRow[] }>;
-
-/**
- * Module scope, so TanStack keeps the combined result (and its `rows`
- * array) unchanged until a query's data does. Merged most overdue first.
- */
-function combineOwed(results: OwedResult[]) {
-  const pages = results.map((result) => result.data?.rows ?? []);
-  return {
-    rows:
-      pages.length === 1
-        ? (pages[0] ?? [])
-        : pages.flat().toSorted((a, b) => b.overdue_score - a.overdue_score),
-    pending: results.some((result) => result.isPending),
-    error: results.find((result) => result.error)?.error ?? null,
-    capped: pages.some((rows) => rows.length >= OWED_PER_ACCOUNT),
-    refetch: () => Promise.all(results.map((result) => result.refetch())),
-  };
+  return { ids };
 }
 
 /**
- * Owed replies for the account scope: that account, or every enabled one
- * under "All accounts" (the endpoint alone would answer for the default
- * account only).
+ * Everyone you owe, as the desk's You owe lane decides it: people only,
+ * in the inbox, people you have written to, with the screener, snoozes and
+ * the account scope applied by the daemon. The whole lane, the way the
+ * desk's "Show all" asks for it.
  */
-function useOwedAcrossScope(scope: string | null) {
-  const { ids, accounts } = useScopeAccountIds(scope);
-  const owed = useQueries({
-    queries: ids.map((accountId) => ({
-      queryKey: ["owed", accountId, { limit: OWED_PER_ACCOUNT }],
-      queryFn: () => fetchOwedReplies(accountId, OWED_PER_ACCOUNT),
-      // Owed replies can be slow on a big mailbox; a window refocus
-      // shouldn't ask again mid-sitting. Sends refresh them anyway.
-      staleTime: 60_000,
-    })),
-    combine: combineOwed,
+function useOwedLane(scope: string | null) {
+  const desk = useQuery({
+    queryKey: deskKey(scope, DESK_FULL_LANE_LIMIT),
+    queryFn: () => fetchDesk(scope, DESK_FULL_LANE_LIMIT),
+    staleTime: 15_000,
   });
+  const lane = desk.data?.owed;
   return {
-    ...owed,
-    pending: Boolean(accounts?.isPending) || owed.pending,
-    error: accounts?.error ?? owed.error,
-    refetch: () => {
-      void accounts?.refetch();
-      return owed.refetch();
-    },
+    rows: lane?.rows ?? NO_ROWS,
+    /** Owed conversations beyond what the lane returned. */
+    more: lane ? Math.max(0, lane.total - lane.rows.length) : 0,
+    pending: desk.isPending,
+    error: desk.error,
+    refetch: () => desk.refetch(),
   };
 }
+
+const NO_ROWS: readonly DeskRow[] = [];
 
 export function useFocusSession(lane?: "owed") {
   const account = useUiPrefs((s) => s.accountScope);
-  const owed = useOwedAcrossScope(account);
+  const owed = useOwedLane(account);
   // The desk's You owe lane is owed replies only.
   const withReplyLater = lane !== "owed";
   const replyLater = useQuery({
@@ -206,12 +176,12 @@ export function useFocusSession(lane?: "owed") {
     loading: !session.loaded || (session.queue.length === 0 && gathering),
     gathering,
     error: owed.error ?? (withReplyLater ? replyLater.error : null) ?? null,
-    /** A full page of owed replies came back: there may be more. */
-    capped: owed.capped,
+    /** Owed conversations the lane didn't return (it is capped). */
+    more: owed.more,
     /** Conversations skipped when nothing else was left. */
     deferred: session.deferred.length,
-    /** Ask again. Owed has no paging: after a capped batch, the ones you
-     * replied to have dropped out, so asking again brings the next ones. */
+    /** Ask again; after a capped lane, the ones you replied to have
+     * dropped out, so asking again brings the rest. */
     refetch: () => {
       void owed.refetch();
       if (withReplyLater) void replyLater.refetch();

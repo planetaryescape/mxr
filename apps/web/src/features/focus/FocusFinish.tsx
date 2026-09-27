@@ -26,7 +26,7 @@ export function FocusFinish({
   replied,
   empty,
   deferred,
-  capped,
+  more,
   onRevisit,
   onContinue,
   onLeave,
@@ -37,21 +37,22 @@ export function FocusFinish({
   empty: boolean;
   /** Skipped when nothing else was left. */
   deferred: number;
-  /** The owed list was cut at one sitting's worth: there may be more. */
-  capped: boolean;
+  /** Owed conversations the desk lane didn't return. */
+  more: number;
   onRevisit: () => void;
   onContinue: () => void;
   onLeave: () => void;
 }) {
   const next = useNextPromise();
   // Only claim everyone when nobody is left anywhere.
-  const title = capped
-    ? "That's this batch."
-    : deferred > 0
-      ? `${plural(deferred, "conversation")} skipped.`
-      : empty
-        ? "Nobody is waiting on a reply from you."
-        : "That's everyone.";
+  const title =
+    more > 0
+      ? "That's this batch."
+      : deferred > 0
+        ? `${plural(deferred, "conversation")} skipped.`
+        : empty
+          ? "Nobody is waiting on a reply from you."
+          : "That's everyone.";
   return (
     <div
       data-testid="focus-finish"
@@ -61,7 +62,7 @@ export function FocusFinish({
       <h2 className="text-balance text-2xl font-semibold tracking-tight">{title}</h2>
       <p className="mt-2 text-pretty text-[14px] leading-6 text-muted-foreground tabular-nums">
         {replied > 0 ? `${plural(replied, "conversation")} handled. ` : null}
-        {capped ? "More people are waiting on a reply. " : null}
+        {more > 0 ? `${plural(more, "more conversation")} waiting on a reply. ` : null}
         {next ? (
           <>
             Next thing due:{" "}
@@ -76,13 +77,13 @@ export function FocusFinish({
         )}
       </p>
       <div className="mt-6 flex flex-wrap gap-2">
-        {capped ? (
+        {more > 0 ? (
           <Button size="sm" onClick={onContinue}>
-            Load the next ones
+            Continue with {more} more
           </Button>
         ) : null}
         {deferred > 0 ? (
-          <Button size="sm" variant={capped ? "outline" : "default"} onClick={onRevisit}>
+          <Button size="sm" variant={more > 0 ? "outline" : "default"} onClick={onRevisit}>
             Come back to {deferred === 1 ? "it" : "them"}
           </Button>
         ) : null}

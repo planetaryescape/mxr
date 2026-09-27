@@ -1,8 +1,9 @@
 /*
  * The focus & reply queue: everyone you owe a reply, one conversation per
- * entry. Owed replies come first in the daemon's order (most overdue by
- * your usual cadence with that person), then the reply-later queue in its
- * order, skipping conversations already listed.
+ * entry. The desk's You owe lane comes first in its order (people only, in
+ * the inbox, people you have written to, furthest past your usual pace
+ * first), then the reply-later queue in its order, skipping conversations
+ * already listed.
  *
  * The session is a pure reducer so its rules are tested without React:
  * the order is fixed when you start, so a refetch never reshuffles what's
@@ -11,8 +12,8 @@
  * drops it (you may be halfway through the reply).
  */
 
-import type { OwedReplyRow } from "@/features/owed/api";
-import { waitingLine } from "@/features/owed/waitingLine";
+import type { DeskRow } from "@/features/desk/api";
+import { rowAge } from "@/features/desk/deskCopy";
 import type { ReplyQueueMessage } from "@/features/reply-queue/api";
 
 export interface FocusItem {
@@ -27,7 +28,7 @@ export interface FocusItem {
 }
 
 export function buildFocusQueue(
-  owed: readonly OwedReplyRow[],
+  owed: readonly DeskRow[],
   replyLater: readonly ReplyQueueMessage[],
   accountScope: string | null,
 ): FocusItem[] {
@@ -38,10 +39,10 @@ export function buildFocusQueue(
     seen.add(row.thread_id);
     items.push({
       threadId: row.thread_id,
-      messageId: row.latest_inbound_msg_id,
-      sender: row.from_name?.trim() || row.from_email,
+      messageId: row.message_id,
+      sender: row.counterparty_name?.trim() || row.counterparty_email,
       subject: row.subject,
-      reason: waitingLine(row),
+      reason: owedReason(row),
       source: "owed",
     });
   }
@@ -173,4 +174,11 @@ function sameItem(a: FocusItem | undefined, b: FocusItem): boolean {
     a.reason === b.reason &&
     a.source === b.source
   );
+}
+
+/** "Replied to your message · 2d · usually 4h", as the desk row reads. */
+function owedReason(row: DeskRow): string {
+  const age = rowAge(row);
+  const parts = [row.reason.charAt(0).toUpperCase() + row.reason.slice(1), age.label, age.usual];
+  return parts.filter(Boolean).join(" · ");
 }

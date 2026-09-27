@@ -5,37 +5,59 @@ import { openApp, readE2EState } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
+// The desk refetches after sends; a stubbed refetch still in flight when a
+// test ends must not fail it.
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 const auth = () => ({ Authorization: `Bearer ${readE2EState().token}` });
 
 interface OwedRow {
   thread_id: string;
   subject: string;
-  from_name?: string | null;
-  from_email: string;
+}
+
+interface DeskAnswer {
+  owed: { rows: OwedRow[]; total: number };
 }
 
 /**
- * The demo mailbox owes dozens of replies. Focus mode's journey is about
- * moving through a queue, so each test works on the daemon's first three
- * owed conversations (real rows, cut short) and an empty reply-later queue.
+ * Serve the desk with its You owe lane cut to `rows` (and `total`), every
+ * other lane as the daemon has it. Focus mode's queue is that lane.
+ */
+async function deskOwes(page: Page, rows: () => OwedRow[], total?: () => number) {
+  await page.route("**/api/v1/mail/desk?**", async (route: Route) => {
+    const upstream = await route.fetch();
+    const json = (await upstream.json()) as DeskAnswer;
+    const ids = new Set(rows().map((row) => row.thread_id));
+    const kept = json.owed.rows.filter((row) => ids.has(row.thread_id));
+    await route.fulfill({
+      response: upstream,
+      json: {
+        ...json,
+        owed: {
+          rows: kept,
+          total: total?.() ?? kept.length,
+        },
+      },
+    });
+  });
+}
+
+/**
+ * Each test works on the desk's first three owed conversations (real
+ * rows, the lane cut short) and an empty reply-later queue.
  */
 async function queueOfThree(page: Page): Promise<OwedRow[]> {
   const response = await page.request.get(
-    `${readE2EState().bridgeUrl}/api/v1/mail/owed?limit=200`,
+    `${readE2EState().bridgeUrl}/api/v1/mail/desk?lane_limit=5000`,
     { headers: auth() },
   );
-  const { rows } = (await response.json()) as { rows: OwedRow[] };
-  const three = rows.slice(0, 3);
+  const { owed } = (await response.json()) as DeskAnswer;
+  const three = owed.rows.slice(0, 3);
   expect(three).toHaveLength(3);
-  await page.route("**/api/v1/mail/owed?**", async (route: Route) => {
-    const upstream = await route.fetch();
-    const json = (await upstream.json()) as { rows: OwedRow[] };
-    const ids = new Set(three.map((row) => row.thread_id));
-    await route.fulfill({
-      response: upstream,
-      json: { ...json, rows: json.rows.filter((row) => ids.has(row.thread_id)) },
-    });
-  });
+  await deskOwes(page, () => three);
   await page.route("**/api/v1/mail/reply-later", (route) =>
     route.fulfill({ json: { kind: "ReplyQueue", messages: [] } }),
   );
@@ -202,14 +224,8 @@ test("fast back and forth never loses the latest reply text", async ({ page }) =
 
 test("skipping the last one sets it aside, and you can come back to it", async ({ page }) => {
   const three = await queueOfThree(page);
-  await page.route("**/api/v1/mail/owed?**", async (route) => {
-    const upstream = await route.fetch();
-    const json = (await upstream.json()) as { rows: OwedRow[] };
-    await route.fulfill({
-      response: upstream,
-      json: { ...json, rows: json.rows.filter((row) => row.thread_id === three[0]!.thread_id) },
-    });
-  });
+  await page.unroute("**/api/v1/mail/desk?**");
+  await deskOwes(page, () => [three[0]!]);
   await openApp(page, "/focus");
   await expect(page.getByTestId("focus-progress")).toContainText("1 of 1");
   await reply(page).locator(".cm-content").click();
@@ -224,9 +240,11 @@ test("skipping the last one sets it aside, and you can come back to it", async (
 
 test("a failed load is an error to retry, never a finish", async ({ page }) => {
   let fail = true;
-  await page.route("**/api/v1/mail/owed?**", async (route) => {
+  await page.route("**/api/v1/mail/desk?**", async (route) => {
     if (fail) return route.fulfill({ status: 500, json: { error: "daemon unavailable" } });
-    return route.fulfill({ json: { kind: "OwedReplies", rows: [] } });
+    const upstream = await route.fetch();
+    const json = (await upstream.json()) as DeskAnswer;
+    return route.fulfill({ response: upstream, json: { ...json, owed: { rows: [], total: 0 } } });
   });
   await page.route("**/api/v1/mail/reply-later", (route) =>
     route.fulfill({ json: { kind: "ReplyQueue", messages: [] } }),
@@ -239,40 +257,24 @@ test("a failed load is an error to retry, never a finish", async ({ page }) => {
   await expect(page.getByTestId("focus-finish")).toContainText("Nobody is waiting");
 });
 
-test("all accounts gathers owed replies from every enabled account", async ({ page }) => {
+test("a cut-short lane says how many more are waiting, never that's everyone", async ({ page }) => {
   const three = await queueOfThree(page);
-  const state = readE2EState();
-  const accounts = (await (
-    await page.request.get(`${state.bridgeUrl}/api/v1/platform/accounts`, { headers: auth() })
-  ).json()) as { accounts: { account_id: string; enabled: boolean }[] };
-  const real = accounts.accounts[0]!;
-  const second = {
-    ...real,
-    account_id: "second-account",
-    name: "Second",
-    email: "second@example.com",
-    is_default: false,
-  };
-  await page.route("**/api/v1/platform/accounts", (route) =>
-    route.fulfill({ json: { accounts: [...accounts.accounts, second] } }),
+  await page.unroute("**/api/v1/mail/desk?**");
+  await deskOwes(
+    page,
+    () => [three[0]!],
+    () => 4,
   );
-  const asked: string[] = [];
-  await page.route("**/api/v1/mail/owed?**", async (route) => {
-    const url = new URL(route.request().url());
-    const account = url.searchParams.get("account") ?? "";
-    asked.push(account);
-    // The real account owes the first two; the second account owes the third.
-    const upstream = await route.fetch({ url: `${url.origin}${url.pathname}?limit=200` });
-    const json = (await upstream.json()) as { rows: OwedRow[] };
-    const mine = account === "second-account" ? [three[2]!] : [three[0]!, three[1]!];
-    const ids = new Set(mine.map((row) => row.thread_id));
-    await route.fulfill({
-      json: { ...json, rows: json.rows.filter((row) => ids.has(row.thread_id)) },
-    });
-  });
   await openApp(page, "/focus");
-  await expect(page.getByTestId("focus-progress")).toContainText("of 3");
-  expect(new Set(asked)).toEqual(new Set([real.account_id, "second-account"]));
+  await expect(page.getByTestId("focus-progress")).toContainText("1 of 1");
+  await reply(page).locator(".cm-content").click();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("s");
+  const finish = page.getByTestId("focus-finish");
+  await expect(finish).toContainText("That's this batch.");
+  await expect(finish).toContainText("3 more conversations waiting on a reply.");
+  await expect(finish).not.toContainText("That's everyone");
+  await expect(finish.getByRole("button", { name: "Continue with 3 more" })).toBeVisible();
 });
 
 test("a dated promise in a reply is offered with its time and kept as a reminder", async ({

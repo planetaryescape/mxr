@@ -9,20 +9,21 @@ Focus & reply puts everyone you owe a reply in one queue and shows them one
 conversation at a time. The conversation and what it asks of you sit on the
 left, your reply on the right. Send it and the next one comes up.
 
-The queue is the daemon's owed replies (the people waiting on you, most
-overdue by your usual pace with each of them first), then your reply-later
-queue, one entry per conversation. It follows the account picker; with
-**All accounts** it gathers every enabled account. The order is fixed when
-you start, so nothing reshuffles while you work; mail that arrives meanwhile
-joins the end. One sitting holds up to 500 owed conversations per account;
-when there are more, the end says so and **Load the next ones**
-fetches them.
+The queue is the desk's **You owe** lane: people in your inbox you have
+written to before and who wrote last, furthest past your usual reply time
+first. Newsletters, notifications, screened-out senders and snoozed
+conversations never appear. Your reply-later queue follows, one entry per
+conversation. It follows the account picker; **All accounts** covers every
+enabled account. The order is fixed when you start, so nothing reshuffles
+while you work; mail that arrives meanwhile joins the end. If the lane is
+ever longer than one fetch, the end says how many more are waiting instead
+of "That's everyone".
 
 ### Opening it
 
 - `g F` from anywhere in the web app. From the desk it works through the
-  **You owe** lane alone, and the lane's header offers the same: "Reply to
-  all 14 in focus mode".
+  **You owe** lane alone (no reply-later), and the lane's header offers the
+  same: "Reply to all 14 in focus mode".
 - The **Focus & reply** entry in the command palette (`⌘K`).
 - In the TUI, open the reply queue (`Ctrl-p`, then **Reply Queue**) and press
   `F`.
@@ -62,7 +63,7 @@ waiting".
 There is no separate focus command: the queue is what these already list.
 
 ```bash
-mxr owed --format json          # who you owe, most overdue first
+mxr desk --format json          # the You owe lane, with the other lanes
 mxr replies --format json       # your reply-later queue
 mxr reply MESSAGE_ID --body "..." --yes
 ```

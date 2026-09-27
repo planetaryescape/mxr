@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import type { OwedReplyRow } from "@/features/owed/api";
+import type { DeskRow } from "@/features/desk/api";
 import type { ReplyQueueMessage } from "@/features/reply-queue/api";
 
 import {
@@ -13,17 +13,22 @@ import {
   type FocusSession,
 } from "./focusQueue";
 
-function owed(threadId: string, extra: Partial<OwedReplyRow> = {}): OwedReplyRow {
+function owed(threadId: string, extra: Partial<DeskRow> = {}): DeskRow {
   return {
+    lane: "owed",
+    account_id: "acct-1",
     thread_id: threadId,
-    latest_inbound_msg_id: `${threadId}-msg`,
-    from_email: `${threadId}@example.com`,
-    from_name: null,
+    message_id: `${threadId}-msg`,
+    message_ids: [`${threadId}-msg`],
+    counterparty_email: `${threadId}@example.com`,
     subject: `About ${threadId}`,
-    latest_inbound_at: "2026-09-20T09:00:00Z",
-    waiting_days: 3.2,
-    expected_days: 1,
-    overdue_score: 2,
+    reason: "replied to your message",
+    since: "2026-09-25T09:00:00Z",
+    age_seconds: 2 * 86_400,
+    usual_seconds: 4 * 3600,
+    usual_samples: 5,
+    overdue: true,
+    unread: true,
     ...extra,
   };
 }
@@ -56,9 +61,9 @@ function run(...events: FocusEvent[]): FocusSession {
 }
 
 describe("buildFocusQueue", () => {
-  test("owed first in the daemon's order, then reply-later, one entry per conversation", () => {
+  test("the desk's You owe lane first in its order, then reply-later, one entry per conversation", () => {
     const queue = buildFocusQueue(
-      [owed("a", { from_name: "Theo Nash" }), owed("b")],
+      [owed("a", { counterparty_name: "Theo Nash" }), owed("b")],
       [later("b"), later("c")],
       null,
     );
@@ -66,7 +71,7 @@ describe("buildFocusQueue", () => {
     expect(queue[0]).toMatchObject({
       messageId: "a-msg",
       sender: "Theo Nash",
-      reason: "Waiting 3 days; you usually reply within 1 day",
+      reason: "Replied to your message · 2d · usually 4h",
       source: "owed",
     });
     expect(queue[1]!.source).toBe("owed");

@@ -12,11 +12,8 @@ export interface OwedReplyRow {
   overdue_score: number;
 }
 
-export function fetchOwedReplies(
-  account?: string | null,
-  limit = 200,
-): Promise<{ rows: OwedReplyRow[] }> {
-  const query = new URLSearchParams({ limit: String(limit) });
+export function fetchOwedReplies(account?: string | null): Promise<{ rows: OwedReplyRow[] }> {
+  const query = new URLSearchParams({ limit: "200" });
   if (account) query.set("account", account);
   return apiFetch<{ rows: OwedReplyRow[] }>(`/api/v1/mail/owed?${query.toString()}`);
 }

@@ -14,6 +14,8 @@ const api = vi.hoisted(() => ({
   fetchOrphanedDrafts: vi.fn<() => Promise<unknown[]>>(),
   resetOrphanedDraft: vi.fn<(draftId: string) => Promise<unknown>>(),
   sendStoredDraft: vi.fn<(draftId: string) => Promise<unknown>>(),
+  fetchScheduledSends: vi.fn<(account: string | null) => Promise<unknown[]>>(),
+  cancelScheduledSend: vi.fn<(draftId: string) => Promise<unknown>>(),
 }));
 
 vi.mock("./api", () => api);
@@ -53,6 +55,43 @@ describe("DraftsRoute", () => {
     api.resetOrphanedDraft.mockResolvedValue({ kind: "Ack" });
     api.sendStoredDraft.mockReset();
     api.sendStoredDraft.mockResolvedValue({ kind: "SendReceipt" });
+    api.fetchScheduledSends.mockReset();
+    api.fetchScheduledSends.mockResolvedValue([]);
+    api.cancelScheduledSend.mockReset();
+    api.cancelScheduledSend.mockResolvedValue({ ok: true });
+  });
+
+  test("lists scheduled sends at the top and cancels one", async () => {
+    api.fetchDrafts.mockResolvedValue({ drafts: [] });
+    api.fetchScheduledSends.mockResolvedValue([
+      {
+        draft_id: "draft-9",
+        account_id: "account-1",
+        send_at: new Date(Date.now() + 3 * 3_600_000).toISOString(),
+        subject: "Launch note",
+        to: [{ name: "Ada", email: "ada@example.com" }],
+        cc: [],
+        bcc: [],
+        last_attempt_at: null,
+        last_attempt_outcome: "failed",
+      },
+    ]);
+    renderWithClient(<DraftsRoute />);
+
+    expect(await screen.findByText("Launch note")).toBeVisible();
+    expect(screen.getByText(/in 3 hours/)).toBeVisible();
+    expect(screen.getByText(/last attempt failed/i)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel send" }));
+
+    await waitFor(() => expect(api.cancelScheduledSend).toHaveBeenCalledWith("draft-9"));
+  });
+
+  test("hides the scheduled section when nothing is scheduled", async () => {
+    api.fetchDrafts.mockResolvedValue({ drafts: [] });
+    renderWithClient(<DraftsRoute />);
+
+    expect(await screen.findByText("No saved drafts")).toBeVisible();
+    expect(screen.queryByText("Scheduled")).not.toBeInTheDocument();
   });
 
   test("lists mxr-local drafts and opens the stored draft composer", async () => {

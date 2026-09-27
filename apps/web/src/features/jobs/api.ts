@@ -35,6 +35,7 @@ export interface JobData {
   progress: JobProgress;
   undo_ids: string[];
   error?: string | null;
+  /** Unix milliseconds. */
   started_at: number;
   finished_at?: number | null;
   result?: MutationResult | null;

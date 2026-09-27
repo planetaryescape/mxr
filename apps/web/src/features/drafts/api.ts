@@ -12,6 +12,8 @@ export interface DraftSummary {
   attachment_count: number;
   content_kind: "markdown" | "html" | string;
   inline_asset_count: number;
+  /** Set when the draft is scheduled to send. */
+  send_at?: string | null;
 }
 
 export function fetchDrafts(): Promise<{ drafts: DraftSummary[] }> {
@@ -49,5 +51,33 @@ export function resetOrphanedDraft(draftId: string): Promise<unknown> {
 export function sendStoredDraft(draftId: string): Promise<unknown> {
   return apiFetch<unknown>(`/api/v1/mail/drafts/${encodeURIComponent(draftId)}/send-stored`, {
     method: "POST",
+  });
+}
+
+/** A pending scheduled send (`GET /api/v1/mail/scheduled-sends`), soonest first. */
+export interface ScheduledSend {
+  draft_id: string;
+  account_id: string;
+  send_at: string;
+  subject: string;
+  to: { name: string | null; email: string }[];
+  cc: { name: string | null; email: string }[];
+  bcc: { name: string | null; email: string }[];
+  last_attempt_at: string | null;
+  last_attempt_outcome: "sent" | "blocked" | "failed" | "interrupted" | null;
+}
+
+export async function fetchScheduledSends(account: string | null): Promise<ScheduledSend[]> {
+  const query = account ? `?account=${encodeURIComponent(account)}` : "";
+  const response = await apiFetch<{ sends?: ScheduledSend[] }>(
+    `/api/v1/mail/scheduled-sends${query}`,
+  );
+  return response.sends ?? [];
+}
+
+/** Cancel the scheduled send; the draft itself is kept. */
+export function cancelScheduledSend(draftId: string): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/mail/scheduled-sends/${encodeURIComponent(draftId)}`, {
+    method: "DELETE",
   });
 }

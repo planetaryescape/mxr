@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, Check, HelpCircle, MoreHorizontal, RefreshCw, X } from "lucide-react";
+import { Calendar, Check, HelpCircle, MoreHorizontal, X } from "lucide-react";
 
 import { fetchInvites, type CalendarInviteData } from "./api";
-import { EmptyState } from "@/components/EmptyState";
+import { Page } from "@/components/Page";
+import { PageEmpty, PageError, PageSkeleton, RuledList } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,6 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { formatLongDate } from "@/lib/format";
 import type { CalendarMetadataView, CalendarPartstatView } from "@/features/mailbox/types";
 import {
   openInviteComment,
@@ -26,9 +28,9 @@ const PARTSTAT_LABELS: Record<CalendarPartstatView, string> = {
 };
 
 const PARTSTAT_TONE: Record<CalendarPartstatView, string> = {
-  accepted: "text-emerald-600",
-  tentative: "text-amber-600",
-  declined: "text-red-600",
+  accepted: "text-success",
+  tentative: "text-warning",
+  declined: "text-destructive",
   needs_action: "text-muted-foreground",
   delegated: "text-muted-foreground",
 };
@@ -47,7 +49,14 @@ function isRequest(metadata: CalendarMetadataView): boolean {
 
 function whenText(metadata: CalendarMetadataView): string {
   if (!metadata.starts_at) return "";
-  return metadata.ends_at ? `${metadata.starts_at} – ${metadata.ends_at}` : metadata.starts_at;
+  const start = formatLongDate(metadata.starts_at) || metadata.starts_at;
+  if (!metadata.ends_at) return start;
+  const end = new Date(metadata.ends_at);
+  const sameDay = new Date(metadata.starts_at).toDateString() === end.toDateString();
+  const endText = sameDay
+    ? end.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+    : formatLongDate(metadata.ends_at) || metadata.ends_at;
+  return `${start} to ${endText}`;
 }
 
 function organizerText(metadata: CalendarMetadataView): string {
@@ -73,27 +82,25 @@ function InviteRow({ invite }: { invite: CalendarInviteData }) {
   const handleComment = (action: InviteAction) => openInviteComment(message_id, action);
 
   return (
-    <div className="flex items-start gap-4 border-b border-border px-6 py-4">
+    <li className="flex items-start gap-3 border-b border-border/60 px-2 py-3">
       <div className="mt-0.5 text-muted-foreground">
-        <Calendar className="size-5" />
+        <Calendar className="size-4" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           {cancelled && (
-            <span className="rounded bg-red-500/10 px-2 py-0.5 font-mono text-2xs uppercase tracking-wide text-red-600">
+            <span className="font-mono text-2xs uppercase tracking-wide text-destructive">
               Cancelled
             </span>
           )}
           {!cancelled && metadata.is_update && (
-            <span className="rounded bg-amber-500/10 px-2 py-0.5 font-mono text-2xs uppercase tracking-wide text-amber-600">
-              Updated
-            </span>
+            <span className="font-mono text-2xs uppercase tracking-wide text-warning">Updated</span>
           )}
           <span
             className={
               cancelled
-                ? "truncate font-medium line-through text-muted-foreground"
-                : "truncate font-medium"
+                ? "truncate text-[13px] font-medium line-through text-muted-foreground"
+                : "truncate text-[13px] font-medium"
             }
           >
             {metadata.summary || "(no title)"}
@@ -115,32 +122,32 @@ function InviteRow({ invite }: { invite: CalendarInviteData }) {
           >
             <Button
               variant={pendingAction === "accept" ? "default" : "outline"}
-              size="sm"
+              size="xs"
               onClick={() => handleClick("accept")}
               disabled={pendingAction !== null && pendingAction !== "accept"}
             >
-              <Check className="mr-1 h-4 w-4" /> Accept
+              <Check className="size-3" /> Accept
             </Button>
             <Button
               variant={pendingAction === "tentative" ? "default" : "outline"}
-              size="sm"
+              size="xs"
               onClick={() => handleClick("tentative")}
               disabled={pendingAction !== null && pendingAction !== "tentative"}
             >
-              <HelpCircle className="mr-1 h-4 w-4" /> Tentative
+              <HelpCircle className="size-3" /> Tentative
             </Button>
             <Button
               variant={pendingAction === "decline" ? "default" : "outline"}
-              size="sm"
+              size="xs"
               onClick={() => handleClick("decline")}
               disabled={pendingAction !== null && pendingAction !== "decline"}
             >
-              <X className="mr-1 h-4 w-4" /> Decline
+              <X className="size-3" /> Decline
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" aria-label="More invite actions">
-                  <MoreHorizontal className="h-4 w-4" />
+                <Button variant="ghost" size="xs" aria-label="More invite actions">
+                  <MoreHorizontal className="size-3.5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -159,13 +166,13 @@ function InviteRow({ invite }: { invite: CalendarInviteData }) {
         ) : (
           !cancelled &&
           viewerPartstat && (
-            <p className={`mt-2 text-sm font-semibold ${PARTSTAT_TONE[viewerPartstat]}`}>
+            <p className={`mt-1.5 font-mono text-2xs ${PARTSTAT_TONE[viewerPartstat]}`}>
               {PARTSTAT_LABELS[viewerPartstat]}
             </p>
           )
         )}
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -174,40 +181,31 @@ export function InvitesRoute() {
   const rows = invites.data?.invites ?? [];
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-background">
-      <header className="border-b border-border px-6 py-4">
-        <div className="font-mono text-2xs uppercase tracking-wide text-muted-foreground">
-          Calendar
-        </div>
-        <h1 className="text-xl font-semibold tracking-tight">Calendar invites</h1>
-        <p className="mt-1 text-2xs text-muted-foreground">
-          Every calendar invite detected in your mail, across accounts. Respond inline — RSVPs send
-          after a short undo window.
-        </p>
-      </header>
-
-      {invites.isLoading ? (
-        <div className="p-6 text-xs text-muted-foreground">Loading invites…</div>
+    <Page
+      title="Invites"
+      description="Calendar invites found in your mail, across accounts. RSVPs send after a short undo window."
+    >
+      {invites.isPending ? (
+        <PageSkeleton rows={4} label="Loading invites" />
       ) : invites.isError ? (
-        <EmptyState
-          icon={RefreshCw}
+        <PageError
           title="Invites unavailable"
-          description={invites.error.message}
-          action={<Button onClick={() => invites.refetch()}>Retry</Button>}
+          error={invites.error}
+          onRetry={() => void invites.refetch()}
         />
       ) : rows.length === 0 ? (
-        <EmptyState
-          icon={Calendar}
+        <PageEmpty
+          icon={<Calendar className="size-5" />}
           title="No calendar invites"
-          description="Invites detected in synced mail will appear here."
+          body="Invites in synced mail show up here, ready to accept or decline."
         />
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto">
+        <RuledList label="Calendar invites">
           {rows.map((invite) => (
             <InviteRow key={invite.id} invite={invite} />
           ))}
-        </div>
+        </RuledList>
       )}
-    </div>
+    </Page>
   );
 }

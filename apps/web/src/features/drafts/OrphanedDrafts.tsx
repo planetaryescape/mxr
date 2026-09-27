@@ -68,23 +68,29 @@ export function OrphanedDrafts() {
   const pending = reset.isPending || send.isPending;
 
   return (
-    <section aria-labelledby="orphaned-drafts-heading" className="border-b border-border">
-      <div className="flex items-center gap-2 px-6 pt-4 pb-2">
+    <section aria-labelledby="orphaned-drafts-heading" className="mb-8">
+      <div className="mb-2 flex items-center gap-2 border-b border-border pb-1.5">
         <AlertTriangle className="size-3.5 text-warning" aria-hidden="true" />
-        <h2 id="orphaned-drafts-heading" className="text-xs font-semibold">
+        <h2
+          id="orphaned-drafts-heading"
+          className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-warning"
+        >
           Needs attention
         </h2>
-        <span className="text-2xs text-muted-foreground">
+        <span className="text-[12.5px] text-muted-foreground">
           mxr started sending these but never confirmed delivery.
         </span>
       </div>
-      <ul className="divide-y divide-border">
+      <ul>
         {rows.map((draft) => {
           const subject = draft.subject.trim() || "(no subject)";
           return (
-            <li key={draft.id} className="flex items-center gap-3 px-6 py-3">
+            <li
+              key={draft.id}
+              className="flex items-center gap-3 border-b border-border/60 px-2 py-2.5"
+            >
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">{subject}</div>
+                <div className="truncate text-[13px] font-medium">{subject}</div>
                 <div className="mt-0.5 truncate text-2xs text-muted-foreground">
                   {formatRecipients(draft)} · stuck since{" "}
                   {formatRelativeAge(new Date(draft.updated_at))} ago

@@ -379,6 +379,10 @@ impl App {
         self.mailbox.viewed_thread_messages = self.optimistic_thread_messages(&env);
         self.mailbox.thread_summary = None;
         self.mailbox.thread_summary_error = None;
+        if self.mailbox.thread_context.as_ref().map(|c| &c.thread_id) != Some(&env.thread_id) {
+            self.mailbox.thread_context = None;
+            self.mailbox.thread_gist = None;
+        }
         self.mailbox.thread_selected_index = self.default_thread_selected_index();
         self.mailbox.viewing_envelope = self.focused_thread_envelope().cloned();
         if let Some(viewing_envelope) = self.mailbox.viewing_envelope.clone() {
@@ -612,6 +616,10 @@ impl App {
         self.mailbox.viewed_thread_messages.clear();
         self.mailbox.thread_summary = None;
         self.mailbox.thread_summary_error = None;
+        self.mailbox.thread_context = None;
+        self.mailbox.thread_gist = None;
+        self.pending_thread_context = None;
+        self.pending_gist_debounce = None;
         self.mailbox.thread_selected_index = 0;
         self.mailbox.pending_thread_fetch = None;
         self.mailbox.in_flight_thread_fetch = None;
@@ -648,6 +656,13 @@ impl App {
                 model: summary.model,
             });
             self.mailbox.thread_summary_error = None;
+            // Context facts are cheap local reads: fetch them now. The gist
+            // asks a model, so it waits out the same debounce as the summary.
+            self.pending_thread_context = Some(thread_id.clone());
+            self.pending_gist_debounce = Some((
+                thread_id.clone(),
+                tokio::time::Instant::now() + std::time::Duration::from_millis(250),
+            ));
             // Lazy summary backfill: if the daemon didn't have a cached
             // summary for this thread, schedule one — but *debounce* so
             // holding the down-arrow through the mail list doesn't fire

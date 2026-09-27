@@ -197,6 +197,16 @@ pub(crate) enum AsyncResult {
         thread_id: mxr_core::ThreadId,
         result: Result<(String, String), MxrError>,
     },
+    /// Context facts for a thread (`GetThreadContext`).
+    ThreadContextLoaded {
+        thread_id: mxr_core::ThreadId,
+        result: Result<Box<mxr_protocol::ThreadContextData>, MxrError>,
+    },
+    /// The model's gist and ask for a thread (`GetThreadGist`).
+    ThreadGistLoaded {
+        thread_id: mxr_core::ThreadId,
+        result: Result<Box<mxr_protocol::ThreadGistData>, MxrError>,
+    },
     /// Snapshot of the user's locally-stored drafts (all accounts, most
     /// recently updated first), surfaced by the stored-drafts modal.
     /// With when each scheduled draft will send.

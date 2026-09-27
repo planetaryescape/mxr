@@ -1477,3 +1477,75 @@ fn sync_now_action_asks_the_daemon_to_sync_in_the_background() {
         other => panic!("Expected SyncNow request, got {other:?}"),
     }
 }
+
+/// A resolved thread queues its context facts at once and its gist after the
+/// debounce; once they arrive the reader shows them above the messages.
+#[tokio::test]
+async fn opened_thread_shows_its_context_above_the_messages() {
+    let mut app = App::new();
+    app.mailbox.envelopes = make_test_envelopes(1);
+    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+    let env = app.mailbox.envelopes[0].clone();
+    app.apply(Action::OpenSelected);
+    let thread = Thread {
+        id: env.thread_id.clone(),
+        account_id: env.account_id.clone(),
+        subject: env.subject.clone(),
+        participants: vec![env.from.clone()],
+        message_count: 1,
+        unread_count: 0,
+        latest_date: env.date,
+        snippet: env.snippet.clone(),
+        message_ids: vec![env.id.clone()],
+    };
+    app.resolve_thread_success(thread, vec![env.clone()], None);
+    assert_eq!(app.pending_thread_context.as_ref(), Some(&env.thread_id));
+    assert!(matches!(
+        &app.pending_gist_debounce,
+        Some((thread_id, _)) if thread_id == &env.thread_id
+    ));
+
+    crate::daemon_events::apply_thread_context_loaded(
+        &mut app,
+        &env.thread_id,
+        Ok(Box::new(mxr_protocol::ThreadContextData {
+            thread_id: env.thread_id.clone(),
+            account_id: env.account_id.clone(),
+            counterparty: Some(mxr_protocol::ThreadCounterpartyData {
+                email: "maya@example.com".into(),
+                display_name: Some("Maya Ortiz".into()),
+                messages_from_them: 3,
+                messages_from_you: 2,
+                your_reply_p50_seconds: None,
+                your_reply_samples: 0,
+                their_reply_p50_seconds: None,
+                their_reply_samples: 0,
+                last_contact_elsewhere_at: None,
+                bulk_sender: false,
+            }),
+            owed_reply: None,
+            commitments: vec![],
+        })),
+    );
+    crate::daemon_events::apply_thread_gist_loaded(
+        &mut app,
+        &env.thread_id,
+        Ok(Box::new(mxr_protocol::ThreadGistData {
+            thread_id: env.thread_id.clone(),
+            status: mxr_protocol::ThreadGistStatusData::Ready,
+            gist: Some("Maya wants the deck.".into()),
+            ask: None,
+            provenance: None,
+            reason: None,
+            generated_at: None,
+            from_cache: true,
+        })),
+    );
+
+    let output = render_to_string(140, 24, |frame| app.draw(frame));
+    assert!(
+        output.contains("Gist      Maya wants the deck."),
+        "{output}"
+    );
+    assert!(output.contains("you and Maya: 5 emails"), "{output}");
+}

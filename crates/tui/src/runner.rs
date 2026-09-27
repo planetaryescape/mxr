@@ -21,8 +21,9 @@ use crate::compose_flow::{
     handle_draft_edit_status, prepare_draft_edit,
 };
 use crate::daemon_events::{
-    apply_all_envelopes_refresh, apply_labels_refresh, apply_thread_summary_loaded,
-    format_mutation_failure, handle_daemon_event, mutation_verb_past, restore_mail_list_selection,
+    apply_all_envelopes_refresh, apply_labels_refresh, apply_thread_context_loaded,
+    apply_thread_gist_loaded, apply_thread_summary_loaded, format_mutation_failure,
+    handle_daemon_event, mutation_verb_past, restore_mail_list_selection,
 };
 use crate::editor::{edit_tui_config, open_diagnostics_pane_details, open_tui_log_file};
 use crate::ipc::{ipc_call, ipc_call_dedicated, spawn_ipc_worker, IpcRequest};
@@ -996,6 +997,65 @@ pub async fn run() -> anyhow::Result<()> {
                     result,
                 });
             });
+        }
+
+        if let Some(thread_id) = app.pending_thread_context.take() {
+            let socket_path = socket_path.clone();
+            let result_tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call_dedicated(
+                    &socket_path,
+                    Request::GetThreadContext {
+                        thread_id: thread_id.clone(),
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::ThreadContext { context },
+                    }) => Ok(Box::new(context)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Ok(_) => Err(MxrError::Ipc(
+                        "unexpected response to GetThreadContext".into(),
+                    )),
+                    Err(e) => Err(e),
+                };
+                let _ = result_tx.send(AsyncResult::ThreadContextLoaded { thread_id, result });
+            });
+        }
+
+        if let Some((thread_id, deadline)) = app.pending_gist_debounce.as_ref() {
+            if tokio::time::Instant::now() >= *deadline {
+                let thread_id = thread_id.clone();
+                app.pending_gist_debounce = None;
+                let socket_path = socket_path.clone();
+                let result_tx = result_tx.clone();
+                tokio::spawn(async move {
+                    let resp = tokio::time::timeout(
+                        SUMMARY_REQUEST_TIMEOUT,
+                        ipc_call_dedicated(
+                            &socket_path,
+                            Request::GetThreadGist {
+                                thread_id: thread_id.clone(),
+                                refresh: false,
+                            },
+                        ),
+                    )
+                    .await;
+                    let result = match resp {
+                        Ok(Ok(Response::Ok {
+                            data: ResponseData::ThreadGist { gist },
+                        })) => Ok(Box::new(gist)),
+                        Ok(Ok(Response::Error { message, .. })) => Err(MxrError::Ipc(message)),
+                        Ok(Ok(_)) => {
+                            Err(MxrError::Ipc("unexpected response to GetThreadGist".into()))
+                        }
+                        Ok(Err(e)) => Err(e),
+                        Err(_) => Err(MxrError::Ipc("gist request timed out".into())),
+                    };
+                    let _ = result_tx.send(AsyncResult::ThreadGistLoaded { thread_id, result });
+                });
+            }
         }
 
         if let Some(rule) = app.rules.pending_detail.take() {
@@ -2318,6 +2378,12 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::ThreadSummaryLoaded { thread_id, result } => {
                             apply_thread_summary_loaded(&mut app, thread_id, result);
+                        }
+                        AsyncResult::ThreadContextLoaded { thread_id, result } => {
+                            apply_thread_context_loaded(&mut app, &thread_id, result);
+                        }
+                        AsyncResult::ThreadGistLoaded { thread_id, result } => {
+                            apply_thread_gist_loaded(&mut app, &thread_id, result);
                         }
                         AsyncResult::RuleDetail {
                             request_id,

@@ -131,6 +131,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &The
             *inner.last().unwrap_or(&chunks[1]),
             preview_messages,
             message_view::DrawOptions {
+                context: Vec::new(),
                 summary: None,
                 scroll_offset: preview_scroll,
                 active_pane: &preview_active_pane,

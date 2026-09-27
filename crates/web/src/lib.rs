@@ -760,8 +760,7 @@ async fn update_compose_session(
             return Err(error);
         }
     };
-    let (existing_frontmatter, file_body) =
-        parse_compose_file(&content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let (existing_frontmatter, file_body) = parse_compose_content(&content)?;
     let body = request.body.unwrap_or(file_body);
     let context = extract_compose_context(&content);
     let updated = ComposeFrontmatter {
@@ -2262,8 +2261,7 @@ fn compose_kind_name(kind: &ComposeSessionKindRequest) -> &'static str {
 
 async fn load_compose_session(path: &Path) -> Result<serde_json::Value, BridgeError> {
     let raw_content = read_compose_file(path).await?;
-    let (frontmatter, body) =
-        parse_compose_file(&raw_content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let (frontmatter, body) = parse_compose_content(&raw_content)?;
     let rendered = render_markdown(&body);
     let issues = validate_draft(&frontmatter, &body)
         .into_iter()
@@ -2316,21 +2314,24 @@ fn extract_compose_context(content: &str) -> Option<String> {
     }
 }
 
+/// Parse a compose file the user (or their `$EDITOR`) wrote. A parse failure
+/// is a problem with the draft, not with the bridge or daemon.
+fn parse_compose_content(content: &str) -> Result<(ComposeFrontmatter, String), BridgeError> {
+    parse_compose_file(content).map_err(|error| BridgeError::InvalidDraft(error.to_string()))
+}
+
 fn extract_in_reply_to(content: &str) -> Result<Option<String>, BridgeError> {
-    let (frontmatter, _) =
-        parse_compose_file(content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let (frontmatter, _) = parse_compose_content(content)?;
     Ok(frontmatter.in_reply_to)
 }
 
 fn extract_references(content: &str) -> Result<Vec<String>, BridgeError> {
-    let (frontmatter, _) =
-        parse_compose_file(content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let (frontmatter, _) = parse_compose_content(content)?;
     Ok(frontmatter.references)
 }
 
 fn extract_thread_id(content: &str) -> Result<Option<String>, BridgeError> {
-    let (frontmatter, _) =
-        parse_compose_file(content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let (frontmatter, _) = parse_compose_content(content)?;
     Ok(frontmatter.thread_id)
 }
 
@@ -2346,8 +2347,7 @@ async fn compose_draft_from_file(
     draft_id: Option<DraftId>,
 ) -> Result<Draft, BridgeError> {
     let raw_content = read_compose_file(Path::new(draft_path)).await?;
-    let (frontmatter, body) =
-        parse_compose_file(&raw_content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let (frontmatter, body) = parse_compose_content(&raw_content)?;
     let issues = validate_draft(&frontmatter, &body);
     if issues.iter().any(ComposeValidation::is_error) {
         let message = issues
@@ -2355,7 +2355,9 @@ async fn compose_draft_from_file(
             .map(|issue| issue.to_string())
             .collect::<Vec<_>>()
             .join("; ");
-        return Err(BridgeError::Ipc(format!("Draft errors: {message}")));
+        return Err(BridgeError::InvalidDraft(format!(
+            "Draft errors: {message}"
+        )));
     }
 
     let now = Utc::now();
@@ -2365,7 +2367,7 @@ async fn compose_draft_from_file(
         id: draft_id.unwrap_or_default(),
         account_id: parse_account_id(account_id)?,
         from: mxr_compose::draft_codec::parse_from_field(&frontmatter.from)
-            .map_err(|error| BridgeError::Ipc(error.to_string()))?,
+            .map_err(|error| BridgeError::InvalidDraft(error.to_string()))?,
         reply_headers: frontmatter
             .in_reply_to
             .as_ref()

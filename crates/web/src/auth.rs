@@ -20,6 +20,11 @@ pub(super) enum BridgeError {
     /// missing lens parameter). Never reaches the daemon.
     #[error("{0}")]
     BadRequest(String),
+    /// The compose file the caller wrote does not parse or fails draft
+    /// validation (no recipients, bad From, broken frontmatter). The user
+    /// has to fix the draft; retrying cannot help, and the daemon is fine.
+    #[error("{0}")]
+    InvalidDraft(String),
     #[error("unauthorized")]
     Unauthorized,
     #[error("unexpected response from daemon")]
@@ -31,6 +36,7 @@ impl BridgeError {
         match self {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::InvalidDraft(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Connect(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Timeout(_) => StatusCode::GATEWAY_TIMEOUT,
             Self::Ipc(_) | Self::UnexpectedResponse => StatusCode::BAD_GATEWAY,
@@ -54,6 +60,9 @@ impl BridgeError {
     pub(super) fn code(&self) -> &'static str {
         match self {
             Self::Daemon { kind, .. } => kind.as_code(),
+            // Same code the daemon uses for its own draft validation, so a
+            // client handles "fix your draft" once whichever side caught it.
+            Self::InvalidDraft(_) => IpcErrorKind::InvalidRequest.as_code(),
             other => bridge_error_kind(other),
         }
     }
@@ -168,6 +177,7 @@ pub(super) fn bridge_error_kind(error: &BridgeError) -> &'static str {
         BridgeError::Timeout(_) => "timeout",
         BridgeError::Daemon { .. } => "daemon",
         BridgeError::BadRequest(_) => "bad_request",
+        BridgeError::InvalidDraft(_) => "invalid_draft",
         BridgeError::Unauthorized => "unauthorized",
         BridgeError::UnexpectedResponse => "unexpected_response",
     }

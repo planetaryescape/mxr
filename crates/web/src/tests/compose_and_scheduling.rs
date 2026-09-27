@@ -468,6 +468,75 @@ async fn scheduling_a_restored_session_updates_the_stored_draft_in_place() {
 }
 
 #[tokio::test]
+async fn compose_validation_errors_are_422_and_never_reach_the_daemon() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account = sample_account(&AccountId::new());
+    let daemon_sends = Arc::new(Mutex::new(0_u32));
+    let sends_seen = daemon_sends.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::ListAccounts => ok(ResponseData::Accounts {
+                accounts: vec![account.clone()],
+            }),
+            Request::SendDraft { .. }
+            | Request::SaveDraft { .. }
+            | Request::SaveDraftToServer { .. }
+            | Request::ScheduleSend { .. } => {
+                *sends_seen.lock().unwrap() += 1;
+                ok(ResponseData::Ack)
+            }
+            _ => None,
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket_path).await;
+    let client = reqwest::Client::new();
+    // No recipients: a draft error the user has to fix.
+    let (draft_path, account_id) =
+        prepared_session(&client, addr, serde_json::json!({ "kind": "new" }), "").await;
+
+    for (route, extra) in [
+        ("send", serde_json::json!({})),
+        ("save", serde_json::json!({})),
+        (
+            "schedule",
+            serde_json::json!({ "send_at": "2026-10-01T09:00:00Z" }),
+        ),
+    ] {
+        let mut body = serde_json::json!({ "draft_path": draft_path, "account_id": account_id });
+        body.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        let response = client
+            .post(format!("http://{addr}/api/v1/mail/compose/session/{route}"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+            "route {route}"
+        );
+        let json: serde_json::Value = response.json().await.unwrap();
+        assert!(
+            json["error"]
+                .as_str()
+                .is_some_and(|error| error.starts_with("Draft errors:")),
+            "route {route}: {json}"
+        );
+        assert_eq!(json["code"], "invalid_request", "route {route}");
+    }
+    assert_eq!(*daemon_sends.lock().unwrap(), 0);
+    assert!(Path::new(&draft_path).exists(), "a rejected draft is kept");
+    let _ = std::fs::remove_file(draft_path);
+}
+
+#[tokio::test]
 async fn thread_reader_resolves_labels_from_the_threads_own_account() {
     let temp = TempDir::new().unwrap();
     let socket_path = temp.path().join("mxr.sock");

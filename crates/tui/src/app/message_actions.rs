@@ -109,6 +109,9 @@ impl App {
                         MailboxView::CalendarInvites => {
                             self.open_selected_invite_message();
                         }
+                        MailboxView::Desk => {
+                            self.open_selected_desk_row();
+                        }
                     }
                 }
             }

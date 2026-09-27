@@ -1546,6 +1546,21 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if app.mailbox.pending_desk_refresh {
+            app.mailbox.pending_desk_refresh = false;
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, desk_request()).await;
+                let result = match resp {
+                    Ok(Response::Ok { data }) => crate::app::DeskPageState::from_response(data)
+                        .ok_or_else(|| MxrError::Ipc("unexpected response to GetDesk".into())),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                };
+                AsyncResult::Desk(result)
+            });
+        }
+
         if app.mailbox.pending_calendar_invites_refresh {
             app.mailbox.pending_calendar_invites_refresh = false;
             let bg = bg.clone();
@@ -2812,6 +2827,9 @@ pub async fn run() -> anyhow::Result<()> {
                                     {
                                         app.mailbox.pending_calendar_invites_refresh = true;
                                     }
+                                    // Any completed mutation can move a thread
+                                    // on or off the desk (archive, reply, snooze).
+                                    app.mailbox.pending_desk_refresh = true;
                                 }
                                 Err(e) => {
                                     if app.should_retry_mutation_failure(&e) {
@@ -2931,6 +2949,10 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::OwedReplies(Err(e)) => {
                             app.status_message = Some(format!("Owed replies error: {e}"));
+                        }
+                        AsyncResult::Desk(Ok(desk)) => app.set_desk(desk),
+                        AsyncResult::Desk(Err(e)) => {
+                            app.status_message = Some(format!("Desk error: {e}"));
                         }
                         AsyncResult::CalendarInvites(Ok(invites)) => {
                             app.mailbox.calendar_invites_page.entries = invites;
@@ -3177,5 +3199,15 @@ pub async fn run() -> anyhow::Result<()> {
     ratatui::restore();
     Ok(())
 }
+
+/// The desk request the TUI sends: every account, the daemon's default
+/// lane size. Shared by the runtime and its tests so they cannot drift.
+pub(crate) fn desk_request() -> Request {
+    Request::GetDesk {
+        account_id: None,
+        lane_limit: 25,
+    }
+}
+
 #[cfg(test)]
 mod tests;

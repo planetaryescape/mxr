@@ -317,6 +317,8 @@ fn sidebar_snapshot() {
                 all_mail_active: false,
                 subscriptions_active: false,
                 subscription_count: 2,
+                desk_active: false,
+                desk_count: 3,
                 owed_active: false,
                 owed_count: 0,
                 calendar_invites_active: false,

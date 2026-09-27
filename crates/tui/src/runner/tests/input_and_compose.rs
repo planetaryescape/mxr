@@ -366,6 +366,133 @@ fn opening_owed_lens_switches_view_and_queues_refresh() {
     );
 }
 
+/// The desk lens: `OpenDesk` switches the view and queues a GetDesk fetch
+/// for every account.
+#[test]
+fn opening_desk_lens_switches_view_and_queues_refresh() {
+    let mut app = App::new();
+    // The startup fetch for the sidebar badge is already queued.
+    assert!(app.mailbox.pending_desk_refresh);
+    app.mailbox.pending_desk_refresh = false;
+
+    app.apply(Action::OpenDesk);
+
+    assert_eq!(app.mailbox.mailbox_view, MailboxView::Desk);
+    assert!(app.mailbox.pending_desk_refresh);
+    assert!(matches!(
+        crate::runner::desk_request(),
+        Request::GetDesk {
+            account_id: None,
+            lane_limit: 25
+        }
+    ));
+}
+
+fn desk_row(lane: mxr_protocol::DeskLaneKind) -> mxr_protocol::DeskRowData {
+    mxr_protocol::DeskRowData {
+        lane,
+        account_id: mxr_core::AccountId::new(),
+        thread_id: mxr_core::ThreadId::new(),
+        message_id: mxr_core::MessageId::new(),
+        message_ids: vec![],
+        counterparty_email: "maya@example.com".into(),
+        counterparty_name: None,
+        subject: "Launch plan".into(),
+        reason: "replied to your message".into(),
+        since: chrono::Utc::now(),
+        age_seconds: 3_600,
+        usual_seconds: None,
+        usual_samples: 0,
+        overdue: false,
+        unread: true,
+        commitment_id: None,
+    }
+}
+
+fn desk_with(rows: Vec<mxr_protocol::DeskRowData>) -> crate::app::DeskPageState {
+    use mxr_protocol::{DeskLaneData, DeskLaneKind};
+    let lane = |kind: DeskLaneKind| {
+        let rows: Vec<_> = rows.iter().filter(|r| r.lane == kind).cloned().collect();
+        (
+            kind,
+            DeskLaneData {
+                total: rows.len() as u32,
+                rows,
+            },
+        )
+    };
+    crate::app::DeskPageState {
+        lanes: vec![
+            lane(DeskLaneKind::Owed),
+            lane(DeskLaneKind::Due),
+            lane(DeskLaneKind::Waiting),
+            lane(DeskLaneKind::PeopleNew),
+        ],
+        elsewhere: Default::default(),
+        loaded: true,
+    }
+}
+
+/// One cursor walks every lane; Enter opens the row's message and Esc comes
+/// back to the desk on the same row.
+#[test]
+fn desk_cursor_crosses_lanes_and_enter_opens_the_selected_row() {
+    use mxr_protocol::DeskLaneKind;
+    let mut app = App::new();
+    let owed = desk_row(DeskLaneKind::Owed);
+    let waiting = desk_row(DeskLaneKind::Waiting);
+    app.apply(Action::OpenDesk);
+    app.set_desk(desk_with(vec![waiting.clone(), owed.clone()]));
+    assert_eq!(app.selected_desk_row().unwrap().message_id, owed.message_id);
+
+    let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
+    if let Some(action) = app.handle_key(key(KeyCode::Char('j'))) {
+        app.apply(action);
+    }
+    assert_eq!(app.mailbox.selected_index, 1, "j crosses into Waiting on");
+    assert_eq!(
+        app.selected_desk_row().unwrap().message_id,
+        waiting.message_id
+    );
+    // j at the last row stays put.
+    if let Some(action) = app.handle_key(key(KeyCode::Char('j'))) {
+        app.apply(action);
+    }
+    assert_eq!(app.mailbox.selected_index, 1);
+
+    let action = app.handle_key(key(KeyCode::Enter)).expect("enter maps");
+    app.apply(action);
+    assert_eq!(
+        app.mailbox.pending_invite_open.as_ref(),
+        Some(&waiting.message_id),
+        "enter fetches the selected row's message"
+    );
+
+    // The runtime resolves the envelope and opens the reader.
+    let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .thread_id(waiting.thread_id.clone())
+        .build();
+    app.open_invite_envelope(envelope);
+    assert_eq!(app.mailbox.active_pane, ActivePane::MessageView);
+
+    if let Some(action) = app.handle_key(key(KeyCode::Esc)) {
+        app.apply(action);
+    }
+    assert_eq!(app.mailbox.mailbox_view, MailboxView::Desk);
+    assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
+    assert_eq!(app.mailbox.selected_index, 1, "back on the same row");
+}
+
+/// A background desk fetch must not move the cursor of another list.
+#[test]
+fn background_desk_refresh_leaves_other_lists_alone() {
+    let mut app = App::new();
+    app.mailbox.selected_index = 7;
+    app.set_desk(desk_with(vec![desk_row(mxr_protocol::DeskLaneKind::Owed)]));
+    assert_eq!(app.mailbox.selected_index, 7);
+    assert_eq!(app.mailbox.desk_page.work_count(), 1);
+}
+
 /// Slice 2.3 wiring contract (C2.2): a successful SendDraft
 /// mutation queues a ListOwedReplies refresh so a sent reply
 /// disappears from the lens without manual intervention.

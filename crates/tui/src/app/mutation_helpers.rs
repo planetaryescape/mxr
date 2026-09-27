@@ -286,6 +286,7 @@ impl App {
                 }
                 self.mailbox.pending_subscriptions_refresh = true;
                 self.mailbox.pending_owed_refresh = true;
+                self.mailbox.pending_desk_refresh = true;
                 if show_completion_status {
                     self.push_toast(Toast::success(status));
                 }

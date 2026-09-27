@@ -171,6 +171,10 @@ impl App {
                     }
                     return;
                 }
+                if self.mailbox.mailbox_view == MailboxView::Desk {
+                    self.open_selected_desk_row();
+                    return;
+                }
                 if let Some(row) = self.selected_mail_row() {
                     self.open_envelope(row.representative);
                     self.mailbox.layout_mode = LayoutMode::ThreePane;
@@ -277,6 +281,23 @@ impl App {
                 self.mailbox.scroll_offset = 0;
                 self.mailbox.pending_owed_refresh = true;
             }
+            Action::OpenDesk => {
+                self.mailbox.mailbox_view = MailboxView::Desk;
+                self.mailbox.active_label = None;
+                self.mailbox.pending_active_label = None;
+                self.mailbox.pending_label_fetch = None;
+                self.mailbox.pending_preview_read = None;
+                self.mailbox.desired_system_mailbox = None;
+                self.search.active = false;
+                self.screen = Screen::Mailbox;
+                self.mailbox.active_pane = ActivePane::MailList;
+                self.mailbox.selected_index = self
+                    .mailbox
+                    .selected_index
+                    .min(self.mailbox.desk_page.row_count().saturating_sub(1));
+                self.mailbox.scroll_offset = 0;
+                self.mailbox.pending_desk_refresh = true;
+            }
             Action::OpenCalendarInvites => {
                 self.mailbox.mailbox_view = MailboxView::CalendarInvites;
                 self.mailbox.active_label = None;
@@ -314,6 +335,8 @@ impl App {
                     }
                 } else if self.mailbox.mailbox_view == MailboxView::CalendarInvites {
                     self.open_selected_invite_message();
+                } else if self.mailbox.mailbox_view == MailboxView::Desk {
+                    self.open_selected_desk_row();
                 } else if let Some(row) = self.selected_mail_row() {
                     self.open_envelope(row.representative);
                     self.mailbox.layout_mode = LayoutMode::ThreePane;

@@ -26,6 +26,9 @@ impl App {
         if self.mailbox.mailbox_view == MailboxView::CalendarInvites {
             return self.mailbox.calendar_invites_page.entries.len();
         }
+        if self.mailbox.mailbox_view == MailboxView::Desk {
+            return self.mailbox.desk_page.row_count();
+        }
         self.mail_list_rows().len()
     }
 
@@ -340,6 +343,37 @@ impl App {
         if let Some(invite) = self.selected_invite() {
             self.mailbox.pending_invite_open = Some(invite.message_id.clone());
             self.status_message = Some("Opening invite…".into());
+        }
+    }
+
+    /// Store a freshly fetched desk. The cursor is clamped only while the
+    /// desk is showing: the startup and background fetches must not move
+    /// the cursor of whatever list is on screen.
+    pub(crate) fn set_desk(&mut self, desk: DeskPageState) {
+        self.mailbox.desk_page = desk;
+        if self.mailbox.mailbox_view == MailboxView::Desk {
+            self.mailbox.selected_index = self
+                .mailbox
+                .selected_index
+                .min(self.mailbox.desk_page.row_count().saturating_sub(1));
+        }
+    }
+
+    /// The desk row under the cursor.
+    pub fn selected_desk_row(&self) -> Option<&mxr_protocol::DeskRowData> {
+        self.mailbox
+            .desk_page
+            .rows()
+            .nth(self.mailbox.selected_index)
+    }
+
+    /// Enter on a desk row: fetch the row's message by id and open it in
+    /// the reader beside the desk. The desk keeps its cursor, so closing
+    /// the reader lands back on the same row.
+    pub(super) fn open_selected_desk_row(&mut self) {
+        if let Some(row) = self.selected_desk_row() {
+            self.mailbox.pending_invite_open = Some(row.message_id.clone());
+            self.status_message = Some("Opening conversation…".into());
         }
     }
 

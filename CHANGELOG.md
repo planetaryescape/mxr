@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.34](https://github.com/planetaryescape/mxr/compare/v0.6.33...v0.6.34) (2026-09-27)
+
+
+### Features
+
+* type times in words anywhere and see exactly when they resolve ([#236](https://github.com/planetaryescape/mxr/issues/236)) ([dfff3f4](https://github.com/planetaryescape/mxr/commit/dfff3f4e6d10e541a25709eed860db06f31012f7))
+
 ## [0.6.33](https://github.com/planetaryescape/mxr/compare/v0.6.32...v0.6.33) (2026-09-27)
 
 

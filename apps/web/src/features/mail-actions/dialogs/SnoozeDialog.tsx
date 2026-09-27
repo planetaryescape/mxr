@@ -65,7 +65,8 @@ export function SnoozeDialog({
       }}
     >
       <DialogContent
-        className="max-w-md"
+        // Holding focus itself is a keyboard detail, not a place to ring.
+        className="max-w-md outline-none"
         // The dialog itself takes focus, not the time field (the only
         // focusable thing while presets load), so Z then 1 picks a preset.
         onOpenAutoFocus={(event) => {

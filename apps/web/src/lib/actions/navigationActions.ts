@@ -101,7 +101,7 @@ export const navigationActions: Action[] = [
   {
     id: "mail.undo",
     label: "Undo last action",
-    description: "Reverse the last archive, trash, label or send (about 60 seconds)",
+    description: "Reverse the last archive, trash, move, label change or send (about 60 seconds)",
     group: "Mail",
     icon: Undo2,
     shortcut: "u",

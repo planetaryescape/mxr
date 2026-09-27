@@ -80,7 +80,7 @@ export function DraftAssist({
               Knows how you write to this person. Describe it and edit freely.
             </span>
             <DraftQualityBadges suggestion={suggestion} compact />
-            <ChevronDown className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-180" />
+            <ChevronDown className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-fast group-data-[state=open]:rotate-180" />
           </button>
         </CollapsibleTrigger>
         <CollapsibleContent>

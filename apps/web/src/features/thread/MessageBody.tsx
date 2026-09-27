@@ -111,7 +111,7 @@ export function MessageBody({
           backgroundColor: frameBackground,
           colorScheme: effectiveTheme === "dark" ? "dark" : "light",
           opacity: loaded ? 1 : 0,
-          transition: "opacity 80ms ease-out",
+          transition: "opacity var(--motion-duration-fast) var(--ease-out)",
         }}
         onLoad={handleLoad}
       />

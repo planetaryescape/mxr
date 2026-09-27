@@ -1,5 +1,5 @@
 import { SelectSetting } from "./settingsParts";
-import { useUiPrefs, type Density, type Theme } from "@/state/uiPrefsStore";
+import { useUiPrefs, type Density, type MotionPref, type Theme } from "@/state/uiPrefsStore";
 
 const THEMES: { value: Theme; label: string }[] = [
   { value: "system", label: "Match the system" },
@@ -15,11 +15,19 @@ export const DENSITIES: { value: Density; label: string }[] = [
   { value: "comfortable", label: "Comfortable" },
 ];
 
+const MOTION: { value: MotionPref; label: string }[] = [
+  { value: "system", label: "Match the system" },
+  { value: "reduced", label: "Reduced" },
+  { value: "full", label: "Full" },
+];
+
 export function AppearanceSection() {
   const theme = useUiPrefs((state) => state.theme);
   const setTheme = useUiPrefs((state) => state.setTheme);
   const density = useUiPrefs((state) => state.density);
   const setDensity = useUiPrefs((state) => state.setDensity);
+  const motion = useUiPrefs((state) => state.motion);
+  const setMotion = useUiPrefs((state) => state.setMotion);
   return (
     <div>
       <SelectSetting
@@ -35,6 +43,13 @@ export function AppearanceSection() {
         value={density}
         options={DENSITIES}
         onChange={setDensity}
+      />
+      <SelectSetting
+        label="Motion"
+        description="Reduced keeps fades and drops movement. Match the system follows your OS setting."
+        value={motion}
+        options={MOTION}
+        onChange={setMotion}
       />
     </div>
   );

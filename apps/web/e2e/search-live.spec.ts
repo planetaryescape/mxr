@@ -11,7 +11,7 @@ test("slash search palette opens selected suggestion", async ({ page }) => {
   await page.keyboard.type("Canary");
 
   await expect(
-    page.getByRole("button", { name: /Open Canary rollout notes from Pager Relay/ }),
+    page.getByRole("option", { name: /^Open .*Canary rollout notes/ }).first(),
   ).toBeVisible();
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");

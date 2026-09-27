@@ -12,7 +12,9 @@ const bridgePort = Number(process.env.MXR_E2E_BRIDGE_PORT ?? "17777");
 const controlPort = Number(process.env.MXR_E2E_CONTROL_PORT ?? String(bridgePort + 1));
 const bridgeUrl = `http://127.0.0.1:${bridgePort}`;
 const controlUrl = `http://127.0.0.1:${controlPort}`;
-const appUrl = "http://127.0.0.1:5173";
+// Overridable so the suite can run next to a dev stack that already owns 5173.
+const appPort = Number(process.env.MXR_E2E_APP_PORT ?? "5173");
+const appUrl = `http://127.0.0.1:${appPort}`;
 const token = process.env.MXR_E2E_BRIDGE_TOKEN ?? "mxr-e2e-token";
 const once = process.argv.includes("--once");
 
@@ -169,11 +171,15 @@ function respondJson(res, body, status = 200) {
 }
 
 function startVite() {
-  return spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1"], {
-    cwd: appDir,
-    env: { ...process.env, MXR_BRIDGE_URL: bridgeUrl },
-    stdio: "inherit",
-  });
+  return spawn(
+    "npm",
+    ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(appPort), "--strictPort"],
+    {
+      cwd: appDir,
+      env: { ...process.env, MXR_BRIDGE_URL: bridgeUrl },
+      stdio: "inherit",
+    },
+  );
 }
 
 async function waitForHealth() {

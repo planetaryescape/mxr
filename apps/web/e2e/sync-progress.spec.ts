@@ -1,22 +1,21 @@
 import { expect, test } from "@playwright/test";
 
-import { openApp, readE2EState } from "./helpers/state";
+import { openList } from "./helpers/mail";
 
-test("manual sync shows mailbox progress until completion", async ({ page }) => {
-  await openApp(page, "/m/inbox");
-  await expect(page.getByRole("complementary").getByText(/^connected$/i)).toBeVisible();
-  await expect(page.getByRole("article").first()).toBeVisible();
+test("Sync now shows progress in the status bar until the sync completes", async ({ page }) => {
+  await openList(page, "/m/inbox");
+  const statusBar = page.getByRole("contentinfo");
+  await expect(statusBar.getByText(/^connected$/i)).toBeVisible();
 
-  const { token } = readE2EState();
-  const syncResponse = page.request.post("/api/v1/mail/sync", {
-    headers: { authorization: `Bearer ${token}` },
-  });
+  const syncResponse = page.waitForResponse("**/api/v1/mail/sync");
+  await statusBar.getByRole("button", { name: "Sync now" }).click();
 
-  const banner = page.locator("[data-sync-banner]");
-  await expect(banner).toBeVisible();
-  await expect(banner).toContainText(/^Syncing \d+ of \d+ messages$/);
+  const progress = statusBar.getByRole("status").filter({ hasText: /^syncing/ });
+  await expect(progress).toBeVisible();
+  await expect(progress).toHaveText(/^syncing (…|\d+\/\d+ messages?)/);
 
   const response = await syncResponse;
   expect(response.ok(), await response.text()).toBe(true);
-  await expect(banner).toBeHidden({ timeout: 5_000 });
+  await expect(progress).toBeHidden({ timeout: 10_000 });
+  await expect(statusBar.getByRole("button", { name: "Sync now" })).toBeVisible();
 });

@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Keep in sync with scripts/e2e-server.mjs, which reads the same variable.
+const appUrl = `http://127.0.0.1:${process.env.MXR_E2E_APP_PORT ?? "5173"}`;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -7,15 +10,17 @@ export default defineConfig({
   workers: 1,
   reporter: process.env.CI ? "github" : "list",
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: appUrl,
     trace: "on-first-retry",
+    // Local escape hatch when the pinned Playwright browser isn't downloaded.
+    launchOptions: process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {},
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
   ],
   webServer: {
     command: "node ./scripts/e2e-server.mjs",
-    url: "http://127.0.0.1:5173",
+    url: appUrl,
     reuseExistingServer: false,
     timeout: 120_000,
   },

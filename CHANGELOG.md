@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.36](https://github.com/planetaryescape/mxr/compare/v0.6.35...v0.6.36) (2026-09-27)
+
+
+### Features
+
+* open mxr on the desk: what needs you, not what arrived ([#240](https://github.com/planetaryescape/mxr/issues/240)) ([c571d58](https://github.com/planetaryescape/mxr/commit/c571d582d3f5d1155acd9e948fc648376d1e06eb))
+
 ## [0.6.35](https://github.com/planetaryescape/mxr/compare/v0.6.34...v0.6.35) (2026-09-27)
 
 

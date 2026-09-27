@@ -163,7 +163,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const lane = useRouterState({
-    select: (s) => (s.location.search as { lane?: unknown }).lane,
+    select: (s) => ("lane" in s.location.search ? s.location.search.lane : undefined),
   });
   const shell = useShellQuery();
   const activePane = useMailboxPane((s) => s.activePane);

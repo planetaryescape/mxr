@@ -16,7 +16,7 @@ use sqlx::Row;
 use std::time::Instant;
 
 /// One message of a thread that was active inside the desk window.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeskMessage {
     pub id: MessageId,
     pub thread_id: ThreadId,
@@ -171,7 +171,7 @@ impl super::Store {
                       is_list_sender
                FROM contacts
                WHERE account_id = ?1
-                 AND LOWER(email) IN (SELECT LOWER(value) FROM json_each(?2))"#,
+                 AND email IN (SELECT LOWER(value) FROM json_each(?2))"#,
         )
         .bind(account_id.as_str())
         .bind(wanted)
@@ -231,11 +231,14 @@ impl super::Store {
         Ok(latencies)
     }
 
-    /// The newest non-trashed message from or to `email` in `account_id`.
+    /// The newest non-trashed message from or to `email` in `account_id`
+    /// dated within a day of `around` (the contact's known last exchange),
+    /// so the lookup reads a handful of rows instead of walking the mailbox.
     pub async fn desk_latest_exchange(
         &self,
         account_id: &AccountId,
         email: &str,
+        around: DateTime<Utc>,
     ) -> Result<Option<DeskLatestExchange>, sqlx::Error> {
         let started_at = Instant::now();
         let hidden_flags = i64::from((MessageFlags::TRASH | MessageFlags::SPAM).bits());
@@ -244,6 +247,7 @@ impl super::Store {
                FROM messages m
                WHERE m.account_id = ?1
                  AND (m.flags & ?3) = 0
+                 AND m.date BETWEEN ?4 AND ?5
                  AND (
                      LOWER(m.from_email) = LOWER(?2)
                      OR EXISTS (
@@ -257,6 +261,8 @@ impl super::Store {
         .bind(account_id.as_str())
         .bind(email)
         .bind(hidden_flags)
+        .bind(around.timestamp() - 86_400)
+        .bind(around.timestamp() + 86_400)
         .fetch_optional(self.reader())
         .await?;
         let exchange = row

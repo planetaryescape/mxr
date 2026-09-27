@@ -55,6 +55,9 @@ pub struct DeskRowData {
     pub overdue: bool,
     #[serde(default)]
     pub unread: bool,
+    /// Any message in the conversation is starred.
+    #[serde(default)]
+    pub starred: bool,
     /// Due rows: the promise's id, for resolving it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commitment_id: Option<String>,

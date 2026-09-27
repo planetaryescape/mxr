@@ -113,6 +113,7 @@ mod tests {
                     usual_samples: 0,
                     overdue: false,
                     unread: true,
+                    starred: false,
                     commitment_id: None,
                 }],
                 total: 1,

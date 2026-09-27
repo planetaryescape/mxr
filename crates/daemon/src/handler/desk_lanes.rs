@@ -229,10 +229,9 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
         let Some(latest) = thread.last() else {
             continue;
         };
-        lanes.subjects.insert(
-            latest.thread_id.clone(),
-            clean_subject(&latest.subject).to_string(),
-        );
+        lanes
+            .subjects
+            .insert(latest.thread_id.clone(), clean_subject(&latest.subject));
         lanes.message_ids.insert(
             latest.thread_id.clone(),
             thread.iter().map(|m| m.id.clone()).collect(),
@@ -451,7 +450,7 @@ fn base_row(
         message_ids: thread.iter().map(|m| m.id.clone()).collect(),
         counterparty_email: email.to_string(),
         counterparty_name: name.filter(|n| !n.trim().is_empty()),
-        subject: clean_subject(&open.subject).to_string(),
+        subject: clean_subject(&open.subject),
         reason,
         since,
         age_seconds: (inputs.now - since).num_seconds(),
@@ -459,6 +458,9 @@ fn base_row(
         usual_samples: 0,
         overdue: false,
         unread,
+        starred: thread
+            .iter()
+            .any(|m| m.flags.contains(mxr_core::MessageFlags::STARRED)),
         commitment_id: None,
     }
 }
@@ -537,19 +539,8 @@ pub(super) fn dedupe_by_precedence(rows: Vec<DeskRowData>) -> Vec<DeskRowData> {
 }
 
 /// "Re: Re: Fwd: Launch plan" reads as "Launch plan" on the desk.
-pub(super) fn clean_subject(subject: &str) -> &str {
-    let mut rest = subject.trim();
-    loop {
-        let lower = rest.to_ascii_lowercase();
-        let stripped = ["re:", "fwd:", "fw:", "aw:", "sv:"]
-            .iter()
-            .find(|prefix| lower.starts_with(**prefix))
-            .map(|prefix| rest[prefix.len()..].trim_start());
-        match stripped {
-            Some(next) if next != rest => rest = next,
-            _ => return rest,
-        }
-    }
+pub(super) fn clean_subject(subject: &str) -> String {
+    mxr_compose::strip_reply_forward_prefixes(subject)
 }
 
 #[cfg(test)]

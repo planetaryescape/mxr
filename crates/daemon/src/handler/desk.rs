@@ -7,7 +7,7 @@
 
 use super::desk_lanes::{
     apply_pace, clean_subject, dedupe_by_precedence, sort_lane, thread_lanes, AccountInputs,
-    PaceDirection, DESK_WINDOW_DAYS, DUE_AHEAD_DAYS, USUAL_MIN_SAMPLES,
+    PaceDirection, DESK_WINDOW_DAYS, DUE_AHEAD_DAYS,
 };
 use super::HandlerResult;
 use crate::state::AppState;
@@ -230,7 +230,7 @@ async fn due_rows(
                 .store
                 .get_envelope(&commitment.evidence_msg_id)
                 .await?
-                .map(|envelope| clean_subject(&envelope.subject).to_string())
+                .map(|envelope| clean_subject(&envelope.subject))
                 .unwrap_or_default(),
         };
         let age_seconds = (now - due).num_seconds();
@@ -254,6 +254,7 @@ async fn due_rows(
                 usual_samples: 0,
                 overdue: age_seconds > 0,
                 unread: false,
+                starred: false,
                 commitment_id: Some(commitment.id),
             },
             None,
@@ -284,7 +285,7 @@ async fn drift_rows(
         };
         let Some(exchange) = state
             .store
-            .desk_latest_exchange(account_id, &drift.email)
+            .desk_latest_exchange(account_id, &drift.email, last_contact)
             .await?
         else {
             continue;
@@ -299,7 +300,7 @@ async fn drift_rows(
                 message_ids: vec![exchange.message_id],
                 counterparty_email: drift.email,
                 counterparty_name: drift.display_name,
-                subject: clean_subject(&exchange.subject).to_string(),
+                subject: clean_subject(&exchange.subject),
                 reason: format!(
                     "usually in touch every {}",
                     days_phrase(drift.expected_days)
@@ -307,9 +308,11 @@ async fn drift_rows(
                 since: last_contact,
                 age_seconds: (now - last_contact).num_seconds(),
                 usual_seconds: Some(expected_seconds),
-                usual_samples: USUAL_MIN_SAMPLES as u32,
+                // The pace is the watch's cadence, not measured replies.
+                usual_samples: 0,
                 overdue: true,
                 unread: false,
+                starred: false,
                 commitment_id: None,
             },
             None,

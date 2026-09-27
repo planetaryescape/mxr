@@ -4,7 +4,7 @@
  * as they do in every other list.
  */
 
-import type { Desk, DeskLaneKind, DeskRow } from "./api";
+import { DESK_LANES, type Desk, type DeskLaneKind, type DeskRow } from "./api";
 import { LANE_TITLES } from "./deskCopy";
 import {
   projectRows,
@@ -40,18 +40,21 @@ export function toMessageRow(row: DeskRow): MessageRowView {
     date_full: row.since,
     date_relative: "",
     unread: Boolean(row.unread),
-    starred: false,
+    starred: Boolean(row.starred),
     has_attachments: false,
   };
 }
 
 /**
- * Archive, snooze and moves take a conversation off the desk. A promise is
- * different: it stays until it is resolved, whatever happens to the thread,
- * so due rows only leave for trash and spam.
+ * Archive, snooze and moves take owed and new-from-people conversations off
+ * the desk, as they leave the inbox. A promise stays until it is resolved,
+ * whatever happens to its thread, and a conversation you started that has no
+ * reply stays under Waiting on after archive (the daemon cannot tell it was
+ * archived). Those lanes only leave optimistically for trash and spam; the
+ * refetch settles the rest.
  */
 export function laneLens(lane: DeskLaneKind): LensIdentity {
-  return lane === "due" ? { kind: "other" } : { kind: "desk" };
+  return lane === "due" || lane === "waiting" ? { kind: "other" } : { kind: "desk" };
 }
 
 export interface DeskGroups {
@@ -72,7 +75,7 @@ export function deskGroups(
   const index: DeskRowIndex = new Map();
   if (!desk) return { groups: [], index };
   const groups: MessageGroupView[] = [];
-  for (const lane of ["owed", "due", "waiting", "people_new"] as const) {
+  for (const lane of DESK_LANES) {
     if (only && lane !== only) continue;
     const data = desk[lane];
     const rows = data.rows.map(toMessageRow);

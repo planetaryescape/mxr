@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::owed::{csv_escape, truncate};
 use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
@@ -228,24 +229,6 @@ fn short_duration(seconds: i64) -> String {
     }
 }
 
-fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        s.to_string()
-    } else {
-        let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
-        out.push('\u{2026}');
-        out
-    }
-}
-
-fn csv_escape(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') {
-        format!("\"{}\"", s.replace('"', "\"\""))
-    } else {
-        s.to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -273,6 +256,7 @@ mod tests {
             usual_samples: 3,
             overdue: usual.is_some_and(|u| age > u),
             unread: true,
+            starred: false,
             commitment_id: None,
         }
     }

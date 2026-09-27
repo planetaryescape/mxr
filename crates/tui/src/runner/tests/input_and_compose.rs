@@ -405,6 +405,7 @@ fn desk_row(lane: mxr_protocol::DeskLaneKind) -> mxr_protocol::DeskRowData {
         usual_samples: 0,
         overdue: false,
         unread: true,
+        starred: false,
         commitment_id: None,
     }
 }

@@ -250,6 +250,7 @@ mod tests {
             usual_samples: 3,
             overdue: usual.is_some_and(|u| age > u),
             unread: true,
+            starred: false,
             commitment_id: None,
         }
     }

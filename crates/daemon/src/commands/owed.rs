@@ -83,7 +83,7 @@ fn print(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn truncate(s: &str, max: usize) -> String {
+pub(crate) fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
     } else {
@@ -93,7 +93,7 @@ fn truncate(s: &str, max: usize) -> String {
     }
 }
 
-fn csv_escape(s: &str) -> String {
+pub(crate) fn csv_escape(s: &str) -> String {
     if s.contains(',') || s.contains('"') || s.contains('\n') {
         format!("\"{}\"", s.replace('"', "\"\""))
     } else {

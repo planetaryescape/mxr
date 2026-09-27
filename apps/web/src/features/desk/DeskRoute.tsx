@@ -54,8 +54,10 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
             toast.success("Promise kept");
             return invalidateMailQueries();
           })
-          .catch((error: Error) =>
-            toast.error("Couldn't mark the promise done", { description: error.message }),
+          .catch((error: unknown) =>
+            toast.error("Couldn't mark the promise done", {
+              description: error instanceof Error ? error.message : String(error),
+            }),
           );
       },
     }),

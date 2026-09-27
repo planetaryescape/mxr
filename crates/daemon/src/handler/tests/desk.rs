@@ -103,7 +103,11 @@ impl Fixture {
             .unwrap();
         if direction == MessageDirection::Inbound {
             store
-                .set_message_labels(&envelope.id, &[self.inbox.clone()], EventSource::User)
+                .set_message_labels(
+                    &envelope.id,
+                    std::slice::from_ref(&self.inbox),
+                    EventSource::User,
+                )
                 .await
                 .unwrap();
         }

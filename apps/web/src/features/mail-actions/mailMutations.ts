@@ -25,6 +25,7 @@ import {
 } from "@/features/mailbox/api";
 import { usePendingMailOps, type MailAction, type MailActionPayload } from "./pendingMailOps";
 import type { AccountMutationResult, MutationResponse } from "@/features/mailbox/types";
+import { apiFetch } from "@/api/client";
 import { requestAccountReauth } from "@/features/accounts/reauthRequest";
 import { getActiveQueryClient } from "@/lib/queryClient";
 import { requestCoordinator } from "@/lib/requestCoordinator";
@@ -89,9 +90,11 @@ export async function performMailAction(
   if (isDestructive(action)) useSelection.getState().clear();
 
   try {
-    const response = await requestCoordinator.enqueueMutation(() =>
-      runAction(action, ids, options),
-    );
+    const command = jobCommand(action, ids, options.payload);
+    const response =
+      command && ids.length >= JOB_THRESHOLD
+        ? await runAsJob(action, command, ids.length, options.payload)
+        : await requestCoordinator.enqueueMutation(() => runAction(action, ids, options));
     assertCompleted(response, ids.length);
     if (!options.silent) announceSuccess(action, ids, response, options.payload);
     await invalidateMailQueries().catch(() => undefined);
@@ -106,6 +109,106 @@ export async function performMailAction(
     return { ok: false, error };
   } finally {
     usePendingMailOps.getState().remove(opId);
+  }
+}
+
+/**
+ * Batches this large run as a daemon job (TUI parity): the daemon chunks
+ * the provider calls and reports progress, instead of one long request.
+ */
+const JOB_THRESHOLD = 200;
+
+type JobMutationCommand = Record<string, unknown> & { mutation: string; message_ids: string[] };
+
+function jobCommand(
+  action: MailAction,
+  ids: string[],
+  payload?: MailActionPayload,
+): JobMutationCommand | null {
+  const base = { message_ids: ids };
+  switch (action) {
+    case "archive":
+      return { mutation: "Archive", ...base };
+    case "read-and-archive":
+      return { mutation: "ReadAndArchive", ...base };
+    case "trash":
+      return { mutation: "Trash", ...base };
+    case "spam":
+      return { mutation: "Spam", ...base };
+    case "star":
+    case "unstar":
+      return { mutation: "Star", ...base, starred: action === "star" };
+    case "read":
+    case "unread":
+      return { mutation: "SetRead", ...base, read: action === "read" };
+    case "labels":
+      return { mutation: "ModifyLabels", ...base, add: payload?.add ?? [], remove: payload?.remove ?? [] };
+    case "label-add":
+      return payload?.label ? { mutation: "ModifyLabels", ...base, add: [payload.label], remove: [] } : null;
+    case "label-remove":
+      return payload?.label ? { mutation: "ModifyLabels", ...base, add: [], remove: [payload.label] } : null;
+    case "move":
+      return payload?.label ? { mutation: "Move", ...base, target_label: payload.label } : null;
+    default:
+      return null;
+  }
+}
+
+interface JobSnapshot {
+  job_id: string;
+  status: "queued" | "running" | "succeeded" | "failed";
+  progress: { total: number; completed: number; succeeded: number; skipped: number; failed: number };
+  undo_ids?: string[];
+  error?: string | null;
+  result?: MutationResponse["result"];
+}
+
+async function runAsJob(
+  action: MailAction,
+  command: JobMutationCommand,
+  count: number,
+  payload?: MailActionPayload,
+): Promise<MutationResponse> {
+  const started = await apiFetch<{ job_id: string }>("/api/v1/mail/mutation-jobs", {
+    method: "POST",
+    body: command,
+  });
+  const toastId = `job-${started.job_id}`;
+  toast.loading(`${verb(action, payload)} ${plural(count, "message")}…`, {
+    id: toastId,
+    description: "Running in the background",
+  });
+  // Polling is sequential by nature: each check waits for the last.
+  for (;;) {
+    // oxlint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    // oxlint-disable-next-line no-await-in-loop
+    const { job } = await apiFetch<{ job: JobSnapshot }>(
+      `/api/v1/mail/jobs/${encodeURIComponent(started.job_id)}`,
+    );
+    const { completed, total } = job.progress;
+    if (job.status === "queued" || job.status === "running") {
+      toast.loading(`${verb(action, payload)} ${completed.toLocaleString()} of ${plural(total, "message")}`, {
+        id: toastId,
+        description: "Running in the background",
+      });
+      continue;
+    }
+    toast.dismiss(toastId);
+    const result = {
+      ...(job.result ?? {
+        requested: total,
+        succeeded: job.progress.succeeded,
+        skipped: job.progress.skipped,
+        failed: job.progress.failed,
+      }),
+      // One undo id per daemon chunk; Undo reverses them all.
+      undo_ids: job.undo_ids ?? [],
+    };
+    if (job.status === "failed" && job.error) {
+      return { ok: false, result: { ...result, accounts: [{ account_id: "", account_name: "job", succeeded: result.succeeded, skipped: result.skipped, failed: result.failed, error: job.error }] } };
+    }
+    return { ok: job.status === "succeeded", result };
   }
 }
 
@@ -321,11 +424,14 @@ function announceSuccess(
   const count = response.result?.succeeded ?? ids.length;
   const message = `${verb(action, payload)} ${plural(count, "message")}`;
   const mutationId = response.result?.mutation_id;
+  const jobUndoIds = response.result?.undo_ids ?? [];
   const undo = mutationId
     ? () => performUndo(mutationId)
-    : action === "snooze"
-      ? () => wakeSnoozed(ids)
-      : null;
+    : jobUndoIds.length > 0
+      ? () => undoAll(jobUndoIds)
+      : action === "snooze"
+        ? () => wakeSnoozed(ids)
+        : null;
   if (!undo) {
     toast.success(message);
     return;
@@ -339,6 +445,25 @@ function announceSuccess(
     description: "Press u to undo",
     action: { label: "Undo", onClick: () => void undo() },
   });
+}
+
+/** A batch job's chunks each undo separately; reverse them all, newest first. */
+async function undoAll(undoIds: string[]): Promise<boolean> {
+  let ok = true;
+  for (const id of undoIds.toReversed()) {
+    try {
+      // Chunks undo in reverse order, one at a time, like they were applied.
+      // oxlint-disable-next-line no-await-in-loop
+      await undoMutation(id);
+    } catch {
+      ok = false;
+    }
+  }
+  useUndo.getState().setLastUndo(null);
+  await invalidateMailQueries().catch(() => undefined);
+  if (ok) toast.success("Undone");
+  else toast.error("Part of the batch couldn't be undone", { description: "Its undo window may have passed." });
+  return ok;
 }
 
 /** Snooze has no daemon mutation id; undo wakes each message instead. */

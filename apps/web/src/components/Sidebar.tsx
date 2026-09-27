@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Archive,
@@ -36,6 +37,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { lensesFromShell, type MailLens } from "@/features/mailbox/lenses";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
+import { fetchSavedSearches, fetchSavedSearchUnreadCounts } from "@/features/search/api";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { formatChord } from "@/lib/keys/chord";
 import { useScopeController } from "@/lib/keys/controllers";
@@ -168,6 +170,20 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const setFocusIndex = useMailboxPane((s) => s.setSidebarIndex);
   const listRef = useRef<HTMLDivElement>(null);
 
+  // Saved searches show unread counts like labels (TUI tab strip). Counts
+  // are keyed by saved-search id; the shell knows them by name.
+  const savedSearches = useQuery({ queryKey: ["saved-searches"], queryFn: fetchSavedSearches, staleTime: 60_000 });
+  const savedCounts = useQuery({
+    queryKey: ["saved-search-counts"],
+    queryFn: fetchSavedSearchUnreadCounts,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const unreadBySavedName = useMemo(() => {
+    const counts = savedCounts.data?.counts ?? {};
+    return new Map((savedSearches.data?.searches ?? []).map((search) => [search.name, counts[search.id] ?? 0]));
+  }, [savedCounts.data, savedSearches.data]);
+
   const sections = useMemo<NavSection[]>(() => {
     const lenses = lensesFromShell(shell.data);
     const labels = lenses.filter((lens) => lens.section === "labels");
@@ -201,13 +217,15 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
           to: lens.path,
           label: lens.label,
           Icon: Bookmark,
+          count: unreadBySavedName.get(lens.label),
+          emphasize: true,
           shortcut: index < 9 ? `g ${index + 1}` : undefined,
         })),
       });
     }
     result.push({ id: "tools", title: "Tools", foldable: true, entries: TOOLS });
     return result;
-  }, [shell.data]);
+  }, [shell.data, unreadBySavedName]);
 
   // Keyboard walks only what is visible: folded sections contribute their
   // header, not their entries.

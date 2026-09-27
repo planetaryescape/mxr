@@ -224,6 +224,8 @@ export interface MutationResult {
   failed: number;
   accounts?: AccountMutationResult[];
   mutation_id?: string;
+  /** Batch jobs: one undo id per daemon chunk. */
+  undo_ids?: string[];
 }
 
 export interface MutationResponse {

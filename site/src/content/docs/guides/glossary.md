@@ -50,7 +50,7 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 **Reply-later** (a.k.a. **bookmark**) — flag a thread to come back to. Hey's term is "Reply Later"; in the TUI the key is `b` for bookmark. The reply queue is browsed with `mxr replies` or `Ctrl-p → Reply Queue`.
 
-**Snooze** — hide a thread until a time. Returns to inbox at the specified moment. Set with `mxr snooze --until '<grammar>'` or the `Z` key in the TUI.
+**Snooze** — hide a thread until a time. Returns to inbox at the specified moment. Set with `mxr snooze --until '<time>'` (see [time phrases](/reference/time-phrases/)) or the `Z` key in the TUI.
 
 **Screener** — Hey-borrowed term for triaging unknown senders into Allow / Deny / Feed / Paper Trail. Local-only consent metadata; never round-trips to the provider. CLI: `mxr screener`.
 

@@ -139,6 +139,7 @@ export default defineConfig({
             },
             { label: 'TUI', slug: 'reference/tui' },
             { label: 'Keybindings', slug: 'reference/keybindings' },
+            { label: 'Time phrases', slug: 'reference/time-phrases' },
             { label: 'Config', slug: 'reference/config' },
             { label: 'JSON output schemas', slug: 'reference/json-output' },
             { label: 'HTTP Bridge', slug: 'reference/bridge' },

@@ -165,7 +165,9 @@ them all.
   the same row of the list you came from, including search results.
 - **Act.** `e` archive, `m` mark read and archive, `#` trash, `!` spam, `s`
   star, `I`/`U` read or unread, `l` labels, `v` move, `Z` snooze, `D`
-  unsubscribe, `b` reply later. Changes show at once. `u` (or `z`) undoes
+  unsubscribe, `b` reply later. Snooze and send later take a time in words
+  ("fri 3", "in 2d") and show the exact time before you commit; see
+  [time phrases](/reference/time-phrases/). Changes show at once. `u` (or `z`) undoes
   the last archive, trash, spam, read change, snooze, move or label change
   for about a minute. Star has no undo; press `s` again.
 - **Select.** `x` selects and moves down, `V` starts a range, `* a` selects

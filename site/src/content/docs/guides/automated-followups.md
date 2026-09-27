@@ -71,18 +71,18 @@ daemon startup, ready for the user to retry.
 
 ## Time syntax
 
-Both `mxr remind --when` and `mxr send --at` accept the same forms
-as `mxr snooze --until`:
+Both `mxr remind --when` and `mxr send --at` accept the same
+[time phrases](/reference/time-phrases/) as `mxr snooze --until`,
+resolved in local time:
 
-- **Relative durations**: `in 30m`, `in 2h`, `in 5d`, `in 2w`
-- **Named days**: `tomorrow`, `monday`, `tuesday`, ..., `sunday` (also
-  three-letter abbreviations: `mon`, `tue`, ...)
-- **Day + time**: `tomorrow 9am`, `monday 17:00`, `friday 5pm`
+- **Relative durations**: `in 30m`, `in 2h`, `in 5d`, `in 2w`, `3d`
+- **Named days**: `tomorrow`, `monday`, `tue`, `next week`, `3 oct`
+- **Day + time**: `tomorrow 9am`, `monday 17:00`, `fri 3`
 - **Today**: `today 17:00` (must be a future time)
 - **RFC3339**: `2026-06-01T15:00:00Z`
 
 Past times are rejected. "Today" without a specific time is rejected
-(too ambiguous).
+(too ambiguous). Preview any phrase with `mxr time "<phrase>"`.
 
 ## Operational notes
 

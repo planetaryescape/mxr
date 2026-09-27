@@ -143,8 +143,10 @@ Two cross-view interactions:
 - Bulk confirmation
 - Attachment modal
 - Snooze modal — preset list plus a **Custom…** entry that opens a
-  text prompt parsed by the same `in 2h` / `tomorrow 9am` /
-  `monday 17:00` / RFC3339 grammar as `mxr snooze --until`
+  text prompt with a live preview of the resolved time, using the same
+  [time phrases](/reference/time-phrases/) as `mxr snooze --until`.
+  Tab switches between readings of an ambiguous phrase such as `fri 3`;
+  the send-at and remind prompts work the same way
 - Unsubscribe confirmation
 - Analytics filter modal
 - Reply-later queue browser — list of flagged messages and due reminders,

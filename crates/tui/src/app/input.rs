@@ -568,9 +568,14 @@ impl App {
                             .take()
                             .unwrap_or_default();
                         if let Some(pending) = self.compose.pending_send_confirm.take() {
-                            let now = chrono::Utc::now();
-                            let remind_at = match mxr_core::parse_relative_time(&input, now) {
-                                Ok(remind_at) => remind_at,
+                            let remind_at = match crate::ui::time_preview::resolve(
+                                &input,
+                                &self.modals.snooze_config,
+                            ) {
+                                Ok(resolution) => crate::ui::time_preview::chosen(
+                                    &resolution,
+                                    self.compose.pending_time_choice,
+                                ),
                                 Err(error) => {
                                     self.status_message =
                                         Some(format!("Cannot parse reminder time: {error}"));
@@ -591,15 +596,27 @@ impl App {
                         self.compose.pending_remind_at_input = None;
                         return None;
                     }
+                    (KeyCode::Tab, _) => {
+                        if let Some(input) = &self.compose.pending_remind_at_input {
+                            self.compose.pending_time_choice = crate::ui::time_preview::next_choice(
+                                input,
+                                &self.modals.snooze_config,
+                                self.compose.pending_time_choice,
+                            );
+                        }
+                        return None;
+                    }
                     (KeyCode::Backspace, _) => {
                         if let Some(input) = &mut self.compose.pending_remind_at_input {
                             input.pop();
+                            self.compose.pending_time_choice = 0;
                         }
                         return None;
                     }
                     (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                         if let Some(input) = &mut self.compose.pending_remind_at_input {
                             input.push(c);
+                            self.compose.pending_time_choice = 0;
                         }
                         return None;
                     }
@@ -616,8 +633,14 @@ impl App {
                             .unwrap_or_default();
                         if let Some(pending) = self.compose.pending_send_confirm.take() {
                             let now = chrono::Utc::now();
-                            let send_at = match mxr_core::parse_relative_time(&input, now) {
-                                Ok(send_at) => send_at,
+                            let send_at = match crate::ui::time_preview::resolve(
+                                &input,
+                                &self.modals.snooze_config,
+                            ) {
+                                Ok(resolution) => crate::ui::time_preview::chosen(
+                                    &resolution,
+                                    self.compose.pending_time_choice,
+                                ),
                                 Err(error) => {
                                     self.status_message =
                                         Some(format!("Cannot parse send-at time: {error}"));
@@ -642,15 +665,27 @@ impl App {
                         self.compose.pending_send_at_input = None;
                         return None;
                     }
+                    (KeyCode::Tab, _) => {
+                        if let Some(input) = &self.compose.pending_send_at_input {
+                            self.compose.pending_time_choice = crate::ui::time_preview::next_choice(
+                                input,
+                                &self.modals.snooze_config,
+                                self.compose.pending_time_choice,
+                            );
+                        }
+                        return None;
+                    }
                     (KeyCode::Backspace, _) => {
                         if let Some(input) = &mut self.compose.pending_send_at_input {
                             input.pop();
+                            self.compose.pending_time_choice = 0;
                         }
                         return None;
                     }
                     (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                         if let Some(input) = &mut self.compose.pending_send_at_input {
                             input.push(c);
+                            self.compose.pending_time_choice = 0;
                         }
                         return None;
                     }
@@ -711,6 +746,7 @@ impl App {
                     if let Some(pending) = self.compose.pending_send_confirm.as_ref() {
                         if pending.mode == PendingSendMode::SendOrSave {
                             self.compose.pending_send_at_input = Some(String::new());
+                            self.compose.pending_time_choice = 0;
                         }
                     }
                     return None;
@@ -719,6 +755,7 @@ impl App {
                     if let Some(pending) = self.compose.pending_send_confirm.as_ref() {
                         if pending.mode == PendingSendMode::SendOrSave && !pending.is_blocked() {
                             self.compose.pending_remind_at_input = Some(String::new());
+                            self.compose.pending_time_choice = 0;
                         }
                     }
                     return None;
@@ -848,10 +885,22 @@ impl App {
                         self.modals.snooze_panel.custom_error = None;
                         return None;
                     }
+                    (KeyCode::Tab, _) => {
+                        let panel = &mut self.modals.snooze_panel;
+                        if let Some(buffer) = &panel.custom_input {
+                            panel.custom_choice = crate::ui::time_preview::next_choice(
+                                buffer,
+                                &self.modals.snooze_config,
+                                panel.custom_choice,
+                            );
+                        }
+                        return None;
+                    }
                     (KeyCode::Backspace, _) => {
                         if let Some(buffer) = self.modals.snooze_panel.custom_input.as_mut() {
                             buffer.pop();
                             self.modals.snooze_panel.custom_error = None;
+                            self.modals.snooze_panel.custom_choice = 0;
                         }
                         return None;
                     }
@@ -862,6 +911,7 @@ impl App {
                         if let Some(buffer) = self.modals.snooze_panel.custom_input.as_mut() {
                             buffer.push(c);
                             self.modals.snooze_panel.custom_error = None;
+                            self.modals.snooze_panel.custom_choice = 0;
                         }
                         return None;
                     }

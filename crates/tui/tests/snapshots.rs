@@ -275,6 +275,7 @@ fn send_confirm_snapshot() {
             Some(&pending),
             None,
             None,
+            &[],
             &mxr_tui::theme::Theme::default(),
         );
     });

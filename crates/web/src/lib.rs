@@ -19,6 +19,7 @@ mod routes_v6;
 mod row_labels;
 #[cfg(feature = "web-ui")]
 mod spa;
+mod time_routes;
 
 pub use openapi::ApiDoc;
 

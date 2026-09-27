@@ -41,6 +41,7 @@ pub mod snooze_modal;
 pub mod status_bar;
 pub mod subscriptions_page;
 pub mod summary_modal;
+pub mod time_preview;
 pub mod toasts;
 pub mod unsubscribe_modal;
 pub mod url_modal;

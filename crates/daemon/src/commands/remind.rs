@@ -32,11 +32,7 @@ pub async fn run(
 
     let when =
         when.ok_or_else(|| anyhow::anyhow!("either --when <time> or --cancel must be supplied"))?;
-    let remind_at = mxr_core::parse_relative_time(&when, chrono::Utc::now()).map_err(|e| {
-        anyhow::anyhow!(
-            "Cannot parse '{when}': {e}. Try: `in 2h`, `tomorrow 9am`, `monday 17:00`, or ISO 8601."
-        )
-    })?;
+    let remind_at = crate::commands::time::parse_time_arg(&when, chrono::Utc::now())?;
 
     let resp = client
         .request(Request::SetAutoReminder {

@@ -20,6 +20,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_util::codec::Framed;
 
 mod compose_and_scheduling;
+mod time_routes;
 
 const TEST_AUTH_TOKEN: &str = "test-token";
 

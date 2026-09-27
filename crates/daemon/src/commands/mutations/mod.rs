@@ -47,10 +47,9 @@ use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use helpers::{
-    confirm_action, parse_snooze_until, print_batch_mutation_output, print_dry_run_output,
-    requires_confirmation, resolve_mutation_selection, resolve_mutation_selection_with_limit,
-    run_simple_mutation, selection_counts, BatchMutationError, MutationRunOptions,
-    MutationSelection,
+    confirm_action, print_batch_mutation_output, print_dry_run_output, requires_confirmation,
+    resolve_mutation_selection, resolve_mutation_selection_with_limit, run_simple_mutation,
+    selection_counts, BatchMutationError, MutationRunOptions, MutationSelection,
 };
 use mxr_core::types::UnsubscribeMethod;
 use mxr_protocol::*;
@@ -654,7 +653,7 @@ pub async fn snooze(
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    let wake_at = parse_snooze_until(&until)?;
+    let wake_at = crate::commands::time::parse_time_arg(&until, chrono::Utc::now())?;
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let selection =

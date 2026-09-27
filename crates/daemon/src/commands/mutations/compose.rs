@@ -1393,11 +1393,7 @@ pub async fn schedule_send(
     when: String,
 ) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
-    let send_at = mxr_core::parse_relative_time(&when, chrono::Utc::now()).map_err(|e| {
-        anyhow::anyhow!(
-            "Cannot parse '{when}': {e}. Try: `in 2h`, `tomorrow 9am`, `monday 17:00`, or ISO 8601."
-        )
-    })?;
+    let send_at = crate::commands::time::parse_time_arg(&when, chrono::Utc::now())?;
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
@@ -2059,11 +2055,7 @@ fn auto_reminder_request_after_send(
     let Some(receipt) = receipt else {
         anyhow::bail!("daemon did not return a sent message id; cannot set reminder");
     };
-    let remind_at = mxr_core::parse_relative_time(remind_after, now).map_err(|e| {
-        anyhow::anyhow!(
-            "Cannot parse --remind-after value '{remind_after}': {e}. Try: `in 2h`, `tomorrow 9am`, `monday 17:00`, or ISO 8601."
-        )
-    })?;
+    let remind_at = crate::commands::time::parse_time_arg(remind_after, now)?;
     Ok(Some(Request::SetAutoReminder {
         sent_message_id: receipt.local_message_id.clone(),
         remind_at,

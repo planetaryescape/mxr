@@ -77,7 +77,8 @@ use utoipa::{
         platform_accounts_authorize, platform_accounts_repair, platform_voice_get,
         platform_voice_rebuild, mail_mutation_jobs, mail_owed, mail_whois,
         mail_send_time, mail_archive_ask, saved_searches_unread_counts,
-        analytics_cadence_drift, cadence_watch_list, cadence_watch, cadence_unwatch
+        analytics_cadence_drift, cadence_watch_list, cadence_watch, cadence_unwatch,
+        mail_time_resolve
     ),
     components(schemas(
         Request,
@@ -204,6 +205,7 @@ endpoint!(get mail_owed "/api/v1/mail/owed", "List threads that owe a reply");
 endpoint!(get mail_whois "/api/v1/mail/whois", "Explain a person or term from local evidence");
 endpoint!(get mail_send_time "/api/v1/mail/send-time", "Recommend a send time for recipients");
 endpoint!(post mail_archive_ask "/api/v1/mail/archive-ask", "Ask the archive a question with citations");
+endpoint!(get mail_time_resolve "/api/v1/mail/time/resolve", "Resolve a natural-language time phrase");
 
 endpoint!(post compose_session_start "/api/v1/mail/compose/session", "Start compose session");
 endpoint!(post compose_session_refresh "/api/v1/mail/compose/session/refresh", "Refresh compose session");

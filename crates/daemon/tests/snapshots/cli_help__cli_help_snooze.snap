@@ -10,7 +10,7 @@ Arguments:
   [MESSAGE_ID]...
 
 Options:
-      --until <UNTIL>      When to resurface. Accepts: configured presets (tomorrow|monday|weekend|tonight), conversational forms (`in 2h`, `monday 5pm`, `tomorrow 9am`), and RFC3339 timestamps (`2026-06-01T15:00:00Z`)
+      --until <UNTIL>      When to resurface, in local time: `tomorrow`, `tonight`, `weekend`, `fri 3`, `tue 9am`, `next week`, `3 oct`, `in 2h`, `3d`, or RFC3339 (`2026-06-01T15:00:00Z`). Preview with `mxr time`
       --search <SEARCH>
       --account <ACCOUNT>
       --yes

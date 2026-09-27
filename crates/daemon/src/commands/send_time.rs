@@ -16,13 +16,7 @@ pub async fn run(
     let account_id = resolve_account(&mut client, account.as_deref()).await?;
     let proposed_at = at
         .as_deref()
-        .map(|s| {
-            mxr_core::parse_relative_time(s, chrono::Utc::now()).map_err(|e| {
-                anyhow::anyhow!(
-                    "Cannot parse --at value '{s}': {e}. Try: `fri 19:00`, `tomorrow 9am`, `in 2h`, or RFC3339."
-                )
-            })
-        })
+        .map(|s| crate::commands::time::parse_time_arg(s, chrono::Utc::now()))
         .transpose()?;
     let resp = client
         .request(Request::SendTimeRecommendation {

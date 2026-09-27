@@ -52,6 +52,8 @@ pub struct SnoozePanelState {
     /// Most recent parser error for the custom input, surfaced in the
     /// modal so the user can correct without leaving the prompt.
     pub custom_error: Option<String>,
+    /// Which reading of an ambiguous custom time is selected (Tab cycles).
+    pub custom_choice: usize,
 }
 
 #[derive(Default)]

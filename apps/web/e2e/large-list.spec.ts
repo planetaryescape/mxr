@@ -39,30 +39,82 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test(`${ROWS} rows stay virtualized and scroll without long frames`, async ({ page }) => {
+/** Scripts whose work the list owns: the app's source and the virtualizer. */
+const LIST_CODE = /\/src\/|react-virtual|virtual-core/;
+const STEPS = 60;
+/**
+ * Budget for list-owned work per scroll step, in V8 block executions. The
+ * fixed list runs about 20k per step (the virtualizer re-measuring rows as
+ * they scroll in); an inline `getItemKey`, which rebuilt every one of the
+ * 5,000 positions each frame, ran about 197k.
+ */
+const BLOCKS_PER_STEP = 60_000;
+
+test(`${ROWS} rows stay virtualized and scroll without re-walking the list`, async ({ page }) => {
+  // Counting executed code, not timing it: frame gaps and CPU durations on a
+  // shared CI runner measure the runner's load as much as the app (the same
+  // tree passed at 45 ms and failed at 90 ms). V8's block coverage counts are
+  // the same on a fast laptop and a starved runner, and work that grows with
+  // the list length shows up as a count that grows tenfold. Coverage starts
+  // before the app loads so every function gets its counters.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Profiler.enable");
+  await cdp.send("Profiler.startPreciseCoverage", { callCount: true, detailed: true });
   await openList(page, "/m/inbox");
   // Only what fits on screen (plus overscan) is in the DOM.
   expect(await mailRows(page).count()).toBeLessThan(80);
+  // Taking coverage resets the counters, so the fling is counted alone.
+  await cdp.send("Profiler.takePreciseCoverage");
 
-  const frames = await mailList(page).evaluate(async (list) => {
+  const frames = await mailList(page).evaluate(async (list, steps) => {
     const deltas: number[] = [];
     let last = performance.now();
     const end = list.scrollHeight - list.clientHeight;
-    // Scroll the whole list in 60 steps, one per frame, as a fling would.
-    for (let step = 1; step <= 60; step += 1) {
-      list.scrollTop = (end * step) / 60;
+    // Scroll the whole list one step per frame, as a fling would.
+    for (let step = 1; step <= steps; step += 1) {
+      list.scrollTop = (end * step) / steps;
       await new Promise(requestAnimationFrame);
       const now = performance.now();
       deltas.push(now - last);
       last = now;
     }
     return deltas;
-  });
+  }, STEPS);
+
+  const { result } = await cdp.send("Profiler.takePreciseCoverage");
+  await cdp.send("Profiler.stopPreciseCoverage");
+  // React's own counts are left out: its scheduler yields more often on a
+  // loaded machine, so they drift with the runner. The list's code does not.
+  let blocks = 0;
+  let listScripts = 0;
+  let mailboxListBlocks = 0;
+  for (const script of result) {
+    if (!LIST_CODE.test(script.url)) continue;
+    listScripts += 1;
+    let scriptBlocks = 0;
+    for (const fn of script.functions) for (const range of fn.ranges) scriptBlocks += range.count;
+    blocks += scriptBlocks;
+    if (/\/MailboxList\.tsx/.test(script.url)) mailboxListBlocks += scriptBlocks;
+  }
+  // The budget is only an upper bound, so a build whose script URLs stop
+  // matching (bundled assets, a renamed file) would pass on zero. The list
+  // module must have been counted, doing real work on each step (about 5k).
+  expect(listScripts, "list-owned scripts seen by coverage").toBeGreaterThan(0);
+  expect(mailboxListBlocks / STEPS, "MailboxList code executed per scroll step").toBeGreaterThan(
+    1_000,
+  );
   frames.sort((a, b) => a - b);
   const p95 = frames[Math.floor(frames.length * 0.95)]!;
-  // A dropped frame or two is noise on a shared runner; a list that renders
-  // every row shows up as frames in the hundreds of milliseconds.
-  expect(p95).toBeLessThan(50);
+  // Frame timing is kept as context for a failure, not as the gate.
+  test.info().annotations.push({
+    type: "perf",
+    description: `list blocks/step ${Math.round(blocks / STEPS)}, frame p95 ${p95.toFixed(1)} ms`,
+  });
+  console.log(
+    `large-list: ${Math.round(blocks / STEPS)} list blocks/step, frame p95 ${p95.toFixed(1)} ms`,
+  );
+  expect(blocks / STEPS, "list code executed per scroll step").toBeLessThan(BLOCKS_PER_STEP);
+
   await expect(mailRows(page).filter({ hasText: `Bulk message ${ROWS}` })).toBeVisible();
   expect(await mailRows(page).count()).toBeLessThan(80);
 });

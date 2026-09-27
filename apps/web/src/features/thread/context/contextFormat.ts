@@ -89,7 +89,7 @@ export interface PromiseView {
  */
 export function promiseViews(context: ThreadContext, now = new Date()): PromiseView[] {
   return (context.promises ?? []).map(({ owner, commitment }) => {
-    const who = commitment.direction === "yours" ? "You" : ownerLabel(owner);
+    const who = ownerLabel(owner);
     const due = commitment.by_when ? `, due ${dayLabel(commitment.by_when, now)}` : "";
     return { id: commitment.id, text: `${who} promised: ${commitment.what}${due}` };
   });
@@ -113,6 +113,6 @@ export function provenanceLabel(provenance: AiProvenance, personName: string | n
 /** "Alice" from "Alice Park"; an address stays whole. */
 function ownerLabel(owner: string): string {
   if (owner.includes("@")) return owner;
-  const first = owner.trim().split(/\s+/)[0] ?? owner;
+  const first = firstName({ display_name: owner, email: owner });
   return first.charAt(0).toUpperCase() + first.slice(1);
 }

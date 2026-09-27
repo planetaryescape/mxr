@@ -214,7 +214,7 @@ function renderHtmlDocument(
     stripDarkTextColors: theme === "dark",
   });
   const style = theme === "dark" ? darkEmailCss(palette) : originalEmailCss;
-  return `<!doctype html><html><head><base target="_blank"><meta http-equiv="Content-Security-Policy" content="script-src 'none'"><meta name="color-scheme" content="${theme === "dark" ? "dark" : "light"}"><style>${style}${askMarkCss(theme, palette)}${blockedImageCss(theme, palette)}</style></head><body>${sanitized}</body></html>`;
+  return `<!doctype html><html><head><base target="_blank"><meta http-equiv="Content-Security-Policy" content="${frameCsp(allowRemoteImages)}"><meta name="color-scheme" content="${theme === "dark" ? "dark" : "light"}"><style>${style}${askMarkCss(theme, palette)}${blockedImageCss(theme, palette)}</style></head><body>${sanitized}</body></html>`;
 }
 
 /** A standalone copy for "Open original in a new tab" (TUI `O`). */
@@ -222,14 +222,35 @@ export function standaloneHtmlDocument(html: string, allowRemoteImages: boolean)
   return renderHtmlDocument(html, allowRemoteImages, "original", readPalette());
 }
 
+/**
+ * The frame's own policy: no scripts, and no network fetches except remote
+ * images once the reader allows them. The sanitizer already strips remote
+ * sources; this blocks whatever it might miss (a new attribute, an odd
+ * URL form) at the network layer.
+ */
+function frameCsp(allowRemoteImages: boolean): string {
+  const images = allowRemoteImages ? "data: blob: https: http:" : "data: blob:";
+  return `default-src 'none'; img-src ${images}; style-src 'unsafe-inline'; font-src data:`;
+}
+
+/** Light-theme colours for the always-light "original" email view. */
+const LIGHT_EMAIL = {
+  muted: "#5b6b78",
+  rule: "#c9d4dc",
+  askMark: "#fff0b3",
+  askMarkRule: "#d9a400",
+};
+
 /** The quiet note that stands in for a blocked remote image. */
 function blockedImageCss(theme: EmailHtmlTheme, p: EmailPalette): string {
-  const [color, rule] = theme === "dark" ? [p.muted, p.rule] : ["#5b6b78", "#c9d4dc"];
+  const [color, rule] =
+    theme === "dark" ? [p.muted, p.rule] : [LIGHT_EMAIL.muted, LIGHT_EMAIL.rule];
   return `.${BLOCKED_IMAGE_CLASS}{display:inline-block;margin:2px 0;padding:0 6px;border:1px solid ${rule};border-radius:4px;font:11px/18px system-ui,-apple-system,sans-serif;color:${color};background:transparent;white-space:nowrap}`;
 }
 
 function askMarkCss(theme: EmailHtmlTheme, p: EmailPalette): string {
-  const [background, rule] = theme === "dark" ? [p.askMark, p.askMarkRule] : ["#fff0b3", "#d9a400"];
+  const [background, rule] =
+    theme === "dark" ? [p.askMark, p.askMarkRule] : [LIGHT_EMAIL.askMark, LIGHT_EMAIL.askMarkRule];
   return `mark[${ASK_MARK_ATTRIBUTE}]{background:${background};color:inherit;border-bottom:1px solid ${rule};border-radius:2px;padding:0 .1em;-webkit-box-decoration-break:clone;box-decoration-break:clone}`;
 }
 

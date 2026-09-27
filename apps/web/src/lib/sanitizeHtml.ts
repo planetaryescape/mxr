@@ -15,10 +15,17 @@ export function isRemoteSrc(src: string): boolean {
 
 /** The host a remote source would be fetched from, when it names one. */
 export function remoteHost(src: string): string | null {
+  return parseRemote(src)?.hostname ?? null;
+}
+
+const RELATIVE_BASE = "relative.invalid";
+
+/** The URL a remote source names, or null for inline or relative ones. */
+function parseRemote(src: string): URL | null {
   if (!isRemoteSrc(src)) return null;
   try {
-    const url = new URL(src.trim(), "https://relative.invalid");
-    return url.hostname === "relative.invalid" ? null : url.hostname;
+    const url = new URL(src.trim(), `https://${RELATIVE_BASE}`);
+    return url.hostname === RELATIVE_BASE ? null : url;
   } catch {
     return null;
   }
@@ -326,20 +333,17 @@ function isTinyImage(node: Element): boolean {
 }
 
 function isKnownTrackerSrc(src: string): boolean {
-  try {
-    const url = new URL(src.trim(), "https://relative.invalid");
-    const host = url.hostname.toLowerCase();
-    const path = url.pathname.toLowerCase();
-    return (
-      host === "mailtrack.io" ||
-      host === "track.customer.io" ||
-      host.startsWith("email.mg.") ||
-      (host === "sendgrid.net" && path.startsWith("/wf/open")) ||
-      (host === "mandrillapp.com" && path.startsWith("/track"))
-    );
-  } catch {
-    return false;
-  }
+  const url = parseRemote(src);
+  if (!url) return false;
+  const host = url.hostname.toLowerCase();
+  const path = url.pathname.toLowerCase();
+  return (
+    host === "mailtrack.io" ||
+    host === "track.customer.io" ||
+    host.startsWith("email.mg.") ||
+    (host === "sendgrid.net" && path.startsWith("/wf/open")) ||
+    (host === "mandrillapp.com" && path.startsWith("/track"))
+  );
 }
 
 function numericAttr(node: Element, attr: string): number | undefined {

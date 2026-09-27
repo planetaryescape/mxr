@@ -21,8 +21,8 @@ export function ThreadPane({ threadId }: { threadId: string }) {
   // Loaded alongside the thread, and waited for, so the context block is in
   // place before the first message paints. It's a local read like the
   // thread; a failed read just leaves the block out. The model status is
-  // never waited for: reading must not depend on it (see MailView, which
-  // warms it before a thread opens, so the gist slot is usually decided).
+  // never waited for: reading must not depend on it (AppShell fetches it at
+  // start, so the gist slot is usually decided by the time a thread opens).
   const context = useQuery(threadContextQuery(threadId));
   const llm = useLlmStatus();
   const policy = llmPolicyKey(llm.data?.status);

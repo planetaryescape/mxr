@@ -1,15 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";
+import type { components } from "@/api/generated";
 
-export interface LlmStatus {
-  enabled: boolean;
-  provider: string;
-  model: string;
-  configured_model?: string | null;
-  base_url?: string | null;
-  allow_cloud_relationship_data?: boolean;
-}
+/** The bridge's `{ status }` body carries the daemon's snapshot as is. */
+export type LlmStatus = components["schemas"]["LlmStatusSnapshot"];
 
 export function fetchLlmStatus(): Promise<{ status: LlmStatus }> {
   return apiFetch<{ status: LlmStatus }>("/api/v1/platform/llm/status");

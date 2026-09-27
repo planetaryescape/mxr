@@ -6,8 +6,8 @@
 
 use chrono::{DateTime, Local, Utc};
 use mxr_protocol::{
-    AiLocalityData, AiProvenanceData, AiSourceData, CommitmentDirectionData, ThreadContextData,
-    ThreadCounterpartyData, ThreadGistData, ThreadGistStatusData,
+    AiLocalityData, AiProvenanceData, AiSourceData, ThreadContextData, ThreadCounterpartyData,
+    ThreadGistData, ThreadGistStatusData,
 };
 
 /// What a row is, so a client can style it.
@@ -78,10 +78,7 @@ pub fn context_rows(
         }
         for (index, promise) in context.promises.iter().enumerate() {
             let commitment = &promise.commitment;
-            let who = match commitment.direction {
-                CommitmentDirectionData::Yours => "You".to_string(),
-                CommitmentDirectionData::Theirs => first_word(&promise.owner),
-            };
+            let who = owner_label(&promise.owner);
             let due = commitment
                 .by_when
                 .map(|when| format!(", due {}", day_label(when, now)))
@@ -178,6 +175,19 @@ fn first_name(person: &ThreadCounterpartyData) -> String {
         .map_or_else(|| person.email.clone(), first_word)
 }
 
+/// How a promise's owner reads: "You", "Alice" from "Alice Park", or an
+/// address kept whole. The daemon already resolved who it is.
+fn owner_label(owner: &str) -> String {
+    if owner.contains('@') {
+        return owner.to_string();
+    }
+    let word = first_word(owner);
+    let mut chars = word.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
+}
+
 /// "Maya" from "Maya Ortiz"; an address stays whole.
 fn first_word(name: &str) -> String {
     if name.contains('@') {
@@ -226,8 +236,8 @@ mod tests {
     use super::*;
     use mxr_core::id::{AccountId, MessageId, ThreadId};
     use mxr_protocol::{
-        CommitmentData, CommitmentStatusData, OwedReplyHereData, ThreadAskData, ThreadPromiseData,
-        VerifiedQuoteData,
+        CommitmentData, CommitmentDirectionData, CommitmentStatusData, OwedReplyHereData,
+        ThreadAskData, ThreadPromiseData, VerifiedQuoteData,
     };
 
     fn facts() -> ThreadContextData {

@@ -1675,6 +1675,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/threads/{thread_id}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Store facts for the reader's context block */
+        get: operations["mail_thread_context"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/threads/{thread_id}/context/gist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Model-written gist and ask for a conversation, cached per newest message */
+        get: operations["mail_thread_gist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/threads/{thread_id}/export": {
         parameters: {
             query?: never;
@@ -2889,6 +2923,17 @@ export interface components {
             email: string;
             name?: string | null;
         };
+        /** @enum {string} */
+        AiLocalityData: "local" | "cloud";
+        /** @description Where model-written text came from, so every client can say so. */
+        AiProvenanceData: {
+            locality: components["schemas"]["AiLocalityData"];
+            model: string;
+            /** @description What the prompt carried, in order. */
+            sources: components["schemas"]["AiSourceData"][];
+        };
+        /** @enum {string} */
+        AiSourceData: "this_thread" | "relationship_history";
         ArchiveAnswerData: {
             citations: components["schemas"]["ArchiveCitationData"][];
             retrieval: components["schemas"]["ArchiveRetrievalData"];
@@ -3920,6 +3965,11 @@ export interface components {
             voice_match: null | components["schemas"]["LlmOverrideData"];
         };
         LlmStatusSnapshot: {
+            /**
+             * @description Whether history with a person may go to a cloud model. Clients key
+             *     cached model output on it.
+             */
+            allow_cloud_relationship_data?: boolean;
             api_key_env?: string | null;
             api_key_present: boolean;
             base_url?: string | null;
@@ -4050,6 +4100,11 @@ export interface components {
             unsnoozed: components["schemas"]["NotificationChimeSoundData"];
             /** Format: float */
             volume: number;
+        };
+        OwedReplyHereData: {
+            message_id: components["schemas"]["MessageId"];
+            /** Format: date-time */
+            since: string;
         };
         OwedReplyRowData: {
             /** Format: double */
@@ -5174,6 +5229,15 @@ export interface components {
              *     daemon's machine; omitted means the daemon's local zone.
              */
             time_zone?: string | null;
+        } | {
+            /** @enum {string} */
+            cmd: "GetThreadContext";
+            thread_id: components["schemas"]["ThreadId"];
+        } | {
+            /** @enum {string} */
+            cmd: "GetThreadGist";
+            refresh?: boolean;
+            thread_id: components["schemas"]["ThreadId"];
         };
         /**
          * @description The daemon's reply to a [`Request`], correlated by [`IpcMessage::id`].
@@ -5776,6 +5840,14 @@ export interface components {
             /** @enum {string} */
             kind: "ResolvedTime";
             resolution?: null | components["schemas"]["TimeResolution"];
+        } | {
+            context: components["schemas"]["ThreadContextData"];
+            /** @enum {string} */
+            kind: "ThreadContext";
+        } | {
+            gist: components["schemas"]["ThreadGistData"];
+            /** @enum {string} */
+            kind: "ThreadGist";
         };
         /**
          * @description A single bucket of the response-time histogram. `count` rows had a
@@ -6286,6 +6358,11 @@ export interface components {
             /** Format: int32 */
             unread_count: number;
         };
+        ThreadAskData: {
+            quote?: null | components["schemas"]["VerifiedQuoteData"];
+            /** @description The ask in a short plain-text clause, at most 160 characters. */
+            summary: string;
+        };
         ThreadBriefingData: {
             body_markdown: string;
             citations: components["schemas"]["CitationRefData"][];
@@ -6295,8 +6372,82 @@ export interface components {
             /** @description thread_id (Slice 5.1) or recipient email (Slice 5.2). */
             thread_id: string;
         };
+        /**
+         * @description Returned by `Request::GetThreadContext`. Computed from the local store
+         *     with no model involved.
+         */
+        ThreadContextData: {
+            account_id: components["schemas"]["AccountId"];
+            counterparty?: null | components["schemas"]["ThreadCounterpartyData"];
+            owed_reply?: null | components["schemas"]["OwedReplyHereData"];
+            /** @description Open promises recorded against this thread, both directions. */
+            promises?: components["schemas"]["ThreadPromiseData"][];
+            thread_id: components["schemas"]["ThreadId"];
+        };
+        ThreadCounterpartyData: {
+            /** @description Mailing-list or bulk sender; relationship stats mean little here. */
+            bulk_sender: boolean;
+            display_name?: string | null;
+            email: string;
+            /**
+             * Format: date-time
+             * @description Latest message between you in any other thread. `None` means this is
+             *     your first conversation.
+             */
+            last_contact_elsewhere_at?: string | null;
+            /**
+             * Format: int32
+             * @description Messages they sent you, across every thread.
+             */
+            messages_from_them: number;
+            /**
+             * Format: int32
+             * @description Messages you sent them (to, cc or bcc), across every thread.
+             */
+            messages_from_you: number;
+            /**
+             * Format: int32
+             * @description Median time they take to answer you.
+             */
+            their_reply_p50_seconds?: number | null;
+            /** Format: int32 */
+            their_reply_samples: number;
+            /**
+             * Format: int32
+             * @description Median time you take to answer them, from past reply pairs.
+             */
+            your_reply_p50_seconds?: number | null;
+            /** Format: int32 */
+            your_reply_samples: number;
+        };
+        /** @description Returned by `Request::GetThreadGist`. */
+        ThreadGistData: {
+            ask?: null | components["schemas"]["ThreadAskData"];
+            from_cache: boolean;
+            /** Format: date-time */
+            generated_at?: string | null;
+            /** @description One plain-text sentence, at most 240 characters. */
+            gist?: string | null;
+            provenance?: null | components["schemas"]["AiProvenanceData"];
+            /** @description Why there is no gist, for `disabled`, `blocked` and `failed`. */
+            reason?: string | null;
+            status: components["schemas"]["ThreadGistStatusData"];
+            thread_id: components["schemas"]["ThreadId"];
+        };
+        /** @enum {string} */
+        ThreadGistStatusData: "ready" | "disabled" | "blocked" | "failed";
         /** Format: uuid */
         ThreadId: string;
+        /** @description An open promise in the thread and who made it. */
+        ThreadPromiseData: {
+            commitment: components["schemas"]["CommitmentData"];
+            /**
+             * @description Who owes it, as the thread knows them: "you" for your own promises,
+             *     else the owner's display name from the thread's messages, falling back
+             *     to their address. In a group thread each promise keeps its own owner.
+             */
+            owner: string;
+        };
         ThreadSummaryData: {
             /** Format: date-time */
             generated_at: string;
@@ -6432,6 +6583,10 @@ export interface components {
             /** Format: double */
             formality_score: number;
             register: components["schemas"]["VoiceRegisterData"];
+        };
+        VerifiedQuoteData: {
+            message_id: components["schemas"]["MessageId"];
+            text: string;
         };
         /** @enum {string} */
         VoiceMatchConfidenceData: "low" | "medium" | "high";
@@ -9147,6 +9302,56 @@ export interface operations {
         };
     };
     mail_thread_briefing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_thread_context: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_thread_gist: {
         parameters: {
             query?: never;
             header?: never;

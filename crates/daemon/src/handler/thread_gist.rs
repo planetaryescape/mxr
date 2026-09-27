@@ -80,10 +80,10 @@ struct CachedGist {
     gist: String,
     ask: Option<ThreadAskData>,
     provenance: AiProvenanceData,
-    /// Some message had no synced body, so its snippet stood in. Such a gist
-    /// is regenerated once the bodies arrive.
+    /// Messages that had no synced body, so their snippet stood in. The gist
+    /// is regenerated once any of them syncs.
     #[serde(default)]
-    from_snippet: bool,
+    snippet_ids: Vec<MessageId>,
 }
 
 /// The gist shares the briefings cache table; the prefix keeps its rows
@@ -122,7 +122,9 @@ pub(super) async fn get_thread_gist(
             .filter(|row| row.content_hash == content_hash)
         {
             if let Ok(payload) = serde_json::from_str::<CachedGist>(&cached.body_markdown) {
-                if !payload.from_snippet || !any_body_synced(state, &envelopes).await {
+                if payload.snippet_ids.is_empty()
+                    || !state.store.any_body_synced(&payload.snippet_ids).await?
+                {
                     return Ok(ready(thread_id, payload, cached.generated_at, true));
                 }
             }
@@ -208,7 +210,11 @@ pub(super) async fn get_thread_gist(
             locality,
             sources,
         },
-        from_snippet: texts.iter().any(|text| text.from_snippet),
+        snippet_ids: texts
+            .iter()
+            .filter(|text| text.from_snippet)
+            .map(|text| text.id.clone())
+            .collect(),
     };
     let generated_at = chrono::Utc::now();
     state
@@ -275,16 +281,6 @@ fn gist_content_hash(envelopes: &[Envelope], share_history: bool, model: &str) -
     hash.update([u8::from(share_history)]);
     hash.update(model.as_bytes());
     base16ct::lower::encode_string(&hash.finalize())
-}
-
-/// Whether any message in the thread now has a synced body.
-async fn any_body_synced(state: &AppState, envelopes: &[Envelope]) -> bool {
-    for envelope in envelopes {
-        if matches!(state.store.get_body(&envelope.id).await, Ok(Some(_))) {
-            return true;
-        }
-    }
-    false
 }
 
 /// One message as the gist reads it.

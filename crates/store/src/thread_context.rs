@@ -46,12 +46,12 @@ impl super::Store {
     }
 
     /// How much you and `email` have written to each other in `account_id`.
-    /// Inbound counts their messages (by From, matching any of
-    /// `from_variants`, the address as it is spelled in their mail, so the
-    /// `from_email` index applies). Outbound counts come from the `contacts`
-    /// aggregate when it has the address, so no recipient lists are walked;
-    /// the latest outbound message elsewhere is found newest first and stops
-    /// at the first match.
+    /// Counts come from the `contacts` aggregate, which matches addresses
+    /// case-insensitively across all mail; an address it hasn't aggregated
+    /// yet is counted live. The latest inbound message outside this thread
+    /// is found through the `from_email` index, matching `from_variants`
+    /// (the address as their mail spells it); the latest outbound one is
+    /// found newest first and stops at the first match.
     pub async fn counterparty_exchange(
         &self,
         account_id: &AccountId,
@@ -67,7 +67,7 @@ impl super::Store {
         variants.dedup();
         let variants = serde_json::to_string(&variants).unwrap_or_else(|_| "[]".into());
 
-        let inbound = sqlx::query(
+        let inbound_query = sqlx::query(
             r#"SELECT COUNT(*) AS total,
                       MAX(CASE WHEN thread_id != ?3 THEN date END) AS last_elsewhere,
                       MAX(list_id IS NOT NULL) AS list_sender
@@ -79,19 +79,21 @@ impl super::Store {
         .bind(account_id.as_str())
         .bind(&variants)
         .bind(exclude_thread.as_str())
-        .fetch_one(self.reader())
-        .await?;
-
-        let aggregate: Option<i64> = sqlx::query_scalar(
-            "SELECT total_outbound FROM contacts WHERE account_id = ? AND email = ?",
+        .fetch_one(self.reader());
+        let aggregate_query = sqlx::query_as::<_, (i64, i64, i64)>(
+            "SELECT total_inbound, total_outbound, is_list_sender
+             FROM contacts WHERE account_id = ? AND email = ?",
         )
         .bind(account_id.as_str())
         .bind(&email)
-        .fetch_optional(self.reader())
-        .await?;
-        let (from_you, last_out) = match aggregate {
-            Some(0) => (0, None),
-            Some(total) => (
+        .fetch_optional(self.reader());
+        let (inbound, aggregate) = tokio::try_join!(inbound_query, aggregate_query)?;
+        let (from_them, from_you, last_out) = match aggregate {
+            Some((inbound_total, 0, _)) => {
+                (u32::try_from(inbound_total).unwrap_or(u32::MAX), 0, None)
+            }
+            Some((inbound_total, total, _)) => (
+                u32::try_from(inbound_total).unwrap_or(u32::MAX),
                 u32::try_from(total).unwrap_or(u32::MAX),
                 self.latest_outbound_elsewhere(account_id, &email, exclude_thread)
                     .await?,
@@ -111,6 +113,7 @@ impl super::Store {
                     .fetch_one(self.reader())
                     .await?;
                 (
+                    count(&inbound)?,
                     count(&row)?,
                     row.try_get::<Option<i64>, _>("last_elsewhere")?,
                 )
@@ -125,15 +128,35 @@ impl super::Store {
             .max()
             .map(decode_timestamp)
             .transpose()?;
-        Ok(CounterpartyExchange {
-            from_them: count(&inbound)?,
-            from_you,
-            last_elsewhere_at,
-            list_sender: inbound
+        let list_sender = aggregate.is_some_and(|(_, _, list)| list > 0)
+            || inbound
                 .try_get::<Option<i64>, _>("list_sender")?
                 .unwrap_or(0)
-                > 0,
+                > 0;
+        Ok(CounterpartyExchange {
+            from_them,
+            from_you,
+            last_elsewhere_at,
+            list_sender,
         })
+    }
+
+    /// Whether any of these messages has a synced body. One query, no body
+    /// columns read.
+    pub async fn any_body_synced(&self, message_ids: &[MessageId]) -> Result<bool, sqlx::Error> {
+        let ids = serde_json::to_string(
+            &message_ids
+                .iter()
+                .map(MessageId::as_str)
+                .collect::<Vec<_>>(),
+        )
+        .unwrap_or_else(|_| "[]".into());
+        sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM bodies WHERE message_id IN (SELECT value FROM json_each(?)))",
+        )
+        .bind(ids)
+        .fetch_one(self.reader())
+        .await
     }
 
     /// How many reply pairs there are with `email` in `direction`, and the

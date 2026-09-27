@@ -3,10 +3,12 @@ import { RefreshCw } from "lucide-react";
 import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useLlmStatus } from "@/features/llm/useLlmStatus";
 import { fetchThread } from "@/features/mailbox/api";
 import { Centered } from "@/features/mailbox/MailViewParts";
 import { useOpenThread } from "@/state/openThreadStore";
 
+import { fetchThreadContext, threadContextKey } from "./context/api";
 import { ReaderSkeleton } from "./ReaderSkeleton";
 import { ThreadReader } from "./ThreadReader";
 
@@ -16,13 +18,23 @@ export function ThreadPane({ threadId }: { threadId: string }) {
     queryKey: ["thread", threadId],
     queryFn: () => fetchThread(threadId),
   });
+  // Loaded alongside the thread, and waited for, so the context block and
+  // its reserved gist slot are in place before the first message paints:
+  // nothing below them moves afterwards. Both are local reads; a failed
+  // context read just leaves the block out.
+  const context = useQuery({
+    queryKey: threadContextKey(threadId),
+    queryFn: () => fetchThreadContext(threadId),
+    staleTime: 30_000,
+  });
+  const llm = useLlmStatus();
   const setOpenThread = useOpenThread((s) => s.setThreadId);
   useEffect(() => {
     setOpenThread(threadId);
     return () => setOpenThread(null);
   }, [setOpenThread, threadId]);
 
-  if (query.isLoading) return <ReaderSkeleton />;
+  if (query.isLoading || context.isLoading || llm.isLoading) return <ReaderSkeleton />;
   if (query.isError) {
     return (
       <div className="flex min-w-0 flex-1 flex-col">

@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "vitest";
 
-import { countRemoteImages, splitHtmlQuote } from "./htmlQuote";
+import { splitHtmlQuote } from "./htmlQuote";
 
 describe("splitHtmlQuote", () => {
   test("drops a Gmail quote and keeps the reply", () => {
@@ -48,12 +48,5 @@ describe("splitHtmlQuote", () => {
   test("leaves a message without markers unchanged", () => {
     const parts = splitHtmlQuote("<p>Plain</p>");
     expect(parts).toEqual({ main: "<p>Plain</p>", hasQuote: false, hasSignature: false });
-  });
-});
-
-describe("countRemoteImages", () => {
-  test("counts http(s) images, not inline cid or data images", () => {
-    const html = `<img src="https://cdn.example.com/a.png"><img src="cid:logo"><img src="http://x.test/b.gif">`;
-    expect(countRemoteImages(html)).toBe(2);
   });
 });

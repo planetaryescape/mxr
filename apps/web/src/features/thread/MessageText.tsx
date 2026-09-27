@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 
 import { plural } from "@/lib/format";
 
+import { findQuote } from "./context/askQuote";
 import { normalizeSegments, splitMessageText, type Segment } from "./textSegments";
 
 /**
@@ -17,12 +18,15 @@ export function MessageText({
   showQuotes,
   showSignature,
   plain = false,
+  highlight,
 }: {
   text: string;
   showQuotes: boolean;
   showSignature: boolean;
   /** The sender's exact text in monospace: folds, but no reflow or mark stripping. */
   plain?: boolean;
+  /** The ask's quote, marked where it appears. */
+  highlight?: string;
 }) {
   const segments = useMemo(() => normalizeSegments(splitMessageText(text)), [text]);
   return (
@@ -40,6 +44,7 @@ export function MessageText({
           key={index}
           segment={segment}
           plain={plain}
+          highlight={highlight}
           forceOpen={
             segment.kind === "quote"
               ? showQuotes
@@ -57,13 +62,15 @@ function SegmentView({
   segment,
   forceOpen,
   plain,
+  highlight,
 }: {
   segment: Segment;
   forceOpen: boolean;
   plain: boolean;
+  highlight?: string;
 }) {
   const [open, setOpen] = useState(false);
-  if (segment.kind === "text") return <Paragraphs text={segment.text} />;
+  if (segment.kind === "text") return <Paragraphs text={segment.text} highlight={highlight} />;
   const expanded = forceOpen || open;
   const label = segment.kind === "quote" ? `${plural(segment.lines, "quoted line")}` : "Signature";
   if (!expanded) {
@@ -113,10 +120,25 @@ function stripQuoteMarks(text: string): string {
     .join("\n");
 }
 
-function Paragraphs({ text }: { text: string }) {
+function Paragraphs({ text, highlight }: { text: string; highlight?: string }) {
+  const tidy = text.replace(/\n{3,}/g, "\n\n").replace(/^\n+|\n+$/g, "");
+  const range = highlight ? findQuote(tidy, highlight) : null;
   return (
     <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-      <Linkified text={text.replace(/\n{3,}/g, "\n\n").replace(/^\n+|\n+$/g, "")} />
+      {range ? (
+        <>
+          <Linkified text={tidy.slice(0, range.start)} />
+          <mark
+            data-ask-quote=""
+            className="rounded-[2px] border-b border-warning/80 bg-warning/15 px-0.5 text-foreground [box-decoration-break:clone]"
+          >
+            <Linkified text={tidy.slice(range.start, range.end)} />
+          </mark>
+          <Linkified text={tidy.slice(range.end)} />
+        </>
+      ) : (
+        <Linkified text={tidy} />
+      )}
     </div>
   );
 }

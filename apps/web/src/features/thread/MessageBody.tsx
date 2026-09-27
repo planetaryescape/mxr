@@ -3,10 +3,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
 import { useUiPrefs, type EmailHtmlTheme } from "@/state/uiPrefsStore";
 
+import { ASK_MARK_ATTRIBUTE, markQuoteInDocument } from "./context/askQuote";
+
 interface MessageBodyProps {
   html: string;
   allowRemoteImages?: boolean;
   theme?: EmailHtmlTheme;
+  /**
+   * The ask's quote. Marked by walking the sanitized frame's text nodes, so
+   * no markup is ever built from it.
+   */
+  highlight?: string;
   /** Clicks inside the frame never reach the page; this reports them. */
   onInteract?: () => void;
 }
@@ -17,6 +24,7 @@ export function MessageBody({
   html,
   allowRemoteImages = false,
   theme = "dark",
+  highlight,
   onInteract,
 }: MessageBodyProps) {
   const onInteractRef = useRef(onInteract);
@@ -48,6 +56,13 @@ export function MessageBody({
     },
     [],
   );
+
+  // The gist can land after the frame has loaded; mark (or unmark) then.
+  useEffect(() => {
+    if (!loaded) return;
+    const body = iframeRef.current?.contentDocument?.body;
+    if (body) markQuoteInDocument(body, highlight ?? "");
+  }, [highlight, loaded]);
 
   function resizeToContent() {
     try {
@@ -145,6 +160,7 @@ interface EmailPalette {
   link: string;
   rule: string;
   code: string;
+  warning: string;
 }
 
 function readPalette(): EmailPalette {
@@ -157,6 +173,7 @@ function readPalette(): EmailPalette {
     link: read("--primary", "#57d5ff"),
     rule: read("--border-strong", "#294963"),
     code: read("--muted", "#10263a"),
+    warning: read("--warning", "#ffd166"),
   };
 }
 
@@ -193,12 +210,20 @@ function renderHtmlDocument(
     stripDarkTextColors: theme === "dark",
   });
   const style = theme === "dark" ? darkEmailCss(palette) : originalEmailCss;
-  return `<!doctype html><html><head><base target="_blank"><meta http-equiv="Content-Security-Policy" content="script-src 'none'"><meta name="color-scheme" content="${theme === "dark" ? "dark" : "light"}"><style>${style}</style></head><body>${sanitized}</body></html>`;
+  return `<!doctype html><html><head><base target="_blank"><meta http-equiv="Content-Security-Policy" content="script-src 'none'"><meta name="color-scheme" content="${theme === "dark" ? "dark" : "light"}"><style>${style}${askMarkCss(theme, palette)}</style></head><body>${sanitized}</body></html>`;
 }
 
 /** A standalone copy for "Open original in a new tab" (TUI `O`). */
 export function standaloneHtmlDocument(html: string, allowRemoteImages: boolean): string {
   return renderHtmlDocument(html, allowRemoteImages, "original", readPalette());
+}
+
+function askMarkCss(theme: EmailHtmlTheme, p: EmailPalette): string {
+  const [background, rule] =
+    theme === "dark"
+      ? [`color-mix(in srgb, ${p.warning} 18%, transparent)`, p.warning]
+      : ["#fff1c2", "#b07800"];
+  return `mark[${ASK_MARK_ATTRIBUTE}]{background:${background};color:inherit;border-bottom:1px solid ${rule};border-radius:2px;padding:0 .1em;-webkit-box-decoration-break:clone;box-decoration-break:clone}`;
 }
 
 const originalEmailCss = `html{color-scheme:light;background:#fff}body{box-sizing:border-box;max-width:860px;margin:0 auto;padding:20px 24px;font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;background:#fff;overflow-wrap:anywhere}*,*:before,*:after{box-sizing:border-box}table{max-width:100%;border-collapse:collapse}body>table{margin-left:auto;margin-right:auto}img{max-width:100%;height:auto}a[href]{color:#0369a1!important;text-decoration:underline!important;text-underline-offset:2px}a[href]:hover{color:#075985!important}`;

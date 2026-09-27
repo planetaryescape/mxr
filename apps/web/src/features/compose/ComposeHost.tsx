@@ -54,12 +54,17 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
       setSlot(null);
       return;
     }
-    const element = document.getElementById("inline-composer-slot");
-    setSlot(element);
-    if (element) {
-      requestAnimationFrame(() => element.scrollIntoView({ block: "nearest" }));
-    }
+    setSlot(document.getElementById("inline-composer-slot"));
   }, [surface, pathname]);
+
+  // Bring the inline composer into view once it has content: the slot is
+  // hidden while empty, so scrolling to it any earlier does nothing.
+  const sessionLoading = controller.sessionLoading;
+  useEffect(() => {
+    if (!slot || sessionLoading) return;
+    const frame = requestAnimationFrame(() => slot.scrollIntoView({ block: "nearest" }));
+    return () => cancelAnimationFrame(frame);
+  }, [slot, sessionLoading]);
 
   // An HTML-bodied draft is a permanent refusal, not a transient failure:
   // retrying can only fail again. Show the document instead.

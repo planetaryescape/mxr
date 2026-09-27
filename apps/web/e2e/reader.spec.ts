@@ -32,8 +32,10 @@ test("a long thread folds read messages, expands on o/X, and blocks remote image
   await expect(messages.nth(4)).not.toHaveAttribute("data-collapsed", "true");
 
   // Remote content stays blocked: a placeholder, a control, and no request.
-  await expect(reader(page).getByText(/1 remote image blocked/)).toBeVisible();
-  await expect(reader(page).getByRole("button", { name: /^Load images/ })).toBeVisible();
+  await expect(
+    reader(page).getByTestId("privacy-line").getByText("Blocked 1 remote image from mxr.local."),
+  ).toBeVisible();
+  await expect(reader(page).getByRole("button", { name: /^Show images/ })).toBeVisible();
   expect(remoteRequests).toEqual([]);
 
   // K moves to the previous message; o toggles it open.
@@ -52,7 +54,7 @@ test("a long thread folds read messages, expands on o/X, and blocks remote image
   await page.keyboard.press("M");
   await expect.poll(() => remoteRequests.length).toBeGreaterThan(0);
   expect(remoteRequests.every((url) => url.endsWith("/assets/onboarding-shot.png"))).toBe(true);
-  await expect(reader(page).getByText(/remote image blocked/)).toHaveCount(0);
+  await expect(reader(page).getByTestId("privacy-line")).toHaveCount(0);
 });
 
 test("n opens the next conversation and Esc returns to the list with the cursor on it", async ({

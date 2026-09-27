@@ -36,6 +36,8 @@ export interface ComposeIntent {
   prefillSubject?: string;
   /** Text to start the body with (an AI draft), above any quoted history. */
   prefillBody?: string;
+  /** Open with "Draft for me" expanded (the reader's "Draft in your voice"). */
+  openAssist?: boolean;
 }
 
 export interface ComposeSaveSnapshot {

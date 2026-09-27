@@ -1,11 +1,14 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
 import { createMailVerbs } from "@/features/mail-actions/mailVerbs";
 import { useProjectedMessages } from "@/features/mail-actions/pendingMailOps";
 import { targetFromThread } from "@/features/mail-actions/target";
+import { resolveCommitment } from "@/features/mailbox/api";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import type { ThreadResponse } from "@/features/mailbox/types";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
@@ -16,21 +19,29 @@ import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
 import { useUiPrefs, type ReaderView } from "@/state/uiPrefsStore";
 
+import {
+  fetchThreadContext,
+  fetchThreadGist,
+  threadContextKey,
+  threadGistKey,
+} from "./context/api";
+import { ASK_MARK_ATTRIBUTE } from "./context/askQuote";
+import { ContextBlock } from "./context/ContextBlock";
+import { firstName } from "./context/contextFormat";
 import { HeadersDialog } from "./HeadersDialog";
 import { standaloneHtmlDocument } from "./MessageBody";
 import { MessageCard } from "./MessageCard";
 import { initialExpanded, lastExpandedIndex } from "./threadExpansion";
 import { ThreadHeader } from "./ThreadHeader";
-import {
-  ThreadCommitmentChips,
-  ThreadSummaryAccordion,
-  ThreadSummaryLoading,
-} from "./ThreadInsights";
-import { useThreadCommitments } from "./useThreadCommitments";
+import { ReplyField } from "./ReplyField";
+import { ThreadSummaryAccordion, ThreadSummaryLoading } from "./ThreadInsights";
 import { useThreadSiblings } from "./useThreadSiblings";
 import { useThreadSummary } from "./useThreadSummary";
 
-/** One loaded conversation: messages, overview, commitments and reader keys. */
+/** How much of the landing message must show before the reader scrolls to it. */
+const LANDING_MARGIN_PX = 160;
+
+/** One loaded conversation: context, messages, the reply field and reader keys. */
 export function ThreadReader({ data }: { data: ThreadResponse }) {
   const nav = useReaderNav();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -76,11 +87,16 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
     scrollRef.current?.focus({ preventScroll: true });
   }, [readerFocused]);
 
-  // Land on the newest unread message, like a mail client, not the top.
+  // Land on the newest unread message, like a mail client, but only scroll
+  // when it starts below the fold: otherwise the top of the thread, with its
+  // context block, stays in view.
   useEffect(() => {
     const target = messages[focusIndex];
     const node = target ? cardRefs.current.get(target.id) : undefined;
-    if (node && focusIndex > 0) node.scrollIntoView({ block: "start" });
+    const container = scrollRef.current;
+    if (!node || !container || focusIndex === 0) return;
+    const foldTop = container.getBoundingClientRect().bottom - LANDING_MARGIN_PX;
+    if (node.getBoundingClientRect().top > foldTop) node.scrollIntoView({ block: "start" });
     // Only on first render of this thread.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -105,7 +121,76 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.thread.id, readerFocused]);
 
-  const { openCommitments, resolve } = useThreadCommitments(data, messages);
+  const threadId = data.thread.id;
+  const queryClient = useQueryClient();
+  const context = useQuery({
+    queryKey: threadContextKey(threadId),
+    queryFn: () => fetchThreadContext(threadId),
+    staleTime: 30_000,
+  });
+  const gist = useQuery({
+    queryKey: threadGistKey(threadId),
+    queryFn: () => fetchThreadGist(threadId),
+    enabled: llm.enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const resolve = useMutation({
+    mutationFn: resolveCommitment,
+    onSuccess: () => {
+      toast.success("Promise marked done");
+      void queryClient.invalidateQueries({ queryKey: threadContextKey(threadId) });
+    },
+    onError: (error) => toast.error("Couldn't mark it done", { description: error.message }),
+  });
+  const askQuote = gist.data?.status === "ready" ? (gist.data.ask?.quote ?? null) : null;
+
+  // "Show in message": expand the message, then scroll to its mark. The
+  // formatted view marks inside the frame when the quote's text survives
+  // sanitizing; when it doesn't, fall back to the reader view.
+  const pendingReveal = useRef(false);
+  const scrollToAskMark = (): boolean => {
+    if (!askQuote) return false;
+    const card = cardRefs.current.get(askQuote.message_id);
+    const container = scrollRef.current;
+    if (!card || !container) return false;
+    const selector = `[${ASK_MARK_ATTRIBUTE}]`;
+    const inPage = card.querySelector<HTMLElement>(selector);
+    if (inPage) {
+      inPage.scrollIntoView({ block: "center", behavior: "smooth" });
+      return true;
+    }
+    const frame = card.querySelector("iframe");
+    const inFrame = frame?.contentDocument?.querySelector<HTMLElement>(selector);
+    if (!frame || !inFrame) return false;
+    const top =
+      frame.getBoundingClientRect().top +
+      inFrame.getBoundingClientRect().top -
+      container.getBoundingClientRect().top;
+    container.scrollBy({ top: top - container.clientHeight / 3, behavior: "smooth" });
+    return true;
+  };
+  const revealAsk = () => {
+    if (!askQuote) return;
+    const index = messages.findIndex((message) => message.id === askQuote.message_id);
+    if (index < 0) return;
+    setFocusIndex(index);
+    setExpanded((current) => new Set(current).add(askQuote.message_id));
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (scrollToAskMark() || view === "reader") return;
+        pendingReveal.current = true;
+        setView("reader");
+      }),
+    );
+  };
+  useEffect(() => {
+    if (!pendingReveal.current) return;
+    pendingReveal.current = false;
+    requestAnimationFrame(() => scrollToAskMark());
+    // Only after the view switch that revealAsk asked for.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
   const { position, step, leave } = useThreadSiblings(data.thread.id, nav);
 
   const target = () => targetFromThread(data, messages);
@@ -280,7 +365,25 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
         onFocus={() => setActivePane("reader")}
       >
         <div className="mx-auto w-full max-w-[980px] pb-24">
-          {summary || summarize.isPending || openCommitments.length > 0 ? (
+          <ContextBlock
+            context={context.data}
+            gist={{
+              reserved: llm.enabled,
+              data: gist.data,
+              loading: gist.isFetching && !gist.data,
+              error: gist.error?.message ?? null,
+              retry: () =>
+                void queryClient.fetchQuery({
+                  queryKey: threadGistKey(threadId),
+                  queryFn: () => fetchThreadGist(threadId, true),
+                  staleTime: 0,
+                }),
+            }}
+            onRevealAsk={revealAsk}
+            onResolvePromise={(id) => resolve.mutate(id)}
+            resolving={resolve.isPending}
+          />
+          {summary || summarize.isPending ? (
             <div className="px-5 pt-4">
               {summary ? (
                 <ThreadSummaryAccordion
@@ -288,16 +391,9 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
                   expanded
                   onExpandedChange={() => setSummary(null)}
                 />
-              ) : summarize.isPending ? (
+              ) : (
                 <ThreadSummaryLoading />
-              ) : null}
-              {openCommitments.length > 0 ? (
-                <ThreadCommitmentChips
-                  commitments={openCommitments}
-                  resolving={resolve.isPending}
-                  onResolve={(id) => resolve.mutate(id)}
-                />
-              ) : null}
+              )}
             </div>
           ) : null}
           {messages.map((message, index) => (
@@ -315,6 +411,7 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
               showQuotes={showQuotes}
               showSignature={showSignature}
               remoteAllowedForThread={remoteAllowed}
+              askQuote={askQuote?.message_id === message.id ? askQuote.text : undefined}
               onToggle={() => {
                 setFocusIndex(index);
                 setExpanded((current) => {
@@ -325,9 +422,28 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
                 });
               }}
               onAllowRemote={() => setRemoteAllowed(true)}
+              onShowFormatted={() => setView("formatted")}
               onShowHeaders={() => setHeadersFor(message.id)}
             />
           ))}
+          <ReplyField
+            name={context.data?.counterparty ? firstName(context.data.counterparty) : null}
+            canReplyAll={canReplyAll}
+            onDraftInVoice={
+              llm.enabled
+                ? () => {
+                    const primary = target().primary;
+                    if (!primary) return;
+                    useComposeUi
+                      .getState()
+                      .openCompose(
+                        { ...replyIntent(primary.id, "single"), openAssist: true },
+                        "inline",
+                      );
+                  }
+                : undefined
+            }
+          />
           {/* ComposeHost portals the inline reply composer here. */}
           <div id="inline-composer-slot" className="px-5 pt-4 empty:hidden" />
         </div>

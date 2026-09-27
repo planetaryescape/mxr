@@ -1,12 +1,4 @@
-import {
-  ChevronDown,
-  ImageOff,
-  MoreHorizontal,
-  Reply,
-  ReplyAll,
-  Forward,
-  Star,
-} from "lucide-react";
+import { ChevronDown, MoreHorizontal, Reply, ReplyAll, Forward, Star } from "lucide-react";
 import { forwardRef, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -34,11 +26,12 @@ import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs, type ReaderView } from "@/state/uiPrefsStore";
 
 import { AttachmentActions } from "./AttachmentActions";
-import { countRemoteImages, splitHtmlQuote } from "./htmlQuote";
+import { splitHtmlQuote } from "./htmlQuote";
 import { useInlineImages } from "./inlineImages";
 import { InviteCard } from "./InviteCard";
 import { MessageBody } from "./MessageBody";
 import { MessageText } from "./MessageText";
+import { PrivacyLine } from "./privacy/PrivacyLine";
 
 export interface MessageCardProps {
   message: MessageRowView;
@@ -49,8 +42,12 @@ export interface MessageCardProps {
   showQuotes: boolean;
   showSignature: boolean;
   remoteAllowedForThread: boolean;
+  /** The ask's verified quote, when this message makes the ask. */
+  askQuote?: string;
   onToggle: () => void;
   onAllowRemote: () => void;
+  /** Switch the reader to the formatted view (to show loaded images). */
+  onShowFormatted: () => void;
   onShowHeaders: () => void;
 }
 
@@ -69,8 +66,10 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
     showQuotes,
     showSignature,
     remoteAllowedForThread,
+    askQuote,
     onToggle,
     onAllowRemote,
+    onShowFormatted,
     onShowHeaders,
   },
   ref,
@@ -195,7 +194,9 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
           showQuotes={showQuotes}
           showSignature={showSignature}
           remoteAllowed={remoteAllowedForThread}
+          askQuote={askQuote}
           onAllowRemote={onAllowRemote}
+          onShowFormatted={onShowFormatted}
           senderEmail={sender.email}
         />
         {attachments.length > 0 ? (
@@ -226,7 +227,9 @@ function Body({
   showQuotes,
   showSignature,
   remoteAllowed,
+  askQuote,
   onAllowRemote,
+  onShowFormatted,
   senderEmail,
 }: {
   message: MessageRowView;
@@ -235,7 +238,9 @@ function Body({
   showQuotes: boolean;
   showSignature: boolean;
   remoteAllowed: boolean;
+  askQuote?: string;
   onAllowRemote: () => void;
+  onShowFormatted: () => void;
   senderEmail: string | null;
 }) {
   const emailHtmlTheme = useUiPrefs((s) => s.emailHtmlTheme);
@@ -247,7 +252,6 @@ function Body({
     () => (html ? splitHtmlQuote(html, { keepSignature: showSignature }) : null),
     [html, showSignature],
   );
-  const remoteCount = useMemo(() => (html ? countRemoteImages(html) : 0), [html]);
   const senderTrusted = senderEmail ? trustedSenders.includes(senderEmail.toLowerCase()) : false;
   const allowRemote = remoteAllowed || senderTrusted;
 
@@ -259,40 +263,30 @@ function Body({
     );
   }
 
+  const privacy = html ? (
+    <PrivacyLine
+      html={html}
+      imagesAllowed={allowRemote}
+      onShowImages={() => {
+        onAllowRemote();
+        if (view !== "formatted") onShowFormatted();
+      }}
+      senderEmail={senderEmail}
+      onAlwaysAllowSender={allowSender}
+    />
+  ) : null;
+
   if (view === "formatted" && html && parts) {
     const expandedQuote = showQuotes || showHtmlQuote;
     const rendered = expandedQuote ? html : parts.main;
     return (
       <div>
-        {remoteCount > 0 && !allowRemote ? (
-          <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-muted/40 px-3 py-1.5 text-[12.5px] text-muted-foreground">
-            <ImageOff className="size-3.5" />
-            <span>
-              {plural(remoteCount, "remote image")} blocked so the sender can't see when you read
-              this.
-            </span>
-            <button
-              type="button"
-              onClick={onAllowRemote}
-              className="font-medium text-primary hover:underline"
-            >
-              Load images <span className="font-mono text-2xs text-muted-foreground">M</span>
-            </button>
-            {senderEmail ? (
-              <button
-                type="button"
-                onClick={() => allowSender(senderEmail)}
-                className="text-primary hover:underline"
-              >
-                Always from {senderEmail}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
+        {privacy}
         <MessageBody
           html={rendered}
           allowRemoteImages={allowRemote}
           theme={emailHtmlTheme}
+          highlight={askQuote}
           onInteract={() => useMailboxPane.getState().setActivePane("reader")}
         />
         {parts.hasQuote && !showQuotes ? (
@@ -324,12 +318,16 @@ function Body({
     );
   }
   return (
-    <MessageText
-      text={text}
-      showQuotes={showQuotes}
-      showSignature={showSignature}
-      plain={view === "plain"}
-    />
+    <>
+      {privacy}
+      <MessageText
+        text={text}
+        showQuotes={showQuotes}
+        showSignature={showSignature}
+        plain={view === "plain"}
+        highlight={askQuote}
+      />
+    </>
   );
 }
 

@@ -283,7 +283,8 @@ function isUnsafeStyleValue(value: string): boolean {
   return /url\s*\(|expression\s*\(|@import|javascript:|vbscript:|data:|-moz-binding/i.test(value);
 }
 
-function isTrackerImage(node: Element): boolean {
+/** Tracking pixels: tiny images and known open-tracking URLs. Always removed. */
+export function isTrackerImage(node: Element): boolean {
   return isTinyImage(node) || isKnownTrackerSrc(node.getAttribute("src") ?? "");
 }
 

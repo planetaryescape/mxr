@@ -28,7 +28,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -62,7 +61,7 @@ interface ThreadHeaderProps {
 }
 
 /**
- * Subject, labels and the action bar. Every button runs the reader's key
+ * Subject, labels and a short action bar. Every button runs the reader's key
  * command, so clicking and typing always do the same thing.
  */
 export function ThreadHeader({
@@ -100,32 +99,28 @@ export function ThreadHeader({
           </span>
         ) : null}
         <span className="mx-2 h-5 w-px bg-border" aria-hidden />
+        {/*
+          Persistent controls, each earning its place: Close, previous and
+          next move through the queue (used on every thread); Archive is the
+          most frequent verb; Snooze is deferral, a first-class verb; the
+          view switch shows which view is on. Everything else lives in More,
+          with its key, and in the command palette. Reply sits at the end of
+          the thread (ReplyField), where reading ends.
+        */}
         <IconAction icon={Archive} label="Archive" keys="e" command="archive" />
         <IconAction icon={Clock} label="Snooze" keys="Z" command="snooze" />
-        <IconAction icon={Tag} label="Labels" keys="l" command="label" />
-        <IconAction icon={Trash2} label="Move to Trash" keys="#" command="trash" />
-        <span className="mx-2 h-5 w-px bg-border" aria-hidden />
-        <IconAction
-          icon={Star}
-          label={starred ? "Unstar" : "Star"}
-          keys="s"
-          command="toggleStar"
-          active={starred}
-        />
-        <IconAction icon={Mail} label="Mark unread" keys="U" command="markUnread" />
         <span className="ml-auto flex items-center gap-1">
           <ViewSwitch view={view} />
-          <IconAction
-            icon={full ? Minimize2 : Maximize2}
-            label={full ? "Show the list" : "Full width"}
-            keys="F"
-            command="fullscreen"
+          <MoreMenu
+            hasAttachments={hasAttachments}
+            canReplyAll={canReplyAll}
+            starred={starred}
+            full={full}
           />
-          <MoreMenu hasAttachments={hasAttachments} />
         </span>
       </div>
       <div className="px-5 pb-3 pt-2">
-        <h1 className="text-pretty text-lg font-semibold leading-snug tracking-tight">
+        <h1 className="text-balance text-lg font-semibold leading-snug tracking-tight">
           {data.thread.subject || "(no subject)"}
         </h1>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-muted-foreground">
@@ -143,19 +138,6 @@ export function ThreadHeader({
             <LabelBadge key={label.id} label={label} />
           ))}
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={run("reply")}>
-            <Reply className="size-3.5" /> Reply <KeyChip className="ml-1">r</KeyChip>
-          </Button>
-          {canReplyAll ? (
-            <Button variant="outline" size="sm" onClick={run("replyAll")}>
-              <ReplyAll className="size-3.5" /> Reply all <KeyChip className="ml-1">a</KeyChip>
-            </Button>
-          ) : null}
-          <Button variant="outline" size="sm" onClick={run("forward")}>
-            <Forward className="size-3.5" /> Forward <KeyChip className="ml-1">f</KeyChip>
-          </Button>
-        </div>
       </div>
     </header>
   );
@@ -167,14 +149,12 @@ function IconAction({
   keys,
   command,
   disabled,
-  active,
 }: {
   icon: LucideIcon;
   label: string;
   keys: string;
   command: string;
   disabled?: boolean;
-  active?: boolean;
 }) {
   return (
     <Tooltip>
@@ -186,9 +166,7 @@ function IconAction({
           disabled={disabled}
           onClick={run(command)}
         >
-          <Icon
-            className={cn("size-4", active ? "fill-star text-star" : "text-muted-foreground")}
-          />
+          <Icon className="size-4 text-muted-foreground" />
         </Button>
       </TooltipTrigger>
       <TooltipContent>
@@ -236,31 +214,63 @@ function ViewSwitch({ view }: { view: ReaderView }) {
   );
 }
 
-const MORE: {
+interface MoreItem {
   label: string;
   command: string;
   keys?: string;
   icon: LucideIcon;
   divider?: boolean;
-}[] = [
-  { label: "Mark read and archive", command: "readArchive", keys: "m", icon: Archive },
-  { label: "Move to label…", command: "move", keys: "v", icon: ArrowRightCircle },
-  { label: "Reply later", command: "replyLater", keys: "b", icon: CornerDownRight },
-  { label: "Mark as spam", command: "spam", keys: "!", icon: ShieldAlert },
-  { label: "Unsubscribe…", command: "unsubscribe", keys: "D", icon: MailX, divider: true },
-  { label: "Summarize", command: "summarize", keys: "y", icon: Sparkles },
-  { label: "Thread briefing", command: "briefing", keys: "B", icon: FileText },
-  { label: "Who is this sender?", command: "whois", keys: "W", icon: UserSearch },
-  { label: "Sender profile", command: "senderProfile", keys: "p", icon: UserRound },
-  { label: "Draft a reply with AI", command: "draftAssist", icon: Sparkles, divider: true },
-  { label: "Links", command: "links", keys: "L", icon: LinkIcon },
-  { label: "Attachments", command: "attachments", keys: "A", icon: Paperclip },
-  { label: "Export as Markdown", command: "exportThread", keys: "E", icon: Download },
-  { label: "Raw headers", command: "headers", keys: "g h", icon: FileText },
-  { label: "Open original in a new tab", command: "openOriginal", keys: "O", icon: Maximize2 },
-];
+}
 
-function MoreMenu({ hasAttachments }: { hasAttachments: boolean }) {
+function moreItems(state: { starred: boolean; full: boolean }): MoreItem[] {
+  return [
+    { label: "Reply", command: "reply", keys: "r", icon: Reply },
+    { label: "Reply all", command: "replyAll", keys: "a", icon: ReplyAll },
+    { label: "Forward", command: "forward", keys: "f", icon: Forward, divider: true },
+    { label: state.starred ? "Unstar" : "Star", command: "toggleStar", keys: "s", icon: Star },
+    { label: "Labels…", command: "label", keys: "l", icon: Tag },
+    { label: "Mark unread", command: "markUnread", keys: "U", icon: Mail },
+    { label: "Mark read and archive", command: "readArchive", keys: "m", icon: Archive },
+    { label: "Move to label…", command: "move", keys: "v", icon: ArrowRightCircle },
+    { label: "Reply later", command: "replyLater", keys: "b", icon: CornerDownRight },
+    { label: "Move to Trash", command: "trash", keys: "#", icon: Trash2 },
+    { label: "Mark as spam", command: "spam", keys: "!", icon: ShieldAlert },
+    { label: "Unsubscribe…", command: "unsubscribe", keys: "D", icon: MailX, divider: true },
+    { label: "Summarize", command: "summarize", keys: "y", icon: Sparkles },
+    { label: "Thread briefing", command: "briefing", keys: "B", icon: FileText },
+    { label: "Who is this sender?", command: "whois", keys: "W", icon: UserSearch },
+    { label: "Sender profile", command: "senderProfile", keys: "p", icon: UserRound },
+    { label: "Draft a reply with AI", command: "draftAssist", icon: Sparkles, divider: true },
+    {
+      label: state.full ? "Show the list" : "Full width",
+      command: "fullscreen",
+      keys: "F",
+      icon: state.full ? Minimize2 : Maximize2,
+    },
+    { label: "Links", command: "links", keys: "L", icon: LinkIcon },
+    { label: "Attachments", command: "attachments", keys: "A", icon: Paperclip },
+    { label: "Export as Markdown", command: "exportThread", keys: "E", icon: Download },
+    { label: "Raw headers", command: "headers", keys: "g h", icon: FileText },
+    { label: "Open original in a new tab", command: "openOriginal", keys: "O", icon: Maximize2 },
+  ];
+}
+
+function MoreMenu({
+  hasAttachments,
+  canReplyAll,
+  starred,
+  full,
+}: {
+  hasAttachments: boolean;
+  canReplyAll: boolean;
+  starred: boolean;
+  full: boolean;
+}) {
+  const items = moreItems({ starred, full }).filter(
+    (item) =>
+      (item.command !== "attachments" || hasAttachments) &&
+      (item.command !== "replyAll" || canReplyAll),
+  );
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -268,8 +278,8 @@ function MoreMenu({ hasAttachments }: { hasAttachments: boolean }) {
           <MoreHorizontal className="size-4 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        {MORE.filter((item) => item.command !== "attachments" || hasAttachments).map((item) => (
+      <DropdownMenuContent align="end" className="max-h-[70vh] w-64 overflow-y-auto">
+        {items.map((item) => (
           <div key={item.command}>
             <DropdownMenuItem onSelect={run(item.command)}>
               <item.icon className="size-3.5" />

@@ -337,7 +337,8 @@ export interface paths {
         /** List detected commitments */
         get: operations["mail_commitments_list"];
         put?: never;
-        post?: never;
+        /** Keep a promise from a sent message as a dated commitment */
+        post: operations["mail_commitments_record"];
         delete?: never;
         options?: never;
         head?: never;
@@ -423,6 +424,23 @@ export interface paths {
         put?: never;
         /** Discard compose session */
         post: operations["compose_session_discard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/compose/session/promises": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Find promises in an outgoing compose session */
+        post: operations["compose_session_promises"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2984,7 +3002,7 @@ export interface components {
             sources: components["schemas"]["AiSourceData"][];
         };
         /** @enum {string} */
-        AiSourceData: "this_thread" | "relationship_history";
+        AiSourceData: "this_thread" | "relationship_history" | "your_message";
         ArchiveAnswerData: {
             citations: components["schemas"]["ArchiveCitationData"][];
             retrieval: components["schemas"]["ArchiveRetrievalData"];
@@ -3530,6 +3548,23 @@ export interface components {
         DeskThreadRefData: {
             account_id: components["schemas"]["AccountId"];
             thread_id: components["schemas"]["ThreadId"];
+        };
+        DetectComposePromisesRequest: {
+            account_id: string;
+            /** @description The compose session file, as the other compose routes take it. */
+            draft_path: string;
+            /** @description The browser's IANA zone, so "by Friday" resolves where the user is. */
+            time_zone?: string | null;
+        };
+        DetectedPromiseData: {
+            due?: null | components["schemas"]["TimeResolution"];
+            /**
+             * @description When it is due, copied from the message ("by Friday"). Checked
+             *     against the text, so it is never the model's invention.
+             */
+            due_phrase?: string | null;
+            /** @description The deliverable as a short clause, such as "send the deck". */
+            what: string;
         };
         DoctorDataStats: {
             /** Format: int32 */
@@ -4274,6 +4309,30 @@ export interface components {
             /** Format: double */
             waiting_days: number;
         };
+        /** @description Returned by `Request::DetectPromises`. */
+        PromiseDetectionData: {
+            /** @description Why there is no answer, for statuses other than `ready`. */
+            message?: string | null;
+            /** @description Promises the sender makes, in the order they appear. */
+            promises: components["schemas"]["DetectedPromiseData"][];
+            provenance?: null | components["schemas"]["AiProvenanceData"];
+            status: components["schemas"]["PromiseDetectionStatusData"];
+        };
+        /**
+         * @description A detection that can't run is a normal answer: sending never waits on it.
+         * @enum {string}
+         */
+        PromiseDetectionStatusData: "ready" | "disabled" | "blocked" | "failed" | "timed_out";
+        /** @description Where `DetectPromises` looks. */
+        PromiseSourceData: {
+            draft: components["schemas"]["Draft"];
+            /** @enum {string} */
+            kind: "draft";
+        } | {
+            /** @enum {string} */
+            kind: "sent_message";
+            message_id: components["schemas"]["MessageId"];
+        };
         RecipientSendTimeRowData: {
             /** Format: int64 */
             best_expected_reply_seconds?: number | null;
@@ -4283,6 +4342,19 @@ export interface components {
             proposed_expected_reply_seconds?: number | null;
             /** Format: int32 */
             sample_count: number;
+        };
+        RecordPromiseRequest: {
+            /** @description Return what would be stored without writing it. */
+            dry_run?: boolean;
+            /**
+             * Format: date-time
+             * @description The chosen time, exactly as the time preview returned it.
+             */
+            due_at: string;
+            /** @description The sent message the promise is in. */
+            message_id: string;
+            /** @description What was promised, such as "send the deck". */
+            what: string;
         };
         RelationshipDriftData: {
             /** Format: date-time */
@@ -5409,6 +5481,25 @@ export interface components {
             /** @enum {string} */
             cmd: "RestoreDeskThreads";
             thread_ids: components["schemas"]["ThreadId"][];
+        } | {
+            /** @enum {string} */
+            cmd: "DetectPromises";
+            /**
+             * Format: date-time
+             * @description Anchor for relative due phrases; defaults to the daemon's clock.
+             */
+            now?: string | null;
+            source: components["schemas"]["PromiseSourceData"];
+            /** @description IANA zone to resolve due phrases in; defaults to the daemon's. */
+            time_zone?: string | null;
+        } | {
+            /** @enum {string} */
+            cmd: "RecordPromise";
+            dry_run?: boolean;
+            /** Format: date-time */
+            due_at: string;
+            message_id: components["schemas"]["MessageId"];
+            what: string;
         };
         /**
          * @description The daemon's reply to a [`Request`], correlated by [`IpcMessage::id`].
@@ -6046,6 +6137,15 @@ export interface components {
             kind: "DeskThreadsRestored";
             /** Format: int64 */
             restored: number;
+        } | {
+            detection: components["schemas"]["PromiseDetectionData"];
+            /** @enum {string} */
+            kind: "Promises";
+        } | {
+            commitment: components["schemas"]["CommitmentData"];
+            dry_run: boolean;
+            /** @enum {string} */
+            kind: "RecordedPromise";
         };
         /**
          * @description A single bucket of the response-time histogram. `count` rows had a
@@ -7442,6 +7542,37 @@ export interface operations {
             };
         };
     };
+    mail_commitments_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordPromiseRequest"];
+            };
+        };
+        responses: {
+            /** @description The `RecordedPromise` variant; with `dry_run` nothing is stored and the id is empty */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     mail_commitments_resolve: {
         parameters: {
             query?: never;
@@ -7557,6 +7688,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    compose_session_promises: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetectComposePromisesRequest"];
+            };
+        };
+        responses: {
+            /** @description The `Promises` variant. A missing, blocked or slow model is a status, never an error */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

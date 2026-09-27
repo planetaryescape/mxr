@@ -99,6 +99,18 @@ export function intentFromComposeLocation(
   );
 }
 
+/**
+ * A reply that starts from an AI draft. Its own session key, so it never
+ * resumes an earlier reply session that lacks the draft.
+ */
+export function replyWithBodyIntent(messageId: string, body: string): ComposeIntent {
+  return {
+    ...replyIntent(messageId, "single"),
+    key: `compose:reply:${messageId}:draft-${Date.now()}`,
+    prefillBody: body,
+  };
+}
+
 /** Intent for reply/reply-all/forward on a thread's primary message. */
 export function replyIntent(messageId: string, mode: "single" | "all" | "forward"): ComposeIntent {
   const kind: ComposeKind = mode === "forward" ? "forward" : mode === "all" ? "reply_all" : "reply";

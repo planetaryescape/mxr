@@ -1739,6 +1739,9 @@ async fn draft_compose(
 struct DraftRefineBody {
     draft_id: String,
     knobs: DraftRefineKnobsData,
+    /// The editor's current text, when it is ahead of the saved draft.
+    #[serde(default)]
+    body: Option<String>,
 }
 
 async fn draft_refine(
@@ -1756,6 +1759,7 @@ async fn draft_refine(
         Request::DraftRefine {
             draft_id,
             knobs: body.knobs,
+            body: body.body,
         },
     )
     .await?;

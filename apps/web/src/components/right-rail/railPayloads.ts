@@ -12,6 +12,8 @@ export function isThreadContext(value: unknown): value is { title?: string; item
 
 interface DraftAssistPayload {
   threadId: string;
+  /** The message a reply would answer. */
+  messageId?: string;
 }
 
 export function isDraftAssistPayload(value: unknown): value is DraftAssistPayload {

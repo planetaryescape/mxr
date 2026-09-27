@@ -41,9 +41,27 @@ pub async fn run(
                         less_emoji,
                         add_context,
                     },
+                    body: None,
                 })
                 .await?;
             print_draft_response(resp, fmt)
+        }
+        Some(DraftAction::Eval { limit }) => {
+            let account_id = match account.as_deref() {
+                Some(account) => Some(resolve_account(&mut client, Some(account)).await?),
+                None => None,
+            };
+            let resp = client
+                .request(Request::DraftEval { account_id, limit })
+                .await?;
+            let (cases, summary) = match resp {
+                Response::Ok {
+                    data: ResponseData::DraftEval { cases, summary },
+                } => (cases, summary),
+                Response::Ok { .. } => anyhow::bail!("Unexpected response"),
+                Response::Error { message, .. } => anyhow::bail!(message),
+            };
+            print_eval(&cases, &summary, fmt)
         }
         None => {
             let to = to.ok_or_else(|| anyhow::anyhow!("Pass --to for a new draft"))?;
@@ -99,6 +117,76 @@ fn print_draft_response(resp: Response, fmt: OutputFormat) -> anyhow::Result<()>
         OutputFormat::Table => {
             println!("{}", view.body);
             eprint_draft_notes(&view);
+        }
+    }
+    Ok(())
+}
+
+fn print_eval(
+    cases: &[DraftEvalCaseData],
+    summary: &DraftEvalSummaryData,
+    fmt: OutputFormat,
+) -> anyhow::Result<()> {
+    match fmt {
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &serde_json::json!({ "cases": cases, "summary": summary })
+                )?
+            );
+        }
+        OutputFormat::Jsonl => {
+            for case in cases {
+                println!("{}", serde_json::to_string(case)?);
+            }
+            println!(
+                "{}",
+                serde_json::to_string(&serde_json::json!({ "summary": summary }))?
+            );
+        }
+        _ => {
+            for case in cases {
+                match &case.error {
+                    Some(error) => println!("✗ {}: {error}", case.counterparty),
+                    None => {
+                        println!(
+                            "── to {} · you wrote {} words, draft {} · greeting {} · sign-off {}{}",
+                            case.counterparty,
+                            case.actual_words,
+                            case.draft_words,
+                            if case.greeting_match {
+                                "match"
+                            } else {
+                                "differs"
+                            },
+                            if case.sign_off_match {
+                                "match"
+                            } else {
+                                "differs"
+                            },
+                            if case.invented_numbers.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" · invented {}", case.invented_numbers.join(", "))
+                            }
+                        );
+                        println!("  you:   {}", case.actual.replace('\n', " / "));
+                        println!("  draft: {}", case.draft.replace('\n', " / "));
+                    }
+                }
+            }
+            println!();
+            println!(
+                "{} replies ({} failed) with {}: length ratio {:.2} (1.00 is yours), greeting match {:.0}%, sign-off match {:.0}%, drafts with invented numbers {:.0}%",
+                summary.cases,
+                summary.failed,
+                if summary.model.is_empty() { "the configured model" } else { summary.model.as_str() },
+                summary.median_length_ratio,
+                summary.greeting_match_rate * 100.0,
+                summary.sign_off_match_rate * 100.0,
+                summary.invented_number_rate * 100.0
+            );
         }
     }
     Ok(())

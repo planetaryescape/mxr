@@ -34,6 +34,8 @@ export interface ComposeIntent {
   draftId?: string;
   prefillTo?: string;
   prefillSubject?: string;
+  /** Text to start the body with (an AI draft), above any quoted history. */
+  prefillBody?: string;
 }
 
 export interface ComposeSaveSnapshot {
@@ -53,10 +55,16 @@ export function applyPrefill(
   draft: ComposeDraftState,
   intent: ComposeIntent,
 ): { draft: ComposeDraftState; changed: boolean } {
-  if (intent.kind !== "new") return { draft, changed: false };
+  let changed = false;
+  const body = intent.prefillBody?.trim();
+  if (body && !draft.bodyMarkdown.includes(body)) {
+    const rest = draft.bodyMarkdown.trim();
+    draft = { ...draft, bodyMarkdown: rest ? `${body}\n\n${rest}` : body };
+    changed = true;
+  }
+  if (intent.kind !== "new") return { draft, changed };
   const to = intent.prefillTo?.trim();
   const subject = intent.prefillSubject?.trim();
-  let changed = false;
   const frontmatter = { ...draft.frontmatter };
   if (to && !frontmatter.to.trim()) {
     frontmatter.to = to;
@@ -66,7 +74,7 @@ export function applyPrefill(
     frontmatter.subject = subject;
     changed = true;
   }
-  return changed ? { draft: { ...draft, frontmatter }, changed } : { draft, changed };
+  return { draft: { ...draft, frontmatter }, changed };
 }
 
 export function draftFromSession(

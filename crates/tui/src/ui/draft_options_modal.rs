@@ -1,7 +1,7 @@
-//! Draft Options modal — choose the tone (register) and length for an AI
-//! reply draft, or leave them on "Auto" to let the daemon infer them from how
-//! you write to this person (the TUI equivalent of the web "Adjust"
-//! disclosure). Tab switches field, ←/→ cycle the option, Enter generates,
+//! Draft Options modal: say what an AI reply should say, and choose the
+//! tone (register) and length or leave them on "Auto" to follow how you
+//! write to this person (the TUI equivalent of the web "Adjust"
+//! disclosure). Tab switches field, ←/→ cycle an option, Enter generates,
 //! Esc cancels.
 
 use super::centered_rect;
@@ -15,11 +15,11 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftOptionsModalState, theme
         return;
     }
 
-    let popup_area = centered_rect(56, 40, area);
+    let popup_area = centered_rect(60, 46, area);
     frame.render_widget(Clear, popup_area);
 
     let block = Block::default()
-        .title(" Draft reply — tone & length ")
+        .title(" Draft reply ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme.accent));
     let inner = block.inner(popup_area);
@@ -31,6 +31,8 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftOptionsModalState, theme
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Length(2),
             Constraint::Length(2),
             Constraint::Min(0),
         ])
@@ -38,15 +40,38 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftOptionsModalState, theme
 
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            "Tab: field   ←/→: option   Enter: generate   Esc: cancel",
+            "Tab: field   ←/→: option   Enter: draft   Esc: cancel",
             Style::default().fg(theme.text_muted),
         ))),
         chunks[0],
     );
 
+    let typing = state.active == DraftOptionsField::Instruction;
+    let label_style = if typing {
+        Style::default().fg(theme.accent).bold()
+    } else {
+        Style::default().fg(theme.text_muted)
+    };
+    let text = if state.instruction.is_empty() && !typing {
+        Span::styled("(optional) answer what they asked", theme.muted_style())
+    } else {
+        Span::raw(format!(
+            "{}{}",
+            state.instruction,
+            if typing { "▏" } else { "" }
+        ))
+    };
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(Span::styled("What should it say?", label_style)),
+            Line::from(text),
+        ]),
+        chunks[2],
+    );
+
     render_field(
         frame,
-        chunks[2],
+        chunks[4],
         "Register",
         &DraftOptionsModalState::REGISTER_OPTIONS,
         state.register_idx,
@@ -55,7 +80,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftOptionsModalState, theme
     );
     render_field(
         frame,
-        chunks[3],
+        chunks[5],
         "Length",
         &DraftOptionsModalState::LENGTH_OPTIONS,
         state.length_idx,

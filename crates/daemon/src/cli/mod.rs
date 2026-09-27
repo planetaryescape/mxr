@@ -1853,6 +1853,15 @@ pub enum DraftAction {
         #[arg(long = "add-context")]
         add_context: Option<String>,
     },
+    /// Replay your most recent replies: draft each one from what was known
+    /// just before you replied and compare it with what you sent (greeting,
+    /// sign-off, length, invented numbers). Calls your LLM once per reply;
+    /// nothing is saved or sent. Uses --account when given.
+    Eval {
+        /// How many replies to replay (at most 50).
+        #[arg(long, default_value_t = 10)]
+        limit: u32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

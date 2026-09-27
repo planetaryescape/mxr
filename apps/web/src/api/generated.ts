@@ -973,6 +973,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/messages/{message_id}/inline-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bytes of one inline (cid:) image, by its HTML src */
+        get: operations["mail_message_inline_image"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/mutation-jobs": {
         parameters: {
             query?: never;
@@ -3475,6 +3492,54 @@ export interface components {
             /** @description Optional `text/plain` alternative supplied alongside `body_html`. */
             body_text?: string | null;
         };
+        /**
+         * @description One replayed reply from `mxr draft eval`: the draft the model wrote from
+         *     what was known just before the user replied, next to what they sent.
+         *     Local only; never recorded in the activity log.
+         */
+        DraftEvalCaseData: {
+            actual: string;
+            /** Format: int32 */
+            actual_words: number;
+            counterparty: string;
+            draft: string;
+            /** Format: int32 */
+            draft_words: number;
+            error?: string | null;
+            /** @description Both open the same way (or neither greets). */
+            greeting_match: boolean;
+            /** @description Numbers in the draft that appear nowhere the model could see. */
+            invented_numbers: string[];
+            /**
+             * Format: int32
+             * @description `[[?: …]]` gaps the model left for the user.
+             */
+            placeholders: number;
+            reply_message_id: components["schemas"]["MessageId"];
+            /** @description Both close the same way (or neither signs off). */
+            sign_off_match: boolean;
+        };
+        DraftEvalSummaryData: {
+            /** Format: int32 */
+            cases: number;
+            /** Format: int32 */
+            failed: number;
+            /** Format: double */
+            greeting_match_rate: number;
+            /**
+             * Format: double
+             * @description Share of drafts with at least one invented number.
+             */
+            invented_number_rate: number;
+            /**
+             * Format: double
+             * @description Median of draft words / actual words (1.0 is the user's length).
+             */
+            median_length_ratio: number;
+            model: string;
+            /** Format: double */
+            sign_off_match_rate: number;
+        };
         /** Format: uuid */
         DraftId: string;
         /** @enum {string} */
@@ -4810,10 +4875,21 @@ export interface components {
             thread_id?: null | components["schemas"]["ThreadId"];
             to?: null | components["schemas"]["Address"];
         } | {
+            /**
+             * @description The text to refine, when the editor has changes the stored draft
+             *     doesn't yet; the stored body otherwise.
+             */
+            body?: string | null;
             /** @enum {string} */
             cmd: "DraftRefine";
             draft_id: components["schemas"]["DraftId"];
             knobs: components["schemas"]["DraftRefineKnobsData"];
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "DraftEval";
+            /** Format: int32 */
+            limit: number;
         } | {
             /** @enum {string} */
             cmd: "PrepareReply";
@@ -5330,6 +5406,11 @@ export interface components {
             /** Format: int32 */
             rewrite_iterations?: number;
             voice_match?: null | components["schemas"]["VoiceMatchData"];
+        } | {
+            cases: components["schemas"]["DraftEvalCaseData"][];
+            /** @enum {string} */
+            kind: "DraftEval";
+            summary: components["schemas"]["DraftEvalSummaryData"];
         } | {
             content: string;
             /** @enum {string} */
@@ -7815,6 +7896,31 @@ export interface operations {
         };
     };
     mail_message_html_images: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_message_inline_image: {
         parameters: {
             query?: never;
             header?: never;

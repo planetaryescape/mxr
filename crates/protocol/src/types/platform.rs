@@ -491,6 +491,44 @@ pub enum VoiceMatchConfidenceData {
     High,
 }
 
+/// One replayed reply from `mxr draft eval`: the draft the model wrote from
+/// what was known just before the user replied, next to what they sent.
+/// Local only; never recorded in the activity log.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DraftEvalCaseData {
+    pub reply_message_id: MessageId,
+    pub counterparty: String,
+    pub actual: String,
+    pub draft: String,
+    pub actual_words: u32,
+    pub draft_words: u32,
+    /// Both open the same way (or neither greets).
+    pub greeting_match: bool,
+    /// Both close the same way (or neither signs off).
+    pub sign_off_match: bool,
+    /// Numbers in the draft that appear nowhere the model could see.
+    pub invented_numbers: Vec<String>,
+    /// `[[?: …]]` gaps the model left for the user.
+    pub placeholders: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DraftEvalSummaryData {
+    pub cases: u32,
+    pub failed: u32,
+    /// Median of draft words / actual words (1.0 is the user's length).
+    pub median_length_ratio: f64,
+    pub greeting_match_rate: f64,
+    pub sign_off_match_rate: f64,
+    /// Share of drafts with at least one invented number.
+    pub invented_number_rate: f64,
+    pub model: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VoiceMatchData {

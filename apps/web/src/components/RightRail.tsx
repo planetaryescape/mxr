@@ -56,7 +56,7 @@ export function RightRail() {
 
 function RailContent({ kind, payload }: { kind: string; payload: unknown }) {
   if (kind === "draft-assist" && isDraftAssistPayload(payload)) {
-    return <DraftAssistPanel threadId={payload.threadId} />;
+    return <DraftAssistPanel threadId={payload.threadId} replyToMessageId={payload.messageId} />;
   }
   if (kind === "thread-context" && isThreadContext(payload)) {
     return (

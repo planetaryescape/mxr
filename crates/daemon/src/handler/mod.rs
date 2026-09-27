@@ -22,7 +22,11 @@ pub(crate) mod deliveries;
 pub(crate) mod diagnostics_impl;
 mod draft_compose;
 mod draft_context;
+mod draft_eval;
+mod draft_output;
+mod draft_prompt;
 mod draft_refine;
+mod draft_voice;
 mod error;
 mod expert;
 mod helpers;
@@ -367,6 +371,7 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::CheckDraftSafety { .. }
         | Request::DraftCompose { .. }
         | Request::DraftRefine { .. }
+        | Request::DraftEval { .. }
         | Request::ExtractDraftCommitments { .. }
         | Request::ExplainEntity { .. }
         | Request::FindExpert { .. }
@@ -1266,8 +1271,13 @@ async fn dispatch(
             )
             .await
         }
-        Request::DraftRefine { draft_id, knobs } => {
-            draft_refine::draft_refine(state, draft_id, knobs.clone()).await
+        Request::DraftRefine {
+            draft_id,
+            knobs,
+            body,
+        } => draft_refine::draft_refine(state, draft_id, knobs.clone(), body.as_deref()).await,
+        Request::DraftEval { account_id, limit } => {
+            draft_eval::draft_eval(state, account_id.as_ref(), *limit).await
         }
         Request::ListDrafts => mutations::list_drafts(state).await,
         Request::ListOrphanedDrafts => mutations::list_orphaned_drafts(state).await,
@@ -1849,6 +1859,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::TriageSearch { .. }
         | Request::DraftCompose { .. }
         | Request::DraftRefine { .. }
+        | Request::DraftEval { .. }
         | Request::PrepareReply { .. }
         | Request::PrepareForward { .. }
         | Request::ResolveSendFrom { .. }
@@ -2146,6 +2157,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::TriageSearch { .. } => "triage_search",
         Request::DraftCompose { .. } => "draft_compose",
         Request::DraftRefine { .. } => "draft_refine",
+        Request::DraftEval { .. } => "draft_eval",
         Request::PrepareReply { .. } => "prepare_reply",
         Request::PrepareForward { .. } => "prepare_forward",
         Request::SendDraft { .. } => "send_draft",
@@ -2260,6 +2272,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::GetUserVoice { account_id }
         | Request::RebuildUserVoice { account_id } => Some(account_id),
         Request::DraftCompose { account_id, .. } => account_id.as_ref(),
+        Request::DraftEval { account_id, .. } => account_id.as_ref(),
         Request::SetSignatureDefault { account_id, .. }
         | Request::ClearSignatureDefault { account_id, .. }
         | Request::ResolveSignature { account_id, .. } => account_id.as_ref(),

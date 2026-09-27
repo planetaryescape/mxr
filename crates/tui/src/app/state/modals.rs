@@ -246,7 +246,10 @@ impl PlatformModalState {
 /// Which field the Draft Options modal cursor is on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DraftOptionsField {
+    /// What the reply should say (free text; empty lets the daemon answer
+    /// what the message asks).
     #[default]
+    Instruction,
     Register,
     Length,
 }
@@ -263,6 +266,7 @@ pub struct DraftOptionsModalState {
     pub register_idx: usize,
     /// 0=Auto, 1=Short, 2=Medium, 3=Long
     pub length_idx: usize,
+    pub instruction: String,
 }
 
 impl DraftOptionsModalState {
@@ -272,9 +276,10 @@ impl DraftOptionsModalState {
     pub fn open(&mut self, thread_id: ThreadId) {
         self.visible = true;
         self.thread_id = Some(thread_id);
-        self.active = DraftOptionsField::Register;
+        self.active = DraftOptionsField::Instruction;
         self.register_idx = 0;
         self.length_idx = 0;
+        self.instruction.clear();
     }
 
     pub fn close(&mut self) {
@@ -284,14 +289,16 @@ impl DraftOptionsModalState {
 
     pub fn next_field(&mut self) {
         self.active = match self.active {
+            DraftOptionsField::Instruction => DraftOptionsField::Register,
             DraftOptionsField::Register => DraftOptionsField::Length,
-            DraftOptionsField::Length => DraftOptionsField::Register,
+            DraftOptionsField::Length => DraftOptionsField::Instruction,
         };
     }
 
     /// Cycle the active field's selection by `delta` (wraps).
     pub fn cycle(&mut self, delta: isize) {
         let slot = match self.active {
+            DraftOptionsField::Instruction => return,
             DraftOptionsField::Register => &mut self.register_idx,
             DraftOptionsField::Length => &mut self.length_idx,
         };

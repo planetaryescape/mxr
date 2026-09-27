@@ -12,7 +12,10 @@ impl App {
                     Request::DraftCompose {
                         account_id: None,
                         to: None,
-                        instruction: "Draft a concise reply.".into(),
+                        // Empty: the daemon answers what the message asks and
+                        // marks what only the user can decide. `W` (draft
+                        // options) lets the user say what to write.
+                        instruction: String::new(),
                         source_message_id: None,
                         thread_id: Some(env.thread_id.clone()),
                         register: None,
@@ -42,10 +45,12 @@ impl App {
                             email: env.from.email.clone(),
                         }),
                         instruction: format!(
-                            "Follow up on the selected thread: {}",
+                            "Follow up on our conversation \"{}\".",
                             env.subject.trim()
                         ),
-                        source_message_id: Some(env.id.clone()),
+                        // A new email to this person, not a reply in the
+                        // thread (a source message would make it a reply).
+                        source_message_id: None,
                         thread_id: None,
                         register: None,
                         length_hint: None,
@@ -99,9 +104,11 @@ impl App {
                 };
                 self.queue_platform_request_after(
                     vec![Request::SaveDraft { draft }],
+                    // Saved just before, so the stored body is current.
                     Request::DraftRefine {
                         draft_id,
                         knobs: mxr_protocol::DraftRefineKnobsData::default(),
+                        body: None,
                     },
                     "Refined draft",
                     "Saving and refining current draft...",
@@ -158,12 +165,13 @@ impl App {
         };
         let register = self.modals.draft_options.register();
         let length = self.modals.draft_options.length();
+        let instruction = self.modals.draft_options.instruction.trim().to_string();
         self.modals.draft_options.close();
         self.queue_platform_request(
             Request::DraftCompose {
                 account_id: None,
                 to: None,
-                instruction: "Draft a concise reply.".into(),
+                instruction,
                 source_message_id: None,
                 thread_id: Some(thread_id),
                 register,

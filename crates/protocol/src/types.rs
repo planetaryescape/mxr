@@ -1176,6 +1176,18 @@ pub enum Request {
     DraftRefine {
         draft_id: DraftId,
         knobs: DraftRefineKnobsData,
+        /// The text to refine, when the editor has changes the stored draft
+        /// doesn't yet; the stored body otherwise.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        body: Option<String>,
+    },
+    /// Replay the user's most recent replies: draft each one from what was
+    /// known just before they replied, and compare with what they sent.
+    /// Calls the configured LLM once per case; nothing is saved or sent.
+    DraftEval {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        limit: u32,
     },
     PrepareReply {
         message_id: MessageId,
@@ -1564,6 +1576,7 @@ impl Request {
             | Self::TriageSearch { .. }
             | Self::DraftCompose { .. }
             | Self::DraftRefine { .. }
+            | Self::DraftEval { .. }
             | Self::PrepareReply { .. }
             | Self::PrepareForward { .. }
             | Self::SendDraft { .. }
@@ -2189,6 +2202,10 @@ pub enum ResponseData {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         context_note: Option<String>,
     },
+    DraftEval {
+        cases: Vec<DraftEvalCaseData>,
+        summary: DraftEvalSummaryData,
+    },
     ExportResult {
         content: String,
     },
@@ -2526,6 +2543,7 @@ impl ResponseData {
             | Self::ThreadSummary { .. }
             | Self::TriageResults { .. }
             | Self::DraftSuggestion { .. }
+            | Self::DraftEval { .. }
             | Self::ExportResult { .. }
             | Self::MutationResult { .. }
             | Self::JobStarted { .. }

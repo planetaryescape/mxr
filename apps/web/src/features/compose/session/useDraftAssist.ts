@@ -45,8 +45,18 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
       if (!current) throw new Error("No draft is open");
       const email = firstAddress(current.frontmatter.to);
       if (!email) throw new Error("Add a recipient before drafting");
-      const purpose = aiPurpose.trim() || current.frontmatter.subject.trim();
-      if (!purpose) throw new Error("Describe what this email should do");
+      // A reply can leave the instruction empty: the daemon answers what the
+      // message asks and leaves [[?: …]] gaps for what only the user knows.
+      // A new email needs to know what it's for; the subject is context,
+      // not a substitute for saying what to write.
+      const subject = current.frontmatter.subject.trim();
+      const said = aiPurpose.trim();
+      if (!intent.messageId && !said && !subject) {
+        throw new Error("Say what this email should do");
+      }
+      const purpose = intent.messageId
+        ? said
+        : [said, subject ? `(The subject line is "${subject}".)` : ""].filter(Boolean).join(" ");
       return apiFetch<DraftSuggestionResponse>("/api/v1/mail/drafts/compose", {
         method: "POST",
         body: {
@@ -73,6 +83,8 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
         body: {
           draft_id: intent.draftId,
           knobs,
+          // Refine what's in the editor, not the last saved copy.
+          ...(draftRef.current ? { body: draftRef.current.bodyMarkdown } : {}),
         },
       });
     },

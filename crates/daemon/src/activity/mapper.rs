@@ -262,6 +262,9 @@ pub fn map_request(
 
         // ----- drafts -----
         Request::DraftCompose { .. } => ("draft.create", Some("draft"), None, None),
+        Request::DraftEval { .. } => {
+            skip_activity!("draft_eval", "local evaluation; creates nothing")
+        }
         Request::DraftRefine { .. } => ("draft.update", Some("draft"), None, None),
         Request::SaveDraft { draft } => (
             "draft.save",

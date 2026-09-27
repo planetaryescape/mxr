@@ -78,6 +78,8 @@ expression: summary
     "Draft",
     "DraftCommitmentCandidateData",
     "DraftContentSchema",
+    "DraftEvalCaseData",
+    "DraftEvalSummaryData",
     "DraftId",
     "DraftIntent",
     "DraftLengthHintData",

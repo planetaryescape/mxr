@@ -224,7 +224,10 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
     },
     fullscreen: () => setReaderLayout(readerLayout === "full" ? "split" : "full"),
     draftAssist: () =>
-      useModals.getState().openRightRail("draft-assist", { threadId: data.thread.id }),
+      useModals.getState().openRightRail("draft-assist", {
+        threadId: data.thread.id,
+        messageId: target().primary?.id,
+      }),
     ...(nav?.queueLabel
       ? {
           route: () =>

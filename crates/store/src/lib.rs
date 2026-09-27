@@ -59,6 +59,7 @@ mod triage;
 mod undo;
 mod user_activity;
 mod user_voice_profile;
+mod voice_samples;
 mod wrapped;
 
 pub use calendar::CalendarInviteRecord;
@@ -91,6 +92,7 @@ pub use snippets::Snippet;
 pub use sync_log::{SyncLogEntry, SyncStatus};
 pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 pub use sync_upsert::SyncUpsert;
+pub use voice_samples::{MyReplySample, MySentSample};
 
 /// Bind parameters per `IN (...)` query. SQLite's default limit is 32,766;
 /// this leaves room for the query's other binds and keeps a page-sized id

@@ -1,41 +1,27 @@
-//! Unified AI draft generation — one entry for new messages, replies from
-//! compose (`source_message_id`), and replies from the reader (`thread_id`).
-//! Thin orchestrator over `draft_context`: resolve the conversation (if any),
-//! assemble relationship/voice context + grounding, infer tone/length (unless
-//! overridden), and finish into a `DraftSuggestion`. Never auto-sends.
+//! Unified AI draft generation: one entry for new messages, replies from
+//! compose (`source_message_id`), replies from the reader (`thread_id`) and
+//! forwards (a `to` outside the conversation).
+//!
+//! The draft is written *as the user*: who they are, real emails they sent
+//! (to this person first) and the habits those show, the conversation as
+//! ME / THEM turns with the message to answer marked, and the tone and
+//! length they asked for (`draft_voice` gathers, `draft_prompt` builds,
+//! `draft_output` cleans). Never auto-sends.
 
-use super::{draft_context, HandlerResult};
+use super::draft_prompt::{self, DraftMode, Me, PromptInput};
+use super::draft_voice::{self, Counterparty, VoiceMaterial};
+use super::{draft_context, draft_output, relationship_profile, HandlerResult};
 use crate::state::AppState;
+use chrono::{DateTime, Utc};
 use draft_context::DraftContext;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{Address, Envelope};
 use mxr_llm::{guarded_system_prompt, ChatMessage, CompletionRequest, LlmError, LlmFeature};
 use mxr_protocol::{DraftLengthHintData, VoiceRegisterData};
 
-const SYSTEM_PROMPT_NEW: &str = "You write email for a busy professional in their own voice. \
-Produce only the email body — no subject line, no signature. Be direct, specific, and \
-plain-spoken, and match the tone and length the user uses with this person. Never invent prior \
-familiarity or facts that are not provided.";
-
-const SYSTEM_PROMPT_REPLY: &str = "You draft email replies for a busy professional in their own \
-voice. Given the thread context and the user's intent, produce just the reply body — no greeting \
-line if the thread is mid-conversation, no signature, no subject line. Match the formality and \
-length the user uses with this person. Never add commentary about what you're doing, and never \
-invent facts or familiarity that aren't in the thread.";
-
-/// Longest fixed (non-instruction, non-recipient) bytes of a task line, across
-/// the reply and new-message templates, rendered with the longest length label
-/// ("medium"). Kept in sync with the `format!` templates in `draft_reply` and
-/// `draft_brand_new`.
-const TASK_TEMPLATE_FIXED_BYTES: usize = {
-    let reply = "Now draft my reply. Length: medium. Instruction: ".len();
-    let new_msg = "Write a new email to . Length: medium. Purpose: ".len();
-    if reply > new_msg {
-        reply
-    } else {
-        new_msg
-    }
-};
+/// Longest instruction plus recipient label accepted. The instruction is
+/// never cut (it must reach the model whole), so it is bounded up front.
+pub(crate) const MAX_INSTRUCTION_BYTES: usize = 4_000;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn draft_compose(
@@ -48,23 +34,22 @@ pub(super) async fn draft_compose(
     register: Option<VoiceRegisterData>,
     length_hint: Option<DraftLengthHintData>,
 ) -> HandlerResult {
-    // The task line (prefix + recipient label + instruction) is never
-    // truncated, so it must be bounded up front or it would break the
-    // assembled-prompt ceiling. Count the recipient label with its real bytes
-    // (a long display name/email is unbounded too) and reject an oversized
-    // task line with an explicit InvalidRequest kind.
-    let recipient_bytes = to
-        .as_ref()
-        .map_or(0, |address| recipient_label(address).len());
-    let task_line_bytes = TASK_TEMPLATE_FIXED_BYTES + recipient_bytes + instruction.len();
-    let limit = draft_context::max_task_line_bytes();
-    if task_line_bytes > limit {
+    let recipient_bytes = to.as_ref().map_or(0, |address| {
+        address.email.len() + address.name.as_deref().map_or(0, str::len)
+    });
+    let request_bytes = recipient_bytes + instruction.len();
+    if request_bytes > MAX_INSTRUCTION_BYTES {
         return Err(crate::handler::HandlerError::InvalidRequest(format!(
-            "draft is too long: the task line would be {task_line_bytes} bytes, over the {limit} \
-             byte limit (assembled-prompt ceiling minus fixed scaffolding); shorten the \
-             instruction or recipient"
+            "draft is too long: the instruction and recipient are {request_bytes} bytes, over the \
+             {MAX_INSTRUCTION_BYTES} byte limit; shorten the instruction"
         )));
     }
+    let request = DraftRequest {
+        instruction,
+        register,
+        length_hint,
+        before: None,
+    };
 
     // Reply to an explicit thread (reader / quick-reply).
     if let Some(thread_id) = thread_id.as_ref() {
@@ -75,38 +60,32 @@ pub(super) async fn draft_compose(
         let account = account_id
             .cloned()
             .unwrap_or_else(|| envelopes[0].account_id.clone());
-        return draft_reply(
-            state,
-            &account,
-            instruction,
-            register,
-            length_hint,
-            envelopes,
-        )
-        .await;
+        let forward_to = to.filter(|address| !is_participant(&envelopes, &address.email));
+        return draft_in_thread(state, &account, &request, envelopes, None, forward_to).await;
     }
 
-    // Reply from compose: resolve the source message to its thread. If it
-    // isn't synced locally, fall through to new-message mode.
+    // From compose: resolve the source message to its thread. If it isn't
+    // synced locally, fall through to new-message mode.
     if let Some(message_id) = source_message_id.as_ref() {
         let envelopes = draft_context::resolve_thread_envelopes(state, message_id).await;
         if !envelopes.is_empty() {
             let account = account_id
                 .cloned()
                 .unwrap_or_else(|| envelopes[0].account_id.clone());
-            return draft_reply(
+            // A recipient outside the conversation means a forward.
+            let forward_to = to.filter(|address| !is_participant(&envelopes, &address.email));
+            return draft_in_thread(
                 state,
                 &account,
-                instruction,
-                register,
-                length_hint,
+                &request,
                 envelopes,
+                Some(message_id),
+                forward_to,
             )
             .await;
         }
     }
 
-    // New message.
     let to = to.ok_or_else(|| {
         crate::handler::HandlerError::Message(
             "Draft needs a recipient (to) or a thread to reply to.".to_string(),
@@ -117,178 +96,291 @@ pub(super) async fn draft_compose(
             "Draft needs an account for a new message.".to_string(),
         )
     })?;
-    draft_brand_new(state, account, to, instruction, register, length_hint).await
+    draft_new(state, account, to, &request).await
 }
 
-async fn draft_reply(
+/// What the user asked for. `before` replays history (offline evaluation):
+/// nothing on or after it is used.
+pub(crate) struct DraftRequest<'a> {
+    pub instruction: &'a str,
+    pub register: Option<VoiceRegisterData>,
+    pub length_hint: Option<DraftLengthHintData>,
+    pub before: Option<DateTime<Utc>>,
+}
+
+fn is_participant(envelopes: &[Envelope], email: &str) -> bool {
+    envelopes.iter().any(|envelope| {
+        std::iter::once(&envelope.from)
+            .chain(envelope.to.iter())
+            .chain(envelope.cc.iter())
+            .any(|address| address.email.eq_ignore_ascii_case(email))
+    })
+}
+
+/// A reply (or forward) in an existing conversation.
+pub(crate) async fn draft_in_thread(
     state: &AppState,
     account_id: &AccountId,
-    instruction: &str,
-    register: Option<VoiceRegisterData>,
-    length_hint: Option<DraftLengthHintData>,
+    request: &DraftRequest<'_>,
     envelopes: Vec<Envelope>,
+    source: Option<&MessageId>,
+    forward_to: Option<Address>,
 ) -> HandlerResult {
-    let contacts = draft_context::thread_contact_emails(state, &envelopes).await;
-    for email in contacts.iter().take(2) {
-        draft_context::ensure_contact_fresh(state, account_id, email).await;
-    }
-    let context = draft_context::build_relationship_block(
+    let me = draft_voice::me(state, account_id).await;
+    let owned = draft_voice::owned(&me);
+    let target = draft_voice::pick_target(&envelopes, &owned, source);
+    let counterparty = match &forward_to {
+        Some(address) => Some(Counterparty {
+            email: address.email.to_ascii_lowercase(),
+            name: address.name.clone(),
+        }),
+        None => target.and_then(|target| draft_voice::counterparty_of(target, &owned)),
+    };
+    let mode = match &forward_to {
+        Some(_) => DraftMode::Forward {
+            to: counterparty
+                .as_ref()
+                .map(Counterparty::label)
+                .unwrap_or_default(),
+        },
+        None => DraftMode::Reply,
+    };
+    let thread_id = envelopes[0].thread_id.clone();
+    let target_id = target.map(|envelope| envelope.id.clone());
+    let turns = draft_voice::conversation(state, &envelopes, &owned, target_id.as_ref()).await;
+    let feature = LlmFeature::DraftAssist;
+    draft_with(
         state,
         account_id,
-        &contacts,
-        instruction,
-        register,
-        length_hint,
-        draft_context::RELATIONSHIP_BUDGET_CHARS,
-    )
-    .await;
-    let transcript = draft_context::build_transcript(state, &envelopes).await;
-    let latest = envelopes.iter().map(|envelope| envelope.date).max();
-    let semantic_query = format!(
-        "{}\n{}\n{}",
-        envelopes[0].subject,
-        instruction.trim(),
-        transcript
-    );
-    let grounding = draft_context::prior_sent_grounding(
-        state,
-        Some(&envelopes[0].thread_id),
-        &semantic_query,
-        latest,
-    )
-    .await;
-    let task_line = reply_task_line(context.inferred_length, instruction);
-    let user_message = draft_context::assemble_user_message_within_budget(
-        &context.prompt,
-        &grounding,
-        &transcript,
-        &task_line,
-        draft_context::ASSEMBLED_MESSAGE_BUDGET_CHARS,
-    );
-    complete_and_finish(
-        state,
-        LlmFeature::DraftAssist,
-        SYSTEM_PROMPT_REPLY,
-        user_message,
-        context,
+        request,
+        feature,
+        &me,
+        mode,
+        counterparty,
+        turns,
+        Some(&thread_id),
     )
     .await
 }
 
-async fn draft_brand_new(
+async fn draft_new(
     state: &AppState,
     account_id: &AccountId,
     to: Address,
-    instruction: &str,
-    register: Option<VoiceRegisterData>,
-    length_hint: Option<DraftLengthHintData>,
+    request: &DraftRequest<'_>,
 ) -> HandlerResult {
-    draft_context::ensure_contact_fresh(state, account_id, &to.email).await;
+    let me = draft_voice::me(state, account_id).await;
+    let counterparty = Counterparty {
+        email: to.email.to_ascii_lowercase(),
+        name: to.name.clone(),
+    };
+    let mode = DraftMode::New {
+        to: counterparty.label(),
+    };
+    draft_with(
+        state,
+        account_id,
+        request,
+        LlmFeature::DraftNew,
+        &me,
+        mode,
+        Some(counterparty),
+        Vec::new(),
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn draft_with(
+    state: &AppState,
+    account_id: &AccountId,
+    request: &DraftRequest<'_>,
+    feature: LlmFeature,
+    me: &Me,
+    mode: DraftMode,
+    counterparty: Option<Counterparty>,
+    turns: Vec<draft_prompt::Turn>,
+    thread_id: Option<&ThreadId>,
+) -> HandlerResult {
+    let contact_emails: Vec<String> = counterparty
+        .iter()
+        .map(|person| person.email.clone())
+        .collect();
+    if request.before.is_none() {
+        if let Some(email) = contact_emails.first() {
+            draft_context::ensure_contact_fresh(state, account_id, email).await;
+        }
+    }
+    // Tone/length inference, the voice-match baseline and the UI note.
     let context = draft_context::build_relationship_block(
         state,
         account_id,
-        std::slice::from_ref(&to.email),
-        instruction,
-        register,
-        length_hint,
-        draft_context::RELATIONSHIP_BUDGET_CHARS,
+        &contact_emails,
+        request.instruction,
+        request.register,
+        request.length_hint,
     )
     .await;
-    let semantic_query = format!("{}\n{}", instruction.trim(), to.email);
-    let grounding = draft_context::prior_sent_grounding(state, None, &semantic_query, None).await;
-    let task_line = new_message_task_line(&to, context.inferred_length, instruction);
-    let user_message = draft_context::assemble_user_message_within_budget(
-        &context.prompt,
-        &grounding,
-        "",
-        &task_line,
-        draft_context::ASSEMBLED_MESSAGE_BUDGET_CHARS,
-    );
-    complete_and_finish(
-        state,
-        LlmFeature::DraftNew,
-        SYSTEM_PROMPT_NEW,
-        user_message,
-        context,
-    )
-    .await
-}
-
-async fn complete_and_finish(
-    state: &AppState,
-    feature: LlmFeature,
-    system_prompt: &str,
-    user_message: String,
-    context: DraftContext,
-) -> HandlerResult {
-    let response = match state
-        .llm
-        .for_feature(feature)
-        .complete(CompletionRequest {
-            messages: vec![
-                // The thread transcript inside `user_message` is wrapped in
-                // untrusted-content delimiters by `assemble_user_message_*`;
-                // the guard here tells the model they mark data, not
-                // instructions. Output is a DraftSuggestion — written to a
-                // draft/stdout, never auto-sent (see ai-email.md cut list).
-                ChatMessage::system(guarded_system_prompt(system_prompt)),
-                ChatMessage::user(user_message),
-            ],
-            max_tokens: Some(draft_context::max_tokens_for_length(
-                context.inferred_length,
-            )),
-            temperature: Some(0.4),
-        })
-        .await
-    {
-        Ok(response) => response,
-        Err(LlmError::Disabled) => {
-            return Err(crate::handler::HandlerError::Message(
-                "LLM is disabled. Enable it in [llm].".to_string(),
-            ))
-        }
-        Err(error) => return Err(format!("LLM error: {error}").into()),
+    let background = match contact_emails.first() {
+        Some(email) => relationship_profile::load_relationship_profile(state, account_id, email)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|profile| profile.summary.map(|summary| summary.text)),
+        None => None,
     };
+    let material = draft_voice::voice_material(
+        state,
+        account_id,
+        counterparty.as_ref(),
+        thread_id,
+        request.before,
+    )
+    .await;
+    let target_words = target_words(request.length_hint, &material);
+    let max_tokens = max_tokens_for_words(target_words);
+    let budget_chars = prompt_budget_chars(state.llm.capabilities().context_window, max_tokens);
+    let today = draft_voice::today();
+    let prompt = draft_prompt::build(&PromptInput {
+        mode,
+        me,
+        today: &today,
+        habits: &material.habits,
+        examples: &material.examples,
+        background: background.as_deref(),
+        turns: &turns,
+        tone: request.register,
+        target_words,
+        instruction: request.instruction,
+        budget_chars,
+    });
+    tracing::debug!(
+        examples = prompt.examples_used,
+        turns = prompt.turns_used,
+        voice_samples = material.samples,
+        target_words,
+        "assembled draft prompt"
+    );
+    let voice_context = voice_context_for_rewrite(&material);
+    let body = complete_with_retry(state, feature, &prompt, max_tokens).await?;
+    let body_text = draft_output::clean_draft(&body.0, me.name.as_deref());
+    let note = context_note(&context, &material, counterparty.as_ref());
     draft_context::finish_draft_suggestion(
         state,
-        response.content.trim().to_string(),
-        response.model,
+        body_text,
+        body.1,
         context.baseline,
-        Some(context.prompt.as_str()),
+        Some(voice_context.as_str()),
         context.inferred_register,
         context.inferred_length,
-        context.context_note,
+        note,
     )
     .await
 }
 
-fn recipient_label(to: &Address) -> String {
-    match to.name.as_deref().filter(|name| !name.trim().is_empty()) {
-        Some(name) => format!("{name} <{}>", to.email),
-        None => to.email.clone(),
+/// Words to aim for: the user's choice, else their median with this
+/// person (or in general), else a short email.
+pub(crate) fn target_words(
+    length_hint: Option<DraftLengthHintData>,
+    material: &VoiceMaterial,
+) -> u32 {
+    match length_hint {
+        Some(DraftLengthHintData::Short) => 40,
+        Some(DraftLengthHintData::Medium) => 90,
+        Some(DraftLengthHintData::Long) => 180,
+        None => material.median_words.unwrap_or(70).clamp(10, 250),
     }
 }
 
-/// The task line for a reply. Single source of truth for the reply template so
-/// the byte accounting (`TASK_TEMPLATE_FIXED_BYTES`) can be coupling-tested
-/// against the real rendering.
-fn reply_task_line(length: DraftLengthHintData, instruction: &str) -> String {
-    format!(
-        "Now draft my reply. Length: {}. Instruction: {}",
-        draft_context::length_label(length),
-        instruction.trim()
-    )
+/// Room for the draft plus a reasoning model's thinking.
+fn max_tokens_for_words(words: u32) -> u32 {
+    (words * 3 + 400).clamp(600, 2_000)
 }
 
-/// The task line for a new message. Single source of truth for the
-/// new-message template (see [`reply_task_line`]).
-fn new_message_task_line(to: &Address, length: DraftLengthHintData, instruction: &str) -> String {
-    format!(
-        "Write a new email to {}. Length: {}. Purpose: {}",
-        recipient_label(to),
-        draft_context::length_label(length),
-        instruction.trim()
-    )
+/// The prompt must leave room for the answer inside the model's context
+/// window (about three characters per token for English mail).
+fn prompt_budget_chars(context_window: u32, max_tokens: u32) -> usize {
+    let tokens = context_window
+        .saturating_sub(max_tokens)
+        .saturating_sub(200) as usize;
+    (tokens * 3).clamp(6_000, draft_context::ASSEMBLED_MESSAGE_BUDGET_CHARS)
+}
+
+/// The humanizer's rewrite pass must keep the voice, so it sees the same
+/// habits and examples.
+fn voice_context_for_rewrite(material: &VoiceMaterial) -> String {
+    let mut out = material.habits.join("\n");
+    for example in material.examples.iter().take(3) {
+        out.push_str("\n\nExample of my writing:\n");
+        out.push_str(&example.my_email);
+    }
+    out
+}
+
+fn context_note(
+    context: &DraftContext,
+    material: &VoiceMaterial,
+    counterparty: Option<&Counterparty>,
+) -> Option<String> {
+    let examples = material.examples.len();
+    match (counterparty, examples) {
+        (Some(person), n) if n > 0 => Some(format!(
+            "Written in your voice from {n} of your emails (to {} first)",
+            person.email
+        )),
+        _ => context.context_note.clone(),
+    }
+}
+
+/// Complete, and when the model stops for length, try once more with more
+/// room: a cut-off email is worse than a slow one.
+async fn complete_with_retry(
+    state: &AppState,
+    feature: LlmFeature,
+    prompt: &draft_prompt::Prompt,
+    max_tokens: u32,
+) -> Result<(String, String), crate::handler::HandlerError> {
+    let mut budget = max_tokens;
+    for attempt in 0..2 {
+        let response = match state
+            .llm
+            .for_feature(feature)
+            .complete(CompletionRequest {
+                messages: vec![
+                    // Mail-derived blocks in the user message are wrapped in
+                    // untrusted-content markers; the guard tells the model
+                    // they are data. Output is a suggestion, never auto-sent.
+                    ChatMessage::system(guarded_system_prompt(&prompt.system)),
+                    ChatMessage::user(prompt.user.clone()),
+                ],
+                max_tokens: Some(budget),
+                temperature: Some(0.5),
+            })
+            .await
+        {
+            Ok(response) => response,
+            Err(LlmError::Disabled) => {
+                return Err(crate::handler::HandlerError::Message(
+                    "LLM is disabled. Enable it in [llm].".to_string(),
+                ))
+            }
+            Err(error) => return Err(format!("LLM error: {error}").into()),
+        };
+        let cut_off = response.finish_reason.as_deref() == Some("length");
+        if !cut_off {
+            return Ok((response.content, response.model));
+        }
+        if attempt == 0 {
+            budget = (budget * 2).min(4_000);
+            continue;
+        }
+        return Err(crate::handler::HandlerError::Message(format!(
+            "The model stopped before finishing the draft ({budget} tokens). Try a shorter length, \
+             or a model with less reasoning overhead."
+        )));
+    }
+    unreachable!("the loop returns on its second attempt")
 }
 
 #[cfg(test)]
@@ -629,15 +721,14 @@ mod tests {
         assert!(note.unwrap().contains("casual"));
     }
 
-    // An oversized instruction is rejected at the validation layer so the
-    // never-truncated task line can't break the assembled-prompt ceiling. The
-    // rejection carries an explicit InvalidRequest wire kind.
+    // An oversized instruction is rejected up front: it is never cut, so it
+    // can't be allowed to crowd out the conversation. The rejection carries
+    // an explicit InvalidRequest wire kind.
     #[tokio::test]
     async fn oversized_instruction_is_rejected_as_invalid_request() {
         let state = AppState::in_memory().await.unwrap();
         let account_id = state.default_account_id();
-        let limit = draft_context::max_task_line_bytes();
-        let huge = "x".repeat(limit + 1);
+        let huge = "x".repeat(MAX_INSTRUCTION_BYTES + 1);
         let err = draft_compose(
             &state,
             Some(&account_id),
@@ -663,19 +754,14 @@ mod tests {
         }
     }
 
-    // A long recipient label plus a maximal instruction still can't exceed the
-    // ceiling: the recipient's real bytes are counted, and the total is
-    // rejected even though the instruction alone would fit.
+    // The recipient's bytes count too: a long display name plus an
+    // instruction that alone would fit is still rejected.
     #[tokio::test]
     async fn long_recipient_plus_maximal_instruction_is_rejected() {
         let state = AppState::in_memory().await.unwrap();
         let account_id = state.default_account_id();
-        let limit = draft_context::max_task_line_bytes();
-        // An instruction that exactly fills the limit alongside a tiny
-        // recipient ("a@b.com").
-        let tiny_recipient = "a@b.com".len();
-        let instruction = "x".repeat(limit - TASK_TEMPLATE_FIXED_BYTES - tiny_recipient);
-        // Same instruction, but a long display name pushes the task line over.
+        // Fills the limit alongside a bare "a@b.com"; the name pushes it over.
+        let instruction = "x".repeat(MAX_INSTRUCTION_BYTES - "a@b.com".len());
         let to = Address {
             name: Some("N".repeat(300)),
             email: "a@b.com".to_string(),
@@ -698,43 +784,6 @@ mod tests {
             }
             other => panic!("expected an error response, got {other:?}"),
         }
-    }
-
-    // TASK_TEMPLATE_FIXED_BYTES duplicates the reply/new-message templates, so
-    // pin it to the ACTUAL rendered fixed portion (via the production task-line
-    // builders). Template text growth OR a longer length label would change the
-    // rendering and trip this — so it can't silently restore a ceiling
-    // violation that the boundary tests (which derive from the same const)
-    // would miss.
-    #[test]
-    fn task_template_fixed_bytes_matches_rendered_templates() {
-        let instruction = "INSTR";
-        let to = Address {
-            name: Some("Recipient Name".to_string()),
-            email: "person@example.com".to_string(),
-        };
-        // The const bakes in the longest length label; take the max fixed
-        // portion across all length variants so label growth is caught too.
-        // (Array mirrors the DraftLengthHintData variants — length_label's
-        // exhaustive match forces a compile error if a variant is added.)
-        let mut expected = 0usize;
-        for length in [
-            DraftLengthHintData::Short,
-            DraftLengthHintData::Medium,
-            DraftLengthHintData::Long,
-        ] {
-            let reply = reply_task_line(length, instruction);
-            let new_msg = new_message_task_line(&to, length, instruction);
-            // Fixed portion = rendered minus the variable parts (recipient +
-            // instruction); the length label stays in, as the const bakes it in.
-            let reply_fixed = reply.len() - instruction.len();
-            let new_fixed = new_msg.len() - recipient_label(&to).len() - instruction.len();
-            expected = expected.max(reply_fixed).max(new_fixed);
-        }
-        assert_eq!(
-            TASK_TEMPLATE_FIXED_BYTES, expected,
-            "TASK_TEMPLATE_FIXED_BYTES must equal the rendered fixed portion (longest label)"
-        );
     }
 
     // Behavior 6: a manual register overrides the inferred tone.
@@ -849,134 +898,242 @@ mod tests {
         assert!(captured_prompt(&llm).contains("Customer prefers short pricing updates."));
     }
 
-    // Grounding: a relevant prior sent message is included; unrelated inbound is not.
-    #[cfg(feature = "local")]
+    // Voice: the prompt carries a real reply the user sent this person,
+    // with what they were answering; unrelated inbound mail stays out, and
+    // the conversation is labelled with the message to answer marked.
     #[tokio::test]
-    async fn reply_includes_relevant_prior_sent_mail_as_grounding() {
+    async fn reply_uses_my_real_replies_to_this_person_as_examples() {
         let state = AppState::in_memory().await.unwrap();
         let llm = Arc::new(CapturingLlm::default());
-
+        state.llm.replace(llm.clone());
         let account_id = state.default_account_id();
         let now = chrono::Utc::now();
-        let reply_thread_id = mxr_core::ThreadId::new();
-        let current = TestEnvelopeBuilder::new()
+        let me = state
+            .store
+            .list_account_addresses(&account_id)
+            .await
+            .unwrap()
+            .into_iter()
+            .next()
+            .map(|address| address.email)
+            .unwrap_or_else(|| "user@example.com".to_string());
+
+        async fn seed(
+            state: &AppState,
+            envelope: &Envelope,
+            direction: MessageDirection,
+            text: &str,
+        ) {
+            state
+                .store
+                .upsert_envelope_with_direction(envelope, direction)
+                .await
+                .unwrap();
+            state
+                .store
+                .insert_body(&body(envelope.id.clone(), text))
+                .await
+                .unwrap();
+        }
+
+        // An earlier exchange: the customer asked, I answered.
+        let mut asked = TestEnvelopeBuilder::new()
             .account_id(account_id.clone())
-            .thread_id(reply_thread_id.clone())
-            .provider_id("current-inbound")
-            .subject("Pricing rollout")
+            .thread_id(mxr_core::ThreadId::new())
+            .provider_id("earlier-ask")
             .sender_address("Customer", "customer@example.com")
-            .to(vec![CoreAddress {
-                name: Some("Me".to_string()),
-                email: "user@example.com".to_string(),
-            }])
-            .date(now)
-            .snippet("Can you clarify pricing rollout timing?")
+            .date(now - chrono::Duration::days(9))
             .build();
-        let prior_sent = TestEnvelopeBuilder::new()
+        asked.message_id_header = Some("<ask@example.com>".into());
+        seed(
+            &state,
+            &asked,
+            MessageDirection::Inbound,
+            "Could you send the invoice again?",
+        )
+        .await;
+        let mut answered = TestEnvelopeBuilder::new()
             .account_id(account_id.clone())
-            .thread_id(mxr_core::ThreadId::new())
-            .provider_id("prior-sent")
-            .subject("Pricing rollout")
-            .sender_address("Me", "user@example.com")
+            .thread_id(asked.thread_id.clone())
+            .provider_id("earlier-answer")
+            .sender_address("Sam Rivers", &me)
             .recipient_address(Some("Customer"), "customer@example.com")
-            .date(now - chrono::Duration::days(7))
-            .snippet("I can hold the rollout note until numbers are firm.")
+            .date(now - chrono::Duration::days(8))
             .build();
-        let prior_inbound = TestEnvelopeBuilder::new()
+        answered.in_reply_to = Some("<ask@example.com>".into());
+        seed(
+            &state,
+            &answered,
+            MessageDirection::Outbound,
+            "yep, resent just now. shout if it's missing\ns",
+        )
+        .await;
+        state
+            .store
+            .try_create_reply_pair(&answered, MessageDirection::Outbound)
+            .await
+            .unwrap();
+        // Someone else's mail must not shape my voice.
+        let unrelated = TestEnvelopeBuilder::new()
             .account_id(account_id.clone())
             .thread_id(mxr_core::ThreadId::new())
-            .provider_id("prior-inbound")
-            .subject("Pricing rollout")
+            .provider_id("unrelated")
             .sender_address("Vendor", "vendor@example.com")
             .date(now - chrono::Duration::days(6))
-            .snippet("External pricing notes should not shape my voice.")
             .build();
+        seed(
+            &state,
+            &unrelated,
+            MessageDirection::Inbound,
+            "External pricing notes should not shape my voice.",
+        )
+        .await;
 
-        state
-            .store
-            .upsert_envelope_with_direction(&current, MessageDirection::Inbound)
-            .await
-            .unwrap();
-        state
-            .store
-            .upsert_envelope_with_direction(&prior_sent, MessageDirection::Outbound)
-            .await
-            .unwrap();
-        state
-            .store
-            .upsert_envelope_with_direction(&prior_inbound, MessageDirection::Inbound)
-            .await
-            .unwrap();
-        state
-            .store
-            .insert_body(&body(
-                current.id.clone(),
-                "Can you clarify pricing rollout timing before Friday?",
-            ))
-            .await
-            .unwrap();
-        state
-            .store
-            .insert_body(&body(
-                prior_sent.id.clone(),
-                "I can hold the rollout note until the pricing numbers are firm.",
-            ))
-            .await
-            .unwrap();
-        state
-            .store
-            .insert_body(&body(
-                prior_inbound.id.clone(),
-                "External pricing notes should not shape my voice.",
-            ))
-            .await
-            .unwrap();
-
-        state
-            .semantic
-            .set_test_embedder(semantic_test_embedder)
-            .await
-            .unwrap();
-        let mut config = state.config_snapshot();
-        config.search.semantic.enabled = true;
-        state.set_config_for_test(config).await;
-        state.llm.replace(llm.clone());
-        state
-            .semantic
-            .ingest_messages(&[prior_sent.id.clone(), prior_inbound.id.clone()])
-            .await
-            .unwrap();
-
-        let response = draft_compose(
+        let (thread_id, _, inbound_text) = seed_inbound_thread(&state, &account_id).await;
+        draft_compose(
             &state,
             Some(&account_id),
             None,
-            "reply about pricing rollout",
+            "say Friday works",
             None,
-            Some(reply_thread_id),
+            Some(thread_id),
             None,
             None,
         )
         .await
         .unwrap();
-        assert!(matches!(response, ResponseData::DraftSuggestion { .. }));
-        let prompt = captured_prompt(&llm);
-        assert!(prompt.contains("I can hold the rollout note until the pricing numbers are firm"));
-        assert!(!prompt.contains("External pricing notes should not shape my voice"));
+
+        let request = llm.last_request.lock().unwrap().clone().unwrap();
+        let system = &request.messages[0].content;
+        let user = &request.messages[1].content;
+        assert!(
+            system.contains("ghostwriting a reply to the message marked TARGET as Sam Rivers"),
+            "{system}"
+        );
+        assert!(
+            user.contains("They wrote:\nCould you send the invoice again?\nI replied:\nyep, resent just now. shout if it's missing\ns"),
+            "{user}"
+        );
+        assert!(
+            user.contains(&format!("<<< TARGET ---\n{inbound_text}")),
+            "{user}"
+        );
+        assert!(
+            user.contains("What I want to say: say Friday works"),
+            "{user}"
+        );
+        assert!(!user.contains("External pricing notes"), "{user}");
     }
 
-    #[cfg(feature = "local")]
-    fn semantic_test_embedder(
-        _profile: mxr_core::types::SemanticProfile,
-        texts: &[String],
-    ) -> anyhow::Result<Vec<Vec<f32>>> {
-        Ok(texts
-            .iter()
-            .map(|text| {
-                let pricing = text.contains("pricing") as u8 as f32;
-                let rollout = text.contains("rollout") as u8 as f32;
-                vec![pricing, rollout, 1.0]
-            })
-            .collect())
+    // Output: chatter the model adds around the email never reaches compose.
+    #[tokio::test]
+    async fn draft_output_is_cleaned_of_model_chatter() {
+        struct ChattyLlm;
+        #[async_trait::async_trait]
+        impl LlmProvider for ChattyLlm {
+            async fn complete(
+                &self,
+                _req: CompletionRequest,
+            ) -> Result<CompletionResponse, LlmError> {
+                Ok(CompletionResponse {
+                    content: "Here's a draft reply:\n\nSubject: Re: Pricing\n\nFriday works.\n\nLet me know if you'd like changes!".into(),
+                    model: "test-llm".into(),
+                    finish_reason: Some("stop".into()),
+                })
+            }
+            fn capabilities(&self) -> LlmCapabilities {
+                LlmCapabilities {
+                    context_window: 8192,
+                    supports_streaming: false,
+                }
+            }
+            fn model_name(&self) -> &str {
+                "test-llm"
+            }
+        }
+        let state = AppState::in_memory().await.unwrap();
+        let mut config = state.config_snapshot();
+        config.humanizer.apply_to_drafts = false;
+        state.set_config_for_test(config).await;
+        // After the config: applying it rebuilds the LLM runtime.
+        state.llm.replace(Arc::new(ChattyLlm));
+        let account_id = state.default_account_id();
+        let (thread_id, _, _) = seed_inbound_thread(&state, &account_id).await;
+        let response = draft_compose(
+            &state,
+            Some(&account_id),
+            None,
+            "",
+            None,
+            Some(thread_id),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        match response {
+            ResponseData::DraftSuggestion { body, .. } => assert_eq!(body, "Friday works."),
+            other => panic!("expected a draft, got {other:?}"),
+        }
+    }
+
+    // A draft cut off by the token limit is retried with more room, then
+    // reported rather than handed over half-written.
+    #[tokio::test]
+    async fn a_draft_cut_off_twice_is_an_error_not_half_an_email() {
+        #[derive(Default)]
+        struct CutOffLlm {
+            budgets: Mutex<Vec<Option<u32>>>,
+        }
+        #[async_trait::async_trait]
+        impl LlmProvider for CutOffLlm {
+            async fn complete(
+                &self,
+                req: CompletionRequest,
+            ) -> Result<CompletionResponse, LlmError> {
+                // The contact-profile refresh asks for a summary too; count drafts.
+                if req.messages[0].content.contains("ghostwriting") {
+                    self.budgets.lock().unwrap().push(req.max_tokens);
+                }
+                Ok(CompletionResponse {
+                    content: "Friday works, and the".into(),
+                    model: "test-llm".into(),
+                    finish_reason: Some("length".into()),
+                })
+            }
+            fn capabilities(&self) -> LlmCapabilities {
+                LlmCapabilities {
+                    context_window: 8192,
+                    supports_streaming: false,
+                }
+            }
+            fn model_name(&self) -> &str {
+                "test-llm"
+            }
+        }
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CutOffLlm::default());
+        state.llm.replace(llm.clone());
+        let account_id = state.default_account_id();
+        let (thread_id, _, _) = seed_inbound_thread(&state, &account_id).await;
+        let error = draft_compose(
+            &state,
+            Some(&account_id),
+            None,
+            "",
+            None,
+            Some(thread_id),
+            None,
+            None,
+        )
+        .await
+        .expect_err("a twice cut-off draft is an error");
+        assert!(format!("{error:?}").contains("stopped before finishing"));
+        let budgets = llm.budgets.lock().unwrap().clone();
+        assert_eq!(budgets.len(), 2);
+        assert!(
+            budgets[1] > budgets[0],
+            "the retry gets more room: {budgets:?}"
+        );
     }
 }

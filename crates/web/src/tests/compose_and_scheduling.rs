@@ -211,6 +211,93 @@ async fn drafts_list_rows_carry_send_at_only_for_scheduled_drafts() {
 }
 
 #[tokio::test]
+async fn compose_send_returns_the_sent_message_id_for_send_and_remind() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account = sample_account(&AccountId::new());
+    let sent_message_id = MessageId::new();
+    let receipt_id = sent_message_id.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::ListAccounts => ok(ResponseData::Accounts {
+                accounts: vec![account.clone()],
+            }),
+            Request::SendDraft { .. } => ok(ResponseData::SendReceipt {
+                local_message_id: receipt_id.clone(),
+                provider_message_id: Some("provider-1".into()),
+                rfc2822_message_id: "<sent-1@example.com>".into(),
+            }),
+            _ => None,
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket_path).await;
+    let client = reqwest::Client::new();
+    let (draft_path, account_id) = prepared_session(
+        &client,
+        addr,
+        serde_json::json!({ "kind": "new" }),
+        "alice@example.com",
+    )
+    .await;
+
+    let response = client
+        .post(format!("http://{addr}/api/v1/mail/compose/session/send"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "draft_path": draft_path, "account_id": account_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(json["ok"], true);
+    assert!(json["draft_id"].as_str().is_some_and(|id| !id.is_empty()));
+    assert_eq!(json["message_id"], sent_message_id.to_string());
+}
+
+#[tokio::test]
+async fn send_stored_adds_message_id_and_draft_id_to_the_receipt() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let draft_id = DraftId::new();
+    let sent_message_id = MessageId::new();
+    let receipt_id = sent_message_id.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::SendStoredDraft { .. } => ok(ResponseData::SendReceipt {
+                local_message_id: receipt_id.clone(),
+                provider_message_id: None,
+                rfc2822_message_id: "<sent-2@example.com>".into(),
+            }),
+            _ => None,
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket_path).await;
+
+    let json: serde_json::Value = reqwest::Client::new()
+        .post(format!(
+            "http://{addr}/api/v1/mail/drafts/{draft_id}/send-stored"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(json["message_id"], sent_message_id.to_string());
+    assert_eq!(json["draft_id"], draft_id.to_string());
+    // Existing readers of the raw receipt keep working.
+    assert_eq!(json["kind"], "SendReceipt");
+    assert_eq!(json["local_message_id"], sent_message_id.to_string());
+}
+
+#[tokio::test]
 async fn scheduling_a_reply_session_stores_it_with_reply_headers_then_schedules_it() {
     let temp = TempDir::new().unwrap();
     let socket_path = temp.path().join("mxr.sock");

@@ -2024,12 +2024,26 @@ async fn send_stored_draft(
         &headers,
         auth.token.as_deref(),
         Request::SendStoredDraft {
-            draft_id: id,
+            draft_id: id.clone(),
             override_safety_token: None,
         },
     )
     .await?;
-    passthrough(response)
+    // Keep the raw receipt for existing readers, and add the same
+    // `draft_id` / `message_id` pair `compose/session/send` returns so a
+    // client can chain `POST /mail/reminders` off either send path.
+    let message_id = match &response {
+        ResponseData::SendReceipt {
+            local_message_id, ..
+        } => Some(local_message_id.clone()),
+        _ => None,
+    };
+    let Json(mut body) = passthrough(response)?;
+    if let Some(object) = body.as_object_mut() {
+        object.insert("draft_id".into(), json!(id));
+        object.insert("message_id".into(), json!(message_id));
+    }
+    Ok(Json(body))
 }
 
 /// Upsert-by-id: editing an existing stored draft (loaded via `GetDraft`)

@@ -838,7 +838,10 @@ async fn send_compose_session(
     // so reusing it here would put the pre-edit body on the wire.
     let draft = compose_draft_from_file(&request.draft_path, &request.account_id, None).await?;
     let draft_id = draft.id.clone();
-    match ipc_request_with_id(
+    // The sent message id is what `POST /mail/reminders` keys on, so a client
+    // can offer "send and remind" without re-finding the message. A bare `Ack`
+    // (no receipt) leaves it null.
+    let message_id = match ipc_request_with_id(
         &state.config.socket_path,
         request_id,
         Request::SendDraft {
@@ -848,7 +851,7 @@ async fn send_compose_session(
     )
     .await
     {
-        Ok(ResponseData::Ack | ResponseData::SendReceipt { .. }) => {
+        Ok(response @ (ResponseData::Ack | ResponseData::SendReceipt { .. })) => {
             tracing::info!(
                 request_id,
                 endpoint = "compose/send",
@@ -856,6 +859,12 @@ async fn send_compose_session(
                 draft_file,
                 "bridge compose send completed"
             );
+            match response {
+                ResponseData::SendReceipt {
+                    local_message_id, ..
+                } => Some(local_message_id),
+                _ => None,
+            }
         }
         Ok(_) => return Err(BridgeError::UnexpectedResponse),
         Err(error) => {
@@ -869,11 +878,15 @@ async fn send_compose_session(
             );
             return Err(error);
         }
-    }
+    };
     remove_compose_file(Path::new(&request.draft_path)).await?;
     remove_compose_attachment_dir(Path::new(&request.draft_path)).await?;
     remove_invite_reply_sidecar(Path::new(&request.draft_path)).await?;
-    Ok(Json(json!({ "ok": true, "draft_id": draft_id })))
+    Ok(Json(json!({
+        "ok": true,
+        "draft_id": draft_id,
+        "message_id": message_id,
+    })))
 }
 
 /// Run the pre-send safety gate against the current compose session

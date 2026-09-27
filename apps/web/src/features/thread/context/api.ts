@@ -26,12 +26,20 @@ type GistResponse = Extract<Schemas["ResponseData"], { kind: "ThreadGist" }>;
 export const threadContextKey = (threadId: string) => ["thread", threadId, "context"] as const;
 export const threadGistKey = (threadId: string) => ["thread", threadId, "gist"] as const;
 
-/** Query options shared by the pane (which waits for it) and the reader. */
+/**
+ * Query options shared by the pane (which waits for it) and the reader. No
+ * retries, on failure or on mount: the pane holds the thread back while this
+ * is pending, so a retry when the reader mounts would put the pane back in
+ * its loading state and unmount the reader again. A thread without its
+ * facts beats one held up by backoff.
+ */
 export function threadContextQuery(threadId: string) {
   return {
     queryKey: threadContextKey(threadId),
     queryFn: () => fetchThreadContext(threadId),
     staleTime: 30_000,
+    retry: false,
+    retryOnMount: false,
   };
 }
 

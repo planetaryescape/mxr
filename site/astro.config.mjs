@@ -60,6 +60,7 @@ export default defineConfig({
         {
           label: 'Daily Use',
           items: [
+            { label: 'The Desk', slug: 'guides/desk' },
             { label: 'Mailbox Workflow', slug: 'guides/mailbox' },
             { label: 'Triage Flow', slug: 'guides/triage-flow' },
             { label: 'Unsubscribe', slug: 'guides/unsubscribe' },

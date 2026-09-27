@@ -154,6 +154,24 @@ intentionally want it to talk to the installed runtime.
 
 Set `MXR_BRIDGE_URL=http://127.0.0.1:9000` to override.
 
+## The desk
+
+The web app opens on the [desk](/guides/desk/): replies you owe, promises
+coming due, threads waiting on someone and new mail from people, each row
+with the reason it is there and how long it has been next to that person's
+usual pace. Everything else (reading, paper trail, deliveries, invites,
+screener) is one line of links at the bottom. `g d` goes to the desk, `g i`
+to the inbox in arrival order, and **Settings, Appearance, Home** makes the
+inbox the home instead.
+
+The sidebar holds places rather than folders: Desk, Inbox, Reply queue,
+Waiting on, Snoozed and, when someone new is waiting for a decision,
+Screener. Folders (Starred, Sent, Drafts, All Mail, Spam, Trash) and the
+rarer lists sit under **More**, and labels under **Labels**; both start
+folded. Only work carries a count: the desk (owed and due), the reply queue
+and the screener. Unread mail still shows as bold rows, but the inbox and
+labels carry no unread badge.
+
 ## Reading and triage
 
 The web app works like the TUI: a list of conversations, a reader beside it,
@@ -245,14 +263,14 @@ draft above the quoted message. [How drafts are written](/guides/llm-features/).
 
 ### Triage queues
 
-The sidebar's **Triage** section holds the queues the TUI shows as lenses:
-the reply queue (`b` adds to it), owed replies (conversations where someone is
-waiting on you, most overdue first), the screener, invites and
-subscriptions. On the reply queue each row has a **Done** button that takes
-it out of the queue.
+The reply queue (`b` adds to it) is one of the sidebar's places. The other
+queues the TUI shows as lenses live under **More**: owed replies (every
+conversation where someone is waiting on you, archived or not, most overdue
+first), invites and subscriptions. On the reply queue each row has a
+**Done** button that takes it out of the queue.
 
-**Snoozed**, under Starred in the sidebar, lists snoozed mail soonest to wake
-first, one row per conversation. **Wake now** wakes every snoozed message in
+**Snoozed** lists snoozed mail soonest to wake first, one row per
+conversation. **Wake now** wakes every snoozed message in
 that conversation. On both lists, `w` runs the row's button for the row under
 the cursor.
 

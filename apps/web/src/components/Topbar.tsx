@@ -18,6 +18,7 @@ interface Crumb {
 }
 
 const PAGE_TITLES: Record<string, string> = {
+  desk: "Desk",
   search: "Search",
   drafts: "Drafts",
   "reply-queue": "Reply queue",
@@ -41,7 +42,7 @@ const PAGE_TITLES: Record<string, string> = {
 
 function threadIdInPath(parts: string[]): string | undefined {
   if (parts[0] === "m") return parts[1] === "label" || parts[1] === "saved" ? parts[3] : parts[2];
-  if (parts[0] === "search") return parts[1];
+  if (parts[0] === "search" || parts[0] === "desk") return parts[1];
   return undefined;
 }
 
@@ -79,6 +80,11 @@ function useBreadcrumb(path: string, search: string): Crumb[] {
       { label: "Search", to: q ? `/search?q=${encodeURIComponent(q)}` : "/search" },
     ];
     if (q) crumbs.push({ label: `“${q}”`, to: `/search?q=${encodeURIComponent(q)}` });
+    if (openThreadId) crumbs.push({ label: subject });
+    return crumbs;
+  }
+  if (parts[0] === "desk") {
+    const crumbs: Crumb[] = [{ label: title, to: "/desk" }];
     if (openThreadId) crumbs.push({ label: subject });
     return crumbs;
   }

@@ -18,7 +18,7 @@ pub enum DeskLaneKind {
 }
 
 /// One row on the desk: a thread, who it is with, and why it is here.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeskRowData {
     pub lane: DeskLaneKind,
@@ -62,7 +62,7 @@ pub struct DeskRowData {
 
 /// One lane: the rows returned (capped by the request's `lane_limit`) and
 /// how many there are in total.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeskLaneData {
     pub rows: Vec<DeskRowData>,

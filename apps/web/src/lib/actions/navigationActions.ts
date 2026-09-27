@@ -14,6 +14,7 @@ import {
   FileText,
   Hourglass,
   Inbox,
+  LampDesk,
   ListTodo,
   Mail,
   MailX,
@@ -27,6 +28,7 @@ import {
   Star,
   Stethoscope,
   Tag,
+  Timer,
   Trash2,
   Undo2,
   Users,
@@ -112,6 +114,27 @@ export const navigationActions: Action[] = [
 
   // Views. g + letter, as in the TUI.
   {
+    id: "nav.desk",
+    label: "Go to Desk",
+    description:
+      "What needs you: replies you owe, promises due, threads waiting, new mail from people",
+    group: "Navigate",
+    icon: LampDesk,
+    shortcut: "g d",
+    tuiNote: "The TUI opens the desk with g h and keeps g d for Drafts",
+    run: go("/desk"),
+  },
+  {
+    id: "nav.waiting",
+    label: "Waiting on",
+    description: "Threads where you wrote last and are waiting on a reply",
+    group: "Triage",
+    icon: Timer,
+    shortcut: "g w",
+    tuiNote: "A lane of the desk lens in the TUI",
+    run: go("/desk?lane=waiting"),
+  },
+  {
     id: "nav.inbox",
     label: "Go to Inbox",
     group: "Navigate",
@@ -141,8 +164,8 @@ export const navigationActions: Action[] = [
     label: "Go to Drafts",
     group: "Navigate",
     icon: FileText,
-    shortcut: "g d",
-    aliases: ["g E"],
+    shortcut: "g E",
+    tuiNote: "g d opens the desk here; in the TUI g d is the Drafts lens",
     run: go("/drafts"),
   },
   {

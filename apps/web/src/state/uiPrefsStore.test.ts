@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "vitest";
 
-import { useUiPrefs } from "./uiPrefsStore";
+import { migrateUiPrefs, useUiPrefs } from "./uiPrefsStore";
 
 describe("compose editor preference", () => {
   test("someone with no saved prefs gets the CodeMirror + vim editor", () => {
@@ -17,5 +17,28 @@ describe("compose editor preference", () => {
       .storage?.setItem("mxr.uiPrefs", { state: { composeEditor: "tiptap" }, version: 2 });
     await useUiPrefs.persist.rehydrate();
     expect(useUiPrefs.getState().composeEditor).toBe("tiptap");
+  });
+});
+
+describe("home and sidebar prefs", () => {
+  test("new installs land on the desk with only places unfolded", () => {
+    const initial = useUiPrefs.getInitialState();
+    expect(initial.home).toBe("desk");
+    expect(initial.collapsedSections).toEqual(["more", "labels", "tools"]);
+  });
+
+  test("saved v2 prefs keep their choices and fold More and Labels", () => {
+    expect(migrateUiPrefs({ theme: "paper", collapsedSections: ["tools", "saved"] }, 2)).toEqual({
+      theme: "paper",
+      collapsedSections: ["tools", "saved", "more", "labels"],
+    });
+    expect(migrateUiPrefs(undefined, 1)).toEqual({
+      collapsedSections: ["tools", "more", "labels"],
+    });
+  });
+
+  test("v3 prefs pass through untouched, including an inbox home", () => {
+    const saved = { home: "inbox", collapsedSections: [] };
+    expect(migrateUiPrefs(saved, 3)).toBe(saved);
   });
 });

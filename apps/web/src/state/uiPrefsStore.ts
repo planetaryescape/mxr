@@ -17,8 +17,11 @@ export type ReaderLayout = "split" | "full";
 export type ReaderView = "formatted" | "reader" | "plain";
 /** Undo-send window in seconds; 0 sends immediately. */
 export type UndoSendSeconds = 0 | 5 | 10 | 30;
+/** Where `/` lands: what needs you, or what arrived. */
+export type HomeView = "desk" | "inbox";
 
 export interface UiPrefsState {
+  home: HomeView;
   theme: Theme;
   density: Density;
   motion: MotionPref;
@@ -40,6 +43,7 @@ export interface UiPrefsState {
   readerView: ReaderView;
   /** Senders whose remote images load without asking. */
   remoteImageSenders: string[];
+  setHome: (home: HomeView) => void;
   setReaderView: (view: ReaderView) => void;
   allowRemoteImagesFrom: (sender: string) => void;
   forgetRemoteImagesFrom: (sender: string) => void;
@@ -64,6 +68,7 @@ export interface UiPrefsState {
 export const useUiPrefs = create<UiPrefsState>()(
   persist(
     (set) => ({
+      home: "desk",
       theme: "midnight",
       density: "regular",
       motion: "system",
@@ -78,10 +83,12 @@ export const useUiPrefs = create<UiPrefsState>()(
       vipAllowlist: [],
       undoSendSeconds: 10,
       accountScope: null,
-      collapsedSections: ["tools"],
+      // The sidebar leads with places; everything else starts folded.
+      collapsedSections: ["more", "labels", "tools"],
       listMode: "threads",
       readerView: "formatted",
       remoteImageSenders: [],
+      setHome: (home) => set({ home }),
       setReaderView: (readerView) => set({ readerView }),
       allowRemoteImagesFrom: (sender) =>
         set((s) => ({
@@ -131,10 +138,26 @@ export const useUiPrefs = create<UiPrefsState>()(
     {
       name: "mxr.uiPrefs",
       storage: createJSONStorage(() => uiPrefsStorage()),
-      version: 2,
+      version: 3,
+      // persist merges what migrate returns over the defaults, so a partial
+      // state is what it expects at runtime; its type says the whole store.
+      migrate: (persisted, version) => migrateUiPrefs(persisted, version) as UiPrefsState,
     },
   ),
 );
+
+/**
+ * v3 folds the sidebar's new "More" and "Labels" groups for people who
+ * already had saved prefs, so the sidebar opens on places for everyone.
+ * Earlier versions carried no shape changes, so their state is kept.
+ */
+export function migrateUiPrefs(persisted: unknown, version: number): Partial<UiPrefsState> {
+  const state: Partial<UiPrefsState> =
+    persisted && typeof persisted === "object" ? (persisted as Partial<UiPrefsState>) : {};
+  if (version >= 3) return state;
+  const folded = Array.isArray(state.collapsedSections) ? state.collapsedSections : ["tools"];
+  return { ...state, collapsedSections: [...new Set([...folded, "more", "labels"])] };
+}
 
 const memoryPrefsStorage = new Map<string, string>();
 

@@ -72,7 +72,7 @@ function LensView({ lens }: { lens: MailLens }) {
     <ListWithReader
       basePath={lens.path}
       title={lens.label}
-      meta={counts ? countLine(lens, counts.unread ?? 0, counts.total ?? 0) : null}
+      meta={counts ? countLine(counts.total ?? 0) : null}
       groups={groups}
       scopeKey={`${lens.key}|${account ?? "all"}|${listMode}`}
       status={mailbox}
@@ -128,14 +128,12 @@ function LensView({ lens }: { lens: MailLens }) {
   );
 }
 
-/** The daemon counts messages, not conversations, so say so. */
-function countLine(lens: MailLens, unread: number, total: number): string {
-  if (total === 0) return "";
-  const messages = plural(total, "message");
-  if ((lens.key === "inbox" || lens.section === "labels") && unread > 0) {
-    return `${unread.toLocaleString()} unread · ${messages}`;
-  }
-  return messages;
+/**
+ * The daemon counts messages, not conversations, so say so. No unread
+ * count: a pile's size is not work (the desk counts work).
+ */
+function countLine(total: number): string {
+  return total === 0 ? "" : plural(total, "message");
 }
 
 function EmptyLens({ lens }: { lens: MailLens }) {

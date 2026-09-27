@@ -58,6 +58,8 @@ mxr send DRAFT_ID --check --no-llm --format json \
 
 ## Owed-reply lens — threads where you're the bottleneck
 
+For a daily view that puts owed replies next to promises coming due and threads waiting on others, use [`mxr desk`](/guides/desk/). It only shows conversations still in the inbox.
+
 `mxr owed` ranks threads where the **latest** message is inbound and you haven't replied. It scores each thread by `waiting_days / expected_days`, where `expected_days` is the recipient's typical cadence from `reply_pairs` (falling back to a global p50, then to 7 days). The same set powers the [`is:owed-reply`](/guides/search/) search operator.
 
 ```bash

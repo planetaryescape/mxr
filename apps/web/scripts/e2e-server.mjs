@@ -74,7 +74,7 @@ token_path = ${JSON.stringify(tokenPath)}
 
 [accounts.fake]
 name = "Fake Account"
-email = "fake@example.com"
+email = "alex@demo.mxr.local"
 
 [accounts.fake.sync]
 type = "fake"
@@ -101,7 +101,10 @@ function startDaemon() {
       MXR_DATA_DIR: join(runtimeDir, "data"),
       MXR_SOCKET_PATH: join(runtimeDir, "run", "mxr.sock"),
       MXR_FAKE_DATASET: "demo",
-      MXR_FAKE_MESSAGE_COUNT: "120",
+      // The account uses the demo's own address so sent mail syncs as
+      // outbound (the desk's owed and waiting lanes need it). That makes it
+      // the personal demo profile, which keeps 55% of this count: 120.
+      MXR_FAKE_MESSAGE_COUNT: "218",
     },
     stdio: ["ignore", "pipe", "pipe"],
   })

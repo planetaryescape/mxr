@@ -49,6 +49,10 @@ export interface MessageGroupView {
   id: string;
   label: string;
   rows: MessageRowView[];
+  /** Shown beside the label when the group is a sample of something bigger. */
+  count?: number;
+  /** Where the rest of the group lives, when only some rows are shown. */
+  more?: { label: string; href: string };
 }
 
 export interface MailboxCounts {

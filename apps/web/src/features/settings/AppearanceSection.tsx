@@ -1,5 +1,16 @@
 import { SelectSetting } from "./settingsParts";
-import { useUiPrefs, type Density, type MotionPref, type Theme } from "@/state/uiPrefsStore";
+import {
+  useUiPrefs,
+  type Density,
+  type HomeView,
+  type MotionPref,
+  type Theme,
+} from "@/state/uiPrefsStore";
+
+const HOMES: { value: HomeView; label: string }[] = [
+  { value: "desk", label: "Desk" },
+  { value: "inbox", label: "Inbox" },
+];
 
 const THEMES: { value: Theme; label: string }[] = [
   { value: "system", label: "Match the system" },
@@ -28,8 +39,17 @@ export function AppearanceSection() {
   const setDensity = useUiPrefs((state) => state.setDensity);
   const motion = useUiPrefs((state) => state.motion);
   const setMotion = useUiPrefs((state) => state.setMotion);
+  const home = useUiPrefs((state) => state.home);
+  const setHome = useUiPrefs((state) => state.setHome);
   return (
     <div>
+      <SelectSetting
+        label="Home"
+        description="Where mxr opens. The desk shows what needs you; the inbox shows what arrived, newest first."
+        value={home}
+        options={HOMES}
+        onChange={setHome}
+      />
       <SelectSetting
         label="Theme"
         description="Match the system follows your OS light or dark setting as it changes."

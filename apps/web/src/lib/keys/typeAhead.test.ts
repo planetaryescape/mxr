@@ -35,6 +35,19 @@ describe("holdTypeAhead", () => {
     window.removeEventListener("keydown", onPage);
   });
 
+  test("an Enter typed in the same burst runs after the text lands", async () => {
+    holdTypeAhead();
+    press("a");
+    press("Enter");
+    const field = document.createElement("input");
+    const seen: string[] = [];
+    field.addEventListener("keydown", (event) => seen.push(`${event.key}:${field.value}`));
+    document.body.append(field);
+    field.focus();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(seen).toEqual(["Enter:a"]);
+  });
+
   test("stops holding once a field has focus", () => {
     holdTypeAhead();
     const field = document.createElement("input");

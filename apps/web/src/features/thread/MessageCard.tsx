@@ -323,14 +323,14 @@ function Body({
       <p className="text-[13px] italic text-muted-foreground">No readable body.</p>
     );
   }
-  if (view === "plain") {
-    return (
-      <pre className="max-w-[var(--reading-measure)] whitespace-pre-wrap break-words font-mono text-[13px] leading-6">
-        {text}
-      </pre>
-    );
-  }
-  return <MessageText text={text} showQuotes={showQuotes} showSignature={showSignature} />;
+  return (
+    <MessageText
+      text={text}
+      showQuotes={showQuotes}
+      showSignature={showSignature}
+      plain={view === "plain"}
+    />
+  );
 }
 
 function Recipients({

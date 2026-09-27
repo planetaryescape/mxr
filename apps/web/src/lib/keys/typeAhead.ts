@@ -28,23 +28,38 @@ let release: (() => void) | null = null;
 export function holdTypeAhead(target: Window = window): void {
   release?.();
   let held = "";
+  // "⌘K arch⏎" typed in one go: Enter must pick from the filtered list,
+  // not reach the page (or an unfiltered palette) ahead of the letters.
+  let enterHeld = false;
   const onKeyDown = (event: KeyboardEvent) => {
     if (isTextField(event.target)) {
       stop();
       return;
     }
-    const printable = event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey;
-    if (!printable) return;
+    const plain = !event.metaKey && !event.ctrlKey && !event.altKey;
+    const printable = event.key.length === 1 && plain;
+    const enter = event.key === "Enter" && plain && held.length > 0;
+    if (!printable && !enter) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    held += event.key;
+    if (enter) enterHeld = true;
+    else if (!enterHeld) held += event.key;
   };
   const onFocusIn = (event: FocusEvent) => {
     if (!isTextField(event.target)) return;
     const field = event.target;
     const text = held;
+    const enter = enterHeld;
     stop();
     if (text) typeInto(field, text);
+    // Let the list filter on the typed text before choosing from it.
+    if (enter) {
+      setTimeout(() =>
+        field.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+        ),
+      );
+    }
   };
   const timer = setTimeout(() => stop(), HOLD_MS);
   const stop = () => {

@@ -1,6 +1,9 @@
+import { useQuery } from "@tanstack/react-query";
 import { ArrowRightCircle, Route as RouteIcon } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
+import { KeyChip } from "@/components/KeyChip";
+import { Button } from "@/components/ui/button";
 import {
   Command,
   CommandEmpty,
@@ -10,8 +13,10 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { routeMessages } from "@/features/mailbox/api";
 import { lensesFromShell } from "@/features/mailbox/lenses";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
+import { plural } from "@/lib/format";
 
 import { performMailAction } from "../mailMutations";
 import { describeTarget } from "../mailVerbs";
@@ -42,7 +47,12 @@ export function MoveDialog({
     [route?.fromQueueLabel, shell.data],
   );
 
-  const choose = (label: string) => {
+  // A batch route is previewed first: the daemon's dry run over the same
+  // message ids says what will change before anything does.
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const previewNeeded = Boolean(route) && target.messageIds.length > 1;
+
+  const run = (label: string) => {
     onClose();
     onDone?.();
     if (route) {
@@ -53,6 +63,24 @@ export function MoveDialog({
       void performMailAction("move", target.messageIds, { payload: { label } });
     }
   };
+
+  const choose = (label: string) => {
+    if (previewNeeded) setConfirming(label);
+    else run(label);
+  };
+
+  if (route && confirming) {
+    return (
+      <RoutePreview
+        target={target}
+        fromQueueLabel={route.fromQueueLabel}
+        toLabel={confirming}
+        onConfirm={() => run(confirming)}
+        onBack={() => setConfirming(null)}
+        onClose={onClose}
+      />
+    );
+  }
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -83,6 +111,87 @@ export function MoveDialog({
             </CommandGroup>
           </CommandList>
         </Command>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RoutePreview({
+  target,
+  fromQueueLabel,
+  toLabel,
+  onConfirm,
+  onBack,
+  onClose,
+}: {
+  target: MailTarget;
+  fromQueueLabel: string;
+  toLabel: string;
+  onConfirm: () => void;
+  onBack: () => void;
+  onClose: () => void;
+}) {
+  const preview = useQuery({
+    queryKey: ["route-preview", toLabel, fromQueueLabel, target.messageIds],
+    queryFn: () =>
+      routeMessages({
+        messageIds: target.messageIds,
+        toLabel,
+        fromQueueLabel,
+        archive: true,
+        dryRun: true,
+      }),
+    staleTime: 0,
+  });
+  const result = preview.data?.result;
+  const accounts = result?.accounts ?? [];
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        className="max-w-md"
+        onEscapeKeyDown={(event) => {
+          // Escape steps back to the label list, not out of the dialog.
+          event.preventDefault();
+          onBack();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && result) {
+            event.preventDefault();
+            onConfirm();
+          }
+        }}
+      >
+        <DialogTitle>Route to {toLabel}?</DialogTitle>
+        <DialogDescription>
+          {preview.isPending
+            ? "Checking what this will change…"
+            : preview.isError
+              ? `Couldn't preview the route: ${preview.error.message}`
+              : `${plural(result?.requested ?? 0, "message")}${
+                  accounts.length > 1 ? ` in ${accounts.length} accounts` : ""
+                } will be labelled ${toLabel}, leave ${fromQueueLabel}, be marked read and archived.`}
+        </DialogDescription>
+        {accounts.length > 1 ? (
+          <ul className="grid gap-1 text-[13px] text-muted-foreground">
+            {accounts.map((account) => (
+              <li key={account.account_id} className="flex justify-between">
+                <span>{account.account_name}</span>
+                <span className="font-mono tabular-nums">{account.skipped}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onBack}>
+            Back <KeyChip className="ml-1">Esc</KeyChip>
+          </Button>
+          <Button onClick={onConfirm} disabled={!result}>
+            Route {plural(result?.requested ?? target.messageIds.length, "message")}
+            <KeyChip className="ml-1 border-primary-foreground/30 bg-transparent text-primary-foreground/80">
+              ↵
+            </KeyChip>
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

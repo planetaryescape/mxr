@@ -16,20 +16,30 @@ export function MessageText({
   text,
   showQuotes,
   showSignature,
+  plain = false,
 }: {
   text: string;
   showQuotes: boolean;
   showSignature: boolean;
+  /** The sender's exact text in monospace: folds, but no reflow or mark stripping. */
+  plain?: boolean;
 }) {
   const segments = useMemo(() => normalizeSegments(splitMessageText(text)), [text]);
   return (
-    <div className="max-w-[var(--reading-measure)] text-[14.5px] leading-[1.65] text-foreground">
+    <div
+      className={
+        plain
+          ? "max-w-[var(--reading-measure)] font-mono text-[13px] leading-6 text-foreground"
+          : "max-w-[var(--reading-measure)] text-[14.5px] leading-[1.65] text-foreground"
+      }
+    >
       {segments.map((segment, index) => (
         <SegmentView
           // Segments are derived from immutable text; position is identity.
           // oxlint-disable-next-line react/no-array-index-key
           key={index}
           segment={segment}
+          plain={plain}
           forceOpen={
             segment.kind === "quote"
               ? showQuotes
@@ -43,7 +53,15 @@ export function MessageText({
   );
 }
 
-function SegmentView({ segment, forceOpen }: { segment: Segment; forceOpen: boolean }) {
+function SegmentView({
+  segment,
+  forceOpen,
+  plain,
+}: {
+  segment: Segment;
+  forceOpen: boolean;
+  plain: boolean;
+}) {
   const [open, setOpen] = useState(false);
   if (segment.kind === "text") return <Paragraphs text={segment.text} />;
   const expanded = forceOpen || open;
@@ -73,7 +91,7 @@ function SegmentView({ segment, forceOpen }: { segment: Segment; forceOpen: bool
           : "mt-3 text-[13px] text-muted-foreground"
       }
     >
-      <Paragraphs text={stripQuoteMarks(segment.text)} />
+      <Paragraphs text={plain ? segment.text : stripQuoteMarks(segment.text)} />
       {!forceOpen ? (
         <button
           type="button"

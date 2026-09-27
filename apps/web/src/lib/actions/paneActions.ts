@@ -148,9 +148,17 @@ export const readerActions: Action[] = [
   key("reader", "reader.view-reader", "viewReader", "Reader view, or back to plain", "R", "View", {
     description: "Cleaned text with quotes folded; press again for plain text, as in the TUI",
   }),
-  key("reader", "reader.view-html", "viewHtml", "Formatted (HTML) view, or back to plain", "H", "View", {
-    description: "Press again for plain text, as in the TUI",
-  }),
+  key(
+    "reader",
+    "reader.view-html",
+    "viewHtml",
+    "Formatted (HTML) view, or back to plain",
+    "H",
+    "View",
+    {
+      description: "Press again for plain text, as in the TUI",
+    },
+  ),
   {
     id: "reader.view-plain",
     command: "viewPlain",

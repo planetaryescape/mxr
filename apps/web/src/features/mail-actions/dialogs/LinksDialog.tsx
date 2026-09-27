@@ -149,18 +149,18 @@ export function LinksDialog({ target, onClose }: { target: MailTarget; onClose: 
                     {link.href}
                   </span>
                 </span>
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  aria-label="Copy link"
+                {/* Mouse-only: options can't hold controls; y copies from the keys. */}
+                <span
+                  aria-hidden
+                  title="Copy link (y)"
                   onClick={(event) => {
                     event.stopPropagation();
                     copy(link);
                   }}
-                  className="invisible rounded p-1 text-muted-foreground hover:text-foreground group-hover:visible"
+                  className="invisible cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground group-hover:visible"
                 >
                   <Copy className="size-3.5" />
-                </button>
+                </span>
                 <ExternalLink className="size-3.5 text-muted-foreground" />
               </li>
             ))}

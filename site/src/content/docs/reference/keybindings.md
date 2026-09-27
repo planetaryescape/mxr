@@ -445,6 +445,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `M` | Middle of screen | L (bottom of screen) opens links, as in the TUI's list pane |
 | `Enter`, `o`, `ArrowRight` | Open conversation |  |
 | `h`, `ArrowLeft` | Go to sidebar |  |
+| `w` | This list's row action | Web only |
 | `x` | Select and move down |  |
 | `V` | Visual line mode |  |
 | `* a`, `⌘A / Ctrl+A` | Select all |  |

@@ -35,6 +35,7 @@ import {
 import { toast } from "sonner";
 
 import { newMessageIntent, useComposeUi } from "@/features/compose/composeUiStore";
+import { holdTypeAhead } from "@/lib/keys/typeAhead";
 import { useModals } from "@/state/modalStore";
 import { runLatestUndo } from "@/state/undoStore";
 
@@ -60,7 +61,10 @@ export const navigationActions: Action[] = [
     aliases: [":", "Ctrl+p"],
     tuiNote: "Ctrl+P works on macOS; elsewhere it stays the browser's Print",
     hideInPalette: true,
-    run: () => useModals.getState().setCommandPaletteOpen(true),
+    run: () => {
+      holdTypeAhead();
+      useModals.getState().setCommandPaletteOpen(true);
+    },
   },
   {
     id: "shell.search-palette",
@@ -69,7 +73,10 @@ export const navigationActions: Action[] = [
     group: "Search",
     icon: Search,
     shortcut: "/",
-    run: () => useModals.getState().setSearchPaletteOpen(true),
+    run: () => {
+      holdTypeAhead();
+      useModals.getState().setSearchPaletteOpen(true);
+    },
   },
   {
     id: "shell.help",
@@ -153,7 +160,10 @@ export const navigationActions: Action[] = [
     group: "Navigate",
     icon: Tag,
     shortcut: "g l",
-    run: () => useModals.getState().openCommandPaletteAt("lens"),
+    run: () => {
+      holdTypeAhead();
+      useModals.getState().openCommandPaletteAt("lens");
+    },
   },
   {
     id: "nav.analytics",

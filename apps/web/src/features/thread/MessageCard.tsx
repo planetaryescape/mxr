@@ -135,17 +135,19 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
       ) : null}
       <header className="flex items-start gap-3 px-5 pb-2 pt-4">
         <Avatar name={name} />
-        <button type="button" onClick={onToggle} aria-expanded className="min-w-0 flex-1 text-left">
-          <span className="flex flex-wrap items-baseline gap-x-2">
-            <span className={cn("text-[14px]", message.unread ? "font-semibold" : "font-medium")}>
-              {name}
+        <div className="min-w-0 flex-1">
+          <button type="button" onClick={onToggle} aria-expanded className="block w-full text-left">
+            <span className="flex flex-wrap items-baseline gap-x-2">
+              <span className={cn("text-[14px]", message.unread ? "font-semibold" : "font-medium")}>
+                {name}
+              </span>
+              {email && email !== name ? (
+                <span className="truncate font-mono text-2xs text-muted-foreground">{email}</span>
+              ) : null}
             </span>
-            {email && email !== name ? (
-              <span className="truncate font-mono text-2xs text-muted-foreground">{email}</span>
-            ) : null}
-          </span>
+          </button>
           <Recipients to={message.to} cc={message.cc} bcc={message.bcc} />
-        </button>
+        </div>
         <span className="flex shrink-0 items-center gap-1">
           <time
             dateTime={message.date}
@@ -347,19 +349,16 @@ function Recipients({
   const more = all.length > 3 ? ` and ${all.length - 3} more` : "";
   return (
     <span className="mt-0.5 block text-[12.5px] text-muted-foreground">
-      <span
-        role="button"
-        tabIndex={-1}
-        onClick={(event) => {
-          event.stopPropagation();
-          setOpen((value) => !value);
-        }}
-        className="inline-flex items-center gap-0.5 hover:text-foreground"
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="inline-flex items-center gap-0.5 text-left hover:text-foreground"
       >
         to {summary}
         {more}
         <ChevronDown className={cn("size-3 transition-transform", open && "rotate-180")} />
-      </span>
+      </button>
       {open ? (
         <span className="mt-1 grid grid-cols-[3rem_1fr] gap-x-2 gap-y-0.5 font-mono text-2xs">
           <AddressRow label="to" list={to} />
@@ -375,7 +374,7 @@ function AddressRow({ label, list }: { label: string; list?: AddressView[] }) {
   if (!list || list.length === 0) return null;
   return (
     <>
-      <span className="text-faint">{label}</span>
+      <span className="text-muted-foreground">{label}</span>
       <span className="break-all">
         {list.map((a) => (a.name ? `${a.name} <${a.email}>` : a.email)).join(", ")}
       </span>

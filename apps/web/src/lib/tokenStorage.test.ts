@@ -54,12 +54,14 @@ describe("bootstrapFromHash", () => {
   });
 
   test("a same-origin token link is stored without asking", () => {
-    window.history.replaceState({}, "", "/#token=abc");
+    window.history.replaceState({ __TSR_index: 0 }, "", "/#token=abc");
     const confirm = vi.fn<(origin: string) => boolean>(() => true);
 
     bootstrapFromHash(confirm);
 
     expect(confirm).not.toHaveBeenCalled();
     expect(getToken()).toBe("abc");
+    // The router's entry index survives the scrub (else "back" leaves the app).
+    expect(window.history.state).toEqual({ __TSR_index: 0 });
   });
 });

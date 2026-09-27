@@ -248,6 +248,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const sidebarFocused = activePane === "sidebar";
   useShortcutScope("sidebar", sidebarFocused);
   const clamp = (index: number) => Math.max(0, Math.min(visible.length - 1, index));
+  const visibleCount = visible.length;
   const current = visible[clamp(focusIndex)];
   useScopeController("sidebar", {
     down: () => setFocusIndex(clamp(focusIndex + 1)),
@@ -280,16 +281,28 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
     if (index >= 0 && index !== focusIndex) setFocusIndex(index);
   }, [focusIndex, path, setFocusIndex, sidebarFocused, visible]);
 
+  // Follow the keyboard cursor, only when it moves: scrolling on every
+  // render would pull the list away from under a pointer mid-click.
   useEffect(() => {
     if (!sidebarFocused) return;
+    const index = Math.max(0, Math.min(visibleCount - 1, focusIndex));
     listRef.current
-      ?.querySelector<HTMLElement>(`[data-nav-index="${clamp(focusIndex)}"]`)
+      ?.querySelector<HTMLElement>(`[data-nav-index="${index}"]`)
       ?.scrollIntoView({ block: "nearest" });
-  });
+  }, [focusIndex, sidebarFocused, visibleCount]);
 
   let runningIndex = -1;
   return (
-    <div className="flex h-full min-h-0 flex-col" onMouseDown={() => setActivePane("sidebar")}>
+    <div
+      className="flex h-full min-h-0 flex-col"
+      onMouseDown={(event) => {
+        // The pressed item becomes the cursor before the pane takes the
+        // keyboard, so the cursor-follow scroll has nowhere else to go.
+        const item = (event.target as Element).closest<HTMLElement>("[data-nav-index]");
+        if (item) setFocusIndex(Number(item.dataset.navIndex));
+        setActivePane("sidebar");
+      }}
+    >
       <div className="border-b border-sidebar-border p-2">
         <AccountSwitcher collapsed={collapsed} />
       </div>
@@ -312,7 +325,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                   type="button"
                   onClick={() => toggleSection(section.id)}
                   aria-expanded={!isFolded}
-                  className="group mb-0.5 flex w-full items-center gap-1 rounded px-2 py-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint hover:text-sidebar-foreground"
+                  className="group mb-0.5 flex w-full items-center gap-1 rounded px-2 py-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground hover:text-sidebar-foreground"
                 >
                   <ChevronRight
                     className={cn("size-3 transition-transform", !isFolded && "rotate-90")}
@@ -428,7 +441,7 @@ function SidebarLink({
       />
       {!collapsed ? <span className="min-w-0 flex-1 truncate">{entry.label}</span> : null}
       {!collapsed && entry.shortcut ? (
-        <span className="hidden font-mono text-2xs text-faint group-hover:inline">
+        <span className="hidden font-mono text-2xs text-muted-foreground group-hover:inline">
           {formatChord(entry.shortcut)}
         </span>
       ) : null}

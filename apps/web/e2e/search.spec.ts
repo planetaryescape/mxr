@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { mailList, mailRows, openList, pressSequence } from "./helpers/mail";
+import { readE2EState } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -35,11 +36,7 @@ test("clicking a sender facet narrows the query and the results", async ({ page 
   expect(after).toBeLessThanOrEqual(Math.min(before, facetCount));
 });
 
-// BUG: POST /api/v1/platform/saved-searches/create answers 502 "unexpected
-// response from daemon": the bridge (crates/web/src/lib.rs
-// create_saved_search) expects an Ack but the daemon replies SavedSearchData.
-// The dialog stays open with "Couldn't save the search".
-test.fixme("save a search, find it in the sidebar, and jump to it with g 1", async ({ page }) => {
+test("save a search, find it in the sidebar, and jump to it with g 1", async ({ page }) => {
   const name = `E2E canary ${Date.now().toString(36)}`;
   await openList(page, "/search?q=canary");
 
@@ -63,6 +60,17 @@ test.fixme("save a search, find it in the sidebar, and jump to it with g 1", asy
   await expect(page).toHaveURL(/\/m\/saved\/[^/]+$/);
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
   await expect(mailRows(page).first()).toBeVisible();
+
+  // The daemon outlives the test: free slot 1 for the "empty slot" test.
+  const state = readE2EState();
+  const removed = await page.request.post(
+    `${state.bridgeUrl}/api/v1/platform/saved-searches/delete`,
+    {
+      headers: { "x-mxr-bridge-token": state.token },
+      data: { name },
+    },
+  );
+  expect(removed.ok()).toBe(true);
 });
 
 test("g 1 with no saved search in that slot says so and stays put", async ({ page }) => {

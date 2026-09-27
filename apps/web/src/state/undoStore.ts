@@ -1,7 +1,7 @@
 /*
  * The most recent reversible action. `u` / `z` undo whichever is newest: a
  * send still in its undo window, or the last mail change. A mail change
- * that cannot be undone (star, labels, move) retires the previous undo, so
+ * that cannot be undone (star) retires the previous undo, so
  * `u` never reaches back past it to an older action.
  */
 

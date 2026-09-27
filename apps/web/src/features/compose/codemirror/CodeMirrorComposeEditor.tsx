@@ -111,6 +111,10 @@ export function CodeMirrorComposeEditor({
             },
           ]),
           EditorView.lineWrapping,
+          EditorView.contentAttributes.of({
+            "aria-label": "Message body",
+            "aria-multiline": "true",
+          }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) callbacksRef.current.onChange(update.state.doc.toString());
           }),

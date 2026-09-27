@@ -9,6 +9,7 @@ import {
   Paperclip,
   Star,
   Trash2,
+  type LucideIcon,
 } from "lucide-react";
 import { memo, type MouseEvent, type ReactNode } from "react";
 
@@ -118,12 +119,12 @@ export const MailboxRow = memo(function MailboxRow({
         {readOnly ? (
           <Avatar name={who} />
         ) : (
-          <button
-            type="button"
-            tabIndex={-1}
+          // Mouse-only: rows are listbox options, which can't hold controls;
+          // x selects from the keyboard.
+          <span
             aria-hidden
             onClick={stop(() => onToggleSelection(row, false))}
-            className="relative grid size-7 place-items-center rounded-full"
+            className="relative grid size-7 cursor-pointer place-items-center rounded-full"
           >
             <span
               className={cn(
@@ -146,7 +147,7 @@ export const MailboxRow = memo(function MailboxRow({
             >
               {selected ? <Check className="size-3.5" strokeWidth={3} /> : null}
             </span>
-          </button>
+          </span>
         )}
       </div>
 
@@ -203,63 +204,66 @@ export const MailboxRow = memo(function MailboxRow({
       </div>
 
       {/* Meta: icons and date; quick actions replace them on hover. */}
-      <div className="relative col-start-3 row-start-1 flex items-center justify-end gap-1.5 self-start pt-px @2xl:col-start-4 @2xl:self-center @2xl:pt-0">
-        <span className={cn("flex items-center gap-1.5", !readOnly && "group-hover:invisible")}>
-          {commitments ? (
-            <span
-              title={`${plural(commitments, "open commitment")}`}
-              className="flex items-center gap-0.5 font-mono text-2xs text-warning"
+      <div className="col-start-3 row-start-1 flex items-center justify-end gap-1.5 self-start pt-px @2xl:col-start-4 @2xl:self-center @2xl:pt-0">
+        {/* The hover toolbar covers only this, never a trailing action. */}
+        <span className="relative flex items-center">
+          <span className={cn("flex items-center gap-1.5", !readOnly && "group-hover:invisible")}>
+            {commitments ? (
+              <span
+                title={`${plural(commitments, "open commitment")}`}
+                className="flex items-center gap-0.5 font-mono text-2xs text-warning"
+              >
+                <ClipboardList className="size-3" aria-hidden />
+                {commitments}
+              </span>
+            ) : null}
+            {row.link_density === "heavy" ? (
+              <Link2 className="size-3.5 text-muted-foreground" aria-hidden />
+            ) : null}
+            {row.has_attachments ? (
+              <Paperclip className="size-3.5 text-muted-foreground" aria-hidden />
+            ) : null}
+            {row.starred ? <Star className="size-3.5 fill-star text-star" aria-hidden /> : null}
+            <time
+              dateTime={row.date}
+              title={row.date_full}
+              className={cn(
+                "whitespace-nowrap font-mono text-[length:var(--mail-row-meta-size)] tabular-nums",
+                row.unread ? "text-foreground" : "text-muted-foreground",
+              )}
             >
-              <ClipboardList className="size-3" aria-hidden />
-              {commitments}
-            </span>
-          ) : null}
-          {row.link_density === "heavy" ? (
-            <Link2 className="size-3.5 text-muted-foreground" aria-hidden />
-          ) : null}
-          {row.has_attachments ? (
-            <Paperclip className="size-3.5 text-muted-foreground" aria-hidden />
-          ) : null}
-          {row.starred ? <Star className="size-3.5 fill-star text-star" aria-hidden /> : null}
-          <time
-            dateTime={row.date}
-            title={row.date_full}
-            className={cn(
-              "whitespace-nowrap font-mono text-[length:var(--mail-row-meta-size)] tabular-nums",
-              row.unread ? "text-foreground" : "text-muted-foreground",
-            )}
-          >
-            {formatListDate(row.date) || row.date_label}
-          </time>
-        </span>
-        {readOnly ? null : (
-          <span
-            aria-hidden
-            className="invisible absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-border bg-popover p-0.5 shadow-sm group-hover:visible"
-          >
-            <QuickButton label="Archive (e)" onClick={stop(() => onQuickAction(row, "archive"))}>
-              <Archive className="size-3.5" />
-            </QuickButton>
-            <QuickButton label="Trash (#)" onClick={stop(() => onQuickAction(row, "trash"))}>
-              <Trash2 className="size-3.5" />
-            </QuickButton>
-            <QuickButton
-              label={row.unread ? "Mark read (I)" : "Mark unread (U)"}
-              onClick={stop(() => onQuickAction(row, "toggleRead"))}
-            >
-              {row.unread ? <MailOpen className="size-3.5" /> : <Mail className="size-3.5" />}
-            </QuickButton>
-            <QuickButton label="Snooze (Z)" onClick={stop(() => onQuickAction(row, "snooze"))}>
-              <Clock className="size-3.5" />
-            </QuickButton>
-            <QuickButton
-              label={row.starred ? "Unstar (s)" : "Star (s)"}
-              onClick={stop(() => onQuickAction(row, "toggleStar"))}
-            >
-              <Star className={cn("size-3.5", row.starred && "fill-star text-star")} />
-            </QuickButton>
+              {formatListDate(row.date) || row.date_label}
+            </time>
           </span>
-        )}
+          {readOnly ? null : (
+            <span
+              aria-hidden
+              className="invisible absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-border bg-popover p-0.5 shadow-sm group-hover:visible"
+            >
+              <QuickButton label="Archive (e)" onClick={stop(() => onQuickAction(row, "archive"))}>
+                <Archive className="size-3.5" />
+              </QuickButton>
+              <QuickButton label="Trash (#)" onClick={stop(() => onQuickAction(row, "trash"))}>
+                <Trash2 className="size-3.5" />
+              </QuickButton>
+              <QuickButton
+                label={row.unread ? "Mark read (I)" : "Mark unread (U)"}
+                onClick={stop(() => onQuickAction(row, "toggleRead"))}
+              >
+                {row.unread ? <MailOpen className="size-3.5" /> : <Mail className="size-3.5" />}
+              </QuickButton>
+              <QuickButton label="Snooze (Z)" onClick={stop(() => onQuickAction(row, "snooze"))}>
+                <Clock className="size-3.5" />
+              </QuickButton>
+              <QuickButton
+                label={row.starred ? "Unstar (s)" : "Star (s)"}
+                onClick={stop(() => onQuickAction(row, "toggleStar"))}
+              >
+                <Star className={cn("size-3.5", row.starred && "fill-star text-star")} />
+              </QuickButton>
+            </span>
+          )}
+        </span>
         {trailingAction ? (
           <span onClick={(event) => event.stopPropagation()} className="ml-1">
             {trailingAction}
@@ -269,6 +273,32 @@ export const MailboxRow = memo(function MailboxRow({
     </div>
   );
 });
+
+export interface RowAction {
+  label: string;
+  icon: LucideIcon;
+  /** Accessible name for one row, e.g. "Wake Budget review now". */
+  describe: (row: MessageRowView) => string;
+  run: (row: MessageRowView) => void;
+}
+
+/**
+ * A row's own verb, drawn as a button but not one: rows are listbox
+ * options, which can't contain controls. The keyboard runs it with `w`.
+ */
+export function RowActionChip({ action, row }: { action: RowAction; row: MessageRowView }) {
+  const Icon = action.icon;
+  return (
+    <span
+      aria-hidden
+      title={`${action.describe(row)} (w)`}
+      onClick={() => action.run(row)}
+      className="flex h-6 cursor-pointer items-center gap-1 rounded-md px-2 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
+    >
+      <Icon className="size-3" /> {action.label}
+    </span>
+  );
+}
 
 function displaySender(row: MessageRowView): string {
   const people = (row.participants ?? [])
@@ -359,14 +389,12 @@ function QuickButton({
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      tabIndex={-1}
+    <span
       title={label}
       onClick={onClick}
-      className="grid size-7 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+      className="grid size-7 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
     >
       {children}
-    </button>
+    </span>
   );
 }

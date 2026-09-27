@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Clock } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ export function SnoozeDialog({
   onSnoozed,
 }: SnoozeDialogProps) {
   const [custom, setCustom] = useState("");
+  const customRef = useRef<HTMLInputElement>(null);
   const presets = useQuery({
     queryKey: ["snooze-presets"],
     queryFn: fetchSnoozePresets,
@@ -65,14 +66,23 @@ export function SnoozeDialog({
     >
       <DialogContent
         className="max-w-md"
+        // The dialog itself takes focus, not the time field (the only
+        // focusable thing while presets load), so Z then 1 picks a preset.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          (event.currentTarget as HTMLElement | null)?.focus();
+        }}
         onKeyDown={(event) => {
           if (event.target instanceof HTMLInputElement) return;
-          const index = Number.parseInt(event.key, 10) - 1;
-          const preset = choices[index];
-          if (preset) {
+          if (event.metaKey || event.ctrlKey || event.altKey) return;
+          if (/^[1-9]$/.test(event.key)) {
             event.preventDefault();
-            snooze(presetValue(preset));
+            const preset = choices[Number(event.key) - 1];
+            if (preset) snooze(presetValue(preset));
+            return;
           }
+          // Any other typing is a time: send it to the field.
+          if (event.key.length === 1 && event.key !== " ") customRef.current?.focus();
         }}
       >
         <DialogHeader>
@@ -130,6 +140,7 @@ export function SnoozeDialog({
           <div className="flex gap-2">
             <Input
               id="snooze-custom"
+              ref={customRef}
               value={custom}
               onChange={(event) => setCustom(event.target.value)}
               placeholder="in 2h, tomorrow 9am, monday 17:00"

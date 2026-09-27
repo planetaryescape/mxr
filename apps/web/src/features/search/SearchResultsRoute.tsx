@@ -464,7 +464,7 @@ function SearchStart({
         </p>
         {saved.length > 0 ? (
           <>
-            <h3 className="mb-1 mt-6 font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint">
+            <h3 className="mb-1 mt-6 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
               Saved
             </h3>
             <ul className="divide-y divide-border/70 rounded-md border border-border">
@@ -485,7 +485,7 @@ function SearchStart({
             </ul>
           </>
         ) : null}
-        <h3 className="mb-1 mt-6 font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint">
+        <h3 className="mb-1 mt-6 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
           Operators
         </h3>
         <dl className="grid grid-cols-[minmax(0,auto)_1fr] gap-x-4 gap-y-1 text-[13px]">

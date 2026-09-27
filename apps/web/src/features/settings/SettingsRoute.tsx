@@ -135,7 +135,7 @@ export function SettingsRoute() {
         aria-label="Settings sections"
         className="hidden w-52 shrink-0 overflow-y-auto border-r border-border px-2 py-5 md:block"
       >
-        <div className="mb-2 px-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint">
+        <div className="mb-2 px-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
           Settings
         </div>
         <ul className="space-y-0.5">

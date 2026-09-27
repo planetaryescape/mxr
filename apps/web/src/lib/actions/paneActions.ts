@@ -61,6 +61,10 @@ export const listActions: Action[] = [
   key("list", "list.sidebar", "focusSidebar", "Go to sidebar", "h", "Move", {
     aliases: ["ArrowLeft"],
   }),
+  key("list", "list.row-action", "rowAction", "This list's row action", "w", "Mail", {
+    description: "Wake now in Snoozed, Done in the reply queue",
+    tuiNote: "Web only",
+  }),
   key("list", "list.toggle-select", "toggleSelect", "Select and move down", "x", "Select"),
   key("list", "list.visual", "visual", "Visual line mode", "V", "Select", {
     description: "Extend a selection with j and k",

@@ -40,9 +40,7 @@ test("a sent message appears in Sent after the undo window", async ({ page }) =>
   await expect(mailRows(page).filter({ hasText: subject })).toHaveCount(1);
 });
 
-// BUG: `c` opens the composer but DOM focus stays on the mail list, so the
-// first keys typed go to list shortcuts instead of the To field.
-test.fixme("c opens the composer with the To field focused", async ({ page }) => {
+test("c opens the composer with the To field focused", async ({ page }) => {
   await openList(page, "/m/inbox");
   await page.keyboard.press("c");
   await expect(composer(page)).toBeVisible();
@@ -68,10 +66,7 @@ test("a /compose/new deep link opens the composer prefilled and steps off the UR
   await expect(composer(page)).toHaveCount(0);
 });
 
-// BUG: opened as the first page with the `#token=` fragment (the first-launch
-// handoff), /compose/new calls history.back() and leaves the app for the
-// previous page (about:blank here) instead of opening the composer.
-test.fixme("/compose/new with a #token fragment opens the composer", async ({ page }) => {
+test("/compose/new with a #token fragment opens the composer", async ({ page }) => {
   await openApp(page, "/compose/new?to=bob%40example.com");
   await expect(composer(page)).toBeVisible();
   await expect(page).toHaveURL(/127\.0\.0\.1/);

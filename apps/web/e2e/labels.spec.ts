@@ -35,7 +35,7 @@ test("l applies an existing label and the chip shows on the row", async ({ page 
 
   await input.fill("Hiring");
   await page.keyboard.press("Enter");
-  await expect(dialog.getByRole("option", { name: /Hiring.*\+ add/ })).toBeVisible();
+  await expect(dialog.getByRole("option", { name: "Hiring: applied, changed" })).toBeVisible();
   await dialog.getByRole("button", { name: /^Apply/ }).click();
 
   await expect(dialog).toHaveCount(0);
@@ -43,11 +43,7 @@ test("l applies an existing label and the chip shows on the row", async ({ page 
   await expect(rowById(page, rowId).getByText("Hiring", { exact: true })).toBeVisible();
 });
 
-// BUG: POST /api/v1/mail/labels/create answers 502 "unexpected response from
-// daemon". The bridge (crates/web/src/lib.rs create_label) expects an Ack but
-// the daemon replies ResponseData::Label, so the UI shows "Couldn't create
-// label" even though the daemon created it. Rename has the same shape.
-test.fixme("l creates a new label from the picker and applies it", async ({ page }) => {
+test("l creates a new label from the picker and applies it", async ({ page }) => {
   const name = `e2e-${Date.now().toString(36)}`;
   await openList(page, "/m/inbox");
   await page.keyboard.press("j");
@@ -58,14 +54,17 @@ test.fixme("l creates a new label from the picker and applies it", async ({ page
   await dialog.getByPlaceholder("Find or create a label…").fill(name);
   await dialog.getByRole("option", { name: `Create “${name}”` }).click();
   await expect(page.getByText(`Created ${name}`)).toBeVisible();
-  await expect(dialog.getByRole("option", { name: new RegExp(`${name}.*\\+ add`) })).toBeVisible();
+  await expect(dialog.getByRole("option", { name: `${name}: applied, changed` })).toBeVisible();
   await dialog.getByRole("button", { name: /^Apply/ }).click();
 
   await expect(rowById(page, rowId).getByText(name, { exact: true })).toBeVisible();
-  await page
+  // Wait for the sidebar to settle on the new count; the shell refresh after
+  // Apply re-renders the section and would move the link under the pointer.
+  const link = page
     .getByRole("navigation", { name: "Labels" })
-    .getByRole("link", { name: new RegExp(`^${name}`) })
-    .click();
+    .getByRole("link", { name: `${name} 1` });
+  await expect(link).toBeVisible();
+  await link.click();
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
   await expect(mailList(page).getByRole("option")).toHaveCount(1);
 });
@@ -86,7 +85,10 @@ test("v moves the conversation to another label and out of Inbox", async ({ page
   await expect(rowById(page, rowId)).toHaveCount(0);
   await expect(page.getByText(/^Moved to Travel \d+ messages?$/)).toBeVisible();
 
-  await page.getByRole("navigation", { name: "Labels" }).getByRole("link", { name: /^Travel/ }).click();
+  await page
+    .getByRole("navigation", { name: "Labels" })
+    .getByRole("link", { name: /^Travel/ })
+    .click();
   await expect(page.getByRole("heading", { level: 1, name: "Travel" })).toBeVisible();
   const movedSubject = stableRowName(subject).split(", ").at(-1)!;
   await expect(
@@ -94,11 +96,7 @@ test("v moves the conversation to another label and out of Inbox", async ({ page
   ).toBeVisible();
 });
 
-// BUG: the daemon only issues undo ids for archive, trash, spam, read and
-// route (crates/daemon/src/handler/mutations.rs undoable_kind); Move,
-// ModifyLabels and Star return none. After v, u says "Nothing to undo" and
-// the conversation stays out of Inbox. Rubric 1.3 wants moves undoable.
-test.fixme("u undoes a move", async ({ page }) => {
+test("u undoes a move", async ({ page }) => {
   await openList(page, "/m/inbox");
   await page.keyboard.press("j");
   const rowId = await cursorRowId(page);
@@ -112,9 +110,7 @@ test.fixme("u undoes a move", async ({ page }) => {
   await expect(rowById(page, rowId)).toBeVisible();
 });
 
-// BUG: same gap as above for label changes: after applying a label with l,
-// u says "Nothing to undo" and the chip stays.
-test.fixme("u undoes a label change", async ({ page }) => {
+test("u undoes a label change", async ({ page }) => {
   await openList(page, "/m/inbox");
   const rowId = await cursorToRowWithout(page, "Hiring");
   await page.keyboard.press("l");

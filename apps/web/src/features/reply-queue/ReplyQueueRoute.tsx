@@ -3,7 +3,6 @@ import { MessageSquareReply, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { fetchReplyQueue, setReplyLater, type ReplyQueueMessage } from "./api";
-import { Button } from "@/components/ui/button";
 import { invalidateMailQueries } from "@/features/mail-actions/mailMutations";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
@@ -63,17 +62,12 @@ export function ReplyQueueRoute() {
       groups={groups}
       scopeKey="reply-queue"
       status={queue}
-      rowAction={(row) => (
-        <Button
-          variant="ghost"
-          size="xs"
-          disabled={done.isPending}
-          onClick={() => done.mutate(row.id)}
-          aria-label={`Done with ${row.subject || "(no subject)"}`}
-        >
-          <X className="size-3" /> Done
-        </Button>
-      )}
+      rowAction={{
+        label: "Done",
+        icon: X,
+        describe: (row) => `Done with ${row.subject || "(no subject)"}`,
+        run: (row) => done.mutate(row.id),
+      }}
       empty={
         <Centered
           icon={<MessageSquareReply className="size-6" />}

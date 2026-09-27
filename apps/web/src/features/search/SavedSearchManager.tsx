@@ -81,7 +81,7 @@ export function SavedSearchManager({
             </li>
           ) : (
             <li key={search.id} className="group flex items-center gap-3 px-4 py-2.5">
-              <span className="w-8 shrink-0 font-mono text-2xs text-faint">
+              <span className="w-8 shrink-0 font-mono text-2xs text-muted-foreground">
                 {index < 9 ? `g ${index + 1}` : ""}
               </span>
               <button

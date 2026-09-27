@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { type ShortcutHint, useActionContext, useShortcutSections } from "@/lib/actions";
-import { cn } from "@/lib/utils";
 
 interface HelpDialogProps {
   open: boolean;
@@ -64,7 +63,13 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
           placeholder="archive, label, g i…"
           className="h-9"
         />
-        <div className="min-h-0 flex-1 overflow-auto pr-1" tabIndex={-1}>
+        <div
+          className="min-h-0 flex-1 overflow-auto rounded-sm pr-1 focus-visible:outline-2 focus-visible:outline-ring"
+          // Scrollable, so it must be reachable by keyboard (arrow keys scroll it).
+          tabIndex={0}
+          role="region"
+          aria-label="Shortcuts"
+        >
           {visible.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">No matching shortcuts.</p>
           ) : (
@@ -91,14 +96,18 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
 
 function HelpRow({ hint }: { hint: ShortcutHint }) {
   return (
-    <li className={cn("flex items-start gap-3 py-1", !hint.live && "opacity-60")}>
+    <li className="flex items-start gap-3 py-1">
       <span className="flex w-28 shrink-0 flex-wrap gap-1">
         {hint.keys.slice(0, 2).map((key) => (
           <KeyChip key={key}>{key}</KeyChip>
         ))}
       </span>
       <span className="min-w-0 text-[13px] leading-5">
-        <span className="text-foreground">{hint.label}</span>
+        {/* Keys that don't apply here step back in colour, not opacity: a
+            faded muted note would fall below 4.5:1. */}
+        <span className={hint.live ? "text-foreground" : "text-muted-foreground"}>
+          {hint.label}
+        </span>
         {hint.note ? (
           <span className="block text-2xs leading-4 text-muted-foreground">{hint.note}</span>
         ) : null}

@@ -305,6 +305,8 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         ref={controller.fileInputRef}
         type="file"
         multiple
+        aria-label="Attach files"
+        tabIndex={-1}
         className="sr-only"
         onChange={(event) => {
           if (event.currentTarget.files) void controller.addFiles(event.currentTarget.files);

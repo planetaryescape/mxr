@@ -37,7 +37,7 @@ export function Page({
         <div className={cn("mx-auto flex w-full items-end gap-4 px-6 pb-3 pt-5", max)}>
           <div className="min-w-0 flex-1">
             {eyebrow ? (
-              <div className="mb-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint">
+              <div className="mb-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
                 {eyebrow}
               </div>
             ) : null}

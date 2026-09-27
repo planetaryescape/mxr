@@ -39,9 +39,11 @@ export function bootstrapFromHash(
     setToken(token);
   }
   if (token || remote) {
-    // scrub the hash so the token isn't shoulder-surfed or copied into bookmarks
+    // Scrub the hash so the token isn't shoulder-surfed or copied into
+    // bookmarks. Keep the history state: the router keeps its entry index
+    // there, and losing it makes a first page think it can go back.
     const cleaned = window.location.pathname + window.location.search;
-    window.history.replaceState({}, document.title, cleaned);
+    window.history.replaceState(window.history.state, document.title, cleaned);
   }
 }
 

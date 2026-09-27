@@ -41,6 +41,7 @@ const toast = vi.hoisted(() => ({
   success: vi.fn<(message: string, options?: ToastOptions) => void>(),
   error: vi.fn<(message: string, options?: ToastOptions) => void>(),
   info: vi.fn<(message: string) => void>(),
+  dismiss: vi.fn<(id?: string | number) => void>(),
 }));
 vi.mock("sonner", () => ({ toast }));
 
@@ -291,6 +292,24 @@ describe("undo", () => {
     expect(api.undoMutation).toHaveBeenCalledWith("mut-9");
     await vi.waitFor(() => expect(qc.getQueryState(SEARCH_KEY)?.isInvalidated).toBe(true));
     expect(useUndo.getState().lastMutationId).toBeNull();
+  });
+
+  test("u pressed before the daemon answers waits for it, then undoes", async () => {
+    const answer = deferred<MutationResponse>();
+    api.archiveMessages.mockReturnValue(answer.promise);
+    api.undoMutation.mockResolvedValue({ ok: true });
+
+    const done = performMailAction("archive", ["a-1"]);
+    const early = useUndo.getState().lastUndo;
+    expect(early).toBeTypeOf("function");
+    const undone = early!();
+
+    answer.resolve(ok(1, "mut-early"));
+    await done;
+    await expect(undone).resolves.toBe(true);
+    expect(api.undoMutation).toHaveBeenCalledWith("mut-early");
+    // Spent: a second u has nothing left to undo.
+    expect(useUndo.getState().lastUndo).toBeNull();
   });
 
   test("a failed undo says so and keeps the undo available", async () => {

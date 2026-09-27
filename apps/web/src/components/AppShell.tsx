@@ -20,19 +20,38 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 // Everything below only exists while open, so it loads on first use and
 // stays out of the entry chunk (compose alone pulls in editors, the HTML
 // sanitizer and address parsing).
+const loadPalette = () => import("@/features/command-palette/CommandPalette");
+const loadSearchPalette = () => import("@/features/search/SearchPalette");
 const HelpDialog = lazyNamed(() => import("@/components/HelpDialog"), "HelpDialog");
 const RightRail = lazyNamed(() => import("@/components/RightRail"), "RightRail");
-const CommandPaletteMount = lazyNamed(
-  () => import("@/features/command-palette/CommandPalette"),
-  "CommandPaletteMount",
-);
+const CommandPaletteMount = lazyNamed(loadPalette, "CommandPaletteMount");
 const ComposeHost = lazyNamed(() => import("@/features/compose/ComposeHost"), "ComposeHost");
 const ComposeLauncher = lazyNamed(
   () => import("@/features/compose/ComposeLauncher"),
   "ComposeLauncher",
 );
 const MailDialogs = lazyNamed(() => import("@/features/mail-actions/MailDialogs"), "MailDialogs");
-const SearchPalette = lazyNamed(() => import("@/features/search/SearchPalette"), "SearchPalette");
+const SearchPalette = lazyNamed(loadSearchPalette, "SearchPalette");
+
+/**
+ * The palettes open from a key and the user types straight on, so their
+ * chunks must be ready before the first ⌘K or /: letters typed while a
+ * chunk is still loading have nowhere to go.
+ */
+function usePreloadPalettes(): void {
+  useEffect(() => {
+    const preload = () => {
+      void loadPalette();
+      void loadSearchPalette();
+    };
+    if ("requestIdleCallback" in window) {
+      const handle = window.requestIdleCallback(preload, { timeout: 2000 });
+      return () => window.cancelIdleCallback(handle);
+    }
+    const timer = setTimeout(preload, 500);
+    return () => clearTimeout(timer);
+  }, []);
+}
 
 function lazyNamed<M, K extends keyof M>(load: () => Promise<M>, name: K) {
   type Props = M[K] extends ComponentType<infer P> ? P : never;
@@ -55,6 +74,7 @@ export function AppShell() {
   const navigate = useNavigate();
   const path = useRouterState({ select: (state) => state.location.pathname });
   useNewMessageNotifier();
+  usePreloadPalettes();
   const accounts = useQuery({
     queryKey: ["accounts"],
     queryFn: fetchAccounts,

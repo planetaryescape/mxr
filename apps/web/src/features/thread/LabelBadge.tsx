@@ -30,7 +30,9 @@ function labelBadgeStyle(color?: string | null): CSSProperties | undefined {
   return {
     backgroundColor: hexToRgba(hex, 0.16),
     borderColor: hexToRgba(hex, 0.65),
-    color: hex,
+    // The raw label colour is often too light or dark for text on its own
+    // tint; pulling it toward the theme's text colour keeps it readable.
+    color: `color-mix(in oklab, ${hex} 55%, var(--foreground))`,
   };
 }
 

@@ -88,6 +88,9 @@ export async function performMailAction(
   const pending = usePendingMailOps.getState();
   pending.add({ id: opId, action, messageIds: new Set(ids), payload: options.payload });
   if (isDestructive(action)) useSelection.getState().clear();
+  // The row leaves the list at once, so `u` can come before the daemon
+  // answers. Claim the undo slot now; an early `u` waits for the answer.
+  const claim = options.silent ? null : claimUndo();
 
   try {
     const command = jobCommand(action, ids, options.payload);
@@ -96,7 +99,7 @@ export async function performMailAction(
         ? await runAsJob(action, command, ids.length, options.payload)
         : await requestCoordinator.enqueueMutation(() => runAction(action, ids, options));
     assertCompleted(response, ids.length);
-    if (!options.silent) announceSuccess(action, ids, response, options.payload);
+    if (claim) claim.settle(announceSuccess(action, ids, response, claim.run, options.payload));
     await invalidateMailQueries().catch(() => undefined);
     return { ok: true, response };
   } catch (caught) {
@@ -104,6 +107,7 @@ export async function performMailAction(
     // Retire the projection first so the rows come back, then reconcile:
     // the server may have applied part of the change before failing.
     usePendingMailOps.getState().remove(opId);
+    claim?.settle(null);
     announceFailure(action, error, options.payload);
     void invalidateMailQueries().catch(() => undefined);
     return { ok: false, error };
@@ -448,12 +452,40 @@ function labelChangeVerb(payload?: MailActionPayload): string {
   return "Updated labels on";
 }
 
+interface UndoClaim {
+  run: () => Promise<boolean>;
+  settle: (undo: (() => Promise<boolean>) | null) => void;
+}
+
+/** Hold the newest-undo slot for an action whose answer hasn't come yet. */
+function claimUndo(): UndoClaim {
+  let settle!: UndoClaim["settle"];
+  const settled = new Promise<(() => Promise<boolean>) | null>((resolve) => {
+    settle = resolve;
+  });
+  const run = async () => {
+    useUndo.getState().retireUndo(run);
+    const undo = await settled;
+    return undo ? undo() : false;
+  };
+  useUndo.getState().recordUndo(run);
+  return {
+    run,
+    settle: (undo) => {
+      useUndo.getState().retireUndo(run);
+      settle(undo);
+    },
+  };
+}
+
+/** Toast the result; returns its undo, recorded only if nothing newer took the slot. */
 function announceSuccess(
   action: MailAction,
   ids: string[],
   response: MutationResponse,
+  claim: () => Promise<boolean>,
   payload?: MailActionPayload,
-): void {
+): (() => Promise<boolean>) | null {
   const count = response.result?.succeeded ?? ids.length;
   const message = `${verb(action, payload)} ${plural(count, "message")}`;
   const mutationId = response.result?.mutation_id;
@@ -467,25 +499,32 @@ function announceSuccess(
         : null;
   // Running an undo retires it, from the key or the toast, so it can't run
   // twice; it only clears itself, never a newer action's undo.
+  const toastId = `mutation-${mutationId ?? ids.join(",")}`;
   const undo = reverse
     ? async () => {
         useUndo.getState().retireUndo(undo!);
+        // Its "Press u to undo" no longer applies.
+        toast.dismiss(toastId);
         return reverse();
       }
     : null;
+  // Still the newest action (and `u` wasn't pressed early): hand the slot
+  // over to the real undo. A change with no undo leaves the slot empty, so
+  // `u` never reaches past it.
+  const newest = useUndo.getState().lastUndo === claim;
   if (!undo) {
-    // This change can't be undone; `u` must not reach past it.
-    useUndo.getState().recordNoUndo();
+    if (newest) useUndo.getState().recordNoUndo();
     toast.success(message);
-    return;
+    return null;
   }
-  useUndo.getState().recordUndo(undo, mutationId);
+  if (newest) useUndo.getState().recordUndo(undo, mutationId);
   toast.success(message, {
-    id: `mutation-${mutationId ?? ids.join(",")}`,
+    id: toastId,
     duration: 60_000,
     description: "Press u to undo",
     action: { label: "Undo", onClick: () => void undo() },
   });
+  return undo;
 }
 
 /** A batch job's chunks each undo separately; reverse them all, newest first. */

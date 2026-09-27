@@ -11,7 +11,7 @@ import {
 import { toast } from "sonner";
 
 import { BulkActionBar } from "./BulkActionBar";
-import { MailboxRow, type RowQuickAction } from "./MailboxRow";
+import { MailboxRow, RowActionChip, type RowAction, type RowQuickAction } from "./MailboxRow";
 import { rowKey } from "./rowKey";
 import type { MessageGroupView, MessageRowView } from "./types";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
@@ -41,7 +41,8 @@ export interface MailboxListProps {
   onLoadMore?: () => void;
   /** Lists of aggregates that aren't mutable messages: navigation only. */
   readOnly?: boolean;
-  rowAction?: (row: MessageRowView) => ReactNode;
+  /** The list's own verb for a row (wake, done): `w`, or a click on the row's chip. */
+  rowAction?: RowAction;
   /** Current queue label, enabling "Route out of this queue". */
   queueLabel?: string;
   empty: ReactNode;
@@ -261,6 +262,7 @@ export function MailboxList({
     viewportTop: () => moveTo(viewportIndex("top")),
     viewportMiddle: () => moveTo(viewportIndex("middle")),
     open: () => focusedRow && onOpenRow(focusedRow, { focusReader: true }),
+    ...(rowAction ? { rowAction: () => focusedRow && rowAction.run(focusedRow) } : {}),
     focusSidebar: () => setActivePane("sidebar"),
     ...(onFilter ? { filter: onFilter } : {}),
     escape: () => {
@@ -396,7 +398,7 @@ export function MailboxList({
                 {item.kind === "header" ? (
                   <div
                     role="presentation"
-                    className="flex h-[30px] items-end border-b border-border/60 bg-background px-4 pb-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint"
+                    className="flex h-[30px] items-end border-b border-border/60 bg-background px-4 pb-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground"
                   >
                     {item.label}
                   </div>
@@ -416,7 +418,9 @@ export function MailboxList({
                     onOpen={handleOpen}
                     onToggleSelection={onToggleSelection}
                     onQuickAction={onQuickAction}
-                    trailingAction={rowAction?.(item.row)}
+                    trailingAction={
+                      rowAction ? <RowActionChip action={rowAction} row={item.row} /> : undefined
+                    }
                   />
                 )}
               </div>
@@ -428,7 +432,9 @@ export function MailboxList({
             {loadingMore ? "Loading more…" : ""}
           </div>
         ) : rows.length > 20 ? (
-          <div className="px-4 py-4 text-center font-mono text-2xs text-faint">End of list</div>
+          <div className="px-4 py-4 text-center font-mono text-2xs text-muted-foreground">
+            End of list
+          </div>
         ) : null}
       </div>
       {readOnly ? null : <BulkActionBar rows={rows} getTarget={getTarget} />}

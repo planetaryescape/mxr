@@ -133,7 +133,7 @@ describe("NaturalTimeInput", () => {
 });
 
 describe("NaturalTimeInput fast Enter", () => {
-  test("Enter before the debounce resolves the new text, shows it, and commits that", async () => {
+  test("an unambiguous phrase entered before the debounce commits its one reading", async () => {
     resolver.resolveTime.mockImplementation((input) => Promise.resolve(fakeResolvedTime(input)));
     const onCommit = vi.fn<(choice: TimeChoice) => void>();
     const field = renderField(onCommit);
@@ -142,19 +142,60 @@ describe("NaturalTimeInput fast Enter", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/09:00/));
 
     // Change the text and press Enter at once, inside the debounce window.
-    fireEvent.change(field, { target: { value: "fri 3" } });
+    fireEvent.change(field, { target: { value: "in 2 hours" } });
     fireEvent.keyDown(field, { key: "Enter" });
 
     await waitFor(() => expect(onCommit).toHaveBeenCalledTimes(1));
     const committed = onCommit.mock.calls[0]?.[0];
-    expect(new Date(committed?.at ?? "").getDay()).toBe(5);
-    expect(committed?.time_label).toBe("15:00");
-    // The preview now shows exactly what was committed.
+    expect(resolver.resolveTime).toHaveBeenCalledWith("in 2 hours", expect.anything());
+    expect(new Date(committed?.at ?? "").getTime() - Date.now()).toBeLessThan(3 * 3_600_000);
     await waitFor(() =>
       expect(screen.getByRole("status")).toHaveTextContent(
         `${committed?.date_label}, ${committed?.time_label}`,
       ),
     );
-    expect(resolver.resolveTime).toHaveBeenCalledWith("fri 3", expect.anything());
+  });
+
+  test("an ambiguous phrase entered before the debounce shows its choices and waits", async () => {
+    resolver.resolveTime.mockImplementation((input) => Promise.resolve(fakeResolvedTime(input)));
+    const onCommit = vi.fn<(choice: TimeChoice) => void>();
+    const field = renderField(onCommit);
+
+    fireEvent.change(field, { target: { value: "tomorrow 9am" } });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/09:00/));
+    fireEvent.change(field, { target: { value: "fri 3" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    // The readings appear, and nothing is stored until the user confirms.
+    const chips = await screen.findAllByRole("radio");
+    expect(chips.map((chip) => chip.getAttribute("aria-label"))).toEqual([
+      expect.stringMatching(/15:00$/),
+      expect.stringMatching(/03:00$/),
+    ]);
+    expect(onCommit).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(field, { key: "ArrowDown" });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() => expect(onCommit).toHaveBeenCalledTimes(1));
+    expect(onCommit.mock.calls[0]?.[0].label).toBe("03:00");
+  });
+
+  test("repeated Enter presses while a commit is in flight submit once", async () => {
+    resolver.resolveTime.mockImplementation((input) => Promise.resolve(fakeResolvedTime(input)));
+    let finish: (() => void) | undefined;
+    const onCommit = vi.fn<(choice: TimeChoice) => Promise<void>>(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+    const field = renderField(onCommit);
+
+    fireEvent.change(field, { target: { value: "in 2 hours" } });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/in 2 hours$/));
+    fireEvent.keyDown(field, { key: "Enter" });
+    fireEvent.keyDown(field, { key: "Enter" });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() => expect(onCommit).toHaveBeenCalledTimes(1));
+
+    await act(async () => finish?.());
+    expect(onCommit).toHaveBeenCalledTimes(1);
   });
 });

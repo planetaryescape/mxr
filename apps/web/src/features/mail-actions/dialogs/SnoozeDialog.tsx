@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { fetchSnoozePresets, type SnoozePreset } from "@/features/mailbox/api";
-import { browserTimeZone, describeChoice } from "@/features/time/api";
+import { browserTimeZone, describeChoice, type TimeChoice } from "@/features/time/api";
 import { NaturalTimeInput } from "@/features/time/NaturalTimeInput";
 import { useNaturalTime } from "@/features/time/useNaturalTime";
 import { formatLongDate, plural } from "@/lib/format";
@@ -52,21 +52,27 @@ export function SnoozeDialog({
   const choices = (presets.data?.presets ?? []).filter(isDisplayablePreset);
 
   /** `label` is the wake time as shown, so the toast names what was stored. */
-  function snooze(until: string, label?: string) {
+  async function snoozeNow(until: string, label?: string) {
     const value = until.trim();
     if (!value || messageIds.length === 0) return;
     onOpenChange(false);
     time.reset();
     onSnoozed?.();
-    void performMailAction("snooze", messageIds, {
+    await performMailAction("snooze", messageIds, {
       until: value,
       payload: label ? { untilLabel: label } : undefined,
     });
   }
 
-  async function snoozeTyped() {
-    const choice = await time.commit();
-    if (choice) snooze(choice.at, describeChoice(choice));
+  /** A preset, one at a time: a second key or click while the dialog is
+   * closing can't snooze again. Typed times go through `time.commit`,
+   * which holds the same guard. */
+  function snoozePreset(preset: SnoozePreset) {
+    return time.runExclusive(() => snoozeNow(presetUntil(preset), presetWhen(preset)));
+  }
+
+  function snoozeChoice(choice: TimeChoice) {
+    return snoozeNow(choice.at, describeChoice(choice));
   }
 
   return (
@@ -94,7 +100,7 @@ export function SnoozeDialog({
           if (/^[1-9]$/.test(event.key)) {
             event.preventDefault();
             const preset = choices[Number(event.key) - 1];
-            if (preset) snooze(presetUntil(preset), presetWhen(preset));
+            if (preset) void snoozePreset(preset);
             return;
           }
           // Any other typing is a time: send it to the field.
@@ -125,7 +131,7 @@ export function SnoozeDialog({
               <button
                 key={`${presetLabel(preset)}-${wake ?? index}`}
                 type="button"
-                onClick={() => snooze(presetUntil(preset), presetWhen(preset))}
+                onClick={() => void snoozePreset(preset)}
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-accent focus-visible:bg-accent"
               >
                 <Clock className="size-4 text-muted-foreground" />
@@ -147,7 +153,7 @@ export function SnoozeDialog({
           className="grid gap-1.5"
           onSubmit={(event) => {
             event.preventDefault();
-            void snoozeTyped();
+            void time.commit(snoozeChoice);
           }}
         >
           <label htmlFor="snooze-custom" className="text-[13px] font-medium">
@@ -158,7 +164,7 @@ export function SnoozeDialog({
               id="snooze-custom"
               state={time}
               inputRef={customRef}
-              onCommit={(choice) => snooze(choice.at, describeChoice(choice))}
+              onCommit={snoozeChoice}
               placeholder="fri 3, tomorrow 9am, in 2d"
               className="min-w-0 flex-1"
             />

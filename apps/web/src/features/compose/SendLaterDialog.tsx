@@ -34,7 +34,8 @@ interface SendLaterDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   scheduling: boolean;
-  onConfirm: (at: Date, label: string) => void;
+  /** Return the submission's promise so repeated presses wait for it. */
+  onConfirm: (at: Date, label: string) => void | Promise<void>;
   title?: string;
   description?: string;
   confirmLabel?: string;
@@ -60,13 +61,8 @@ export function SendLaterDialog({
 
   const presetTimes = useResolvedPresets(presets, { enabled: open });
 
-  function confirm(choice: TimeChoice | null | undefined) {
-    if (scheduling || !choice) return;
-    onConfirm(new Date(choice.at), describeChoice(choice));
-  }
-
-  async function confirmTyped() {
-    confirm(await time.commit());
+  function confirm(choice: TimeChoice) {
+    return onConfirm(new Date(choice.at), describeChoice(choice));
   }
 
   return (
@@ -85,8 +81,10 @@ export function SendLaterDialog({
                 key={preset.input}
                 variant="outline"
                 className="h-auto justify-start rounded-lg px-3 py-2 text-left"
-                onClick={() => confirm(choice)}
-                disabled={!choice || scheduling}
+                onClick={() => {
+                  if (choice) void time.runExclusive(() => confirm(choice));
+                }}
+                disabled={!choice || scheduling || time.submitting}
               >
                 <Clock className="size-3.5" />
                 <span className="grid gap-0.5">
@@ -117,7 +115,10 @@ export function SendLaterDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={scheduling}>
             Cancel
           </Button>
-          <Button onClick={() => void confirmTyped()} disabled={!time.canCommit || scheduling}>
+          <Button
+            onClick={() => void time.commit(confirm)}
+            disabled={!time.canCommit || scheduling}
+          >
             {scheduling ? (
               <Loader2 className="size-3 animate-spin" />
             ) : (

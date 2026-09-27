@@ -18,8 +18,9 @@ import type { NaturalTimeState } from "./useNaturalTime";
 interface NaturalTimeInputProps {
   id: string;
   state: NaturalTimeState;
-  /** Called with the reading to store when the user presses Enter. */
-  onCommit: (choice: TimeChoice) => void;
+  /** Called with the reading to store when the user presses Enter. Return
+   * the submission's promise so a second Enter waits for it to finish. */
+  onCommit: (choice: TimeChoice) => void | Promise<void>;
   placeholder?: string;
   /** Shown before any typing, e.g. 'Try "fri 3", "tomorrow 9am" or "in 2d".' */
   hint?: string;
@@ -66,9 +67,8 @@ export function NaturalTimeInput({
     }
   }
 
-  async function commit() {
-    const choice = await state.commit();
-    if (choice) onCommit(choice);
+  function commit() {
+    void state.commit(onCommit);
   }
 
   function moveChoice(delta: number): number {
@@ -80,7 +80,7 @@ export function NaturalTimeInput({
   function onFieldKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Enter") {
       event.preventDefault();
-      void commit();
+      commit();
     } else if (ambiguous && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
       event.preventDefault();
       moveChoice(event.key === "ArrowDown" ? 1 : -1);
@@ -103,7 +103,7 @@ export function NaturalTimeInput({
     } else if (event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
-      void commit();
+      commit();
     }
   }
 

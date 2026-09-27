@@ -345,7 +345,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         open={controller.sendLaterOpen}
         onOpenChange={controller.setSendLaterOpen}
         scheduling={controller.scheduling}
-        onConfirm={(at, label) => void controller.scheduleSend(at, label)}
+        onConfirm={(at, label) => controller.scheduleSend(at, label)}
       />
       <SendLaterDialog
         open={controller.remindDialogOpen}

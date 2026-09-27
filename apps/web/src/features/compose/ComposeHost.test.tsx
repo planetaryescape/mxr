@@ -534,6 +534,38 @@ describe("ComposeHost send confirmation", () => {
 });
 
 describe("ComposeHost send later", () => {
+  test("three rapid Enters schedule the message once", async () => {
+    let finishSchedule: (() => void) | undefined;
+    api.scheduleComposeSession.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishSchedule = () =>
+            resolve({ ok: true, draft_id: "stored-once", send_at: new Date().toISOString() });
+        }),
+    );
+    renderHost();
+    openNewMessage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Send later" }));
+    const field = await screen.findByLabelText("Or type a time");
+    fireEvent.change(field, { target: { value: "in 2 hours" } });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/in 2 hours$/));
+
+    fireEvent.keyDown(field, { key: "Enter" });
+    fireEvent.keyDown(field, { key: "Enter" });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    await waitFor(() => expect(api.scheduleComposeSession).toHaveBeenCalledTimes(1));
+    await act(async () => finishSchedule?.());
+    await waitFor(() =>
+      expect(toasts.success).toHaveBeenCalledWith(
+        expect.stringMatching(/^Send scheduled for /),
+        expect.anything(),
+      ),
+    );
+    expect(api.scheduleComposeSession).toHaveBeenCalledTimes(1);
+  });
+
   test("a scheduled send can be cancelled from its confirmation toast", async () => {
     api.scheduleComposeSession.mockResolvedValue({
       ok: true,

@@ -1,5 +1,5 @@
 import { keepPreviousData, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   defaultChoice,
@@ -72,11 +72,21 @@ export interface NaturalTimeState {
   /** There is text and the daemon hasn't rejected it. */
   canCommit: boolean;
   /**
-   * The choice to store for the current text. Uses the fresh preview when
-   * there is one; otherwise resolves now and takes the default reading, so a
-   * fast Enter never stores something other than what the preview then shows.
+   * Store the current text's time with `use`, one submission at a time.
+   * Uses the fresh preview when there is one. On a fast Enter it resolves
+   * the text first: an unambiguous answer is stored (the caller's toast
+   * names it), but an ambiguous one is only shown, with its choices, so the
+   * user picks before anything is stored.
    */
-  commit: () => Promise<TimeChoice | null>;
+  commit: (use: (choice: TimeChoice) => void | Promise<void>) => Promise<void>;
+  /**
+   * Run `task` unless a submission is already in flight. The guard is set
+   * before the first await, so repeated Enter presses or clicks can't start
+   * a second save, schedule or snooze.
+   */
+  runExclusive: (task: () => void | Promise<void>) => Promise<void>;
+  /** A submission is in flight. */
+  submitting: boolean;
   reset: () => void;
 }
 
@@ -122,12 +132,40 @@ export function useNaturalTime({ enabled = true }: { enabled?: boolean } = {}): 
     setChoiceIndex(0);
   }, []);
 
-  const commit = useCallback(async (): Promise<TimeChoice | null> => {
+  const inFlight = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const runExclusive = useCallback(async (task: () => void | Promise<void>) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setSubmitting(true);
+    try {
+      await task();
+    } finally {
+      inFlight.current = false;
+      setSubmitting(false);
+    }
+  }, []);
+
+  const choose = useCallback(async (): Promise<TimeChoice | null> => {
     if (!value.trim()) return null;
     if (selected) return selected;
     setDebounced(value);
-    return defaultChoice(await queryClient.fetchQuery(timeResolveQuery(value)));
+    const answer = await queryClient.fetchQuery(timeResolveQuery(value));
+    // Ambiguous: the answer is now the preview, chips and all, and the next
+    // Enter commits the reading the user settles on.
+    if ((answer.resolution?.choices.length ?? 0) > 1) return null;
+    return defaultChoice(answer);
   }, [queryClient, selected, value]);
+
+  const commit = useCallback(
+    (use: (choice: TimeChoice) => void | Promise<void>) =>
+      runExclusive(async () => {
+        const choice = await choose();
+        if (choice) await use(choice);
+      }),
+    [choose, runExclusive],
+  );
 
   return {
     value,
@@ -140,8 +178,10 @@ export function useNaturalTime({ enabled = true }: { enabled?: boolean } = {}): 
     choiceIndex: clampedIndex,
     setChoiceIndex,
     selected,
-    canCommit: value.trim().length > 0 && error === null,
+    canCommit: value.trim().length > 0 && error === null && !submitting,
     commit,
+    runExclusive,
+    submitting,
     reset,
   };
 }

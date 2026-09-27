@@ -223,8 +223,19 @@ export function useComposeSend({
   }
 
   /** Save → store as a local draft → schedule. Closes the composer like a
-   * send; the daemon dispatches the stored draft at `at`. */
+   * send; the daemon dispatches the stored draft at `at`. Takes the send
+   * lock before the first await: a second Enter or click during the save
+   * would otherwise schedule a second copy under a new draft id. */
   async function scheduleSend(at: Date, label?: string) {
+    if (!acquireSendLock()) return;
+    try {
+      await runScheduleSend(at, label);
+    } finally {
+      releaseSendLock();
+    }
+  }
+
+  async function runScheduleSend(at: Date, label?: string) {
     await saveCurrentDraft().catch((error: Error) => {
       toast.error("Save before schedule failed", { description: error.message });
     });
@@ -412,7 +423,7 @@ export function useComposeSend({
     requestSendAndArchive,
     requestSendLater,
     scheduleSend,
-    scheduling: scheduleSession.isPending,
+    scheduling: scheduleSession.isPending || sendLocked,
     confirmSend,
     sendPending: sendSession.isPending,
   };

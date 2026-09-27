@@ -183,3 +183,67 @@ against the FakeProvider demo daemon at 1440 and 900 px.
 | 9.1 | 1 | 13 e2e specs; CI runs only `smoke`. |
 | 9.2 | 2 | Main chunk within budget; editors and charts lazy. |
 | 9.3 | 1 | `ThreadRoute.tsx` 1352 lines, `useComposeSession.ts` 1341, `SettingsRoute.tsx` 1218. |
+
+## Re-score: 2026-09-27, branch `feat/web-app-parity`
+
+Scored from the Playwright suite against the FakeProvider daemon (`apps/web/e2e`,
+71 specs, run twice in full) and a recorded journey at 1440 and 900 px. The
+pass bar is **not yet met**: every criterion is at 2 or better, but seven in
+sections 1 and 2 are at 2, not 3. What would move each one is in its row.
+
+| # | Before | Now | Evidence, and what 3 would need |
+|---|---|---|---|
+| 1.1 | 1 | 2 | The list stays mounted under the reader (nested child routes), so cursor and scroll survive; `reader.spec` "n opens the next conversation and Esc returns to the list with the cursor on it". Needs a measured 5k-row scroll run. |
+| 1.2 | 0 | 3 | Pending ops projected over every cached lens, retired only after refetch; `mutations.spec` (instant removal, failed archive rolls back only its row and says why). |
+| 1.3 | 1 | 3 | Toast Undo, `u` and `z`; search, mailbox and thread caches refresh; moves and label changes now undoable in the daemon; a `u` pressed before the daemon answers waits for it (`triage.spec`, `labels.spec`, `mailMutations.test.ts`). |
+| 1.4 | 0 | 2 | Thread and message modes; thread rows act through every message id and confirmations count conversations. Needs a journey spec for the toggle. |
+| 1.5 | 1 | 3 | `x`, `V`, `* a/n/r/u/s`, shift-click, bulk bar with count and scope; `triage.spec` "select three with x, archive them together, undo brings all three back". |
+| 1.6 | 0 | 2 | Unsubscribe-and-clear previews with `dry_run`; rule dry run; bulk trash and spam confirm with the conversation count. Needs a route (queue) preview in the web. |
+| 1.7 | 1 | 3 | `origin.spec`: Esc returns to the label lens and to the search with every parameter; archive-and-advance from search lands on the next result. |
+| 2.1 | 0 | 3 | `reader.spec` "a long thread folds read messages, expands on o/X". |
+| 2.2 | 0 | 2 | Quotes and signatures fold in plain text and HTML (Gmail, Apple Mail, Outlook markers; inline replies below a quote stay). Unit-tested and seen in the browser; needs a journey spec. |
+| 2.3 | 1 | 3 | Sandboxed iframe with no scripts; remote images blocked until `M`, with a per-sender allow list (`reader.spec`, `html-rendering.spec`). |
+| 2.4 | 1 | 2 | Formatted, Reader and Plain views, raw headers on `g h`; `keyboard-navigation.spec` covers `R` and `H`. Plain has no key of its own. |
+| 2.5 | 1 | 2 | Links dialog on `L` with open and copy, attachments open and download (`html-rendering.spec`), `cid:` images inline. Needs a spec for `L`. |
+| 2.6 | 1 | 2 | One date formatter, `plural()` everywhere, 72ch measure. Needs a typography pass at 1920 px beyond `keyboard-navigation.spec` "the reader fills the reading pane at 1920px". |
+| 3.1 | 1 | 2 | One compose surface; `c` focuses To, `r` starts in the body (`compose-send.spec`). |
+| 3.2 | 1 | 2 | Autosave flushes on hide and unmount (`useComposeAutosave.ts`). |
+| 3.3 | 1 | 2 | Send is guarded while pending; undo-send; safety verdict in the confirmation. |
+| 3.4 | 2 | 2 | Send later (listed and cancellable on Drafts), send and remind, From, signatures, snippets, drag-and-drop attachments. |
+| 3.5 | 0 | 2 | Validation shows on send or blur, in one summary. |
+| 3.6 | 1 | 2 | Drafts list plus orphaned-draft recovery (`OrphanedDrafts.tsx`). |
+| 4.1 | 2 | 2 | `search-live.spec`; results act like a mailbox (same list, keys and reader). |
+| 4.2 | 1 | 2 | Save, sidebar, unread counts, `g 1`-`g 9` (`search.spec`); saved-search create no longer 502s. |
+| 4.3 | 1 | 2 | The bridge honours `account` on search; the account switcher scopes lenses. |
+| 5.1 | 1 | 2 | Presets on `1`-`9`, natural-language times, `/snoozed` one row per conversation, Wake by click or `w` (`snooze.spec`). |
+| 5.2 | 1 | 2 | `b` flags, reply queue with Done, owed-replies lens. |
+| 5.3 | 1 | 2 | Screener decisions with key hints and loading state. |
+| 5.4 | 1 | 2 | Create, apply, rename, delete; create no longer 502s (`labels.spec`). |
+| 5.5 | 1 | 2 | Single unsubscribe and purge with preview; subscriptions page. |
+| 5.6 | 1 | 2 | RSVP with undo, and with comment opening a reply; invites page. |
+| 5.7 | 2 | 2 | Builder, dry run, history. |
+| 5.8 | 1 | 2 | Account switcher scopes the mailbox; management pages. |
+| 5.9 | 1 | 2 | Summary, briefing, whois, sender profile, draft assist, find expert; gated on LLM status with a setup link. |
+| 5.10 | 1 | 2 | Dashboards as tabs including cadence drift (`keyboard-navigation.spec` "analytics opens dashboards through TUI-style tabs"). |
+| 5.11 | 2 | 2 | Diagnostics panels in the URL, activity, deliveries, sync with progress (`sync-progress.spec`). |
+| 6.1 | 1 | 2 | Socket connects as soon as the token lands; reconnect visible (`ws-reconnect.spec`, `offline-banner.spec`). |
+| 6.2 | 1 | 2 | Skeletons, empty states with a next action, errors with retry (`route-error.spec`). |
+| 6.3 | 0 | 2 | Legacy redirects skip browser navigations; `origin.spec` "a hard refresh on /search?q= keeps the query and results". |
+| 6.4 | 1 | 2 | Bad input maps to 400/422 with the daemon's message; only IPC and provider failures are 502. |
+| 7.1 | 0 | 3 | One dispatcher over the action registry with scopes; `keyboard-navigation.spec` "g chords jump to the TUI's views". |
+| 7.2 | 1 | 2 | TUI live keys mapped; deviations listed in the generated keybindings reference. |
+| 7.3 | 0 | 3 | `?` opens searchable help for the current pane; palette lists every action with its chord; keys typed straight after ⌘K land in it (`keyboard-help.spec`). |
+| 7.4 | 1 | 2 | `aria-activedescendant` list, visible focus, focus returns on close; row controls are mouse affordances with keys (`x`, `w`) because rows are options. |
+| 8.1 | 0 | 2 | One token source (`styles/tokens.css`), four themes, DESIGN.md brand. |
+| 8.2 | 1 | 2 | Container-query rows keep subject legible in split view (screens at 1440). |
+| 8.3 | 0 | 2 | `responsive.spec`: single pane at 900 px, no horizontal scroll at 900, 1100, 1440. |
+| 8.4 | 1 | 2 | Brief transitions, removed under `prefers-reduced-motion` (`styles/base.css`). |
+| 8.5 | 1 | 3 | `accessibility.spec`: no serious or critical axe violation on the main routes, an open thread, the labels dialog, help and compose, with no tolerated exceptions; faint text removed from copy. |
+| 8.6 | 0 | 2 | No devtools in production, no dead routes. |
+| 9.1 | 1 | 3 | 21 journey specs; CI job `web-e2e` runs the whole suite. |
+| 9.2 | 2 | 2 | Entry chunk 62.5 kB gzipped (zod removed again); editors lazy. |
+| 9.3 | 1 | 2 | Largest files: `useComposeSession.ts` 711, `RightRail.tsx` 697, `SearchResultsRoute.tsx` 678 lines. Needs those split. |
+
+Known flake: `triage.spec` "select three with x…" failed once in four full
+runs on the "Archived 3 messages" toast assertion, and passed three times in
+isolation.

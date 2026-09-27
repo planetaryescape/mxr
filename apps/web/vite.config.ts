@@ -91,7 +91,6 @@ export default defineConfig({
           if (id.includes("node_modules/@tanstack")) return "vendor-tanstack";
           if (id.includes("node_modules/@radix-ui") || id.includes("node_modules/cmdk"))
             return "vendor-radix";
-          if (id.includes("node_modules/recharts")) return "vendor-recharts";
           if (id.includes("node_modules/@tiptap")) return "vendor-tiptap";
           if (id.includes("node_modules/@replit/codemirror-vim")) return "vendor-codemirror-vim";
           if (id.includes("node_modules/@codemirror/view")) return "vendor-codemirror-view";

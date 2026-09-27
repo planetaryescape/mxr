@@ -22,18 +22,6 @@ export type WrappedSummary = Schemas["WrappedSummary"];
 export type CadenceDriftRow = Schemas["CadenceDriftRowData"];
 export type CadenceWatchEntry = Schemas["RelationshipWatchEntryData"];
 
-/**
- * Loose contact shape kept for the compose launcher's recipient
- * suggestions, which reads `inbound`/`outbound` (the daemon sends
- * `total_inbound`/`total_outbound`; see ContactAsymmetry).
- */
-export interface ContactRow {
-  email?: string;
-  display_name?: string | null;
-  inbound?: number;
-  outbound?: number;
-}
-
 export interface SubscriptionSummary {
   account_id?: string;
   sender_email: string;

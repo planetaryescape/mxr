@@ -1,14 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { z } from "zod";
 
 import { DiagnosticsRoute } from "@/features/diagnostics/DiagnosticsRoute";
+import { optionalEnum } from "@/lib/searchParams";
 
-const diagnosticsSearch = z.object({
-  // `g L` lands on /diagnostics?panel=logs; unknown values fall back to overview.
-  panel: z.enum(["overview", "logs", "events", "activity"]).optional().catch(undefined),
-});
+const PANELS = ["overview", "logs", "events", "activity"] as const;
 
 export const Route = createFileRoute("/diagnostics")({
-  validateSearch: diagnosticsSearch,
+  // `g L` lands on /diagnostics?panel=logs; unknown values fall back to overview.
+  validateSearch: (search: Record<string, unknown>): { panel?: (typeof PANELS)[number] } => {
+    const panel = optionalEnum(search.panel, PANELS);
+    return panel ? { panel } : {};
+  },
   component: DiagnosticsRoute,
 });

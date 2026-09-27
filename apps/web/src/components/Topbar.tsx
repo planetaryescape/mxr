@@ -89,9 +89,15 @@ function useBreadcrumb(path: string, search: string): Crumb[] {
   return [{ label: title }];
 }
 
+// Path segments that are acronyms, not words ("llm" → "LLM", not "Llm").
+const ACRONYMS = new Set(["llm", "mcp", "api", "imap", "smtp", "ai"]);
+
 function humanize(value: string): string {
-  const words = value.replace(/[-_]/g, " ");
-  return words.charAt(0).toUpperCase() + words.slice(1);
+  const words = value
+    .split(/[-_]/)
+    .map((word) => (ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word));
+  const text = words.join(" ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 export function Topbar() {

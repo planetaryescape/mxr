@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shield, Users } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -9,9 +9,11 @@ import {
   fetchScreenerQueue,
   setScreenerDecision,
   type ScreenerDisposition,
+  type ScreenerEntry,
 } from "./api";
-import { fetchAccounts } from "@/features/accounts/api";
-import { EmptyState } from "@/components/EmptyState";
+import { KeyChip } from "@/components/KeyChip";
+import { Page, PageTabs } from "@/components/Page";
+import { PageEmpty, PageError, PageSkeleton, RuledList, RuledRow } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -20,11 +22,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { fetchAccounts } from "@/features/accounts/api";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
+import { formatListDate, formatRelative, plural } from "@/lib/format";
+import { useScopeController } from "@/lib/keys/controllers";
+
+type Tab = "queue" | "decisions";
+
+/** Button order and key hints mirror `screenerActions` (a, d, f, p). */
+const DECISIONS: { disposition: ScreenerDisposition; label: string; key: string }[] = [
+  { disposition: "allow", label: "Allow", key: "a" },
+  { disposition: "deny", label: "Deny", key: "d" },
+  { disposition: "feed", label: "Feed", key: "f" },
+  { disposition: "paper_trail", label: "Paper trail", key: "p" },
+];
+
+const DISPOSITION_LABELS: Record<ScreenerDisposition, string> = {
+  allow: "Allowed",
+  deny: "Denied",
+  feed: "Feed",
+  paper_trail: "Paper trail",
+  unknown: "Unknown",
+};
 
 export function ScreenerRoute() {
-  const [tab, setTab] = useState<"queue" | "decisions">("queue");
+  const [tab, setTab] = useState<Tab>("queue");
   const [accountId, setAccountId] = useState<string | null>(null);
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
   const accountList = accounts.data?.accounts ?? [];
@@ -32,165 +54,171 @@ export function ScreenerRoute() {
   const activeAccountId = accountId ?? accountList[0]?.account_id ?? null;
   const account = accountList.find((item) => item.account_id === activeAccountId);
 
-  // Keyboard triage only makes sense while the queue tab is active.
-  useShortcutScope("screener", tab === "queue");
-
-  if (!account)
-    return (
-      <EmptyState
-        icon={Users}
-        title="No account for screener"
-        description="Connect an account first."
-      />
-    );
+  const accountPicker =
+    accountList.length > 1 ? (
+      <Select value={activeAccountId ?? undefined} onValueChange={setAccountId}>
+        <SelectTrigger className="h-8 w-[220px] text-xs" aria-label="Screener account">
+          <SelectValue placeholder="Select account" />
+        </SelectTrigger>
+        <SelectContent>
+          {accountList.map((item) => (
+            <SelectItem key={item.account_id} value={item.account_id} className="text-xs">
+              {item.email}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    ) : account ? (
+      <span className="font-mono text-2xs text-muted-foreground">{account.email}</span>
+    ) : null;
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-background">
-      <header className="flex flex-wrap items-center gap-3 border-b border-border px-6 py-4">
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold tracking-tight">Screener</h1>
-          <p className="text-2xs text-muted-foreground">
-            Triage unknown senders before they become inbox rules.
-          </p>
-        </div>
-        {accountList.length > 1 ? (
-          <Select value={activeAccountId ?? undefined} onValueChange={setAccountId}>
-            <SelectTrigger className="h-8 w-[220px] bg-card text-xs" aria-label="Screener account">
-              <SelectValue placeholder="Select account" />
-            </SelectTrigger>
-            <SelectContent>
-              {accountList.map((item) => (
-                <SelectItem key={item.account_id} value={item.account_id} className="text-xs">
-                  {item.email}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          <span className="text-2xs text-muted-foreground">{account.email}</span>
-        )}
-      </header>
-      <Tabs
-        value={tab}
-        onValueChange={(value) => setTab(value as "queue" | "decisions")}
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        <TabsList className="mx-4 mt-3 w-fit">
-          <TabsTrigger value="queue">Queue</TabsTrigger>
-          <TabsTrigger value="decisions">Decisions</TabsTrigger>
-        </TabsList>
-        <TabsContent value="queue" className="min-h-0 flex-1 overflow-auto">
-          <ScreenerQueue accountId={account.account_id} active={tab === "queue"} />
-        </TabsContent>
-        <TabsContent value="decisions" className="min-h-0 flex-1 overflow-auto">
-          <ScreenerDecisions accountId={account.account_id} />
-        </TabsContent>
-      </Tabs>
-    </div>
+    <Page
+      title="Screener"
+      description={
+        accountList.length > 1
+          ? "First-time senders wait here until you decide. Each account has its own queue."
+          : "First-time senders wait here until you decide."
+      }
+      actions={accountPicker}
+      tabs={
+        <PageTabs
+          label="Screener views"
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { id: "queue", label: "Queue" },
+            { id: "decisions", label: "Decisions" },
+          ]}
+        />
+      }
+    >
+      {accounts.isPending ? (
+        <PageSkeleton label="Loading accounts" />
+      ) : accounts.isError ? (
+        <PageError
+          title="Accounts unavailable"
+          error={accounts.error}
+          onRetry={() => void accounts.refetch()}
+        />
+      ) : !account ? (
+        <PageEmpty
+          icon={<Users className="size-5" />}
+          title="No account to screen"
+          body="Connect an account first; its unknown senders queue up here."
+        />
+      ) : tab === "queue" ? (
+        <ScreenerQueue key={account.account_id} accountId={account.account_id} />
+      ) : (
+        <ScreenerDecisions accountId={account.account_id} />
+      )}
+    </Page>
   );
 }
 
-function ScreenerQueue({ accountId, active }: { accountId: string; active: boolean }) {
+function ScreenerQueue({ accountId }: { accountId: string }) {
   const qc = useQueryClient();
   const [focused, setFocused] = useState(0);
   const queue = useQuery({
     queryKey: ["screener", accountId],
     queryFn: () => fetchScreenerQueue(accountId),
-    enabled: Boolean(accountId),
   });
   const decide = useMutation({
     mutationFn: ({
-      senderEmail,
+      entry,
       disposition,
     }: {
-      senderEmail: string;
+      entry: ScreenerEntry;
       disposition: ScreenerDisposition;
-    }) => setScreenerDecision({ accountId, senderEmail, disposition }),
-    onSuccess: () => {
-      toast.success("Screener decision saved");
+    }) => setScreenerDecision({ accountId, senderEmail: entry.sender_email, disposition }),
+    onSuccess: (_result, { entry, disposition }) => {
+      toast.success(
+        `${DISPOSITION_LABELS[disposition]}: ${entry.display_name || entry.sender_email}`,
+      );
       void qc.invalidateQueries({ queryKey: ["screener", accountId] });
       void qc.invalidateQueries({ queryKey: ["screener-decisions", accountId] });
     },
+    onError: (error, { entry }) =>
+      toast.error(`Could not screen ${entry.sender_email}`, { description: error.message }),
   });
-  const rows = useMemo(() => queue.data?.entries ?? [], [queue.data?.entries]);
+  const rows = queue.data?.entries ?? [];
 
   useEffect(() => {
     if (focused >= rows.length) setFocused(Math.max(0, rows.length - 1));
   }, [focused, rows.length]);
 
-  useEffect(() => {
-    if (!active) return;
-    function onKeyDown(event: KeyboardEvent) {
-      const target = event.target;
-      if (target instanceof HTMLElement) {
-        if (target.closest("input, textarea, select, [contenteditable=true]")) return;
-      }
-      if (rows.length === 0 || decide.isPending) return;
-      if (event.key === "j" || event.key === "ArrowDown") {
-        event.preventDefault();
-        setFocused((current) => Math.min(rows.length - 1, current + 1));
-        return;
-      }
-      if (event.key === "k" || event.key === "ArrowUp") {
-        event.preventDefault();
-        setFocused((current) => Math.max(0, current - 1));
-        return;
-      }
-      const disposition = dispositionForKey(event.key);
-      if (!disposition) return;
-      const row = rows[focused];
-      if (!row) return;
-      event.preventDefault();
-      decide.mutate({ senderEmail: row.sender_email, disposition });
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [active, decide, focused, rows]);
+  const decideFocused = (disposition: ScreenerDisposition) => {
+    const entry = rows[focused];
+    if (!entry || decide.isPending) return;
+    decide.mutate({ entry, disposition });
+  };
 
+  // The keys live in the action registry (features/screener/actions.ts);
+  // this view supplies what they do while the queue is on screen.
+  useShortcutScope("screener", rows.length > 0);
+  useScopeController("screener", {
+    allow: () => decideFocused("allow"),
+    deny: () => decideFocused("deny"),
+    feed: () => decideFocused("feed"),
+    paperTrail: () => decideFocused("paper_trail"),
+    down: () => setFocused((current) => Math.min(rows.length - 1, current + 1)),
+    up: () => setFocused((current) => Math.max(0, current - 1)),
+  });
+
+  if (queue.isPending) return <PageSkeleton label="Loading screener queue" />;
+  if (queue.isError)
+    return (
+      <PageError
+        title="Screener queue unavailable"
+        error={queue.error}
+        onRetry={() => void queue.refetch()}
+      />
+    );
   if (rows.length === 0)
     return (
-      <EmptyState
-        icon={Shield}
+      <PageEmpty
+        icon={<Shield className="size-5" />}
         title="Queue empty"
-        description="No unknown senders waiting for triage."
+        body="No unknown senders are waiting. New ones land here before they reach your inbox."
       />
     );
 
   return (
-    <div className="p-4">
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
+    <>
+      <p className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted-foreground">
+        <span>{plural(rows.length, "sender")} waiting.</span>
+        <span className="inline-flex items-center gap-1">
+          <KeyChip>j</KeyChip>
+          <KeyChip>k</KeyChip> to move, then the key on each button
+        </span>
+      </p>
+      <RuledList label="Screener queue">
         {rows.map((entry, index) => (
-          <div
+          <RuledRow
             key={entry.sender_email}
-            className={
-              index === focused
-                ? "grid gap-3 border-b border-border bg-accent/70 px-4 py-3 text-accent-foreground ring-1 ring-ring/70 last:border-b-0 md:grid-cols-[1fr_auto]"
-                : "grid gap-3 border-b border-border px-4 py-3 last:border-b-0 md:grid-cols-[1fr_auto]"
-            }
-            aria-current={index === focused ? "true" : undefined}
-          >
-            <div>
-              <div className="text-sm font-medium">{entry.display_name ?? entry.sender_email}</div>
-              <div className="text-2xs text-muted-foreground">
-                {entry.sender_email} · {entry.message_count} messages · {entry.latest_subject}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {(["allow", "deny", "feed", "paper_trail"] as const).map((disposition) => (
-                <Button
-                  key={disposition}
-                  variant={disposition === "deny" ? "destructive" : "outline"}
-                  size="sm"
-                  onClick={() => decide.mutate({ senderEmail: entry.sender_email, disposition })}
-                >
-                  {disposition.replace("_", " ")}
-                </Button>
-              ))}
-            </div>
-          </div>
+            current={index === focused}
+            title={entry.display_name || entry.sender_email}
+            meta={`${entry.sender_email} · ${plural(entry.message_count, "message")} · ${entry.latest_subject}`}
+            aside={formatListDate(entry.latest_at)}
+            onOpen={() => setFocused(index)}
+            openLabel={`Focus ${entry.sender_email}`}
+            actions={DECISIONS.map(({ disposition, label, key }) => (
+              <Button
+                key={disposition}
+                variant={disposition === "deny" ? "destructive" : "outline"}
+                size="xs"
+                disabled={decide.isPending}
+                onClick={() => decide.mutate({ entry, disposition })}
+                aria-keyshortcuts={index === focused ? key : undefined}
+              >
+                {label}
+                {index === focused ? <KeyChip className="ml-0.5 h-4 px-1">{key}</KeyChip> : null}
+              </Button>
+            ))}
+          />
         ))}
-      </div>
-    </div>
+      </RuledList>
+    </>
   );
 }
 
@@ -199,12 +227,11 @@ function ScreenerDecisions({ accountId }: { accountId: string }) {
   const decisions = useQuery({
     queryKey: ["screener-decisions", accountId],
     queryFn: () => fetchScreenerDecisions(accountId),
-    enabled: Boolean(accountId),
   });
   const clear = useMutation({
     mutationFn: (senderEmail: string) => clearScreenerDecision({ accountId, senderEmail }),
-    onSuccess: () => {
-      toast.success("Decision cleared");
+    onSuccess: (_result, senderEmail) => {
+      toast.success(`Cleared decision for ${senderEmail}`);
       void qc.invalidateQueries({ queryKey: ["screener-decisions", accountId] });
       void qc.invalidateQueries({ queryKey: ["screener", accountId] });
     },
@@ -212,59 +239,43 @@ function ScreenerDecisions({ accountId }: { accountId: string }) {
   });
   const rows = decisions.data?.decisions ?? [];
 
-  if (decisions.isLoading)
-    return <div className="p-6 text-xs text-muted-foreground">Loading decisions...</div>;
+  if (decisions.isPending) return <PageSkeleton label="Loading decisions" />;
+  if (decisions.isError)
+    return (
+      <PageError
+        title="Decisions unavailable"
+        error={decisions.error}
+        onRetry={() => void decisions.refetch()}
+      />
+    );
   if (rows.length === 0)
     return (
-      <EmptyState
-        icon={Shield}
+      <PageEmpty
+        icon={<Shield className="size-5" />}
         title="No decisions yet"
-        description="Senders you allow, deny, feed, or paper-trail show up here."
+        body="Senders you allow, deny, feed or paper-trail are listed here, so you can undo a call."
       />
     );
 
   return (
-    <div className="p-4">
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        {rows.map((decision) => (
-          <div
-            key={decision.sender_email}
-            className="grid gap-3 border-b border-border px-4 py-3 last:border-b-0 md:grid-cols-[1fr_auto]"
-          >
-            <div>
-              <div className="text-sm font-medium">{decision.sender_email}</div>
-              <div className="text-2xs text-muted-foreground">
-                {decision.disposition.replace("_", " ")}
-                {decision.route_label ? ` → ${decision.route_label}` : ""} ·{" "}
-                {new Date(decision.decided_at).toLocaleString()}
-              </div>
-            </div>
+    <RuledList label="Screener decisions">
+      {rows.map((decision) => (
+        <RuledRow
+          key={decision.sender_email}
+          title={decision.sender_email}
+          meta={`${DISPOSITION_LABELS[decision.disposition] ?? decision.disposition}${decision.route_label ? ` to ${decision.route_label}` : ""} · ${formatRelative(decision.decided_at)}`}
+          actions={
             <Button
               variant="ghost"
-              size="sm"
+              size="xs"
               disabled={clear.isPending}
               onClick={() => clear.mutate(decision.sender_email)}
             >
               Clear
             </Button>
-          </div>
-        ))}
-      </div>
-    </div>
+          }
+        />
+      ))}
+    </RuledList>
   );
-}
-
-function dispositionForKey(key: string): ScreenerDisposition | null {
-  switch (key.toLowerCase()) {
-    case "a":
-      return "allow";
-    case "d":
-      return "deny";
-    case "f":
-      return "feed";
-    case "p":
-      return "paper_trail";
-    default:
-      return null;
-  }
 }

@@ -32,15 +32,13 @@ const tokenTheme = EditorView.theme({
   },
   ".cm-content": {
     maxWidth: "720px",
-    padding: "24px 24px 56px 16px",
+    padding: "20px 24px 56px 24px",
     fontFamily: "var(--font-mono)",
     caretColor: "var(--primary)",
   },
-  ".cm-gutters": {
-    backgroundColor: "var(--background)",
-    color: "var(--muted-foreground)",
-    borderRightColor: "transparent",
-  },
+  // Line numbers mean nothing in an email; the vim status line is enough.
+  ".cm-gutters": { display: "none" },
+  ".cm-activeLine": { backgroundColor: "color-mix(in oklch, var(--muted) 55%, transparent)" },
   ".cm-cursor": { borderLeftColor: "var(--primary)" },
   "&.cm-focused": { outline: "none" },
   ".cm-selectionBackground": {

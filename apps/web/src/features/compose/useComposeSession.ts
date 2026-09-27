@@ -326,13 +326,18 @@ export function useComposeSession(
   useEffect(() => {
     if (!draft?.draftPath || hasAutofocusedRef.current) return;
     hasAutofocusedRef.current = true;
-    // Defer past the loading→loaded re-render, and never steal focus the
-    // user has already placed somewhere else.
+    // Defer past the loading→loaded re-render. Never take focus the user
+    // already placed inside this composer; focus left on the mail list or
+    // reader (where c / r were pressed) moves here. A new message starts in
+    // To; a reply, whose recipients are filled in, starts in the body.
     requestAnimationFrame(() => {
       const active = document.activeElement;
-      const focusIsElsewhere =
-        active instanceof HTMLElement && active !== document.body && active.tabIndex >= 0;
-      if (!focusIsElsewhere) toInputRef.current?.focus();
+      if (active instanceof HTMLElement && active.closest("[data-compose-surface]")) return;
+      if (draftRef.current?.frontmatter.to.trim()) {
+        document.querySelector<HTMLElement>("[data-compose-surface] .cm-content, [data-compose-surface] .ProseMirror")?.focus();
+      } else {
+        toInputRef.current?.focus();
+      }
     });
   }, [draft?.draftPath]);
 

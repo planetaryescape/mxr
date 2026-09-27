@@ -83,9 +83,10 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
 
   const chrome = (
     <div
+      data-compose-surface
       className={cn(
-        "flex min-h-0 flex-col overflow-hidden border border-border bg-background",
-        surface === "inline" ? "max-h-[60vh] rounded-lg" : "h-full rounded-xl shadow-2xl",
+        "flex min-h-0 flex-col overflow-hidden border border-border-strong bg-background",
+        surface === "inline" ? "max-h-[70vh] min-h-[320px] rounded-lg" : "h-full rounded-xl shadow-2xl",
       )}
       onKeyDown={(event) => {
         if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "f") {

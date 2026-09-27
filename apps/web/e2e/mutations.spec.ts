@@ -1,46 +1,65 @@
 import { expect, test } from "@playwright/test";
 
-import { openApp } from "./helpers/state";
+import { mailRows, openList, rowById } from "./helpers/mail";
 
-test("archive then undo restores the message", async ({ page }) => {
-  await openApp(page, "/m/inbox");
+test.use({ viewport: { width: 1440, height: 900 } });
 
-  const rows = page.getByRole("article");
-  await expect(rows.first()).toBeVisible();
-  const rowName = await rows.first().getAttribute("aria-label");
-  expect(rowName).toBeTruthy();
+test("hover archive removes the row at once and the toast's Undo restores it", async ({
+  page,
+}) => {
+  await openList(page, "/m/inbox");
+  const row = mailRows(page).first();
+  const rowId = (await row.getAttribute("id"))!;
 
-  const archivedRow = page.getByRole("article", { name: rowName! });
-  await archivedRow.first().hover();
+  // Hold the response so the optimistic removal is what the user sees.
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/v1/mail/mutations/archive", async (route) => {
+    await held;
+    await route.continue();
+  });
+
+  await row.hover();
   const archiveResponse = page.waitForResponse("**/api/v1/mail/mutations/archive");
-  await archivedRow.first().getByLabel(/^archive$/i).click();
+  await row.getByTitle("Archive (e)").click();
+  await expect(rowById(page, rowId)).toHaveCount(0);
+  release();
   const response = await archiveResponse;
   expect(response.ok(), await response.text()).toBe(true);
   const body = (await response.json()) as { result?: { mutation_id?: string } };
   expect(body.result?.mutation_id).toBeTruthy();
-  await expect(archivedRow).toHaveCount(0);
 
-  await page.getByRole("button", { name: /undo/i }).click();
-  await expect(archivedRow).toBeVisible();
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(rowById(page, rowId)).toBeVisible();
 });
 
-test("archive then z undoes via the global shortcut", async ({ page }) => {
-  await openApp(page, "/m/inbox");
+test("a failed archive puts the row back and says why", async ({ page }) => {
+  await openList(page, "/m/inbox");
+  const rowId = (await mailRows(page).first().getAttribute("id"))!;
+  await page.route("**/api/v1/mail/mutations/archive", (route) =>
+    route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      json: { code: "conflict", error: "provider rejected the change" },
+    }),
+  );
 
-  const rows = page.getByRole("article");
-  await expect(rows.first()).toBeVisible();
-  const rowName = await rows.first().getAttribute("aria-label");
-  expect(rowName).toBeTruthy();
+  await page.keyboard.press("e");
+  await expect(page.getByText(/failed/i).first()).toBeVisible();
+  await expect(rowById(page, rowId)).toBeVisible();
+});
 
-  const archivedRow = page.getByRole("article", { name: rowName! });
-  await archivedRow.first().hover();
+test("archive with e then z undoes via the global shortcut", async ({ page }) => {
+  await openList(page, "/m/inbox");
+  const rowId = (await mailRows(page).first().getAttribute("id"))!;
+
   const archiveResponse = page.waitForResponse("**/api/v1/mail/mutations/archive");
-  await archivedRow.first().getByLabel(/^archive$/i).click();
+  await page.keyboard.press("e");
   expect((await archiveResponse).ok()).toBe(true);
-  await expect(archivedRow).toHaveCount(0);
+  await expect(rowById(page, rowId)).toHaveCount(0);
 
   const undoResponse = page.waitForResponse("**/api/v1/mail/mutations/undo");
   await page.keyboard.press("z");
   expect((await undoResponse).ok()).toBe(true);
-  await expect(archivedRow).toBeVisible();
+  await expect(rowById(page, rowId)).toBeVisible();
 });

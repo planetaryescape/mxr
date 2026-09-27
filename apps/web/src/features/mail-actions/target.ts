@@ -15,6 +15,9 @@ export interface MailTarget {
   messageIds: string[];
   /** The rows or messages the user acted on, for previews and copy. */
   rows: MessageRowView[];
+  /** Distinct conversations covered: a reader target is one, however many
+   * messages it has. */
+  conversations: number;
   /** Set when the target is exactly one conversation. */
   threadId?: string;
   /** Newest message of a single-thread target: reply, unsubscribe, export. */
@@ -32,6 +35,7 @@ export function targetFromRows(rows: MessageRowView[], source: MailTarget["sourc
   return {
     messageIds: [...new Set(rows.flatMap(rowMessageIds))],
     rows,
+    conversations: threadIds.size,
     threadId: single?.thread_id,
     primary: single,
     accountId: single?.account_id,
@@ -47,6 +51,7 @@ export function targetFromThread(data: ThreadResponse, messages = data.messages)
   return {
     messageIds: messages.map((message) => message.id),
     rows: messages,
+    conversations: 1,
     threadId: data.thread.id,
     primary: newest,
     accountId: data.thread.account_id,

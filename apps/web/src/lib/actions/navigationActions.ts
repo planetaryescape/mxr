@@ -35,9 +35,8 @@ import {
 import { toast } from "sonner";
 
 import { newMessageIntent, useComposeUi } from "@/features/compose/composeUiStore";
-import { performUndo } from "@/features/mail-actions/mailMutations";
 import { useModals } from "@/state/modalStore";
-import { useUndo } from "@/state/undoStore";
+import { runLatestUndo } from "@/state/undoStore";
 
 import { getRuntimeNavigate } from "./runtime";
 import type { Action } from "./types";
@@ -47,22 +46,8 @@ function go(to: string): () => void {
 }
 
 function undoLast(): void {
-  const undo = useUndo.getState();
-  // A pending undo-send window is the most recent reversible action.
-  if (undo.pendingSendCancel) {
-    undo.pendingSendCancel();
-    return;
-  }
   useModals.getState().setCommandPaletteOpen(false);
-  if (undo.lastUndo) {
-    void undo.lastUndo();
-    return;
-  }
-  if (undo.lastMutationId) {
-    void performUndo(undo.lastMutationId);
-    return;
-  }
-  toast.info("Nothing to undo");
+  if (!runLatestUndo()) toast.info("Nothing to undo");
 }
 
 export const navigationActions: Action[] = [

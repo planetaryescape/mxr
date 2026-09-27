@@ -45,7 +45,7 @@ export function ConfirmDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {verb} {plural(target.rows.length, "conversation")}?
+            {verb} {plural(target.conversations, "conversation")}?
           </AlertDialogTitle>
           <AlertDialogDescription>
             {plural(target.messageIds.length, "message")} will change. You can undo for about a

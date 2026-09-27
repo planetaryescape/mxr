@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { ComponentType } from "react";
 
+import { rowKey } from "./rowKey";
 import type { MessageRowView } from "./types";
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
@@ -55,7 +56,7 @@ export function BulkActionBar({
   const selectMany = useSelection((s) => s.selectMany);
   if (ids.size === 0) return null;
   const verbs = createMailVerbs({ getTarget, composeSurface: "overlay" });
-  const selected = rows.filter((row) => ids.has(row.id));
+  const selected = rows.filter((row) => ids.has(rowKey(row)));
   const messageCount = selected.reduce((total, row) => total + (row.message_ids?.length ?? 1), 0);
 
   return (
@@ -71,7 +72,7 @@ export function BulkActionBar({
         ) : null}
       </span>
       {selected.length < rows.length ? (
-        <Button variant="ghost" size="xs" onClick={() => selectMany(rows.map((row) => row.id))}>
+        <Button variant="ghost" size="xs" onClick={() => selectMany(rows.map(rowKey))}>
           Select all {rows.length}
         </Button>
       ) : null}

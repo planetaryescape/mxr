@@ -250,7 +250,7 @@ export async function performUndo(mutationId: string): Promise<boolean> {
   try {
     await undoMutation(mutationId);
     const undo = useUndo.getState();
-    if (undo.lastMutationId === mutationId) undo.clear();
+    if (undo.lastMutationId === mutationId) undo.recordNoUndo();
     toast.success("Undone");
     await invalidateMailQueries();
     return true;
@@ -458,20 +458,28 @@ function announceSuccess(
   const message = `${verb(action, payload)} ${plural(count, "message")}`;
   const mutationId = response.result?.mutation_id;
   const jobUndoIds = response.result?.undo_ids ?? [];
-  const undo = mutationId
+  const reverse = mutationId
     ? () => performUndo(mutationId)
     : jobUndoIds.length > 0
       ? () => undoAll(jobUndoIds)
       : action === "snooze"
         ? () => wakeSnoozed(ids)
         : null;
+  // Running an undo retires it, from the key or the toast, so it can't run
+  // twice; it only clears itself, never a newer action's undo.
+  const undo = reverse
+    ? async () => {
+        useUndo.getState().retireUndo(undo!);
+        return reverse();
+      }
+    : null;
   if (!undo) {
+    // This change can't be undone; `u` must not reach past it.
+    useUndo.getState().recordNoUndo();
     toast.success(message);
     return;
   }
-  const undoState = useUndo.getState();
-  if (mutationId) undoState.setLastMutationId(mutationId);
-  undoState.setLastUndo(undo);
+  useUndo.getState().recordUndo(undo, mutationId);
   toast.success(message, {
     id: `mutation-${mutationId ?? ids.join(",")}`,
     duration: 60_000,
@@ -492,7 +500,6 @@ async function undoAll(undoIds: string[]): Promise<boolean> {
       ok = false;
     }
   }
-  useUndo.getState().setLastUndo(null);
   await invalidateMailQueries().catch(() => undefined);
   if (ok) toast.success("Undone");
   else
@@ -506,7 +513,6 @@ async function undoAll(undoIds: string[]): Promise<boolean> {
 async function wakeSnoozed(ids: string[]): Promise<boolean> {
   const results = await Promise.allSettled(ids.map((id) => unsnoozeMessage(id)));
   const failed = results.filter((result) => result.status === "rejected").length;
-  useUndo.getState().setLastUndo(null);
   await invalidateMailQueries().catch(() => undefined);
   if (failed > 0) {
     toast.error(`Couldn't wake ${plural(failed, "message")}`);

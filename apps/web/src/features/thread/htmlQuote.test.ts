@@ -22,6 +22,15 @@ describe("splitHtmlQuote", () => {
     expect(parts.main).not.toContain("Grace");
   });
 
+  test("keeps an inline reply written below an Apple Mail quote", () => {
+    const html = `<div>See below.</div><blockquote type="cite">Can you do Friday?</blockquote><div>Friday works.</div>`;
+    const parts = splitHtmlQuote(html);
+    expect(parts.hasQuote).toBe(true);
+    expect(parts.main).toContain("See below.");
+    expect(parts.main).toContain("Friday works.");
+    expect(parts.main).not.toContain("Can you do Friday?");
+  });
+
   test("removes a Gmail signature and reports it", () => {
     const html = `<p>Hi</p><div class="gmail_signature">Ada | Engines Ltd</div>`;
     const parts = splitHtmlQuote(html);

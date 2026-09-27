@@ -293,4 +293,18 @@ describe("installKeyDispatcher", () => {
     press({ key: "c" });
     expect(compose.run).not.toHaveBeenCalled();
   });
+
+  test("Escape after a pending prefix only cancels the prefix", () => {
+    const inbox = runAction("inbox", "g i");
+    const close = runAction("close", "Escape");
+    registry.defineMany([inbox.action, close.action]);
+
+    press({ key: "g" });
+    press({ key: "Escape" });
+    press({ key: "i" });
+
+    expect(close.run).not.toHaveBeenCalled();
+    expect(inbox.run).not.toHaveBeenCalled();
+    expect(pending.at(-1)).toBeNull();
+  });
 });

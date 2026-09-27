@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 import { BulkActionBar } from "./BulkActionBar";
 import { MailboxRow, type RowQuickAction } from "./MailboxRow";
+import { rowKey } from "./rowKey";
 import type { MessageGroupView, MessageRowView } from "./types";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
@@ -61,7 +62,7 @@ function flatten(groups: MessageGroupView[]): FlatItem[] {
 }
 
 function domId(row: MessageRowView): string {
-  return `mail-row-${row.id}`;
+  return `mail-row-${rowKey(row)}`;
 }
 
 const ROW_ESTIMATE = { compact: 38, regular: 64, comfortable: 80 } as const;
@@ -100,11 +101,14 @@ export function MailboxList({
     () => flat.flatMap((item) => (item.kind === "row" ? [item.row] : [])),
     [flat],
   );
-  const rowIndexById = useMemo(() => new Map(rows.map((row, index) => [row.id, index])), [rows]);
+  const rowIndexById = useMemo(
+    () => new Map(rows.map((row, index) => [rowKey(row), index])),
+    [rows],
+  );
   const flatIndexById = useMemo(() => {
     const map = new Map<string, number>();
     flat.forEach((item, index) => {
-      if (item.kind === "row") map.set(item.row.id, index);
+      if (item.kind === "row") map.set(rowKey(item.row), index);
     });
     return map;
   }, [flat]);
@@ -124,15 +128,19 @@ export function MailboxList({
   const focusedRow = focusedIndex >= 0 ? rows[focusedIndex] : undefined;
   useLayoutEffect(() => {
     if (focusedIndex >= 0) lastIndexRef.current = focusedIndex;
-    if (focusedRow && focusedRow.id !== focusedId) setFocusedId(focusedRow.id);
+    if (focusedRow && rowKey(focusedRow) !== focusedId) setFocusedId(rowKey(focusedRow));
   }, [focusedId, focusedIndex, focusedRow]);
 
   // Follow the reader: opening a thread elsewhere puts the cursor on it.
+  // Only when the cursor is on another conversation: in message mode a
+  // thread has several rows, and snapping back to its first row would trap
+  // j on the second.
+  const focusedThreadId = focusedRow?.thread_id;
   useEffect(() => {
-    if (!activeThreadId) return;
+    if (!activeThreadId || focusedThreadId === activeThreadId) return;
     const row = rows.find((item) => item.thread_id === activeThreadId);
-    if (row) setFocusedId(row.id);
-  }, [activeThreadId, rows]);
+    if (row) setFocusedId(rowKey(row));
+  }, [activeThreadId, focusedThreadId, rows]);
 
   const virtualizer = useVirtualizer({
     count: flat.length,
@@ -141,7 +149,7 @@ export function MailboxList({
     overscan: 12,
     getItemKey: (index) => {
       const item = flat[index];
-      return item ? (item.kind === "header" ? item.id : item.row.id) : index;
+      return item ? (item.kind === "header" ? item.id : rowKey(item.row)) : index;
     },
   });
   const virtualItems = virtualizer.getVirtualItems();
@@ -158,7 +166,7 @@ export function MailboxList({
 
   const scrollToRow = useCallback(
     (row: MessageRowView | undefined, align: "auto" | "start" | "center" | "end" = "auto") => {
-      const index = row ? flatIndexById.get(row.id) : undefined;
+      const index = row ? flatIndexById.get(rowKey(row)) : undefined;
       if (index !== undefined) virtualizer.scrollToIndex(index, { align });
     },
     [flatIndexById, virtualizer],
@@ -186,13 +194,15 @@ export function MailboxList({
       if (rows.length === 0) return;
       const next = rows[Math.max(0, Math.min(rows.length - 1, index))];
       if (!next) return;
-      setFocusedId(next.id);
+      setFocusedId(rowKey(next));
       scrollToRow(next, align);
       if (visualAnchor) {
-        const a = rowIndexById.get(visualAnchor) ?? 0;
-        const b = rowIndexById.get(next.id) ?? 0;
+        // If the anchor row left the list, restart the range at the cursor
+        // rather than selecting everything from the top.
+        const a = rowIndexById.get(visualAnchor) ?? rowIndexById.get(rowKey(next)) ?? 0;
+        const b = rowIndexById.get(rowKey(next)) ?? 0;
         const [start, end] = a < b ? [a, b] : [b, a];
-        useSelection.getState().selectMany(rows.slice(start, end + 1).map((row) => row.id));
+        useSelection.getState().selectMany(rows.slice(start, end + 1).map(rowKey));
       }
       if (previewOnFocus && next.thread_id !== activeThreadId) {
         onOpenRow(next, { focusReader: false });
@@ -213,14 +223,14 @@ export function MailboxList({
     const item = virtualItems.find((virtual) => virtual.start + virtual.size >= target);
     for (let index = item?.index ?? 0; index < flat.length; index += 1) {
       const candidate = flat[index];
-      if (candidate?.kind === "row") return rowIndexById.get(candidate.row.id) ?? 0;
+      if (candidate?.kind === "row") return rowIndexById.get(rowKey(candidate.row)) ?? 0;
     }
     return 0;
   };
 
   const selectedRows = () => {
     const ids = useSelection.getState().ids;
-    return rows.filter((row) => ids.has(row.id));
+    return rows.filter((row) => ids.has(rowKey(row)));
   };
 
   const getTarget = (): MailTarget | null => {
@@ -231,7 +241,7 @@ export function MailboxList({
   };
 
   const selectWhere = (predicate: (row: MessageRowView) => boolean) => {
-    useSelection.getState().selectMany(rows.filter(predicate).map((row) => row.id));
+    useSelection.getState().selectMany(rows.filter(predicate).map(rowKey));
   };
 
   const verbs = createMailVerbs({
@@ -269,7 +279,7 @@ export function MailboxList({
       : {
           toggleSelect: () => {
             if (!focusedRow) return;
-            useSelection.getState().toggle(focusedRow.id);
+            useSelection.getState().toggle(rowKey(focusedRow));
             moveTo(focusedIndex + 1);
           },
           visual: () => {
@@ -278,8 +288,10 @@ export function MailboxList({
               setVisualAnchor(null);
               return;
             }
-            setVisualAnchor(focusedRow.id);
-            useSelection.getState().selectMany([...useSelection.getState().ids, focusedRow.id]);
+            setVisualAnchor(rowKey(focusedRow));
+            useSelection
+              .getState()
+              .selectMany([...useSelection.getState().ids, rowKey(focusedRow)]);
             toast.info("Visual mode: j/k extend, Esc to leave", {
               id: "visual-mode",
               duration: 2500,
@@ -329,21 +341,21 @@ export function MailboxList({
       const selection = useSelection.getState();
       if (shift && selection.lastClickedId) {
         const a = rowIndexById.get(selection.lastClickedId);
-        const b = rowIndexById.get(row.id);
+        const b = rowIndexById.get(rowKey(row));
         if (a !== undefined && b !== undefined) {
           const [start, end] = a < b ? [a, b] : [b, a];
-          selection.selectRange(rows.slice(start, end + 1).map((item) => item.id));
+          selection.selectRange(rows.slice(start, end + 1).map(rowKey));
           return;
         }
       }
-      selection.toggle(row.id);
+      selection.toggle(rowKey(row));
     },
     [rowIndexById, rows],
   );
 
   const handleOpen = useCallback(
     (row: MessageRowView) => {
-      setFocusedId(row.id);
+      setFocusedId(rowKey(row));
       setActivePane("mailbox");
       onOpenRow(row, { focusReader: false });
     },
@@ -392,8 +404,12 @@ export function MailboxList({
                   <MailboxRow
                     row={item.row}
                     domId={domId(item.row)}
-                    selected={!readOnly && selectedIds.has(item.row.id)}
-                    focused={listFocused && focusedRow?.id === item.row.id}
+                    selected={!readOnly && selectedIds.has(rowKey(item.row))}
+                    focused={
+                      listFocused &&
+                      focusedRow !== undefined &&
+                      rowKey(focusedRow) === rowKey(item.row)
+                    }
                     open={item.row.thread_id === activeThreadId}
                     selecting={selecting}
                     readOnly={readOnly}

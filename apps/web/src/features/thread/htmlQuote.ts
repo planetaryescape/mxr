@@ -6,15 +6,22 @@
  * renders the body without them until the user asks.
  */
 
+// Markers that wrap the quote itself: removing the element removes the quote,
+// and anything written after it (an inline reply) stays.
 const QUOTE_SELECTORS = [
   ".gmail_quote",
   "blockquote[type='cite']",
+  ".yahoo_quoted",
+  ".moz-cite-prefix",
+];
+
+// Markers that only head the quote: Outlook-style clients put an <hr> or a
+// header block here and the whole prior conversation after it, unwrapped.
+const QUOTE_HEADER_SELECTORS = [
   "#appendonsend",
   "div[id^='divRplyFwdMsg']",
   "#divRplyFwdMsg",
-  ".yahoo_quoted",
   "#mail-editor-reference-message-container",
-  ".moz-cite-prefix",
   "#reply-intro",
 ];
 
@@ -46,13 +53,16 @@ export function splitHtmlQuote(html: string, options: { keepSignature?: boolean 
     }
   }
 
-  const first = firstInDocumentOrder(body, QUOTE_SELECTORS);
-  if (first) {
+  const header = firstInDocumentOrder(body, QUOTE_HEADER_SELECTORS);
+  if (header) {
     hasQuote = true;
-    // Outlook separates the reply with an <hr> or a header block, then puts
-    // the whole prior conversation after it: drop the marker and everything
-    // that follows at its level and above.
-    removeFrom(first);
+    removeFrom(header);
+  }
+  for (const selector of QUOTE_SELECTORS) {
+    for (const node of Array.from(body.querySelectorAll(selector))) {
+      hasQuote = true;
+      node.remove();
+    }
   }
 
   // A body that is nothing but quote (a bare forward) keeps its quote.

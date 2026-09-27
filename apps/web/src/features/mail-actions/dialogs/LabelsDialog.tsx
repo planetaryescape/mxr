@@ -113,7 +113,16 @@ export function LabelsDialog({ target, onClose }: { target: MailTarget; onClose:
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md gap-0 overflow-hidden p-0">
+      <DialogContent
+        className="max-w-md gap-0 overflow-hidden p-0"
+        // Radix hears Escape on the document before the rename field does, so
+        // the dialog decides: the first Escape backs out of managing a label.
+        onEscapeKeyDown={(event) => {
+          if (!managing) return;
+          event.preventDefault();
+          setManaging(null);
+        }}
+      >
         <div className="border-b border-border px-4 pb-3 pt-4">
           <DialogTitle>Labels</DialogTitle>
           <DialogDescription className="mt-1 truncate">{describeTarget(target)}</DialogDescription>
@@ -274,7 +283,6 @@ function ManageLabel({
           aria-label={`Rename ${name}`}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => event.key === "Escape" && (event.stopPropagation(), onClose())}
           className="h-8"
         />
         <Button

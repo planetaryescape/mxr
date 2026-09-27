@@ -19,6 +19,7 @@ import { Centered } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import type { ThreadResponse } from "@/features/mailbox/types";
 import { useLlmStatus } from "@/features/llm/useLlmStatus";
+import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { getRuntimeNavigate } from "@/lib/actions/runtime";
 import { parseAddress } from "@/lib/format";
@@ -46,7 +47,6 @@ export function ThreadPane({ threadId }: { threadId: string }) {
   const query = useQuery({
     queryKey: ["thread", threadId],
     queryFn: () => fetchThread(threadId),
-    placeholderData: (previous) => previous,
   });
   const setOpenThread = useOpenThread((s) => s.setThreadId);
   useEffect(() => {
@@ -72,13 +72,13 @@ export function ThreadPane({ threadId }: { threadId: string }) {
     );
   }
   if (!query.data) return null;
+  // No placeholder data: while the next thread loads, the previous thread's
+  // controller must not stay mounted, or keys would act on the wrong thread.
   // Key by thread so per-thread state (expanded, remote images) resets.
-  return (
-    <ThreadReader key={query.data.thread.id} data={query.data} stale={query.isPlaceholderData} />
-  );
+  return <ThreadReader key={query.data.thread.id} data={query.data} />;
 }
 
-function ThreadReader({ data, stale }: { data: ThreadResponse; stale: boolean }) {
+function ThreadReader({ data }: { data: ThreadResponse }) {
   const nav = useReaderNav();
   const scrollRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef(new Map<string, HTMLElement>());
@@ -108,6 +108,8 @@ function ThreadReader({ data, stale }: { data: ThreadResponse; stale: boolean })
   );
 
   const readerFocused = activePane === "reader";
+  const singlePane = useMediaQuery(SINGLE_PANE_QUERY);
+  const listHidden = singlePane || readerLayout === "full";
   useShortcutScope("reader", readerFocused);
 
   // DOM focus follows the pane, so the page scrolls with the keyboard.
@@ -133,12 +135,19 @@ function ThreadReader({ data, stale }: { data: ThreadResponse; stale: boolean })
   }, []);
 
   // Mark read after a short dwell: at once when the reader has focus, after
-  // two seconds when the list is previewing threads under the cursor.
+  // two seconds when the list is previewing threads under the cursor. Once
+  // per opening: after it fires, or after the user marks read or unread
+  // themselves, pane changes never mark the thread read again.
+  const autoReadSettled = useRef(false);
   useEffect(() => {
+    if (autoReadSettled.current) return;
     const unread = messages.filter((message) => message.unread).map((message) => message.id);
     if (unread.length === 0) return;
     const handle = window.setTimeout(
-      () => void performMailAction("read", unread, { silent: true }),
+      () => {
+        autoReadSettled.current = true;
+        void performMailAction("read", unread, { silent: true });
+      },
       readerFocused ? 600 : 2000,
     );
     return () => window.clearTimeout(handle);
@@ -258,6 +267,14 @@ function ThreadReader({ data, stale }: { data: ThreadResponse; stale: boolean })
 
   useScopeController("reader", {
     ...verbs,
+    markRead: () => {
+      autoReadSettled.current = true;
+      verbs.markRead?.();
+    },
+    markUnread: () => {
+      autoReadSettled.current = true;
+      verbs.markUnread?.();
+    },
     scrollDown: () => scrollBy(80),
     scrollUp: () => scrollBy(-80),
     pageDown: () => scrollBy(page()),
@@ -297,7 +314,9 @@ function ThreadReader({ data, stale }: { data: ThreadResponse; stale: boolean })
       void performMailAction("archive", target().messageIds);
       leave(-1);
     },
-    focusList: () => setActivePane("mailbox"),
+    // With the list hidden (narrow screen, full-width reader), going back to
+    // it means closing the conversation, not focusing an invisible list.
+    focusList: () => (listHidden ? nav?.close() : setActivePane("mailbox")),
     close: () => nav?.close(),
     viewReader: () => setViewAndRemember("reader"),
     viewHtml: () => setViewAndRemember("formatted"),
@@ -384,7 +403,7 @@ function ThreadReader({ data, stale }: { data: ThreadResponse; stale: boolean })
         ref={scrollRef}
         tabIndex={-1}
         data-testid="thread-scroll"
-        className={`min-h-0 flex-1 overflow-y-auto outline-none transition-opacity ${stale ? "opacity-60" : ""}`}
+        className="min-h-0 flex-1 overflow-y-auto outline-none"
         onFocus={() => setActivePane("reader")}
       >
         <div className="mx-auto w-full max-w-[980px] pb-24">

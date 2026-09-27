@@ -30,6 +30,7 @@ import {
   plural,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs, type ReaderView } from "@/state/uiPrefsStore";
 
 import { AttachmentActions } from "./AttachmentActions";
@@ -286,7 +287,12 @@ function Body({
             ) : null}
           </div>
         ) : null}
-        <MessageBody html={rendered} allowRemoteImages={allowRemote} theme={emailHtmlTheme} />
+        <MessageBody
+          html={rendered}
+          allowRemoteImages={allowRemote}
+          theme={emailHtmlTheme}
+          onInteract={() => useMailboxPane.getState().setActivePane("reader")}
+        />
         {parts.hasQuote && !showQuotes ? (
           <button
             type="button"

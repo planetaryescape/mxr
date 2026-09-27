@@ -332,6 +332,17 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                         key={entry.key}
                         entry={entry}
                         index={index}
+                        onActivate={() => {
+                          setFocusIndex(index);
+                          // A clicked mailbox is where the keyboard goes next.
+                          if (
+                            section.id === "mail" ||
+                            section.id === "labels" ||
+                            section.id === "saved"
+                          ) {
+                            setActivePane("mailbox");
+                          }
+                        }}
                         collapsed={collapsed}
                         active={isActive(path, entry.to)}
                         focused={sidebarFocused && clamp(focusIndex) === index}
@@ -380,9 +391,11 @@ function SidebarLink({
   collapsed,
   active,
   focused,
+  onActivate,
 }: {
   entry: NavEntry;
   index: number;
+  onActivate: () => void;
   collapsed: boolean;
   active: boolean;
   focused: boolean;
@@ -391,6 +404,7 @@ function SidebarLink({
   const link = (
     <Link
       to={entry.to}
+      onClick={onActivate}
       data-nav-index={index}
       aria-current={active ? "page" : undefined}
       aria-label={collapsed ? `${entry.label}${count ? `, ${count} unread` : ""}` : undefined}

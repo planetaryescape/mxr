@@ -10,30 +10,48 @@
 const STORAGE_KEY = "mxr.bridgeToken";
 const REMOTE_URL_KEY = "mxr.bridgeUrl";
 
-export function bootstrapFromHash(): void {
+export function bootstrapFromHash(
+  confirmRemote: (origin: string) => boolean = (origin) =>
+    window.confirm(
+      `Connect this mxr app to the mail bridge at ${origin}?\n\nOnly continue if you opened this link yourself. The app will send your mail requests there.`,
+    ),
+): void {
   if (typeof window === "undefined") return;
   const hash = window.location.hash;
   if (!hash) return;
   const params = new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash);
   const token = params.get("token");
   const remote = params.get("remote");
-  if (token) {
+  const remoteOrigin = remote ? parseOrigin(remote) : null;
+  const switchesOrigin =
+    remoteOrigin !== null &&
+    remoteOrigin !== window.location.origin &&
+    remoteOrigin !== safeStorage()?.getItem(REMOTE_URL_KEY);
+
+  // Any page can link here with #remote=…; pointing the app at another
+  // bridge takes the user's explicit consent, and the local token never
+  // travels to it (a remote link brings its own token, or none).
+  if (switchesOrigin && remoteOrigin && confirmRemote(remoteOrigin)) {
+    safeStorage()?.setItem(REMOTE_URL_KEY, remoteOrigin);
+    if (token) setToken(token);
+    else clearToken();
+  } else if (!switchesOrigin && token) {
     setToken(token);
-  }
-  if (remote) {
-    try {
-      // remote may arrive URL-encoded or as a bare host
-      const normalized = remote.startsWith("http") ? remote : `https://${remote}`;
-      const url = new URL(normalized);
-      safeStorage()?.setItem(REMOTE_URL_KEY, url.origin);
-    } catch {
-      // ignore malformed remote
-    }
   }
   if (token || remote) {
     // scrub the hash so the token isn't shoulder-surfed or copied into bookmarks
     const cleaned = window.location.pathname + window.location.search;
     window.history.replaceState({}, document.title, cleaned);
+  }
+}
+
+function parseOrigin(remote: string): string | null {
+  try {
+    // remote may arrive URL-encoded or as a bare host
+    const normalized = remote.startsWith("http") ? remote : `https://${remote}`;
+    return new URL(normalized).origin;
+  } catch {
+    return null;
   }
 }
 

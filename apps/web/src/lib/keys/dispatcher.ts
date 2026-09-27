@@ -110,6 +110,12 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
       return;
     }
     if (buffer.length > 0) {
+      // Escape only cancels a pending prefix, as in vim.
+      if (token === "Escape") {
+        event.preventDefault();
+        clear();
+        return;
+      }
       // Dead end: drop the prefix and treat this key on its own, the way
       // vim does after a mistyped "g".
       clear();

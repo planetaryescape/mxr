@@ -66,15 +66,17 @@ export function UnsubscribeDialog({
           return;
         }
         const mutationId = outcome.mutation_id;
-        if (mutationId) {
-          useUndo.getState().setLastMutationId(mutationId);
-          useUndo.getState().setLastUndo(() => performUndo(mutationId));
-        }
+        const undo = mutationId
+          ? async () => {
+              useUndo.getState().retireUndo(undo!);
+              return performUndo(mutationId);
+            }
+          : null;
+        if (undo) useUndo.getState().recordUndo(undo, mutationId ?? undefined);
+        else useUndo.getState().recordNoUndo();
         toast.success(`Unsubscribed and archived ${plural(outcome.archived_count, "message")}`, {
-          duration: mutationId ? 60_000 : 6000,
-          action: mutationId
-            ? { label: "Undo archive", onClick: () => void performUndo(mutationId) }
-            : undefined,
+          duration: undo ? 60_000 : 6000,
+          action: undo ? { label: "Undo archive", onClick: () => void undo() } : undefined,
         });
         void invalidateMailQueries();
       })

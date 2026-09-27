@@ -40,7 +40,7 @@ const CONFIRM_THRESHOLD = 20;
 function needsConfirm(action: MailAction, target: MailTarget): boolean {
   const count = target.messageIds.length;
   if (count > CONFIRM_THRESHOLD) return true;
-  return (action === "trash" || action === "spam") && target.rows.length > 1;
+  return (action === "trash" || action === "spam") && target.conversations > 1;
 }
 
 function single(target: MailTarget | null, what: string): MailTarget | null {
@@ -103,7 +103,7 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
       const target = hooks.getTarget();
       if (!target) return;
       // One conversation toggles; a multi-selection always stars, as in the TUI.
-      const action: MailAction = target.rows.length <= 1 && target.anyStarred ? "unstar" : "star";
+      const action: MailAction = target.conversations <= 1 && target.anyStarred ? "unstar" : "star";
       void performMailAction(action, target.messageIds);
     },
     label: () => {
@@ -244,8 +244,8 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
 }
 
 export function describeTarget(target: MailTarget): string {
-  if (target.rows.length === 1) return target.primary?.subject || "(no subject)";
-  return plural(target.rows.length, "conversation");
+  if (target.conversations === 1) return target.primary?.subject || "(no subject)";
+  return plural(target.conversations, "conversation");
 }
 
 function downloadText(filename: string, content: string, type: string) {

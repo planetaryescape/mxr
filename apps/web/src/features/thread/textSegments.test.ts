@@ -8,6 +8,15 @@ const kinds = (text: string) =>
   normalizeSegments(splitMessageText(text)).map((segment) => segment.kind);
 
 describe("splitMessageText", () => {
+  test("a long run after -- is body text, not a signature", () => {
+    const body = Array.from({ length: 12 }, (_, index) => `Point ${index + 1}.`);
+    expect(kinds(["Notes:", "--", ...body].join("\n"))).toEqual(["text"]);
+    expect(kinds(["Thanks,", "-- ", "Ada", "Engines Ltd"].join("\n"))).toEqual([
+      "text",
+      "signature",
+    ]);
+  });
+
   test("folds a top-posted reply under its Gmail attribution", () => {
     const text = [
       "Sounds good, ship it.",

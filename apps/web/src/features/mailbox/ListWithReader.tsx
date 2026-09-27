@@ -117,8 +117,9 @@ export function ListWithReader({
   );
   const nav = useMemo<ReaderNav>(
     () => ({
+      // Step through what the list shows, so n/N respect the filter.
       threadIds: () => [
-        ...new Set(groups.flatMap((group) => group.rows.map((row) => row.thread_id))),
+        ...new Set(visibleGroups.flatMap((group) => group.rows.map((row) => row.thread_id))),
       ],
       open,
       close,

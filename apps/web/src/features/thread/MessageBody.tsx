@@ -7,11 +7,20 @@ interface MessageBodyProps {
   html: string;
   allowRemoteImages?: boolean;
   theme?: EmailHtmlTheme;
+  /** Clicks inside the frame never reach the page; this reports them. */
+  onInteract?: () => void;
 }
 
 const IFRAME_SANDBOX = "allow-same-origin allow-popups allow-popups-to-escape-sandbox";
 
-export function MessageBody({ html, allowRemoteImages = false, theme = "dark" }: MessageBodyProps) {
+export function MessageBody({
+  html,
+  allowRemoteImages = false,
+  theme = "dark",
+  onInteract,
+}: MessageBodyProps) {
+  const onInteractRef = useRef(onInteract);
+  onInteractRef.current = onInteract;
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const [height, setHeight] = useState(120);
@@ -77,6 +86,11 @@ export function MessageBody({ html, allowRemoteImages = false, theme = "dark" }:
       // Keys typed after clicking into a message still reach the app's
       // dispatcher; the frame runs no scripts of its own.
       doc?.addEventListener("keydown", forwardKeydown);
+      // A click in the message makes the reader the active pane, or keys
+      // forwarded from here would act on the list.
+      const interact = () => onInteractRef.current?.();
+      doc?.addEventListener("mousedown", interact);
+      doc?.addEventListener("focusin", interact);
     } catch {
       // The iframe still renders; fixed fallback height comes from resizeToContent.
     }

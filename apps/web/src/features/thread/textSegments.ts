@@ -25,6 +25,9 @@ const ORIGINAL_MESSAGE = /^-{2,}\s*(Original Message|Forwarded message)\s*-{2,}\
 const OUTLOOK_FROM = /^\*?From:\*?\s+\S/;
 const OUTLOOK_FIELD = /^\*?(Sent|Date|To|Cc|Subject):\*?\s/;
 const SIGNATURE = /^-- ?$/;
+// RFC 3676 asks for four lines; allow some slack, but a long run after
+// "--" is body text using it as a divider, not a signature to fold away.
+const SIGNATURE_MAX_LINES = 10;
 
 function isQuoted(line: string): boolean {
   return /^\s*>/.test(line);
@@ -82,7 +85,7 @@ export function splitMessageText(input: string): Segment[] {
       break;
     }
 
-    if (SIGNATURE.test(line)) {
+    if (SIGNATURE.test(line) && signatureLength(lines, index + 1) <= SIGNATURE_MAX_LINES) {
       flush();
       kind = "signature";
       continue;
@@ -123,6 +126,17 @@ export function splitMessageText(input: string): Segment[] {
     }
   }
   return segments;
+}
+
+/** Non-blank lines from `start` until quoted text or the end. */
+function signatureLength(lines: string[], start: number): number {
+  let count = 0;
+  for (let index = start; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (isQuoted(line)) break;
+    if (line.trim() !== "") count += 1;
+  }
+  return count;
 }
 
 function startsWithAttribution(text: string): boolean {

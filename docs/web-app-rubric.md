@@ -240,7 +240,7 @@ sections 1 and 2 are at 2, not 3. What would move each one is in its row.
 | 8.4 | 1 | 2 | Brief transitions, removed under `prefers-reduced-motion` (`styles/base.css`). |
 | 8.5 | 1 | 3 | `accessibility.spec`: no serious or critical axe violation on the main routes, an open thread, the labels dialog, help and compose, with no tolerated exceptions; faint text removed from copy. |
 | 8.6 | 0 | 2 | No devtools in production, no dead routes. |
-| 9.1 | 1 | 3 | 21 journey specs; CI job `web-e2e` runs the whole suite. |
+| 9.1 | 1 | 3 | 21 journey spec files (71 tests); CI job `web-e2e` runs the whole suite. |
 | 9.2 | 2 | 2 | Entry chunk 62.5 kB gzipped (zod removed again); editors lazy. |
 | 9.3 | 1 | 2 | Largest files: `useComposeSession.ts` 711, `RightRail.tsx` 697, `SearchResultsRoute.tsx` 678 lines. Needs those split. |
 

@@ -14,15 +14,19 @@ use crate::output::resolve_format;
 /// way the daemon's `ResolveTime` does. Ambiguous phrases take the default
 /// choice that `mxr time` shows first.
 pub(crate) fn parse_time_arg(input: &str, now: DateTime<Utc>) -> anyhow::Result<DateTime<Utc>> {
+    resolve_time_arg(input, now).map(|resolution| resolution.at)
+}
+
+/// Like [`parse_time_arg`], keeping the resolution for callers that echo
+/// the time back ("Reminder set for Friday 3 October, 15:00").
+pub(crate) fn resolve_time_arg(input: &str, now: DateTime<Utc>) -> anyhow::Result<TimeResolution> {
     let prefs = mxr_config::load_config()
         .unwrap_or_default()
         .snooze
         .time_prefs();
-    resolve_time(input, &now.with_timezone(&Local), &prefs)
-        .map(|resolution| resolution.at)
-        .map_err(|error| {
-            anyhow::anyhow!("Cannot parse '{input}': {error} Preview with `mxr time \"{input}\"`.")
-        })
+    resolve_time(input, &now.with_timezone(&Local), &prefs).map_err(|error| {
+        anyhow::anyhow!("Cannot parse '{input}': {error} Preview with `mxr time \"{input}\"`.")
+    })
 }
 
 pub async fn run(
@@ -31,7 +35,14 @@ pub async fn run(
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let response = client.request(Request::ResolveTime { input, now }).await?;
+    let response = client
+        .request(Request::ResolveTime {
+            input,
+            now,
+            // The CLI runs next to the daemon, so the daemon's zone is ours.
+            time_zone: None,
+        })
+        .await?;
     let (input, resolution, error) = match response {
         Response::Ok {
             data:

@@ -90,3 +90,50 @@ fn drafts_scheduled_lists_a_scheduled_draft_until_it_is_unsent() {
         serde_json::json!([])
     );
 }
+
+/// An unreadable `--remind-after` must stop the send: the reminder time is
+/// resolved before anything goes out, so the draft is still there after.
+#[test]
+fn an_unreadable_remind_after_sends_nothing() {
+    let _guard = daemon_lock();
+    let temp = TempDir::new().expect("temp dir");
+    let (daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "remind-after-bad");
+    let env = Env {
+        _daemon: daemon,
+        instance,
+        data_dir,
+        config_dir,
+    };
+
+    let composed = env.json(&[
+        "compose",
+        "--to",
+        "alice@example.com",
+        "--subject",
+        "Follow up",
+        "--body",
+        "Checking in.",
+        "--draft",
+        "--no-signature",
+        "--format",
+        "json",
+    ]);
+    let draft_id = composed["draft_id"].as_str().expect("draft_id").to_string();
+
+    let output = env
+        .run(&["send", &draft_id, "--remind-after", "frday"])
+        .failure()
+        .get_output()
+        .clone();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Didn't catch \"frday\""), "stderr={stderr}");
+    assert!(
+        !String::from_utf8_lossy(&output.stdout).contains("Sent draft"),
+        "nothing may be sent"
+    );
+
+    // The stored draft still exists, so it was never sent.
+    let drafts = env.json(&["drafts", "--format", "json"]);
+    let text = drafts.to_string();
+    assert!(text.contains(&draft_id), "draft must remain: {drafts:#}");
+}

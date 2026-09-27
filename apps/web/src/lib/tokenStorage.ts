@@ -53,10 +53,24 @@ export function getToken(): string | undefined {
   return v ?? undefined;
 }
 
+const tokenListeners = new Set<(token: string) => void>();
+
+/**
+ * Hear about a newly stored token. The event socket starts before the
+ * loopback handshake finishes on a first visit, so it listens here to
+ * connect as soon as the token lands instead of waiting for a refocus.
+ */
+export function onTokenChange(listener: (token: string) => void): () => void {
+  tokenListeners.add(listener);
+  return () => tokenListeners.delete(listener);
+}
+
 export function setToken(token: string): void {
   const storage = safeStorage();
   if (!storage) return;
+  const previous = storage.getItem(STORAGE_KEY);
   storage.setItem(STORAGE_KEY, token);
+  if (previous !== token) for (const listener of tokenListeners) listener(token);
 }
 
 export function clearToken(): void {

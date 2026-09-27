@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { toast } from "sonner";
 
+import { invalidateMailQueries } from "@/features/mail-actions/mailMutations";
 import { shellKey } from "@/features/mailbox/api";
 import { useDaemonEvents } from "@/hooks/useDaemonEvents";
 import { useConnectionStore, type SyncProgress } from "@/state/connectionStore";
@@ -14,28 +15,16 @@ export function useDaemonEventInvalidation(): void {
   useDaemonEvents(
     useCallback(
       (event) => {
+        // Event names are the daemon's DaemonEvent variants
+        // (crates/protocol/src/types.rs); mail views all refresh through
+        // the same invalidation the mutation layer uses.
         switch (event.type) {
           case "NewMessages":
-          case "MailUpdated":
-          case "MailRemoved":
           case "MessageUnsnoozed":
-            void qc.invalidateQueries({ queryKey: ["mailbox"] });
-            void qc.invalidateQueries({ queryKey: ["thread"] });
-            void qc.invalidateQueries({ queryKey: ["search"] });
-            void qc.invalidateQueries({ queryKey: ["search-palette"] });
-            void qc.invalidateQueries({ queryKey: shellKey });
+            void invalidateMailQueries(qc);
             break;
           case "LabelCountsUpdated":
             void qc.invalidateQueries({ queryKey: shellKey });
-            break;
-          case "SyncProgress":
-            if (isSyncProgressEvent(event)) {
-              setSyncProgress({
-                account_id: event.account_id,
-                current: event.current,
-                total: event.total,
-              });
-            }
             break;
           case "OperationStarted":
           case "OperationProgress":
@@ -53,9 +42,7 @@ export function useDaemonEventInvalidation(): void {
           case "OperationCancelled":
             if (event.type !== "SyncCompleted" && !isSyncOperationEvent(event)) break;
             clearSyncProgressSoon();
-            void qc.invalidateQueries({ queryKey: ["mailbox"] });
-            void qc.invalidateQueries({ queryKey: ["search"] });
-            void qc.invalidateQueries({ queryKey: shellKey });
+            void invalidateMailQueries(qc);
             break;
           case "SyncError":
             // A background sync failed. Stop any sync-progress spinner,
@@ -74,19 +61,14 @@ export function useDaemonEventInvalidation(): void {
           case "ReminderTriggered":
             // An auto-reminder fired; the nudge surfaces in the reply
             // queue and the mailbox follow-up views.
-            void qc.invalidateQueries({ queryKey: ["reply-queue"] });
-            void qc.invalidateQueries({ queryKey: ["mailbox"] });
-            void qc.invalidateQueries({ queryKey: shellKey });
+            void invalidateMailQueries(qc);
             break;
           case "MutationReconciliationFailed":
             // Optimistic UI rollback hint: the provider/store rejected a
             // mutation we already reflected locally. Refetch the affected
             // surfaces so the UI converges back to server truth, and tell
             // the user the action didn't stick.
-            void qc.invalidateQueries({ queryKey: ["mailbox"] });
-            void qc.invalidateQueries({ queryKey: ["thread"] });
-            void qc.invalidateQueries({ queryKey: ["search"] });
-            void qc.invalidateQueries({ queryKey: shellKey });
+            void invalidateMailQueries(qc);
             if (isReconciliationFailedEvent(event)) {
               toast.error(`Action didn't stick: ${event.error_summary}`);
             }
@@ -130,18 +112,6 @@ function isSyncOperationEvent(event: unknown): event is {
   if (typeof event !== "object" || event === null) return false;
   const candidate = event as Record<string, unknown>;
   return candidate.operation === "sync";
-}
-
-function isSyncProgressEvent(
-  event: unknown,
-): event is { account_id: string; current: number; total: number } {
-  if (typeof event !== "object" || event === null) return false;
-  const candidate = event as Record<string, unknown>;
-  return (
-    typeof candidate.account_id === "string" &&
-    typeof candidate.current === "number" &&
-    typeof candidate.total === "number"
-  );
 }
 
 function isSyncErrorEvent(event: unknown): event is { account_id: string; error: string } {

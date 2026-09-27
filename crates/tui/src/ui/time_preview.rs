@@ -7,31 +7,65 @@ use mxr_core::natural_time::{
     resolve_time_local, TimeResolution, TimeResolveError, TimeResolveErrorKind,
 };
 
-/// Resolve a typed time the way the daemon's `ResolveTime` does: local time
-/// with the user's snooze hours.
-pub fn resolve(input: &str, config: &SnoozeConfig) -> Result<TimeResolution, TimeResolveError> {
-    resolve_time_local(input, &config.time_prefs())
+/// A typed time's last resolution and the reading Tab selected. It is
+/// updated when the text changes, never while drawing, and Enter commits
+/// exactly the instant it holds, so what was previewed is what is stored.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TimePreview {
+    resolution: Option<Result<TimeResolution, TimeResolveError>>,
+    choice: usize,
 }
 
-/// The choice the user picked with Tab, clamped to the choices that exist.
-pub fn chosen(resolution: &TimeResolution, choice: usize) -> chrono::DateTime<chrono::Utc> {
-    resolution
-        .choices
-        .get(choice)
-        .map_or(resolution.at, |picked| picked.at)
-}
+impl TimePreview {
+    /// Resolve `input` the way the daemon's `ResolveTime` does: local time
+    /// with the user's snooze hours. Resets the Tab selection.
+    pub fn update(&mut self, input: &str, config: &SnoozeConfig) {
+        self.resolution = Some(resolve_time_local(input, &config.time_prefs()));
+        self.choice = 0;
+    }
 
-/// Move the Tab selection to the next reading, wrapping around.
-pub fn next_choice(input: &str, config: &SnoozeConfig, choice: usize) -> usize {
-    match resolve(input, config) {
-        Ok(resolution) if resolution.choices.len() > 1 => (choice + 1) % resolution.choices.len(),
-        _ => 0,
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    /// Move the Tab selection to the next reading, wrapping around.
+    pub fn next_choice(&mut self) {
+        if let Some(Ok(resolution)) = &self.resolution {
+            if resolution.choices.len() > 1 {
+                self.choice = (self.choice + 1) % resolution.choices.len();
+            }
+        }
+    }
+
+    /// The previewed instant for the selected reading, or why there isn't one.
+    pub fn chosen(&self) -> Result<chrono::DateTime<chrono::Utc>, String> {
+        match &self.resolution {
+            Some(Ok(resolution)) => Ok(resolution
+                .choices
+                .get(self.choice)
+                .map_or(resolution.at, |picked| picked.at)),
+            Some(Err(error)) => Err(error.message.clone()),
+            None => Err("Type a time, like \"tomorrow 9am\" or \"in 2h\".".into()),
+        }
+    }
+
+    /// Whether the text resolved to a time (cheap enough to call per frame).
+    pub fn is_resolved(&self) -> bool {
+        matches!(self.resolution, Some(Ok(_)))
+    }
+
+    /// The preview lines to draw under the prompt.
+    pub fn lines(&self) -> Vec<String> {
+        self.resolution
+            .as_ref()
+            .map(|result| lines(result, self.choice))
+            .unwrap_or_default()
     }
 }
 
 /// Preview lines for `input`. Empty input shows nothing so the prompt stays
 /// quiet until the user types.
-pub fn lines(result: &Result<TimeResolution, TimeResolveError>, choice: usize) -> Vec<String> {
+fn lines(result: &Result<TimeResolution, TimeResolveError>, choice: usize) -> Vec<String> {
     match result {
         Err(error) if error.kind == TimeResolveErrorKind::Empty => Vec::new(),
         Err(error) => vec![error.message.clone()],
@@ -97,8 +131,15 @@ mod tests {
         );
         assert_eq!(lines(&result, 1)[1], "Tab to switch: 15:00  [03:00]");
         let resolution = result.expect("resolves");
-        assert_eq!(chosen(&resolution, 1), resolution.choices[1].at);
-        assert_eq!(chosen(&resolution, 9), resolution.at);
+        let mut preview = TimePreview {
+            resolution: Some(Ok(resolution.clone())),
+            choice: 0,
+        };
+        preview.next_choice();
+        assert_eq!(preview.chosen(), Ok(resolution.choices[1].at));
+        preview.next_choice();
+        assert_eq!(preview.chosen(), Ok(resolution.at));
+        assert!(TimePreview::default().chosen().is_err());
     }
 
     #[test]

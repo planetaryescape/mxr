@@ -43,7 +43,7 @@ pub fn draw(
     frame.render_widget(block, popup);
 
     if panel.custom_input.is_some() {
-        draw_custom_input(frame, inner, panel, config, theme);
+        draw_custom_input(frame, inner, panel, theme);
         return;
     }
 
@@ -100,7 +100,6 @@ fn draw_custom_input(
     frame: &mut Frame,
     inner: Rect,
     panel: &SnoozePanelState,
-    config: &SnoozeConfig,
     theme: &crate::theme::Theme,
 ) {
     let input = panel.custom_input.as_deref().unwrap_or("");
@@ -135,13 +134,14 @@ fn draw_custom_input(
             chunks[3],
         );
     } else {
-        let result = super::time_preview::resolve(input, config);
-        let style = if result.is_ok() {
+        let style = if panel.custom_time.is_resolved() {
             Style::default().fg(theme.text_primary)
         } else {
             Style::default().fg(theme.text_secondary)
         };
-        let preview = super::time_preview::lines(&result, panel.custom_choice)
+        let preview = panel
+            .custom_time
+            .lines()
             .into_iter()
             .map(Line::from)
             .collect::<Vec<_>>();
@@ -230,12 +230,13 @@ mod tests {
 
     #[test]
     fn custom_mode_previews_the_resolved_time_live() {
-        let panel = SnoozePanelState {
+        let mut panel = SnoozePanelState {
             visible: true,
             selected_index: custom_row_index(),
             custom_input: Some("in 2h".into()),
             ..Default::default()
         };
+        panel.custom_time.update("in 2h", &SnoozeConfig::default());
         let snapshot = render_to_string(100, 24, |frame| {
             draw(
                 frame,

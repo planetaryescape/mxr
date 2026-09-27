@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.37](https://github.com/planetaryescape/mxr/compare/v0.6.36...v0.6.37) (2026-09-27)
+
+
+### Features
+
+* reply to everyone you owe in one focused sitting, and keep the promises you make ([#242](https://github.com/planetaryescape/mxr/issues/242)) ([1626116](https://github.com/planetaryescape/mxr/commit/16261168d4ef0a63b82a28ee0f540b443a3ac5b1))
+
 ## [0.6.36](https://github.com/planetaryescape/mxr/compare/v0.6.35...v0.6.36) (2026-09-27)
 
 

@@ -78,6 +78,12 @@ export function NaturalTimeInput({
   }
 
   function onFieldKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    // A held Enter repeats; only a deliberate press may commit, so holding
+    // it can't reveal an ambiguous phrase's choices and then take one.
+    if (event.key === "Enter" && event.repeat) {
+      event.preventDefault();
+      return;
+    }
     if (event.key === "Enter") {
       event.preventDefault();
       commit();
@@ -103,7 +109,7 @@ export function NaturalTimeInput({
     } else if (event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
-      commit();
+      if (!event.repeat) commit();
     }
   }
 

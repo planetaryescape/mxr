@@ -1,5 +1,9 @@
 import { apiFetch } from "@/api/client";
-import type { components } from "@/api/generated";
+import type { components, operations } from "@/api/generated";
+
+type ResolveOperation = operations["mail_time_resolve"];
+/** The route's query, from the generated OpenAPI contract. */
+type ResolveQuery = ResolveOperation["parameters"]["query"];
 
 export type TimeResolution = components["schemas"]["TimeResolution"];
 export type TimeChoice = components["schemas"]["TimeChoice"];
@@ -7,18 +11,22 @@ export type TimeResolveError = components["schemas"]["TimeResolveError"];
 export type TimeSpan = components["schemas"]["TimeSpan"];
 
 /**
- * The daemon's `ResolvedTime` answer, taken from the generated protocol
- * schema so it can't drift from the Rust type. Exactly one of `resolution`
- * and `error` is set.
+ * The route's `ResolvedTime` answer, taken from the generated OpenAPI
+ * contract so it can't drift from the Rust type. Exactly one of
+ * `resolution` and `error` is set.
  */
-export type ResolvedTime = Extract<components["schemas"]["ResponseData"], { kind: "ResolvedTime" }>;
+export type ResolvedTime = Extract<
+  ResolveOperation["responses"][200]["content"]["application/json"],
+  { kind: "ResolvedTime" }
+>;
 
 /**
  * Resolve a time phrase with the daemon's parser, the one the CLI and TUI
  * use, in the daemon's local zone with the user's snooze hours.
  */
 export function resolveTime(input: string, signal?: AbortSignal): Promise<ResolvedTime> {
-  const query = new URLSearchParams({ input, time_zone: browserTimeZone() });
+  const params: ResolveQuery = { input, time_zone: browserTimeZone() };
+  const query = new URLSearchParams(params);
   return apiFetch<ResolvedTime>(`/api/v1/mail/time/resolve?${query.toString()}`, { signal });
 }
 

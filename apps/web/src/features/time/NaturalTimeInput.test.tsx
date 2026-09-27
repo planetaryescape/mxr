@@ -180,6 +180,29 @@ describe("NaturalTimeInput fast Enter", () => {
     expect(onCommit.mock.calls[0]?.[0].label).toBe("03:00");
   });
 
+  test("holding Enter shows an ambiguous phrase's choices but never commits one", async () => {
+    resolver.resolveTime.mockImplementation((input) => Promise.resolve(fakeResolvedTime(input)));
+    const onCommit = vi.fn<(choice: TimeChoice) => void>();
+    const field = renderField(onCommit);
+
+    fireEvent.change(field, { target: { value: "fri 3" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await screen.findAllByRole("radio");
+
+    // The key stays down: the browser sends repeats, which must not commit.
+    for (let index = 0; index < 5; index += 1) {
+      fireEvent.keyDown(field, { key: "Enter", repeat: true });
+    }
+    fireEvent.keyDown(screen.getByRole("radiogroup"), { key: "Enter", repeat: true });
+    await act(async () => {});
+    expect(onCommit).not.toHaveBeenCalled();
+
+    // A deliberate second press commits the selected reading.
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() => expect(onCommit).toHaveBeenCalledTimes(1));
+    expect(onCommit.mock.calls[0]?.[0].label).toBe("15:00");
+  });
+
   test("repeated Enter presses while a commit is in flight submit once", async () => {
     resolver.resolveTime.mockImplementation((input) => Promise.resolve(fakeResolvedTime(input)));
     let finish: (() => void) | undefined;

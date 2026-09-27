@@ -9223,19 +9223,28 @@ export interface operations {
     };
     mail_time_resolve: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description The phrase, such as "fri 3" or "in 2d" */
+                input: string;
+                /** @description RFC3339 anchor for relative phrases; defaults to the daemon's clock */
+                now?: string;
+                /** @description IANA zone to resolve in, such as "Europe/London"; defaults to the daemon's zone */
+                time_zone?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description The `ResolvedTime` variant: exactly one of `resolution` and `error` is set */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

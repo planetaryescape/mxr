@@ -205,7 +205,36 @@ endpoint!(get mail_owed "/api/v1/mail/owed", "List threads that owe a reply");
 endpoint!(get mail_whois "/api/v1/mail/whois", "Explain a person or term from local evidence");
 endpoint!(get mail_send_time "/api/v1/mail/send-time", "Recommend a send time for recipients");
 endpoint!(post mail_archive_ask "/api/v1/mail/archive-ask", "Ask the archive a question with citations");
-endpoint!(get mail_time_resolve "/api/v1/mail/time/resolve", "Resolve a natural-language time phrase");
+/// Typed so generated clients get the query and the answer: the web app's
+/// time fields call this on every debounced keystroke.
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/time/resolve",
+    summary = "Resolve a natural-language time phrase",
+    params(
+        ("input" = String, Query, description = "The phrase, such as \"fri 3\" or \"in 2d\""),
+        (
+            "now" = Option<chrono::DateTime<chrono::Utc>>,
+            Query,
+            description = "RFC3339 anchor for relative phrases; defaults to the daemon's clock"
+        ),
+        (
+            "time_zone" = Option<String>,
+            Query,
+            description = "IANA zone to resolve in, such as \"Europe/London\"; defaults to the daemon's zone"
+        ),
+    ),
+    responses(
+        (
+            status = 200,
+            description = "The `ResolvedTime` variant: exactly one of `resolution` and `error` is set",
+            body = ResponseData
+        ),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_time_resolve() {}
 
 endpoint!(post compose_session_start "/api/v1/mail/compose/session", "Start compose session");
 endpoint!(post compose_session_refresh "/api/v1/mail/compose/session/refresh", "Refresh compose session");

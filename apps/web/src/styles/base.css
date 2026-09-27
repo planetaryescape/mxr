@@ -141,13 +141,14 @@
   }
 
   /*
-   * Press feedback for pointer users only. `:hover:active` skips keyboard
-   * activation (Space/Enter on a focused button), so repeated keyboard use
-   * never animates, and touch and reduced motion get none.
+   * Press feedback for pointer users only. A button pressed from the
+   * keyboard has keyboard focus (:focus-visible), so Space or Enter never
+   * scales it, even with the pointer resting on it; a mouse press doesn't
+   * make focus visible. Touch and reduced motion get none.
    */
   @media (hover: hover) and (pointer: fine) {
     :root:not([data-motion="reduced"])
-      [data-slot="button"]:not(:disabled):not([aria-haspopup]):hover:active {
+      [data-slot="button"]:not(:disabled):not([aria-haspopup]):hover:active:not(:focus-visible) {
       transform: scale(0.97);
     }
   }

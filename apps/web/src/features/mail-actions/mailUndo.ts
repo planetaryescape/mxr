@@ -129,7 +129,7 @@ export function offerUndo(
 }
 
 /** A batch job's chunks each undo separately; reverse them all, newest first. */
-async function undoAll(undoIds: string[]): Promise<boolean> {
+export async function undoAll(undoIds: string[]): Promise<boolean> {
   let ok = true;
   for (const id of undoIds.toReversed()) {
     try {

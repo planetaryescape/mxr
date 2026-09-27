@@ -187,7 +187,7 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
 
       <div className="px-5 pb-5 pl-[64px]">
         {calendar ? <InviteCard messageId={message.id} metadata={calendar} /> : null}
-        <Body
+        <MessageContent
           message={message}
           body={body}
           view={view}
@@ -220,7 +220,11 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
   );
 });
 
-function Body({
+/**
+ * A message's body in the chosen view, with its privacy line. Shared by the
+ * reader and Reading's feed, where each issue is already open.
+ */
+export function MessageContent({
   message,
   body,
   view,

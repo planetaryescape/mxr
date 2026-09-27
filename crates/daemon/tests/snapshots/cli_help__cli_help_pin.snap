@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Pin messages so a sweep leaves them where they are. Pins are local to this machine
+
+Usage: mxr pin [OPTIONS] <MESSAGE_ID>...
+
+Arguments:
+  <MESSAGE_ID>...
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

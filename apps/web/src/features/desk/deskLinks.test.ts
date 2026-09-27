@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { elsewhereLinks } from "./deskLinks";
 
 describe("everything-else links", () => {
-  test("list only what has something, and send paper trail to the inbox", () => {
+  test("list only what has something, with week counts that open the places", () => {
     const links = elsewhereLinks({
       reading: 7,
       paper_trail: 3,
@@ -17,7 +17,8 @@ describe("everything-else links", () => {
       ["Invites", 1],
       ["Screener", 2],
     ]);
-    expect(links[1]).toMatchObject({ to: "/m/$mailbox", params: { mailbox: "inbox" } });
+    expect(links[0]).toMatchObject({ to: "/reading", suffix: "this week" });
+    expect(links[1]).toMatchObject({ to: "/paper-trail", suffix: "this week" });
   });
 
   test("the screener link opens the account whose senders were counted", () => {

@@ -264,6 +264,44 @@ impl MxrMcpServer {
     }
 
     #[tool(
+        name = "mxr_list_place",
+        description = "Mail that isn't from people, where it lives: place 'reading' (newsletters and lists) or 'paper_trail' (receipts, notifications, automated mail). Inbox mail grouped by sender, each bundle with the reason it is there (kind, rule, reason) and its newest messages. Use mxr_sweep_preview to see what sweeping would archive."
+    )]
+    pub async fn list_place(
+        &self,
+        Parameters(input): Parameters<ListPlaceInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::ListPlace {
+            place: input.place.into(),
+            account_id: parse_optional_id(input.account_id)?,
+            sender_email: input.sender_email,
+            limit: input.limit.unwrap_or(50),
+            offset: input.offset.unwrap_or(0),
+            messages_per_bundle: input.messages_per_bundle.unwrap_or(5),
+            message_offset: 0,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_sweep_preview",
+        description = "Preview a sweep of a place ('reading' or 'paper_trail'), or of one sender's bundle there: how many unpinned inbox messages would be archived, from which senders, with sample subjects. Read-only; the user sweeps from the CLI (`mxr sweep`) or the apps."
+    )]
+    pub async fn sweep_preview(
+        &self,
+        Parameters(input): Parameters<SweepPreviewInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::SweepPlace {
+            place: input.place.into(),
+            account_id: parse_optional_id(input.account_id)?,
+            sender_email: input.sender_email,
+            dry_run: true,
+            preview_token: None,
+        })
+        .await
+    }
+
+    #[tool(
         name = "mxr_draft_assist",
         description = "Generate a draft reply suggestion for a thread through the daemon LLM/draft-assist workflow. It is never sent automatically."
     )]
@@ -601,6 +639,47 @@ pub struct ThreadContextInput {
     pub include_gist: Option<bool>,
 }
 
+/// A place for mail that isn't from people.
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PlaceInput {
+    Reading,
+    PaperTrail,
+}
+
+impl From<PlaceInput> for mxr_protocol::MailPlaceData {
+    fn from(place: PlaceInput) -> Self {
+        match place {
+            PlaceInput::Reading => Self::Reading,
+            PlaceInput::PaperTrail => Self::PaperTrail,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListPlaceInput {
+    pub place: PlaceInput,
+    #[serde(default)]
+    pub account_id: Option<String>,
+    #[serde(default)]
+    pub sender_email: Option<String>,
+    #[serde(default)]
+    pub limit: Option<u32>,
+    #[serde(default)]
+    pub offset: Option<u32>,
+    #[serde(default)]
+    pub messages_per_bundle: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SweepPreviewInput {
+    pub place: PlaceInput,
+    #[serde(default)]
+    pub account_id: Option<String>,
+    #[serde(default)]
+    pub sender_email: Option<String>,
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DraftAssistInput {
     pub thread_id: String,
@@ -742,6 +821,8 @@ mod tests {
         assert!(names.contains(&"mxr_status"));
         assert!(names.contains(&"mxr_read_message"));
         assert!(names.contains(&"mxr_thread_context"));
+        assert!(names.contains(&"mxr_list_place"));
+        assert!(names.contains(&"mxr_sweep_preview"));
         assert!(names.contains(&"mxr_mutation_preview"));
         assert!(names.contains(&"mxr_send_draft"));
         assert!(names.contains(&"mxr_list_drafts"));

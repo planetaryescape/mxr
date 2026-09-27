@@ -51,6 +51,15 @@ pub(crate) enum AsyncResult {
     Subscriptions(Result<Vec<SubscriptionSummary>, MxrError>),
     OwedReplies(Result<Vec<mxr_protocol::OwedReplyRowData>, MxrError>),
     Desk(Result<crate::app::DeskPageState, MxrError>),
+    Place(
+        crate::app::PlaceFetch,
+        Result<crate::app::PlacePageState, MxrError>,
+    ),
+    /// The daemon's dry run for a sweep, ready for the user's yes.
+    SweepPreview(Result<crate::app::PendingSweepConfirm, MxrError>),
+    /// A sweep's archive job finished: how many were archived, and one undo
+    /// id per job chunk.
+    PlaceSwept(Result<(u32, Vec<String>), MxrError>),
     CalendarInvites(Result<Vec<mxr_protocol::CalendarInviteData>, MxrError>),
     /// Envelope fetched for an invite opened from the calendar-invites lens.
     InviteEnvelopeOpened(Result<Envelope, MxrError>),

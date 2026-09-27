@@ -387,12 +387,54 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             commands::signatures::run(action, format).await?;
         }
         Some(Command::Sender {
+            action,
             email,
             account,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::sender::run(email, account, format).await?;
+            match (action, email) {
+                (Some(action), _) => commands::places::sender_action(action).await?,
+                (None, Some(email)) => commands::sender::run(email, account, format).await?,
+                (None, None) => anyhow::bail!("give a sender's email address"),
+            }
+        }
+        Some(Command::Reading { args }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::places::list(mxr_protocol::MailPlaceData::Reading, args).await?;
+        }
+        Some(Command::PaperTrail { args }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::places::list(mxr_protocol::MailPlaceData::PaperTrail, args).await?;
+        }
+        Some(Command::Sweep {
+            place,
+            sender,
+            account,
+            dry_run,
+            yes,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::places::sweep(place, sender, account, dry_run, yes, format).await?;
+        }
+        Some(Command::Pin {
+            message_ids,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::places::pin(message_ids, true, format).await?;
+        }
+        Some(Command::Unpin {
+            message_ids,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::places::pin(message_ids, false, format).await?;
+        }
+        Some(Command::Why { message_id, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::places::why(message_id, format).await?;
         }
         Some(Command::Profile {
             email,

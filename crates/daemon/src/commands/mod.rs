@@ -33,6 +33,7 @@ pub mod logs;
 pub mod mutations;
 pub mod notify;
 pub mod owed;
+pub mod places;
 pub mod profile;
 pub mod progress;
 pub(crate) mod promises;

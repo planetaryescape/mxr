@@ -974,6 +974,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/messages/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pin or unpin messages so a sweep leaves them where they are */
+        post: operations["mail_messages_pin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/messages/{message_id}/body": {
         parameters: {
             query?: never;
@@ -1051,6 +1068,23 @@ export interface paths {
         };
         /** Bytes of one inline (cid:) image, by its HTML src */
         get: operations["mail_message_inline_image"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/messages/{message_id}/kind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Why a message is where it is: its kind, rule and reason */
+        get: operations["mail_message_kind"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1257,6 +1291,40 @@ export interface paths {
         get: operations["mail_owed"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/places/{place}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a place (Reading or Paper trail) as bundles by sender */
+        get: operations["mail_place_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/places/{place}/sweep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive everything unpinned in a place or one sender's bundle (dry_run previews) */
+        post: operations["mail_place_sweep"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1498,6 +1566,23 @@ export interface paths {
         get: operations["sender_profile"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/senders/kind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move a sender to people, Reading, Paper trail or screened out, or back to automatic */
+        post: operations["mail_sender_kind"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3467,7 +3552,8 @@ export interface components {
             paper_trail: number;
             /**
              * Format: int32
-             * @description Unread inbox mail from newsletters and lists in the recent window.
+             * @description Inbox mail from newsletters and lists in the recent window, read or
+             *     not: never an unread count.
              */
             reading: number;
             /**
@@ -4051,6 +4137,12 @@ export interface components {
         };
         /** @enum {string} */
         JobStatusData: "queued" | "running" | "succeeded" | "failed";
+        /**
+         * @description Which rule decided a message's kind, most decisive first. `Decision`
+         *     means the user moved the sender; everything else is automatic.
+         * @enum {string}
+         */
+        KindRuleData: "decision" | "delivery" | "invite" | "automated_address" | "automated_domain" | "newsletter_address" | "newsletter_domain" | "list_id" | "list_unsubscribe" | "no_reply_address" | "list_sender" | "person";
         Label: {
             account_id: components["schemas"]["AccountId"];
             color?: string | null;
@@ -4171,6 +4263,20 @@ export interface components {
             request_timeout_secs: number;
             supports_streaming: boolean;
         };
+        /** @description A message's kind with the reason it was given. */
+        MailKindData: {
+            /** @description True when the user chose this kind for the sender. */
+            corrected: boolean;
+            kind: components["schemas"]["SenderKindData"];
+            /** @description A short human reason, e.g. "automated sender, has List-Unsubscribe". */
+            reason: string;
+            rule: components["schemas"]["KindRuleData"];
+        };
+        /**
+         * @description A place for mail that isn't from people.
+         * @enum {string}
+         */
+        MailPlaceData: "reading" | "paper_trail";
         MessageBody: {
             attachments: components["schemas"]["AttachmentMeta"][];
             /** Format: date-time */
@@ -4308,6 +4414,49 @@ export interface components {
             thread_id: components["schemas"]["ThreadId"];
             /** Format: double */
             waiting_days: number;
+        };
+        /** @description Body of `POST /api/v1/mail/messages/pin`. */
+        PinMessagesBody: {
+            message_ids: string[];
+            pinned: boolean;
+        };
+        /** @description One sender's mail in a place. */
+        PlaceBundleData: {
+            account_id: components["schemas"]["AccountId"];
+            /** @description Why this sender's mail is here: the newest message's kind. */
+            kind: components["schemas"]["MailKindData"];
+            /** Format: int32 */
+            message_count: number;
+            /**
+             * @description Pinned first, then newest: the page the request's `message_offset`
+             *     and `messages_per_bundle` ask for. `message_count` covers them all.
+             */
+            messages: components["schemas"]["PlaceMessageData"][];
+            /** Format: date-time */
+            newest_at: string;
+            newest_subject: string;
+            /** Format: int32 */
+            pinned_count: number;
+            sender_email: string;
+            sender_name?: string | null;
+            /**
+             * Format: int32
+             * @description Unread messages in the bundle. Never a badge; shown only as a fact.
+             */
+            unread_count: number;
+        };
+        /** @description One message inside a bundle. */
+        PlaceMessageData: {
+            /** Format: date-time */
+            date: string;
+            message_id: components["schemas"]["MessageId"];
+            pinned: boolean;
+            snippet: string;
+            starred: boolean;
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
+            /** @description Shown for reference only: nothing in a place counts as unread. */
+            unread: boolean;
         };
         /** @description Returned by `Request::DetectPromises`. */
         PromiseDetectionData: {
@@ -5500,6 +5649,55 @@ export interface components {
             due_at: string;
             message_id: components["schemas"]["MessageId"];
             what: string;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "ListPlace";
+            /**
+             * Format: int32
+             * @description Bundles per page.
+             */
+            limit?: number;
+            /**
+             * Format: int32
+             * @description Messages to skip in each bundle, for paging through one
+             *     sender's mail (pinned messages list first).
+             */
+            message_offset?: number;
+            /**
+             * Format: int32
+             * @description Messages listed per bundle; counts always cover the whole bundle.
+             */
+            messages_per_bundle?: number;
+            /** Format: int32 */
+            offset?: number;
+            place: components["schemas"]["MailPlaceData"];
+            /** @description Only this sender's bundle. */
+            sender_email?: string | null;
+        } | {
+            /** @enum {string} */
+            cmd: "GetMessageKind";
+            message_id: components["schemas"]["MessageId"];
+        } | {
+            account_id: components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "SetSenderKind";
+            kind?: null | components["schemas"]["SenderKindData"];
+            sender_email: string;
+        } | {
+            /** @enum {string} */
+            cmd: "PinMessages";
+            message_ids: components["schemas"]["MessageId"][];
+            pinned: boolean;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "SweepPlace";
+            dry_run?: boolean;
+            place: components["schemas"]["MailPlaceData"];
+            /** @description From the dry run; required when `dry_run` is false. */
+            preview_token?: string | null;
+            sender_email?: string | null;
         };
         /**
          * @description The daemon's reply to a [`Request`], correlated by [`IpcMessage::id`].
@@ -6146,6 +6344,50 @@ export interface components {
             dry_run: boolean;
             /** @enum {string} */
             kind: "RecordedPromise";
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            bundles: components["schemas"]["PlaceBundleData"][];
+            /** Format: date-time */
+            generated_at: string;
+            /** @enum {string} */
+            kind: "Place";
+            place: components["schemas"]["MailPlaceData"];
+            /**
+             * Format: int32
+             * @description Bundles in the whole place, not just this page.
+             */
+            total_bundles: number;
+            /**
+             * Format: int32
+             * @description Messages in the whole place.
+             */
+            total_messages: number;
+        } | {
+            account_id: components["schemas"]["AccountId"];
+            /** @enum {string} */
+            kind: "MessageKind";
+            mail_kind: components["schemas"]["MailKindData"];
+            message_id: components["schemas"]["MessageId"];
+            sender_email: string;
+        } | {
+            account_id: components["schemas"]["AccountId"];
+            /** @enum {string} */
+            kind: "SenderKindSet";
+            previous?: null | components["schemas"]["SenderKindData"];
+            sender_email: string;
+            sender_kind?: null | components["schemas"]["SenderKindData"];
+        } | {
+            /** Format: int32 */
+            changed: number;
+            /** @enum {string} */
+            kind: "MessagesPinned";
+            pinned: boolean;
+        } | {
+            dry_run: boolean;
+            job?: null | components["schemas"]["JobData"];
+            /** @enum {string} */
+            kind: "PlaceSwept";
+            preview: components["schemas"]["SweepPreviewData"];
         };
         /**
          * @description A single bucket of the response-time histogram. `count` rows had a
@@ -6429,6 +6671,17 @@ export interface components {
             subject: string;
             thread_id: components["schemas"]["ThreadId"];
         };
+        /** @description Body of `POST /api/v1/mail/senders/kind`. */
+        SenderKindBody: {
+            account_id: string;
+            kind?: null | components["schemas"]["SenderKindData"];
+            sender_email: string;
+        };
+        /**
+         * @description What kind of sender mail comes from, and so where it lives.
+         * @enum {string}
+         */
+        SenderKindData: "people" | "reading" | "paper_trail" | "screened_out";
         SenderProfileData: {
             account_id: components["schemas"]["AccountId"];
             /** Format: int64 */
@@ -6612,6 +6865,56 @@ export interface components {
             email: string;
             evidence_msg_ids: string[];
             reason: string;
+        };
+        /** @description Body of `POST /api/v1/mail/places/{place}/sweep`. */
+        SweepPlaceBody: {
+            /** @description Omitted: every account. */
+            account_id?: string | null;
+            /** @description Preview only; nothing is archived. */
+            dry_run?: boolean | null;
+            /**
+             * @description From the dry run's preview; required unless `dry_run`. The sweep
+             *     archives only what that preview listed.
+             */
+            preview_token?: string | null;
+            /** @description Only this sender's bundle. */
+            sender_email?: string | null;
+        };
+        /**
+         * @description What a sweep archives. The dry run and the real sweep build this from
+         *     the same selection; the real sweep only ever narrows the preview's.
+         */
+        SweepPreviewData: {
+            /**
+             * Format: int32
+             * @description Messages that will be (or were) archived.
+             */
+            count: number;
+            /**
+             * Format: int32
+             * @description Pinned messages left where they are.
+             */
+            pinned_excluded: number;
+            place: components["schemas"]["MailPlaceData"];
+            /**
+             * @description Hands the previewed selection to the real sweep, which archives
+             *     only those messages. Expires after a few minutes and works once.
+             *     Absent when nothing would be archived.
+             */
+            preview_token?: string | null;
+            /** @description Up to five subjects, newest first. */
+            sample_subjects: string[];
+            sender_email?: string | null;
+            /** @description Largest first. */
+            senders: components["schemas"]["SweepSenderData"][];
+        };
+        /** @description One sender a sweep would archive mail from. */
+        SweepSenderData: {
+            account_id: components["schemas"]["AccountId"];
+            /** Format: int32 */
+            count: number;
+            sender_email: string;
+            sender_name?: string | null;
         };
         /**
          * @description How far the sync pass running for an account has got.
@@ -8511,6 +8814,37 @@ export interface operations {
             };
         };
     };
+    mail_messages_pin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinMessagesBody"];
+            };
+        };
+        responses: {
+            /** @description The `MessagesPinned` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     mail_message_body: {
         parameters: {
             query?: never;
@@ -8626,6 +8960,36 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_message_kind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Message id */
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `MessageKind` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {
@@ -8926,6 +9290,90 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_place_list: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description Only this sender's bundle */
+                sender?: string;
+                /** @description Bundles per page (default 50) */
+                limit?: number;
+                /** @description Bundles to skip */
+                offset?: number;
+                /** @description Messages listed per bundle (default 20) */
+                messages_per_bundle?: number;
+                /** @description Messages to skip in each bundle, for paging one sender */
+                message_offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description `reading` or `paper-trail` */
+                place: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `Place` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Unknown place or bad account id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_place_sweep: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description `reading` or `paper-trail` */
+                place: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SweepPlaceBody"];
+            };
+        };
+        responses: {
+            /** @description The `PlaceSwept` variant: the preview, and the archive job unless dry_run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {
@@ -9351,6 +9799,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_sender_kind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SenderKindBody"];
+            };
+        };
+        responses: {
+            /** @description The `SenderKindSet` variant, with the previous kind for undo */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

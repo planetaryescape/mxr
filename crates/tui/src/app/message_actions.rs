@@ -112,6 +112,9 @@ impl App {
                         MailboxView::Desk => {
                             self.open_selected_desk_row();
                         }
+                        MailboxView::Place(_) => {
+                            self.open_selected_place_row();
+                        }
                     }
                 }
             }

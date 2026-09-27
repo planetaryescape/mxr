@@ -6,6 +6,8 @@
 
 import { create } from "zustand";
 
+import type { MailKind, SweepScope } from "@/features/places/api";
+
 import type { MailAction } from "./pendingMailOps";
 import type { MailTarget } from "./target";
 
@@ -21,6 +23,23 @@ export type MailDialog =
     }
   | { kind: "unsubscribe"; target: MailTarget; onDone?: () => void }
   | { kind: "links"; target: MailTarget }
+  | {
+      /** Preview a sweep from the daemon's dry run, then archive. */
+      kind: "sweep";
+      scope: SweepScope;
+      /** Names the bundle in the title when sweeping one sender. */
+      senderLabel?: string;
+      /** Of what the sweep covers, how many messages are on screen. */
+      shownHere?: number;
+    }
+  | {
+      /** Move a sender to a kind, remembered for their future mail. */
+      kind: "sender-kind";
+      accountId: string;
+      senderEmail: string;
+      senderLabel: string;
+      current?: MailKind;
+    }
   | {
       kind: "confirm";
       target: MailTarget;

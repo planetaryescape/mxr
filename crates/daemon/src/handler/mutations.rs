@@ -712,10 +712,20 @@ pub(super) async fn mutation(
     Ok(ResponseData::MutationResult { result })
 }
 
+/// A check a job runs on each chunk just before applying it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ChunkGuard {
+    None,
+    /// Leave out messages pinned since the job was queued (a sweep): a pin
+    /// made while the job runs still keeps its message.
+    SkipPinned,
+}
+
 pub(super) async fn start_mutation_job(
     state: Arc<AppState>,
     cmd: MutationCommand,
     client_correlation_id: Option<String>,
+    guard: ChunkGuard,
 ) -> HandlerResult {
     let total = mutation_message_ids(&cmd).len() as u32;
     if total == 0 {
@@ -745,7 +755,7 @@ pub(super) async fn start_mutation_job(
 
     let background_job_id = job_id.clone();
     tokio::spawn(async move {
-        run_mutation_job(state, background_job_id, cmd, client_correlation_id).await;
+        run_mutation_job(state, background_job_id, cmd, client_correlation_id, guard).await;
     });
 
     Ok(ResponseData::JobStarted { job })
@@ -781,6 +791,7 @@ async fn run_mutation_job(
     job_id: String,
     cmd: MutationCommand,
     client_correlation_id: Option<String>,
+    guard: ChunkGuard,
 ) {
     update_job(&state, &job_id, |job| {
         job.status = JobStatusData::Running;
@@ -805,7 +816,22 @@ async fn run_mutation_job(
     let mut terminal_error: Option<String> = None;
 
     for ids in mutation_message_ids(&cmd).chunks(MUTATION_JOB_CHUNK_SIZE) {
-        let chunk_cmd = mutation_command_with_ids(&cmd, ids.to_vec());
+        let ids = match guard_chunk(&state, guard, ids).await {
+            Ok((kept, left_out)) => {
+                // Left out on purpose, so not a failure: counted as skipped
+                // without stopping the job.
+                aggregate.skipped += left_out;
+                kept
+            }
+            Err(error) => {
+                terminal_error = Some(error);
+                break;
+            }
+        };
+        if ids.is_empty() {
+            continue;
+        }
+        let chunk_cmd = mutation_command_with_ids(&cmd, ids);
         match mutation(&state, &chunk_cmd, client_correlation_id.as_deref()).await {
             Ok(ResponseData::MutationResult { result }) => {
                 if let Some(mutation_id) = result.mutation_id.as_ref() {
@@ -904,6 +930,31 @@ async fn run_mutation_job(
                 ),
             },
         ),
+    }
+}
+
+/// The chunk's ids that `guard` lets through, and how many it left out.
+async fn guard_chunk(
+    state: &AppState,
+    guard: ChunkGuard,
+    ids: &[mxr_core::MessageId],
+) -> Result<(Vec<mxr_core::MessageId>, u32), String> {
+    match guard {
+        ChunkGuard::None => Ok((ids.to_vec(), 0)),
+        ChunkGuard::SkipPinned => {
+            let pinned = state
+                .store
+                .pinned_message_ids(ids)
+                .await
+                .map_err(|e| e.to_string())?;
+            let kept: Vec<_> = ids
+                .iter()
+                .filter(|id| !pinned.contains(*id))
+                .cloned()
+                .collect();
+            let left_out = (ids.len() - kept.len()) as u32;
+            Ok((kept, left_out))
+        }
     }
 }
 

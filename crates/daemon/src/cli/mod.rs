@@ -392,9 +392,13 @@ pub enum Command {
     /// Show per-sender relationship aggregates: volume, response cadence,
     /// open threads. The unfair advantage of having local SQLite — every
     /// other email tool reasons over messages, not people.
+    #[command(subcommand_negates_reqs = true, args_conflicts_with_subcommands = true)]
     Sender {
+        #[command(subcommand)]
+        action: Option<SenderAction>,
         /// Email address (must match an existing contact).
-        email: String,
+        #[arg(required = true)]
+        email: Option<String>,
         /// Restrict to a specific account; defaults to the only-or-default
         /// account if exactly one is configured.
         #[arg(long)]
@@ -576,6 +580,60 @@ pub enum Command {
         /// Rows to show per lane; each lane still reports its total.
         #[arg(long, default_value_t = 25)]
         limit: u32,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Reading: newsletters and lists in your inbox, grouped by sender, each
+    /// with the reason it is here. Nothing here counts as unread.
+    Reading {
+        #[command(flatten)]
+        args: PlaceArgs,
+    },
+    /// Paper trail: receipts, notifications and other automated mail in your
+    /// inbox, grouped by sender, each with the reason it is here.
+    PaperTrail {
+        #[command(flatten)]
+        args: PlaceArgs,
+    },
+    /// Archive everything unpinned in Reading or Paper trail, or in one
+    /// sender's bundle there. Preview with --dry-run, then archive with
+    /// --yes; `mxr undo` reverses it.
+    Sweep {
+        place: PlaceArg,
+        /// Only this sender's bundle.
+        #[arg(long)]
+        sender: Option<String>,
+        /// Limit to one account; the default covers every account.
+        #[arg(long)]
+        account: Option<String>,
+        /// Show what would be archived without changing anything.
+        #[arg(long, conflicts_with = "yes")]
+        dry_run: bool,
+        /// Archive without asking.
+        #[arg(long)]
+        yes: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Pin messages so a sweep leaves them where they are. Pins are local
+    /// to this machine.
+    Pin {
+        #[arg(value_name = "MESSAGE_ID", required = true)]
+        message_ids: Vec<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Unpin messages: the next sweep takes them too.
+    Unpin {
+        #[arg(value_name = "MESSAGE_ID", required = true)]
+        message_ids: Vec<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Why a message is where it is: people, Reading, Paper trail or
+    /// screened out, and the rule that decided it.
+    Why {
+        message_id: String,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -1795,13 +1853,13 @@ pub enum ScreenerAction {
         #[arg(long)]
         label: Option<String>,
     },
-    /// Route to a feed (skip inbox)
+    /// Put this sender in Reading (kept off the desk)
     Feed {
         sender_email: String,
         #[arg(long)]
         label: Option<String>,
     },
-    /// Route to paper trail (archive on ingest)
+    /// Put this sender in Paper trail (kept off the desk)
     PaperTrail {
         sender_email: String,
         #[arg(long)]
@@ -2091,6 +2149,62 @@ pub enum HumanizeAction {
         text: String,
         #[arg(long = "max-iterations")]
         max_iterations: Option<u8>,
+    },
+}
+
+/// Listing options shared by `mxr reading` and `mxr paper-trail`.
+#[derive(Debug, Clone, clap::Args)]
+pub struct PlaceArgs {
+    /// Limit to one account; the default covers every account.
+    #[arg(long)]
+    pub account: Option<String>,
+    /// Only this sender's bundle.
+    #[arg(long)]
+    pub sender: Option<String>,
+    /// Bundles to show.
+    #[arg(long, default_value_t = 50)]
+    pub limit: u32,
+    /// Bundles to skip, for paging.
+    #[arg(long, default_value_t = 0)]
+    pub offset: u32,
+    /// Messages listed per bundle; counts always cover the whole bundle.
+    #[arg(long, default_value_t = 3)]
+    pub messages: u32,
+    #[arg(long)]
+    pub format: Option<OutputFormat>,
+}
+
+/// A place for mail that isn't from people.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum PlaceArg {
+    Reading,
+    PaperTrail,
+}
+
+/// Where a sender's mail goes. `auto` returns it to the automatic rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum SenderKindArg {
+    People,
+    Reading,
+    PaperTrail,
+    ScreenedOut,
+    Auto,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum SenderAction {
+    /// Move a sender to people, Reading, Paper trail or screened out, for
+    /// their mail now and later; `auto` hands it back to the automatic
+    /// rules.
+    Kind {
+        email: String,
+        kind: SenderKindArg,
+        /// The account the sender writes to; defaults to the only or
+        /// default account.
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
 }
 

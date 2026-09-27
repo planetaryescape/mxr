@@ -440,6 +440,24 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Navigation".into(),
         },
         PaletteCommand {
+            label: "Reading".into(),
+            shortcut: "gr".into(),
+            action: Action::OpenPlace(mxr_protocol::MailPlaceData::Reading),
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Paper trail".into(),
+            shortcut: "gp".into(),
+            action: Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail),
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Sweep this place (preview first)".into(),
+            shortcut: "A".into(),
+            action: Action::SweepPlace,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
             label: "Drafts".into(),
             shortcut: "gE".into(),
             action: Action::OpenStoredDrafts,

@@ -76,7 +76,8 @@ pub struct DeskLaneData {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeskElsewhereData {
-    /// Unread inbox mail from newsletters and lists in the recent window.
+    /// Inbox mail from newsletters and lists in the recent window, read or
+    /// not: never an unread count.
     pub reading: u32,
     /// Inbox mail from automated senders (receipts, notifications) in the
     /// recent window.

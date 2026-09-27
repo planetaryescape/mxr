@@ -101,6 +101,14 @@ impl App {
             | Action::RepairAccount
             | Action::SetDefaultAccount
             | Action::SwitchAccount(_) => self.apply_account_action(action),
+            Action::OpenPlace(_)
+            | Action::TogglePin
+            | Action::OpenSenderKindMenu
+            | Action::SetSenderKind(_)
+            | Action::SweepBundle
+            | Action::SweepPlace
+            | Action::MorePlaceSenders
+            | Action::MoreFromSender => self.apply_place_action(action),
             Action::OpenMailboxScreen
             | Action::OpenSearchScreen
             | Action::OpenGlobalSearch

@@ -263,6 +263,40 @@ pub fn map_request(
             Some(serde_json::json!({ "count": thread_ids.len() })),
         ),
 
+        // ----- places: Reading and Paper trail -----
+        Request::SetSenderKind {
+            sender_email, kind, ..
+        } => (
+            "sender.kind",
+            Some("sender"),
+            Some(sender_email.clone()),
+            Some(serde_json::json!({ "kind": kind })),
+        ),
+        Request::PinMessages {
+            message_ids,
+            pinned,
+        } => (
+            if *pinned {
+                "message.pin"
+            } else {
+                "message.unpin"
+            },
+            Some("message"),
+            message_ids.first().map(|id| id.as_str().clone()),
+            Some(serde_json::json!({ "count": message_ids.len() })),
+        ),
+        Request::SweepPlace {
+            place,
+            sender_email,
+            dry_run,
+            ..
+        } => (
+            "place.sweep",
+            sender_email.as_ref().map(|_| "sender"),
+            sender_email.clone(),
+            Some(serde_json::json!({ "place": place, "dry_run": dry_run })),
+        ),
+
         // ----- thread reading -----
         Request::GetThread { thread_id } => (
             "thread.open",
@@ -644,6 +678,8 @@ pub fn map_request(
         | Request::GetDecision { .. }
         | Request::ListOwedReplies { .. }
         | Request::GetDesk { .. }
+        | Request::ListPlace { .. }
+        | Request::GetMessageKind { .. }
         | Request::ListDrafts
         | Request::ListScheduledSends { .. }
         | Request::ListOrphanedDrafts

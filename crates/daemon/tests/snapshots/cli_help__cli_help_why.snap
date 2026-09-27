@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Why a message is where it is: people, Reading, Paper trail or screened out, and the rule that decided it
+
+Usage: mxr why [OPTIONS] <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

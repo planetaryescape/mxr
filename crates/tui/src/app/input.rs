@@ -827,6 +827,37 @@ impl App {
             }
         }
 
+        if self.mailbox.sweep_confirm.is_some() {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Enter, _) | (KeyCode::Char('y'), KeyModifiers::NONE) => {
+                    self.confirm_sweep();
+                    None
+                }
+                (KeyCode::Esc, _) | (KeyCode::Char('n' | 'q'), KeyModifiers::NONE) => {
+                    self.mailbox.sweep_confirm = None;
+                    self.status_message = Some("Sweep cancelled".into());
+                    None
+                }
+                _ => None,
+            };
+        }
+
+        if self.mailbox.sender_kind_menu.is_some() {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Char(c), KeyModifiers::NONE) => {
+                    crate::ui::place_lens::SENDER_KIND_CHOICES
+                        .iter()
+                        .find(|(choice, _, _)| *choice == c)
+                        .map(|(_, kind, _)| Action::SetSenderKind(*kind))
+                }
+                (KeyCode::Esc, _) => {
+                    self.mailbox.sender_kind_menu = None;
+                    None
+                }
+                _ => None,
+            };
+        }
+
         if self.modals.pending_bulk_confirm.is_some() {
             return match (key.code, key.modifiers) {
                 (KeyCode::Enter, _) => Some(Action::OpenSelected),
@@ -1178,6 +1209,12 @@ impl App {
             }
         }
 
+        // The second key of a chord (`g r`, `g a`, `i a`) completes it,
+        // before any single-key binding such as `r` reply can claim it.
+        if self.input.is_pending() {
+            return self.contextual_input_action(key);
+        }
+
         if self.screen != Screen::Mailbox {
             return self.handle_screen_key(key);
         }
@@ -1284,6 +1321,9 @@ impl App {
             ActivePane::MailList if self.mailbox.mailbox_view == MailboxView::CalendarInvites => {
                 self.calendar_invites_key(key)
             }
+            ActivePane::MailList if matches!(self.mailbox.mailbox_view, MailboxView::Place(_)) => {
+                self.place_lens_key(key)
+            }
             ActivePane::MailList => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
                 (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),
@@ -1297,6 +1337,35 @@ impl App {
                 _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 _ => self.contextual_input_action(key),
             },
+        }
+    }
+
+    /// Key handling for Reading and Paper trail: pin, move the sender, and
+    /// sweep. S and A mean sweep here (a bundle list has no signature or
+    /// attachments to toggle); other keys fall through to the mail keys,
+    /// which act on the message under the cursor.
+    fn place_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        match (key.code, key.modifiers) {
+            (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
+            (KeyCode::Char('h') | KeyCode::Left, KeyModifiers::NONE) => {
+                self.mailbox.active_pane = ActivePane::Sidebar;
+                None
+            }
+            (KeyCode::Right, KeyModifiers::NONE) => Some(Action::OpenSelected),
+            (KeyCode::Char('p'), KeyModifiers::NONE) => Some(Action::TogglePin),
+            (KeyCode::Char('K'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::OpenSenderKindMenu)
+            }
+            (KeyCode::Char('S'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::SweepBundle)
+            }
+            (KeyCode::Char('A'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::SweepPlace)
+            }
+            (KeyCode::Char('>'), _) => Some(Action::MorePlaceSenders),
+            (KeyCode::Char('+'), _) => Some(Action::MoreFromSender),
+            _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
+            _ => self.contextual_input_action(key),
         }
     }
 

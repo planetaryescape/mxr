@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Reading: newsletters and lists in your inbox, grouped by sender, each with the reason it is here. Nothing here counts as unread
+
+Usage: mxr reading [OPTIONS]
+
+Options:
+      --account <ACCOUNT>    Limit to one account; the default covers every account
+      --sender <SENDER>      Only this sender's bundle
+      --limit <LIMIT>        Bundles to show [default: 50]
+      --offset <OFFSET>      Bundles to skip, for paging [default: 0]
+      --messages <MESSAGES>  Messages listed per bundle; counts always cover the whole bundle [default: 3]
+      --format <FORMAT>      [possible values: table, json, jsonl, csv, ids]
+  -h, --help                 Print help

@@ -82,28 +82,40 @@ export async function runAsJob(
     method: "POST",
     body: command,
   });
-  const toastId = `job-${started.job_id}`;
-  toast.loading(`${verb(action, payload)} ${plural(count, "message")}…`, {
-    id: toastId,
-    description: "Running in the background",
+  const doing = verb(action, payload);
+  return awaitJob(started.job_id, {
+    start: `${doing} ${plural(count, "message")}…`,
+    progress: (completed, total) =>
+      `${doing} ${completed.toLocaleString()} of ${plural(total, "message")}`,
   });
+}
+
+/**
+ * Follow a daemon job the bridge already started (a mutation job, or the
+ * archive behind a sweep) to its end, with a progress toast, and answer in
+ * the same shape as a direct mutation so the caller's undo and failure
+ * handling stay the same.
+ */
+export async function awaitJob(
+  jobId: string,
+  copy: { start: string; progress: (completed: number, total: number) => string },
+): Promise<MutationResponse> {
+  const toastId = `job-${jobId}`;
+  toast.loading(copy.start, { id: toastId, description: "Running in the background" });
   // Polling is sequential by nature: each check waits for the last.
   for (;;) {
     // oxlint-disable-next-line no-await-in-loop
     await new Promise((resolve) => setTimeout(resolve, 600));
     // oxlint-disable-next-line no-await-in-loop
     const { job } = await apiFetch<{ job: JobSnapshot }>(
-      `/api/v1/mail/jobs/${encodeURIComponent(started.job_id)}`,
+      `/api/v1/mail/jobs/${encodeURIComponent(jobId)}`,
     );
     const { completed, total } = job.progress;
     if (job.status === "queued" || job.status === "running") {
-      toast.loading(
-        `${verb(action, payload)} ${completed.toLocaleString()} of ${plural(total, "message")}`,
-        {
-          id: toastId,
-          description: "Running in the background",
-        },
-      );
+      toast.loading(copy.progress(completed, total), {
+        id: toastId,
+        description: "Running in the background",
+      });
       continue;
     }
     toast.dismiss(toastId);

@@ -10,6 +10,8 @@ import { llmPolicyKey, useLlmStatus } from "@/features/llm/useLlmStatus";
 import { useProjectedMessages } from "@/features/mail-actions/pendingMailOps";
 import { targetFromThread } from "@/features/mail-actions/target";
 import { resolveCommitment } from "@/features/mailbox/api";
+import { openMoveSenderFor } from "@/features/places/placeVerbs";
+import { WhyHereLine } from "@/features/places/WhyHereLine";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import type { ThreadResponse } from "@/features/mailbox/types";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
@@ -265,6 +267,10 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
     // With the list hidden (narrow screen, full-width reader), going back to
     // it means closing the conversation, not focusing an invisible list.
     focusList: () => (listHidden ? nav?.close() : setActivePane("mailbox")),
+    moveSender: () => {
+      const newestMessage = messages.at(-1);
+      if (newestMessage) void openMoveSenderFor(newestMessage.id, newestMessage.sender);
+    },
     close: () => nav?.close(),
     // Toggles, as in the TUI: R or H again drops back to plain text.
     viewReader: () => setViewAndRemember(view === "reader" ? "plain" : "reader"),
@@ -420,6 +426,9 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
               onShowHeaders={() => setHeadersFor(message.id)}
             />
           ))}
+          {newest ? (
+            <WhyHereLine messageId={newest.id} senderLabel={newest.sender || "this sender"} />
+          ) : null}
           <ReplyField
             name={context.data?.counterparty ? firstName(context.data.counterparty) : null}
             canReplyAll={canReplyAll}

@@ -13,6 +13,8 @@ const MAIL_QUERY_ROOTS = new Set([
   "reply-queue",
   "owed",
   "desk",
+  "place",
+  "message-kind",
   "snoozed",
   "saved-search-counts",
 ]);

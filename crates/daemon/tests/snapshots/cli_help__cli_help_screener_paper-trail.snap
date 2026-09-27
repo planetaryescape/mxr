@@ -2,7 +2,7 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Route to paper trail (archive on ingest)
+Put this sender in Paper trail (kept off the desk)
 
 Usage: mxr screener paper-trail [OPTIONS] <SENDER_EMAIL>
 

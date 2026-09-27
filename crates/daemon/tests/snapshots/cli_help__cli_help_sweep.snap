@@ -1,0 +1,18 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Archive everything unpinned in Reading or Paper trail, or in one sender's bundle there. Preview with --dry-run, then archive with --yes; `mxr undo` reverses it
+
+Usage: mxr sweep [OPTIONS] <PLACE>
+
+Arguments:
+  <PLACE>  [possible values: reading, paper-trail]
+
+Options:
+      --sender <SENDER>    Only this sender's bundle
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --dry-run            Show what would be archived without changing anything
+      --yes                Archive without asking
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

@@ -190,6 +190,8 @@ impl App {
             }
             MutationEffect::RefreshList
             | MutationEffect::StatusOnly(_)
+            | MutationEffect::RefreshPlaces(_)
+            | MutationEffect::SenderMoved(_)
             | MutationEffect::SentSuccess { .. } => {}
         }
     }
@@ -271,6 +273,12 @@ impl App {
                     self.push_toast(Toast::success(msg));
                 }
             }
+            MutationEffect::RefreshPlaces(msg) | MutationEffect::SenderMoved(msg) => {
+                self.refresh_places();
+                if show_completion_status && !msg.is_empty() {
+                    self.push_toast(Toast::success(msg));
+                }
+            }
             MutationEffect::SentSuccess {
                 status,
                 remind_at,
@@ -287,7 +295,7 @@ impl App {
                 }
                 self.mailbox.pending_subscriptions_refresh = true;
                 self.mailbox.pending_owed_refresh = true;
-                self.mailbox.pending_desk_refresh = true;
+                self.refresh_places();
                 if show_completion_status {
                     self.push_toast(Toast::success(status));
                 }
@@ -455,6 +463,8 @@ impl App {
             )]),
             MutationEffect::RefreshList
             | MutationEffect::StatusOnly(_)
+            | MutationEffect::RefreshPlaces(_)
+            | MutationEffect::SenderMoved(_)
             | MutationEffect::SentSuccess { .. } => MutationSnapshot::None,
         }
     }
@@ -786,6 +796,12 @@ impl App {
     pub(super) fn mutation_target_ids(&self) -> Vec<MessageId> {
         if self.desk_list_focused() {
             return self.selected_desk_row_message_ids();
+        }
+        if self.place_list_focused() {
+            return self
+                .selected_place_row()
+                .map(|(_, message)| vec![message.message_id.clone()])
+                .unwrap_or_default();
         }
         if !self.mailbox.selected_set.is_empty() {
             return self.mailbox.selected_set.iter().cloned().collect();

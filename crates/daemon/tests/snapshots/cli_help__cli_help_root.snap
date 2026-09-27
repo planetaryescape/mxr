@@ -39,6 +39,12 @@ Commands:
   ask                 Ask a question against the local archive. Returns a citation- validated answer; the daemon rejects LLM citations that point to messages outside the retrieved set
   owed                List threads where the user owes a reply, ranked by how overdue they are relative to the recipient's typical cadence
   desk                What needs you, not what arrived: replies you owe, promises coming due, threads waiting on someone, and new mail from people, each with the reason it is there. Everything else is summarised as counts
+  reading             Reading: newsletters and lists in your inbox, grouped by sender, each with the reason it is here. Nothing here counts as unread
+  paper-trail         Paper trail: receipts, notifications and other automated mail in your inbox, grouped by sender, each with the reason it is here
+  sweep               Archive everything unpinned in Reading or Paper trail, or in one sender's bundle there. Preview with --dry-run, then archive with --yes; `mxr undo` reverses it
+  pin                 Pin messages so a sweep leaves them where they are. Pins are local to this machine
+  unpin               Unpin messages: the next sweep takes them too
+  why                 Why a message is where it is: people, Reading, Paper trail or screened out, and the rule that decided it
   commitments         List, find, keep or resolve commitments: promises made in mail
   voice               Show or rebuild the account-level user voice profile
   humanize            Score or rewrite text using the deterministic humanizer gate

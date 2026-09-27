@@ -282,7 +282,7 @@ fn summary_line(desk: &ResponseData) -> String {
     }
 }
 
-fn plural(n: u32, one: &str, many: &str) -> String {
+pub(crate) fn plural(n: u32, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 

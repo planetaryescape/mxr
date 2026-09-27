@@ -30,78 +30,8 @@ const OVERDUE_FLOOR_SECONDS: i64 = 60 * 60;
 /// Pace assumed for ordering when a person has no reply history.
 const DEFAULT_PACE_SECONDS: i64 = 24 * 60 * 60;
 
-/// Local parts that mark a sender as a machine, not a person. Same spirit as
-/// the TUI's auto-summary list, widened with receipt and digest senders.
-const AUTOMATED_LOCAL_PARTS: &[&str] = &[
-    "noreply",
-    "no-reply",
-    "no_reply",
-    "donotreply",
-    "do-not-reply",
-    "do_not_reply",
-    "notifications",
-    "notification",
-    "notify",
-    "alerts",
-    "alert",
-    "automated",
-    "mailer-daemon",
-    "postmaster",
-    "bounce",
-    "newsletter",
-    "digest",
-    "receipts",
-    "billing",
-    "invoice",
-    "shipment",
-    "tracking",
-];
-
-/// Domain labels that mark a sending host as a machine
-/// (`alerts.example.com`, `notifications.github.com`).
-const AUTOMATED_DOMAIN_LABELS: &[&str] = &[
-    "alerts",
-    "alert",
-    "notifications",
-    "notification",
-    "notify",
-    "bounce",
-    "bounces",
-    "mailer",
-    "newsletter",
-    "news",
-    "updates",
-    "marketing",
-];
-
-/// How a sender's mail is treated on the desk.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SenderKind {
-    Person,
-    /// Newsletters and mailing lists: Reading.
-    List,
-    /// Receipts, notifications, deliveries, invites: Paper trail.
-    Automated,
-    /// Screened out by the user: never on the desk.
-    Denied,
-}
-
-pub(super) fn looks_automated(email: &str) -> bool {
-    let email = email.trim().to_ascii_lowercase();
-    let (local, domain) = email.split_once('@').unwrap_or((email.as_str(), ""));
-    let local_automated = !local.is_empty()
-        && AUTOMATED_LOCAL_PARTS
-            .iter()
-            .any(|pattern| local.contains(pattern));
-    // Only subdomain labels: the registrable name itself ("news.com") can
-    // belong to a person's employer.
-    let labels: Vec<&str> = domain.split('.').collect();
-    let subdomains = &labels[..labels.len().saturating_sub(2)];
-    local_automated
-        || subdomains
-            .iter()
-            .any(|label| AUTOMATED_DOMAIN_LABELS.contains(label))
-}
+use super::mail_kind::{self, KindSignals};
+use super::mail_kind::{looks_automated, SenderKind};
 
 pub(super) fn is_outbound(message: &DeskMessage, is_self: &dyn Fn(&str) -> bool) -> bool {
     message.direction == "outbound"
@@ -196,24 +126,20 @@ impl AccountInputs<'_> {
         is_outbound(message, self.is_self)
     }
 
+    /// The shared classifier (`mail_kind`), so the desk and the places
+    /// never disagree about a message.
     pub(super) fn sender_kind(&self, message: &DeskMessage) -> SenderKind {
         let email = &message.from.email;
-        match self.decision(email) {
-            Some(ScreenerDisposition::Deny) => return SenderKind::Denied,
-            Some(ScreenerDisposition::Feed) => return SenderKind::List,
-            Some(ScreenerDisposition::PaperTrail) => return SenderKind::Automated,
-            _ => {}
-        }
-        if message.is_delivery || message.is_invite || looks_automated(email) {
-            return SenderKind::Automated;
-        }
-        if message.list_id.is_some()
-            || !matches!(message.unsubscribe, UnsubscribeMethod::None)
-            || self.contact(email).is_some_and(|c| c.is_list_sender)
-        {
-            return SenderKind::List;
-        }
-        SenderKind::Person
+        mail_kind::classify(&KindSignals {
+            email,
+            has_list_id: message.list_id.is_some(),
+            has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
+            is_delivery: message.is_delivery,
+            is_invite: message.is_invite,
+            list_sender: self.contact(email).is_some_and(|c| c.is_list_sender),
+            decision: self.decision(email),
+        })
+        .kind
     }
 
     /// Only copied, not addressed: the reason says so.
@@ -272,7 +198,9 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
                 continue;
             }
             match inputs.sender_kind(message) {
-                SenderKind::List if !message.flags.contains(mxr_core::MessageFlags::READ) => {
+                // Issues this week, read or not: the count is never an
+                // unread count.
+                SenderKind::List => {
                     lanes.elsewhere.reading += 1;
                 }
                 SenderKind::Automated if !message.is_delivery && !message.is_invite => {
@@ -744,6 +672,18 @@ mod tests {
         assert!(lanes.rows.is_empty(), "{:?}", lanes.rows);
         assert_eq!(lanes.elsewhere.reading, 1);
         assert_eq!(lanes.elsewhere.paper_trail, 1);
+    }
+
+    #[test]
+    fn reading_counts_this_weeks_issues_read_or_not() {
+        let mut read = message(&ThreadId::new(), "weekly@lists.example.com", ME, 2);
+        read.list_id = Some("<weekly.lists.example.com>".into());
+        read.flags = MessageFlags::READ;
+        let mut unread = read.clone();
+        unread.thread_id = ThreadId::new();
+        unread.flags = MessageFlags::empty();
+        let lanes = lanes(&[read, unread], &[]);
+        assert_eq!(lanes.elsewhere.reading, 2);
     }
 
     #[test]

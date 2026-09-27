@@ -1,6 +1,5 @@
 ---
 source: crates/web/src/tests.rs
-assertion_line: 972
 expression: summary
 ---
 {
@@ -124,6 +123,7 @@ expression: summary
     "JobData",
     "JobProgressData",
     "JobStatusData",
+    "KindRuleData",
     "Label",
     "LabelCount",
     "LabelId",
@@ -133,6 +133,8 @@ expression: summary
     "LlmOverrideData",
     "LlmOverridesData",
     "LlmStatusSnapshot",
+    "MailKindData",
+    "MailPlaceData",
     "MessageBody",
     "MessageId",
     "MessageMetadata",
@@ -143,6 +145,9 @@ expression: summary
     "NotificationChimesData",
     "OwedReplyHereData",
     "OwedReplyRowData",
+    "PinMessagesBody",
+    "PlaceBundleData",
+    "PlaceMessageData",
     "PromiseDetectionData",
     "PromiseDetectionStatusData",
     "PromiseSourceData",
@@ -184,6 +189,8 @@ expression: summary
     "SendTimeRecommendationData",
     "SendWindowData",
     "SenderEmailReferenceData",
+    "SenderKindBody",
+    "SenderKindData",
     "SenderProfileData",
     "SenderSummaryData",
     "SenderUnansweredQuestionData",
@@ -201,6 +208,9 @@ expression: summary
     "StorageGroupBy",
     "SubscriptionSummary",
     "SuggestedRecipientData",
+    "SweepPlaceBody",
+    "SweepPreviewData",
+    "SweepSenderData",
     "SyncProgressData",
     "TextPlainFormat",
     "Thread",

@@ -684,6 +684,7 @@ mod body_and_invites;
 mod desk;
 mod html_drafts;
 mod mutations_and_delivery;
+mod places;
 mod platform_and_export;
 mod routing_and_search;
 

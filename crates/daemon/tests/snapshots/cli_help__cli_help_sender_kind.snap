@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Move a sender to people, Reading, Paper trail or screened out, for their mail now and later; `auto` hands it back to the automatic rules
+
+Usage: mxr sender kind [OPTIONS] <EMAIL> <KIND>
+
+Arguments:
+  <EMAIL>
+  <KIND>   [possible values: people, reading, paper-trail, screened-out, auto]
+
+Options:
+      --account <ACCOUNT>  The account the sender writes to; defaults to the only or default account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

@@ -205,6 +205,18 @@ impl App {
                                 },
                                 theme,
                             );
+                        } else if let MailboxView::Place(place) = self.mailbox.mailbox_view {
+                            ui::place_lens::draw(
+                                frame,
+                                chunks[1],
+                                &ui::place_lens::PlaceView {
+                                    page: &self.mailbox.place_page,
+                                    place,
+                                    selected_index: self.mailbox.selected_index,
+                                    active_pane: &self.mailbox.active_pane,
+                                },
+                                theme,
+                            );
                         } else if self.mailbox.mailbox_view == MailboxView::Owed {
                             ui::owed_lens::draw(
                                 frame,
@@ -281,6 +293,18 @@ impl App {
                                 chunks[1],
                                 &ui::desk_lens::DeskView {
                                     desk: &self.mailbox.desk_page,
+                                    selected_index: self.mailbox.selected_index,
+                                    active_pane: &self.mailbox.active_pane,
+                                },
+                                theme,
+                            );
+                        } else if let MailboxView::Place(place) = self.mailbox.mailbox_view {
+                            ui::place_lens::draw(
+                                frame,
+                                chunks[1],
+                                &ui::place_lens::PlaceView {
+                                    page: &self.mailbox.place_page,
+                                    place,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                 },
@@ -517,6 +541,15 @@ impl App {
             frame,
             area,
             self.modals.pending_bulk_confirm.as_ref(),
+            theme,
+        );
+
+        // Place overlays: the sweep preview and the "move sender to…" menu.
+        ui::place_lens::draw_sweep_confirm(frame, area, self.mailbox.sweep_confirm.as_ref(), theme);
+        ui::place_lens::draw_sender_kind_menu(
+            frame,
+            area,
+            self.mailbox.sender_kind_menu.as_ref(),
             theme,
         );
 

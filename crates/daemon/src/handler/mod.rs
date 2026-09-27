@@ -33,9 +33,11 @@ mod error;
 mod expert;
 mod helpers;
 mod humanizer;
+mod mail_kind;
 mod mailbox;
 mod mutations;
 mod notifications;
+pub(crate) mod places;
 mod platform;
 mod promises;
 mod relationship_profile;
@@ -1013,8 +1015,13 @@ async fn dispatch(
             mutation: cmd,
             client_correlation_id,
         } => {
-            mutations::start_mutation_job(state.clone(), cmd.clone(), client_correlation_id.clone())
-                .await
+            mutations::start_mutation_job(
+                state.clone(),
+                cmd.clone(),
+                client_correlation_id.clone(),
+                mutations::ChunkGuard::None,
+            )
+            .await
         }
         Request::ListJobs => mutations::list_jobs(state).await,
         Request::GetJob { job_id } => mutations::get_job(state, job_id).await,
@@ -1152,6 +1159,56 @@ async fn dispatch(
         } => desk::dismiss_threads(state, thread_ids, *dry_run).await,
         Request::RestoreDeskThreads { thread_ids } => {
             desk::restore_threads(state, thread_ids).await
+        }
+        Request::ListPlace {
+            place,
+            account_id,
+            sender_email,
+            limit,
+            offset,
+            messages_per_bundle,
+            message_offset,
+        } => {
+            places::list_place(
+                state,
+                *place,
+                account_id.as_ref(),
+                sender_email.as_deref(),
+                places::PlacePage {
+                    limit: *limit,
+                    offset: *offset,
+                    messages_per_bundle: *messages_per_bundle,
+                    message_offset: *message_offset,
+                },
+            )
+            .await
+        }
+        Request::GetMessageKind { message_id } => places::get_message_kind(state, message_id).await,
+        Request::SetSenderKind {
+            account_id,
+            sender_email,
+            kind,
+        } => places::set_sender_kind(state, account_id, sender_email, *kind).await,
+        Request::PinMessages {
+            message_ids,
+            pinned,
+        } => places::pin_messages(state, message_ids, *pinned).await,
+        Request::SweepPlace {
+            place,
+            account_id,
+            sender_email,
+            dry_run,
+            preview_token,
+        } => {
+            places::sweep_place(
+                state,
+                *place,
+                account_id.as_ref(),
+                sender_email.as_deref(),
+                *dry_run,
+                preview_token.as_deref(),
+            )
+            .await
         }
         Request::ArchiveAsk {
             question,
@@ -1501,6 +1558,7 @@ fn request_destructive_action(req: &Request) -> Option<DestructiveAction> {
         Request::Unsubscribe { .. } | Request::UnsubscribePurge { .. } => {
             Some(DestructiveAction::Unsubscribe)
         }
+        Request::SweepPlace { dry_run: false, .. } => Some(DestructiveAction::Archive),
         Request::RedactActivity { .. } => Some(DestructiveAction::RedactActivity),
         Request::PruneActivity { .. } => Some(DestructiveAction::PruneActivity),
         _ => None,
@@ -1616,6 +1674,12 @@ async fn request_account_scope(
         | Request::GetDesk {
             account_id: None, ..
         }
+        | Request::ListPlace {
+            account_id: None, ..
+        }
+        | Request::SweepPlace {
+            account_id: None, ..
+        }
         | Request::ListDeliveries {
             account_id: None, ..
         }
@@ -1666,7 +1730,12 @@ async fn request_account_scope(
         | Request::RecordPromise { message_id, .. } => {
             envelope_account_scope(state, std::slice::from_ref(message_id)).await
         }
-        Request::ListEnvelopesByIds { message_ids } | Request::ListBodies { message_ids } => {
+        Request::GetMessageKind { message_id } => {
+            envelope_account_scope(state, std::slice::from_ref(message_id)).await
+        }
+        Request::ListEnvelopesByIds { message_ids }
+        | Request::ListBodies { message_ids }
+        | Request::PinMessages { message_ids, .. } => {
             envelope_account_scope(state, message_ids).await
         }
         Request::Mutation { mutation, .. } | Request::StartMutationJob { mutation, .. } => {
@@ -1928,6 +1997,9 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ResolveSendFrom { .. }
         | Request::ListOwedReplies { .. }
         | Request::GetDesk { .. }
+        | Request::ListPlace { .. }
+        | Request::GetMessageKind { .. }
+        | Request::SweepPlace { dry_run: true, .. }
         | Request::ListDecisionLog { .. }
         | Request::GetDecision { .. }
         | Request::SendTimeRecommendation { .. }
@@ -1978,6 +2050,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::RemoveAccountConfig { .. }
         | Request::Unsubscribe { .. }
         | Request::UnsubscribePurge { .. }
+        | Request::SweepPlace { dry_run: false, .. }
         | Request::RedactActivity { .. }
         | Request::PruneActivity { .. } => Destructive,
 
@@ -2033,6 +2106,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::SetReplyLater { .. }
         | Request::DismissDeskThreads { .. }
         | Request::RestoreDeskThreads { .. }
+        | Request::SetSenderKind { .. }
+        | Request::PinMessages { .. }
         | Request::SetAutoReminder { .. }
         | Request::CancelAutoReminder { .. }
         | Request::CancelScheduledSend { .. }
@@ -2241,6 +2316,11 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetDesk { .. } => "get_desk",
         Request::DismissDeskThreads { .. } => "dismiss_desk_threads",
         Request::RestoreDeskThreads { .. } => "restore_desk_threads",
+        Request::ListPlace { .. } => "list_place",
+        Request::GetMessageKind { .. } => "get_message_kind",
+        Request::SetSenderKind { .. } => "set_sender_kind",
+        Request::PinMessages { .. } => "pin_messages",
+        Request::SweepPlace { .. } => "sweep_place",
         Request::ArchiveAsk { .. } => "archive_ask",
         Request::ListDecisionLog { .. } => "list_decision_log",
         Request::GetDecision { .. } => "get_decision",
@@ -2316,6 +2396,8 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::SearchAggregation { account_id, .. }
         | Request::ListSubscriptions { account_id, .. }
         | Request::GetDesk { account_id, .. }
+        | Request::ListPlace { account_id, .. }
+        | Request::SweepPlace { account_id, .. }
         | Request::ListInvites { account_id, .. }
         | Request::BackfillCalendarInvites { account_id }
         | Request::ListDeliveries { account_id, .. }
@@ -2349,7 +2431,8 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListCadenceDrift { account_id }
         | Request::GetRecipientBriefing { account_id, .. }
         | Request::GetUserVoice { account_id }
-        | Request::RebuildUserVoice { account_id } => Some(account_id),
+        | Request::RebuildUserVoice { account_id }
+        | Request::SetSenderKind { account_id, .. } => Some(account_id),
         Request::DraftCompose { account_id, .. } => account_id.as_ref(),
         Request::DraftEval { account_id, .. } => account_id.as_ref(),
         Request::SetSignatureDefault { account_id, .. }

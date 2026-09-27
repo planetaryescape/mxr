@@ -42,6 +42,8 @@ impl App {
             );
         }
         items.push(SidebarItem::Desk);
+        items.push(SidebarItem::Reading);
+        items.push(SidebarItem::PaperTrail);
         items.push(SidebarItem::AllMail);
         items.push(SidebarItem::Subscriptions);
         items.push(SidebarItem::Owed);
@@ -113,6 +115,10 @@ impl App {
             subscription_count: self.mailbox.subscriptions_page.entries.len(),
             desk_active: self.mailbox.mailbox_view == MailboxView::Desk,
             desk_count: self.mailbox.desk_page.work_count(),
+            reading_active: self.mailbox.mailbox_view
+                == MailboxView::Place(mxr_protocol::MailPlaceData::Reading),
+            paper_trail_active: self.mailbox.mailbox_view
+                == MailboxView::Place(mxr_protocol::MailPlaceData::PaperTrail),
             owed_active: self.mailbox.mailbox_view == MailboxView::Owed,
             owed_count: self.mailbox.owed_page.entries.len(),
             calendar_invites_active: self.mailbox.mailbox_view == MailboxView::CalendarInvites,
@@ -145,6 +151,8 @@ impl App {
             SidebarItem::AllMail => SidebarSelectionKey::AllMail,
             SidebarItem::Subscriptions => SidebarSelectionKey::Subscriptions,
             SidebarItem::Desk => SidebarSelectionKey::Desk,
+            SidebarItem::Reading => SidebarSelectionKey::Reading,
+            SidebarItem::PaperTrail => SidebarSelectionKey::PaperTrail,
             SidebarItem::Owed => SidebarSelectionKey::Owed,
             SidebarItem::CalendarInvites => SidebarSelectionKey::CalendarInvites,
             SidebarItem::Label(label) => SidebarSelectionKey::Label(label.id),
@@ -162,6 +170,8 @@ impl App {
                 (SidebarItem::AllMail, SidebarSelectionKey::AllMail) => true,
                 (SidebarItem::Subscriptions, SidebarSelectionKey::Subscriptions) => true,
                 (SidebarItem::Desk, SidebarSelectionKey::Desk) => true,
+                (SidebarItem::Reading, SidebarSelectionKey::Reading) => true,
+                (SidebarItem::PaperTrail, SidebarSelectionKey::PaperTrail) => true,
                 (SidebarItem::Owed, SidebarSelectionKey::Owed) => true,
                 (SidebarItem::CalendarInvites, SidebarSelectionKey::CalendarInvites) => true,
                 (SidebarItem::Label(label), SidebarSelectionKey::Label(label_id)) => {
@@ -249,6 +259,12 @@ impl App {
             Some(SidebarItem::AllMail) => Some(Action::GoToAllMail),
             Some(SidebarItem::Subscriptions) => Some(Action::OpenSubscriptions),
             Some(SidebarItem::Desk) => Some(Action::OpenDesk),
+            Some(SidebarItem::Reading) => {
+                Some(Action::OpenPlace(mxr_protocol::MailPlaceData::Reading))
+            }
+            Some(SidebarItem::PaperTrail) => {
+                Some(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail))
+            }
             Some(SidebarItem::Owed) => Some(Action::OpenOwedReplies),
             Some(SidebarItem::CalendarInvites) => Some(Action::OpenCalendarInvites),
             Some(SidebarItem::Label(label)) => Some(Action::SelectLabel(label.id)),
@@ -278,6 +294,8 @@ impl App {
                 | SidebarItem::AllMail
                 | SidebarItem::Subscriptions
                 | SidebarItem::Desk
+                | SidebarItem::Reading
+                | SidebarItem::PaperTrail
                 | SidebarItem::Owed
                 | SidebarItem::CalendarInvites,
             )

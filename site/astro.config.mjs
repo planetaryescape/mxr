@@ -61,6 +61,7 @@ export default defineConfig({
           label: 'Daily Use',
           items: [
             { label: 'The Desk', slug: 'guides/desk' },
+            { label: 'Reading and Paper Trail', slug: 'guides/reading-and-paper-trail' },
             { label: 'Mailbox Workflow', slug: 'guides/mailbox' },
             { label: 'Triage Flow', slug: 'guides/triage-flow' },
             { label: 'Unsubscribe', slug: 'guides/unsubscribe' },

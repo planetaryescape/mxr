@@ -443,6 +443,8 @@ pub struct AppState {
     /// classification; handlers refresh it after every mutation through
     /// `account_addresses`. See Slice 8 in the analytics plan.
     pub account_addresses: Arc<mxr_core::types::InMemoryAccountAddressLookup>,
+    /// Sweep dry runs waiting to be committed, by preview token.
+    pub(crate) sweep_previews: crate::handler::places::SweepPreviews,
     runtime: RwLock<ProviderRuntime>,
     provider_operation_locks: ParkingMutex<HashMap<AccountId, Arc<TokioMutex<()>>>>,
     sync_loop_accounts: ParkingMutex<HashSet<AccountId>>,
@@ -731,6 +733,7 @@ impl AppState {
             llm,
             sync_engine,
             account_addresses,
+            sweep_previews: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
                 providers: provider_setup.providers,
                 send_providers: provider_setup.send_providers,
@@ -1851,6 +1854,7 @@ impl AppState {
             llm,
             sync_engine,
             account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
+            sweep_previews: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
                 providers,
                 send_providers,
@@ -1921,6 +1925,7 @@ impl AppState {
             llm,
             sync_engine,
             account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
+            sweep_previews: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
                 providers: HashMap::new(),
                 send_providers: HashMap::new(),
@@ -2017,6 +2022,7 @@ impl AppState {
                 llm,
                 sync_engine,
                 account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
+                sweep_previews: Default::default(),
                 runtime: RwLock::new(ProviderRuntime {
                     providers,
                     send_providers,

@@ -3,34 +3,36 @@ use super::*;
 
 impl App {
     pub(super) fn apply_mutation_action(&mut self, action: Action) {
-        // On the desk list, verbs act on the desk row under the cursor (its
-        // account and every message of its thread), never on whatever the
-        // mailbox or reader showed last.
-        if self.desk_list_focused() {
-            match action {
-                // Archive on a thread you wrote last is "done waiting":
-                // there is nothing in the inbox for archive to remove.
-                Action::Archive if self.done_waiting_on_selected_desk_row() => return,
-                Action::Archive
-                | Action::Star
-                | Action::Trash
-                | Action::Spam
-                | Action::MarkRead
-                | Action::MarkUnread
-                | Action::MarkReadAndArchive => {}
+        // On the desk and in a place, verbs act on the row under the cursor
+        // (a desk row's account and whole thread, a place's one message),
+        // never on whatever the mailbox or reader showed last. Verbs that
+        // need more than a row ask to open it.
+        let row_lens_hint = if self.desk_list_focused() {
+            // Archive on a thread you wrote last is "done waiting": there is
+            // nothing in the inbox for archive to remove.
+            if action == Action::Archive && self.done_waiting_on_selected_desk_row() {
+                return;
+            }
+            Some("Open the conversation (Enter) to do that from the desk")
+        } else if self.place_list_focused() {
+            Some("Open the message (Enter) to do that from here")
+        } else {
+            None
+        };
+        if let Some(hint) = row_lens_hint {
+            if matches!(
+                action,
                 Action::ApplyLabel
-                | Action::MoveToLabel
-                | Action::RouteToLabel
-                | Action::Unsubscribe
-                | Action::Snooze
-                | Action::ToggleSelect
-                | Action::VisualLineMode
-                | Action::PatternSelect(_) => {
-                    self.status_message =
-                        Some("Open the conversation (Enter) to do that from the desk".into());
-                    return;
-                }
-                _ => {}
+                    | Action::MoveToLabel
+                    | Action::RouteToLabel
+                    | Action::Unsubscribe
+                    | Action::Snooze
+                    | Action::ToggleSelect
+                    | Action::VisualLineMode
+                    | Action::PatternSelect(_)
+            ) {
+                self.status_message = Some(hint.into());
+                return;
             }
         }
         match action {
@@ -138,21 +140,44 @@ impl App {
                     self.status_message =
                         Some(mxr_core::i18n::EN.status.invite_cancelled.to_string());
                 } else if let Some(undo) = self.take_pending_undo() {
-                    self.queue_mutation(
-                        Request::UndoMutation {
-                            mutation_id: undo.mutation_id,
-                        },
-                        // RefreshList re-fetches the active label so the
-                        // restored message reappears in the visible list.
-                        // Status reads "Undoing..." until the daemon
-                        // acknowledges and completes the refresh.
-                        MutationEffect::RefreshList,
-                        format!(
-                            "Undoing {} {}...",
-                            undo.verb_past.to_lowercase(),
-                            undo.count
-                        ),
+                    // A batch job (a sweep) left one undo per chunk; each
+                    // chunk touched different messages, so order is free.
+                    // RefreshList re-fetches the active label so restored
+                    // messages reappear; the status reads "Undoing..." until
+                    // the daemon acknowledges.
+                    let status = format!(
+                        "Undoing {} {}...",
+                        undo.verb_past.to_lowercase(),
+                        undo.count
                     );
+                    match undo.action {
+                        UndoAction::Mutations(mutation_ids) => {
+                            for mutation_id in mutation_ids {
+                                self.queue_mutation(
+                                    Request::UndoMutation { mutation_id },
+                                    MutationEffect::RefreshList,
+                                    status.clone(),
+                                );
+                            }
+                        }
+                        // Setting the previous kind again is the undo; its
+                        // own answer offers no further undo.
+                        UndoAction::SenderKind {
+                            account_id,
+                            sender_email,
+                            previous,
+                        } => {
+                            self.queue_mutation(
+                                Request::SetSenderKind {
+                                    account_id,
+                                    sender_email,
+                                    kind: previous,
+                                },
+                                MutationEffect::RefreshPlaces("Sender moved back".into()),
+                                status,
+                            );
+                        }
+                    }
                 } else {
                     self.status_message =
                         Some("Nothing to undo (window expired or no recent mutation)".into());
@@ -169,6 +194,12 @@ impl App {
                         .flatten()
                     {
                         !row.starred
+                    } else if let Some((_, message)) = self
+                        .place_list_focused()
+                        .then(|| self.selected_place_row())
+                        .flatten()
+                    {
+                        !message.starred
                     } else if ids.len() == 1 {
                         if let Some(env) = self.context_envelope() {
                             !env.flags.contains(MessageFlags::STARRED)

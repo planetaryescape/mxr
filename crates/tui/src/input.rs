@@ -31,8 +31,9 @@ impl InputHandler {
         }
     }
 
+    /// A chord prefix is waiting and has not timed out.
     pub fn is_pending(&self) -> bool {
-        matches!(self.state, KeyState::WaitingForSecond { .. })
+        matches!(self.state, KeyState::WaitingForSecond { deadline, .. } if Instant::now() <= deadline)
     }
 
     /// First key of an in-progress multi-key chord, if any. Lets the
@@ -141,6 +142,23 @@ impl InputHandler {
             {
                 self.state = KeyState::Normal;
                 Some(Action::OpenAnalyticsScreen)
+            }
+            // g r / g p: Reading and Paper trail.
+            (
+                KeyState::WaitingForSecond { first: 'g', .. },
+                KeyCode::Char('r'),
+                KeyModifiers::NONE,
+            ) => {
+                self.state = KeyState::Normal;
+                Some(Action::OpenPlace(mxr_protocol::MailPlaceData::Reading))
+            }
+            (
+                KeyState::WaitingForSecond { first: 'g', .. },
+                KeyCode::Char('p'),
+                KeyModifiers::NONE,
+            ) => {
+                self.state = KeyState::Normal;
+                Some(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail))
             }
             // g h: the desk, the home of what needs you. `g d` stays Drafts.
             (
@@ -399,6 +417,21 @@ mod tests {
         assert_eq!(
             input.handle_key(key(KeyCode::Char('d'))),
             Some(Action::GoToDrafts)
+        );
+    }
+
+    #[test]
+    fn chord_g_then_r_or_p_opens_reading_or_paper_trail() {
+        let mut input = InputHandler::new();
+        let _ = input.handle_key(key(KeyCode::Char('g')));
+        assert_eq!(
+            input.handle_key(key(KeyCode::Char('r'))),
+            Some(Action::OpenPlace(mxr_protocol::MailPlaceData::Reading))
+        );
+        let _ = input.handle_key(key(KeyCode::Char('g')));
+        assert_eq!(
+            input.handle_key(key(KeyCode::Char('p'))),
+            Some(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail))
         );
     }
 

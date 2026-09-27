@@ -1591,6 +1591,54 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        let place_fetches = app
+            .mailbox
+            .pending_place_refresh
+            .take()
+            .map(|place| app.mailbox.place_page.refresh_fetch(place))
+            .into_iter()
+            .chain(app.mailbox.pending_place_more.take());
+        for fetch in place_fetches {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, place_request(&fetch)).await;
+                let result = match resp {
+                    Ok(Response::Ok { data }) => crate::app::PlacePageState::from_response(data)
+                        .ok_or_else(|| MxrError::Ipc("unexpected response to ListPlace".into())),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                };
+                AsyncResult::Place(fetch, result)
+            });
+        }
+
+        if let Some(target) = app.mailbox.pending_sweep_preview.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, sweep_request(&target, true, None)).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::PlaceSwept { preview, .. },
+                    }) => Ok(crate::app::PendingSweepConfirm {
+                        target,
+                        preview,
+                        shown: 0,
+                    }),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Ok(_) => Err(MxrError::Ipc("unexpected response to SweepPlace".into())),
+                    Err(e) => Err(e),
+                };
+                AsyncResult::SweepPreview(result)
+            });
+        }
+
+        if let Some(confirm) = app.mailbox.pending_sweep.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                AsyncResult::PlaceSwept(run_sweep(&bg, confirm).await)
+            });
+        }
+
         if app.mailbox.pending_calendar_invites_refresh {
             app.mailbox.pending_calendar_invites_refresh = false;
             let bg = bg.clone();
@@ -1972,7 +2020,7 @@ pub async fn run() -> anyhow::Result<()> {
                         if let Some(daemon_mutation_id) = result.mutation_id.clone() {
                             let _ =
                                 result_tx_inner.send(AsyncResult::UndoCaptured(app::PendingUndo {
-                                    mutation_id: daemon_mutation_id,
+                                    action: app::UndoAction::Mutations(vec![daemon_mutation_id]),
                                     verb_past: verb.into(),
                                     count: result.succeeded,
                                     applied_at: std::time::Instant::now(),
@@ -1988,8 +2036,34 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(effect),
                     Ok(Response::Ok {
                         data:
+                            ResponseData::SenderKindSet {
+                                account_id,
+                                sender_email,
+                                previous,
+                                ..
+                            },
+                    }) => {
+                        // A user's move offers undo; the undo itself does not.
+                        if matches!(effect, app::MutationEffect::SenderMoved(_)) {
+                            let _ =
+                                result_tx_inner.send(AsyncResult::UndoCaptured(app::PendingUndo {
+                                    action: app::UndoAction::SenderKind {
+                                        account_id,
+                                        sender_email,
+                                        previous,
+                                    },
+                                    verb_past: "Moved sender".into(),
+                                    count: 1,
+                                    applied_at: std::time::Instant::now(),
+                                }));
+                        }
+                        Ok(effect)
+                    }
+                    Ok(Response::Ok {
+                        data:
                             ResponseData::DeskThreadsDismissed { .. }
-                            | ResponseData::DeskThreadsRestored { .. },
+                            | ResponseData::DeskThreadsRestored { .. }
+                            | ResponseData::MessagesPinned { .. },
                     }) => Ok(effect),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
@@ -2871,8 +2945,9 @@ pub async fn run() -> anyhow::Result<()> {
                                         app.mailbox.pending_calendar_invites_refresh = true;
                                     }
                                     // Any completed mutation can move a thread
-                                    // on or off the desk (archive, reply, snooze).
-                                    app.mailbox.pending_desk_refresh = true;
+                                    // on or off the desk or a place (archive,
+                                    // reply, snooze).
+                                    app.refresh_places();
                                 }
                                 Err(e) => {
                                     if app.should_retry_mutation_failure(&e) {
@@ -2993,6 +3068,21 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::OwedReplies(Err(e)) => {
                             app.status_message = Some(format!("Owed replies error: {e}"));
+                        }
+                        AsyncResult::Place(fetch, Ok(page)) => app.set_place(&fetch, page),
+                        AsyncResult::Place(_, Err(e)) => {
+                            app.status_message = Some(format!("Couldn't load the place: {e}"));
+                        }
+                        AsyncResult::SweepPreview(Ok(confirm)) => app.show_sweep_preview(confirm),
+                        AsyncResult::SweepPreview(Err(e)) => {
+                            app.status_message = Some(format!("Couldn't preview the sweep: {e}"));
+                        }
+                        AsyncResult::PlaceSwept(Ok((archived, undo_ids))) => {
+                            app.finish_sweep(archived, undo_ids);
+                        }
+                        AsyncResult::PlaceSwept(Err(e)) => {
+                            app.refresh_places();
+                            app.status_message = Some(format!("Sweep stopped: {e}"));
                         }
                         AsyncResult::Desk(Ok(desk)) => app.set_desk(desk),
                         AsyncResult::Desk(Err(e)) => {
@@ -3243,6 +3333,118 @@ pub async fn run() -> anyhow::Result<()> {
 
     ratatui::restore();
     Ok(())
+}
+
+/// How often a sweep checks on its archive job.
+const SWEEP_JOB_POLL: std::time::Duration = std::time::Duration::from_millis(300);
+
+pub(crate) fn place_request(fetch: &crate::app::PlaceFetch) -> Request {
+    use crate::app::{PlaceFetch, PLACE_PAGE_MESSAGES, PLACE_PAGE_SENDERS};
+    match fetch {
+        PlaceFetch::Refresh {
+            place,
+            senders,
+            messages_per_sender,
+        } => Request::ListPlace {
+            place: *place,
+            account_id: None,
+            sender_email: None,
+            limit: *senders,
+            offset: 0,
+            messages_per_bundle: *messages_per_sender,
+            message_offset: 0,
+        },
+        PlaceFetch::MoreSenders { place, offset } => Request::ListPlace {
+            place: *place,
+            account_id: None,
+            sender_email: None,
+            limit: PLACE_PAGE_SENDERS,
+            offset: *offset,
+            messages_per_bundle: PLACE_PAGE_MESSAGES,
+            message_offset: 0,
+        },
+        PlaceFetch::MoreFromSender {
+            place,
+            account_id,
+            sender_email,
+            message_offset,
+        } => Request::ListPlace {
+            place: *place,
+            account_id: Some(account_id.clone()),
+            sender_email: Some(sender_email.clone()),
+            limit: 1,
+            offset: 0,
+            messages_per_bundle: PLACE_PAGE_MESSAGES,
+            message_offset: *message_offset,
+        },
+    }
+}
+
+pub(crate) fn sweep_request(
+    target: &crate::app::SweepTarget,
+    dry_run: bool,
+    preview_token: Option<String>,
+) -> Request {
+    Request::SweepPlace {
+        place: target.place,
+        account_id: target.account_id.clone(),
+        sender_email: target.sender_email.clone(),
+        dry_run,
+        preview_token,
+    }
+}
+
+/// Run a confirmed sweep over exactly its preview, and wait for the archive
+/// job so undo can cover every chunk it archived.
+async fn run_sweep(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    confirm: crate::app::PendingSweepConfirm,
+) -> Result<(u32, Vec<String>), MxrError> {
+    let request = sweep_request(
+        &confirm.target,
+        false,
+        confirm.preview.preview_token.clone(),
+    );
+    let mut job = match ipc_call(bg, request).await? {
+        Response::Ok {
+            data: ResponseData::PlaceSwept { job: Some(job), .. },
+        } => job,
+        Response::Ok {
+            data: ResponseData::PlaceSwept { job: None, .. },
+        } => return Ok((0, Vec::new())),
+        Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
+        Response::Ok { .. } => {
+            return Err(MxrError::Ipc("unexpected response to SweepPlace".into()))
+        }
+    };
+    while matches!(
+        job.status,
+        mxr_protocol::JobStatusData::Queued | mxr_protocol::JobStatusData::Running
+    ) {
+        tokio::time::sleep(SWEEP_JOB_POLL).await;
+        job = match ipc_call(
+            bg,
+            Request::GetJob {
+                job_id: job.job_id.clone(),
+            },
+        )
+        .await?
+        {
+            Response::Ok {
+                data: ResponseData::Job { job },
+            } => job,
+            Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
+            Response::Ok { .. } => {
+                return Err(MxrError::Ipc("unexpected response to GetJob".into()))
+            }
+        };
+    }
+    match job.error {
+        // Part of it may have landed: keep its undo reachable by reporting
+        // what succeeded rather than failing outright.
+        Some(error) if job.progress.succeeded == 0 => Err(MxrError::Ipc(error)),
+        _ => Ok((job.progress.succeeded, job.undo_ids)),
+    }
 }
 
 /// The desk request the TUI sends: every account, the daemon's default

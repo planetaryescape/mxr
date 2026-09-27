@@ -1137,7 +1137,7 @@ fn pending_undo_toast_renders_within_window_then_clears() {
     let mut app = App::new();
     let t0 = std::time::Instant::now();
     app.set_pending_undo(PendingUndo {
-        mutation_id: "01HVTEST".into(),
+        action: crate::app::UndoAction::Mutations(vec!["01HVTEST".into()]),
         verb_past: "Archived".into(),
         count: 15,
         applied_at: t0,
@@ -1175,14 +1175,17 @@ fn take_pending_undo_returns_and_clears() {
     use crate::app::PendingUndo;
     let mut app = App::new();
     app.set_pending_undo(PendingUndo {
-        mutation_id: "M1".into(),
+        action: crate::app::UndoAction::Mutations(vec!["M1".into()]),
         verb_past: "Trashed".into(),
         count: 1,
         applied_at: std::time::Instant::now(),
     });
 
     let taken = app.take_pending_undo().expect("must yield handle");
-    assert_eq!(taken.mutation_id, "M1");
+    assert_eq!(
+        taken.action,
+        crate::app::UndoAction::Mutations(vec!["M1".to_string()])
+    );
     assert!(
         app.pending_undo.is_none(),
         "second `u` must not see a handle"

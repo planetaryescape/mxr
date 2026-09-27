@@ -319,6 +319,8 @@ fn sidebar_snapshot() {
                 subscription_count: 2,
                 desk_active: false,
                 desk_count: 3,
+                reading_active: false,
+                paper_trail_active: false,
                 owed_active: false,
                 owed_count: 0,
                 calendar_invites_active: false,

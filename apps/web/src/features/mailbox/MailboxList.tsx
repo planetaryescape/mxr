@@ -165,6 +165,66 @@ export function MailboxList({
     if (last.index >= flat.length - 10) onLoadMore();
   }, [flat.length, hasMore, loadingMore, onLoadMore, virtualItems]);
 
+  // Opening or closing the reader changes the list's width, rows reflow
+  // and re-measure, and the virtualizer's offsets shift. Keep the cursor
+  // row where it was on screen so returning from the reader lands the user
+  // exactly where they left.
+  const focusedDomIdRef = useRef<string | null>(null);
+  focusedDomIdRef.current = focusedRow ? domId(focusedRow) : null;
+  const anchorRef = useRef<{ id: string; top: number } | null>(null);
+  const captureAnchor = useCallback(() => {
+    const list = scrollRef.current;
+    const id = focusedDomIdRef.current;
+    const row = id ? document.getElementById(id) : null;
+    anchorRef.current =
+      list && id && row
+        ? { id, top: row.getBoundingClientRect().top - list.getBoundingClientRect().top }
+        : null;
+  }, []);
+  useEffect(() => {
+    requestAnimationFrame(captureAnchor);
+  }, [captureAnchor, focusedId]);
+  useEffect(() => {
+    const list = scrollRef.current;
+    if (!list || typeof ResizeObserver === "undefined") return;
+    let width = list.clientWidth;
+    let settling = 0;
+    const observer = new ResizeObserver(() => {
+      if (list.clientWidth === width) return;
+      width = list.clientWidth;
+      const anchor = anchorRef.current;
+      if (!anchor) return;
+      cancelAnimationFrame(settling);
+      // Rows re-measure over the next frames; put the row back each time.
+      let frames = 0;
+      const settle = () => {
+        const row = document.getElementById(anchor.id);
+        if (row) {
+          const top = row.getBoundingClientRect().top - list.getBoundingClientRect().top;
+          list.scrollTop += top - anchor.top;
+        }
+        frames += 1;
+        if (frames < 6) {
+          settling = requestAnimationFrame(settle);
+        } else {
+          settling = 0;
+          anchorRef.current = anchor;
+        }
+      };
+      settling = requestAnimationFrame(settle);
+    });
+    const onScroll = () => {
+      if (!settling) captureAnchor();
+    };
+    observer.observe(list);
+    list.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(settling);
+      observer.disconnect();
+      list.removeEventListener("scroll", onScroll);
+    };
+  }, [captureAnchor]);
+
   const scrollToRow = useCallback(
     (row: MessageRowView | undefined, align: "auto" | "start" | "center" | "end" = "auto") => {
       const index = row ? flatIndexById.get(rowKey(row)) : undefined;

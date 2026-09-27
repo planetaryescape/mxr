@@ -20,7 +20,10 @@ import { performMailAction } from "@/features/mail-actions/mailMutations";
 import { createMailVerbs, type MailVerbHooks } from "@/features/mail-actions/mailVerbs";
 import { rowMessageIds } from "@/features/mail-actions/pendingMailOps";
 import { targetFromRows, type MailTarget } from "@/features/mail-actions/target";
+import { SwipeLayer, useRowSwipe, type SwipeLayerHandle } from "@/features/swipe/RowSwipe";
+import type { SwipeMap } from "@/features/swipe/swipeRules";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
+import { notePointerUse } from "@/lib/actions/keyHints";
 import { useScopeController } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useSelection } from "@/state/selectionStore";
@@ -60,6 +63,8 @@ export interface MailboxListProps {
   airyHeaders?: boolean;
   /** Handle part of a verb this list's own way (see `MailVerbHooks.intercept`). */
   interceptVerb?: MailVerbHooks["intercept"];
+  /** What a touch swipe does on a row, when it differs from archive, trash, snooze. */
+  swipeActions?: (row: MessageRowView) => SwipeMap;
 }
 
 export interface RowRenderState {
@@ -73,6 +78,17 @@ export interface RowRenderState {
 type FlatItem =
   | { kind: "header"; id: string; group: MessageGroupView }
   | { kind: "row"; row: MessageRowView };
+
+const DEFAULT_SWIPE: SwipeMap = { right: "archive", rightLong: "trash", left: "snooze" };
+
+/** The registry action each row button stands for, for key hints. */
+const QUICK_ACTION_IDS: Record<RowQuickAction, (row: MessageRowView) => string> = {
+  archive: () => "mail.archive",
+  trash: () => "mail.trash",
+  toggleRead: (row) => (row.unread ? "mail.mark-read" : "mail.mark-unread"),
+  toggleStar: () => "mail.star",
+  snooze: () => "mail.snooze",
+};
 
 function flatten(groups: MessageGroupView[]): FlatItem[] {
   const items: FlatItem[] = [];
@@ -108,6 +124,7 @@ export function MailboxList({
   renderRow,
   airyHeaders = false,
   interceptVerb,
+  swipeActions,
 }: MailboxListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const density = useUiPrefs((s) => s.density);
@@ -416,6 +433,7 @@ export function MailboxList({
 
   const onQuickAction = useCallback((row: MessageRowView, action: RowQuickAction) => {
     const ids = rowMessageIds(row);
+    notePointerUse(QUICK_ACTION_IDS[action](row));
     switch (action) {
       case "archive":
         void performMailAction("archive", ids);
@@ -442,6 +460,38 @@ export function MailboxList({
   useLayoutEffect(() => {
     rowsRef.current = { rows, rowIndexById };
   }, [rowIndexById, rows]);
+  // Touch swipe acts on the row under the finger, through the same verbs
+  // (and so the same intercepts, confirmation and undo) as the keys.
+  const swipeLayerRef = useRef<SwipeLayerHandle>(null);
+  useRowSwipe(
+    scrollRef,
+    {
+      rowSelector: '[role="option"]',
+      layer: swipeLayerRef,
+      resolve: (element) => {
+        if (readOnly) return null;
+        const { rows: current, rowIndexById: indexById } = rowsRef.current;
+        const index = indexById.get(element.id.replace(/^mail-row-/, ""));
+        const row = index === undefined ? undefined : current[index];
+        if (!row) return null;
+        return {
+          actions: swipeActions?.(row) ?? DEFAULT_SWIPE,
+          commit: (action) => {
+            const rowVerbs = createMailVerbs({
+              getTarget: () => targetFromRows([row], "list"),
+              composeSurface: "overlay",
+              intercept: interceptVerb,
+            });
+            if (action === "archive" || action === "done") rowVerbs.archive?.();
+            else if (action === "trash") rowVerbs.trash?.();
+            else if (action === "snooze") rowVerbs.snooze?.();
+          },
+        };
+      },
+    },
+    rows.length > 0,
+  );
+
   const onToggleSelection = useCallback((row: MessageRowView, shift: boolean) => {
     const selection = useSelection.getState();
     const { rows: current, rowIndexById: indexById } = rowsRef.current;
@@ -479,12 +529,13 @@ export function MailboxList({
         aria-multiselectable={!readOnly}
         aria-activedescendant={focusedRow ? domId(focusedRow) : undefined}
         tabIndex={0}
-        className="min-h-0 flex-1 overflow-y-auto outline-none"
+        className="min-h-0 flex-1 overflow-y-auto outline-none [touch-action:pan-y_pinch-zoom]"
         data-active-pane={listFocused ? "true" : undefined}
         data-testid="mailbox-list"
         onFocus={() => setActivePane("mailbox")}
         onMouseDown={() => setActivePane("mailbox")}
       >
+        <SwipeLayer ref={swipeLayerRef} />
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualItems.map((virtualItem) => {
             const item = flat[virtualItem.index];

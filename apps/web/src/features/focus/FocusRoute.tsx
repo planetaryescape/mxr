@@ -16,7 +16,8 @@ import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { targetFromThread } from "@/features/mail-actions/target";
 import type { ThreadResponse } from "@/features/mailbox/types";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
-import { runCommand, useScopeController } from "@/lib/keys/controllers";
+import { runPointerCommand } from "@/lib/actions/keyHints";
+import { useScopeController } from "@/lib/keys/controllers";
 import { ownsKeyboard } from "@/lib/keys/dispatcher";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
@@ -240,7 +241,7 @@ export function FocusRoute({ from, lane }: { from?: string; lane?: "owed" }) {
                 </button>
               ) : null}
             </div>
-            <FocusKeys disabled={!current} run={(command) => runCommand("focus", command)} />
+            <FocusKeys disabled={!current} run={(command) => runPointerCommand("focus", command)} />
           </section>
         </div>
       )}

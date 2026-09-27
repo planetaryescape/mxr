@@ -9,7 +9,18 @@
   "rules": {
     "no-console": ["warn", { "allow": ["warn", "error", "info"] }],
     "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
-    "react/react-in-jsx-scope": "off"
+    "react/react-in-jsx-scope": "off",
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@phosphor-icons/*", "react-icons", "react-icons/*", "@heroicons/*", "@tabler/*"],
+            "message": "One icon family: use lucide-react."
+          }
+        ]
+      }
+    ]
   },
   "ignorePatterns": ["dist", "node_modules", "src/api/generated.ts", "src/routeTree.gen.ts"]
 }

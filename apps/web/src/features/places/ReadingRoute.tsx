@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button";
 import { fetchThread } from "@/features/mailbox/api";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
+import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { MessageContent } from "@/features/thread/MessageCard";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
+import { notePointerUse } from "@/lib/actions/keyHints";
 import { formatLongDate, formatRelative, plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
 import { cn } from "@/lib/utils";
@@ -27,6 +29,7 @@ import {
   placeMessageRow,
   togglePin,
 } from "./placeVerbs";
+import { SweptClear } from "./SweptClear";
 import { usePlace } from "./usePlace";
 
 /** Issues fetched per sender; the feed shows the newest across senders. */
@@ -48,6 +51,7 @@ export function ReadingRoute() {
     [issues],
   );
   const senders = place.totalBundles;
+  const lowTide = useLowTide("reading", status.isLoading || status.isError, issues.length > 0);
   return (
     <PlaceLayout basePath="/reading" label="Reading" threadIds={threadIds} wideReader>
       <PlaceHeader
@@ -62,7 +66,10 @@ export function ReadingRoute() {
             <Button
               variant="outline"
               size="xs"
-              onClick={() => openSweep("reading", place.accountId)}
+              onClick={() => {
+                openSweep("reading", place.accountId);
+                notePointerUse("place.sweep-all");
+              }}
             >
               Sweep all <KeyChip className="ml-1 h-4 px-1">S</KeyChip>
             </Button>
@@ -82,6 +89,8 @@ export function ReadingRoute() {
             </Button>
           }
         />
+      ) : issues.length === 0 && lowTide ? (
+        <SweptClear place="Reading" />
       ) : issues.length === 0 ? (
         <Centered
           icon={<Newspaper className="size-6" />}

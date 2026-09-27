@@ -18,6 +18,7 @@ import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { createMailVerbs, type MailVerbHooks } from "@/features/mail-actions/mailVerbs";
 import type { MailTarget } from "@/features/mail-actions/target";
+import { notePointerCommand } from "@/lib/actions/keyHints";
 import { plural } from "@/lib/format";
 import { useSelection } from "@/state/selectionStore";
 
@@ -65,7 +66,7 @@ export function BulkActionBar({
     <div
       role="toolbar"
       aria-label="Selected conversations"
-      className="absolute inset-x-3 bottom-3 z-10 flex flex-wrap items-center gap-1 rounded-lg border border-border-strong bg-popover/95 p-1.5 shadow-xl backdrop-blur"
+      className="absolute inset-x-3 bottom-3 z-10 flex flex-wrap items-center gap-1 rounded-lg border border-border-strong bg-popover p-1.5 shadow-xl"
     >
       <span className="px-2 text-[13px]">
         <span className="font-semibold">{plural(selected.length, "conversation")}</span>
@@ -86,7 +87,10 @@ export function BulkActionBar({
           size="sm"
           className="h-8 gap-1.5 px-2 text-[13px]"
           title={`${button.label} (${button.keys})`}
-          onClick={() => verbs[button.command]?.()}
+          onClick={() => {
+            verbs[button.command]?.();
+            notePointerCommand("list", button.command);
+          }}
         >
           <button.Icon className="size-3.5" />
           <span className="hidden @3xl:inline">{button.label}</span>

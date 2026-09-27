@@ -431,7 +431,36 @@ fn desk_with(rows: Vec<mxr_protocol::DeskRowData>) -> crate::app::DeskPageState 
         ],
         elsewhere: Default::default(),
         loaded: true,
+        low_tide: false,
     }
+}
+
+/// Clearing the desk earns one calm line; a desk that was already empty
+/// (or never loaded) doesn't.
+#[test]
+fn clearing_the_desk_says_low_tide_once() {
+    use mxr_protocol::DeskLaneKind;
+    let mut app = App::new();
+    app.apply(Action::OpenDesk);
+    app.set_desk(desk_with(vec![]));
+    assert!(
+        !app.mailbox.desk_page.low_tide,
+        "empty from the start is not earned"
+    );
+
+    app.set_desk(desk_with(vec![desk_row(DeskLaneKind::Owed)]));
+    app.status_message = None;
+    app.set_desk(desk_with(vec![]));
+    assert!(app.mailbox.desk_page.low_tide);
+    assert_eq!(app.status_message.as_deref(), Some(crate::app::LOW_TIDE));
+
+    app.status_message = None;
+    app.set_desk(desk_with(vec![]));
+    assert!(
+        app.mailbox.desk_page.low_tide,
+        "it stays low tide while clear"
+    );
+    assert_eq!(app.status_message, None, "the status line says it once");
 }
 
 /// One cursor walks every lane; Enter opens the row's message and Esc comes

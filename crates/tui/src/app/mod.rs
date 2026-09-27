@@ -12,6 +12,9 @@ mod focus_run;
 mod input;
 mod mailbox_actions;
 mod mailbox_helpers;
+
+/// The one line a cleared desk or reply queue earns: calm, no animation.
+pub(crate) const LOW_TIDE: &str = "Low tide. Nobody's waiting on you.";
 mod message_actions;
 mod modal_actions;
 mod mutation_actions;

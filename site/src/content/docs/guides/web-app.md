@@ -430,3 +430,4 @@ is incomplete by mxr's product rules; see the [why-mxr guide](/guides/why-mxr/).
 - [`mxr web` CLI reference](/reference/cli/web/): every flag and what it does.
 - [Config reference](/reference/config/#bridge): `[bridge]` keys including `auto_local_token` and `port`.
 - [No native desktop app](/guides/no-native-desktop-app/): why the web app is installable without an Electron shell.
+- [Sound, key hints and touch](/guides/sound-hints-and-touch/): low tide, the optional sound palette, key hints and swiping rows.

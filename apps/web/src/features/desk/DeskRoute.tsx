@@ -16,15 +16,19 @@ import { elsewhereLinks } from "./deskLinks";
 import { deskGroups, partialLane } from "./deskRows";
 import { markDoneWaiting, useDoneWaiting } from "./doneWaiting";
 import { DeskRow } from "./DeskRow";
+import { LowTide } from "@/features/low-tide/LowTide";
+import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { invalidateMailQueries } from "@/features/mail-actions/mailMutations";
 import { usePendingMailOps, type MailAction } from "@/features/mail-actions/pendingMailOps";
 import type { InterceptedVerb } from "@/features/mail-actions/mailVerbs";
 import { targetFromRows, type MailTarget } from "@/features/mail-actions/target";
 import { resolveCommitment } from "@/features/mailbox/api";
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
+import { dueDay, useNextPromise } from "@/features/promises/useNextPromise";
 import type { RowRenderState } from "@/features/mailbox/MailboxList";
 import type { RowAction } from "@/features/mailbox/MailboxRow";
 import type { MessageRowView } from "@/features/mailbox/types";
+import type { SwipeMap } from "@/features/swipe/swipeRules";
 import { plural } from "@/lib/format";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -46,6 +50,9 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
     () => deskGroups(desk.data, ops, lane, hidden),
     [desk.data, hidden, ops, lane],
   );
+  // Only the whole desk has a low tide; a lane's page is just a list.
+  const hasWork = groups.some((group) => group.rows.length > 0);
+  const lowTide = useLowTide("desk", Boolean(lane) || !desk.data, hasWork);
 
   // Archive on a Waiting row means "done waiting": the thread you started
   // has nothing in the inbox to archive. Everything else archives as usual.
@@ -61,6 +68,16 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
         commit: () => void markDoneWaiting(waiting.map((row) => row.thread_id)),
       };
     },
+    [index],
+  );
+
+  // On Waiting rows a swipe right is "done waiting", and there is nothing
+  // of yours to trash.
+  const swipeActions = useCallback(
+    (row: MessageRowView): SwipeMap =>
+      index.get(row.id)?.lane === "waiting"
+        ? { right: "done", left: "snooze" }
+        : { right: "archive", rightLong: "trash", left: "snooze" },
     [index],
   );
 
@@ -143,8 +160,9 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
       renderRow={renderRow}
       airyHeaders
       interceptVerb={interceptVerb}
+      swipeActions={swipeActions}
       rowAction={done}
-      empty={<ClearDesk lane={lane} />}
+      empty={<ClearDesk lane={lane} lowTide={lowTide} />}
     />
   );
 }
@@ -212,7 +230,20 @@ function Elsewhere({ counts }: { counts: DeskElsewhere }) {
   );
 }
 
-function ClearDesk({ lane }: { lane?: DeskLaneKind }) {
+function ClearDesk({ lane, lowTide }: { lane?: DeskLaneKind; lowTide: boolean }) {
+  if (lowTide) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
+        <LowTide line="Low tide. Nobody's waiting on you." sound className="w-full">
+          <NextDue />
+          <p className="mt-3">
+            New mail still arrives in the inbox: <kbd className="font-mono">g</kbd>{" "}
+            <kbd className="font-mono">i</kbd>.
+          </p>
+        </LowTide>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-8 py-16 text-center">
       <p className="text-[15px] text-foreground/90">
@@ -223,5 +254,17 @@ function ClearDesk({ lane }: { lane?: DeskLaneKind }) {
         <kbd className="font-mono">i</kbd>.
       </p>
     </div>
+  );
+}
+
+/** "Next thing due: Mon, notes to nora@…" when a promise of yours is open. */
+function NextDue() {
+  const next = useNextPromise();
+  if (!next) return null;
+  return (
+    <p data-testid="low-tide-next">
+      Next thing due: {dueDay(next.due)}, {next.commitment.what}
+      {next.commitment.email ? ` to ${next.commitment.email}` : ""}.
+    </p>
   );
 }

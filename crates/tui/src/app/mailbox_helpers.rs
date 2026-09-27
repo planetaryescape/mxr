@@ -357,7 +357,15 @@ impl App {
     /// Store a freshly fetched desk. The cursor is clamped only while the
     /// desk is showing: the startup and background fetches must not move
     /// the cursor of whatever list is on screen.
-    pub(crate) fn set_desk(&mut self, desk: DeskPageState) {
+    pub(crate) fn set_desk(&mut self, mut desk: DeskPageState) {
+        let previous = &self.mailbox.desk_page;
+        if desk.row_count() == 0 {
+            // Earned only by clearing it, and kept while it stays clear.
+            desk.low_tide = previous.low_tide || (previous.loaded && previous.row_count() > 0);
+            if desk.low_tide && !previous.low_tide {
+                self.status_message = Some(LOW_TIDE.to_string());
+            }
+        }
         self.mailbox.desk_page = desk;
         if self.mailbox.mailbox_view == MailboxView::Desk {
             self.mailbox.selected_index = self

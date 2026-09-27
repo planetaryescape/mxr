@@ -62,7 +62,8 @@ use utoipa::{
         account_addresses_list, account_addresses_add, account_addresses_remove,
         account_addresses_primary, auth_session_start, auth_session_get,
         auth_session_cancel, auth_session_complete, subscriptions_list,
-        llm_status, llm_config_get, llm_config_update, semantic_status, semantic_reindex, semantic_enable,
+        llm_status, llm_config_get, llm_config_update, notification_chimes_get,
+        notification_chimes_update, semantic_status, semantic_reindex, semantic_enable,
         semantic_profile_install, semantic_profile_use, semantic_backfill, analytics_wrapped,
         analytics_storage_breakdown, analytics_largest_messages,
         analytics_stale_threads, analytics_contact_asymmetry,
@@ -462,6 +463,8 @@ endpoint!(get subscriptions_list "/api/v1/platform/subscriptions", "List subscri
 endpoint!(get llm_status "/api/v1/platform/llm/status", "LLM provider status");
 endpoint!(get llm_config_get "/api/v1/platform/llm/config", "Get LLM configuration");
 endpoint!(post llm_config_update "/api/v1/platform/llm/config", "Update LLM configuration");
+endpoint!(get notification_chimes_get "/api/v1/platform/notifications/chimes", "Get the notification chime setting");
+endpoint!(post notification_chimes_update "/api/v1/platform/notifications/chimes", "Update the notification chime setting (the body is the whole NotificationChimesData)");
 endpoint!(get semantic_status "/api/v1/platform/semantic/status", "Semantic index status");
 endpoint!(post semantic_reindex "/api/v1/platform/semantic/reindex", "Reindex semantic search");
 endpoint!(post semantic_enable "/api/v1/platform/semantic/enable", "Enable semantic search");

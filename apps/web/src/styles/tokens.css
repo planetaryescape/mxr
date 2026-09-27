@@ -61,6 +61,8 @@
   --motion-duration-fast: 120ms;
   --motion-duration-base: 180ms;
   --motion-duration-slow: 280ms;
+  /* The one scene that plays out: a cleared desk's low tide. Then it is still. */
+  --motion-duration-scene: 1800ms;
   --transition-duration-fast: var(--motion-duration-fast);
   --transition-duration-base: var(--motion-duration-base);
   --transition-duration-slow: var(--motion-duration-slow);

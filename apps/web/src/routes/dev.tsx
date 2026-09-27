@@ -35,7 +35,7 @@ function DevPage() {
   return (
     <div className="flex h-full w-full flex-col">
       <div className="border-b border-border px-6 py-4">
-        <h1 className="text-md font-semibold">/dev — bridge smoke check</h1>
+        <h1 className="text-md font-semibold">/dev: bridge smoke check</h1>
         <p className="mt-1 text-2xs text-muted-foreground">
           Verifies the SPA can reach the daemon bridge end-to-end. Lives in dev builds only.
         </p>
@@ -68,7 +68,7 @@ function DevPage() {
 
           <Card title="GET /api/v1/admin/status (authenticated)">
             {!hasToken ? (
-              <p className="text-2xs text-muted-foreground">Skipped — no token.</p>
+              <p className="text-2xs text-muted-foreground">Skipped: no token.</p>
             ) : status.isLoading ? (
               <Spinner />
             ) : status.error ? (

@@ -76,6 +76,7 @@ export default defineConfig({
             { label: 'Snippets', slug: 'guides/snippets' },
             { label: 'Web App', slug: 'guides/web-app' },
             { label: 'Focus & Reply', slug: 'guides/focus-and-reply' },
+            { label: 'Sound, Key Hints and Touch', slug: 'guides/sound-hints-and-touch' },
             { label: 'No Native Desktop App', slug: 'guides/no-native-desktop-app' },
             { label: 'Recipes (fzf, jq, xargs, cron)', slug: 'guides/recipes' },
           ],

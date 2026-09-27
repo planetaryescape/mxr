@@ -468,7 +468,7 @@ pub async fn handle_request_with_peer(
             ) {
                 state.activity.record(entry);
             }
-            crate::chimes::play_for_request_response(state, req, &response);
+            crate::chimes::play_for_request_response(state, msg.source, req, &response);
 
             response
         }

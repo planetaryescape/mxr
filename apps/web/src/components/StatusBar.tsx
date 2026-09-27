@@ -62,7 +62,7 @@ export function StatusBar() {
         {hints.map((hint) => (
           <span key={hint.id} className={cn("hidden shrink-0 items-center gap-1 lg:inline-flex")}>
             <KeyChip>{hint.keys[0]}</KeyChip>
-            <span>{hint.label.toLowerCase()}</span>
+            <span>{hint.shortLabel.toLowerCase()}</span>
           </span>
         ))}
         <button

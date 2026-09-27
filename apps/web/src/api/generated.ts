@@ -2461,6 +2461,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/notifications/chimes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the notification chime setting */
+        get: operations["notification_chimes_get"];
+        put?: never;
+        /** Update the notification chime setting (the body is the whole NotificationChimesData) */
+        post: operations["notification_chimes_update"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/rules": {
         parameters: {
             query?: never;
@@ -11225,6 +11243,56 @@ export interface operations {
         };
     };
     llm_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    notification_chimes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    notification_chimes_update: {
         parameters: {
             query?: never;
             header?: never;

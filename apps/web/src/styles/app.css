@@ -231,3 +231,86 @@
   height: 0;
   pointer-events: none;
 }
+
+/*
+ * Low tide. The shore's colours are mixed from the theme's own tokens. The
+ * scene's resting state is its final frame: the keyframes only run *from*
+ * the tide being in, so reduced motion (no animation) shows the same still
+ * picture. Only transform and opacity move.
+ */
+.low-tide {
+  --tide-sand: var(--background);
+  --tide-wet: color-mix(in oklch, var(--primary) 9%, var(--tide-sand));
+  --tide-pool: color-mix(in oklch, var(--primary) 16%, var(--background));
+  --tide-water: color-mix(in oklch, var(--primary) 14%, var(--background));
+  --tide-deep: color-mix(in oklch, var(--primary) 22%, var(--background));
+  --tide-edge: color-mix(in oklch, var(--primary) 55%, var(--background));
+}
+
+.low-tide .tide-wet {
+  opacity: 0.55;
+}
+
+.low-tide .tide-glints {
+  opacity: 0.85;
+}
+
+:root:not([data-motion="reduced"]) .low-tide .tide-water {
+  animation: tide-out var(--motion-duration-scene) var(--ease-out) backwards;
+}
+
+:root:not([data-motion="reduced"]) .low-tide .tide-wet {
+  animation: tide-dry var(--motion-duration-scene) var(--ease-out) backwards;
+}
+
+:root:not([data-motion="reduced"]) .low-tide .tide-glints {
+  animation: tide-glint calc(var(--motion-duration-scene) * 0.6) var(--ease-out)
+    calc(var(--motion-duration-scene) * 0.4) backwards;
+}
+
+@keyframes tide-out {
+  from {
+    transform: translate(-6px, 18px);
+  }
+}
+
+@keyframes tide-dry {
+  from {
+    opacity: 1;
+    transform: translateY(16px);
+  }
+}
+
+@keyframes tide-glint {
+  from {
+    opacity: 0;
+  }
+}
+
+/*
+ * Touch swipe: the colour under a moving row names the pending action. It
+ * reads as a hint until the throw is far enough to commit, then firms up.
+ */
+.swipe-layer {
+  opacity: 0.75;
+}
+
+.swipe-layer[data-armed] {
+  opacity: 1;
+  font-weight: 600;
+}
+
+.swipe-tone-primary {
+  background-color: color-mix(in oklch, var(--primary) 18%, var(--background));
+  color: var(--primary);
+}
+
+.swipe-tone-quiet {
+  background-color: color-mix(in oklch, var(--warning) 18%, var(--background));
+  color: var(--warning);
+}
+
+.swipe-tone-destructive {
+  background-color: color-mix(in oklch, var(--destructive) 22%, var(--background));
+  color: var(--destructive);
+}

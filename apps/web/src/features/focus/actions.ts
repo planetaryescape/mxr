@@ -38,13 +38,16 @@ export const focusActions: Action[] = [
     run: () => getRuntimeNavigate().navigate(focusPath()),
     tuiNote: "F in the TUI's reply queue",
   },
-  focusKey("focus.send", "send", "Send and next", "Mod+Enter"),
+  focusKey("focus.send", "send", "Send and next", "Mod+Enter", { shortLabel: "Send, next" }),
   focusKey("focus.skip", "skip", "Skip for now", "s", {
+    shortLabel: "Skip",
     tuiNote: "Goes to the end of the queue",
   }),
   focusKey("focus.snooze", "snooze", "Snooze…", "Z"),
-  focusKey("focus.remind", "remind", "Send, remind me if nobody replies…", "w"),
-  focusKey("focus.draft", "draft", "Draft in your voice", "d"),
+  focusKey("focus.remind", "remind", "Send, remind me if nobody replies…", "w", {
+    shortLabel: "Send, remind",
+  }),
+  focusKey("focus.draft", "draft", "Draft in your voice", "d", { shortLabel: "Draft" }),
   focusKey("focus.reply", "reply", "Back to the reply", "r", { hideInPalette: true }),
   focusKey("focus.leave", "leave", "Leave focus mode", "Escape", { hideInPalette: true }),
 ];

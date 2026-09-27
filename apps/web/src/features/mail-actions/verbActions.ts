@@ -94,6 +94,15 @@ export const mailVerbActions: Action[] = [
     group: "Triage",
   }),
   {
+    id: "mail.cancel-reminder",
+    command: "cancelReminder",
+    label: "Cancel no-reply reminder",
+    description: "Stop the follow-up reminder set when this message was sent",
+    group: "Mail",
+    scopes: BOTH,
+    paletteOnly: true,
+  },
+  {
     id: "mail.compose-to-sender",
     command: "composeToSender",
     label: "Write to sender",

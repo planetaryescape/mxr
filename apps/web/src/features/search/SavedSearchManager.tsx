@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { Pin, PinOff, Trash2 } from "lucide-react";
+import { Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 import { deleteSavedSearch, updateSavedSearch, type SavedSearch } from "./api";
 
@@ -28,6 +29,7 @@ export function SavedSearchManager({
   onRun: (search: SavedSearch) => void;
 }) {
   const [deleting, setDeleting] = useState<SavedSearch | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const update = useMutation({
     mutationFn: ({
       name,
@@ -66,7 +68,18 @@ export function SavedSearchManager({
       <ul className="divide-y divide-border/70">
         {searches.map((search, index) => {
           const pinned = (search.position ?? 0) < 0;
-          return (
+          return editing === search.id ? (
+            <li key={search.id} className="px-4 py-2.5">
+              <EditSavedSearch
+                search={search}
+                pending={update.isPending}
+                onCancel={() => setEditing(null)}
+                onSave={(patch) =>
+                  update.mutate({ name: search.name, patch }, { onSuccess: () => setEditing(null) })
+                }
+              />
+            </li>
+          ) : (
             <li key={search.id} className="group flex items-center gap-3 px-4 py-2.5">
               <span className="w-8 shrink-0 font-mono text-2xs text-faint">
                 {index < 9 ? `g ${index + 1}` : ""}
@@ -105,6 +118,14 @@ export function SavedSearchManager({
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  aria-label={`Edit ${search.name}`}
+                  onClick={() => setEditing(search.id)}
+                >
+                  <Pencil className="size-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   aria-label={`Delete ${search.name}`}
                   onClick={() => setDeleting(search)}
                 >
@@ -138,5 +159,66 @@ export function SavedSearchManager({
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+function EditSavedSearch({
+  search,
+  pending,
+  onCancel,
+  onSave,
+}: {
+  search: SavedSearch;
+  pending: boolean;
+  onCancel: () => void;
+  onSave: (patch: { new_name?: string; query?: string }) => void;
+}) {
+  const [name, setName] = useState(search.name);
+  const [query, setQuery] = useState(search.query);
+  const changed = name.trim() !== search.name || query.trim() !== search.query;
+  return (
+    <form
+      className="grid gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!changed || !name.trim() || !query.trim()) return;
+        onSave({
+          ...(name.trim() !== search.name ? { new_name: name.trim() } : {}),
+          ...(query.trim() !== search.query ? { query: query.trim() } : {}),
+        });
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
+      <Input
+        autoFocus
+        aria-label="Name"
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        className="h-8"
+      />
+      <Input
+        aria-label="Query"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        className="h-8 font-mono text-[12.5px]"
+      />
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          size="sm"
+          disabled={!changed || pending || !name.trim() || !query.trim()}
+        >
+          Save
+        </Button>
+      </div>
+    </form>
   );
 }

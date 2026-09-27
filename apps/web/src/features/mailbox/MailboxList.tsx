@@ -34,6 +34,8 @@ export interface MailboxListProps {
   onOpenRow: (row: MessageRowView, options: { focusReader: boolean }) => void;
   onCloseThread?: () => void;
   hasMore?: boolean;
+  /** Open the list's quick filter (TUI Ctrl-f). */
+  onFilter?: () => void;
   loadingMore?: boolean;
   onLoadMore?: () => void;
   /** Lists of aggregates that aren't mutable messages: navigation only. */
@@ -72,6 +74,7 @@ export function MailboxList({
   onOpenRow,
   onCloseThread,
   hasMore = false,
+  onFilter,
   loadingMore = false,
   onLoadMore,
   readOnly = false,
@@ -249,6 +252,7 @@ export function MailboxList({
     viewportMiddle: () => moveTo(viewportIndex("middle")),
     open: () => focusedRow && onOpenRow(focusedRow, { focusReader: true }),
     focusSidebar: () => setActivePane("sidebar"),
+    ...(onFilter ? { filter: onFilter } : {}),
     escape: () => {
       if (visualAnchor) {
         setVisualAnchor(null);

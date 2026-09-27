@@ -26,8 +26,12 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
   const mac = options.mac ?? isMacPlatform();
   // Off macOS, Ctrl is the Mod key, so a keypress parses as "Mod+d". TUI
   // chords written as "Ctrl+d" must still match there.
+  // Browser essentials (Find, Print, Save, tabs) are never taken for a Ctrl
+  // chord: on Windows and Linux they are the same keys.
   const spellings = (chord: string): string[] =>
-    mac || !chord.includes("Mod+") ? [chord] : [chord, chord.replaceAll("Mod+", "Ctrl+")];
+    mac || !chord.includes("Mod+") || BROWSER_RESERVED.has(chord)
+      ? [chord]
+      : [chord, chord.replaceAll("Mod+", "Ctrl+")];
   const registry = {
     resolve: (chord: string, scopes: ActionScope[]) =>
       spellings(chord)
@@ -127,6 +131,17 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
     clear();
   };
 }
+
+const BROWSER_RESERVED = new Set([
+  "Mod+f",
+  "Mod+p",
+  "Mod+s",
+  "Mod+w",
+  "Mod+t",
+  "Mod+n",
+  "Mod+r",
+  "Mod+l",
+]);
 
 function isModifierChord(token: KeyToken): boolean {
   return /^(Mod|Ctrl|Alt|Meta)\+/.test(token);

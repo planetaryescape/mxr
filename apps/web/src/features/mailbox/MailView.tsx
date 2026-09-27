@@ -128,13 +128,14 @@ function LensView({ lens }: { lens: MailLens }) {
   );
 }
 
+/** The daemon counts messages, not conversations, so say so. */
 function countLine(lens: MailLens, unread: number, total: number): string {
-  if (lens.key === "inbox" || lens.section === "labels") {
-    return unread > 0
-      ? `${unread.toLocaleString()} unread · ${total.toLocaleString()}`
-      : plural(total, "conversation");
+  if (total === 0) return "";
+  const messages = plural(total, "message");
+  if ((lens.key === "inbox" || lens.section === "labels") && unread > 0) {
+    return `${unread.toLocaleString()} unread · ${messages}`;
   }
-  return total > 0 ? plural(total, "conversation") : "";
+  return messages;
 }
 
 function EmptyLens({ lens }: { lens: MailLens }) {

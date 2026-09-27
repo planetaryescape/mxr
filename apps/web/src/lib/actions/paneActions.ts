@@ -79,6 +79,11 @@ export const listActions: Action[] = [
     tuiNote: "Web only",
   }),
   key("list", "list.escape", "escape", "Clear selection, then close", "Escape", "Select"),
+  key("list", "list.filter", "filter", "Filter this list", "g f", "Search", {
+    aliases: ["Ctrl+f"],
+    hideInPalette: false,
+    tuiNote: "TUI Ctrl-f; Ctrl+F stays the browser's Find off macOS, so g f works everywhere",
+  }),
   {
     id: "list.toggle-threads",
     command: "toggleThreads",

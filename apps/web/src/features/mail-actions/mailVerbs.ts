@@ -6,6 +6,7 @@
 
 import { toast } from "sonner";
 
+import { cancelAutoReminder } from "@/features/compose/api";
 import { newMessageIntent, replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import {
   cancelInviteResponse,
@@ -218,6 +219,15 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
         }
         useModals.getState().openRightRail("attachments", attachments);
       });
+    },
+    cancelReminder: () => {
+      const target = single(hooks.getTarget(), "Cancel reminder");
+      if (!target?.primary) return;
+      cancelAutoReminder(target.primary.id)
+        .then(() => toast.success("Reminder cancelled"))
+        .catch((error: Error) =>
+          toast.error("Couldn't cancel the reminder", { description: error.message }),
+        );
     },
     inviteAccept: rsvp("accept", false),
     inviteTentative: rsvp("tentative", false),

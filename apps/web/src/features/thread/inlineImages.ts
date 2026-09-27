@@ -22,7 +22,9 @@ function toDataUri(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.addEventListener("load", () => resolve(String(reader.result)));
-    reader.addEventListener("error", () => reject(reader.error ?? new Error("could not read image")));
+    reader.addEventListener("error", () =>
+      reject(reader.error ?? new Error("could not read image")),
+    );
     reader.readAsDataURL(blob);
   });
 }

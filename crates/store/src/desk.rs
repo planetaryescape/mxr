@@ -147,28 +147,7 @@ impl super::Store {
     ) -> Result<Vec<DeskMessage>, sqlx::Error> {
         let started_at = Instant::now();
         let hidden_flags = i64::from((MessageFlags::TRASH | MessageFlags::SPAM).bits());
-        let sql = format!(
-            r#"WITH active AS ({active_threads})
-            SELECT
-                m.rowid AS seq, m.id, m.thread_id, m.direction, m.date, m.flags,
-                m.from_email, m.from_name, m.to_addrs, m.cc_addrs, m.subject,
-                m.list_id, m.unsubscribe_method,
-                EXISTS (
-                    SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
-                    WHERE ml.message_id = m.id AND l.provider_id = 'INBOX'
-                ) AS in_inbox,
-                ((m.flags & ?2) != 0 OR EXISTS (
-                    SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
-                    WHERE ml.message_id = m.id AND l.provider_id IN ('TRASH', 'SPAM')
-                )) AS trashed,
-                EXISTS (SELECT 1 FROM snoozed s WHERE s.message_id = m.id) AS snoozed,
-                EXISTS (SELECT 1 FROM calendar_invites ci WHERE ci.message_id = m.id) AS is_invite,
-                EXISTS (SELECT 1 FROM delivery_messages dm WHERE dm.message_id = m.id) AS is_delivery
-            FROM messages m
-            JOIN active ON active.thread_id = m.thread_id
-            WHERE m.account_id = ?1
-            ORDER BY m.thread_id, m.date, m.id"#
-        );
+        let sql = desk_messages_sql(active_threads);
         // ?1 account, ?2 hidden flags, then the thread selection's own.
         let query = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account_id.as_str())
@@ -321,8 +300,9 @@ impl super::Store {
                 FROM json_each(?2)
             )
             SELECT wanted.email AS email, m.id, m.thread_id, m.subject, m.date
+            -- Contacts drive the loop: each is a two-day date-range lookup.
             FROM wanted
-            JOIN messages m
+            CROSS JOIN messages m
               ON m.account_id = ?1
              AND m.date BETWEEN wanted.lo AND wanted.hi
              AND (m.flags & ?3) = 0
@@ -461,6 +441,36 @@ impl super::Store {
     }
 }
 
+/// The per-message desk read over a thread selection (`active_threads`,
+/// a statement returning `thread_id`s). Shared with the query-plan test.
+fn desk_messages_sql(active_threads: &str) -> String {
+    format!(
+        r#"WITH active AS ({active_threads})
+            SELECT
+                m.rowid AS seq, m.id, m.thread_id, m.direction, m.date, m.flags,
+                m.from_email, m.from_name, m.to_addrs, m.cc_addrs, m.subject,
+                m.list_id, m.unsubscribe_method,
+                EXISTS (
+                    SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
+                    WHERE ml.message_id = m.id AND l.provider_id = 'INBOX'
+                ) AS in_inbox,
+                ((m.flags & ?2) != 0 OR EXISTS (
+                    SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
+                    WHERE ml.message_id = m.id AND l.provider_id IN ('TRASH', 'SPAM')
+                )) AS trashed,
+                EXISTS (SELECT 1 FROM snoozed s WHERE s.message_id = m.id) AS snoozed,
+                EXISTS (SELECT 1 FROM calendar_invites ci WHERE ci.message_id = m.id) AS is_invite,
+                EXISTS (SELECT 1 FROM delivery_messages dm WHERE dm.message_id = m.id) AS is_delivery
+            -- CROSS JOIN keeps the thread list as the outer loop, so each
+            -- thread is a thread_id index lookup. A plain JOIN let the
+            -- planner walk the account's whole mailbox instead.
+            FROM active
+            CROSS JOIN messages m ON m.thread_id = active.thread_id
+            WHERE m.account_id = ?1
+            ORDER BY m.thread_id, m.date, m.id"#
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -483,6 +493,36 @@ mod tests {
         envelope.from.email = from.into();
         envelope.date = at;
         envelope
+    }
+
+    /// Each selected thread must be an index lookup; letting the planner
+    /// walk the account's mailbox took half a second per desk on a 110k
+    /// message store. Same for the watched-contact lookups by date.
+    #[tokio::test]
+    async fn desk_reads_look_threads_and_contacts_up_by_index() {
+        let store = Store::in_memory().await.unwrap();
+        let plan = |sql: String| {
+            let store = &store;
+            async move {
+                sqlx::query(sqlx::AssertSqlSafe(format!("EXPLAIN QUERY PLAN {sql}")))
+                    .fetch_all(store.reader())
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|row| row.get::<String, _>("detail"))
+                    .collect::<Vec<_>>()
+            }
+        };
+        let threads = plan(desk_messages_sql(
+            "SELECT value AS thread_id FROM json_each(?3)",
+        ))
+        .await;
+        assert!(
+            threads
+                .iter()
+                .any(|step| step.starts_with("SEARCH m USING INDEX idx_messages_thread")),
+            "{threads:#?}"
+        );
     }
 
     #[tokio::test]

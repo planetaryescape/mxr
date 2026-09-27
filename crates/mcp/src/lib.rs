@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use mxr_client::{ClientError, IpcConnection};
-use mxr_core::{id::MessageId, AccountId, Draft, DraftId};
+use mxr_core::{id::MessageId, AccountId, Draft, DraftId, ThreadId};
 use mxr_protocol::{ClientKind, MutationCommand, Request, Response, ResponseData};
 use rmcp::{
     handler::server::{
@@ -233,6 +233,34 @@ impl MxrMcpServer {
             thread_id: parse_id(&input.thread_id)?,
         })
         .await
+    }
+
+    #[tool(
+        name = "mxr_thread_context",
+        description = "What matters before reading a thread: the main counterparty (messages each way, usual reply times, last contact), whether the user owes a reply, and open promises both ways. With include_gist=true, also the configured model's one-line gist and the ask, whose quote the daemon has verified is in the message. Returns {context, gist}."
+    )]
+    pub async fn thread_context(
+        &self,
+        Parameters(input): Parameters<ThreadContextInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let thread_id: ThreadId = parse_id(&input.thread_id)?;
+        let context = self
+            .daemon_json(Request::GetThreadContext {
+                thread_id: thread_id.clone(),
+            })
+            .await?
+            .0;
+        let gist = if input.include_gist.unwrap_or(false) {
+            self.daemon_json(Request::GetThreadGist {
+                thread_id,
+                refresh: false,
+            })
+            .await?
+            .0
+        } else {
+            Value::Null
+        };
+        Ok(McpJson(json!({ "context": context, "gist": gist })))
     }
 
     #[tool(
@@ -565,6 +593,15 @@ pub struct ReadThreadInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct ThreadContextInput {
+    pub thread_id: String,
+    /// Also ask the configured model for the gist and the ask (cached per
+    /// newest message). Off by default: the facts need no model.
+    #[serde(default)]
+    pub include_gist: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct DraftAssistInput {
     pub thread_id: String,
     pub instruction: String,
@@ -704,6 +741,7 @@ mod tests {
 
         assert!(names.contains(&"mxr_status"));
         assert!(names.contains(&"mxr_read_message"));
+        assert!(names.contains(&"mxr_thread_context"));
         assert!(names.contains(&"mxr_mutation_preview"));
         assert!(names.contains(&"mxr_send_draft"));
         assert!(names.contains(&"mxr_list_drafts"));

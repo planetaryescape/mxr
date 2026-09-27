@@ -37,7 +37,7 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
   const [aiOverridden, setAiOverridden] = useState(false);
   const [refineContext, setRefineContext] = useState("");
   const [draftSuggestion, setDraftSuggestion] = useState<DraftSuggestionResponse | null>(null);
-  const [assistOpen, setAssistOpen] = useState(false);
+  const [assistOpen, setAssistOpen] = useState(intent.openAssist === true);
 
   const draftForMe = useMutation({
     mutationFn: async () => {

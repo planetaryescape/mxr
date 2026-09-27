@@ -65,6 +65,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &mut SubscriptionsPageView<'_>,
         chunks[1],
         view.preview_blocks,
         crate::ui::message_view::DrawOptions {
+            context: Vec::new(),
             summary: None,
             scroll_offset: view.message_scroll_offset,
             active_pane: view.active_pane,

@@ -186,6 +186,29 @@ them all.
 
 ### The reader
 
+A conversation opens with its context before the messages:
+
+- **The gist and the ask.** When a language model is configured, one
+  sentence says what is currently true in the conversation, and a second line
+  says what they are asking of you, or that nothing is. **Show in message**
+  scrolls to the sentence that makes the ask, which is marked in the message.
+  mxr checks the quote really is in the message before it marks anything. A
+  small line above the gist says which model wrote it, local or cloud, and
+  what it read: "Local model qwen2.5 · from this thread". Your history with
+  the person only goes to a cloud model when you allow it with
+  `llm.allow_cloud_relationship_data`. The gist has a fixed place, so the
+  messages below never move when it arrives.
+- **How you know them.** "You and Maya: 41 emails · you usually reply within
+  4h · last spoke 12 Sep", or "your first conversation".
+- **Whether you owe a reply**, and since when. Newsletters never count.
+- **Open promises** in this conversation, yours and theirs, with due dates.
+  Each promise names its own owner, so in a group thread Alice's promise
+  never reads as Bob's. The check mark marks one done.
+
+With no model configured you get the facts only, and nothing asks you to set
+one up. The same context is in the TUI and in `mxr briefing context`
+([briefings](/guides/briefings-and-loop-in/#thread-context-mxr-briefing-context)).
+
 Older messages you have read fold to one line, so a long conversation opens
 on the newest or first unread message. `J`/`K` move between messages, `o`
 opens or folds one, `X` opens them all. Quoted history and signatures fold
@@ -193,16 +216,28 @@ behind a control that says how much is hidden; `Q` and `S` show them.
 
 `H`, `R` and the view switch choose between the formatted HTML, a cleaned
 reading view, and plain text; as in the TUI, pressing `H` or `R` again goes
-back to plain text. Remote images stay blocked until you press `M`
-or choose **Always from** a sender, so a sender cannot tell when you read
-their mail. Images embedded in the message itself always show.
+back to plain text.
+
+Tracking pixels are always removed, and remote images stay blocked until you
+press `M`, choose **Show images**, or choose **Always for** a sender, so a
+sender cannot tell when you read their mail. A quiet line under the message
+header says what was blocked and who serves it: "Blocked 2 trackers and 5
+remote images from Mailchimp." Images embedded in the message itself always
+show.
 
 `L` lists every link in the message to open or copy, `g h` shows the raw
 headers, `O` opens the original in a new tab, and `E` saves the conversation
-as Markdown. `y` summarizes the conversation; long conversations get a summary
-automatically when a language model is configured.
+as Markdown. `y` summarizes the conversation.
 
-**Draft a reply with AI** (in the reader's **More** menu) writes a reply in
+The reply field sits where reading ends, after the last message. Click it or
+press `r` to open the reply in place; `a` replies to all and `f` forwards. The
+toolbar above the conversation keeps only close, previous and next, archive,
+snooze and the view switch. Everything else is in **More**, with its key, and
+in the command palette.
+
+**Draft in your voice** in the reply field (shown when a model is configured)
+opens the reply with **Draft for me** ready. **Draft a reply with AI** (in the
+reader's **More** menu) writes a reply in
 your voice, from real emails you sent this person. Say what it should say,
 or leave it empty to answer what they asked; anything only you can decide
 comes back as a `[[?: ...]]` gap. **Reply with this** opens the reply with the

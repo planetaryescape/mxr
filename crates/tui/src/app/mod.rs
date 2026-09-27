@@ -287,6 +287,12 @@ pub struct App {
     /// and actually go to the daemon. In-flight requests already fired
     /// are not cancelled — they complete and the daemon caches them.
     pub pending_summary_debounce: Option<(mxr_core::ThreadId, tokio::time::Instant)>,
+    /// Thread whose context facts (`GetThreadContext`) the runtime should
+    /// fetch; set when a thread resolves.
+    pub pending_thread_context: Option<mxr_core::ThreadId>,
+    /// Debounced gist fetch (`GetThreadGist`), like the summary: only the
+    /// thread the user lands on goes to the model.
+    pub pending_gist_debounce: Option<(mxr_core::ThreadId, tokio::time::Instant)>,
     /// Slice 5.1/5.2 (C2.6): pending briefing fetch. Drained by the
     /// runtime, which fires either `Request::GetThreadBriefing` or
     /// `Request::GetRecipientBriefing` depending on the variant.
@@ -411,6 +417,8 @@ impl App {
             pending_sender_profile_request: None,
             pending_summary_requests: VecDeque::new(),
             pending_summary_debounce: None,
+            pending_thread_context: None,
+            pending_gist_debounce: None,
             pending_briefing_request: None,
             pending_whois_query: None,
             pending_expert_query: None,

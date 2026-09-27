@@ -48,6 +48,8 @@ mod snippets;
 mod status_helpers;
 mod suggest_recipients;
 pub(crate) mod summarize;
+mod thread_context;
+mod thread_gist;
 mod time;
 mod triage;
 mod user_voice;
@@ -378,6 +380,7 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::FindExpert { .. }
         | Request::GetRecipientBriefing { .. }
         | Request::GetThreadBriefing { .. }
+        | Request::GetThreadGist { .. }
         | Request::HumanizerRewrite { .. }
         | Request::HumanizerScore { .. }
         | Request::SuggestCollaborators { .. }
@@ -1159,6 +1162,12 @@ async fn dispatch(
         Request::GetThreadBriefing { thread_id, refresh } => {
             briefing::get_thread_briefing(state, thread_id, *refresh).await
         }
+        Request::GetThreadContext { thread_id } => {
+            thread_context::get_thread_context(state, thread_id).await
+        }
+        Request::GetThreadGist { thread_id, refresh } => {
+            thread_gist::get_thread_gist(state, thread_id, *refresh).await
+        }
         Request::GetRecipientBriefing {
             account_id,
             email,
@@ -1875,6 +1884,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetDecision { .. }
         | Request::SendTimeRecommendation { .. }
         | Request::GetThreadBriefing { .. }
+        | Request::GetThreadContext { .. }
+        | Request::GetThreadGist { .. }
         | Request::GetRecipientBriefing { .. }
         | Request::SuggestCollaborators { .. }
         | Request::FindExpert { .. }
@@ -2181,6 +2192,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::RebuildDecisionLog { .. } => "rebuild_decision_log",
         Request::SendTimeRecommendation { .. } => "send_time_recommendation",
         Request::GetThreadBriefing { .. } => "get_thread_briefing",
+        Request::GetThreadContext { .. } => "get_thread_context",
+        Request::GetThreadGist { .. } => "get_thread_gist",
         Request::GetRecipientBriefing { .. } => "get_recipient_briefing",
         Request::SuggestCollaborators { .. } => "suggest_collaborators",
         Request::FindExpert { .. } => "find_expert",

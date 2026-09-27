@@ -28,6 +28,7 @@ pub mod terminal_images;
 #[cfg(test)]
 mod test_fixtures;
 pub mod theme;
+pub mod thread_context_rows;
 pub mod ui;
 
 pub(crate) use async_result::AsyncResult;

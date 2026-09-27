@@ -214,6 +214,12 @@ pub trait LlmProvider: Send + Sync {
     async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError>;
     fn capabilities(&self) -> LlmCapabilities;
     fn model_name(&self) -> &str;
+    /// The HTTP endpoint requests go to, or `None` when the provider answers
+    /// on this machine without one (disabled, demo, tests). Callers use it to
+    /// say where model text came from and what may be sent.
+    fn base_url(&self) -> Option<&str> {
+        None
+    }
 }
 
 /// Default ceiling for background LLM work (relationship summary,
@@ -427,6 +433,41 @@ impl FeatureLlmRuntime {
             .provider_for_feature(self.feature)
             .model_name()
             .to_string()
+    }
+
+    /// The provider serving this feature right now, held for one request.
+    /// A config reload may replace the runtime's providers mid-request;
+    /// deciding what to send from the pinned provider and sending through it
+    /// keeps the decision and the call on the same endpoint.
+    pub fn pin(&self) -> PinnedLlm {
+        PinnedLlm {
+            provider: self.runtime.provider_for_feature(self.feature),
+            blocked: self.runtime.blocked_reason(self.feature),
+        }
+    }
+}
+
+/// One feature's provider, fixed for the length of a request. See
+/// [`FeatureLlmRuntime::pin`].
+pub struct PinnedLlm {
+    provider: Arc<dyn LlmProvider>,
+    blocked: Option<String>,
+}
+
+impl PinnedLlm {
+    pub async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+        if let Some(reason) = &self.blocked {
+            return Err(LlmError::PrivacyBlocked(reason.clone()));
+        }
+        self.provider.complete(req).await
+    }
+
+    pub fn model_name(&self) -> &str {
+        self.provider.model_name()
+    }
+
+    pub fn base_url(&self) -> Option<&str> {
+        self.provider.base_url()
     }
 }
 
@@ -644,6 +685,10 @@ impl LlmProvider for OpenAiCompatibleProvider {
     fn model_name(&self) -> &str {
         &self.model
     }
+
+    fn base_url(&self) -> Option<&str> {
+        Some(&self.base_url)
+    }
 }
 
 #[derive(Serialize)]
@@ -711,6 +756,30 @@ mod tests {
         let err = p
             .complete(CompletionRequest {
                 messages: vec![ChatMessage::user("hello")],
+                max_tokens: None,
+                temperature: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(err, LlmError::Disabled));
+    }
+
+    /// A config reload can swap providers mid-request: a pinned handle keeps
+    /// answering from, and reporting, the endpoint it was pinned to.
+    #[tokio::test]
+    async fn a_pinned_provider_survives_a_runtime_swap() {
+        let runtime = Arc::new(LlmRuntime::new(Arc::new(OpenAiCompatibleProvider::ollama(
+            "local-model",
+        ))));
+        let pinned = runtime.for_feature(LlmFeature::Summarize).pin();
+        runtime.replace(Arc::new(NoopProvider));
+        assert_eq!(pinned.model_name(), "local-model");
+        assert_eq!(pinned.base_url(), Some("http://localhost:11434/v1"));
+        let fresh = runtime.for_feature(LlmFeature::Summarize).pin();
+        assert_eq!(fresh.base_url(), None, "a new pin sees the swap");
+        let err = fresh
+            .complete(CompletionRequest {
+                messages: vec![ChatMessage::user("hi")],
                 max_tokens: None,
                 temperature: None,
             })

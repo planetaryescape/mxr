@@ -185,6 +185,9 @@
 
   --unread-marker: #57d5ff;
   --star: #ffd166;
+  /* The ask's quote, marked in a message: a soft highlighter, readable text. */
+  --ask-mark: rgb(255 209 102 / 0.18);
+  --ask-mark-rule: rgb(255 209 102 / 0.85);
   --thread-line: #294963;
   --selection: #0b3a4b;
 
@@ -253,6 +256,8 @@
 
   --unread-marker: #006f93;
   --star: #b07800;
+  --ask-mark: #fff0b3;
+  --ask-mark-rule: #d9a400;
   --thread-line: #b9cedc;
   --selection: #d5eff7;
 
@@ -390,6 +395,8 @@
 
   --unread-marker: hsl(14 75% 42%);
   --star: hsl(36 90% 40%);
+  --ask-mark: hsl(46 95% 84%);
+  --ask-mark-rule: hsl(40 85% 45%);
   --thread-line: hsl(30 15% 74%);
   --selection: hsl(14 60% 91%);
 

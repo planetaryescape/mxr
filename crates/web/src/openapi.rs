@@ -78,7 +78,7 @@ use utoipa::{
         platform_voice_rebuild, mail_mutation_jobs, mail_owed, mail_whois,
         mail_send_time, mail_archive_ask, saved_searches_unread_counts,
         analytics_cadence_drift, cadence_watch_list, cadence_watch, cadence_unwatch,
-        mail_time_resolve
+        mail_time_resolve, mail_thread_context, mail_thread_gist
     ),
     components(schemas(
         Request,
@@ -235,6 +235,8 @@ endpoint!(post mail_archive_ask "/api/v1/mail/archive-ask", "Ask the archive a q
 )]
 #[allow(dead_code)]
 fn mail_time_resolve() {}
+endpoint!(get mail_thread_context "/api/v1/mail/threads/{thread_id}/context", "Store facts for the reader's context block");
+endpoint!(get mail_thread_gist "/api/v1/mail/threads/{thread_id}/context/gist", "Model-written gist and ask for a conversation, cached per newest message");
 
 endpoint!(post compose_session_start "/api/v1/mail/compose/session", "Start compose session");
 endpoint!(post compose_session_refresh "/api/v1/mail/compose/session/refresh", "Refresh compose session");

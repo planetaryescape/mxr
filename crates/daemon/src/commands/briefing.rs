@@ -8,6 +8,17 @@ use std::str::FromStr;
 pub async fn run(action: BriefingAction) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     match action {
+        BriefingAction::Context {
+            thread_id,
+            no_ai,
+            refresh,
+            format,
+        } => {
+            let id = mxr_core::ThreadId::from_str(&thread_id)
+                .map_err(|e| anyhow::anyhow!("invalid thread id: {e}"))?;
+            super::thread_context::run(&mut client, id, !no_ai, refresh, resolve_format(format))
+                .await
+        }
         BriefingAction::Thread {
             thread_id,
             refresh,

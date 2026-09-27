@@ -45,6 +45,16 @@ Behavior:
   **Owed replies**, and **Calendar invites** (every detected invite with
   inline RSVP — see [keybindings](/reference/keybindings/#calendar-invites-lens))
 
+## Thread context
+
+When a thread opens, the message pane leads with its context: the gist and
+what they ask of you (with the quoted sentence) when a model is configured,
+then who the thread is with and how you know them, whether you owe a reply,
+open promises both ways, and which model wrote the gist. The facts arrive at
+once; the gist waits out a short debounce so scrolling through the list does
+not ask the model about every row. The CLI equivalent is
+`mxr briefing context THREAD_ID`.
+
 ## Thread summaries
 
 Press `y` or run `Ctrl-p` → **Summarize Thread** from the mailbox, message, or

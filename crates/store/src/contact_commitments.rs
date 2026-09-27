@@ -190,6 +190,27 @@ impl super::Store {
         rows.into_iter().map(row_to_commitment).collect()
     }
 
+    /// Open commitments recorded against one thread, both directions,
+    /// soonest due first (undated last).
+    pub async fn list_open_thread_commitments(
+        &self,
+        account_id: &AccountId,
+        thread_id: &ThreadId,
+    ) -> Result<Vec<ContactCommitmentRecord>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"SELECT id, account_id, email, thread_id, direction, status, who_owes, what,
+                      by_when, evidence_msg_id, extracted_at, resolved_at
+               FROM contact_commitments
+               WHERE account_id = ? AND thread_id = ? AND status = 'open'
+               ORDER BY by_when IS NULL, by_when ASC, extracted_at DESC"#,
+        )
+        .bind(account_id.as_str())
+        .bind(thread_id.as_str())
+        .fetch_all(self.reader())
+        .await?;
+        rows.into_iter().map(row_to_commitment).collect()
+    }
+
     pub async fn resolve_contact_commitment(&self, id: &str) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(
             "UPDATE contact_commitments SET status = 'resolved', resolved_at = ? WHERE id = ?",

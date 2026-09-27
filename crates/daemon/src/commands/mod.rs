@@ -58,6 +58,7 @@ pub mod suggest_recipients;
 pub mod summarize;
 pub mod sync_cmd;
 pub mod thread;
+pub mod thread_context;
 pub mod threads;
 pub mod time;
 pub mod triage;

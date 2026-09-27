@@ -124,6 +124,7 @@ fn message_view_snapshot() {
             Rect::new(0, 0, 70, 20),
             &[block],
             DrawOptions {
+                context: Vec::new(),
                 summary: None,
                 scroll_offset: 0,
                 active_pane: &ActivePane::MessageView,

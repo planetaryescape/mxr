@@ -166,6 +166,40 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
     }
 }
 
+/// Keep a thread's context facts when that thread is still open. A failed
+/// read leaves the reader as it was: the facts are extra, not required.
+pub(super) fn apply_thread_context_loaded(
+    app: &mut App,
+    thread_id: &mxr_core::ThreadId,
+    result: Result<Box<mxr_protocol::ThreadContextData>, MxrError>,
+) {
+    let open = app
+        .context_envelope()
+        .is_some_and(|env| &env.thread_id == thread_id);
+    match result {
+        Ok(context) if open => app.mailbox.thread_context = Some(*context),
+        Ok(_) => {}
+        Err(error) => tracing::debug!(%thread_id, %error, "thread context unavailable"),
+    }
+}
+
+/// Keep a thread's gist when that thread is still open. No model, or a
+/// failed one, simply shows no gist: the reader never nags about it.
+pub(super) fn apply_thread_gist_loaded(
+    app: &mut App,
+    thread_id: &mxr_core::ThreadId,
+    result: Result<Box<mxr_protocol::ThreadGistData>, MxrError>,
+) {
+    let open = app
+        .context_envelope()
+        .is_some_and(|env| &env.thread_id == thread_id);
+    match result {
+        Ok(gist) if open => app.mailbox.thread_gist = Some(*gist),
+        Ok(_) => {}
+        Err(error) => tracing::debug!(%thread_id, %error, "thread gist unavailable"),
+    }
+}
+
 /// Apply a `ThreadSummaryLoaded` async result to the app. Always
 /// clears this thread's in-flight marker — even when the user has
 /// navigated away — so a subsequent `y` press on the same thread isn't

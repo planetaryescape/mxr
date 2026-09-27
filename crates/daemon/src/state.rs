@@ -360,14 +360,28 @@ pub(crate) fn relationship_data_allowed(
     if config.allow_cloud_relationship_data {
         return true;
     }
-    let effective = llm_override_entries(&config.overrides)
+    let effective = effective_llm_config_for(config, feature);
+    !effective.enabled || is_local_llm_url(&effective.base_url)
+}
+
+/// Whether a provider's endpoint is on this machine, for what model-written
+/// text may carry and how it is labelled. No endpoint (disabled, demo,
+/// tests) means nothing leaves the machine.
+pub(crate) fn llm_endpoint_is_local(base_url: Option<&str>) -> bool {
+    mxr_config::is_demo_instance() || base_url.is_none_or(is_local_llm_url)
+}
+
+fn effective_llm_config_for(
+    config: &mxr_config::LlmConfig,
+    feature: mxr_llm::LlmFeature,
+) -> mxr_config::EffectiveLlmConfig {
+    llm_override_entries(&config.overrides)
         .into_iter()
         .find(|(entry, _)| *entry == feature)
         .map_or_else(
             || base_llm_config(config),
             |(_, override_config)| config.effective_override(override_config),
-        );
-    !effective.enabled || is_local_llm_url(&effective.base_url)
+        )
 }
 
 fn is_local_llm_url(base_url: &str) -> bool {

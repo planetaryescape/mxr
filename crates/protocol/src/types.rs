@@ -3,7 +3,9 @@ use mxr_core::types::*;
 use serde::{Deserialize, Serialize};
 
 mod platform;
+mod thread_context;
 pub use platform::*;
+pub use thread_context::*;
 
 /// IPC items are grouped conceptually, even though the wire format stays flat.
 ///
@@ -96,6 +98,10 @@ pub struct LlmStatusSnapshot {
     pub context_window: u32,
     pub supports_streaming: bool,
     pub request_timeout_secs: u64,
+    /// Whether history with a person may go to a cloud model. Clients key
+    /// cached model output on it.
+    #[serde(default)]
+    pub allow_cloud_relationship_data: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1495,6 +1501,23 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         time_zone: Option<String>,
     },
+
+    // ----- Reader context -----
+    /// What the store knows about a conversation (relationship with the
+    /// main counterparty, whether you owe a reply, open promises). No
+    /// model; read-only. Returns `ResponseData::ThreadContext`.
+    GetThreadContext {
+        thread_id: ThreadId,
+    },
+    /// One-sentence gist and the ask, from the configured model, cached per
+    /// thread and latest message. Read-only. Returns
+    /// `ResponseData::ThreadGist`; an unavailable model is a status, not an
+    /// error.
+    GetThreadGist {
+        thread_id: ThreadId,
+        #[serde(default)]
+        refresh: bool,
+    },
 }
 
 impl Request {
@@ -1612,6 +1635,8 @@ impl Request {
             | Self::ListCadenceWatch { .. }
             | Self::ListCadenceDrift { .. }
             | Self::GetThreadBriefing { .. }
+            | Self::GetThreadContext { .. }
+            | Self::GetThreadGist { .. }
             | Self::GetRecipientBriefing { .. }
             | Self::SuggestCollaborators { .. }
             | Self::FindExpert { .. }
@@ -2516,6 +2541,15 @@ pub enum ResponseData {
         resolution: Option<mxr_core::natural_time::TimeResolution>,
         error: Option<mxr_core::natural_time::TimeResolveError>,
     },
+
+    /// Returned by `Request::GetThreadContext`.
+    ThreadContext {
+        context: ThreadContextData,
+    },
+    /// Returned by `Request::GetThreadGist`.
+    ThreadGist {
+        gist: ThreadGistData,
+    },
 }
 
 impl ResponseData {
@@ -2610,6 +2644,8 @@ impl ResponseData {
             | Self::CadenceWatchList { .. }
             | Self::CadenceDriftList { .. }
             | Self::ThreadBriefing { .. }
+            | Self::ThreadContext { .. }
+            | Self::ThreadGist { .. }
             | Self::RecipientBriefing { .. }
             | Self::SuggestedCollaborators { .. }
             | Self::ExpertSuggestions { .. }

@@ -11,6 +11,7 @@ empty citation list.
 
 | Surface | Question it answers |
 |---|---|
+| `mxr briefing context` | What matters before I read this thread? |
 | `mxr briefing thread` | What was this dormant thread about when it went quiet? |
 | `mxr briefing recipient` | What's the state of my relationship with this person right now? |
 | `mxr suggest-recipients` | Who normally gets Cc'd on this kind of thread? |
@@ -20,6 +21,57 @@ empty citation list.
 :::tip[The one-line mental model]
 These features **suggest**, never **mutate**. None of them auto-Cc, auto-summarize a thread into your draft, or invent details the corpus doesn't support.
 :::
+
+## Thread context: `mxr briefing context`
+
+The context the web and TUI readers show above a conversation, on the command
+line. Facts come from the local store with no model: who the thread is mainly
+with, how many emails you have exchanged, your and their usual reply times,
+when you last spoke outside this thread, whether you owe a reply, and open
+promises in the thread both ways. When a model is configured it adds a
+one-sentence gist and the ask, with the sentence that makes the ask quoted.
+
+```bash
+mxr briefing context THREAD_ID
+mxr briefing context THREAD_ID --no-ai          # facts only, no model
+mxr briefing context THREAD_ID --format json    # {context, gist}
+```
+
+```text
+Gist      The canary stays at 5% until the dashboard is quiet.
+Asks you  to confirm who owns the rollout check
+          "Can you confirm who owns the rollout check before Monday?"
+With      Maya (maya@example.com): 41 emails · you usually reply within 4h · last spoke 12 Sep
+You owe   a reply since Thu
+Promises  You promised: send the runbook link, due 2 Oct
+AI        local model qwen2.5:7b · from this thread only
+```
+
+Rules the gist follows:
+
+- **The quote is checked.** mxr keeps the ask's quote only when it appears
+  in that message's text (line breaks and quote-mark style may differ, the
+  words may not). A paraphrase is dropped and the ask stays without it, so
+  clients can highlight the quote without trusting the model.
+- **Plain text within limits.** The gist is one sentence of at most 240
+  characters and the ask at most 160, with no markdown.
+- **Cached per newest message.** The answer is kept until a new message
+  arrives, the model changes, or the privacy setting changes what the prompt
+  may carry. `--refresh` asks again.
+- **Privacy.** The thread's own messages go to the model under the same rule
+  as `mxr summarize`. Your history with the person (counts and reply times)
+  only goes to a cloud model with `llm.allow_cloud_relationship_data = true`.
+  The `AI` line says which model answered, local or cloud, and whether it
+  read that history.
+- **No model is not an error.** Without one, `gist.status` is `disabled` and
+  the human output shows the facts only.
+
+In JSON, `context` has `counterparty`, `owed_reply` and `commitments`, and
+`gist` has `status`, `gist`, `ask` (`summary` and an optional verified
+`quote`), and `provenance` (`model`, `locality`, `sources`). The bridge serves
+the same data at `GET /api/v1/mail/threads/{id}/context` and
+`GET /api/v1/mail/threads/{id}/context/gist`, and MCP clients get it from
+`mxr_thread_context`.
 
 ## Thread briefing — `mxr briefing thread`
 

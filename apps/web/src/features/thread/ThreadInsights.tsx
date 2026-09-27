@@ -1,11 +1,10 @@
 /*
- * AI overview and open commitments shown above a thread. Both come from
- * the daemon; the reader only formats them.
+ * The AI overview (`y`) shown above a thread. It comes from the daemon; the
+ * reader only formats it.
  */
 
-import { Check, ChevronDown, FileText, RefreshCw } from "lucide-react";
+import { ChevronDown, FileText, RefreshCw } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export interface ThreadSummaryView {
@@ -13,14 +12,6 @@ export interface ThreadSummaryView {
   generatedAt?: string;
   text: string;
   bullets: string[];
-}
-
-export interface ThreadCommitmentView {
-  id: string;
-  direction: string;
-  whoOwes: string;
-  what: string;
-  byWhen?: string | null;
 }
 
 export function ThreadSummaryAccordion({
@@ -87,55 +78,6 @@ export function ThreadSummaryLoading() {
   );
 }
 
-export function ThreadCommitmentChips({
-  commitments,
-  onResolve,
-  resolving,
-}: {
-  commitments: ThreadCommitmentView[];
-  onResolve: (commitmentId: string) => void;
-  resolving: boolean;
-}) {
-  return (
-    <section
-      aria-label="Open commitments"
-      className="mb-4 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3"
-    >
-      <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-foreground">
-        <FileText className="size-3.5 text-warning" />
-        Open commitments
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {commitments.slice(0, 4).map((commitment) => (
-          <div
-            key={commitment.id}
-            className="flex max-w-full items-center gap-1.5 rounded-md border border-warning/40 bg-background/70 py-1 pl-2 pr-1 text-2xs"
-            title={commitment.what}
-          >
-            <span className="font-medium">{commitment.whoOwes}</span>
-            <span className="text-muted-foreground">{commitment.direction}</span>
-            <span className="max-w-[280px] truncate">{commitment.what}</span>
-            {commitment.byWhen ? (
-              <span className="text-muted-foreground">due {shortDate(commitment.byWhen)}</span>
-            ) : null}
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              className="shrink-0"
-              aria-label={`Resolve commitment: ${commitment.what}`}
-              disabled={resolving}
-              onClick={() => onResolve(commitment.id)}
-            >
-              <Check className="size-3" />
-            </Button>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 export function normalizeThreadSummary(payload: unknown): ThreadSummaryView | null {
   const source =
     isRecord(payload) && isRecord(payload.summary)
@@ -148,34 +90,6 @@ export function normalizeThreadSummary(payload: unknown): ThreadSummaryView | nu
   const model = typeof source?.model === "string" ? source.model : undefined;
   const generatedAt = typeof source?.generated_at === "string" ? source.generated_at : undefined;
   return { generatedAt, model, text, bullets: summaryBullets(text) };
-}
-
-export function extractThreadCommitments(payload: unknown): ThreadCommitmentView[] {
-  const commitments =
-    isRecord(payload) && Array.isArray(payload.commitments) ? payload.commitments : [];
-  return commitments.flatMap((item) => {
-    if (!isRecord(item)) return [];
-    const id = typeof item.id === "string" ? item.id : "";
-    const what = typeof item.what === "string" ? item.what.trim() : "";
-    const whoOwes = typeof item.who_owes === "string" ? item.who_owes.trim() : "";
-    const direction = typeof item.direction === "string" ? item.direction : "";
-    if (!id || !what || !whoOwes || !direction) return [];
-    return [
-      {
-        id,
-        what,
-        whoOwes,
-        direction,
-        byWhen: typeof item.by_when === "string" ? item.by_when : null,
-      },
-    ];
-  });
-}
-
-function shortDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function summaryBullets(text: string): string[] {

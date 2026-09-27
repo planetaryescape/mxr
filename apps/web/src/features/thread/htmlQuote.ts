@@ -99,12 +99,3 @@ function removeFrom(node: Element): void {
     current = parent;
   }
 }
-
-/** Count remote images a body would load (trackers excluded by the sanitizer). */
-export function countRemoteImages(html: string): number {
-  if (typeof DOMParser === "undefined") return 0;
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  return Array.from(doc.querySelectorAll("img[src]")).filter((image) =>
-    /^https?:\/\//i.test(image.getAttribute("src") ?? ""),
-  ).length;
-}

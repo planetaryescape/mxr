@@ -461,7 +461,7 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
-    /// Render a thread or recipient briefing.
+    /// Render a thread or recipient briefing, or a conversation's context.
     Briefing {
         #[command(subcommand)]
         action: BriefingAction,
@@ -2416,6 +2416,22 @@ pub enum DecisionsAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum BriefingAction {
+    /// What matters before reading a conversation: the person, whether you
+    /// owe a reply, open promises, and the gist and ask from a model.
+    ///
+    /// Facts come from the local store. The gist and ask need a configured
+    /// model; `--no-ai` skips them.
+    Context {
+        thread_id: String,
+        /// Facts from the local store only; don't ask the model.
+        #[arg(long)]
+        no_ai: bool,
+        /// Ask the model again instead of using the cached gist.
+        #[arg(long, conflicts_with = "no_ai")]
+        refresh: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     Thread {
         thread_id: String,
         #[arg(long)]

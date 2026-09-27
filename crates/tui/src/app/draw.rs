@@ -56,6 +56,24 @@ fn draw_terminal_too_small(frame: &mut Frame, area: Rect, theme: &Theme) {
 }
 
 impl App {
+    /// The open thread's context lines, empty until the daemon answers.
+    fn thread_context_lines(&self) -> Vec<ratatui::text::Line<'static>> {
+        let Some(thread_id) = self.context_envelope().map(|env| env.thread_id.clone()) else {
+            return Vec::new();
+        };
+        let context = self
+            .mailbox
+            .thread_context
+            .as_ref()
+            .filter(|context| context.thread_id == thread_id);
+        let gist = self
+            .mailbox
+            .thread_gist
+            .as_ref()
+            .filter(|gist| gist.thread_id == thread_id);
+        ui::thread_context_view::context_lines(context, gist, &self.theme, chrono::Utc::now())
+    }
+
     fn thread_summary_block(&self) -> Option<ui::message_view::ThreadSummaryBlock> {
         let current_thread_id = self.context_envelope().map(|env| env.thread_id.clone())?;
         let loading = self
@@ -299,11 +317,13 @@ impl App {
                             );
                             let preview_blocks = self.thread_message_blocks();
                             let summary = self.thread_summary_block();
+                            let context = self.thread_context_lines();
                             let clamped_scroll = ui::message_view::draw(
                                 frame,
                                 inner[1],
                                 &preview_blocks,
                                 ui::message_view::DrawOptions {
+                                    context,
                                     summary,
                                     scroll_offset: self.mailbox.message_scroll_offset,
                                     active_pane: &self.mailbox.active_pane,
@@ -324,11 +344,13 @@ impl App {
 
                         let preview_blocks = self.thread_message_blocks();
                         let summary = self.thread_summary_block();
+                        let context = self.thread_context_lines();
                         let clamped_scroll = ui::message_view::draw(
                             frame,
                             chunks[1],
                             &preview_blocks,
                             ui::message_view::DrawOptions {
+                                context,
                                 summary,
                                 scroll_offset: self.mailbox.message_scroll_offset,
                                 active_pane: &self.mailbox.active_pane,
@@ -394,11 +416,13 @@ impl App {
                     ui::deliveries_page::draw(frame, cols[0], &self.deliveries, theme);
                     let preview_blocks = self.thread_message_blocks();
                     let summary = self.thread_summary_block();
+                    let context = self.thread_context_lines();
                     let clamped_scroll = ui::message_view::draw(
                         frame,
                         cols[1],
                         &preview_blocks,
                         ui::message_view::DrawOptions {
+                            context,
                             summary,
                             scroll_offset: self.mailbox.message_scroll_offset,
                             active_pane: &self.mailbox.active_pane,

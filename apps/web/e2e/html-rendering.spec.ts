@@ -80,36 +80,48 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
   await expect(body.getByText("fine print")).toHaveCSS("color", "rgb(119, 119, 119)");
   await expect(body.getByText("fine print")).toHaveCSS("font-size", "12px");
   // A white panel from a light-theme email is not pasted onto the dark reader.
-  await expect(body.locator("#white-panel")).not.toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(body.locator("#white-panel")).not.toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)",
+  );
   await expect(body.getByRole("link", { name: "visible link" })).toHaveCSS(
     "text-decoration-line",
     "underline",
   );
   // Tracking pixels are stripped; other remote images wait for consent.
   await expect(body.getByAltText("tracking pixel")).toHaveCount(0);
-  const newsletter = body.getByAltText("newsletter image");
-  await expect(newsletter).not.toHaveAttribute("src", /.+/);
-  await expect(newsletter).toHaveAttribute(
-    "data-original-src",
-    "https://cdn.example.com/newsletter.png",
+  // A blocked image is a small inline note, not an empty box its size.
+  await expect(body.getByAltText("newsletter image")).toHaveCount(0);
+  const note = body.locator(".mxr-image-blocked");
+  await expect(note).toHaveText("Image blocked");
+  await expect(note).toHaveAttribute("title", "newsletter image");
+  expect((await note.boundingBox())?.height ?? 0).toBeLessThan(30);
+  await expect(reader.getByTestId("privacy-line")).toContainText(
+    "Blocked 1 tracker and 1 remote image from Customer.io and example.com.",
   );
-  await reader.getByRole("button", { name: /^Load images/ }).click();
-  await expect(reader.locator("iframe[sandbox]").first().contentFrame().getByAltText("newsletter image")).toHaveAttribute(
-    "src",
-    "https://cdn.example.com/newsletter.png",
-  );
+  await reader.getByRole("button", { name: /^Show images/ }).click();
+  await expect(
+    reader.locator("iframe[sandbox]").first().contentFrame().getByAltText("newsletter image"),
+  ).toHaveAttribute("src", "https://cdn.example.com/newsletter.png");
 
-  const heights = await page.getByTestId("thread-scroll").evaluate((scrollNode) => {
-    const frameNode = scrollNode.querySelector("iframe");
-    if (!frameNode) throw new Error("message iframe not found");
-    return frameNode.getBoundingClientRect().height;
-  });
-  expect(heights).toBeGreaterThan(150);
+  // The frame sizes to its content, not to a fixed default.
+  await expect
+    .poll(() =>
+      page.getByTestId("thread-scroll").evaluate((scrollNode) => {
+        const frameNode = scrollNode.querySelector("iframe");
+        const doc = frameNode?.contentDocument?.documentElement;
+        if (!frameNode || !doc) throw new Error("message iframe not found");
+        return Math.abs(frameNode.getBoundingClientRect().height - doc.scrollHeight);
+      }),
+    )
+    .toBeLessThan(2);
 
   await expect(reader.getByRole("button", { name: /^to Planetary Escape/ })).toBeVisible();
-  for (const name of ["Archive (e)", "Star (s)", "Mark unread (U)", "Reply r", "Labels (l)"]) {
+  // The toolbar keeps the frequent verbs; the rest are in More.
+  for (const name of ["Archive (e)", "Snooze (Z)", "More actions"]) {
     await expect(reader.getByRole("button", { name, exact: true })).toBeVisible();
   }
+  await expect(reader.getByRole("button", { name: "Reply…" })).toBeVisible();
 });
 
 test("message attachments can be opened and downloaded", async ({ page }) => {
@@ -197,7 +209,9 @@ test("message attachments can be opened and downloaded", async ({ page }) => {
   await page.getByRole("option", { name: /attachment smoke/ }).click();
 
   await page.getByRole("button", { name: "Open report.pdf" }).click();
-  await expect.poll(() => openBody).toEqual({ message_id: "msg-attachment", attachment_id: "att-report" });
+  await expect
+    .poll(() => openBody)
+    .toEqual({ message_id: "msg-attachment", attachment_id: "att-report" });
 
   await page.getByRole("button", { name: "Download report.pdf" }).click();
   await expect

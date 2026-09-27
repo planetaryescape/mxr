@@ -249,6 +249,10 @@ pub struct MailboxState {
     pub thread_summary: Option<ThreadSummaryPreview>,
     pub thread_summary_in_flight: HashSet<mxr_core::ThreadId>,
     pub thread_summary_error: Option<String>,
+    /// Facts for the open thread (`GetThreadContext`), shown above it.
+    pub thread_context: Option<mxr_protocol::ThreadContextData>,
+    /// The model's gist and ask for the open thread (`GetThreadGist`).
+    pub thread_gist: Option<mxr_protocol::ThreadGistData>,
     pub thread_selected_index: usize,
     pub message_scroll_offset: u16,
     pub body_cache: HashMap<MessageId, MessageBody>,
@@ -333,6 +337,8 @@ impl MailboxState {
             thread_summary: None,
             thread_summary_in_flight: HashSet::new(),
             thread_summary_error: None,
+            thread_context: None,
+            thread_gist: None,
             thread_selected_index: 0,
             message_scroll_offset: 0,
             body_cache: HashMap::new(),

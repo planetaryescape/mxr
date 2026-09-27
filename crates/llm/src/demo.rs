@@ -53,6 +53,7 @@ impl LlmProvider for DemoLlmProvider {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FeatureKind {
+    ThreadGist,
     Summarize,
     Briefing,
     DraftAssist,
@@ -78,7 +79,9 @@ fn classify(req: &CompletionRequest) -> FeatureKind {
 
     // Order matters: more-specific phrases first so e.g. "draft a briefing"
     // doesn't get caught by the draft branch.
-    if system.contains("briefing") {
+    if system.contains("reader gist") {
+        FeatureKind::ThreadGist
+    } else if system.contains("briefing") {
         FeatureKind::Briefing
     } else if system.contains("summarize email")
         || system.contains("summarize")
@@ -120,6 +123,7 @@ fn render(kind: FeatureKind, req: &CompletionRequest) -> String {
     let subject_hint = extract_subject(user);
 
     match kind {
+        FeatureKind::ThreadGist => demo_thread_gist(user),
         FeatureKind::Summarize => format!(
             "ACTION REQUIRED — confirm the Friday v0.6 cut\n\
              \n\
@@ -214,6 +218,42 @@ fn render(kind: FeatureKind, req: &CompletionRequest) -> String {
     }
 }
 
+/// A gist whose ask quotes a real question from the newest message that has
+/// one, so the demo's reader highlights something that is really there.
+fn demo_thread_gist(user: &str) -> String {
+    let question = user.rsplit("[msg_id=").find_map(|block| {
+        let (id, rest) = block.split_once(']')?;
+        let header_end = rest.find("\nSubject:")?;
+        let from_line = rest[..header_end]
+            .lines()
+            .find(|line| line.starts_with("From:"))?;
+        if from_line.contains("(you)") {
+            return None;
+        }
+        let body = rest[header_end..].split_once('\n').map(|(_, body)| body)?;
+        let body = body.split_once('\n').map_or("", |(_, body)| body);
+        body.lines().find_map(|line| {
+            let end = line.find('?')?;
+            let start = line[..end].rfind(['.', '!']).map_or(0, |index| index + 1);
+            let sentence = line[start..=end].trim();
+            (sentence.len() >= 12).then(|| (id.to_string(), sentence.to_string()))
+        })
+    });
+    let ask = match question {
+        Some((id, quote)) => serde_json::json!({
+            "summary": "answer the question in the latest message",
+            "msg_id": id,
+            "quote": quote,
+        }),
+        None => serde_json::Value::Null,
+    };
+    serde_json::json!({
+        "gist": "The team agreed to ship the v0.6 cut on Friday; one question is still open.",
+        "ask": ask,
+    })
+    .to_string()
+}
+
 /// Pulls a plausible subject hint out of the user prompt so summaries and
 /// briefings read like they're about a real thread. Falls back to a generic
 /// label if no subject line is present.
@@ -260,6 +300,23 @@ mod tests {
             resp.content,
         );
         assert!(resp.content.contains("\n\nSummary of friday cut"));
+    }
+
+    #[tokio::test]
+    async fn thread_gist_quotes_a_question_from_the_newest_message() {
+        let provider = DemoLlmProvider::new();
+        let user = "[msg_id=m1]\nFrom: a@x.com\nDate: d\nSubject: s\nOld. Are we still on for lunch?\n\n\
+                    [msg_id=m2]\nFrom: b@x.com\nDate: d\nSubject: s\nThanks. Can you send the deck today?\n";
+        let resp = provider
+            .complete(req(
+                "You write the reader gist for one email conversation.",
+                user,
+            ))
+            .await
+            .expect("complete ok");
+        let json: serde_json::Value = serde_json::from_str(&resp.content).unwrap();
+        assert_eq!(json["ask"]["msg_id"], "m2");
+        assert_eq!(json["ask"]["quote"], "Can you send the deck today?");
     }
 
     #[tokio::test]

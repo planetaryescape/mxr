@@ -232,8 +232,10 @@ const COMMAND_EXAMPLES = {
     ],
   },
   briefing: {
-    use: 'Re-enter old context fast: cached, citation-backed summaries of dormant threads or contacts after a long gap. See [briefings and loop-in](/guides/briefings-and-loop-in/).',
+    use: 'Re-enter old context fast: what matters before reading a thread, and cached, citation-backed summaries of dormant threads or contacts after a long gap. See [briefings and loop-in](/guides/briefings-and-loop-in/).',
     examples: [
+      "mxr briefing context THREAD_ID",
+      "mxr briefing context THREAD_ID --no-ai --format json",
       "mxr briefing thread THREAD_ID",
       "mxr briefing thread THREAD_ID --refresh --format json",
       "mxr briefing recipient alice@example.com --format json",

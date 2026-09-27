@@ -51,6 +51,8 @@ struct HtmlImageBlock {
 }
 
 pub struct DrawOptions<'a> {
+    /// The thread's context (gist, ask, facts, promises), shown first.
+    pub context: Vec<Line<'static>>,
     pub summary: Option<ThreadSummaryBlock>,
     pub scroll_offset: u16,
     pub active_pane: &'a ActivePane,
@@ -68,6 +70,7 @@ pub fn draw(
     options: DrawOptions<'_>,
 ) -> u16 {
     let DrawOptions {
+        context,
         summary,
         scroll_offset,
         active_pane,
@@ -91,6 +94,11 @@ pub fn draw(
     frame.render_widget(block, area);
 
     let mut blocks: Vec<RenderBlock> = Vec::new();
+
+    if !context.is_empty() {
+        blocks.push(RenderBlock::Text(context));
+        blocks.push(RenderBlock::Text(vec![Line::from("")]));
+    }
 
     if let Some(summary) = summary {
         blocks.push(RenderBlock::Text(thread_summary_lines(summary, theme)));
@@ -1298,6 +1306,7 @@ mod tests {
                 Rect::new(0, 0, 70, 18),
                 &[block],
                 DrawOptions {
+                    context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
                     active_pane: &ActivePane::MessageView,
@@ -1341,6 +1350,7 @@ mod tests {
                 Rect::new(0, 0, 70, 18),
                 std::slice::from_ref(&block),
                 DrawOptions {
+                    context: Vec::new(),
                     summary: None,
                     scroll_offset: u16::MAX,
                     active_pane: &ActivePane::MessageView,
@@ -1386,6 +1396,7 @@ mod tests {
                 Rect::new(0, 0, 90, 20),
                 &[block],
                 DrawOptions {
+                    context: Vec::new(),
                     summary: Some(ThreadSummaryBlock {
                         text: Some("Summary:\n- Alice asked for launch approval.".into()),
                         model: Some("llama3.2".into()),
@@ -1437,6 +1448,7 @@ mod tests {
                 Rect::new(0, 0, 80, 18),
                 &[block],
                 DrawOptions {
+                    context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
                     active_pane: &ActivePane::MessageView,
@@ -1490,6 +1502,7 @@ mod tests {
                 Rect::new(0, 0, 120, 30),
                 &[block],
                 DrawOptions {
+                    context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
                     active_pane: &ActivePane::MessageView,
@@ -1538,6 +1551,7 @@ mod tests {
                 Rect::new(0, 0, 100, 18),
                 &[block],
                 DrawOptions {
+                    context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
                     active_pane: &ActivePane::MessageView,
@@ -1593,6 +1607,7 @@ mod tests {
                 Rect::new(0, 0, 100, 24),
                 &[block],
                 DrawOptions {
+                    context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
                     active_pane: &ActivePane::MessageView,
@@ -1651,6 +1666,7 @@ mod tests {
                 Rect::new(0, 0, 80, 10),
                 &[block],
                 DrawOptions {
+                    context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
                     active_pane: &ActivePane::MessageView,

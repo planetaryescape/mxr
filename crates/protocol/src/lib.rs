@@ -801,6 +801,7 @@ mod tests {
                         context_window: 0,
                         supports_streaming: false,
                         request_timeout_secs: 120,
+                        allow_cloud_relationship_data: false,
                     },
                 },
                 IpcCategory::MxrPlatform,

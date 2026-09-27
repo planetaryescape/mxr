@@ -1,5 +1,36 @@
 import DOMPurify from "dompurify";
 
+/** Class of the note that stands in for a blocked remote image. */
+export const BLOCKED_IMAGE_CLASS = "mxr-image-blocked";
+
+/**
+ * Whether an image source would be fetched from the network. Only inline
+ * sources (`data:`, `blob:`, `cid:`) are local; everything else, including
+ * protocol-relative `//host/…` and relative paths, counts as remote.
+ */
+export function isRemoteSrc(src: string): boolean {
+  const value = src.trim();
+  return value !== "" && !/^(data|blob|cid):/i.test(value);
+}
+
+/** The host a remote source would be fetched from, when it names one. */
+export function remoteHost(src: string): string | null {
+  return parseRemote(src)?.hostname ?? null;
+}
+
+const RELATIVE_BASE = "relative.invalid";
+
+/** The URL a remote source names, or null for inline or relative ones. */
+function parseRemote(src: string): URL | null {
+  if (!isRemoteSrc(src)) return null;
+  try {
+    const url = new URL(src.trim(), `https://${RELATIVE_BASE}`);
+    return url.hostname === RELATIVE_BASE ? null : url;
+  } catch {
+    return null;
+  }
+}
+
 interface SanitizeOpts {
   allowRemoteImages?: boolean;
   stripLightBackgrounds?: boolean;
@@ -25,13 +56,20 @@ export function sanitizeHtml(html: string, opts: SanitizeOpts = {}): string {
       node.remove();
       return;
     }
-    if (node.tagName === "IMG" && opts.allowRemoteImages === false) {
-      const src = node.getAttribute("src") ?? "";
-      if (/^https?:\/\//i.test(src)) {
-        node.setAttribute("data-original-src", src);
-        node.removeAttribute("src");
-        node.setAttribute("alt", node.getAttribute("alt") ?? "Remote image (blocked)");
-      }
+    if (
+      node.tagName === "IMG" &&
+      opts.allowRemoteImages === false &&
+      isRemoteSrc(node.getAttribute("src") ?? "")
+    ) {
+      // A small inline note instead of an empty box the image's size: the
+      // sender learns nothing, and the text around it doesn't reflow twice.
+      // (Showing images re-renders from the original HTML.)
+      const note = node.ownerDocument.createElement("span");
+      note.className = BLOCKED_IMAGE_CLASS;
+      note.textContent = "Image blocked";
+      const alt = node.getAttribute("alt")?.trim();
+      if (alt) note.setAttribute("title", alt);
+      node.replaceWith(note);
     }
   });
   return dom.sanitize(html, {
@@ -283,7 +321,8 @@ function isUnsafeStyleValue(value: string): boolean {
   return /url\s*\(|expression\s*\(|@import|javascript:|vbscript:|data:|-moz-binding/i.test(value);
 }
 
-function isTrackerImage(node: Element): boolean {
+/** Tracking pixels: tiny images and known open-tracking URLs. Always removed. */
+export function isTrackerImage(node: Element): boolean {
   return isTinyImage(node) || isKnownTrackerSrc(node.getAttribute("src") ?? "");
 }
 
@@ -294,20 +333,17 @@ function isTinyImage(node: Element): boolean {
 }
 
 function isKnownTrackerSrc(src: string): boolean {
-  try {
-    const url = new URL(src);
-    const host = url.hostname.toLowerCase();
-    const path = url.pathname.toLowerCase();
-    return (
-      host === "mailtrack.io" ||
-      host === "track.customer.io" ||
-      host.startsWith("email.mg.") ||
-      (host === "sendgrid.net" && path.startsWith("/wf/open")) ||
-      (host === "mandrillapp.com" && path.startsWith("/track"))
-    );
-  } catch {
-    return false;
-  }
+  const url = parseRemote(src);
+  if (!url) return false;
+  const host = url.hostname.toLowerCase();
+  const path = url.pathname.toLowerCase();
+  return (
+    host === "mailtrack.io" ||
+    host === "track.customer.io" ||
+    host.startsWith("email.mg.") ||
+    (host === "sendgrid.net" && path.startsWith("/wf/open")) ||
+    (host === "mandrillapp.com" && path.startsWith("/track"))
+  );
 }
 
 function numericAttr(node: Element, attr: string): number | undefined {

@@ -1,12 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { sanitizeHtml } from "@/lib/sanitizeHtml";
+import { BLOCKED_IMAGE_CLASS, sanitizeHtml } from "@/lib/sanitizeHtml";
 import { useUiPrefs, type EmailHtmlTheme } from "@/state/uiPrefsStore";
+
+import { ASK_MARK_ATTRIBUTE, markQuoteInDocument } from "./context/askQuote";
 
 interface MessageBodyProps {
   html: string;
   allowRemoteImages?: boolean;
   theme?: EmailHtmlTheme;
+  /**
+   * The ask's quote. Marked by walking the sanitized frame's text nodes, so
+   * no markup is ever built from it.
+   */
+  highlight?: string;
   /** Clicks inside the frame never reach the page; this reports them. */
   onInteract?: () => void;
 }
@@ -17,6 +24,7 @@ export function MessageBody({
   html,
   allowRemoteImages = false,
   theme = "dark",
+  highlight,
   onInteract,
 }: MessageBodyProps) {
   const onInteractRef = useRef(onInteract);
@@ -48,6 +56,15 @@ export function MessageBody({
     },
     [],
   );
+
+  // The gist can land after the frame has loaded; mark (or unmark) then.
+  // Frames that never had a quote are left alone.
+  const marked = useRef(false);
+  useEffect(() => {
+    if (!loaded || (!highlight && !marked.current)) return;
+    const body = iframeRef.current?.contentDocument?.body;
+    if (body) marked.current = markQuoteInDocument(body, highlight ?? "") !== null;
+  }, [highlight, loaded]);
 
   function resizeToContent() {
     try {
@@ -145,6 +162,8 @@ interface EmailPalette {
   link: string;
   rule: string;
   code: string;
+  askMark: string;
+  askMarkRule: string;
 }
 
 function readPalette(): EmailPalette {
@@ -157,6 +176,8 @@ function readPalette(): EmailPalette {
     link: read("--primary", "#57d5ff"),
     rule: read("--border-strong", "#294963"),
     code: read("--muted", "#10263a"),
+    askMark: read("--ask-mark", "rgb(255 209 102 / 0.18)"),
+    askMarkRule: read("--ask-mark-rule", "#ffd166"),
   };
 }
 
@@ -193,7 +214,7 @@ function renderHtmlDocument(
     stripDarkTextColors: theme === "dark",
   });
   const style = theme === "dark" ? darkEmailCss(palette) : originalEmailCss;
-  return `<!doctype html><html><head><base target="_blank"><meta http-equiv="Content-Security-Policy" content="script-src 'none'"><meta name="color-scheme" content="${theme === "dark" ? "dark" : "light"}"><style>${style}</style></head><body>${sanitized}</body></html>`;
+  return `<!doctype html><html><head><base target="_blank"><meta http-equiv="Content-Security-Policy" content="${frameCsp(allowRemoteImages)}"><meta name="color-scheme" content="${theme === "dark" ? "dark" : "light"}"><style>${style}${askMarkCss(theme, palette)}${blockedImageCss(theme, palette)}</style></head><body>${sanitized}</body></html>`;
 }
 
 /** A standalone copy for "Open original in a new tab" (TUI `O`). */
@@ -201,8 +222,40 @@ export function standaloneHtmlDocument(html: string, allowRemoteImages: boolean)
   return renderHtmlDocument(html, allowRemoteImages, "original", readPalette());
 }
 
+/**
+ * The frame's own policy: no scripts, and no network fetches except remote
+ * images once the reader allows them. The sanitizer already strips remote
+ * sources; this blocks whatever it might miss (a new attribute, an odd
+ * URL form) at the network layer.
+ */
+function frameCsp(allowRemoteImages: boolean): string {
+  const images = allowRemoteImages ? "data: blob: https: http:" : "data: blob:";
+  return `default-src 'none'; img-src ${images}; style-src 'unsafe-inline'; font-src data:`;
+}
+
+/** Light-theme colours for the always-light "original" email view. */
+const LIGHT_EMAIL = {
+  muted: "#5b6b78",
+  rule: "#c9d4dc",
+  askMark: "#fff0b3",
+  askMarkRule: "#d9a400",
+};
+
+/** The quiet note that stands in for a blocked remote image. */
+function blockedImageCss(theme: EmailHtmlTheme, p: EmailPalette): string {
+  const [color, rule] =
+    theme === "dark" ? [p.muted, p.rule] : [LIGHT_EMAIL.muted, LIGHT_EMAIL.rule];
+  return `.${BLOCKED_IMAGE_CLASS}{display:inline-block;margin:2px 0;padding:0 6px;border:1px solid ${rule};border-radius:4px;font:11px/18px system-ui,-apple-system,sans-serif;color:${color};background:transparent;white-space:nowrap}`;
+}
+
+function askMarkCss(theme: EmailHtmlTheme, p: EmailPalette): string {
+  const [background, rule] =
+    theme === "dark" ? [p.askMark, p.askMarkRule] : [LIGHT_EMAIL.askMark, LIGHT_EMAIL.askMarkRule];
+  return `mark[${ASK_MARK_ATTRIBUTE}]{background:${background};color:inherit;border-bottom:1px solid ${rule};border-radius:2px;padding:0 .1em;-webkit-box-decoration-break:clone;box-decoration-break:clone}`;
+}
+
 const originalEmailCss = `html{color-scheme:light;background:#fff}body{box-sizing:border-box;max-width:860px;margin:0 auto;padding:20px 24px;font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;background:#fff;overflow-wrap:anywhere}*,*:before,*:after{box-sizing:border-box}table{max-width:100%;border-collapse:collapse}body>table{margin-left:auto;margin-right:auto}img{max-width:100%;height:auto}a[href]{color:#0369a1!important;text-decoration:underline!important;text-underline-offset:2px}a[href]:hover{color:#075985!important}`;
 
 function darkEmailCss(p: EmailPalette): string {
-  return `html{color-scheme:dark;background:${p.background}}body{box-sizing:border-box;max-width:860px;margin:0 auto;padding:20px 24px;font:14px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:${p.foreground};background:${p.background};overflow-wrap:anywhere}*,*:before,*:after{box-sizing:border-box}table{max-width:100%;border-collapse:collapse}body>table{margin-left:auto;margin-right:auto}a[href]{color:${p.link}!important;text-decoration:underline!important;text-underline-offset:2px}hr{border:0;border-top:1px solid ${p.rule}}pre,code,kbd,samp{background:${p.code};border-radius:4px}pre{padding:12px;white-space:pre-wrap}blockquote{border-left:3px solid ${p.rule};margin-left:0;padding-left:12px;color:${p.muted}}img{max-width:100%;height:auto;filter:brightness(.95)}img[data-original-src]{display:inline-block;min-width:24px;min-height:24px;border:1px dashed ${p.rule};border-radius:4px}`;
+  return `html{color-scheme:dark;background:${p.background}}body{box-sizing:border-box;max-width:860px;margin:0 auto;padding:20px 24px;font:14px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:${p.foreground};background:${p.background};overflow-wrap:anywhere}*,*:before,*:after{box-sizing:border-box}table{max-width:100%;border-collapse:collapse}body>table{margin-left:auto;margin-right:auto}a[href]{color:${p.link}!important;text-decoration:underline!important;text-underline-offset:2px}hr{border:0;border-top:1px solid ${p.rule}}pre,code,kbd,samp{background:${p.code};border-radius:4px}pre{padding:12px;white-space:pre-wrap}blockquote{border-left:3px solid ${p.rule};margin-left:0;padding-left:12px;color:${p.muted}}img{max-width:100%;height:auto;filter:brightness(.95)}`;
 }

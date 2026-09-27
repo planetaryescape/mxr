@@ -12,7 +12,8 @@ guide:
 | Feature | Guide | What the LLM does |
 |---|---|---|
 | `mxr summarize` | this page | thread → Markdown summary |
-| `mxr draft-assist` | this page | thread + instruction → draft body |
+| `mxr draft-assist` | this page | thread + instruction → draft body in your voice |
+| `mxr draft eval` | [this page](#check-how-close-drafts-get) | replay your recent replies and compare drafts with what you sent |
 | `mxr send --check` answer coverage | [Pre-send safety](/guides/pre-send-safety/#answer-coverage) | extract asks from thread, judge whether the draft addresses each |
 | `mxr send --check` commitment candidates | [Forgotten work](/guides/forgotten-work/#commitments--promises-you-made) | extract "I'll send the deck Friday" promises from drafts |
 | `mxr ask` | [Archive intelligence](/guides/archive-intelligence/) | retrieval-grounded answer over local mail, every claim cited |
@@ -140,28 +141,55 @@ in the **AI overview** collapsible above the thread.
 
 ## What the prompts look like
 
-Both features use a tuned system prompt followed by the thread
-context. The summarizer asks for concise Markdown that names who said
-what, preserves concrete dates/deadlines/asks, and ends with next
-steps. The draft assistant asks for **just the reply body, no greeting
-line if the thread is mid-conversation, no signature, plain prose,
-matching the formality and length of the thread**.
+The summarizer asks for concise Markdown that names who said what,
+preserves concrete dates, deadlines and asks, and ends with next steps.
 
-When semantic search is enabled and indexed, draft assist first looks
-for similar prior outbound messages, filters out inbound mail and the
-current thread, and includes up to three examples as voice grounding.
-If semantic search is disabled or unavailable, draft assist still works
-with only the current thread and instruction.
+Drafts are written as you. Every draft (a reply, a forward, a new email,
+or a refine) gives the model:
 
-When relationship data exists for a contact, mxr injects it as weak
-background guidance. The current thread and your explicit instruction
-override it, and the prompt tells the model not to invent familiarity
-outside stored known topics, commitments, or summaries.
+- **Who you are**: the name you send as, your addresses, and today's date.
+- **Real emails you wrote**: your replies to this person paired with what
+  they were answering, then your other mail to them, then your replies in
+  general when you haven't written to them much. Quoted history and
+  signature blocks are stripped first.
+- **Your habits in plain sentences**, measured from those emails: how you
+  open and sign off, your usual length, contractions, lowercase, exclamation
+  marks, emoji.
+- **The conversation** as ME and THEM turns with dates, the message being
+  answered marked, newest turns kept when it's too long for the model's
+  context window.
+- **The task**: your instruction, the tone you picked (or "match my
+  examples"), and a length in words taken from how much you usually write to
+  this person.
 
-Relationship/profile context is guarded separately for cloud providers.
-Keep `llm.allow_cloud_relationship_data = false` to block that context from
-non-local endpoints; set it to `true` only when you want relationship-aware
-summaries, briefings, or drafts to use a cloud LLM.
+Your instruction is optional for a reply: the draft answers what the
+message asks, and anything only you can decide comes back as a
+`[[?: ...]]` gap to fill instead of a guess. The model is told to state
+only facts from the conversation or your instruction. Its output is
+cleaned before you see it (no "Here's a draft", `Subject:` lines, code
+fences or `[Your Name]`), and a draft cut off by the token limit is retried
+with more room rather than handed over half-written.
+
+### Check how close drafts get
+
+```bash
+mxr draft eval --limit 20
+```
+
+`mxr draft eval` replays your most recent replies. For each one it rebuilds
+the conversation and your voice examples as they were just before you
+replied, drafts a reply through the same path the web, TUI and CLI use, and
+compares it with what you actually sent: greeting and sign-off match, length
+ratio, and numbers the draft invented. It calls your LLM once per reply and
+saves nothing. Use `--format json` or `--format jsonl` to keep the results,
+and run it again after changing models to compare.
+
+Relationship and profile context is guarded separately for cloud
+providers. With `llm.allow_cloud_relationship_data = false` (the default)
+and a non-local endpoint, the relationship features are off and a draft
+sees only the conversation being drafted: none of your other emails,
+habits or relationship summaries leave your machine, and the draft says so.
+Set it to `true` only when you want your cloud LLM to draft in your voice.
 
 Every generated draft also runs through a deterministic local humanizer
 detector. It flags common AI-writing patterns such as stock vocabulary,

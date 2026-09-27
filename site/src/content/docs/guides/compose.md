@@ -68,7 +68,9 @@ choose **Save to server draft** to create/update the provider link.
 In the TUI, open the command palette and choose **Drafts**, or press `gE`.
 The draft browser uses `e` to edit, `d` to preview and confirm linked deletion,
 and `p` to preview and confirm provider sync. Unsupported accounts are
-refused without changing the local draft.
+refused without changing the local draft. A draft scheduled to send later
+shows when it sends; `c` previews and cancels the scheduled send and keeps
+the draft.
 
 [Follow the linked Gmail draft workflow](/guides/linked-drafts/) for CLI and
 MCP examples, sync behavior, and failure handling.

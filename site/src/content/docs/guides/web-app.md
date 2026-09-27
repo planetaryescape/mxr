@@ -184,7 +184,8 @@ opens or folds one, `X` opens them all. Quoted history and signatures fold
 behind a control that says how much is hidden; `Q` and `S` show them.
 
 `H`, `R` and the view switch choose between the formatted HTML, a cleaned
-reading view, and plain text. Remote images stay blocked until you press `M`
+reading view, and plain text; as in the TUI, pressing `H` or `R` again goes
+back to plain text. Remote images stay blocked until you press `M`
 or choose **Always from** a sender, so a sender cannot tell when you read
 their mail. Images embedded in the message itself always show.
 
@@ -192,6 +193,12 @@ their mail. Images embedded in the message itself always show.
 headers, `O` opens the original in a new tab, and `E` saves the conversation
 as Markdown. `y` summarizes the conversation; long conversations get a summary
 automatically when a language model is configured.
+
+**Draft a reply with AI** (in the reader's **More** menu) writes a reply in
+your voice, from real emails you sent this person. Say what it should say,
+or leave it empty to answer what they asked; anything only you can decide
+comes back as a `[[?: ...]]` gap. **Reply with this** opens the reply with the
+draft above the quoted message. [How drafts are written](/guides/llm-features/).
 
 ### Triage queues
 
@@ -221,6 +228,11 @@ reply all or forward. A reply opens under the conversation; you can pop it
 out or go fullscreen. New messages start in the To field and replies in the
 body. The editor is Markdown with vim keys by default; **Settings →
 Compose** switches to rich text.
+
+**Draft for me** in compose writes the body in your voice. A reply can leave
+the instruction empty; a new email needs to know what it's for (the subject
+counts as context, not as the instruction). A recipient outside the
+conversation drafts a forwarding note. Refine works on what's in the editor.
 
 Drafts save as you type and when you close the composer. Sending asks for
 confirmation with the recipients, the From address and the pre-send safety

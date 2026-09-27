@@ -766,7 +766,11 @@ async fn dispatch(
             platform::update_llm_config(state, config.as_ref().clone()).await
         }
         Request::GetNotificationChimes => notifications::get_notification_chimes(state).await,
-        Request::ResolveTime { input, now } => time::resolve(state, input, *now),
+        Request::ResolveTime {
+            input,
+            now,
+            time_zone,
+        } => time::resolve(state, input, *now, time_zone.as_deref()),
         Request::UpdateNotificationChimes { config } => {
             notifications::update_notification_chimes(state, config.as_ref().clone()).await
         }

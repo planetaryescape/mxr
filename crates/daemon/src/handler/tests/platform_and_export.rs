@@ -2270,6 +2270,7 @@ async fn resolve_time_answers_with_choices_or_a_specific_error() {
         payload: IpcPayload::Request(Request::ResolveTime {
             input: input.into(),
             now: Some(now),
+            time_zone: None,
         }),
     };
 
@@ -2314,4 +2315,43 @@ async fn resolve_time_answers_with_choices_or_a_specific_error() {
         mxr_core::natural_time::TimeResolveErrorKind::Unrecognized
     );
     assert_eq!(error.token.as_deref(), Some("frday"));
+}
+
+#[tokio::test]
+async fn resolve_time_uses_the_callers_zone_when_given() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let now = chrono::Utc.with_ymd_and_hms(2030, 5, 7, 12, 0, 0).unwrap();
+    let resolve = |zone: &str| IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::ResolveTime {
+            input: "tomorrow 9am".into(),
+            now: Some(now),
+            time_zone: Some(zone.into()),
+        }),
+    };
+
+    // 09:00 in Tokyo (+09:00) is midnight UTC, whatever the daemon's zone.
+    let resp = handle_request(&state, &resolve("Asia/Tokyo")).await;
+    let IpcPayload::Response(Response::Ok {
+        data:
+            ResponseData::ResolvedTime {
+                resolution: Some(resolution),
+                ..
+            },
+    }) = resp.payload
+    else {
+        panic!("expected a resolution, got {:?}", resp.payload);
+    };
+    assert_eq!(
+        resolution.at,
+        chrono::Utc.with_ymd_and_hms(2030, 5, 8, 0, 0, 0).unwrap()
+    );
+    assert_eq!(resolution.choices[0].local, "2030-05-08T09:00:00+09:00");
+
+    let resp = handle_request(&state, &resolve("Mars/Olympus")).await;
+    let IpcPayload::Response(Response::Error { message, .. }) = resp.payload else {
+        panic!("an unknown zone is an error, got {:?}", resp.payload);
+    };
+    assert!(message.contains("Unknown time zone"), "{message}");
 }

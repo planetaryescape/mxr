@@ -12,6 +12,8 @@ struct ResolveTimeQuery {
     input: String,
     #[serde(default)]
     now: Option<DateTime<Utc>>,
+    #[serde(default)]
+    time_zone: Option<String>,
 }
 
 async fn resolve_time(
@@ -25,6 +27,7 @@ async fn resolve_time(
         Request::ResolveTime {
             input: query.input,
             now: query.now,
+            time_zone: query.time_zone,
         },
     )
     .await?;

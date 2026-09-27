@@ -5168,6 +5168,12 @@ export interface components {
              *     set it for reproducible output.
              */
             now?: string | null;
+            /**
+             * @description IANA zone to resolve in, such as "Europe/London". The web app
+             *     sends the browser's zone because the browser may not be on the
+             *     daemon's machine; omitted means the daemon's local zone.
+             */
+            time_zone?: string | null;
         };
         /**
          * @description The daemon's reply to a [`Request`], correlated by [`IpcMessage::id`].
@@ -6348,7 +6354,7 @@ export interface components {
             understood: components["schemas"]["TimeSpan"][];
         };
         /** @enum {string} */
-        TimeResolveErrorKind: "empty" | "unrecognized" | "conflict" | "needs_time" | "invalid_date" | "in_past";
+        TimeResolveErrorKind: "empty" | "unrecognized" | "conflict" | "needs_time" | "invalid_date" | "in_past" | "out_of_range";
         /** @description A byte range of the input the parser understood. */
         TimeSpan: {
             end: number;

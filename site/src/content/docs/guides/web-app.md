@@ -132,6 +132,12 @@ serving remains future product work. Requirements on the remote side:
   loopback, so with the handshake on, the bridge would hand its token to
   anyone who can reach the proxy.
 
+Typed times follow the browser, not the server. The web app sends its
+time zone with every time it resolves, so "tomorrow 9am" typed in London
+means 09:00 in London even when the daemon runs on a UTC server. The
+snooze and send-later presets use the browser's zone too. The CLI and TUI
+run on the daemon's machine and use its local zone.
+
 ## Development against a running daemon
 
 Inside `apps/web/`:

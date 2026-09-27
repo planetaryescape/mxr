@@ -1182,22 +1182,59 @@ async fn discard_compose_session(
     Ok(Json(json!({ "ok": true })))
 }
 
+#[derive(Debug, Deserialize)]
+struct SnoozePresetsQuery {
+    #[serde(default)]
+    token: Option<String>,
+    /// The browser's IANA zone; see `Request::ResolveTime::time_zone`.
+    #[serde(default)]
+    time_zone: Option<String>,
+}
+
+/// Presets resolved by the daemon's `ResolveTime`, in the browser's zone,
+/// so the time a preset shows is the time the web app stores. A preset that
+/// has passed (tonight, after the evening hour) is left out.
 async fn snooze_presets(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(auth): Query<AuthQuery>,
+    Query(query): Query<SnoozePresetsQuery>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
-    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    let config = load_config().unwrap_or_default().snooze;
+    ensure_authorized(&headers, query.token.as_deref(), &state.config.auth_token)?;
+    let socket_path = &state.config.socket_path;
     let presets = [
         ("tomorrow", "Tomorrow morning"),
         ("tonight", "Tonight"),
         ("weekend", "Weekend"),
         ("monday", "Next Monday"),
-    ]
-    .into_iter()
-    .filter_map(|(name, label)| build_snooze_preset(name, label, &config))
-    .collect::<Vec<_>>();
+    ];
+    let answers = futures::future::try_join_all(presets.iter().map(|(name, _)| {
+        ipc_request(
+            socket_path,
+            Request::ResolveTime {
+                input: (*name).to_string(),
+                now: None,
+                time_zone: query.time_zone.clone(),
+            },
+        )
+    }))
+    .await?;
+    let presets = presets
+        .iter()
+        .zip(answers)
+        .filter_map(|((name, label), answer)| match answer {
+            ResponseData::ResolvedTime {
+                resolution: Some(resolution),
+                ..
+            } => Some(json!({
+                "id": name,
+                "name": name,
+                "label": label,
+                "wakeAt": resolution.at,
+                "description": resolution.description,
+            })),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     Ok(Json(json!({ "presets": presets })))
 }
 
@@ -2804,20 +2841,6 @@ fn merge_account_operation_result(
     if next.send.is_some() {
         base.send = next.send;
     }
-}
-
-fn build_snooze_preset(
-    name: &str,
-    label: &str,
-    config: &mxr_config::SnoozeConfig,
-) -> Option<serde_json::Value> {
-    let wake_at = resolve_snooze_until(name, config).ok()?;
-    Some(json!({
-        "id": name,
-        "name": name,
-        "label": label,
-        "wakeAt": wake_at,
-    }))
 }
 
 fn resolve_snooze_until(

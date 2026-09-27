@@ -9,7 +9,9 @@ Every place mxr asks for a time reads the same phrases: `mxr snooze --until`,
 app's snooze, send-later and reminder fields. One parser in the daemon
 resolves them, so the CLI, TUI and web give the same answer.
 
-Phrases resolve in your local time zone. Where a phrase leaves out the time,
+Phrases resolve in your local time zone. In the web app that is the
+browser's zone, even when the daemon runs elsewhere
+([remote-host mode](/guides/web-app/#manual-remote-host-mode)). Where a phrase leaves out the time,
 mxr uses your `[snooze]` hours from [config](/reference/config/):
 `morning_hour` (default 09:00), `evening_hour` (18:00), and `weekend_hour`
 (10:00) on `weekend_day` (Saturday).

@@ -1489,6 +1489,11 @@ pub enum Request {
         /// set it for reproducible output.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         now: Option<chrono::DateTime<chrono::Utc>>,
+        /// IANA zone to resolve in, such as "Europe/London". The web app
+        /// sends the browser's zone because the browser may not be on the
+        /// daemon's machine; omitted means the daemon's local zone.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        time_zone: Option<String>,
     },
 }
 

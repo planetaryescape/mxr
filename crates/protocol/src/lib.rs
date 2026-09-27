@@ -1141,7 +1141,7 @@ mod tests {
             serde_json::from_str(r#"{"cmd":"ResolveTime","input":"fri 3"}"#).unwrap();
         assert!(matches!(
             &req,
-            Request::ResolveTime { input, now: None } if input == "fri 3"
+            Request::ResolveTime { input, now: None, time_zone: None } if input == "fri 3"
         ));
         assert_eq!(
             serde_json::to_value(&req).unwrap(),

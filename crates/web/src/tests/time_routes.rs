@@ -23,7 +23,7 @@ async fn time_resolve_forwards_input_and_now_and_passes_the_payload_through() {
     let _ipc = spawn_fake_ipc_server(
         &socket_path,
         move |request| {
-            let Request::ResolveTime { input, now } = &request else {
+            let Request::ResolveTime { input, now, .. } = &request else {
                 return Some(Response::error("unexpected request"));
             };
             let now = now
@@ -64,7 +64,7 @@ async fn time_resolve_forwards_input_and_now_and_passes_the_payload_through() {
 
     let json: serde_json::Value = client
         .get(format!(
-            "http://{addr}/api/v1/mail/time/resolve?input=frday&now=2024-05-07T14:00:00Z"
+            "http://{addr}/api/v1/mail/time/resolve?input=frday&now=2024-05-07T14:00:00Z&time_zone=Europe/London"
         ))
         .bearer_auth(TEST_AUTH_TOKEN)
         .send()
@@ -79,8 +79,12 @@ async fn time_resolve_forwards_input_and_now_and_passes_the_payload_through() {
 
     let seen = seen.lock().unwrap();
     assert!(matches!(
+        &seen[1],
+        Request::ResolveTime { time_zone: Some(zone), .. } if zone == "Europe/London"
+    ));
+    assert!(matches!(
         &seen[0],
-        Request::ResolveTime { input, now: Some(_) } if input == "fri 3"
+        Request::ResolveTime { input, now: Some(_), time_zone: None } if input == "fri 3"
     ));
 }
 
@@ -126,4 +130,58 @@ async fn snooze_stores_the_previewed_instant_unchanged() {
         *wake_at,
         Utc.with_ymd_and_hms(2099, 5, 10, 14, 0, 0).unwrap()
     );
+}
+
+#[tokio::test]
+async fn snooze_presets_come_from_the_daemon_in_the_browser_zone() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let seen = Arc::new(Mutex::new(Vec::<Request>::new()));
+    let seen_for_ipc = seen.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| {
+            let Request::ResolveTime { input, .. } = &request else {
+                return Some(Response::error("unexpected request"));
+            };
+            let now = Utc.with_ymd_and_hms(2024, 5, 7, 20, 0, 0).unwrap();
+            // At 20:00, "tonight" has passed and is left out.
+            let result = mxr_core::natural_time::resolve_time(
+                input,
+                &now,
+                &mxr_core::natural_time::TimePrefs::default(),
+            );
+            seen_for_ipc.lock().unwrap().push(request.clone());
+            Some(Response::Ok {
+                data: ResponseData::resolved_time(input, result),
+            })
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket_path).await;
+
+    let json: serde_json::Value = reqwest::Client::new()
+        .get(format!(
+            "http://{addr}/api/v1/mail/actions/snooze/presets?time_zone=Asia/Tokyo"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let ids: Vec<&str> = json["presets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|preset| preset["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["tomorrow", "weekend", "monday"]);
+    assert_eq!(json["presets"][0]["wakeAt"], "2024-05-08T09:00:00Z");
+    assert!(seen.lock().unwrap().iter().all(|request| matches!(
+        request,
+        Request::ResolveTime { time_zone: Some(zone), .. } if zone == "Asia/Tokyo"
+    )));
 }

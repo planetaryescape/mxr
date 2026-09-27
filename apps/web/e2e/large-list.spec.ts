@@ -86,10 +86,23 @@ test(`${ROWS} rows stay virtualized and scroll without re-walking the list`, asy
   // React's own counts are left out: its scheduler yields more often on a
   // loaded machine, so they drift with the runner. The list's code does not.
   let blocks = 0;
+  let listScripts = 0;
+  let mailboxListBlocks = 0;
   for (const script of result) {
     if (!LIST_CODE.test(script.url)) continue;
-    for (const fn of script.functions) for (const range of fn.ranges) blocks += range.count;
+    listScripts += 1;
+    let scriptBlocks = 0;
+    for (const fn of script.functions) for (const range of fn.ranges) scriptBlocks += range.count;
+    blocks += scriptBlocks;
+    if (/\/MailboxList\.tsx/.test(script.url)) mailboxListBlocks += scriptBlocks;
   }
+  // The budget is only an upper bound, so a build whose script URLs stop
+  // matching (bundled assets, a renamed file) would pass on zero. The list
+  // module must have been counted, doing real work on each step (about 5k).
+  expect(listScripts, "list-owned scripts seen by coverage").toBeGreaterThan(0);
+  expect(mailboxListBlocks / STEPS, "MailboxList code executed per scroll step").toBeGreaterThan(
+    1_000,
+  );
   frames.sort((a, b) => a - b);
   const p95 = frames[Math.floor(frames.length * 0.95)]!;
   // Frame timing is kept as context for a failure, not as the gate.

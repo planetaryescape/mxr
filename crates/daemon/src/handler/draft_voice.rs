@@ -28,6 +28,18 @@ pub(crate) struct VoiceMaterial {
     pub samples: usize,
 }
 
+impl VoiceMaterial {
+    /// Nothing from the user's other mail (a cloud model without opt-in).
+    pub fn none() -> Self {
+        Self {
+            examples: Vec::new(),
+            habits: Vec::new(),
+            median_words: None,
+            samples: 0,
+        }
+    }
+}
+
 /// The person being written to, as the voice material is chosen for them.
 pub(crate) struct Counterparty {
     pub email: String,

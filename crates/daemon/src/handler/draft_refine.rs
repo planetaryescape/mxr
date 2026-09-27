@@ -52,14 +52,23 @@ pub(super) async fn draft_refine(
         email: recipient.email.to_ascii_lowercase(),
         name: recipient.name.clone(),
     };
-    let material =
-        draft_voice::voice_material(state, &draft.account_id, Some(&person), None, None).await;
-    let background =
+    // The user's other mail only reaches a cloud model with their opt-in.
+    let llm_config = state.config_snapshot().llm;
+    let share = crate::state::relationship_data_allowed(&llm_config, LlmFeature::DraftRefine);
+    let material = if share {
+        draft_voice::voice_material(state, &draft.account_id, Some(&person), None, None).await
+    } else {
+        draft_voice::VoiceMaterial::none()
+    };
+    let background = if share {
         relationship_profile::load_relationship_profile(state, &draft.account_id, &person.email)
             .await
             .ok()
             .flatten()
-            .and_then(|profile| profile.summary.map(|summary| summary.text));
+            .and_then(|profile| profile.summary.map(|summary| summary.text))
+    } else {
+        None
+    };
 
     let mut prompt = String::new();
     if !material.examples.is_empty() {
@@ -167,7 +176,12 @@ pub(super) async fn draft_refine(
         }
         max_tokens = (max_tokens * 2).min(4_000);
     };
-    let voice_context = material.habits.join("\n");
+    let voice_context =
+        if crate::state::relationship_data_allowed(&llm_config, LlmFeature::HumanizeRewrite) {
+            material.habits.join("\n")
+        } else {
+            String::new()
+        };
     draft_context::finish_draft_suggestion(
         state,
         draft_output::clean_draft(&response.content, me.name.as_deref()),

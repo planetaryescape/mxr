@@ -74,7 +74,9 @@ test("select three with x, archive them together, undo brings all three back", a
   await page.keyboard.press("e");
   for (const id of ids.slice(0, 3)) await expect(rowById(page, id)).toHaveCount(0);
   await expect(rowById(page, ids[3]!)).toBeVisible();
-  await expect(page.getByText(/^Archived \d+ messages$/)).toBeVisible();
+  // The rows leave at once; the toast waits for the daemon's answer, which
+  // can take longer than the default wait while the full suite loads it.
+  await expect(page.getByText(/^Archived \d+ messages$/)).toBeVisible({ timeout: 15_000 });
   await expect(mailList(page)).toHaveAttribute("aria-activedescendant", ids[3]!);
 
   await page.keyboard.press("u");

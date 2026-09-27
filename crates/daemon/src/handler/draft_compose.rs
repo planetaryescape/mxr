@@ -222,7 +222,12 @@ async fn draft_with(
         request.length_hint,
     )
     .await;
-    let background = match contact_emails.first() {
+    // The user's other mail only reaches a cloud model with their opt-in.
+    let llm_config = state.config_snapshot().llm;
+    let share = crate::state::relationship_data_allowed(&llm_config, feature);
+    let share_with_rewrite =
+        share && crate::state::relationship_data_allowed(&llm_config, LlmFeature::HumanizeRewrite);
+    let background = match contact_emails.first().filter(|_| share) {
         Some(email) => relationship_profile::load_relationship_profile(state, account_id, email)
             .await
             .ok()
@@ -230,14 +235,18 @@ async fn draft_with(
             .and_then(|profile| profile.summary.map(|summary| summary.text)),
         None => None,
     };
-    let material = draft_voice::voice_material(
-        state,
-        account_id,
-        counterparty.as_ref(),
-        thread_id,
-        request.before,
-    )
-    .await;
+    let material = if share {
+        draft_voice::voice_material(
+            state,
+            account_id,
+            counterparty.as_ref(),
+            thread_id,
+            request.before,
+        )
+        .await
+    } else {
+        VoiceMaterial::none()
+    };
     let target_words = target_words(request.length_hint, &material);
     let max_tokens = max_tokens_for_words(target_words);
     let budget_chars = prompt_budget_chars(state.llm.capabilities().context_window, max_tokens);
@@ -262,10 +271,18 @@ async fn draft_with(
         target_words,
         "assembled draft prompt"
     );
-    let voice_context = voice_context_for_rewrite(&material);
+    let voice_context = if share_with_rewrite {
+        voice_context_for_rewrite(&material)
+    } else {
+        String::new()
+    };
     let body = complete_with_retry(state, feature, &prompt, max_tokens).await?;
     let body_text = draft_output::clean_draft(&body.0, me.name.as_deref());
-    let note = context_note(&context, &material, counterparty.as_ref());
+    let note = if share {
+        context_note(&context, &material, counterparty.as_ref())
+    } else {
+        Some(CLOUD_NOTE.to_string())
+    };
     draft_context::finish_draft_suggestion(
         state,
         body_text,
@@ -278,6 +295,9 @@ async fn draft_with(
     )
     .await
 }
+
+pub(crate) const CLOUD_NOTE: &str = "Your LLM is a cloud endpoint, so this draft saw only the \
+conversation, not your other emails. Set llm.allow_cloud_relationship_data = true to draft in your voice.";
 
 /// Words to aim for: the user's choice, else their median with this
 /// person (or in general), else a short email.
@@ -1023,6 +1043,94 @@ mod tests {
             "{user}"
         );
         assert!(!user.contains("External pricing notes"), "{user}");
+    }
+
+    // Privacy: a cloud model without the user's opt-in sees the conversation
+    // being drafted, never their other emails or the relationship summary.
+    #[tokio::test]
+    async fn a_cloud_model_without_opt_in_never_sees_my_other_mail() {
+        let state = AppState::in_memory().await.unwrap();
+        let mut config = state.config_snapshot();
+        config.llm.enabled = true;
+        config.llm.base_url = "https://api.example-cloud.com/v1".into();
+        config.llm.allow_cloud_relationship_data = false;
+        state.set_config_for_test(config).await;
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+        let account_id = state.default_account_id();
+        seed_contact(&state, &account_id, "customer@example.com", 0.2, 5).await;
+
+        let mut asked = TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .thread_id(mxr_core::ThreadId::new())
+            .provider_id("old-ask")
+            .sender_address("Customer", "customer@example.com")
+            .date(chrono::Utc::now() - chrono::Duration::days(9))
+            .build();
+        asked.message_id_header = Some("<old-ask@x>".into());
+        state
+            .store
+            .upsert_envelope_with_direction(&asked, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        state
+            .store
+            .insert_body(&body(asked.id.clone(), "Old question?"))
+            .await
+            .unwrap();
+        let mut answered = TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .thread_id(asked.thread_id.clone())
+            .provider_id("old-answer")
+            .sender_address("Sam Rivers", "user@example.com")
+            .recipient_address(Some("Customer"), "customer@example.com")
+            .date(chrono::Utc::now() - chrono::Duration::days(8))
+            .build();
+        answered.in_reply_to = Some("<old-ask@x>".into());
+        state
+            .store
+            .upsert_envelope_with_direction(&answered, MessageDirection::Outbound)
+            .await
+            .unwrap();
+        state
+            .store
+            .insert_body(&body(
+                answered.id.clone(),
+                "PRIVATE-OLD-REPLY yes of course",
+            ))
+            .await
+            .unwrap();
+        state
+            .store
+            .try_create_reply_pair(&answered, MessageDirection::Outbound)
+            .await
+            .unwrap();
+
+        let (thread_id, _, inbound_text) = seed_inbound_thread(&state, &account_id).await;
+        let response = draft_compose(
+            &state,
+            Some(&account_id),
+            None,
+            "",
+            None,
+            Some(thread_id),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        let prompt = captured_prompt(&llm);
+        assert!(
+            prompt.contains(inbound_text),
+            "the conversation itself still goes"
+        );
+        assert!(!prompt.contains("PRIVATE-OLD-REPLY"), "{prompt}");
+        assert!(
+            !prompt.contains("Customer prefers short pricing updates."),
+            "{prompt}"
+        );
+        let (_, note) = draft_suggestion(response);
+        assert_eq!(note.as_deref(), Some(CLOUD_NOTE));
     }
 
     // Output: chatter the model adds around the email never reaches compose.

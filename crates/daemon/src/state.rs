@@ -348,6 +348,26 @@ fn relationship_data_block_reason(
     None
 }
 
+/// Whether mail beyond the conversation at hand (the user's other emails,
+/// relationship summaries, habits measured from their sent mail) may go to
+/// the model serving `feature`: always for a local endpoint, otherwise only
+/// with `llm.allow_cloud_relationship_data`. The same rule that blocks the
+/// relationship features outright, applied to what a draft prompt carries.
+pub(crate) fn relationship_data_allowed(
+    config: &mxr_config::LlmConfig,
+    feature: mxr_llm::LlmFeature,
+) -> bool {
+    if config.allow_cloud_relationship_data {
+        return true;
+    }
+    let effective = llm_override_entries(&config.overrides)
+        .into_iter()
+        .find(|(entry, _)| *entry == feature)
+        .map(|(_, override_config)| config.effective_override(override_config))
+        .unwrap_or_else(|| base_llm_config(config));
+    !effective.enabled || is_local_llm_url(&effective.base_url)
+}
+
 fn is_local_llm_url(base_url: &str) -> bool {
     let lower = base_url.trim().to_ascii_lowercase();
     lower.starts_with("http://localhost")

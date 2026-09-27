@@ -73,6 +73,7 @@ export const navigationActions: Action[] = [
     group: "Navigate",
     shortcut: "Mod+k",
     aliases: [":", "Ctrl+p"],
+    tuiNote: "Ctrl+P works on macOS; elsewhere it stays the browser's Print",
     hideInPalette: true,
     run: () => useModals.getState().setCommandPaletteOpen(true),
   },

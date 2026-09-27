@@ -7,31 +7,11 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type Dispatch,
-  type KeyboardEvent,
-  type RefObject,
-  type SetStateAction,
-} from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/api/client";
-import {
-  discardComposeSession,
-  fetchAccounts,
-  refreshComposeSession,
-  saveComposeSession,
-  suggestComposeCollaborators,
-  type ComposeFrontmatter,
-  type ComposeIssue,
-  type DraftSafetyReport,
-  type RuntimeAccount,
-  type SuggestedCollaborator,
-} from "./api";
-import { fetchAccountAddresses } from "@/features/accounts/api";
+import { discardComposeSession, type ComposeFrontmatter } from "./api";
 import { formatRelativeAge } from "@/lib/utils";
 import {
   forgetActiveDraft,
@@ -52,153 +32,21 @@ import {
   type ComposeIntent,
   type Snippet,
 } from "./session/composeDraft";
+import type { ComposeController, Signature } from "./session/composeController";
 import { handleComposeShortcut } from "./session/composeShortcuts";
-import { useComposeAttachments, type ComposeUploadProgress } from "./session/useComposeAttachments";
+import { useCollaboratorSuggestions } from "./session/useCollaboratorSuggestions";
+import { useComposeAttachments } from "./session/useComposeAttachments";
+import { useComposeAutofocus } from "./session/useComposeAutofocus";
 import { useComposeAutosave } from "./session/useComposeAutosave";
 import { useComposeSend, type ComposeSessionOptions } from "./session/useComposeSend";
 import { useDraftAssist } from "./session/useDraftAssist";
-import type {
-  DraftLengthHint,
-  DraftRefineKnobs,
-  DraftSuggestionResponse,
-  VoiceRegister,
-} from "./types";
+import { useDraftSaveActions } from "./session/useDraftSaveActions";
+import { useSenderAccounts } from "./session/useSenderAccounts";
 
 export type { ComposeDraftState, ComposeIntent, Snippet } from "./session/composeDraft";
+export type { ComposeController, Signature } from "./session/composeController";
 export type { ComposeUploadProgress } from "./session/useComposeAttachments";
 export type { ComposeSessionOptions } from "./session/useComposeSend";
-
-export interface Signature {
-  id: string;
-  name: string;
-  body: string;
-}
-
-/** Everything the compose UI consumes from the session lifecycle. */
-export interface ComposeController {
-  intent: ComposeIntent;
-  sessionLoading: boolean;
-  sessionError: Error | null;
-  retrySession: () => void;
-
-  draft: ComposeDraftState | null;
-  dirty: boolean;
-  saveStatus: string;
-  saveError: string | null;
-  /** Validation issues worth showing now: none before the first send
-   * attempt, except malformed addresses once a recipient field is left. */
-  visibleIssues: ComposeIssue[];
-  markRecipientsTouched: () => void;
-  recipientCount: number;
-  runtimeAccounts: RuntimeAccount[];
-  selectedAccount: RuntimeAccount | undefined;
-  /** Send-as addresses (primary + aliases) for the selected account. */
-  accountAddresses: string[];
-  canServerSave: boolean;
-  busy: boolean;
-  uploading: number;
-  sending: boolean;
-  discarding: boolean;
-
-  showCc: boolean;
-  setShowCc: Dispatch<SetStateAction<boolean>>;
-  showBcc: boolean;
-  setShowBcc: Dispatch<SetStateAction<boolean>>;
-  revealCc: () => void;
-  revealBcc: () => void;
-
-  toInputRef: RefObject<HTMLInputElement | null>;
-  ccInputRef: RefObject<HTMLInputElement | null>;
-  bccInputRef: RefObject<HTMLInputElement | null>;
-  fileInputRef: RefObject<HTMLInputElement | null>;
-
-  sendConfirmOpen: boolean;
-  setSendConfirmOpen: Dispatch<SetStateAction<boolean>>;
-  discardConfirmOpen: boolean;
-  setDiscardConfirmOpen: Dispatch<SetStateAction<boolean>>;
-
-  updateFrontmatter: <K extends keyof ComposeFrontmatter>(
-    field: K,
-    value: ComposeFrontmatter[K],
-  ) => void;
-  updateBody: (value: string) => void;
-  updateAccount: (accountId: string) => void;
-  handleSaveClick: () => Promise<void>;
-  handleServerSaveClick: () => Promise<void>;
-  handleRefreshClick: () => Promise<void>;
-  handleAttachShortcut: () => void;
-  handleComposeKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
-  requestSend: () => void;
-  /** Send from the confirm dialog; `override` only after an explicit
-   * override of a blocked safety report. */
-  confirmSend: (override: boolean) => Promise<void>;
-  snippetPickerOpen: boolean;
-  setSnippetPickerOpen: Dispatch<SetStateAction<boolean>>;
-  /** Snippets available for the picker and `;name ` inline expansion. */
-  snippetList: Snippet[];
-  /** Append a snippet body to the end of the message body. */
-  insertSnippet: (body: string) => void;
-  signaturePickerOpen: boolean;
-  setSignaturePickerOpen: Dispatch<SetStateAction<boolean>>;
-  signatureList: Signature[];
-  /** Append a signature block (`\n\n--\n{body}`) to the message body. */
-  insertSignature: (body: string) => void;
-  /** "Maybe include" suggestions for the chip row; empty when none or the
-   * lookup failed (the row hides silently). */
-  collaboratorSuggestions: SuggestedCollaborator[];
-  /** Append an address to Cc (suggested-collaborator click), revealing Cc. */
-  addCc: (email: string) => void;
-  sendLaterOpen: boolean;
-  setSendLaterOpen: Dispatch<SetStateAction<boolean>>;
-  /** Custom-time dialog for "Send and remind me if no reply in...". */
-  remindDialogOpen: boolean;
-  setRemindDialogOpen: Dispatch<SetStateAction<boolean>>;
-  /** Send, then set a no-reply reminder for `at`. */
-  requestSendAndRemind: (at: Date, label: string) => void;
-  /** Send, then archive the source conversation (replies only). */
-  requestSendAndArchive: () => void;
-  /** Open the send-later dialog (same local validation gate as send). */
-  requestSendLater: () => void;
-  /** Persist the session as a stored draft and schedule it for `at`. */
-  scheduleSend: (at: Date, label?: string) => Promise<void>;
-  scheduling: boolean;
-  /** Pre-send safety report backing the confirm dialog; null when the
-   * check passed clean (no dialog) or hasn't run. */
-  safetyReport: DraftSafetyReport | null;
-  /** Set when the safety check itself failed — dialog shows a notice. */
-  safetyCheckError: string | null;
-  checkingSafety: boolean;
-  requestDiscard: () => void;
-  discardDraft: () => Promise<void>;
-  /** Save pending edits, then call `options.onClose`. Stays open (with a
-   * toast) when the save fails, so closing never drops text. */
-  requestClose: () => Promise<void>;
-  retrySave: () => void;
-  addFiles: (files: FileList | File[]) => Promise<void>;
-  /** In-flight upload entries for the attachments strip (cleared when the
-   * batch settles). */
-  uploadProgress: ComposeUploadProgress[];
-  removeAttachment: (path: string) => void;
-
-  assistOpen: boolean;
-  setAssistOpen: Dispatch<SetStateAction<boolean>>;
-  aiPurpose: string;
-  setAiPurpose: Dispatch<SetStateAction<string>>;
-  aiRegister: VoiceRegister;
-  onRegisterChange: (value: VoiceRegister) => void;
-  aiLength: DraftLengthHint;
-  onLengthChange: (value: DraftLengthHint) => void;
-  aiOverridden: boolean;
-  resetTone: () => void;
-  refineContext: string;
-  setRefineContext: Dispatch<SetStateAction<string>>;
-  draftSuggestion: DraftSuggestionResponse | null;
-  generateDraft: () => void;
-  generating: boolean;
-  runRefine: (knobs: DraftRefineKnobs) => void;
-  refining: boolean;
-  canRefine: boolean;
-}
 
 export function useComposeSession(
   intent: ComposeIntent,
@@ -207,7 +55,6 @@ export function useComposeSession(
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts, staleTime: 60_000 });
   const snippets = useQuery({
     queryKey: ["snippets"],
     queryFn: () => apiFetch<{ snippets: Snippet[] }>("/api/v1/mail/snippets"),
@@ -240,13 +87,6 @@ export function useComposeSession(
   // or (for malformed addresses only) once a recipient field is left.
   const [sendAttempted, setSendAttempted] = useState(false);
   const [recipientsTouched, setRecipientsTouched] = useState(false);
-  const hasAutofocusedRef = useRef(false);
-  const [collaboratorSuggestions, setCollaboratorSuggestions] = useState<SuggestedCollaborator[]>(
-    [],
-  );
-  // One collaborators lookup per draft path — recipients settling for 1s
-  // with at least one To address triggers it.
-  const collaboratorsFetchedRef = useRef(new Set<string>());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toInputRef = useRef<HTMLInputElement>(null);
   const ccInputRef = useRef<HTMLInputElement>(null);
@@ -288,11 +128,15 @@ export function useComposeSession(
   const attachments = useComposeAttachments({ draftRef, setDraft, setDirty });
   const assist = useDraftAssist({ intent, draftRef, setDraft, setDirty });
 
-  const serverSave = useMutation({
-    // Carry the local id so the daemon updates that row before making the
-    // explicit provider copy. A new compose session has no local row to update.
-    mutationFn: ({ draftPath, accountId }: { draftPath: string; accountId: string }) =>
-      saveComposeSession(draftPath, accountId, intent.draftId),
+  const { handleSaveClick, handleServerSaveClick, handleRefreshClick } = useDraftSaveActions({
+    intent,
+    draftRef,
+    setDraft,
+    setDirty,
+    saveCurrentDraft,
+    isCurrentDraftSaved,
+    setSaveError,
+    setLastSavedAt,
   });
   const discardSession = useMutation({ mutationFn: discardComposeSession });
 
@@ -323,72 +167,10 @@ export function useComposeSession(
     return () => window.removeEventListener("beforeunload", warn);
   }, [hasUnsavedWork]);
 
-  useEffect(() => {
-    if (!draft?.draftPath || hasAutofocusedRef.current) return;
-    hasAutofocusedRef.current = true;
-    // Defer past the loading→loaded re-render. Never take focus the user
-    // already placed inside this composer; focus left on the mail list or
-    // reader (where c / r were pressed) moves here. A new message starts in
-    // To; a reply, whose recipients are filled in, starts in the body.
-    requestAnimationFrame(() => {
-      const active = document.activeElement;
-      if (active instanceof HTMLElement && active.closest("[data-compose-surface]")) return;
-      if (draftRef.current?.frontmatter.to.trim()) {
-        document
-          .querySelector<HTMLElement>(
-            "[data-compose-surface] .cm-content, [data-compose-surface] .ProseMirror",
-          )
-          ?.focus();
-      } else {
-        toInputRef.current?.focus();
-      }
-    });
-  }, [draft?.draftPath]);
+  useComposeAutofocus(draft?.draftPath, draftRef, toInputRef);
 
-  // Suggest collaborators once per draft, after the recipients settle for a
-  // second with at least one To address. Best-effort: errors hide the row.
-  const collaboratorDraftPath = draft?.draftPath;
-  const collaboratorAccountId = draft?.accountId;
-  const collaboratorTo = draft?.frontmatter.to ?? "";
-  useEffect(() => {
-    if (!collaboratorDraftPath || !collaboratorAccountId) return;
-    if (collaboratorsFetchedRef.current.has(collaboratorDraftPath)) return;
-    if (splitAddresses(collaboratorTo).length === 0) return;
-    const handle = window.setTimeout(() => {
-      collaboratorsFetchedRef.current.add(collaboratorDraftPath);
-      suggestComposeCollaborators(collaboratorDraftPath, collaboratorAccountId)
-        .then((response) => setCollaboratorSuggestions(response.suggestions ?? []))
-        .catch(() => {
-          // Silently hide — suggestions are a nicety, never an error state.
-        });
-    }, 1000);
-    return () => window.clearTimeout(handle);
-  }, [collaboratorDraftPath, collaboratorAccountId, collaboratorTo]);
-
-  const runtimeAccounts = accounts.data?.accounts ?? [];
-  const selectedAccount = draft
-    ? runtimeAccounts.find((account) => account.account_id === draft.accountId)
-    : undefined;
-
-  // Aliases the selected account may send as (send-as). Shares the cache key
-  // used by the account-detail address editor so both stay consistent.
-  const addressesQuery = useQuery({
-    queryKey: ["account-addresses", selectedAccount?.account_id],
-    queryFn: () => fetchAccountAddresses(selectedAccount?.account_id ?? ""),
-    enabled: Boolean(selectedAccount?.account_id),
-    staleTime: 60_000,
-  });
-  // Union of the account's primary email and its configured aliases, primary
-  // first (it always leads because we prepend it), deduped, so the current
-  // `from` always has a matching option in the picker.
-  const accountAddresses: string[] = (() => {
-    if (!selectedAccount) return [];
-    const fetched = addressesQuery.data?.addresses ?? [];
-    const emails = [selectedAccount.email, ...fetched.map((address) => address.email)].filter(
-      (email) => email.length > 0,
-    );
-    return [...new Set(emails)];
-  })();
+  const collaboratorSuggestions = useCollaboratorSuggestions(draft);
+  const { runtimeAccounts, selectedAccount, accountAddresses } = useSenderAccounts(draft);
   const saveStatus = autosave.saving
     ? "Saving..."
     : dirty
@@ -447,58 +229,6 @@ export function useComposeSession(
         : current,
     );
     setDirty(true);
-  }
-
-  // The three handlers below are fired from shortcuts, menus and editor ex
-  // commands that never await them, so they report failures themselves and
-  // never reject.
-  async function handleSaveClick() {
-    try {
-      await saveCurrentDraft();
-    } catch (error) {
-      toast.error("Save failed", { description: errorMessage(error) });
-      return;
-    }
-    toast.success("Draft saved locally");
-  }
-
-  async function handleServerSaveClick() {
-    try {
-      await saveCurrentDraft();
-      const current = draftRef.current;
-      if (!current || !isCurrentDraftSaved(current)) {
-        toast.error("Draft changed while saving", {
-          description: "Save again before server draft.",
-        });
-        return;
-      }
-      const accountId = current.accountId;
-      const draftPath = current.draftPath;
-      await serverSave.mutateAsync({ draftPath, accountId });
-    } catch (error) {
-      toast.error("Server draft save failed", { description: errorMessage(error) });
-      return;
-    }
-    toast.success("Draft copied to provider", {
-      description: "The local mxr draft was preserved.",
-    });
-  }
-
-  async function handleRefreshClick() {
-    const current = draftRef.current;
-    if (!current) return;
-    try {
-      const response = await refreshComposeSession(current.draftPath);
-      const next = draftFromSession(response.session, current.accountId);
-      setDraft(next);
-      setDirty(false);
-      setSaveError(null);
-      setLastSavedAt(new Date());
-    } catch (error) {
-      toast.error("Refresh failed", { description: errorMessage(error) });
-      return;
-    }
-    toast.success("Draft refreshed");
   }
 
   function handleAttachShortcut() {
@@ -677,14 +407,7 @@ export function useComposeSession(
     setSignaturePickerOpen,
     signatureList: signatures.data?.signatures ?? [],
     insertSignature,
-    collaboratorSuggestions: draft
-      ? collaboratorSuggestions.filter(
-          (item) =>
-            !`${draft.frontmatter.to},${draft.frontmatter.cc},${draft.frontmatter.bcc}`
-              .toLowerCase()
-              .includes(item.email.toLowerCase()),
-        )
-      : [],
+    collaboratorSuggestions,
     addCc,
     remindDialogOpen: send.remindDialogOpen,
     setRemindDialogOpen: send.setRemindDialogOpen,

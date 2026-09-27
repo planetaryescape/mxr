@@ -476,8 +476,8 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `[` | Archive, open previous | Web only |
 | `h`, `ArrowLeft` | Back to list |  |
 | `Esc`, `q` | Close conversation |  |
-| `R` | Reader view |  |
-| `H` | Formatted (HTML) view |  |
+| `R` | Reader view, or back to plain |  |
+| `H` | Formatted (HTML) view, or back to plain |  |
 | `M` | Load remote images |  |
 | `S` | Show or hide signatures |  |
 | `Q` | Show or hide quoted text | Web only |

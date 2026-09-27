@@ -1637,7 +1637,12 @@ fn build_demo_msg(
         flags,
         has_attachments,
     );
-    let text_html = demo_html_body(&subject, &body_text, category, current_num);
+    // Only reference an inline image the message actually carries: a
+    // `cid:` with no matching part renders as a broken image in every client.
+    let has_inline_part = attachments
+        .iter()
+        .any(|attachment| attachment.content_id.is_some());
+    let text_html = demo_html_body(&subject, &body_text, category, current_num, has_inline_part);
 
     let size_bytes = body_text.len() as u64
         + attachments
@@ -1796,10 +1801,16 @@ fn demo_attachments(
     attachments
 }
 
-fn demo_html_body(subject: &str, body_text: &str, category: usize, current_num: usize) -> String {
-    let image = if category == 2 {
+fn demo_html_body(
+    subject: &str,
+    body_text: &str,
+    category: usize,
+    current_num: usize,
+    has_inline_part: bool,
+) -> String {
+    let image = if category == 2 && has_inline_part {
         format!(r#"<img alt="Newsletter chart" src="cid:hero-{current_num}@demo.mxr" />"#)
-    } else if category == 11 {
+    } else if category == 11 && has_inline_part {
         format!(r#"<img alt="Promotional banner" src="cid:promo-{current_num}@demo.mxr" />"#)
     } else if category == 4 {
         r#"<img alt="Onboarding screenshot" src="https://demo.mxr.local/assets/onboarding-shot.png" />"#.to_string()

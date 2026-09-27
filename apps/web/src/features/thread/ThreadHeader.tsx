@@ -201,7 +201,7 @@ function IconAction({
 const VIEWS: { id: ReaderView; label: string; keys: string; command: string }[] = [
   { id: "formatted", label: "Formatted", keys: "H", command: "viewHtml" },
   { id: "reader", label: "Reader", keys: "R", command: "viewReader" },
-  { id: "plain", label: "Plain", keys: "", command: "viewPlain" },
+  { id: "plain", label: "Plain", keys: "R or H again", command: "viewPlain" },
 ];
 
 function ViewSwitch({ view }: { view: ReaderView }) {
@@ -218,7 +218,10 @@ function ViewSwitch({ view }: { view: ReaderView }) {
           role="radio"
           aria-checked={view === option.id}
           title={option.keys ? `${option.label} (${option.keys})` : option.label}
-          onClick={run(option.command)}
+          // Choosing the current view is a no-op; the key commands toggle.
+          onClick={() => {
+            if (view !== option.id) runCommand("reader", option.command);
+          }}
           className={cn(
             "rounded px-2 py-0.5 text-[12px]",
             view === option.id

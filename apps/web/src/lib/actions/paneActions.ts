@@ -145,10 +145,12 @@ export const readerActions: Action[] = [
   key("reader", "reader.close", "close", "Close conversation", "Escape", "Move", {
     aliases: ["q"],
   }),
-  key("reader", "reader.view-reader", "viewReader", "Reader view", "R", "View", {
-    description: "Cleaned text with quotes folded",
+  key("reader", "reader.view-reader", "viewReader", "Reader view, or back to plain", "R", "View", {
+    description: "Cleaned text with quotes folded; press again for plain text, as in the TUI",
   }),
-  key("reader", "reader.view-html", "viewHtml", "Formatted (HTML) view", "H", "View"),
+  key("reader", "reader.view-html", "viewHtml", "Formatted (HTML) view, or back to plain", "H", "View", {
+    description: "Press again for plain text, as in the TUI",
+  }),
   {
     id: "reader.view-plain",
     command: "viewPlain",

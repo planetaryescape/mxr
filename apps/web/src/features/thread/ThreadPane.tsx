@@ -318,8 +318,9 @@ function ThreadReader({ data }: { data: ThreadResponse }) {
     // it means closing the conversation, not focusing an invisible list.
     focusList: () => (listHidden ? nav?.close() : setActivePane("mailbox")),
     close: () => nav?.close(),
-    viewReader: () => setViewAndRemember("reader"),
-    viewHtml: () => setViewAndRemember("formatted"),
+    // Toggles, as in the TUI: R or H again drops back to plain text.
+    viewReader: () => setViewAndRemember(view === "reader" ? "plain" : "reader"),
+    viewHtml: () => setViewAndRemember(view === "formatted" ? "plain" : "formatted"),
     viewPlain: () => setViewAndRemember("plain"),
     toggleRemote: () => setRemoteAllowed((value) => !value),
     toggleSignature: () => setShowSignature((value) => !value),

@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CalendarMetadataView } from "@/features/mailbox/types";
 
+import { RSVP_HOLD_MS } from "@/features/invites/inviteResponse";
+
 import { InviteCard } from "./InviteCard";
 
 const apiFetchMock = vi.hoisted(() =>
@@ -18,6 +20,7 @@ vi.mock("sonner", () => ({
   toast: Object.assign(vi.fn<(message?: string) => void>(), {
     success: vi.fn<(message?: string) => void>(),
     error: vi.fn<(message?: string) => void>(),
+    loading: vi.fn<(message?: string) => void>(),
   }),
 }));
 
@@ -82,7 +85,7 @@ afterEach(() => {
 
 describe("InviteCard", () => {
   it("renders all three action buttons when the viewer has not responded", () => {
-    render(wrap(<InviteCard messageId="m1" threadId="t1" metadata={baseCalendar()} />));
+    render(wrap(<InviteCard messageId="m1" metadata={baseCalendar()} />));
     expect(screen.getByRole("region", { name: /calendar invite/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /accept/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /maybe/i })).toBeInTheDocument();
@@ -91,47 +94,34 @@ describe("InviteCard", () => {
 
   it("collapses to the responded state when viewer_partstat is set", () => {
     render(
-      wrap(
-        <InviteCard
-          messageId="m1"
-          threadId="t1"
-          metadata={baseCalendar({ viewer_partstat: "accepted" })}
-        />,
-      ),
+      wrap(<InviteCard messageId="m1" metadata={baseCalendar({ viewer_partstat: "accepted" })} />),
     );
     expect(screen.getByText(/you accepted/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^accept$/i })).not.toBeInTheDocument();
   });
 
   it("shows the cancelled banner and hides actions on CANCEL method", () => {
-    render(
-      wrap(
-        <InviteCard messageId="m1" threadId="t1" metadata={baseCalendar({ method: "CANCEL" })} />,
-      ),
-    );
+    render(wrap(<InviteCard messageId="m1" metadata={baseCalendar({ method: "CANCEL" })} />));
     expect(screen.getByText(/event canceled by organizer/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^accept$/i })).not.toBeInTheDocument();
   });
 
   it("shows the updated banner when is_update is true", () => {
-    render(
-      wrap(
-        <InviteCard messageId="m1" threadId="t1" metadata={baseCalendar({ is_update: true })} />,
-      ),
-    );
+    render(wrap(<InviteCard messageId="m1" metadata={baseCalendar({ is_update: true })} />));
     expect(screen.getByText(/updated invite/i)).toBeInTheDocument();
   });
 
-  it("clicking Accept does not fire the network call immediately (1s undo window)", () => {
-    render(wrap(<InviteCard messageId="m1" threadId="t1" metadata={baseCalendar()} />));
+  it("clicking Accept holds the reply for the undo window, then sends it", async () => {
+    render(wrap(<InviteCard messageId="m1" metadata={baseCalendar()} />));
     apiFetchMock.mockClear();
+    const replies = () =>
+      apiFetchMock.mock.calls.filter(([url]) => String(url).includes("/actions/invite/reply"));
 
     fireEvent.click(screen.getByRole("button", { name: /accept/i }));
+    expect(replies()).toHaveLength(0);
 
-    // The hold-and-send pattern guarantees no network call fires within the
-    // 1s window. Don't advance timers — component unmount clears the timer.
-    expect(
-      apiFetchMock.mock.calls.filter(([url]) => String(url).includes("/actions/invite/reply")),
-    ).toHaveLength(0);
+    // The hold lives outside the component, so it survives navigation.
+    await vi.advanceTimersByTimeAsync(RSVP_HOLD_MS);
+    expect(replies()).toHaveLength(1);
   });
 });

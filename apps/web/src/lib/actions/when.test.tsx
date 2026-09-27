@@ -17,10 +17,10 @@ import {
 const baseCtx: ActionContext = {
   path: "/m/inbox",
   activePane: "mailbox",
+  scopes: ["global"],
   selectionCount: 0,
   accountCount: 1,
   hasFocusedThread: false,
-  hasFocusedMessage: false,
   isFirstAccountOnly: true,
 };
 

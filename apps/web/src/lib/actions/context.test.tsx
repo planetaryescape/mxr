@@ -4,8 +4,10 @@ import { renderHook } from "@testing-library/react";
 import { act } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { useActionContext } from "./context";
+import { buildActionContext, useActionContext } from "./context";
+import { useKeyScope } from "@/state/keyScopeStore";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
+import { useOpenThread } from "@/state/openThreadStore";
 import { useSelection } from "@/state/selectionStore";
 
 const router = vi.hoisted(() => ({ pathname: "/m/inbox" }));
@@ -26,6 +28,8 @@ beforeEach(() => {
     suppressNextReaderFocus: false,
     sidebarIndex: 0,
   });
+  useOpenThread.setState({ threadId: null });
+  useKeyScope.setState({ stack: [], pendingPrefix: null });
 });
 
 describe("useActionContext", () => {
@@ -44,13 +48,45 @@ describe("useActionContext", () => {
     expect(result.current.selectionCount).toBe(2);
   });
 
-  test("marks hasFocusedThread when path matches /m/:lens/:id", () => {
-    router.pathname = "/m/inbox";
-    const { result: noThread } = renderHook(() => useActionContext({ accountCount: 1 }));
-    expect(noThread.current.hasFocusedThread).toBe(false);
-
+  test("hasFocusedThread follows the open reader, not the URL", () => {
     router.pathname = "/m/inbox/thread-abc";
-    const { result: withThread } = renderHook(() => useActionContext({ accountCount: 1 }));
-    expect(withThread.current.hasFocusedThread).toBe(true);
+    const { result } = renderHook(() => useActionContext({ accountCount: 1 }));
+    expect(result.current.hasFocusedThread).toBe(false);
+
+    act(() => useOpenThread.getState().setThreadId("thread-abc"));
+    expect(result.current.hasFocusedThread).toBe(true);
+
+    act(() => useOpenThread.getState().setThreadId(null));
+    expect(result.current.hasFocusedThread).toBe(false);
+  });
+
+  test("scopes run innermost first and always end in global", () => {
+    const { result } = renderHook(() => useActionContext({ accountCount: 1 }));
+    expect(result.current.scopes).toEqual(["global"]);
+
+    act(() => {
+      useKeyScope.getState().pushScope("list");
+      useKeyScope.getState().pushScope("reader");
+    });
+    expect(result.current.scopes).toEqual(["reader", "list", "global"]);
+
+    act(() => useKeyScope.getState().popScope("reader"));
+    expect(result.current.scopes).toEqual(["list", "global"]);
+  });
+});
+
+describe("buildActionContext", () => {
+  test("dedupes repeated scopes and ignores a pushed global", () => {
+    const context = buildActionContext({
+      path: "/m/inbox",
+      activePane: "mailbox",
+      scopeStack: ["global", "list", "reader", "list"],
+      selectionCount: 0,
+      accountCount: 2,
+      openThreadId: null,
+    });
+
+    expect(context.scopes).toEqual(["list", "reader", "global"]);
+    expect(context.isFirstAccountOnly).toBe(false);
   });
 });

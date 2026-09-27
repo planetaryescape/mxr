@@ -1,11 +1,12 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { SearchResultsRoute } from "./SearchResultsRoute";
+import { usePendingMailOps } from "@/features/mail-actions/pendingMailOps";
 import type { MessageGroupView, MessageRowView } from "@/features/mailbox/types";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 
@@ -41,17 +42,41 @@ vi.mock("./api", () => ({
   searchGroupsKey: (params: unknown) => ["search-groups", params],
 }));
 
-// MailboxList is the canonical list and has its own tests; here we only
-// verify the search route hands it the result groups and renders the
-// search chrome. Stub it to surface the rows it received.
-vi.mock("@/features/mailbox/MailboxList", () => ({
-  MailboxList: ({ groups }: { groups: MessageGroupView[] }) => (
-    <div data-testid="mailbox-list">
-      {groups
-        .flatMap((group) => group.rows)
-        .map((row) => (
-          <div key={row.id}>{row.subject}</div>
-        ))}
+vi.mock("@/features/accounts/api", () => ({
+  fetchAccounts: () => Promise.resolve({ accounts: [] }),
+}));
+
+// The list-and-reader layout has its own tests (MailboxList); here we only
+// check what the search route hands it: projected rows, meta, toolbar,
+// paging and the empty state.
+vi.mock("@/features/mailbox/ListWithReader", () => ({
+  ListWithReader: (props: {
+    meta?: ReactNode;
+    toolbar?: ReactNode;
+    groups: MessageGroupView[];
+    empty: ReactNode;
+    hasMore?: boolean;
+    onLoadMore?: () => void;
+  }) => (
+    <div>
+      <p>{props.meta}</p>
+      {props.toolbar}
+      {props.groups.length === 0 ? (
+        props.empty
+      ) : (
+        <ul data-testid="mailbox-list">
+          {props.groups
+            .flatMap((group) => group.rows)
+            .map((row) => (
+              <li key={row.id}>{row.subject}</li>
+            ))}
+        </ul>
+      )}
+      {props.hasMore ? (
+        <button type="button" onClick={props.onLoadMore}>
+          Load more
+        </button>
+      ) : null}
     </div>
   ),
 }));
@@ -123,6 +148,7 @@ describe("SearchResultsRoute", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    usePendingMailOps.setState({ ops: [] });
   });
 
   test("renders results through the shared mailbox list", async () => {
@@ -131,7 +157,7 @@ describe("SearchResultsRoute", () => {
     expect(await screen.findByTestId("mailbox-list")).toBeVisible();
     expect(screen.getByText("Subject 1")).toBeVisible();
     expect(screen.getByText("Subject 2")).toBeVisible();
-    expect(screen.getByText(/2 of 2 results/i)).toBeVisible();
+    expect(screen.getByText("2 results")).toBeVisible();
   });
 
   test("loads additional pages through offset pagination", async () => {
@@ -195,6 +221,7 @@ describe("SearchResultsRoute", () => {
         mode: "lexical",
         sort: "relevance",
         scope: "threads",
+        verdict: undefined,
         groupBy: "from",
         account: undefined,
       },
@@ -204,15 +231,43 @@ describe("SearchResultsRoute", () => {
     expect(useMailboxPane.getState().activePane).toBe("mailbox");
   });
 
-  test("pressing / refocuses the query input", async () => {
+  test("a pending trash hides the row; a pending archive doesn't", async () => {
+    renderWithQueryClient(<SearchResultsRoute />);
+    await screen.findByText("Subject 1");
+
+    act(() => {
+      usePendingMailOps.getState().add({
+        id: "op-archive",
+        action: "archive",
+        messageIds: new Set(["msg-1"]),
+      });
+      usePendingMailOps.getState().add({
+        id: "op-trash",
+        action: "trash",
+        messageIds: new Set(["msg-2"]),
+      });
+    });
+
+    expect(screen.getByText("Subject 1")).toBeVisible();
+    expect(screen.queryByText("Subject 2")).not.toBeInTheDocument();
+  });
+
+  test("no exact matches offers hybrid search", async () => {
+    searchApi.fetchSearch.mockResolvedValue({
+      scope: "threads",
+      sort: "relevance",
+      mode: "lexical",
+      total: 0,
+      has_more: false,
+      groups: [],
+    });
     renderWithQueryClient(<SearchResultsRoute />);
 
-    const input = (await screen.findByLabelText("Search query")) as HTMLInputElement;
-    input.blur();
-    expect(document.activeElement).not.toBe(input);
+    fireEvent.click(await screen.findByRole("button", { name: "Try hybrid search" }));
 
-    fireEvent.keyDown(document.body, { key: "/" });
-
-    expect(document.activeElement).toBe(input);
+    expect(router.navigate).toHaveBeenCalledWith({
+      to: "/search",
+      search: expect.objectContaining({ q: "invoice", mode: "hybrid" }),
+    });
   });
 });

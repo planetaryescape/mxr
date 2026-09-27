@@ -437,3 +437,105 @@ fn fall_back_overlap_takes_the_first_occurrence() {
     );
     assert!(nine.choices[0].note.is_none());
 }
+
+#[test]
+fn huge_offsets_are_an_error_not_a_panic() {
+    let phrase = vec!["999999w"; 20].join(" ");
+    let err = resolve_time(&phrase, &anchor(), &TimePrefs::default()).unwrap_err();
+    assert_eq!(err.kind, TimeResolveErrorKind::OutOfRange);
+    assert!(!err.message.contains('\u{2014}'));
+}
+
+#[test]
+fn pathological_inputs_never_panic() {
+    let long_offsets = vec!["999999h"; 50].join(" ");
+    let many_minutes = vec!["in 1m"; 200].join(" ");
+    let unicode = "vendredi 3 \u{1F600} \u{00E9}t\u{00E9}";
+    let fixed: Vec<String> = [
+        "999999w",
+        "in 999999 months",
+        "999999d 999999w",
+        "in 999999 minutes 999999 hours",
+        "0am",
+        "13pm",
+        "24:00",
+        "23:60",
+        "in 0h",
+        "-1d",
+        "in -999999w",
+        "31 feb 9999",
+        "29 feb",
+        "dec 31 9999 11pm",
+        "9999-12-31",
+        "9999-12-31T23:59:59Z",
+        "+262143-12-31T23:59:59Z",
+        "12:",
+        ":30",
+        "am",
+        "in",
+        "next",
+        "end of",
+        "fri fri",
+        "\u{0}",
+        "\t\n",
+        unicode,
+    ]
+    .iter()
+    .map(ToString::to_string)
+    .chain([long_offsets, many_minutes])
+    .collect();
+
+    let late_in_time = london(9999, 12, 31, 12, 0);
+    for now in [anchor(), late_in_time] {
+        for input in &fixed {
+            let _ = resolve_time(input, &now, &TimePrefs::default());
+        }
+        // Every number of every unit, near the limits.
+        for amount in [0_i64, 1, 59, 99, 999, 99_999, 999_999] {
+            for unit in ["m", "h", "d", "w", "mo"] {
+                let _ = resolve_time(&format!("in {amount}{unit}"), &now, &TimePrefs::default());
+                let _ = resolve_time(&format!("{amount} {unit}"), &now, &TimePrefs::default());
+            }
+        }
+    }
+}
+
+#[test]
+fn real_zone_gaps_move_forward_by_their_own_length() {
+    use chrono_tz::{Australia::Lord_Howe, Europe::London};
+
+    // Lord Howe Island moves its clocks forward 30 minutes, from 02:00 to
+    // 02:30, on the first Sunday of October (6 October 2024).
+    let now = Lord_Howe.with_ymd_and_hms(2024, 10, 5, 12, 0, 0).unwrap();
+    let resolution = resolve_time("tomorrow 2:10am", &now, &TimePrefs::default()).unwrap();
+    assert_eq!(resolution.choices[0].time_label, "02:40");
+    assert!(resolution.choices[0].note.is_some());
+
+    let now = London.with_ymd_and_hms(2024, 3, 30, 12, 0, 0).unwrap();
+    let resolution = resolve_time("tomorrow 1:30am", &now, &TimePrefs::default()).unwrap();
+    assert_eq!(resolution.choices[0].time_label, "02:30");
+    assert_eq!(
+        resolution.at,
+        Utc.with_ymd_and_hms(2024, 3, 31, 1, 30, 0).unwrap()
+    );
+
+    // And the same phrase resolves to a different instant per zone.
+    let utc_now = Utc.with_ymd_and_hms(2024, 5, 7, 12, 0, 0).unwrap();
+    let in_zone = |tz: chrono_tz::Tz| {
+        resolve_time(
+            "tomorrow 9am",
+            &utc_now.with_timezone(&tz),
+            &TimePrefs::default(),
+        )
+        .unwrap()
+        .at
+    };
+    assert_eq!(
+        in_zone(London),
+        Utc.with_ymd_and_hms(2024, 5, 8, 8, 0, 0).unwrap()
+    );
+    assert_eq!(
+        in_zone(chrono_tz::UTC),
+        Utc.with_ymd_and_hms(2024, 5, 8, 9, 0, 0).unwrap()
+    );
+}

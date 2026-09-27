@@ -178,6 +178,8 @@ pub enum TimeResolveErrorKind {
     /// A date that doesn't exist ("31 feb").
     InvalidDate,
     InPast,
+    /// Further ahead than a calendar date can go ("in 999999w" twenty times).
+    OutOfRange,
 }
 
 /// Why a phrase didn't resolve, phrased for the user.

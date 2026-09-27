@@ -1,8 +1,8 @@
 //! Turn a parsed [`Phrase`] into instants in a time zone, and describe them.
 
 use chrono::{
-    DateTime, Datelike, Duration, MappedLocalTime, Months, NaiveDate, NaiveDateTime, NaiveTime,
-    TimeZone, Utc, Weekday,
+    DateTime, Datelike, Days, Duration, MappedLocalTime, Months, NaiveDate, NaiveDateTime,
+    NaiveTime, Offset, TimeZone, Utc, Weekday,
 };
 
 use super::grammar::{DateSpec, DurationUnit, GrammarError, Parsed, Period, Phrase, TimeSpec};
@@ -141,6 +141,14 @@ fn in_past(at: Option<NaiveDateTime>, spans: &[TimeSpan]) -> TimeResolveError {
     error(TimeResolveErrorKind::InPast, message, spans)
 }
 
+fn out_of_range(spans: &[TimeSpan]) -> TimeResolveError {
+    error(
+        TimeResolveErrorKind::OutOfRange,
+        "That's further ahead than mxr can schedule. Try a nearer time, like \"in 2w\".".into(),
+        spans,
+    )
+}
+
 fn invalid(spans: &[TimeSpan]) -> TimeResolveError {
     error(
         TimeResolveErrorKind::InvalidDate,
@@ -150,8 +158,9 @@ fn invalid(spans: &[TimeSpan]) -> TimeResolveError {
 }
 
 /// Map a wall-clock time to an instant. A time skipped by a forward clock
-/// change moves forward by the gap (01:30 becomes 02:30 in London); a time
-/// that happens twice when clocks go back takes the first occurrence.
+/// change moves forward by the length of that gap (01:30 becomes 02:30 in
+/// London, 02:10 becomes 02:40 on Lord Howe Island's 30-minute change); a
+/// time that happens twice when clocks go back takes the first occurrence.
 fn localize<Tz: TimeZone>(tz: &Tz, naive: NaiveDateTime) -> Option<(DateTime<Tz>, Option<String>)> {
     match tz.from_local_datetime(&naive) {
         MappedLocalTime::Single(single) => return Some((single, None)),
@@ -166,16 +175,21 @@ fn localize<Tz: TimeZone>(tz: &Tz, naive: NaiveDateTime) -> Option<(DateTime<Tz>
         }
         MappedLocalTime::None => {}
     }
-    [60, 30, 120].into_iter().find_map(|minutes| {
-        let shifted = naive + Duration::minutes(minutes);
-        let at = tz.from_local_datetime(&shifted).earliest()?;
-        let note = format!(
-            "{} is skipped as clocks go forward, so this is {}.",
-            naive.format("%H:%M"),
-            shifted.format("%H:%M")
-        );
-        Some((at, Some(note)))
-    })
+    // Read the skipped wall time with the offset in force just before the
+    // gap. That instant falls after the change, where its wall time is the
+    // requested time plus the real gap, whatever its length.
+    let before = naive.checked_sub_signed(Duration::days(1))?;
+    let offset_before = tz.from_local_datetime(&before).earliest()?.offset().fix();
+    let utc = naive.checked_sub_signed(Duration::seconds(i64::from(
+        offset_before.local_minus_utc(),
+    )))?;
+    let at = tz.from_utc_datetime(&utc);
+    let note = format!(
+        "{} is skipped as clocks go forward, so this is {}.",
+        naive.format("%H:%M"),
+        at.naive_local().format("%H:%M")
+    );
+    Some((at, Some(note)))
 }
 
 fn offset<Tz: TimeZone>(
@@ -189,29 +203,43 @@ fn offset<Tz: TimeZone>(
     // Days, weeks and months move the calendar and keep the wall-clock time,
     // so "in 1d" across a clock change is still the same time tomorrow.
     // Hours and minutes are elapsed time.
+    // Every step is checked: a phrase like twenty "999999w" parts must come
+    // back as an error, never a panic.
+    let too_far = || out_of_range(spans);
     let mut wall = now.naive_local();
     let mut elapsed = Duration::zero();
     for (amount, unit) in parts {
         let amount = *amount;
+        let add_days = |wall: NaiveDateTime, days: Option<i64>| {
+            days.and_then(|days| u64::try_from(days).ok())
+                .and_then(|days| wall.checked_add_days(Days::new(days)))
+                .ok_or_else(too_far)
+        };
         match unit {
-            DurationUnit::Minutes => elapsed += Duration::minutes(amount),
-            DurationUnit::Hours => elapsed += Duration::hours(amount),
-            DurationUnit::Days => wall += Duration::days(amount),
-            DurationUnit::Weeks => wall += Duration::weeks(amount),
+            DurationUnit::Minutes => {
+                let step = Duration::try_minutes(amount).ok_or_else(too_far)?;
+                elapsed = elapsed.checked_add(&step).ok_or_else(too_far)?;
+            }
+            DurationUnit::Hours => {
+                let step = Duration::try_hours(amount).ok_or_else(too_far)?;
+                elapsed = elapsed.checked_add(&step).ok_or_else(too_far)?;
+            }
+            DurationUnit::Days => wall = add_days(wall, Some(amount))?,
+            DurationUnit::Weeks => wall = add_days(wall, amount.checked_mul(7))?,
             DurationUnit::Months => {
-                let months = u32::try_from(amount).map_err(|_| invalid(spans))?;
+                let months = u32::try_from(amount).map_err(|_| too_far())?;
                 wall = wall
                     .checked_add_months(Months::new(months))
-                    .ok_or_else(|| invalid(spans))?;
+                    .ok_or_else(too_far)?;
             }
         }
     }
     let (base, note) = if wall == now.naive_local() {
         (now.clone(), None)
     } else {
-        localize(&now.timezone(), wall).ok_or_else(|| invalid(spans))?
+        localize(&now.timezone(), wall).ok_or_else(too_far)?
     };
-    let at = base + elapsed;
+    let at = base.checked_add_signed(elapsed).ok_or_else(too_far)?;
     ensure_future(&at, now, spans)?;
     Ok(Candidate {
         at,
@@ -337,14 +365,20 @@ fn base_date(
     let next = |target: Weekday, include_today: bool| {
         let start = if include_today { 0 } else { 1 };
         (start..start + 7)
-            .map(|offset| today + Duration::days(offset))
+            .filter_map(|offset| today.checked_add_days(Days::new(offset)))
             .find(|day| day.weekday() == target)
             .unwrap_or(today)
     };
     let resolved = match date {
         None => (today, Roll::Day, Vec::new()),
         Some(DateSpec::Today) => (today, Roll::Never, Vec::new()),
-        Some(DateSpec::Tomorrow) => (today + Duration::days(1), Roll::Never, Vec::new()),
+        Some(DateSpec::Tomorrow) => (
+            today
+                .checked_add_days(Days::new(1))
+                .ok_or_else(|| out_of_range(spans))?,
+            Roll::Never,
+            Vec::new(),
+        ),
         Some(DateSpec::Weekday(day)) => (next(day, false), Roll::Never, Vec::new()),
         Some(DateSpec::Weekend) => (next(prefs.weekend_day, false), Roll::Never, Vec::new()),
         Some(DateSpec::NextWeek) => (next(Weekday::Mon, false), Roll::Never, Vec::new()),
@@ -385,8 +419,8 @@ fn base_date(
 fn rolled(day: NaiveDate, roll: Roll) -> Option<NaiveDate> {
     match roll {
         Roll::Never => Some(day),
-        Roll::Day => Some(day + Duration::days(1)),
-        Roll::Week => Some(day + Duration::weeks(1)),
+        Roll::Day => day.checked_add_days(Days::new(1)),
+        Roll::Week => day.checked_add_days(Days::new(7)),
         Roll::Year => (1..=8)
             .find_map(|years| NaiveDate::from_ymd_opt(day.year() + years, day.month(), day.day())),
     }

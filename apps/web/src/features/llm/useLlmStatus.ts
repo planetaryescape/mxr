@@ -15,12 +15,14 @@ export function fetchLlmStatus(): Promise<{ status: LlmStatus }> {
  * so with no model configured they explain how to set one up instead of
  * failing on every thread.
  */
+export const llmStatusQuery = {
+  queryKey: ["llm-status"],
+  queryFn: fetchLlmStatus,
+  staleTime: 5 * 60_000,
+};
+
 export function useLlmStatus() {
-  const query = useQuery({
-    queryKey: ["llm-status"],
-    queryFn: fetchLlmStatus,
-    staleTime: 5 * 60_000,
-  });
+  const query = useQuery(llmStatusQuery);
   return { ...query, enabled: query.data?.status.enabled === true };
 }
 

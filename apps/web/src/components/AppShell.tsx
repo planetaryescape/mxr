@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from "react";
 
@@ -8,7 +8,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { StatusBar } from "@/components/StatusBar";
 import { Topbar } from "@/components/Topbar";
 import { fetchAccounts } from "@/features/accounts/api";
-import { useLlmStatus } from "@/features/llm/useLlmStatus";
+import { llmStatusQuery } from "@/features/llm/useLlmStatus";
 import { useNewMessageNotifier } from "@/features/notifications/useNewMessageNotifier";
 import { useKeyDispatcher } from "@/hooks/useKeyDispatcher";
 import { NARROW_SHELL_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
@@ -67,9 +67,14 @@ function useOnceTrue(value: boolean): boolean {
 }
 
 export function AppShell() {
-  // Fetch the model status once, early: an opened thread (from any route)
-  // then already knows whether to reserve its gist slot. Nothing waits on it.
-  useLlmStatus();
+  // Fetch the model status once, early, so an opened thread (from any route)
+  // already knows whether to reserve its gist slot. A prefetch, not a
+  // subscription: its answer must never re-render the shell (and the list
+  // under it). Nothing waits on it.
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    void queryClient.prefetchQuery(llmStatusQuery);
+  }, [queryClient]);
   const sidebarCollapsed = useUiPrefs((s) => s.sidebarCollapsed);
   const narrow = useMediaQuery(NARROW_SHELL_QUERY);
   const rightRail = useModals((s) => s.rightRail);

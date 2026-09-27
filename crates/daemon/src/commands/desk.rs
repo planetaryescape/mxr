@@ -1,8 +1,8 @@
-use crate::cli::OutputFormat;
+use crate::cli::{DeskAction, OutputFormat};
 use crate::commands::owed::{csv_escape, truncate};
 use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
-use crate::output::resolve_format;
+use crate::output::{resolve_format, terminal_text};
 use mxr_protocol::*;
 
 pub async fn run(
@@ -25,6 +25,97 @@ pub async fn run(
     };
     print!("{}", render(&desk, resolve_format(format))?);
     Ok(())
+}
+
+pub async fn run_action(action: DeskAction) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    match action {
+        DeskAction::Dismiss {
+            thread_ids,
+            dry_run,
+            format,
+        } => {
+            let resp = client
+                .request(Request::DismissDeskThreads {
+                    thread_ids: parse_thread_ids(&thread_ids)?,
+                    dry_run,
+                })
+                .await?;
+            let (threads, dry_run) = match resp {
+                Response::Ok {
+                    data: ResponseData::DeskThreadsDismissed { threads, dry_run },
+                } => (threads, dry_run),
+                Response::Error { message, .. } => anyhow::bail!(message),
+                _ => anyhow::bail!("Unexpected response"),
+            };
+            match resolve_format(format) {
+                OutputFormat::Table => {
+                    let verb = if dry_run {
+                        "Would stop waiting on"
+                    } else {
+                        "Done waiting on"
+                    };
+                    println!(
+                        "{verb} {}.",
+                        plural(threads.len() as u32, "conversation", "conversations")
+                    );
+                    for thread in &threads {
+                        println!("  {}", thread.thread_id);
+                    }
+                }
+                OutputFormat::Ids => {
+                    for thread in &threads {
+                        println!("{}", thread.thread_id);
+                    }
+                }
+                OutputFormat::Jsonl => {
+                    for thread in &threads {
+                        println!("{}", serde_json::to_string(thread)?);
+                    }
+                }
+                OutputFormat::Csv => {
+                    println!("account_id,thread_id");
+                    for thread in &threads {
+                        println!("{},{}", thread.account_id, thread.thread_id);
+                    }
+                }
+                OutputFormat::Json => println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "dry_run": dry_run,
+                        "threads": threads,
+                    }))?
+                ),
+            }
+        }
+        DeskAction::Restore { thread_ids } => {
+            let resp = client
+                .request(Request::RestoreDeskThreads {
+                    thread_ids: parse_thread_ids(&thread_ids)?,
+                })
+                .await?;
+            match resp {
+                Response::Ok {
+                    data: ResponseData::DeskThreadsRestored { restored },
+                } => println!(
+                    "Waiting again on {}.",
+                    plural(restored as u32, "conversation", "conversations")
+                ),
+                Response::Error { message, .. } => anyhow::bail!(message),
+                _ => anyhow::bail!("Unexpected response"),
+            }
+        }
+    }
+    Ok(())
+}
+
+fn parse_thread_ids(raw: &[String]) -> anyhow::Result<Vec<mxr_core::id::ThreadId>> {
+    raw.iter()
+        .map(|id| {
+            id.parse()
+                .map_err(|_| anyhow::anyhow!("not a thread id: {id}"))
+        })
+        .collect()
 }
 
 const LANES: [(DeskLaneKind, &str); 4] = [
@@ -134,8 +225,8 @@ fn table(desk: &ResponseData) -> String {
             };
             out.push_str(&format!(
                 "  {:<22}  {:<58}  {}\n",
-                truncate(&who, 22),
-                truncate(&what, 58),
+                truncate(&terminal_text(&who), 22),
+                truncate(&terminal_text(&what), 58),
                 age_cell(row)
             ));
         }
@@ -298,6 +389,21 @@ mod tests {
         assert!(text.contains("in 2d"));
         assert!(text.contains("Everything else: Reading 7"));
         assert!(!text.contains('\u{2014}'), "no em dashes: {text}");
+    }
+
+    #[test]
+    fn table_strips_terminal_control_sequences_from_mail_text() {
+        let mut hostile = row(DeskLaneKind::Owed, 60, None);
+        hostile.subject = "Invoice\u{1b}]0;pwned\u{7}\u{1b}[2J\r\nnow".into();
+        hostile.counterparty_name = Some("Eve\u{9b}31m".into());
+        let text = render(&desk(vec![hostile], vec![]), OutputFormat::Table).unwrap();
+        assert!(
+            !text
+                .chars()
+                .any(|c| matches!(c as u32, 0x00..=0x09 | 0x0B..=0x1F | 0x7F..=0x9F)),
+            "{text:?}"
+        );
+        assert!(text.contains("Invoice ]0;pwned  [2J  now"), "{text:?}");
     }
 
     #[test]

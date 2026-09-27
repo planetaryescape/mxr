@@ -4,6 +4,11 @@ use super::*;
 impl App {
     pub(super) fn apply_mutation_action(&mut self, action: Action) {
         match action {
+            // On the desk, archive is "done waiting" on a thread you wrote
+            // last: there is nothing in the inbox for archive to remove.
+            Action::Archive if self.mailbox.mailbox_view == MailboxView::Desk => {
+                self.done_waiting_on_selected_desk_row();
+            }
             Action::Archive => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {

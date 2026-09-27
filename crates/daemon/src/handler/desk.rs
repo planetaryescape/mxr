@@ -139,11 +139,13 @@ async fn account_desk(
                 .as_deref()
                 .is_some_and(|own| own.eq_ignore_ascii_case(email))
     };
+    let dismissed = store.desk_dismissals(account_id).await?;
     let mut lanes = thread_lanes(&AccountInputs {
         account_id,
         messages: &messages,
         contacts: &contacts,
         screener: &screener,
+        dismissed: &dismissed,
         is_self: &is_self,
         now,
     });
@@ -216,23 +218,41 @@ async fn due_rows(
         .await?;
     let horizon = now + Duration::days(DUE_AHEAD_DAYS);
     let floor = now - Duration::days(DESK_WINDOW_DAYS);
+    let due: Vec<_> = commitments
+        .into_iter()
+        .filter_map(|commitment| {
+            let by_when = commitment.by_when?;
+            (commitment.direction == CommitmentDirection::Yours
+                && by_when <= horizon
+                && by_when >= floor)
+                .then_some((commitment, by_when))
+        })
+        .collect();
+    // Promises in threads outside the desk window name their thread from
+    // the evidence message, fetched in one batch.
+    let missing: Vec<_> = due
+        .iter()
+        .filter(|(commitment, _)| !subjects.contains_key(&commitment.thread_id))
+        .map(|(commitment, _)| commitment.evidence_msg_id.clone())
+        .collect();
+    let evidence_subjects: HashMap<_, _> = if missing.is_empty() {
+        HashMap::new()
+    } else {
+        state
+            .store
+            .list_envelopes_by_ids(&missing)
+            .await?
+            .into_iter()
+            .map(|envelope| (envelope.id, clean_subject(&envelope.subject)))
+            .collect()
+    };
     let mut rows = Vec::new();
-    for commitment in commitments {
-        let Some(due) = commitment.by_when else {
-            continue;
-        };
-        if commitment.direction != CommitmentDirection::Yours || due > horizon || due < floor {
-            continue;
-        }
-        let subject = match subjects.get(&commitment.thread_id) {
-            Some(subject) => subject.clone(),
-            None => state
-                .store
-                .get_envelope(&commitment.evidence_msg_id)
-                .await?
-                .map(|envelope| clean_subject(&envelope.subject))
-                .unwrap_or_default(),
-        };
+    for (commitment, due) in due {
+        let subject = subjects
+            .get(&commitment.thread_id)
+            .or_else(|| evidence_subjects.get(&commitment.evidence_msg_id))
+            .cloned()
+            .unwrap_or_default();
         let age_seconds = (now - due).num_seconds();
         rows.push((
             DeskRowData {
@@ -275,19 +295,25 @@ async fn drift_rows(
         .iter()
         .map(|(row, _)| row.counterparty_email.to_ascii_lowercase())
         .collect();
+    let drifting: Vec<_> = state
+        .store
+        .list_cadence_drift(account_id)
+        .await?
+        .into_iter()
+        .filter(|drift| !already.contains(&drift.email.to_ascii_lowercase()))
+        .filter_map(|drift| drift.last_contact_at.map(|last| (drift, last)))
+        .collect();
+    let wanted: Vec<_> = drifting
+        .iter()
+        .map(|(drift, last)| (drift.email.clone(), *last))
+        .collect();
+    let mut exchanges = state
+        .store
+        .desk_latest_exchanges(account_id, &wanted)
+        .await?;
     let mut rows = Vec::new();
-    for drift in state.store.list_cadence_drift(account_id).await? {
-        if already.contains(&drift.email.to_ascii_lowercase()) {
-            continue;
-        }
-        let Some(last_contact) = drift.last_contact_at else {
-            continue;
-        };
-        let Some(exchange) = state
-            .store
-            .desk_latest_exchange(account_id, &drift.email, last_contact)
-            .await?
-        else {
+    for (drift, last_contact) in drifting {
+        let Some(exchange) = exchanges.remove(&drift.email.to_ascii_lowercase()) else {
             continue;
         };
         let expected_seconds = (drift.expected_days * 86_400.0).round() as i64;
@@ -386,4 +412,31 @@ async fn count_pending_invites(
                 )
         })
         .count() as u32)
+}
+
+/// "Done waiting" on threads, or preview which threads that covers.
+pub(super) async fn dismiss_threads(
+    state: &AppState,
+    thread_ids: &[mxr_core::id::ThreadId],
+    dry_run: bool,
+) -> HandlerResult {
+    let threads = state
+        .store
+        .dismiss_desk_threads(thread_ids, dry_run)
+        .await?
+        .into_iter()
+        .map(|(account_id, thread_id)| mxr_protocol::DeskThreadRefData {
+            account_id,
+            thread_id,
+        })
+        .collect();
+    Ok(ResponseData::DeskThreadsDismissed { threads, dry_run })
+}
+
+pub(super) async fn restore_threads(
+    state: &AppState,
+    thread_ids: &[mxr_core::id::ThreadId],
+) -> HandlerResult {
+    let restored = state.store.restore_desk_threads(thread_ids).await?;
+    Ok(ResponseData::DeskThreadsRestored { restored })
 }

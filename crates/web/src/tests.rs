@@ -4775,6 +4775,7 @@ async fn desk_route_forwards_account_scope_and_lane_limit() {
     let account = AccountId::new();
     let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Request>::new()));
     let seen_for_ipc = seen.clone();
+    let seen_for_assert = seen.clone();
     let _ipc = spawn_fake_ipc_server(
         &socket_path,
         move |request| {
@@ -4788,6 +4789,23 @@ async fn desk_route_forwards_account_scope_and_lane_limit() {
                     elsewhere: mxr_protocol::DeskElsewhereData::default(),
                     last_from_people_at: None,
                     generated_at: chrono::Utc::now(),
+                },
+                Request::DismissDeskThreads { dry_run, .. } => ResponseData::DeskThreadsDismissed {
+                    threads: Vec::new(),
+                    dry_run: *dry_run,
+                },
+                Request::RestoreDeskThreads { .. } => {
+                    ResponseData::DeskThreadsRestored { restored: 1 }
+                }
+                // The desk's "everything else" links open these for one account.
+                Request::ListSubscriptions { .. } => ResponseData::Subscriptions {
+                    subscriptions: Vec::new(),
+                },
+                Request::ListInvites { .. } => ResponseData::Invites {
+                    invites: Vec::new(),
+                },
+                Request::ListDeliveries { .. } => ResponseData::Deliveries {
+                    deliveries: Vec::new(),
                 },
                 _ => return Some(Response::error("unexpected request")),
             };
@@ -4827,19 +4845,79 @@ async fn desk_route_forwards_account_scope_and_lane_limit() {
         .unwrap();
     assert_eq!(bad.status(), reqwest::StatusCode::BAD_REQUEST);
 
-    let seen = seen.lock().unwrap();
-    assert!(matches!(
-        &seen[0],
-        Request::GetDesk {
-            account_id: None,
-            lane_limit: 25
-        }
-    ));
-    assert!(matches!(
-        &seen[1],
-        Request::GetDesk { account_id: Some(id), lane_limit: 5 } if id == &account
-    ));
-    assert_eq!(seen.len(), 2);
+    let thread = ThreadId::new();
+    for (path, body) in [
+        (
+            "/api/v1/mail/desk/dismiss",
+            serde_json::json!({ "thread_ids": [thread.to_string()], "dry_run": true }),
+        ),
+        (
+            "/api/v1/mail/desk/restore",
+            serde_json::json!({ "thread_ids": [thread.to_string()] }),
+        ),
+    ] {
+        let response = client
+            .post(format!("http://{addr}{path}"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK, "{path}");
+    }
+    let empty = client
+        .post(format!("http://{addr}/api/v1/mail/desk/dismiss"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "thread_ids": [] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(empty.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    {
+        let seen = seen.lock().unwrap();
+        assert!(matches!(
+            &seen[0],
+            Request::GetDesk {
+                account_id: None,
+                lane_limit: 25
+            }
+        ));
+        assert!(matches!(
+            &seen[1],
+            Request::GetDesk { account_id: Some(id), lane_limit: 5 } if id == &account
+        ));
+        assert!(matches!(
+            &seen[2],
+            Request::DismissDeskThreads { thread_ids, dry_run: true } if thread_ids == &vec![thread.clone()]
+        ));
+        assert!(matches!(&seen[3], Request::RestoreDeskThreads { .. }));
+    }
+
+    for path in [
+        format!("/api/v1/platform/subscriptions?account={account}"),
+        format!("/api/v1/mail/invites?account={account}"),
+        format!("/api/v1/mail/deliveries?filter=active&account={account}"),
+    ] {
+        let response = client
+            .get(format!("http://{addr}{path}"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK, "{path}");
+    }
+    let seen = seen_for_assert.lock().unwrap();
+    assert!(
+        matches!(&seen[4], Request::ListSubscriptions { account_id: Some(id), .. } if id == &account)
+    );
+    assert!(
+        matches!(&seen[5], Request::ListInvites { account_id: Some(id), .. } if id == &account)
+    );
+    assert!(
+        matches!(&seen[6], Request::ListDeliveries { account_id: Some(id), .. } if id == &account)
+    );
+    assert_eq!(seen.len(), 7);
 }
 
 /// Bad input on the parity routes is a 400 that never reaches the daemon.

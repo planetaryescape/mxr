@@ -17,7 +17,7 @@ import { rowKey } from "./rowKey";
 import type { MessageGroupView, MessageRowView } from "./types";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
-import { createMailVerbs } from "@/features/mail-actions/mailVerbs";
+import { createMailVerbs, type MailVerbHooks } from "@/features/mail-actions/mailVerbs";
 import { rowMessageIds } from "@/features/mail-actions/pendingMailOps";
 import { targetFromRows, type MailTarget } from "@/features/mail-actions/target";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
@@ -57,6 +57,8 @@ export interface MailboxListProps {
   renderRow?: (row: MessageRowView, state: RowRenderState) => ReactNode;
   /** Group headers as airy section titles rather than ruled table headers. */
   airyHeaders?: boolean;
+  /** Handle part of a verb this list's own way (see `MailVerbHooks.intercept`). */
+  interceptVerb?: MailVerbHooks["intercept"];
 }
 
 export interface RowRenderState {
@@ -104,6 +106,7 @@ export function MailboxList({
   label,
   renderRow,
   airyHeaders = false,
+  interceptVerb,
 }: MailboxListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const density = useUiPrefs((s) => s.density);
@@ -330,6 +333,7 @@ export function MailboxList({
     getTarget,
     composeSurface: "overlay",
     afterLeave: () => setVisualAnchor(null),
+    intercept: interceptVerb,
   });
 
   useScopeController("list", {
@@ -419,22 +423,27 @@ export function MailboxList({
     }
   }, []);
 
-  const onToggleSelection = useCallback(
-    (row: MessageRowView, shift: boolean) => {
-      const selection = useSelection.getState();
-      if (shift && selection.lastClickedId) {
-        const a = rowIndexById.get(selection.lastClickedId);
-        const b = rowIndexById.get(rowKey(row));
-        if (a !== undefined && b !== undefined) {
-          const [start, end] = a < b ? [a, b] : [b, a];
-          selection.selectRange(rows.slice(start, end + 1).map(rowKey));
-          return;
-        }
+  // Read the rows through a ref so this callback keeps its identity when a
+  // row leaves the list: a new identity re-renders every memoized row, which
+  // is most of the cost of a keypress that archives.
+  const rowsRef = useRef({ rows, rowIndexById });
+  useLayoutEffect(() => {
+    rowsRef.current = { rows, rowIndexById };
+  }, [rowIndexById, rows]);
+  const onToggleSelection = useCallback((row: MessageRowView, shift: boolean) => {
+    const selection = useSelection.getState();
+    const { rows: current, rowIndexById: indexById } = rowsRef.current;
+    if (shift && selection.lastClickedId) {
+      const a = indexById.get(selection.lastClickedId);
+      const b = indexById.get(rowKey(row));
+      if (a !== undefined && b !== undefined) {
+        const [start, end] = a < b ? [a, b] : [b, a];
+        selection.selectRange(current.slice(start, end + 1).map(rowKey));
+        return;
       }
-      selection.toggle(rowKey(row));
-    },
-    [rowIndexById, rows],
-  );
+    }
+    selection.toggle(rowKey(row));
+  }, []);
 
   const handleOpen = useCallback(
     (row: MessageRowView) => {
@@ -524,7 +533,9 @@ export function MailboxList({
           </div>
         ) : null}
       </div>
-      {readOnly ? null : <BulkActionBar rows={rows} getTarget={getTarget} />}
+      {readOnly ? null : (
+        <BulkActionBar rows={rows} getTarget={getTarget} intercept={interceptVerb} />
+      )}
     </div>
   );
 }

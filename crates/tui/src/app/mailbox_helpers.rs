@@ -367,6 +367,30 @@ impl App {
             .nth(self.mailbox.selected_index)
     }
 
+    /// `e` on a desk row under Waiting on: done waiting, until a new message
+    /// arrives in the thread. The desk refetches once the daemon confirms.
+    pub(super) fn done_waiting_on_selected_desk_row(&mut self) {
+        let Some(row) = self.selected_desk_row() else {
+            return;
+        };
+        if row.lane != mxr_protocol::DeskLaneKind::Waiting {
+            self.status_message =
+                Some("On the desk, e is done waiting: it works on rows under Waiting on".into());
+            return;
+        }
+        let thread_id = row.thread_id.clone();
+        self.queue_mutation(
+            Request::DismissDeskThreads {
+                thread_ids: vec![thread_id.clone()],
+                dry_run: false,
+            },
+            MutationEffect::StatusOnly(format!(
+                "Done waiting. Undo with: mxr desk restore {thread_id}"
+            )),
+            "Marking done...".into(),
+        );
+    }
+
     /// Enter on a desk row: fetch the row's message by id and open it in
     /// the reader beside the desk. The desk keeps its cursor, so closing
     /// the reader lands back on the same row.

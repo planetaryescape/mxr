@@ -1536,6 +1536,18 @@ pub enum Request {
         #[serde(default = "default_desk_lane_limit")]
         lane_limit: u32,
     },
+    /// "Done waiting": take threads you wrote last off the desk's Waiting
+    /// lane until a new message arrives in them. `dry_run` returns the same
+    /// selection without writing.
+    DismissDeskThreads {
+        thread_ids: Vec<ThreadId>,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Undo `DismissDeskThreads`: the threads wait again.
+    RestoreDeskThreads {
+        thread_ids: Vec<ThreadId>,
+    },
 }
 
 impl Request {
@@ -1644,6 +1656,8 @@ impl Request {
             | Self::ExtractDraftCommitments { .. }
             | Self::ListOwedReplies { .. }
             | Self::GetDesk { .. }
+            | Self::DismissDeskThreads { .. }
+            | Self::RestoreDeskThreads { .. }
             | Self::ArchiveAsk { .. }
             | Self::ListDecisionLog { .. }
             | Self::GetDecision { .. }
@@ -2584,6 +2598,16 @@ pub enum ResponseData {
         last_from_people_at: Option<chrono::DateTime<chrono::Utc>>,
         generated_at: chrono::DateTime<chrono::Utc>,
     },
+    /// Returned by `Request::DismissDeskThreads`: the threads that were (or,
+    /// with `dry_run`, would be) taken off Waiting.
+    DeskThreadsDismissed {
+        threads: Vec<DeskThreadRefData>,
+        dry_run: bool,
+    },
+    /// Returned by `Request::RestoreDeskThreads`.
+    DeskThreadsRestored {
+        restored: u64,
+    },
 }
 
 impl ResponseData {
@@ -2671,6 +2695,8 @@ impl ResponseData {
             | Self::DraftCommitments { .. }
             | Self::OwedReplies { .. }
             | Self::Desk { .. }
+            | Self::DeskThreadsDismissed { .. }
+            | Self::DeskThreadsRestored { .. }
             | Self::ArchiveAnswer { .. }
             | Self::DecisionLog { .. }
             | Self::DecisionDetail { .. }

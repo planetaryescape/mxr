@@ -118,3 +118,32 @@ test("a person who prefers arrival order can make the inbox their home", async (
   await openApp(page, "/");
   await expect(page).toHaveURL(/\/m\/inbox$/);
 });
+
+test("e on a Waiting row is done waiting: the row leaves at once and u brings it back", async ({
+  page,
+}) => {
+  await openApp(page, "/desk?lane=waiting");
+  await expect(mailRows(page).first()).toBeVisible();
+  const rowId = await cursorRowId(page);
+
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/v1/mail/desk/dismiss", async (route) => {
+    await held;
+    await route.continue();
+  });
+  const dismissed = page.waitForResponse("**/api/v1/mail/desk/dismiss");
+  await page.keyboard.press("e");
+  await expect(rowById(page, rowId)).toHaveCount(0);
+  release();
+  expect((await dismissed).ok()).toBe(true);
+  await expect(page.getByText(/^Done waiting on 1 conversation$/)).toBeVisible();
+  // The refetched desk agrees: the thread is off Waiting on.
+  await page.waitForResponse((response) => response.url().includes("/api/v1/mail/desk?"));
+  await expect(rowById(page, rowId)).toHaveCount(0);
+
+  const restored = page.waitForResponse("**/api/v1/mail/desk/restore");
+  await page.keyboard.press("u");
+  expect((await restored).ok()).toBe(true);
+  await expect(rowById(page, rowId)).toBeVisible();
+});

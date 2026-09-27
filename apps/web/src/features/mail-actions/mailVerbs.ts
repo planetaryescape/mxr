@@ -32,6 +32,18 @@ export interface MailVerbHooks {
   afterLeave?: (action: MailAction) => void;
   /** Where replies open: inline under the thread, or an overlay. */
   composeSurface: "inline" | "overlay";
+  /**
+   * Let a view handle part of a mutation its own way (the desk: archive on
+   * a Waiting row means "done waiting"). Returns what is left for the
+   * normal path (null when the view takes all of it) and the view's own
+   * change, which runs with the rest, after any confirmation.
+   */
+  intercept?: (action: MailAction, target: MailTarget) => InterceptedVerb;
+}
+
+export interface InterceptedVerb {
+  rest: MailTarget | null;
+  commit?: () => void;
 }
 
 /** Bulk trash/spam and very large batches confirm first; the rest undo. */
@@ -54,9 +66,16 @@ function single(target: MailTarget | null, what: string): MailTarget | null {
 
 export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
   const mutate = (action: MailAction) => () => {
-    const target = hooks.getTarget();
-    if (!target || target.messageIds.length === 0) return;
+    const requested = hooks.getTarget();
+    if (!requested || requested.messageIds.length === 0) return;
+    const { rest: target, commit } = hooks.intercept?.(action, requested) ?? { rest: requested };
+    if (!target || target.messageIds.length === 0) {
+      commit?.();
+      hooks.afterLeave?.(action);
+      return;
+    }
     const run = () => {
+      commit?.();
       void performMailAction(action, target.messageIds);
       if (action !== "star" && action !== "unstar" && action !== "read" && action !== "unread") {
         hooks.afterLeave?.(action);

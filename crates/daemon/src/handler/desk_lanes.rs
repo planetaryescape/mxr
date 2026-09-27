@@ -112,6 +112,9 @@ pub(super) struct AccountInputs<'a> {
     pub contacts: &'a HashMap<String, DeskContact>,
     /// Keyed by lowercased email.
     pub screener: &'a HashMap<String, ScreenerDisposition>,
+    /// Threads marked "done waiting", through the date of their newest
+    /// message at the time.
+    pub dismissed: &'a HashMap<ThreadId, DateTime<Utc>>,
     pub is_self: &'a dyn Fn(&str) -> bool,
     pub now: DateTime<Utc>,
 }
@@ -384,6 +387,11 @@ fn waiting_row(
         || sent.date < now - Duration::days(DESK_WINDOW_DAYS)
         // Archiving a conversation is how you say it is done with.
         || (has_inbound && !in_inbox)
+        // So is "done waiting", until something new arrives in it.
+        || inputs
+            .dismissed
+            .get(&sent.thread_id)
+            .is_some_and(|through| sent.date <= *through)
     {
         return None;
     }
@@ -596,12 +604,14 @@ mod tests {
             .map(|c| (c.email.to_ascii_lowercase(), c.clone()))
             .collect();
         let screener = HashMap::new();
+        let dismissed = HashMap::new();
         let is_self = |email: &str| email.eq_ignore_ascii_case(ME);
         thread_lanes(&AccountInputs {
             account_id: &account,
             messages,
             contacts: &contacts,
             screener: &screener,
+            dismissed: &dismissed,
             is_self: &is_self,
             now: now(),
         })

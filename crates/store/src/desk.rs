@@ -13,6 +13,7 @@ use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{Address, MessageFlags, UnsubscribeMethod};
 use sqlx::Row;
+use std::collections::HashMap;
 use std::time::Instant;
 
 /// One message of a thread that was active inside the desk window.
@@ -231,56 +232,168 @@ impl super::Store {
         Ok(latencies)
     }
 
-    /// The newest non-trashed message from or to `email` in `account_id`
-    /// dated within a day of `around` (the contact's known last exchange),
-    /// so the lookup reads a handful of rows instead of walking the mailbox.
-    pub async fn desk_latest_exchange(
+    /// For each `(email, around)`, the newest non-trashed message from or to
+    /// that address dated within a day of `around` (the contact's known last
+    /// exchange). One query for every contact; the date bound keeps each
+    /// lookup to a handful of rows instead of a walk over the mailbox.
+    pub async fn desk_latest_exchanges(
         &self,
         account_id: &AccountId,
-        email: &str,
-        around: DateTime<Utc>,
-    ) -> Result<Option<DeskLatestExchange>, sqlx::Error> {
+        wanted: &[(String, DateTime<Utc>)],
+    ) -> Result<HashMap<String, DeskLatestExchange>, sqlx::Error> {
+        if wanted.is_empty() {
+            return Ok(HashMap::new());
+        }
         let started_at = Instant::now();
         let hidden_flags = i64::from((MessageFlags::TRASH | MessageFlags::SPAM).bits());
-        let row = sqlx::query(
-            r#"SELECT m.id, m.thread_id, m.subject, m.date
-               FROM messages m
-               WHERE m.account_id = ?1
-                 AND (m.flags & ?3) = 0
-                 AND m.date BETWEEN ?4 AND ?5
-                 AND (
-                     LOWER(m.from_email) = LOWER(?2)
-                     OR EXISTS (
-                         SELECT 1 FROM json_each(m.to_addrs) recipient
-                         WHERE LOWER(json_extract(recipient.value, '$.email')) = LOWER(?2)
-                     )
+        let windows: Vec<serde_json::Value> = wanted
+            .iter()
+            .map(|(email, around)| {
+                serde_json::json!({
+                    "email": email.to_ascii_lowercase(),
+                    "lo": around.timestamp() - 86_400,
+                    "hi": around.timestamp() + 86_400,
+                })
+            })
+            .collect();
+        let windows =
+            serde_json::to_string(&windows).map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
+        let rows = sqlx::query(
+            r#"WITH wanted AS (
+                SELECT json_extract(value, '$.email') AS email,
+                       json_extract(value, '$.lo') AS lo,
+                       json_extract(value, '$.hi') AS hi
+                FROM json_each(?2)
+            )
+            SELECT wanted.email AS email, m.id, m.thread_id, m.subject, m.date
+            FROM wanted
+            JOIN messages m
+              ON m.account_id = ?1
+             AND m.date BETWEEN wanted.lo AND wanted.hi
+             AND (m.flags & ?3) = 0
+             AND (
+                 LOWER(m.from_email) = wanted.email
+                 OR EXISTS (
+                     SELECT 1 FROM json_each(m.to_addrs) recipient
+                     WHERE LOWER(json_extract(recipient.value, '$.email')) = wanted.email
                  )
-               ORDER BY m.date DESC, m.id DESC
-               LIMIT 1"#,
+             )
+            ORDER BY m.date DESC, m.id DESC"#,
         )
         .bind(account_id.as_str())
-        .bind(email)
+        .bind(windows)
         .bind(hidden_flags)
-        .bind(around.timestamp() - 86_400)
-        .bind(around.timestamp() + 86_400)
-        .fetch_optional(self.reader())
+        .fetch_all(self.reader())
         .await?;
-        let exchange = row
-            .map(|row| {
-                Ok::<_, sqlx::Error>(DeskLatestExchange {
+        let mut latest = HashMap::new();
+        for row in rows {
+            let email: String = row.try_get("email")?;
+            if latest.contains_key(&email) {
+                continue;
+            }
+            latest.insert(
+                email,
+                DeskLatestExchange {
                     thread_id: decode_id(row.try_get::<&str, _>("thread_id")?)?,
                     message_id: decode_id(row.try_get::<&str, _>("id")?)?,
                     subject: row.try_get("subject")?,
                     date: decode_timestamp(row.try_get("date")?)?,
-                })
+                },
+            );
+        }
+        trace_query("desk.latest_exchanges", started_at, latest.len());
+        Ok(latest)
+    }
+
+    /// Threads marked "done waiting", with the date of the newest message
+    /// they covered. A thread whose newest message is later is back.
+    pub async fn desk_dismissals(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<HashMap<ThreadId, DateTime<Utc>>, sqlx::Error> {
+        let rows = sqlx::query(
+            "SELECT thread_id, through_date FROM desk_dismissals WHERE account_id = ?1",
+        )
+        .bind(account_id.as_str())
+        .fetch_all(self.reader())
+        .await?;
+        rows.into_iter()
+            .map(|row| {
+                Ok((
+                    decode_id(row.try_get::<&str, _>("thread_id")?)?,
+                    decode_timestamp(row.try_get("through_date")?)?,
+                ))
             })
-            .transpose()?;
-        trace_query(
-            "desk.latest_exchange",
-            started_at,
-            usize::from(exchange.is_some()),
-        );
-        Ok(exchange)
+            .collect()
+    }
+
+    /// Mark threads "done waiting" through their newest message. Threads
+    /// with no stored message are skipped. With `dry_run`, nothing is
+    /// written and the same selection is returned, so a preview matches.
+    pub async fn dismiss_desk_threads(
+        &self,
+        thread_ids: &[ThreadId],
+        dry_run: bool,
+    ) -> Result<Vec<(AccountId, ThreadId)>, sqlx::Error> {
+        if thread_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let wanted =
+            serde_json::to_string(&thread_ids.iter().map(ThreadId::as_str).collect::<Vec<_>>())
+                .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
+        // One selection for the preview and the write, so they agree.
+        const SELECTION: &str = r#"SELECT account_id, thread_id, MAX(date) AS through_date
+               FROM messages
+               WHERE thread_id IN (SELECT value FROM json_each(?1))
+               GROUP BY account_id, thread_id"#;
+        let rows = if dry_run {
+            sqlx::query(SELECTION)
+                .bind(&wanted)
+                .fetch_all(self.reader())
+                .await?
+        } else {
+            let sql = format!(
+                "INSERT INTO desk_dismissals (account_id, thread_id, through_date, dismissed_at)
+                 SELECT account_id, thread_id, through_date, ?2 FROM ({SELECTION}) WHERE true
+                 ON CONFLICT(account_id, thread_id) DO UPDATE SET
+                     through_date = excluded.through_date,
+                     dismissed_at = excluded.dismissed_at
+                 RETURNING account_id, thread_id"
+            );
+            sqlx::query(sqlx::AssertSqlSafe(sql))
+                .bind(&wanted)
+                .bind(Utc::now().timestamp())
+                .fetch_all(self.writer())
+                .await?
+        };
+        let mut selected = rows
+            .into_iter()
+            .map(|row| {
+                Ok((
+                    decode_id(row.try_get::<&str, _>("account_id")?)?,
+                    decode_id(row.try_get::<&str, _>("thread_id")?)?,
+                ))
+            })
+            .collect::<Result<Vec<(AccountId, ThreadId)>, sqlx::Error>>()?;
+        selected.sort_by_key(|(account, thread)| (account.as_str(), thread.as_str()));
+        Ok(selected)
+    }
+
+    /// Undo "done waiting": the threads show under Waiting again.
+    pub async fn restore_desk_threads(&self, thread_ids: &[ThreadId]) -> Result<u64, sqlx::Error> {
+        if thread_ids.is_empty() {
+            return Ok(0);
+        }
+        let wanted =
+            serde_json::to_string(&thread_ids.iter().map(ThreadId::as_str).collect::<Vec<_>>())
+                .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
+        let result = sqlx::query(
+            "DELETE FROM desk_dismissals WHERE thread_id IN (SELECT value FROM json_each(?1))",
+        )
+        .bind(wanted)
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected())
     }
 }
 
@@ -353,5 +466,56 @@ mod tests {
         );
         assert!(rows.iter().all(|row| row.direction == "inbound"));
         assert!(rows.iter().all(|row| !row.snoozed && !row.trashed));
+    }
+
+    #[tokio::test]
+    async fn dismissals_cover_the_thread_through_its_newest_message() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let now = Utc::now();
+        let thread = ThreadId::new();
+        let sent = envelope(
+            &account.id,
+            &thread,
+            "me@example.com",
+            now - Duration::days(2),
+        );
+        store
+            .upsert_envelope_with_direction(&sent, MessageDirection::Outbound)
+            .await
+            .unwrap();
+
+        let preview = store
+            .dismiss_desk_threads(std::slice::from_ref(&thread), true)
+            .await
+            .unwrap();
+        assert_eq!(preview, vec![(account.id.clone(), thread.clone())]);
+        assert!(store.desk_dismissals(&account.id).await.unwrap().is_empty());
+
+        let done = store
+            .dismiss_desk_threads(&[thread.clone(), ThreadId::new()], false)
+            .await
+            .unwrap();
+        assert_eq!(done, preview, "unknown threads are skipped");
+        let dismissals = store.desk_dismissals(&account.id).await.unwrap();
+        assert_eq!(
+            dismissals.get(&thread).map(DateTime::timestamp),
+            Some(sent.date.timestamp())
+        );
+
+        // Dismissing again is an upsert, and restoring clears it.
+        store
+            .dismiss_desk_threads(std::slice::from_ref(&thread), false)
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .restore_desk_threads(std::slice::from_ref(&thread))
+                .await
+                .unwrap(),
+            1
+        );
+        assert!(store.desk_dismissals(&account.id).await.unwrap().is_empty());
     }
 }

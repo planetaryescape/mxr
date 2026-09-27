@@ -1958,6 +1958,11 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::InviteResponseSent { .. },
                     }) => Ok(effect),
+                    Ok(Response::Ok {
+                        data:
+                            ResponseData::DeskThreadsDismissed { .. }
+                            | ResponseData::DeskThreadsRestored { .. },
+                    }) => Ok(effect),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response to mutation".into())),

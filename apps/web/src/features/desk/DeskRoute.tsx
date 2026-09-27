@@ -5,10 +5,14 @@ import { toast } from "sonner";
 
 import { useDeskQuery, type Desk, type DeskElsewhere, type DeskLaneKind } from "./api";
 import { deskHeadline, LANE_TITLES } from "./deskCopy";
+import { elsewhereLinks } from "./deskLinks";
 import { deskGroups } from "./deskRows";
+import { markDoneWaiting, useDoneWaiting } from "./doneWaiting";
 import { DeskRow } from "./DeskRow";
 import { invalidateMailQueries } from "@/features/mail-actions/mailMutations";
-import { usePendingMailOps } from "@/features/mail-actions/pendingMailOps";
+import { usePendingMailOps, type MailAction } from "@/features/mail-actions/pendingMailOps";
+import type { InterceptedVerb } from "@/features/mail-actions/mailVerbs";
+import { targetFromRows, type MailTarget } from "@/features/mail-actions/target";
 import { resolveCommitment } from "@/features/mailbox/api";
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
 import type { RowRenderState } from "@/features/mailbox/MailboxList";
@@ -27,26 +31,53 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
   const account = useUiPrefs((s) => s.accountScope);
   const desk = useDeskQuery();
   const ops = usePendingMailOps((s) => s.ops);
-  const { groups, index } = useMemo(() => deskGroups(desk.data, ops, lane), [desk.data, ops, lane]);
+  const hidden = useDoneWaiting((s) => s.hidden);
+  const { groups, index } = useMemo(
+    () => deskGroups(desk.data, ops, lane, hidden),
+    [desk.data, hidden, ops, lane],
+  );
 
-  const renderRow = useCallback(
-    (row: MessageRowView, state: RowRenderState) => {
-      const source = index.get(row.id);
-      return source ? <DeskRow row={row} desk={source} state={state} /> : null;
+  // Archive on a Waiting row means "done waiting": the thread you started
+  // has nothing in the inbox to archive. Everything else archives as usual.
+  const interceptVerb = useCallback(
+    (action: MailAction, target: MailTarget): InterceptedVerb => {
+      if (action !== "archive" && action !== "read-and-archive") return { rest: target };
+      const isWaiting = (row: MessageRowView) => index.get(row.id)?.lane === "waiting";
+      const waiting = target.rows.filter(isWaiting);
+      if (waiting.length === 0) return { rest: target };
+      const rest = target.rows.filter((row) => !isWaiting(row));
+      return {
+        rest: rest.length > 0 ? targetFromRows(rest, target.source) : null,
+        commit: () => void markDoneWaiting(waiting.map((row) => row.thread_id)),
+      };
     },
     [index],
   );
 
-  // `w` marks a promise kept. Other rows have no row verb of their own.
+  const renderRow = useCallback(
+    (row: MessageRowView, state: RowRenderState) => {
+      const source = index.get(row.id);
+      // Spread, not an object prop: the row stays memoized across renders.
+      return source ? <DeskRow row={row} desk={source} {...state} /> : null;
+    },
+    [index],
+  );
+
+  // `w` is "done": a promise kept, or done waiting on a reply.
   const done = useMemo<RowAction>(
     () => ({
       label: "Done",
       icon: Check,
-      describe: (row) => `Mark the promise in ${row.subject || "this conversation"} done`,
+      describe: (row) => `Done with ${row.subject || "this conversation"}`,
       run: (row) => {
-        const commitment = index.get(row.id)?.commitment_id;
+        const source = index.get(row.id);
+        if (source?.lane === "waiting") {
+          void markDoneWaiting([row.thread_id]);
+          return;
+        }
+        const commitment = source?.commitment_id;
         if (!commitment) {
-          toast.info("Only promises under Due can be marked done");
+          toast.info("Done works on promises under Due and threads under Waiting on");
           return;
         }
         void resolveCommitment(commitment)
@@ -86,6 +117,7 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
       status={desk}
       renderRow={renderRow}
       airyHeaders
+      interceptVerb={interceptVerb}
       rowAction={done}
       empty={<ClearDesk lane={lane} />}
     />
@@ -126,20 +158,10 @@ function DeskHeading({ desk }: { desk: Desk }) {
   );
 }
 
-const ELSEWHERE: { key: keyof DeskElsewhere; label: string; to: string; suffix?: string }[] = [
-  { key: "reading", label: "Reading", to: "/subscriptions", suffix: "new" },
-  // No paper-trail view yet (bundles arrive in a later release); receipts
-  // and notifications sit in the inbox, so that is where this points.
-  { key: "paper_trail", label: "Paper trail", to: "/m/inbox" },
-  { key: "deliveries", label: "Deliveries", to: "/deliveries" },
-  { key: "invites", label: "Invites", to: "/invites" },
-  { key: "screener", label: "Screener", to: "/screener" },
-];
-
 /** Everything that is not work, as one quiet line of links. */
 function Elsewhere({ counts }: { counts: DeskElsewhere }) {
-  const items = ELSEWHERE.filter((item) => counts[item.key] > 0);
-  if (items.length === 0) return null;
+  const links = elsewhereLinks(counts);
+  if (links.length === 0) return null;
   return (
     <nav
       aria-label="Everything else"
@@ -148,16 +170,17 @@ function Elsewhere({ counts }: { counts: DeskElsewhere }) {
       <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
         Everything else
       </span>
-      {items.map((item) => (
+      {links.map((link) => (
         <Link
-          key={item.key}
-          to={item.to}
+          key={link.key}
+          to={link.to}
+          params={link.params}
           className="text-foreground/85 hover:text-foreground hover:underline"
         >
-          {item.label}{" "}
+          {link.label}{" "}
           <span className="font-mono text-2xs tabular-nums text-muted-foreground">
-            {counts[item.key]}
-            {item.suffix ? ` ${item.suffix}` : ""}
+            {link.count}
+            {link.suffix ? ` ${link.suffix}` : ""}
           </span>
         </Link>
       ))}

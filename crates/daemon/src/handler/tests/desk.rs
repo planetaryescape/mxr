@@ -347,3 +347,118 @@ async fn archiving_a_conversation_takes_it_off_the_desk() {
     };
     assert_eq!(owed.total + waiting.total + people_new.total, 0);
 }
+
+async fn request(fx: &Fixture, request: Request) -> ResponseData {
+    let msg = IpcMessage {
+        id: 2,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(request),
+    };
+    match handle_request(&fx.state, &msg).await.payload {
+        IpcPayload::Response(Response::Ok { data }) => data,
+        other => panic!("expected data, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn done_waiting_lasts_until_a_new_message_arrives() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let asked = fx
+        .message(&thread, ME, "jon@example.com", Duration::days(3), None)
+        .await;
+    let waiting = |desk: ResponseData| match desk {
+        ResponseData::Desk { waiting, .. } => thread_ids(&waiting),
+        other => panic!("expected a desk, got {other:?}"),
+    };
+    assert_eq!(waiting(fx.desk(25).await), vec![thread.clone()]);
+
+    // A dry run previews the same selection and changes nothing.
+    let preview = request(
+        &fx,
+        Request::DismissDeskThreads {
+            thread_ids: vec![thread.clone()],
+            dry_run: true,
+        },
+    )
+    .await;
+    assert!(matches!(
+        &preview,
+        ResponseData::DeskThreadsDismissed { threads, dry_run: true }
+            if threads.len() == 1 && threads[0].thread_id == thread
+    ));
+    assert_eq!(waiting(fx.desk(25).await), vec![thread.clone()]);
+
+    request(
+        &fx,
+        Request::DismissDeskThreads {
+            thread_ids: vec![thread.clone()],
+            dry_run: false,
+        },
+    )
+    .await;
+    assert!(waiting(fx.desk(25).await).is_empty());
+
+    // Undo puts it back; dismissing again takes it off.
+    let restored = request(
+        &fx,
+        Request::RestoreDeskThreads {
+            thread_ids: vec![thread.clone()],
+        },
+    )
+    .await;
+    assert!(matches!(
+        restored,
+        ResponseData::DeskThreadsRestored { restored: 1 }
+    ));
+    assert_eq!(waiting(fx.desk(25).await), vec![thread.clone()]);
+    request(
+        &fx,
+        Request::DismissDeskThreads {
+            thread_ids: vec![thread.clone()],
+            dry_run: false,
+        },
+    )
+    .await;
+
+    // A follow-up you send later is new: the thread waits again.
+    fx.message(
+        &thread,
+        ME,
+        "jon@example.com",
+        Duration::days(1),
+        asked.message_id_header.as_deref(),
+    )
+    .await;
+    assert_eq!(waiting(fx.desk(25).await), vec![thread.clone()]);
+}
+
+#[tokio::test]
+async fn a_reply_to_a_dismissed_thread_lands_as_owed() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let asked = fx
+        .message(&thread, ME, "jon@example.com", Duration::days(3), None)
+        .await;
+    request(
+        &fx,
+        Request::DismissDeskThreads {
+            thread_ids: vec![thread.clone()],
+            dry_run: false,
+        },
+    )
+    .await;
+    fx.message(
+        &thread,
+        "jon@example.com",
+        ME,
+        Duration::hours(2),
+        asked.message_id_header.as_deref(),
+    )
+    .await;
+    let ResponseData::Desk { owed, waiting, .. } = fx.desk(25).await else {
+        panic!("expected a desk");
+    };
+    assert_eq!(thread_ids(&owed), vec![thread]);
+    assert_eq!(waiting.total, 0);
+}

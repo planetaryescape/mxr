@@ -872,6 +872,11 @@ const MIGRATIONS: &[Migration] = &[
             },
         ]),
     },
+    Migration {
+        version: 51,
+        name: "desk_dismissals",
+        kind: MigrationKind::Sql(include_str!("../migrations/051_desk_dismissals.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

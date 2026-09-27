@@ -246,6 +246,23 @@ pub fn map_request(
             None,
         ),
 
+        // ----- desk -----
+        Request::DismissDeskThreads {
+            thread_ids,
+            dry_run,
+        } => (
+            "desk.done_waiting",
+            Some("thread"),
+            thread_ids.first().map(|id| id.as_str().clone()),
+            Some(serde_json::json!({ "count": thread_ids.len(), "dry_run": dry_run })),
+        ),
+        Request::RestoreDeskThreads { thread_ids } => (
+            "desk.waiting_again",
+            Some("thread"),
+            thread_ids.first().map(|id| id.as_str().clone()),
+            Some(serde_json::json!({ "count": thread_ids.len() })),
+        ),
+
         // ----- thread reading -----
         Request::GetThread { thread_id } => (
             "thread.open",

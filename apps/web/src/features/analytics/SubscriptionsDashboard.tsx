@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { formatListDate, plural } from "@/lib/format";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
 type Sort = "low-open" | "volume" | "recent";
 
@@ -36,12 +37,13 @@ const SORTS: { id: Sort; label: string }[] = [
 ];
 
 export function SubscriptionsDashboard() {
+  const account = useUiPrefs((s) => s.accountScope) ?? undefined;
   const drill = useDrillToSearch();
   const [sort, setSort] = useState<Sort>("low-open");
   const [confirm, setConfirm] = useState<SubscriptionSummary | null>(null);
   const subscriptions = useQuery({
-    queryKey: ["subscriptions"],
-    queryFn: () => fetchSubscriptions(100),
+    queryKey: ["subscriptions", account ?? "all"],
+    queryFn: () => fetchSubscriptions(100, account),
   });
   const unsubscribe = useMutation({
     mutationFn: (messageId: string) => unsubscribeSubscription(messageId),

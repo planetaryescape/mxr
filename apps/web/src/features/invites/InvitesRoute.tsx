@@ -18,6 +18,7 @@ import {
   useInviteResponse,
   type InviteAction,
 } from "@/features/invites/useInviteResponse";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const PARTSTAT_LABELS: Record<CalendarPartstatView, string> = {
   accepted: "Accepted",
@@ -177,7 +178,11 @@ function InviteRow({ invite }: { invite: CalendarInviteData }) {
 }
 
 export function InvitesRoute() {
-  const invites = useQuery({ queryKey: ["invites"], queryFn: fetchInvites });
+  const account = useUiPrefs((s) => s.accountScope) ?? undefined;
+  const invites = useQuery({
+    queryKey: ["invites", account ?? "all"],
+    queryFn: () => fetchInvites(account),
+  });
   const rows = invites.data?.invites ?? [];
 
   return (

@@ -64,6 +64,17 @@ describe("desk groups", () => {
     expect(groups.find((group) => group.id === "due")?.rows).toHaveLength(1);
   });
 
+  test("a waiting row stays through an archive but leaves while done-waiting is in flight", () => {
+    const withWaiting: Desk = {
+      ...desk(),
+      waiting: { rows: [row("waiting", "w0")], total: 1 },
+    };
+    const archived = deskGroups(withWaiting, [archive("w0-0", "w0")]);
+    expect(archived.groups.find((group) => group.id === "waiting")?.rows).toHaveLength(1);
+    const hidden = deskGroups(withWaiting, [], undefined, new Set(["t-w0"]));
+    expect(hidden.groups.find((group) => group.id === "waiting")).toBeUndefined();
+  });
+
   test("a lane page shows one lane in full", () => {
     const { groups } = deskGroups(desk(), [], "owed");
     expect(groups).toHaveLength(1);

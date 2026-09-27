@@ -568,6 +568,8 @@ pub enum Command {
     /// each with the reason it is there. Everything else is summarised
     /// as counts.
     Desk {
+        #[command(subcommand)]
+        action: Option<DeskAction>,
         /// Limit to one account; the default covers every account.
         #[arg(long)]
         account: Option<String>,
@@ -2019,6 +2021,27 @@ pub enum SignatureDefaultKindArg {
     All,
     New,
     Reply,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum DeskAction {
+    /// Done waiting: take conversations you wrote last off Waiting on until
+    /// a new message arrives in them.
+    Dismiss {
+        /// Thread ids, as `mxr desk --format ids` prints them.
+        #[arg(required = true)]
+        thread_ids: Vec<String>,
+        /// Show which conversations would be dismissed without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Undo a dismissal: the conversations wait again.
+    Restore {
+        #[arg(required = true)]
+        thread_ids: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]

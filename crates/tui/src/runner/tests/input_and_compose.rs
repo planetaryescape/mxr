@@ -1610,3 +1610,37 @@ fn pending_chord_prefix_is_exposed_for_the_hint_bar() {
         "chord completion clears the prefix"
     );
 }
+
+/// `e` on a Waiting row of the desk is "done waiting": it queues the
+/// daemon's dismissal for that thread, not an archive.
+#[test]
+fn e_on_a_waiting_desk_row_queues_done_waiting() {
+    use mxr_protocol::DeskLaneKind;
+    let mut app = App::new();
+    let owed = desk_row(DeskLaneKind::Owed);
+    let waiting = desk_row(DeskLaneKind::Waiting);
+    app.apply(Action::OpenDesk);
+    app.set_desk(desk_with(vec![waiting.clone(), owed]));
+
+    // On an owed row, e explains itself instead of archiving blind.
+    app.apply(Action::Archive);
+    assert!(app.pending_mutation_queue.is_empty());
+    assert!(app
+        .status_message
+        .as_deref()
+        .unwrap_or("")
+        .contains("Waiting on"));
+
+    app.mailbox.selected_index = 1;
+    app.apply(Action::Archive);
+    let queued: Vec<_> = app
+        .pending_mutation_queue
+        .iter()
+        .map(|queued| queued.request.clone())
+        .collect();
+    assert!(matches!(
+        queued.as_slice(),
+        [Request::DismissDeskThreads { thread_ids, dry_run: false }]
+            if thread_ids == &vec![waiting.thread_id.clone()]
+    ));
+}

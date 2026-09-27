@@ -37,7 +37,10 @@ these:
 - a sender you denied in the screener, which never shows on the desk.
 
 A conversation shows on the desk only while it is in the inbox. Archiving or
-snoozing it takes it off; undo puts it back. A promise under **Due** stays
+snoozing it takes it off; undo puts it back. A conversation you started has
+nothing in the inbox to archive, so on a **Waiting on** row archive means
+**done waiting**: the thread leaves the lane until a new message arrives in
+it, from them or from you. A promise under **Due** stays
 until you mark it done, whatever happens to its conversation. When a
 conversation qualifies for two lanes, it shows once, in the first of: You
 owe, Due, Waiting on, New from people.
@@ -77,6 +80,14 @@ mxr desk --format json | jq -r '.owed.rows[0].message_id' | xargs mxr cat
 `--account` limits the desk to one account (the default covers them all), and
 `--limit` sets how many rows each lane returns.
 
+```bash
+# Done waiting on a thread; preview first when you pass several.
+mxr desk dismiss THREAD_ID --dry-run
+mxr desk dismiss THREAD_ID
+# Changed your mind: it waits again.
+mxr desk restore THREAD_ID
+```
+
 ## In the web app
 
 The web app opens on the desk. The greeting counts the work ("Saturday
@@ -85,8 +96,9 @@ Lanes show their first five rows; **Show all** opens the rest.
 
 The keys are the ones every list uses: `j`/`k` move one cursor across all
 the lanes, `Enter` opens the conversation and `Esc` comes back to the same
-row, `e` archives, `Z` snoozes, `#` trashes and `u` undoes. On a promise
-under **Due**, `w` marks it done.
+row, `e` archives, `Z` snoozes, `#` trashes and `u` undoes. On a row under
+**Waiting on**, `e` (or `w`) is done waiting. On a promise under **Due**, `w`
+marks it done.
 
 `g d` goes to the desk and `g i` to the inbox in arrival order; `g w` opens
 **Waiting on**. To open on the inbox instead, set **Settings, Appearance,
@@ -96,4 +108,5 @@ Home** to Inbox.
 
 **Desk** is the first entry in the sidebar's lens list, and `g h` opens it
 (`g d` stays Drafts in the TUI). `j`/`k` move across the lanes and `Enter`
-opens the conversation beside the desk.
+opens the conversation beside the desk, and `e` on a row under Waiting on is
+done waiting.

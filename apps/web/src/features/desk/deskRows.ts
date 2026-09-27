@@ -71,6 +71,8 @@ export function deskGroups(
   desk: Desk | undefined,
   ops: readonly PendingMailOp[],
   only?: DeskLaneKind,
+  /** Conversations leaving optimistically ("done waiting" in flight). */
+  hidden: ReadonlySet<string> = new Set(),
 ): DeskGroups {
   const index: DeskRowIndex = new Map();
   if (!desk) return { groups: [], index };
@@ -79,7 +81,9 @@ export function deskGroups(
     if (only && lane !== only) continue;
     const data = desk[lane];
     const rows = data.rows.map(toMessageRow);
-    const visible = projectRows(rows, ops, laneLens(lane));
+    const visible = projectRows(rows, ops, laneLens(lane)).filter(
+      (row) => !hidden.has(row.thread_id),
+    );
     const total = Math.max(0, data.total - (rows.length - visible.length));
     if (visible.length === 0) continue;
     const shown = only ? visible : visible.slice(0, DESK_LANE_CAP);

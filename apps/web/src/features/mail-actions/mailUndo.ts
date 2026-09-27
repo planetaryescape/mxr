@@ -89,7 +89,21 @@ export function announceSuccess(
         : null;
   // Running an undo retires it, from the key or the toast, so it can't run
   // twice; it only clears itself, never a newer action's undo.
-  const toastId = `mutation-${mutationId ?? ids.join(",")}`;
+  return offerUndo(message, `mutation-${mutationId ?? ids.join(",")}`, reverse, claim, mutationId);
+}
+
+/**
+ * The success toast with its Undo, for any reversible change. Hands the
+ * claimed undo slot to `reverse` if nothing newer took it; a change with no
+ * reverse leaves the slot empty, so `u` never reaches past it.
+ */
+export function offerUndo(
+  message: string,
+  toastId: string,
+  reverse: (() => Promise<boolean>) | null,
+  claim: () => Promise<boolean>,
+  mutationId?: string,
+): (() => Promise<boolean>) | null {
   const undo = reverse
     ? async () => {
         useUndo.getState().retireUndo(undo!);
@@ -98,9 +112,6 @@ export function announceSuccess(
         return reverse();
       }
     : null;
-  // Still the newest action (and `u` wasn't pressed early): hand the slot
-  // over to the real undo. A change with no undo leaves the slot empty, so
-  // `u` never reaches past it.
   const newest = useUndo.getState().lastUndo === claim;
   if (!undo) {
     if (newest) useUndo.getState().recordNoUndo();

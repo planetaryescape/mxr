@@ -88,3 +88,11 @@ pub struct DeskElsewhereData {
     /// Senders with recent mail and no screener decision.
     pub screener: u32,
 }
+
+/// A conversation, named with its account.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeskThreadRefData {
+    pub account_id: AccountId,
+    pub thread_id: ThreadId,
+}

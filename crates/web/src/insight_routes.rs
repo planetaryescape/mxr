@@ -84,6 +84,57 @@ async fn desk(
 }
 
 #[derive(Debug, Deserialize)]
+struct DeskThreadsBody {
+    thread_ids: Vec<ThreadId>,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+fn require_threads(body: &DeskThreadsBody) -> Result<(), BridgeError> {
+    if body.thread_ids.is_empty() {
+        return Err(BridgeError::BadRequest(
+            "thread_ids must not be empty".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn desk_dismiss(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<DeskThreadsBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, None, &state.config.auth_token)?;
+    require_threads(&body)?;
+    let response = ipc_request(
+        &state.config.socket_path,
+        Request::DismissDeskThreads {
+            thread_ids: body.thread_ids,
+            dry_run: body.dry_run,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn desk_restore(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<DeskThreadsBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, None, &state.config.auth_token)?;
+    require_threads(&body)?;
+    let response = ipc_request(
+        &state.config.socket_path,
+        Request::RestoreDeskThreads {
+            thread_ids: body.thread_ids,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
 struct WhoisQuery {
     query: String,
     #[serde(default, alias = "account_id")]
@@ -281,6 +332,8 @@ pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
     router
         .route("/owed", get(owed_replies))
         .route("/desk", get(desk))
+        .route("/desk/dismiss", post(desk_dismiss))
+        .route("/desk/restore", post(desk_restore))
         .route("/whois", get(whois))
         .route("/send-time", get(send_time))
         .route("/archive-ask", post(archive_ask))

@@ -1,3 +1,4 @@
+import { Star } from "lucide-react";
 import { memo } from "react";
 
 import type { DeskRow as DeskRowData } from "./api";
@@ -6,11 +7,10 @@ import type { RowRenderState } from "@/features/mailbox/MailboxList";
 import type { MessageRowView } from "@/features/mailbox/types";
 import { cn } from "@/lib/utils";
 
-interface DeskRowProps {
+type DeskRowProps = RowRenderState & {
   row: MessageRowView;
   desk: DeskRowData;
-  state: RowRenderState;
-}
+};
 
 /**
  * One line of the desk: who, what and why, and how long. Wide lists read
@@ -18,7 +18,7 @@ interface DeskRowProps {
  * under the person. No hover or focus transitions: the cursor moves on
  * every j and k, and movement there should be instant.
  */
-export const DeskRow = memo(function DeskRow({ row, desk, state }: DeskRowProps) {
+export const DeskRow = memo(function DeskRow({ row, desk, ...state }: DeskRowProps) {
   const who = rowPerson(desk);
   const age = rowAge(desk);
   const subject = desk.subject.trim();
@@ -28,6 +28,7 @@ export const DeskRow = memo(function DeskRow({ row, desk, state }: DeskRowProps)
       role="option"
       aria-selected={state.selected}
       aria-label={[
+        row.starred ? "Starred." : null,
         who,
         subject || null,
         desk.reason,
@@ -83,6 +84,9 @@ export const DeskRow = memo(function DeskRow({ row, desk, state }: DeskRowProps)
           age.late ? "text-warning" : "text-muted-foreground",
         )}
       >
+        {row.starred ? (
+          <Star aria-hidden className="mr-1.5 inline size-3 -translate-y-px fill-star text-star" />
+        ) : null}
         {age.label}
         {age.usual ? <span className="text-muted-foreground"> · {age.usual}</span> : null}
       </time>

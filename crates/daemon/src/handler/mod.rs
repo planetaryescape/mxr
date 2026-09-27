@@ -1144,6 +1144,13 @@ async fn dispatch(
             account_id,
             lane_limit,
         } => desk::get_desk(state, account_id.as_ref(), *lane_limit).await,
+        Request::DismissDeskThreads {
+            thread_ids,
+            dry_run,
+        } => desk::dismiss_threads(state, thread_ids, *dry_run).await,
+        Request::RestoreDeskThreads { thread_ids } => {
+            desk::restore_threads(state, thread_ids).await
+        }
         Request::ArchiveAsk {
             question,
             filters,
@@ -1680,6 +1687,19 @@ async fn request_account_scope(
         | Request::ScheduleSend { draft_id, .. }
         | Request::CancelScheduledSend { draft_id } => draft_account_scope(state, draft_id).await,
         Request::DraftRefine { draft_id, .. } => draft_account_scope(state, draft_id).await,
+        Request::DismissDeskThreads { thread_ids, .. }
+        | Request::RestoreDeskThreads { thread_ids } => {
+            let mut accounts = Vec::new();
+            for thread in state
+                .store
+                .get_threads_batch(thread_ids)
+                .await
+                .map_err(|e| e.to_string())?
+            {
+                push_unique_account(&mut accounts, thread.account_id);
+            }
+            Ok(RequestAccountScope::Accounts(accounts))
+        }
         _ => Ok(RequestAccountScope::None),
     }
 }
@@ -1992,6 +2012,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::Snooze { .. }
         | Request::Unsnooze { .. }
         | Request::SetReplyLater { .. }
+        | Request::DismissDeskThreads { .. }
+        | Request::RestoreDeskThreads { .. }
         | Request::SetAutoReminder { .. }
         | Request::CancelAutoReminder { .. }
         | Request::CancelScheduledSend { .. }
@@ -2197,6 +2219,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ExtractDraftCommitments { .. } => "extract_draft_commitments",
         Request::ListOwedReplies { .. } => "list_owed_replies",
         Request::GetDesk { .. } => "get_desk",
+        Request::DismissDeskThreads { .. } => "dismiss_desk_threads",
+        Request::RestoreDeskThreads { .. } => "restore_desk_threads",
         Request::ArchiveAsk { .. } => "archive_ask",
         Request::ListDecisionLog { .. } => "list_decision_log",
         Request::GetDecision { .. } => "get_decision",

@@ -442,7 +442,7 @@ fn parse_gist(
 }
 
 /// The JSON object inside a completion that may carry prose or code fences.
-fn json_object(content: &str) -> &str {
+pub(super) fn json_object(content: &str) -> &str {
     let trimmed = content.trim();
     match (trimmed.find('{'), trimmed.rfind('}')) {
         (Some(start), Some(end)) if end > start => &trimmed[start..=end],
@@ -452,7 +452,7 @@ fn json_object(content: &str) -> &str {
 
 /// One line of display text: no control characters, markdown marks or em
 /// dashes, whitespace collapsed, cut at a word boundary within `max_chars`.
-fn plain_text(value: &str, max_chars: usize) -> String {
+pub(super) fn plain_text(value: &str, max_chars: usize) -> String {
     let cleaned: String = value
         .replace(" — ", ", ")
         .replace('—', ", ")
@@ -473,7 +473,7 @@ fn plain_text(value: &str, max_chars: usize) -> String {
     format!("{}…", cut.trim_end_matches([',', ';', ':', ' ']))
 }
 
-fn collapse_whitespace(value: &str) -> String {
+pub(super) fn collapse_whitespace(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 

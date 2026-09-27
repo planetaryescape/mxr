@@ -147,6 +147,46 @@ impl super::Store {
             .collect()
     }
 
+    /// Cancel every reminder due by `now` whose thread got an answer after
+    /// the send: someone other than the sender wrote in it. Reply headers
+    /// already cancel a reminder when the answer names the sent message
+    /// (`reply_pairs`); a reply to an earlier message in the thread, or one
+    /// whose client dropped the headers, is caught here, just before firing.
+    /// Returns how many were cancelled.
+    pub async fn cancel_due_reminders_with_replies(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<u64, sqlx::Error> {
+        let now_ts = now.timestamp();
+        // The unary `+` keeps SQLite on the thread index: left to itself it
+        // walks (account_id, date) over every later message in the account,
+        // ~70ms per reminder on a 110k-message store against ~0.03ms.
+        let result = sqlx::query(
+            r#"UPDATE auto_reminders
+               SET cancelled_at = ?
+               WHERE triggered_at IS NULL
+                 AND cancelled_at IS NULL
+                 AND remind_at <= ?
+                 AND EXISTS (
+                   SELECT 1
+                   FROM messages sent
+                   JOIN messages reply
+                     ON reply.thread_id = sent.thread_id
+                    AND +reply.account_id = sent.account_id
+                    AND reply.id != sent.id
+                    AND +reply.date > sent.date
+                   WHERE sent.id = auto_reminders.sent_message_id
+                     AND reply.direction != 'outbound'
+                     AND LOWER(reply.from_email) != LOWER(sent.from_email)
+                 )"#,
+        )
+        .bind(now_ts)
+        .bind(now_ts)
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected())
+    }
+
     /// All reminders for a given message — useful for the UI / debug.
     /// Returns at most one row by primary-key.
     pub async fn get_auto_reminder(
@@ -334,6 +374,79 @@ mod tests {
 
         let due = store.get_due_auto_reminders(anchor()).await.unwrap();
         assert!(due.is_empty(), "cancelled reminders are excluded");
+    }
+
+    #[tokio::test]
+    async fn due_reminders_cancel_only_when_someone_else_wrote_after_the_send() {
+        let store = Store::in_memory().await.unwrap();
+        let (account_id, sent) = seed(&store).await;
+        let due = sent.date + Duration::days(3);
+        store
+            .set_auto_reminder(&sent.id, &account_id, due, sent.date)
+            .await
+            .unwrap();
+        let later = due + Duration::hours(1);
+
+        let add = |id: &str, from: mxr_core::types::Address, date| {
+            let mut env = TestEnvelopeBuilder::new()
+                .account_id(account_id.clone())
+                .build();
+            env.id = MessageId::new();
+            env.provider_id = id.into();
+            env.thread_id = sent.thread_id.clone();
+            env.from = from;
+            env.date = date;
+            env
+        };
+        let maya = mxr_core::types::Address {
+            name: None,
+            email: "maya@example.com".into(),
+        };
+        store
+            .upsert_envelope(&add(
+                "own",
+                sent.from.clone(),
+                sent.date + Duration::hours(1),
+            ))
+            .await
+            .unwrap();
+        store
+            .upsert_envelope(&add("before", maya.clone(), sent.date - Duration::hours(1)))
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .cancel_due_reminders_with_replies(later)
+                .await
+                .unwrap(),
+            0,
+            "your own follow-up and mail from before the send are not replies"
+        );
+
+        store
+            .upsert_envelope(&add("reply", maya, sent.date + Duration::hours(2)))
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .cancel_due_reminders_with_replies(due - Duration::hours(1))
+                .await
+                .unwrap(),
+            0,
+            "a reminder that isn't due yet is left for reply_pairs or later"
+        );
+        assert_eq!(
+            store
+                .cancel_due_reminders_with_replies(later)
+                .await
+                .unwrap(),
+            1
+        );
+        assert!(store
+            .get_due_auto_reminders(later)
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]

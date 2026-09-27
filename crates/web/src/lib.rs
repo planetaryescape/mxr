@@ -14,6 +14,7 @@ mod legacy;
 mod mailbox_threads;
 mod middleware;
 mod openapi;
+mod promise_routes;
 mod request_types;
 mod routes_v6;
 mod row_labels;

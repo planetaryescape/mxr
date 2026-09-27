@@ -35,6 +35,7 @@ pub mod notify;
 pub mod owed;
 pub mod profile;
 pub mod progress;
+pub(crate) mod promises;
 pub mod remind;
 pub mod replies;
 pub mod reset;

@@ -198,8 +198,10 @@ pub fn app(config: WebServerConfig) -> Router {
         .nest("/admin", routes_v6::extend_admin(admin_router()))
         .nest(
             "/mail",
-            thread_context_routes::extend_mail(time_routes::extend_mail(
-                insight_routes::extend_mail(routes_v6::extend_mail(mail_router())),
+            promise_routes::extend_mail(thread_context_routes::extend_mail(
+                time_routes::extend_mail(insight_routes::extend_mail(routes_v6::extend_mail(
+                    mail_router(),
+                ))),
             )),
         )
         .nest(

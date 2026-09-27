@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { accountsActions } from "@/features/accounts/actions";
 import { analyticsActions } from "@/features/analytics/actions";
+import { askActions } from "@/features/ask/actions";
 import { composeActions } from "@/features/compose/actions";
 import { diagnosticsActions } from "@/features/diagnostics/actions";
 import { mailVerbActions } from "@/features/mail-actions/verbActions";
@@ -57,6 +58,7 @@ const featureActions: Action[] = [
   ...rulesActions,
   ...accountsActions,
   ...analyticsActions,
+  ...askActions,
 ];
 
 let registered = false;

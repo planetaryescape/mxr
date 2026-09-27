@@ -58,11 +58,12 @@ test("l creates a new label from the picker and applies it", async ({ page }) =>
   await dialog.getByRole("button", { name: /^Apply/ }).click();
 
   await expect(rowById(page, rowId).getByText(name, { exact: true })).toBeVisible();
-  // Wait for the sidebar to settle on the new count; the shell refresh after
-  // Apply re-renders the section and would move the link under the pointer.
+  // Labels are folded under places by default. Wait for the shell refresh
+  // after Apply to list the new label before clicking it.
+  await page.getByRole("button", { name: "Labels" }).click();
   const link = page
     .getByRole("navigation", { name: "Labels" })
-    .getByRole("link", { name: `${name} 1` });
+    .getByRole("link", { name, exact: true });
   await expect(link).toBeVisible();
   await link.click();
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
@@ -85,6 +86,7 @@ test("v moves the conversation to another label and out of Inbox", async ({ page
   await expect(rowById(page, rowId)).toHaveCount(0);
   await expect(page.getByText(/^Moved to Travel \d+ messages?$/)).toBeVisible();
 
+  await page.getByRole("button", { name: "Labels" }).click();
   await page
     .getByRole("navigation", { name: "Labels" })
     .getByRole("link", { name: /^Travel/ })

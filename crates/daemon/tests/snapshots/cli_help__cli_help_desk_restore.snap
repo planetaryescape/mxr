@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Undo a dismissal: the conversations wait again
+
+Usage: mxr desk restore <THREAD_IDS>...
+
+Arguments:
+  <THREAD_IDS>...
+
+Options:
+  -h, --help  Print help

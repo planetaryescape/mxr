@@ -194,6 +194,17 @@ impl App {
                                 },
                                 theme,
                             );
+                        } else if self.mailbox.mailbox_view == MailboxView::Desk {
+                            ui::desk_lens::draw(
+                                frame,
+                                chunks[1],
+                                &ui::desk_lens::DeskView {
+                                    desk: &self.mailbox.desk_page,
+                                    selected_index: self.mailbox.selected_index,
+                                    active_pane: &self.mailbox.active_pane,
+                                },
+                                theme,
+                            );
                         } else if self.mailbox.mailbox_view == MailboxView::Owed {
                             ui::owed_lens::draw(
                                 frame,
@@ -261,6 +272,17 @@ impl App {
                                     preview_blocks: &preview_blocks,
                                     message_scroll_offset: self.mailbox.message_scroll_offset,
                                     html_images: &mut self.html_image_assets,
+                                },
+                                theme,
+                            );
+                        } else if self.mailbox.mailbox_view == MailboxView::Desk {
+                            ui::desk_lens::draw(
+                                frame,
+                                chunks[1],
+                                &ui::desk_lens::DeskView {
+                                    desk: &self.mailbox.desk_page,
+                                    selected_index: self.mailbox.selected_index,
+                                    active_pane: &self.mailbox.active_pane,
                                 },
                                 theme,
                             );

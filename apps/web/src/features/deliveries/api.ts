@@ -31,8 +31,10 @@ export interface Delivery {
 
 export type DeliveryFilter = "active" | "delivered" | "all" | "dismissed";
 
-export function fetchDeliveries(filter: DeliveryFilter) {
-  return apiFetch<{ deliveries: Delivery[] }>(`/api/v1/mail/deliveries?filter=${filter}`);
+export function fetchDeliveries(filter: DeliveryFilter, account?: string) {
+  const query = new URLSearchParams({ filter });
+  if (account) query.set("account", account);
+  return apiFetch<{ deliveries: Delivery[] }>(`/api/v1/mail/deliveries?${query.toString()}`);
 }
 
 export function resolveDelivery(id: string) {

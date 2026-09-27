@@ -28,7 +28,7 @@ import {
 import { fetchAccounts } from "@/features/accounts/api";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
-import type { MessageGroupView } from "@/features/mailbox/types";
+import type { MessageGroupView, MessageRowView } from "@/features/mailbox/types";
 import { plural } from "@/lib/format";
 import { runReplaceableQuery } from "@/lib/requestCoordinator";
 import { useUiPrefs } from "@/state/uiPrefsStore";
@@ -112,8 +112,12 @@ export function SearchResultsRoute() {
   );
 
   const merged = useMemo(
-    () => mergeGroups((results.data?.pages ?? []).flatMap((page) => page.groups)),
-    [results.data],
+    () =>
+      mergeGroups(
+        (results.data?.pages ?? []).flatMap((page) => page.groups),
+        scope === "threads",
+      ),
+    [results.data, scope],
   );
   const groups = useProjectedGroups(merged, SEARCH_LENS);
   const loaded = groups.reduce((sum, group) => sum + group.rows.length, 0);
@@ -227,11 +231,24 @@ export function SearchResultsRoute() {
   );
 }
 
-function mergeGroups(groups: MessageGroupView[]): MessageGroupView[] {
+/**
+ * In conversation scope each row stands for its thread, represented by its
+ * best-matching message. Which message that is can change on a refetch
+ * (an archive or read elsewhere shifts scores), so the row takes the
+ * thread's identity and the cursor stays on the conversation. Actions still
+ * cover the representing message only, as before.
+ */
+function asConversation(row: MessageRowView): MessageRowView {
+  return row.kind === "message"
+    ? { ...row, kind: "thread", message_ids: row.message_ids ?? [row.id] }
+    : row;
+}
+
+function mergeGroups(groups: MessageGroupView[], conversations: boolean): MessageGroupView[] {
   const merged = new Map<string, MessageGroupView>();
   const seen = new Set<string>();
   for (const group of groups) {
-    const rows = group.rows.filter((row) => {
+    const rows = (conversations ? group.rows.map(asConversation) : group.rows).filter((row) => {
       const key = `${row.kind}:${row.kind === "thread" ? row.thread_id : row.id}:${row.attachment_id ?? ""}`;
       if (seen.has(key)) return false;
       seen.add(key);

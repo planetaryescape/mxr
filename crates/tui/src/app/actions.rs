@@ -160,6 +160,7 @@ impl App {
             | Action::GoToAllMail
             | Action::OpenSubscriptions
             | Action::OpenOwedReplies
+            | Action::OpenDesk
             | Action::OpenCalendarInvites
             | Action::GoToLabel
             | Action::SelectLabel(_)

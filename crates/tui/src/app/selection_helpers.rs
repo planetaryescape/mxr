@@ -109,7 +109,7 @@ impl App {
     pub fn selected_mail_row(&self) -> Option<MailListRow> {
         if matches!(
             self.mailbox.mailbox_view,
-            MailboxView::Subscriptions | MailboxView::CalendarInvites
+            MailboxView::Subscriptions | MailboxView::CalendarInvites | MailboxView::Desk
         ) {
             return None;
         }

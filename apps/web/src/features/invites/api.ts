@@ -12,6 +12,8 @@ export interface CalendarInviteData {
   updated_at: number;
 }
 
-export function fetchInvites() {
-  return apiFetch<{ invites: CalendarInviteData[] }>("/api/v1/mail/invites?limit=200");
+export function fetchInvites(account?: string) {
+  const query = new URLSearchParams({ limit: "200" });
+  if (account) query.set("account", account);
+  return apiFetch<{ invites: CalendarInviteData[] }>(`/api/v1/mail/invites?${query.toString()}`);
 }

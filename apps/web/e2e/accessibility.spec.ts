@@ -24,6 +24,8 @@ async function blockingViolations(page: Page): Promise<string[]> {
 }
 
 const ROUTES = [
+  "/desk",
+  "/desk?lane=waiting",
   "/m/inbox",
   "/m/label/work",
   "/search?q=canary",

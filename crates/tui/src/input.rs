@@ -142,6 +142,15 @@ impl InputHandler {
                 self.state = KeyState::Normal;
                 Some(Action::OpenAnalyticsScreen)
             }
+            // g h: the desk, the home of what needs you. `g d` stays Drafts.
+            (
+                KeyState::WaitingForSecond { first: 'g', .. },
+                KeyCode::Char('h'),
+                KeyModifiers::NONE,
+            ) => {
+                self.state = KeyState::Normal;
+                Some(Action::OpenDesk)
+            }
             (KeyState::WaitingForSecond { first: 'g', .. }, KeyCode::Char('E'), modifiers)
                 if plain_or_shift(modifiers) =>
             {
@@ -376,6 +385,21 @@ mod tests {
         assert_eq!(first, None, "g alone must wait, not act");
         let second = input.handle_key(key_with(KeyCode::Char('A'), KeyModifiers::SHIFT));
         assert_eq!(second, Some(Action::OpenAnalyticsScreen));
+    }
+
+    #[test]
+    fn chord_g_then_h_opens_the_desk_and_g_d_stays_drafts() {
+        let mut input = InputHandler::new();
+        assert_eq!(input.handle_key(key(KeyCode::Char('g'))), None);
+        assert_eq!(
+            input.handle_key(key(KeyCode::Char('h'))),
+            Some(Action::OpenDesk)
+        );
+        let _ = input.handle_key(key(KeyCode::Char('g')));
+        assert_eq!(
+            input.handle_key(key(KeyCode::Char('d'))),
+            Some(Action::GoToDrafts)
+        );
     }
 
     #[test]

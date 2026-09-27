@@ -39,7 +39,7 @@ impl super::Store {
         // named reason so the CLI can surface it.
         let is_list: Option<i64> = sqlx::query_scalar(
             "SELECT is_list_sender FROM contacts
-             WHERE account_id = ? AND LOWER(email) = LOWER(?)",
+             WHERE account_id = ? AND email = LOWER(?)",
         )
         .bind(entry.account_id.as_str())
         .bind(&entry.email)
@@ -131,7 +131,7 @@ impl super::Store {
                 FROM relationship_watchlist w
                 LEFT JOIN contacts
                   ON contacts.account_id = w.account_id
-                 AND LOWER(contacts.email) = LOWER(w.email)
+                 AND contacts.email = LOWER(w.email)
                 WHERE w.account_id = ?1"#,
         )
         .bind(account_id.as_str())

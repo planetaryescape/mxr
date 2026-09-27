@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
 import { BulkActionBar } from "./BulkActionBar";
@@ -16,13 +17,14 @@ import { rowKey } from "./rowKey";
 import type { MessageGroupView, MessageRowView } from "./types";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
-import { createMailVerbs } from "@/features/mail-actions/mailVerbs";
+import { createMailVerbs, type MailVerbHooks } from "@/features/mail-actions/mailVerbs";
 import { rowMessageIds } from "@/features/mail-actions/pendingMailOps";
 import { targetFromRows, type MailTarget } from "@/features/mail-actions/target";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useSelection } from "@/state/selectionStore";
+import { cn } from "@/lib/utils";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 export interface MailboxListProps {
@@ -47,16 +49,34 @@ export interface MailboxListProps {
   queueLabel?: string;
   empty: ReactNode;
   label: string;
+  /**
+   * Draw rows another way (the desk). The renderer owns the row element and
+   * must keep its `id`, `role="option"` and `aria-selected` so the listbox
+   * cursor and the verbs work unchanged.
+   */
+  renderRow?: (row: MessageRowView, state: RowRenderState) => ReactNode;
+  /** Group headers as airy section titles rather than ruled table headers. */
+  airyHeaders?: boolean;
+  /** Handle part of a verb this list's own way (see `MailVerbHooks.intercept`). */
+  interceptVerb?: MailVerbHooks["intercept"];
+}
+
+export interface RowRenderState {
+  domId: string;
+  focused: boolean;
+  open: boolean;
+  selected: boolean;
+  onOpen: (row: MessageRowView) => void;
 }
 
 type FlatItem =
-  | { kind: "header"; id: string; label: string }
+  | { kind: "header"; id: string; group: MessageGroupView }
   | { kind: "row"; row: MessageRowView };
 
 function flatten(groups: MessageGroupView[]): FlatItem[] {
   const items: FlatItem[] = [];
   for (const group of groups) {
-    items.push({ kind: "header", id: `header-${group.id}`, label: group.label });
+    items.push({ kind: "header", id: `header-${group.id}`, group });
     for (const row of group.rows) items.push({ kind: "row", row });
   }
   return items;
@@ -84,6 +104,9 @@ export function MailboxList({
   queueLabel,
   empty,
   label,
+  renderRow,
+  airyHeaders = false,
+  interceptVerb,
 }: MailboxListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const density = useUiPrefs((s) => s.density);
@@ -146,7 +169,8 @@ export function MailboxList({
   const virtualizer = useVirtualizer({
     count: flat.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => (flat[index]?.kind === "header" ? 30 : ROW_ESTIMATE[density]),
+    estimateSize: (index) =>
+      flat[index]?.kind === "header" ? (airyHeaders ? 40 : 30) : ROW_ESTIMATE[density],
     overscan: 12,
     getItemKey: (index) => {
       const item = flat[index];
@@ -309,6 +333,7 @@ export function MailboxList({
     getTarget,
     composeSurface: "overlay",
     afterLeave: () => setVisualAnchor(null),
+    intercept: interceptVerb,
   });
 
   useScopeController("list", {
@@ -398,22 +423,27 @@ export function MailboxList({
     }
   }, []);
 
-  const onToggleSelection = useCallback(
-    (row: MessageRowView, shift: boolean) => {
-      const selection = useSelection.getState();
-      if (shift && selection.lastClickedId) {
-        const a = rowIndexById.get(selection.lastClickedId);
-        const b = rowIndexById.get(rowKey(row));
-        if (a !== undefined && b !== undefined) {
-          const [start, end] = a < b ? [a, b] : [b, a];
-          selection.selectRange(rows.slice(start, end + 1).map(rowKey));
-          return;
-        }
+  // Read the rows through a ref so this callback keeps its identity when a
+  // row leaves the list: a new identity re-renders every memoized row, which
+  // is most of the cost of a keypress that archives.
+  const rowsRef = useRef({ rows, rowIndexById });
+  useLayoutEffect(() => {
+    rowsRef.current = { rows, rowIndexById };
+  }, [rowIndexById, rows]);
+  const onToggleSelection = useCallback((row: MessageRowView, shift: boolean) => {
+    const selection = useSelection.getState();
+    const { rows: current, rowIndexById: indexById } = rowsRef.current;
+    if (shift && selection.lastClickedId) {
+      const a = indexById.get(selection.lastClickedId);
+      const b = indexById.get(rowKey(row));
+      if (a !== undefined && b !== undefined) {
+        const [start, end] = a < b ? [a, b] : [b, a];
+        selection.selectRange(current.slice(start, end + 1).map(rowKey));
+        return;
       }
-      selection.toggle(rowKey(row));
-    },
-    [rowIndexById, rows],
-  );
+    }
+    selection.toggle(rowKey(row));
+  }, []);
 
   const handleOpen = useCallback(
     (row: MessageRowView) => {
@@ -456,12 +486,18 @@ export function MailboxList({
                 style={{ transform: `translateY(${virtualItem.start}px)` }}
               >
                 {item.kind === "header" ? (
-                  <div
-                    role="presentation"
-                    className="flex h-[30px] items-end border-b border-border/60 bg-background px-4 pb-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground"
-                  >
-                    {item.label}
-                  </div>
+                  <GroupHeader group={item.group} airy={airyHeaders} />
+                ) : renderRow ? (
+                  renderRow(item.row, {
+                    domId: domId(item.row),
+                    focused:
+                      listFocused &&
+                      focusedRow !== undefined &&
+                      rowKey(focusedRow) === rowKey(item.row),
+                    open: item.row.thread_id === activeThreadId,
+                    selected: !readOnly && selectedIds.has(rowKey(item.row)),
+                    onOpen: handleOpen,
+                  })
                 ) : (
                   <MailboxRow
                     row={item.row}
@@ -497,7 +533,39 @@ export function MailboxList({
           </div>
         ) : null}
       </div>
-      {readOnly ? null : <BulkActionBar rows={rows} getTarget={getTarget} />}
+      {readOnly ? null : (
+        <BulkActionBar rows={rows} getTarget={getTarget} intercept={interceptVerb} />
+      )}
+    </div>
+  );
+}
+
+function GroupHeader({ group, airy }: { group: MessageGroupView; airy: boolean }) {
+  const navigate = useNavigate();
+  const more = group.more;
+  return (
+    <div
+      role="presentation"
+      className={cn(
+        "flex items-end gap-2 bg-background px-4 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground",
+        airy ? "h-[40px] px-5 pb-1.5" : "h-[30px] border-b border-border/60 pb-1",
+      )}
+    >
+      <span>{group.label}</span>
+      {typeof group.count === "number" ? (
+        <span className="font-semibold tabular-nums text-primary">{group.count}</span>
+      ) : null}
+      {more ? (
+        // Mouse-only, like the row chips: the listbox cannot hold links. The
+        // same lane is reachable from the page header and the sidebar.
+        <span
+          aria-hidden
+          onClick={() => void navigate({ href: more.href })}
+          className="ml-auto cursor-pointer normal-case tracking-normal hover:text-foreground"
+        >
+          {more.label}
+        </span>
+      ) : null}
     </div>
   );
 }

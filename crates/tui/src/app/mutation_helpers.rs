@@ -286,6 +286,7 @@ impl App {
                 }
                 self.mailbox.pending_subscriptions_refresh = true;
                 self.mailbox.pending_owed_refresh = true;
+                self.mailbox.pending_desk_refresh = true;
                 if show_completion_status {
                     self.push_toast(Toast::success(status));
                 }
@@ -780,6 +781,9 @@ impl App {
     }
 
     pub(super) fn mutation_target_ids(&self) -> Vec<MessageId> {
+        if self.desk_list_focused() {
+            return self.selected_desk_row_message_ids();
+        }
         if !self.mailbox.selected_set.is_empty() {
             return self.mailbox.selected_set.iter().cloned().collect();
         }

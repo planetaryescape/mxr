@@ -401,7 +401,9 @@ impl super::Store {
               refreshed_at = excluded.refreshed_at"#,
         )
         .bind(row.account_id.as_str())
-        .bind(&row.email)
+        // Stored lowercase, as the refresh writes it: readers join on the
+        // bare column so the (account_id, email) key serves the lookup.
+        .bind(row.email.to_ascii_lowercase())
         .bind(&row.display_name)
         .bind(row.first_seen_at.timestamp())
         .bind(row.last_seen_at.timestamp())

@@ -33,6 +33,9 @@ pub enum MailboxView {
     /// `Request::ListOwedReplies` and re-fetched after a successful
     /// reply send.
     Owed,
+    /// The desk (`Request::GetDesk`): what needs you, not what arrived.
+    /// Lanes are re-fetched after mutations and syncs.
+    Desk,
     /// Calendar-invites lens. Entries are loaded via `Request::ListInvites`
     /// from the dedicated `calendar_invites` store table and re-fetched
     /// after an RSVP. Groundwork for future calendar/event features.
@@ -156,6 +159,7 @@ pub enum SidebarItem {
     Account(Box<mxr_protocol::AccountSummaryData>),
     AllMail,
     Subscriptions,
+    Desk,
     Owed,
     CalendarInvites,
     Label(Box<Label>),
@@ -167,6 +171,7 @@ pub(crate) enum SidebarSelectionKey {
     Account(String),
     AllMail,
     Subscriptions,
+    Desk,
     Owed,
     CalendarInvites,
     Label(mxr_core::LabelId),
@@ -181,6 +186,62 @@ pub struct SubscriptionsPageState {
 #[derive(Debug, Clone, Default)]
 pub struct OwedRepliesPageState {
     pub entries: Vec<mxr_protocol::OwedReplyRowData>,
+}
+
+/// The desk as last fetched: lanes in display order plus the everything-else
+/// counts. One cursor walks [`DeskPageState::rows`] across every lane.
+#[derive(Debug, Clone, Default)]
+pub struct DeskPageState {
+    pub lanes: Vec<(mxr_protocol::DeskLaneKind, mxr_protocol::DeskLaneData)>,
+    pub elsewhere: mxr_protocol::DeskElsewhereData,
+    pub loaded: bool,
+}
+
+impl DeskPageState {
+    /// Build from a `ResponseData::Desk`; `None` for any other response.
+    pub fn from_response(data: mxr_protocol::ResponseData) -> Option<Self> {
+        use mxr_protocol::DeskLaneKind;
+        let mxr_protocol::ResponseData::Desk {
+            owed,
+            due,
+            waiting,
+            people_new,
+            elsewhere,
+            ..
+        } = data
+        else {
+            return None;
+        };
+        Some(Self {
+            lanes: vec![
+                (DeskLaneKind::Owed, owed),
+                (DeskLaneKind::Due, due),
+                (DeskLaneKind::Waiting, waiting),
+                (DeskLaneKind::PeopleNew, people_new),
+            ],
+            elsewhere,
+            loaded: true,
+        })
+    }
+
+    /// Every row in display order, for the single cursor.
+    pub fn rows(&self) -> impl Iterator<Item = &mxr_protocol::DeskRowData> {
+        self.lanes.iter().flat_map(|(_, lane)| lane.rows.iter())
+    }
+
+    pub fn row_count(&self) -> usize {
+        self.lanes.iter().map(|(_, lane)| lane.rows.len()).sum()
+    }
+
+    /// The sidebar badge: only work that is yours to do (owed and due).
+    pub fn work_count(&self) -> usize {
+        use mxr_protocol::DeskLaneKind;
+        self.lanes
+            .iter()
+            .filter(|(kind, _)| matches!(kind, DeskLaneKind::Owed | DeskLaneKind::Due))
+            .map(|(_, lane)| lane.total as usize)
+            .sum()
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -270,6 +331,7 @@ pub struct MailboxState {
     pub saved_search_unread_counts: HashMap<mxr_core::id::SavedSearchId, u32>,
     pub subscriptions_page: SubscriptionsPageState,
     pub owed_page: OwedRepliesPageState,
+    pub desk_page: DeskPageState,
     pub calendar_invites_page: CalendarInvitesPageState,
     pub active_label: Option<mxr_core::LabelId>,
     pub pending_label_fetch: Option<mxr_core::LabelId>,
@@ -278,10 +340,12 @@ pub struct MailboxState {
     pub pending_all_envelopes_refresh: bool,
     pub pending_subscriptions_refresh: bool,
     pub pending_owed_refresh: bool,
+    pub pending_desk_refresh: bool,
     pub pending_calendar_invites_refresh: bool,
-    /// Set when the user opens an invite from the calendar-invites lens.
-    /// The runtime fetches the envelope by id (`Request::GetEnvelope`) and
-    /// then opens the message view — invites carry only a `message_id`.
+    /// Set when the user opens an invite from the calendar-invites lens or a
+    /// row on the desk. The runtime fetches the envelope by id
+    /// (`Request::GetEnvelope`) and then opens the message view — both carry
+    /// only a `message_id`.
     pub pending_invite_open: Option<MessageId>,
     pub pending_commitment_counts_refresh: bool,
     pub open_commitment_counts: HashMap<(mxr_core::AccountId, mxr_core::ThreadId), u32>,
@@ -356,6 +420,7 @@ impl MailboxState {
             saved_search_unread_counts: HashMap::new(),
             subscriptions_page: SubscriptionsPageState::default(),
             owed_page: OwedRepliesPageState::default(),
+            desk_page: DeskPageState::default(),
             calendar_invites_page: CalendarInvitesPageState::default(),
             active_label: None,
             pending_label_fetch: None,
@@ -364,6 +429,9 @@ impl MailboxState {
             pending_all_envelopes_refresh: false,
             pending_subscriptions_refresh: false,
             pending_owed_refresh: false,
+            // Fetch once at startup so the sidebar badge is right before
+            // the desk is first opened.
+            pending_desk_refresh: true,
             pending_calendar_invites_refresh: false,
             pending_invite_open: None,
             pending_commitment_counts_refresh: false,

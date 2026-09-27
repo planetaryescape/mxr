@@ -26,8 +26,8 @@ pub(in crate::app) use mailbox::PendingPreviewRead;
 pub(crate) use mailbox::SidebarSelectionKey;
 pub use mailbox::{
     ActivePane, AttachmentOperation, AttachmentPanelState, AttachmentSummary, BodySource,
-    BodyViewMetadata, BodyViewMode, BodyViewState, CalendarInvitesPageState, LayoutMode,
-    MailListMode, MailListRow, MailboxState, MailboxView, OwedRepliesPageState,
+    BodyViewMetadata, BodyViewMode, BodyViewState, CalendarInvitesPageState, DeskPageState,
+    LayoutMode, MailListMode, MailListRow, MailboxState, MailboxView, OwedRepliesPageState,
     PendingAttachmentAction, PendingBrowserOpen, SidebarItem, SidebarSection, SubscriptionEntry,
     SubscriptionsPageState, ThreadSummaryPreview,
 };

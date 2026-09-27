@@ -94,9 +94,11 @@ export function fetchResponseTime(sinceDays = 90, direction: ResponseDirection =
   );
 }
 
-export function fetchSubscriptions(limit = 100) {
+export function fetchSubscriptions(limit = 100, account?: string) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (account) query.set("account", account);
   return apiFetch<{ subscriptions: SubscriptionSummary[] }>(
-    `/api/v1/platform/subscriptions?limit=${limit}`,
+    `/api/v1/platform/subscriptions?${query.toString()}`,
   );
 }
 

@@ -108,6 +108,7 @@ help modal (`?`).
 
 | Key | Action |
 |-----|--------|
+| `gh` | Go to the Desk (what needs you) |
 | `gi` | Go to Inbox |
 | `gs` | Go to Starred |
 | `gt` | Go to Sent |
@@ -371,10 +372,12 @@ Work on every page except while typing in a field or compose.
 | Key | Action | Note |
 |-----|--------|------|
 | `g 1` … `g 9` | Open saved search 1 to 9 | In sidebar order, as the TUI's tab strip |
+| `g d` | Go to Desk | The TUI opens the desk with g h and keeps g d for Drafts |
+| `g w` | Waiting on | A lane of the desk lens in the TUI |
 | `g i`, `g 0` | Go to Inbox |  |
 | `g s` | Go to Starred |  |
 | `g t` | Go to Sent |  |
-| `g d`, `g E` | Go to Drafts |  |
+| `g E` | Go to Drafts | g d opens the desk here; in the TUI g d is the Drafts lens |
 | `g a` | Go to All Mail |  |
 | `g l` | Go to label |  |
 | `g A` | Analytics |  |

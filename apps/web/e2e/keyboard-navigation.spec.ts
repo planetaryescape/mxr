@@ -5,15 +5,16 @@ import { openApp } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-test("h hands the keyboard to the sidebar; j and Enter open the next mailbox", async ({
+test("h hands the keyboard to the sidebar; j and Enter open the next place", async ({
   page,
 }) => {
   await openList(page, "/m/inbox");
   await page.keyboard.press("h");
   await expect(mailList(page)).not.toHaveAttribute("data-active-pane", "true");
+  // Places run Desk, Inbox, Reply queue: the next one after Inbox.
   await page.keyboard.press("j");
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/m\/starred$/);
+  await expect(page).toHaveURL(/\/reply-queue$/);
 });
 
 test("collapsed sidebar keeps the expand control reachable", async ({ page }) => {
@@ -103,7 +104,9 @@ test("g chords jump to the TUI's views", async ({ page }) => {
     ["s", /\/m\/starred$/],
     ["t", /\/m\/sent$/],
     ["a", /\/m\/archive$/],
-    ["d", /\/drafts$/],
+    ["E", /\/drafts$/],
+    ["d", /\/desk$/],
+    ["w", /\/desk\?lane=waiting$/],
     ["n", /\/snoozed$/],
     ["q", /\/reply-queue$/],
     ["o", /\/owed$/],

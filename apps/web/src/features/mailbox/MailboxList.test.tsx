@@ -150,56 +150,56 @@ describe("MailboxList keyboard", () => {
     renderList();
 
     expect(document.activeElement).toBe(list());
-    expect(cursor()).toBe("mail-row-msg-1");
+    expect(cursor()).toBe("mail-row-thread-thread-1");
   });
 
   test("j and k move the cursor, clamped at the ends", () => {
     renderList();
 
     type({ key: "j" }, { key: "j" });
-    expect(cursor()).toBe("mail-row-msg-3");
+    expect(cursor()).toBe("mail-row-thread-thread-3");
     type({ key: "k" });
-    expect(cursor()).toBe("mail-row-msg-2");
+    expect(cursor()).toBe("mail-row-thread-thread-2");
     type({ key: "k" }, { key: "k" }, { key: "k" });
-    expect(cursor()).toBe("mail-row-msg-1");
+    expect(cursor()).toBe("mail-row-thread-thread-1");
   });
 
   test("G jumps to the last row and g g back to the first", () => {
     renderList();
 
     type({ key: "G", shiftKey: true });
-    expect(cursor()).toBe("mail-row-msg-4");
+    expect(cursor()).toBe("mail-row-thread-thread-4");
     type({ key: "g" }, { key: "g" });
-    expect(cursor()).toBe("mail-row-msg-1");
+    expect(cursor()).toBe("mail-row-thread-thread-1");
   });
 
   test("x selects the row and moves down", () => {
     renderList();
 
     type({ key: "x" });
-    expect(selectedIds()).toEqual(["msg-1"]);
-    expect(cursor()).toBe("mail-row-msg-2");
+    expect(selectedIds()).toEqual(["thread-thread-1"]);
+    expect(cursor()).toBe("mail-row-thread-thread-2");
 
     type({ key: "x" });
-    expect(selectedIds()).toEqual(["msg-1", "msg-2"]);
+    expect(selectedIds()).toEqual(["thread-thread-1", "thread-thread-2"]);
   });
 
   test("V starts visual mode and j extends the selection", () => {
     renderList();
 
     type({ key: "j" }, { key: "V", shiftKey: true });
-    expect(selectedIds()).toEqual(["msg-2"]);
+    expect(selectedIds()).toEqual(["thread-thread-2"]);
     type({ key: "j" }, { key: "j" });
-    expect(selectedIds()).toEqual(["msg-2", "msg-3", "msg-4"]);
+    expect(selectedIds()).toEqual(["thread-thread-2", "thread-thread-3", "thread-thread-4"]);
     type({ key: "k" });
-    expect(selectedIds()).toEqual(["msg-2", "msg-3"]);
+    expect(selectedIds()).toEqual(["thread-thread-2", "thread-thread-3"]);
   });
 
   test("* u selects unread rows and * n clears", () => {
     renderList();
 
     type({ key: "*", shiftKey: true }, { key: "u" });
-    expect(selectedIds()).toEqual(["msg-2", "msg-4"]);
+    expect(selectedIds()).toEqual(["thread-thread-2", "thread-thread-4"]);
 
     type({ key: "*", shiftKey: true }, { key: "n" });
     expect(selectedIds()).toEqual([]);
@@ -209,12 +209,12 @@ describe("MailboxList keyboard", () => {
     renderList();
 
     type({ key: "V", shiftKey: true }, { key: "j" });
-    expect(selectedIds()).toEqual(["msg-1", "msg-2"]);
+    expect(selectedIds()).toEqual(["thread-thread-1", "thread-thread-2"]);
 
     type({ key: "Escape" });
     // Visual mode ends; the selection stays and j no longer extends it.
     type({ key: "j" });
-    expect(selectedIds()).toEqual(["msg-1", "msg-2"]);
+    expect(selectedIds()).toEqual(["thread-thread-1", "thread-thread-2"]);
 
     type({ key: "Escape" });
     expect(selectedIds()).toEqual([]);
@@ -238,7 +238,7 @@ describe("MailboxList keyboard", () => {
     fireEvent.click(screen.getByRole("option", { name: /Subject 3/ }));
 
     expect(onOpenRow).toHaveBeenCalledWith(rows[2], { focusReader: false });
-    expect(cursor()).toBe("mail-row-msg-3");
+    expect(cursor()).toBe("mail-row-thread-thread-3");
   });
 
   test("with previewOnFocus, moving the cursor previews the next thread", () => {
@@ -255,7 +255,7 @@ describe("MailboxList keyboard", () => {
 
     type({ key: "j" });
 
-    expect(cursor()).toBe("mail-row-msg-1");
+    expect(cursor()).toBe("mail-row-thread-thread-1");
   });
 
   test("e archives the focused row; the cursor stays at the same position", async () => {
@@ -267,7 +267,7 @@ describe("MailboxList keyboard", () => {
 
     await vi.waitFor(() => expect(api.archiveMessages).toHaveBeenCalledWith(["msg-2"]));
     expect(screen.queryByRole("option", { name: /Subject 2/ })).not.toBeInTheDocument();
-    expect(cursor()).toBe("mail-row-msg-3");
+    expect(cursor()).toBe("mail-row-thread-thread-3");
 
     await act(async () => {
       finish({ ok: true, result: { requested: 1, succeeded: 1, skipped: 0, failed: 0 } });
@@ -281,16 +281,16 @@ describe("MailboxList keyboard", () => {
 
     rerenderList({ groups: [{ id: "today", label: "Today", rows: [row(0), ...rows] }] });
 
-    expect(cursor()).toBe("mail-row-msg-2");
+    expect(cursor()).toBe("mail-row-thread-thread-2");
   });
 
   test("removing the last row under the cursor clamps it to the new last row", () => {
     const { rerenderList } = renderList();
     type({ key: "j" }, { key: "j" }, { key: "j" });
-    expect(cursor()).toBe("mail-row-msg-4");
+    expect(cursor()).toBe("mail-row-thread-thread-4");
 
     rerenderList({ groups: [{ id: "today", label: "Today", rows: rows.slice(0, 3) }] });
-    expect(cursor()).toBe("mail-row-msg-3");
+    expect(cursor()).toBe("mail-row-thread-thread-3");
   });
 });
 
@@ -327,7 +327,7 @@ describe("MailboxList readOnly", () => {
     expect(usePendingMailOps.getState().ops).toEqual([]);
 
     type({ key: "j" });
-    expect(cursor()).toBe("mail-row-msg-2");
+    expect(cursor()).toBe("mail-row-thread-thread-2");
   });
 });
 

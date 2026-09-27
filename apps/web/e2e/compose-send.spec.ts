@@ -31,7 +31,7 @@ test("a sent message appears in Sent after the undo window", async ({ page }) =>
   });
   await composer(page).getByRole("button", { name: /^Send (⌘|Ctrl)/ }).click();
   await expect(page.getByText(/^Sending in \d+s/)).toBeVisible();
-  await expect(page.getByText(/To alice@example\.com, from fake@example\.com/)).toBeVisible();
+  await expect(page.getByText(/To alice@example\.com, from alex@demo\.mxr\.local/)).toBeVisible();
   expect((await sendResponse).ok()).toBe(true);
 
   await page.keyboard.press("g");

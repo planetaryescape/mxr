@@ -13,6 +13,7 @@ import {
   History,
   Hourglass,
   Inbox,
+  LampDesk,
   ListChecks,
   MailX,
   Package,
@@ -27,6 +28,7 @@ import {
   Tag,
   Trash2,
   Users,
+  Timer,
   Workflow,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, type ComponentType } from "react";
@@ -35,10 +37,12 @@ import { AccountSwitcher } from "@/components/AccountSwitcher";
 import { ThemePicker } from "@/components/ThemePicker";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useDeskQuery, type Desk } from "@/features/desk/api";
 import { lensesFromShell, type MailLens } from "@/features/mailbox/lenses";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
-import { fetchSavedSearches, fetchSavedSearchUnreadCounts } from "@/features/search/api";
+import { fetchReplyQueue } from "@/features/reply-queue/api";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
+import { plural } from "@/lib/format";
 import { formatChord } from "@/lib/keys/chord";
 import { useScopeController } from "@/lib/keys/controllers";
 import { cn } from "@/lib/utils";
@@ -47,14 +51,17 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 
 type Icon = ComponentType<{ className?: string }>;
 
-interface NavEntry {
+export interface NavEntry {
   key: string;
   to: string;
+  /** Query the place is defined by (a desk lane). */
+  search?: { lane: "waiting" } | { account?: string };
+  /** Says what a count covers when the page it opens shows less of it. */
+  hint?: string;
   label: string;
   Icon: Icon;
+  /** Only work carries a count: owed and due, the reply queue, screening. */
   count?: number;
-  /** Bold count: unread that deserves attention (Inbox, labels). */
-  emphasize?: boolean;
   shortcut?: string;
 }
 
@@ -83,10 +90,9 @@ const SYSTEM_SHORTCUTS: Record<string, string> = {
   trash: "g #",
 };
 
-const TRIAGE: NavEntry[] = [
-  { key: "reply-queue", to: "/reply-queue", label: "Reply queue", Icon: Reply, shortcut: "g q" },
+/** Views that live under "More": every folder, and the rarer triage lists. */
+const MORE_TRIAGE: NavEntry[] = [
   { key: "owed", to: "/owed", label: "Owed replies", Icon: Hourglass, shortcut: "g o" },
-  { key: "screener", to: "/screener", label: "Screener", Icon: Shield, shortcut: "g S" },
   { key: "invites", to: "/invites", label: "Invites", Icon: CalendarDays, shortcut: "g v" },
   {
     key: "subscriptions",
@@ -95,13 +101,13 @@ const TRIAGE: NavEntry[] = [
     Icon: MailX,
     shortcut: "g u",
   },
+  { key: "deliveries", to: "/deliveries", label: "Deliveries", Icon: Package, shortcut: "7" },
 ];
 
 const TOOLS: NavEntry[] = [
   { key: "search", to: "/search", label: "Search", Icon: Search, shortcut: "2" },
   { key: "analytics", to: "/analytics", label: "Analytics", Icon: BarChart3, shortcut: "g A" },
   { key: "rules", to: "/rules", label: "Rules", Icon: Workflow, shortcut: "3" },
-  { key: "deliveries", to: "/deliveries", label: "Deliveries", Icon: Package, shortcut: "7" },
   { key: "accounts", to: "/accounts", label: "Accounts", Icon: Users, shortcut: "4" },
   { key: "activity", to: "/activity", label: "Activity", Icon: History, shortcut: "g y" },
   { key: "jobs", to: "/jobs", label: "Jobs", Icon: ListChecks },
@@ -115,44 +121,64 @@ const TOOLS: NavEntry[] = [
   { key: "settings", to: "/settings/theme", label: "Settings", Icon: Settings, shortcut: "g c" },
 ];
 
-function mailEntries(lenses: MailLens[]): NavEntry[] {
-  const system = lenses.filter((lens) => lens.section === "system" && lens.key !== "drafts");
-  const entries: NavEntry[] = system.map((lens) => ({
-    key: lens.key,
-    to: lens.path,
-    label: lens.label,
-    Icon: SYSTEM_ICONS[lens.key] ?? Inbox,
-    count: lens.key === "inbox" ? lens.unread : lens.key === "starred" ? lens.total : undefined,
-    emphasize: lens.key === "inbox",
-    shortcut: SYSTEM_SHORTCUTS[lens.key],
-  }));
-  if (entries.length === 0) {
-    entries.push({ key: "inbox", to: "/m/inbox", label: "Inbox", Icon: Inbox, shortcut: "g i" });
-  }
-  // Snooze and drafts have their own pages, not label lenses.
-  const afterStarred = Math.max(1, entries.findIndex((entry) => entry.key === "starred") + 1);
-  entries.splice(afterStarred, 0, {
-    key: "snoozed",
-    to: "/snoozed",
-    label: "Snoozed",
-    Icon: Clock,
-    shortcut: "g n",
-  });
+/** Every system folder except the inbox, which is a place of its own. */
+function folderEntries(lenses: MailLens[]): NavEntry[] {
+  const entries: NavEntry[] = lenses
+    .filter((lens) => lens.section === "system" && lens.key !== "drafts" && lens.key !== "inbox")
+    .map((lens) => ({
+      key: lens.key,
+      to: lens.path,
+      label: lens.label,
+      Icon: SYSTEM_ICONS[lens.key] ?? Inbox,
+      shortcut: SYSTEM_SHORTCUTS[lens.key],
+    }));
+  // Drafts has its own page, not a label lens.
   const afterSent = entries.findIndex((entry) => entry.key === "sent") + 1;
   entries.splice(afterSent > 0 ? afterSent : entries.length, 0, {
     key: "drafts",
     to: "/drafts",
     label: "Drafts",
     Icon: FileText,
-    shortcut: "g d",
+    shortcut: "g E",
   });
   return entries;
 }
 
-function isActive(path: string, to: string): boolean {
-  const base = to.split("?")[0] ?? to;
+/**
+ * Screener, only while someone new waits for a decision. Same rule as the
+ * desk's link: it opens the first account with senders waiting. Across
+ * every account the count is a sum, so the entry says so.
+ */
+export function screenerEntry(desk: Desk): NavEntry | null {
+  const count = desk.elsewhere.screener;
+  if (count <= 0) return null;
+  return {
+    key: "screener",
+    to: "/screener",
+    search: { account: desk.elsewhere.screener_account ?? undefined },
+    label: "Screener",
+    Icon: Shield,
+    count,
+    hint: desk.account_id
+      ? undefined
+      : `${plural(count, "new sender")} across your accounts; opens the first account with any`,
+    shortcut: "g S",
+  };
+}
+
+/** Sections whose entries open a mail list, so the keyboard follows. */
+const LIST_SECTIONS = new Set(["places", "saved", "more", "labels"]);
+
+function isActive(path: string, lane: unknown, entry: NavEntry): boolean {
+  const base = entry.to;
   if (base === "/settings/theme") return path.startsWith("/settings");
-  return path === base || path.startsWith(`${base}/`);
+  const onPath = path === base || path.startsWith(`${base}/`);
+  // The desk and "Waiting on" share a path; the lane tells them apart.
+  if (base === "/desk") {
+    const entryLane = entry.search && "lane" in entry.search ? entry.search.lane : null;
+    return onPath && entryLane === (lane === "waiting" ? "waiting" : null);
+  }
+  return onPath;
 }
 
 export function Sidebar({ collapsed }: { collapsed: boolean }) {
@@ -163,6 +189,9 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const setSectionCollapsed = useUiPrefs((s) => s.setSectionCollapsed);
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const lane = useRouterState({
+    select: (s) => ("lane" in s.location.search ? s.location.search.lane : undefined),
+  });
   const shell = useShellQuery();
   const activePane = useMailboxPane((s) => s.activePane);
   const setActivePane = useMailboxPane((s) => s.setActivePane);
@@ -170,49 +199,38 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const setFocusIndex = useMailboxPane((s) => s.setSidebarIndex);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Saved searches show unread counts like labels (TUI tab strip). Counts
-  // are keyed by saved-search id; the shell knows them by name.
-  const savedSearches = useQuery({
-    queryKey: ["saved-searches"],
-    queryFn: fetchSavedSearches,
-    staleTime: 60_000,
-  });
-  const savedCounts = useQuery({
-    queryKey: ["saved-search-counts"],
-    queryFn: fetchSavedSearchUnreadCounts,
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-  });
-  const unreadBySavedName = useMemo(() => {
-    const counts = savedCounts.data?.counts ?? {};
-    return new Map(
-      (savedSearches.data?.searches ?? []).map((search) => [search.name, counts[search.id] ?? 0]),
-    );
-  }, [savedCounts.data, savedSearches.data]);
+  const desk = useDeskQuery();
+  const replyQueue = useQuery({ queryKey: ["reply-queue"], queryFn: fetchReplyQueue });
 
   const sections = useMemo<NavSection[]>(() => {
     const lenses = lensesFromShell(shell.data);
     const labels = lenses.filter((lens) => lens.section === "labels");
     const saved = lenses.filter((lens) => lens.section === "saved");
-    const result: NavSection[] = [
-      { id: "mail", foldable: false, entries: mailEntries(lenses) },
-      { id: "triage", title: "Triage", foldable: true, entries: TRIAGE },
+    const deskWork = desk.data ? desk.data.owed.total + desk.data.due.total : undefined;
+    const places: NavEntry[] = [
+      { key: "desk", to: "/desk", label: "Desk", Icon: LampDesk, count: deskWork, shortcut: "g d" },
+      { key: "inbox", to: "/m/inbox", label: "Inbox", Icon: Inbox, shortcut: "g i" },
+      {
+        key: "reply-queue",
+        to: "/reply-queue",
+        label: "Reply queue",
+        Icon: Reply,
+        count: replyQueue.data?.messages.length,
+        shortcut: "g q",
+      },
+      {
+        key: "waiting",
+        to: "/desk",
+        search: { lane: "waiting" },
+        label: "Waiting on",
+        Icon: Timer,
+        shortcut: "g w",
+      },
+      { key: "snoozed", to: "/snoozed", label: "Snoozed", Icon: Clock, shortcut: "g n" },
     ];
-    if (labels.length > 0) {
-      result.push({
-        id: "labels",
-        title: "Labels",
-        foldable: true,
-        entries: labels.map((lens) => ({
-          key: lens.key,
-          to: lens.path,
-          label: lens.label,
-          Icon: Tag,
-          count: lens.unread,
-          emphasize: true,
-        })),
-      });
-    }
+    const screenerPlace = desk.data ? screenerEntry(desk.data) : null;
+    if (screenerPlace) places.push(screenerPlace);
+    const result: NavSection[] = [{ id: "places", foldable: false, entries: places }];
     if (saved.length > 0) {
       result.push({
         id: "saved",
@@ -223,26 +241,43 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
           to: lens.path,
           label: lens.label,
           Icon: Bookmark,
-          count: unreadBySavedName.get(lens.label),
-          emphasize: true,
           shortcut: index < 9 ? `g ${index + 1}` : undefined,
+        })),
+      });
+    }
+    result.push({
+      id: "more",
+      title: "More",
+      foldable: true,
+      entries: [...folderEntries(lenses), ...MORE_TRIAGE],
+    });
+    if (labels.length > 0) {
+      result.push({
+        id: "labels",
+        title: "Labels",
+        foldable: true,
+        entries: labels.map((lens) => ({
+          key: lens.key,
+          to: lens.path,
+          label: lens.label,
+          Icon: Tag,
         })),
       });
     }
     result.push({ id: "tools", title: "Tools", foldable: true, entries: TOOLS });
     return result;
-  }, [shell.data, unreadBySavedName]);
+  }, [desk.data, replyQueue.data, shell.data]);
 
   // Keyboard walks only what is visible: folded sections contribute their
   // header, not their entries.
   const visible = useMemo(
     () =>
       sections.flatMap((section) =>
-        section.foldable && folded.includes(section.id) && !collapsed
+        section.foldable && folded.includes(section.id)
           ? []
           : section.entries.map((entry) => ({ entry, section })),
       ),
-    [collapsed, folded, sections],
+    [folded, sections],
   );
 
   const sidebarFocused = activePane === "sidebar";
@@ -257,14 +292,8 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
     bottom: () => setFocusIndex(visible.length - 1),
     open: () => {
       if (!current) return;
-      void navigate({ to: current.entry.to });
-      if (
-        current.section.id === "mail" ||
-        current.section.id === "labels" ||
-        current.section.id === "saved"
-      ) {
-        setActivePane("mailbox");
-      }
+      void navigate({ to: current.entry.to, search: current.entry.search });
+      if (LIST_SECTIONS.has(current.section.id)) setActivePane("mailbox");
     },
     collapse: () =>
       current && current.section.foldable && setSectionCollapsed(current.section.id, true),
@@ -277,9 +306,9 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   // Keep the keyboard cursor on the page the user is on when they arrive.
   useEffect(() => {
     if (sidebarFocused) return;
-    const index = visible.findIndex(({ entry }) => isActive(path, entry.to));
+    const index = visible.findIndex(({ entry }) => isActive(path, lane, entry));
     if (index >= 0 && index !== focusIndex) setFocusIndex(index);
-  }, [focusIndex, path, setFocusIndex, sidebarFocused, visible]);
+  }, [focusIndex, lane, path, setFocusIndex, sidebarFocused, visible]);
 
   // Follow the keyboard cursor, only when it moves: scrolling on every
   // render would pull the list away from under a pointer mid-click.
@@ -313,12 +342,14 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         data-active-pane={sidebarFocused ? "true" : undefined}
       >
         {sections.map((section) => {
-          const isFolded = section.foldable && folded.includes(section.id) && !collapsed;
+          // Folded groups stay folded in the icon rail too: it shows places.
+          const isFolded = section.foldable && folded.includes(section.id);
+          if (collapsed && isFolded) return null;
           return (
             <nav
               key={section.id}
-              aria-label={section.title ?? "Mail"}
-              className={cn(section.id !== "mail" && "mt-3")}
+              aria-label={section.title ?? "Places"}
+              className={cn(section.id !== "places" && "mt-3")}
             >
               {section.title && !collapsed ? (
                 <button
@@ -348,16 +379,10 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                         onActivate={() => {
                           setFocusIndex(index);
                           // A clicked mailbox is where the keyboard goes next.
-                          if (
-                            section.id === "mail" ||
-                            section.id === "labels" ||
-                            section.id === "saved"
-                          ) {
-                            setActivePane("mailbox");
-                          }
+                          if (LIST_SECTIONS.has(section.id)) setActivePane("mailbox");
                         }}
                         collapsed={collapsed}
-                        active={isActive(path, entry.to)}
+                        active={isActive(path, lane, entry)}
                         focused={sidebarFocused && clamp(focusIndex) === index}
                       />
                     );
@@ -417,10 +442,12 @@ function SidebarLink({
   const link = (
     <Link
       to={entry.to}
+      search={entry.search}
+      title={entry.hint}
       onClick={onActivate}
       data-nav-index={index}
       aria-current={active ? "page" : undefined}
-      aria-label={collapsed ? `${entry.label}${count ? `, ${count} unread` : ""}` : undefined}
+      aria-label={collapsed ? `${entry.label}${count ? `, ${count}` : ""}` : undefined}
       className={cn(
         "group relative flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors",
         collapsed && "justify-center px-0",
@@ -446,18 +473,11 @@ function SidebarLink({
         </span>
       ) : null}
       {!collapsed && count ? (
-        <span
-          className={cn(
-            "font-mono text-2xs tabular-nums group-hover:hidden",
-            entry.emphasize
-              ? "font-semibold text-sidebar-accent-foreground"
-              : "text-muted-foreground",
-          )}
-        >
+        <span className="font-mono text-2xs font-semibold tabular-nums text-sidebar-primary group-hover:hidden">
           {count > 9999 ? "9999+" : count.toLocaleString()}
         </span>
       ) : null}
-      {collapsed && count && entry.emphasize ? (
+      {collapsed && count ? (
         <span aria-hidden className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
       ) : null}
     </Link>

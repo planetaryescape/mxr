@@ -41,6 +41,7 @@ impl App {
                     .map(SidebarItem::Label),
             );
         }
+        items.push(SidebarItem::Desk);
         items.push(SidebarItem::AllMail);
         items.push(SidebarItem::Subscriptions);
         items.push(SidebarItem::Owed);
@@ -110,6 +111,8 @@ impl App {
                 && self.mailbox.pending_active_label.is_none(),
             subscriptions_active: self.mailbox.mailbox_view == MailboxView::Subscriptions,
             subscription_count: self.mailbox.subscriptions_page.entries.len(),
+            desk_active: self.mailbox.mailbox_view == MailboxView::Desk,
+            desk_count: self.mailbox.desk_page.work_count(),
             owed_active: self.mailbox.mailbox_view == MailboxView::Owed,
             owed_count: self.mailbox.owed_page.entries.len(),
             calendar_invites_active: self.mailbox.mailbox_view == MailboxView::CalendarInvites,
@@ -141,6 +144,7 @@ impl App {
             }
             SidebarItem::AllMail => SidebarSelectionKey::AllMail,
             SidebarItem::Subscriptions => SidebarSelectionKey::Subscriptions,
+            SidebarItem::Desk => SidebarSelectionKey::Desk,
             SidebarItem::Owed => SidebarSelectionKey::Owed,
             SidebarItem::CalendarInvites => SidebarSelectionKey::CalendarInvites,
             SidebarItem::Label(label) => SidebarSelectionKey::Label(label.id),
@@ -157,6 +161,7 @@ impl App {
                 }
                 (SidebarItem::AllMail, SidebarSelectionKey::AllMail) => true,
                 (SidebarItem::Subscriptions, SidebarSelectionKey::Subscriptions) => true,
+                (SidebarItem::Desk, SidebarSelectionKey::Desk) => true,
                 (SidebarItem::Owed, SidebarSelectionKey::Owed) => true,
                 (SidebarItem::CalendarInvites, SidebarSelectionKey::CalendarInvites) => true,
                 (SidebarItem::Label(label), SidebarSelectionKey::Label(label_id)) => {
@@ -243,6 +248,7 @@ impl App {
             }
             Some(SidebarItem::AllMail) => Some(Action::GoToAllMail),
             Some(SidebarItem::Subscriptions) => Some(Action::OpenSubscriptions),
+            Some(SidebarItem::Desk) => Some(Action::OpenDesk),
             Some(SidebarItem::Owed) => Some(Action::OpenOwedReplies),
             Some(SidebarItem::CalendarInvites) => Some(Action::OpenCalendarInvites),
             Some(SidebarItem::Label(label)) => Some(Action::SelectLabel(label.id)),
@@ -271,6 +277,7 @@ impl App {
                 SidebarItem::Account(_)
                 | SidebarItem::AllMail
                 | SidebarItem::Subscriptions
+                | SidebarItem::Desk
                 | SidebarItem::Owed
                 | SidebarItem::CalendarInvites,
             )

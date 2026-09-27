@@ -10,6 +10,7 @@ pub mod calendar_invites_lens;
 pub mod command_palette;
 pub mod compose_picker;
 pub mod deliveries_page;
+pub mod desk_lens;
 pub mod diagnostics_page;
 pub mod draft_options_modal;
 pub mod drafts_modal;

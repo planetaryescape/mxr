@@ -26,6 +26,9 @@ impl App {
         if self.mailbox.mailbox_view == MailboxView::CalendarInvites {
             return self.mailbox.calendar_invites_page.entries.len();
         }
+        if self.mailbox.mailbox_view == MailboxView::Desk {
+            return self.mailbox.desk_page.row_count();
+        }
         self.mail_list_rows().len()
     }
 
@@ -131,6 +134,11 @@ impl App {
     }
 
     pub(crate) fn context_envelope(&self) -> Option<&Envelope> {
+        // The desk list has no envelope of its own under the cursor; falling
+        // back to the mailbox or reader would act on unrelated mail.
+        if self.desk_list_focused() {
+            return None;
+        }
         if self.screen == Screen::Search {
             // In the results pane, prefer the selected search result so that
             // multi-select (ToggleSelect) targets the highlighted row rather
@@ -340,6 +348,81 @@ impl App {
         if let Some(invite) = self.selected_invite() {
             self.mailbox.pending_invite_open = Some(invite.message_id.clone());
             self.status_message = Some("Opening invite…".into());
+        }
+    }
+
+    /// Store a freshly fetched desk. The cursor is clamped only while the
+    /// desk is showing: the startup and background fetches must not move
+    /// the cursor of whatever list is on screen.
+    pub(crate) fn set_desk(&mut self, desk: DeskPageState) {
+        self.mailbox.desk_page = desk;
+        if self.mailbox.mailbox_view == MailboxView::Desk {
+            self.mailbox.selected_index = self
+                .mailbox
+                .selected_index
+                .min(self.mailbox.desk_page.row_count().saturating_sub(1));
+        }
+    }
+
+    /// The desk row under the cursor.
+    pub fn selected_desk_row(&self) -> Option<&mxr_protocol::DeskRowData> {
+        self.mailbox
+            .desk_page
+            .rows()
+            .nth(self.mailbox.selected_index)
+    }
+
+    /// The desk lens owns the keyboard (its list, not a reader beside it).
+    pub(crate) fn desk_list_focused(&self) -> bool {
+        self.screen == Screen::Mailbox
+            && self.mailbox.mailbox_view == MailboxView::Desk
+            && self.mailbox.active_pane == ActivePane::MailList
+    }
+
+    /// Every message of the selected desk row's thread (the row's own
+    /// message when the daemon sent no thread list).
+    pub(crate) fn selected_desk_row_message_ids(&self) -> Vec<MessageId> {
+        self.selected_desk_row()
+            .map(|row| {
+                if row.message_ids.is_empty() {
+                    vec![row.message_id.clone()]
+                } else {
+                    row.message_ids.clone()
+                }
+            })
+            .unwrap_or_default()
+    }
+
+    /// `e` on a desk row under Waiting on: done waiting, until a new message
+    /// arrives in the thread. Returns false for other rows, which archive.
+    pub(super) fn done_waiting_on_selected_desk_row(&mut self) -> bool {
+        let Some(row) = self.selected_desk_row() else {
+            return false;
+        };
+        if row.lane != mxr_protocol::DeskLaneKind::Waiting {
+            return false;
+        }
+        let thread_id = row.thread_id.clone();
+        self.queue_mutation(
+            Request::DismissDeskThreads {
+                thread_ids: vec![thread_id.clone()],
+                dry_run: false,
+            },
+            MutationEffect::StatusOnly(format!(
+                "Done waiting. Undo with: mxr desk restore {thread_id}"
+            )),
+            "Marking done...".into(),
+        );
+        true
+    }
+
+    /// Enter on a desk row: fetch the row's message by id and open it in
+    /// the reader beside the desk. The desk keeps its cursor, so closing
+    /// the reader lands back on the same row.
+    pub(super) fn open_selected_desk_row(&mut self) {
+        if let Some(row) = self.selected_desk_row() {
+            self.mailbox.pending_invite_open = Some(row.message_id.clone());
+            self.status_message = Some("Opening conversation…".into());
         }
     }
 

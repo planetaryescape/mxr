@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { fetchAccounts } from "@/features/accounts/api";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { formatListDate, formatRelative, plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
@@ -45,13 +46,17 @@ const DISPOSITION_LABELS: Record<ScreenerDisposition, string> = {
   unknown: "Unknown",
 };
 
-export function ScreenerRoute() {
+export function ScreenerRoute({ account: linked }: { account?: string } = {}) {
   const [tab, setTab] = useState<Tab>("queue");
   const [accountId, setAccountId] = useState<string | null>(null);
+  // The app's account scope, so the desk's screener count and this queue
+  // are the same account's.
+  const scope = useUiPrefs((s) => s.accountScope);
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
   const accountList = accounts.data?.accounts ?? [];
-  // Default to the first account until the user picks one explicitly.
-  const activeAccountId = accountId ?? accountList[0]?.account_id ?? null;
+  // The user's pick, else the account a link named, else the app's scope,
+  // else the first account.
+  const activeAccountId = accountId ?? linked ?? scope ?? accountList[0]?.account_id ?? null;
   const account = accountList.find((item) => item.account_id === activeAccountId);
 
   const accountPicker =

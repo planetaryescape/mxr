@@ -69,6 +69,9 @@ pub struct SidebarView<'a> {
     pub all_mail_active: bool,
     pub subscriptions_active: bool,
     pub subscription_count: usize,
+    /// The desk badge counts only work: owed replies plus due promises.
+    pub desk_active: bool,
+    pub desk_count: usize,
     pub owed_active: bool,
     pub owed_count: usize,
     pub calendar_invites_active: bool,
@@ -85,6 +88,7 @@ pub struct SidebarView<'a> {
 }
 
 struct SidebarBuildState<'a> {
+    desk_count: usize,
     subscription_count: usize,
     owed_count: usize,
     calendar_invites_count: usize,
@@ -111,6 +115,9 @@ enum SidebarEntry<'a> {
     Subscriptions {
         count: usize,
     },
+    Desk {
+        count: usize,
+    },
     Owed {
         count: usize,
     },
@@ -127,6 +134,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
 
     let inner_width = area.width.saturating_sub(2) as usize;
     let build_state = SidebarBuildState {
+        desk_count: view.desk_count,
         subscription_count: view.subscription_count,
         owed_count: view.owed_count,
         calendar_invites_count: view.calendar_invites_count,
@@ -171,6 +179,9 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
             SidebarEntry::AllMail => render_all_mail_item(inner_width, view.all_mail_active, theme),
             SidebarEntry::Subscriptions { count } => {
                 render_subscriptions_item(inner_width, *count, view.subscriptions_active, theme)
+            }
+            SidebarEntry::Desk { count } => {
+                render_desk_item(inner_width, *count, view.desk_active, theme)
             }
             SidebarEntry::Owed { count } => {
                 render_owed_item(inner_width, *count, view.owed_active, theme)
@@ -257,6 +268,9 @@ fn build_sidebar_entries<'a>(
     if state.system_expanded {
         entries.extend(system_labels.into_iter().map(SidebarEntry::Label));
     }
+    entries.push(SidebarEntry::Desk {
+        count: state.desk_count,
+    });
     entries.push(SidebarEntry::AllMail);
     entries.push(SidebarEntry::Subscriptions {
         count: state.subscription_count,
@@ -307,6 +321,7 @@ fn visual_index_for_selection(
             SidebarEntry::Account { .. }
             | SidebarEntry::AllMail
             | SidebarEntry::Subscriptions { .. }
+            | SidebarEntry::Desk { .. }
             | SidebarEntry::Owed { .. }
             | SidebarEntry::CalendarInvites { .. }
             | SidebarEntry::Label(_)
@@ -406,6 +421,16 @@ fn render_subscriptions_item<'a>(
         is_active,
         theme,
     )
+}
+
+fn render_desk_item<'a>(
+    inner_width: usize,
+    count: usize,
+    is_active: bool,
+    theme: &Theme,
+) -> ListItem<'a> {
+    let count_str = (count > 0).then(|| count.to_string());
+    render_sidebar_link(inner_width, "Desk", count_str.as_deref(), is_active, theme)
 }
 
 fn render_owed_item<'a>(
@@ -661,6 +686,7 @@ mod tests {
             label("Work", LabelKind::User),
         ];
         let state = SidebarBuildState {
+            desk_count: 2,
             subscription_count: 3,
             owed_count: 0,
             calendar_invites_count: 0,
@@ -679,25 +705,26 @@ mod tests {
             }
         ));
         assert!(matches!(entries[1], SidebarEntry::Label(label) if label.name == "INBOX"));
-        assert!(matches!(entries[2], SidebarEntry::AllMail));
+        assert!(matches!(entries[2], SidebarEntry::Desk { count: 2 }));
+        assert!(matches!(entries[3], SidebarEntry::AllMail));
         assert!(matches!(
-            entries[3],
+            entries[4],
             SidebarEntry::Subscriptions { count: 3 }
         ));
-        assert!(matches!(entries[4], SidebarEntry::Owed { count: 0 }));
+        assert!(matches!(entries[5], SidebarEntry::Owed { count: 0 }));
         assert!(matches!(
-            entries[5],
+            entries[6],
             SidebarEntry::CalendarInvites { count: 0 }
         ));
-        assert!(matches!(entries[6], SidebarEntry::Separator));
+        assert!(matches!(entries[7], SidebarEntry::Separator));
         assert!(matches!(
-            entries[7],
+            entries[8],
             SidebarEntry::Header {
                 title: "Labels",
                 ..
             }
         ));
-        assert!(matches!(entries[8], SidebarEntry::Label(label) if label.name == "Work"));
+        assert!(matches!(entries[9], SidebarEntry::Label(label) if label.name == "Work"));
     }
 
     #[test]
@@ -718,6 +745,7 @@ mod tests {
             created_at: chrono::Utc::now(),
         }];
         let state = SidebarBuildState {
+            desk_count: 2,
             subscription_count: 2,
             owed_count: 0,
             calendar_invites_count: 0,
@@ -727,18 +755,19 @@ mod tests {
             user_expanded: true,
             saved_searches_expanded: true,
         };
-        // Layout after CalendarInvites insertion:
-        // [0] Header(System), [1] Label(INBOX), [2] AllMail,
-        // [3] Subscriptions, [4] Owed, [5] CalendarInvites, [6] Separator,
-        // [7] Header(Labels), [8] Label(Work), [9] Separator,
-        // [10] Header(Saved Searches), [11] SavedSearch(Unread)
+        // Layout after Desk insertion:
+        // [0] Header(System), [1] Label(INBOX), [2] Desk, [3] AllMail,
+        // [4] Subscriptions, [5] Owed, [6] CalendarInvites, [7] Separator,
+        // [8] Header(Labels), [9] Label(Work), [10] Separator,
+        // [11] Header(Saved Searches), [12] SavedSearch(Unread)
         let entries = build_sidebar_entries(&labels, &searches, &state);
         assert_eq!(visual_index_for_selection(&entries, 0), Some(1));
-        assert_eq!(visual_index_for_selection(&entries, 1), Some(2));
+        assert_eq!(visual_index_for_selection(&entries, 1), Some(2)); // Desk
         assert_eq!(visual_index_for_selection(&entries, 2), Some(3));
-        assert_eq!(visual_index_for_selection(&entries, 3), Some(4)); // Owed
-        assert_eq!(visual_index_for_selection(&entries, 4), Some(5)); // CalendarInvites
-        assert_eq!(visual_index_for_selection(&entries, 5), Some(8)); // Work
-        assert_eq!(visual_index_for_selection(&entries, 6), Some(11)); // Unread
+        assert_eq!(visual_index_for_selection(&entries, 3), Some(4));
+        assert_eq!(visual_index_for_selection(&entries, 4), Some(5)); // Owed
+        assert_eq!(visual_index_for_selection(&entries, 5), Some(6)); // CalendarInvites
+        assert_eq!(visual_index_for_selection(&entries, 6), Some(9)); // Work
+        assert_eq!(visual_index_for_selection(&entries, 7), Some(12)); // Unread
     }
 }

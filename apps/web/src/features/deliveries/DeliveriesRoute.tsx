@@ -17,6 +17,7 @@ import { PageEmpty, PageError, PageSkeleton, RuledList } from "@/components/Page
 import { Button } from "@/components/ui/button";
 import { plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const FILTERS: { id: DeliveryFilter; label: string }[] = [
   { id: "active", label: "On the way" },
@@ -59,12 +60,13 @@ function carrierName(carrier: string): string {
 }
 
 export function DeliveriesRoute() {
+  const account = useUiPrefs((s) => s.accountScope) ?? undefined;
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<DeliveryFilter>("active");
   const deliveries = useQuery({
-    queryKey: ["deliveries", filter],
-    queryFn: () => fetchDeliveries(filter),
+    queryKey: ["deliveries", filter, account ?? "all"],
+    queryFn: () => fetchDeliveries(filter, account),
   });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["deliveries"] });
 

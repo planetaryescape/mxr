@@ -1,6 +1,6 @@
 import { QueryCache, QueryClient } from "@tanstack/react-query";
 
-import { UnauthorizedError } from "@/api/client";
+import { BridgeRequestError, UnauthorizedError } from "@/api/client";
 
 interface QueryClientOptions {
   onUnauthorized?: () => void;
@@ -17,6 +17,26 @@ export function getActiveQueryClient(): QueryClient | null {
   return activeClient;
 }
 
+/**
+ * Retry what can change on its own (the daemon restarting, a timeout, a
+ * 5xx), not answers that won't: a missing or malformed resource (4xx other
+ * than 408 and 429) or an expired token. Retrying a not-found thread only
+ * delayed its error by seconds.
+ */
+export function shouldRetryQuery(failureCount: number, err: unknown): boolean {
+  if (err instanceof UnauthorizedError) return false;
+  if (
+    err instanceof BridgeRequestError &&
+    err.status >= 400 &&
+    err.status < 500 &&
+    err.status !== 408 &&
+    err.status !== 429
+  ) {
+    return false;
+  }
+  return failureCount < 2;
+}
+
 export function createQueryClient(options: QueryClientOptions = {}): QueryClient {
   return new QueryClient({
     queryCache: new QueryCache({
@@ -29,10 +49,7 @@ export function createQueryClient(options: QueryClientOptions = {}): QueryClient
         staleTime: 30_000,
         gcTime: 5 * 60_000,
         refetchOnWindowFocus: false,
-        retry: (failureCount, err) => {
-          if (err instanceof UnauthorizedError) return false;
-          return failureCount < 2;
-        },
+        retry: shouldRetryQuery,
       },
       mutations: {
         retry: false,

@@ -434,6 +434,12 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Compose".into(),
         },
         PaletteCommand {
+            label: "Desk".into(),
+            shortcut: "gh".into(),
+            action: Action::OpenDesk,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
             label: "Drafts".into(),
             shortcut: "gE".into(),
             action: Action::OpenStoredDrafts,

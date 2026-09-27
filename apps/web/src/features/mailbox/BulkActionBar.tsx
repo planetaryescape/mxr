@@ -16,7 +16,7 @@ import { rowKey } from "./rowKey";
 import type { MessageRowView } from "./types";
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
-import { createMailVerbs } from "@/features/mail-actions/mailVerbs";
+import { createMailVerbs, type MailVerbHooks } from "@/features/mail-actions/mailVerbs";
 import type { MailTarget } from "@/features/mail-actions/target";
 import { plural } from "@/lib/format";
 import { useSelection } from "@/state/selectionStore";
@@ -47,15 +47,17 @@ const BUTTONS: BulkButton[] = [
 export function BulkActionBar({
   rows,
   getTarget,
+  intercept,
 }: {
   rows: MessageRowView[];
   getTarget: () => MailTarget | null;
+  intercept?: MailVerbHooks["intercept"];
 }) {
   const ids = useSelection((s) => s.ids);
   const clear = useSelection((s) => s.clear);
   const selectMany = useSelection((s) => s.selectMany);
   if (ids.size === 0) return null;
-  const verbs = createMailVerbs({ getTarget, composeSurface: "overlay" });
+  const verbs = createMailVerbs({ getTarget, composeSurface: "overlay", intercept });
   const selected = rows.filter((row) => ids.has(rowKey(row)));
   const messageCount = selected.reduce((total, row) => total + (row.message_ids?.length ?? 1), 0);
 

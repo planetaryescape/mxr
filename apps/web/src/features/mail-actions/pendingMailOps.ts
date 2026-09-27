@@ -60,6 +60,13 @@ export type LensIdentity =
   | { kind: "spam" }
   | { kind: "label"; labelName: string }
   | { kind: "search" }
+  /** The desk: anything that clears a conversation from the inbox clears it here. */
+  | { kind: "desk" }
+  /**
+   * The desk's Waiting on: a thread you started has nothing in the inbox, so
+   * only snooze (and trash, spam) set it aside; archive is done waiting.
+   */
+  | { kind: "desk-waiting" }
   | { kind: "other" };
 
 interface PendingMailOpsState {
@@ -92,8 +99,9 @@ export function removesFromLens(op: PendingMailOp, lens: LensIdentity): boolean 
   switch (op.action) {
     case "archive":
     case "read-and-archive":
+      return lens.kind === "inbox" || lens.kind === "desk";
     case "snooze":
-      return lens.kind === "inbox";
+      return lens.kind === "inbox" || lens.kind === "desk" || lens.kind === "desk-waiting";
     case "trash":
       return lens.kind !== "trash";
     case "spam":
@@ -101,13 +109,14 @@ export function removesFromLens(op: PendingMailOp, lens: LensIdentity): boolean 
     case "move":
       return (
         lens.kind === "inbox" ||
+        lens.kind === "desk" ||
         (lens.kind === "label" &&
           !!op.payload?.label &&
           !sameLabel(lens.labelName, op.payload.label))
       );
     case "route":
       return (
-        (lens.kind === "inbox" && op.payload?.archive !== false) ||
+        ((lens.kind === "inbox" || lens.kind === "desk") && op.payload?.archive !== false) ||
         (lens.kind === "label" &&
           !!op.payload?.fromQueueLabel &&
           sameLabel(lens.labelName, op.payload.fromQueueLabel))

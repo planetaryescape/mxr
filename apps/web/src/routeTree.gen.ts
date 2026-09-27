@@ -22,6 +22,7 @@ import { Route as InvitesRouteImport } from './routes/invites'
 import { Route as DraftsRouteImport } from './routes/drafts'
 import { Route as DiagnosticsRouteImport } from './routes/diagnostics'
 import { Route as DevRouteImport } from './routes/dev'
+import { Route as DeskRouteImport } from './routes/desk'
 import { Route as DeliveriesRouteImport } from './routes/deliveries'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as ActivityRouteImport } from './routes/activity'
@@ -35,6 +36,7 @@ import { Route as RulesIdRouteImport } from './routes/rules.$id'
 import { Route as ReplyQueueThreadIdRouteImport } from './routes/reply-queue.$threadId'
 import { Route as OwedThreadIdRouteImport } from './routes/owed.$threadId'
 import { Route as MMailboxRouteImport } from './routes/m.$mailbox'
+import { Route as DeskThreadIdRouteImport } from './routes/desk.$threadId'
 import { Route as ComposeNewRouteImport } from './routes/compose.new'
 import { Route as ComposeDraftIdRouteImport } from './routes/compose.$draftId'
 import { Route as AnalyticsDashboardRouteImport } from './routes/analytics.$dashboard'
@@ -110,6 +112,11 @@ const DevRoute = DevRouteImport.update({
   path: '/dev',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DeskRoute = DeskRouteImport.update({
+  id: '/desk',
+  path: '/desk',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DeliveriesRoute = DeliveriesRouteImport.update({
   id: '/deliveries',
   path: '/deliveries',
@@ -175,6 +182,11 @@ const MMailboxRoute = MMailboxRouteImport.update({
   path: '/m/$mailbox',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DeskThreadIdRoute = DeskThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => DeskRoute,
+} as any)
 const ComposeNewRoute = ComposeNewRouteImport.update({
   id: '/compose/new',
   path: '/compose/new',
@@ -227,6 +239,7 @@ export interface FileRoutesByFullPath {
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
   '/deliveries': typeof DeliveriesRoute
+  '/desk': typeof DeskRouteWithChildren
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
   '/drafts': typeof DraftsRoute
@@ -244,6 +257,7 @@ export interface FileRoutesByFullPath {
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
   '/compose/new': typeof ComposeNewRoute
+  '/desk/$threadId': typeof DeskThreadIdRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
   '/owed/$threadId': typeof OwedThreadIdRoute
   '/reply-queue/$threadId': typeof ReplyQueueThreadIdRoute
@@ -264,6 +278,7 @@ export interface FileRoutesByTo {
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
   '/deliveries': typeof DeliveriesRoute
+  '/desk': typeof DeskRouteWithChildren
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
   '/drafts': typeof DraftsRoute
@@ -281,6 +296,7 @@ export interface FileRoutesByTo {
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
   '/compose/new': typeof ComposeNewRoute
+  '/desk/$threadId': typeof DeskThreadIdRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
   '/owed/$threadId': typeof OwedThreadIdRoute
   '/reply-queue/$threadId': typeof ReplyQueueThreadIdRoute
@@ -302,6 +318,7 @@ export interface FileRoutesById {
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
   '/deliveries': typeof DeliveriesRoute
+  '/desk': typeof DeskRouteWithChildren
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
   '/drafts': typeof DraftsRoute
@@ -319,6 +336,7 @@ export interface FileRoutesById {
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
   '/compose/new': typeof ComposeNewRoute
+  '/desk/$threadId': typeof DeskThreadIdRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
   '/owed/$threadId': typeof OwedThreadIdRoute
   '/reply-queue/$threadId': typeof ReplyQueueThreadIdRoute
@@ -341,6 +359,7 @@ export interface FileRouteTypes {
     | '/activity'
     | '/analytics'
     | '/deliveries'
+    | '/desk'
     | '/dev'
     | '/diagnostics'
     | '/drafts'
@@ -358,6 +377,7 @@ export interface FileRouteTypes {
     | '/analytics/$dashboard'
     | '/compose/$draftId'
     | '/compose/new'
+    | '/desk/$threadId'
     | '/m/$mailbox'
     | '/owed/$threadId'
     | '/reply-queue/$threadId'
@@ -378,6 +398,7 @@ export interface FileRouteTypes {
     | '/activity'
     | '/analytics'
     | '/deliveries'
+    | '/desk'
     | '/dev'
     | '/diagnostics'
     | '/drafts'
@@ -395,6 +416,7 @@ export interface FileRouteTypes {
     | '/analytics/$dashboard'
     | '/compose/$draftId'
     | '/compose/new'
+    | '/desk/$threadId'
     | '/m/$mailbox'
     | '/owed/$threadId'
     | '/reply-queue/$threadId'
@@ -415,6 +437,7 @@ export interface FileRouteTypes {
     | '/activity'
     | '/analytics'
     | '/deliveries'
+    | '/desk'
     | '/dev'
     | '/diagnostics'
     | '/drafts'
@@ -432,6 +455,7 @@ export interface FileRouteTypes {
     | '/analytics/$dashboard'
     | '/compose/$draftId'
     | '/compose/new'
+    | '/desk/$threadId'
     | '/m/$mailbox'
     | '/owed/$threadId'
     | '/reply-queue/$threadId'
@@ -453,6 +477,7 @@ export interface RootRouteChildren {
   ActivityRoute: typeof ActivityRoute
   AnalyticsRoute: typeof AnalyticsRouteWithChildren
   DeliveriesRoute: typeof DeliveriesRoute
+  DeskRoute: typeof DeskRouteWithChildren
   DevRoute: typeof DevRoute
   DiagnosticsRoute: typeof DiagnosticsRoute
   DraftsRoute: typeof DraftsRoute
@@ -568,6 +593,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DevRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/desk': {
+      id: '/desk'
+      path: '/desk'
+      fullPath: '/desk'
+      preLoaderRoute: typeof DeskRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/deliveries': {
       id: '/deliveries'
       path: '/deliveries'
@@ -659,6 +691,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MMailboxRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/desk/$threadId': {
+      id: '/desk/$threadId'
+      path: '/$threadId'
+      fullPath: '/desk/$threadId'
+      preLoaderRoute: typeof DeskThreadIdRouteImport
+      parentRoute: typeof DeskRoute
+    }
     '/compose/new': {
       id: '/compose/new'
       path: '/compose/new'
@@ -748,6 +787,16 @@ const AnalyticsRouteChildren: AnalyticsRouteChildren = {
 const AnalyticsRouteWithChildren = AnalyticsRoute._addFileChildren(
   AnalyticsRouteChildren,
 )
+
+interface DeskRouteChildren {
+  DeskThreadIdRoute: typeof DeskThreadIdRoute
+}
+
+const DeskRouteChildren: DeskRouteChildren = {
+  DeskThreadIdRoute: DeskThreadIdRoute,
+}
+
+const DeskRouteWithChildren = DeskRoute._addFileChildren(DeskRouteChildren)
 
 interface OwedRouteChildren {
   OwedThreadIdRoute: typeof OwedThreadIdRoute
@@ -845,6 +894,7 @@ const rootRouteChildren: RootRouteChildren = {
   ActivityRoute: ActivityRoute,
   AnalyticsRoute: AnalyticsRouteWithChildren,
   DeliveriesRoute: DeliveriesRoute,
+  DeskRoute: DeskRouteWithChildren,
   DevRoute: DevRoute,
   DiagnosticsRoute: DiagnosticsRoute,
   DraftsRoute: DraftsRoute,

@@ -1,0 +1,18 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+What needs you, not what arrived: replies you owe, promises coming due, threads waiting on someone, and new mail from people, each with the reason it is there. Everything else is summarised as counts
+
+Usage: mxr desk [OPTIONS] [COMMAND]
+
+Commands:
+  dismiss  Done waiting: take conversations you wrote last off Waiting on until a new message arrives in them
+  restore  Undo a dismissal: the conversations wait again
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --limit <LIMIT>      Rows to show per lane; each lane still reports its total [default: 25]
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

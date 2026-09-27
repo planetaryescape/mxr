@@ -563,6 +563,22 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// What needs you, not what arrived: replies you owe, promises
+    /// coming due, threads waiting on someone, and new mail from people,
+    /// each with the reason it is there. Everything else is summarised
+    /// as counts.
+    Desk {
+        #[command(subcommand)]
+        action: Option<DeskAction>,
+        /// Limit to one account; the default covers every account.
+        #[arg(long)]
+        account: Option<String>,
+        /// Rows to show per lane; each lane still reports its total.
+        #[arg(long, default_value_t = 25)]
+        limit: u32,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// List or resolve relationship commitments.
     Commitments {
         #[command(subcommand)]
@@ -2005,6 +2021,27 @@ pub enum SignatureDefaultKindArg {
     All,
     New,
     Reply,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum DeskAction {
+    /// Done waiting: take conversations you wrote last off Waiting on until
+    /// a new message arrives in them.
+    Dismiss {
+        /// Thread ids, as `mxr desk --format ids` prints them.
+        #[arg(required = true)]
+        thread_ids: Vec<String>,
+        /// Show which conversations would be dismissed without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Undo a dismissal: the conversations wait again.
+    Restore {
+        #[arg(required = true)]
+        thread_ids: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]

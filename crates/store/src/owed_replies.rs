@@ -33,6 +33,67 @@ pub struct OwedReplyRow {
     pub overdue_score: f64,
 }
 
+/// Latest unanswered inbound message per thread, with its sender's contact
+/// and screener rows. Shared with the query-plan test below.
+const OWED_REPLIES_SQL: &str = r#"WITH inbound_latest AS (
+        SELECT
+            thread_id,
+            MAX(date) AS latest_inbound_at
+        FROM messages
+        WHERE account_id = ?1 AND direction = 'inbound'
+        GROUP BY thread_id
+    ),
+    outbound_latest AS (
+        SELECT
+            thread_id,
+            MAX(date) AS latest_outbound_at
+        FROM messages
+        WHERE account_id = ?1 AND direction = 'outbound'
+        GROUP BY thread_id
+    ),
+    owed AS (
+        SELECT
+            inbound_latest.thread_id,
+            inbound_latest.latest_inbound_at
+        FROM inbound_latest
+        LEFT JOIN outbound_latest USING (thread_id)
+        WHERE outbound_latest.latest_outbound_at IS NULL
+           OR outbound_latest.latest_outbound_at <= inbound_latest.latest_inbound_at
+    )
+    SELECT
+        m.id AS msg_id,
+        m.thread_id,
+        m.from_email,
+        m.from_name,
+        m.subject,
+        m.date AS latest_inbound_at,
+        contacts.cadence_days_p50 AS contact_cadence,
+        COALESCE(contacts.is_list_sender, 0) AS is_list_sender,
+        COALESCE(screener_decisions.disposition, '') AS screener_disposition
+    FROM owed
+    JOIN messages m
+      ON m.thread_id = owed.thread_id
+     AND m.date = owed.latest_inbound_at
+     AND m.account_id = ?1
+     AND m.direction = 'inbound'
+    -- Bare columns on the table side, so the (account_id, email)
+    -- keys are used: contacts are stored lowercase, and
+    -- screener_decisions.sender_email is COLLATE NOCASE. Wrapping
+    -- them in LOWER() scanned every contact per candidate thread.
+    LEFT JOIN contacts
+      ON contacts.account_id = m.account_id
+     AND contacts.email = LOWER(m.from_email)
+    LEFT JOIN screener_decisions
+      ON screener_decisions.account_id = m.account_id
+     AND screener_decisions.sender_email = LOWER(m.from_email)
+    WHERE COALESCE(contacts.is_list_sender, 0) = 0
+      AND COALESCE(screener_decisions.disposition, '') != 'deny'
+      -- The waiting window, when asked for: a large mailbox has tens of
+      -- thousands of unanswered threads, most of them years old.
+      AND (?2 IS NULL OR m.date >= ?2)
+      AND (?3 IS NULL OR m.date <= ?3)
+    "#;
+
 impl super::Store {
     /// Compute owed-reply rows for `account_id`.
     ///
@@ -61,61 +122,13 @@ impl super::Store {
         .flatten();
         let global_p50 = global_p50.unwrap_or(DEFAULT_EXPECTED_DAYS);
 
-        let rows = sqlx::query(
-            r#"WITH inbound_latest AS (
-                SELECT
-                    thread_id,
-                    MAX(date) AS latest_inbound_at
-                FROM messages
-                WHERE account_id = ?1 AND direction = 'inbound'
-                GROUP BY thread_id
-            ),
-            outbound_latest AS (
-                SELECT
-                    thread_id,
-                    MAX(date) AS latest_outbound_at
-                FROM messages
-                WHERE account_id = ?1 AND direction = 'outbound'
-                GROUP BY thread_id
-            ),
-            owed AS (
-                SELECT
-                    inbound_latest.thread_id,
-                    inbound_latest.latest_inbound_at
-                FROM inbound_latest
-                LEFT JOIN outbound_latest USING (thread_id)
-                WHERE outbound_latest.latest_outbound_at IS NULL
-                   OR outbound_latest.latest_outbound_at <= inbound_latest.latest_inbound_at
-            )
-            SELECT
-                m.id AS msg_id,
-                m.thread_id,
-                m.from_email,
-                m.from_name,
-                m.subject,
-                m.date AS latest_inbound_at,
-                contacts.cadence_days_p50 AS contact_cadence,
-                COALESCE(contacts.is_list_sender, 0) AS is_list_sender,
-                COALESCE(screener_decisions.disposition, '') AS screener_disposition
-            FROM owed
-            JOIN messages m
-              ON m.thread_id = owed.thread_id
-             AND m.date = owed.latest_inbound_at
-             AND m.account_id = ?1
-             AND m.direction = 'inbound'
-            LEFT JOIN contacts
-              ON contacts.account_id = m.account_id
-             AND LOWER(contacts.email) = LOWER(m.from_email)
-            LEFT JOIN screener_decisions
-              ON screener_decisions.account_id = m.account_id
-             AND LOWER(screener_decisions.sender_email) = LOWER(m.from_email)
-            WHERE COALESCE(contacts.is_list_sender, 0) = 0
-              AND COALESCE(screener_decisions.disposition, '') != 'deny'
-            "#,
-        )
-        .bind(account_id.as_str())
-        .fetch_all(self.reader())
-        .await?;
+        let day = 86_400_i64;
+        let rows = sqlx::query(OWED_REPLIES_SQL)
+            .bind(account_id.as_str())
+            .bind(within_days.map(|days| now_unix - i64::from(days) * day))
+            .bind(older_than_days.map(|days| now_unix - i64::from(days) * day))
+            .fetch_all(self.reader())
+            .await?;
 
         let mut owed = Vec::with_capacity(rows.len());
         for row in rows {
@@ -179,6 +192,43 @@ mod tests {
     use super::*;
     use crate::Store;
     use mxr_core::types::*;
+
+    /// Every candidate thread looks up its sender's contact and screener
+    /// rows. On a large mailbox (tens of thousands of threads, thousands of
+    /// contacts) that must be a keyed search: a scan per thread took the
+    /// query past two minutes. Wrapping the table's column in a function
+    /// (LOWER(contacts.email)) is what turns it into a scan.
+    #[tokio::test]
+    async fn owed_query_looks_up_contacts_and_screener_by_key() {
+        let store = Store::in_memory().await.unwrap();
+        let plan: Vec<String> = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "EXPLAIN QUERY PLAN {OWED_REPLIES_SQL}"
+        )))
+        .bind("account")
+        .fetch_all(store.reader())
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|row| row.get::<String, _>("detail"))
+        .collect();
+        for table in ["contacts", "screener_decisions"] {
+            // The table's own key, not an automatic index built per query.
+            assert!(
+                plan.iter().any(|step| {
+                    step.starts_with(&format!("SEARCH {table} USING"))
+                        && step.contains("sqlite_autoindex")
+                        && !step.contains("AUTOMATIC")
+                }),
+                "{table} must be searched by its key: {plan:#?}"
+            );
+            assert!(
+                !plan
+                    .iter()
+                    .any(|step| step.starts_with(&format!("SCAN {table}"))),
+                "{table} must not be scanned: {plan:#?}"
+            );
+        }
+    }
 
     async fn fixture_account(store: &Store) -> AccountId {
         let acct = mxr_core::Account {

@@ -12,6 +12,7 @@ const MAIL_QUERY_ROOTS = new Set([
   "search-palette",
   "reply-queue",
   "owed",
+  "desk",
   "snoozed",
   "saved-search-counts",
 ]);

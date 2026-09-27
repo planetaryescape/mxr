@@ -22,7 +22,16 @@ export interface ListStatus {
 
 interface ListWithReaderProps extends Pick<
   MailboxListProps,
-  "hasMore" | "loadingMore" | "onLoadMore" | "readOnly" | "rowAction" | "queueLabel" | "empty"
+  | "hasMore"
+  | "loadingMore"
+  | "onLoadMore"
+  | "readOnly"
+  | "rowAction"
+  | "queueLabel"
+  | "empty"
+  | "renderRow"
+  | "airyHeaders"
+  | "interceptVerb"
 > {
   /** URL of the list; an open conversation lives at `${basePath}/<thread>`. */
   basePath: string;
@@ -31,6 +40,13 @@ interface ListWithReaderProps extends Pick<
   actions?: ReactNode;
   /** Extra header content under the title row (filters, tabs). */
   toolbar?: ReactNode;
+  /**
+   * Replaces the title row with a page heading of its own (the desk's
+   * greeting). `title` still names the list for assistive tech.
+   */
+  heading?: ReactNode;
+  /** A line under the list, outside the listbox (the desk's everything-else links). */
+  footer?: ReactNode;
   groups: MessageGroupView[];
   scopeKey: string;
   status: ListStatus;
@@ -50,6 +66,8 @@ export function ListWithReader({
   meta,
   actions,
   toolbar,
+  heading,
+  footer,
   groups,
   scopeKey,
   status,
@@ -140,15 +158,17 @@ export function ListWithReader({
           )}
         >
           <header className="shrink-0 border-b border-border">
-            <div className="flex h-11 items-center gap-3 px-4">
-              <h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>
-              {meta ? (
-                <span className="truncate font-mono text-2xs text-muted-foreground tabular-nums">
-                  {meta}
-                </span>
-              ) : null}
-              <span className="ml-auto flex items-center gap-0.5">{actions}</span>
-            </div>
+            {heading ?? (
+              <div className="flex h-11 items-center gap-3 px-4">
+                <h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>
+                {meta ? (
+                  <span className="truncate font-mono text-2xs text-muted-foreground tabular-nums">
+                    {meta}
+                  </span>
+                ) : null}
+                <span className="ml-auto flex items-center gap-0.5">{actions}</span>
+              </div>
+            )}
             {toolbar ? <div className="px-4 pb-2.5">{toolbar}</div> : null}
             {filterOpen ? (
               <div className="flex items-center gap-2 border-t border-border px-4 py-2">
@@ -244,6 +264,7 @@ export function ListWithReader({
               }
             />
           )}
+          {footer}
         </section>
         {threadOpen ? <Outlet /> : null}
       </div>

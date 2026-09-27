@@ -38,7 +38,9 @@ export function ThreadPane({ threadId }: { threadId: string }) {
     return () => setOpenThread(null);
   }, [setOpenThread, threadId]);
 
-  if (query.isLoading || context.isLoading) return <ReaderSkeleton />;
+  // The thread's own failure shows at once, whatever the context request is
+  // doing. On success the reader still waits for the context, so the block
+  // above the messages doesn't shift them once it lands.
   if (query.isError) {
     return (
       <div className="flex min-w-0 flex-1 flex-col">
@@ -55,6 +57,7 @@ export function ThreadPane({ threadId }: { threadId: string }) {
       </div>
     );
   }
+  if (query.isLoading || context.isLoading) return <ReaderSkeleton />;
   if (!query.data) return null;
   // No placeholder data: while the next thread loads, the previous thread's
   // controller must not stay mounted, or keys would act on the wrong thread.

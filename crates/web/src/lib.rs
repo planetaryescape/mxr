@@ -2854,16 +2854,25 @@ fn resolve_snooze_until(
 
 // --- Feature parity routes ---
 
+#[derive(serde::Deserialize)]
+struct SubscriptionsQuery {
+    token: Option<String>,
+    /// Omitted: the default account, as before.
+    #[serde(default, alias = "account_id")]
+    account: Option<String>,
+}
+
 async fn list_subscriptions(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(query): Query<AuthQuery>,
+    Query(query): Query<SubscriptionsQuery>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, query.token.as_deref(), &state.config.auth_token)?;
+    let account_id = query.account.as_deref().map(parse_account_id).transpose()?;
     match ipc_request(
         &state.config.socket_path,
         Request::ListSubscriptions {
-            account_id: None,
+            account_id,
             limit: 100,
         },
     )
@@ -3158,6 +3167,9 @@ async fn list_snoozed(
 struct InvitesQuery {
     token: Option<String>,
     limit: Option<u32>,
+    /// Omitted: every account.
+    #[serde(default, alias = "account_id")]
+    account: Option<String>,
 }
 
 async fn list_invites(
@@ -3167,12 +3179,10 @@ async fn list_invites(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, q.token.as_deref(), &state.config.auth_token)?;
     let limit = q.limit.unwrap_or(200);
+    let account_id = q.account.as_deref().map(parse_account_id).transpose()?;
     match ipc_request(
         &state.config.socket_path,
-        Request::ListInvites {
-            account_id: None,
-            limit,
-        },
+        Request::ListInvites { account_id, limit },
     )
     .await?
     {
@@ -3185,6 +3195,9 @@ async fn list_invites(
 struct DeliveriesQuery {
     token: Option<String>,
     filter: Option<String>,
+    /// Omitted: every account.
+    #[serde(default, alias = "account_id")]
+    account: Option<String>,
 }
 
 async fn list_deliveries(
@@ -3193,10 +3206,11 @@ async fn list_deliveries(
     Query(q): Query<DeliveriesQuery>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, q.token.as_deref(), &state.config.auth_token)?;
+    let account_id = q.account.as_deref().map(parse_account_id).transpose()?;
     match ipc_request(
         &state.config.socket_path,
         Request::ListDeliveries {
-            account_id: None,
+            account_id,
             filter: q.filter,
         },
     )

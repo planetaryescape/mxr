@@ -1,0 +1,15 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Done waiting: take conversations you wrote last off Waiting on until a new message arrives in them
+
+Usage: mxr desk dismiss [OPTIONS] <THREAD_IDS>...
+
+Arguments:
+  <THREAD_IDS>...  Thread ids, as `mxr desk --format ids` prints them
+
+Options:
+      --dry-run          Show which conversations would be dismissed without changing anything
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

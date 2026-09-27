@@ -2,8 +2,10 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use serde::{Deserialize, Serialize};
 
+mod desk;
 mod platform;
 mod thread_context;
+pub use desk::*;
 pub use platform::*;
 pub use thread_context::*;
 
@@ -59,6 +61,10 @@ fn default_allow_llm() -> bool {
 
 fn default_owed_reply_limit() -> u32 {
     50
+}
+
+fn default_desk_lane_limit() -> u32 {
+    25
 }
 
 fn default_archive_ask_limit() -> u32 {
@@ -1518,6 +1524,30 @@ pub enum Request {
         #[serde(default)]
         refresh: bool,
     },
+    /// The desk: what needs you rather than what arrived. Replies you owe,
+    /// promises coming due, threads waiting on someone, and new mail from
+    /// people, each row with a reason; plus counts for everything else.
+    /// Pure local store reads, no LLM. `account_id: None` covers every
+    /// enabled account.
+    GetDesk {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        /// Rows returned per lane; each lane still reports its full total.
+        #[serde(default = "default_desk_lane_limit")]
+        lane_limit: u32,
+    },
+    /// "Done waiting": take threads you wrote last off the desk's Waiting
+    /// lane until a new message arrives in them. `dry_run` returns the same
+    /// selection without writing.
+    DismissDeskThreads {
+        thread_ids: Vec<ThreadId>,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Undo `DismissDeskThreads`: the threads wait again.
+    RestoreDeskThreads {
+        thread_ids: Vec<ThreadId>,
+    },
 }
 
 impl Request {
@@ -1625,6 +1655,9 @@ impl Request {
             | Self::CheckDraftSafety { .. }
             | Self::ExtractDraftCommitments { .. }
             | Self::ListOwedReplies { .. }
+            | Self::GetDesk { .. }
+            | Self::DismissDeskThreads { .. }
+            | Self::RestoreDeskThreads { .. }
             | Self::ArchiveAsk { .. }
             | Self::ListDecisionLog { .. }
             | Self::GetDecision { .. }
@@ -2550,6 +2583,31 @@ pub enum ResponseData {
     ThreadGist {
         gist: ThreadGistData,
     },
+    /// Returned by `Request::GetDesk`.
+    Desk {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        owed: DeskLaneData,
+        due: DeskLaneData,
+        waiting: DeskLaneData,
+        people_new: DeskLaneData,
+        elsewhere: DeskElsewhereData,
+        /// The latest message from a person that reached the inbox, for
+        /// "nothing from people since ..." lines.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        last_from_people_at: Option<chrono::DateTime<chrono::Utc>>,
+        generated_at: chrono::DateTime<chrono::Utc>,
+    },
+    /// Returned by `Request::DismissDeskThreads`: the threads that were (or,
+    /// with `dry_run`, would be) taken off Waiting.
+    DeskThreadsDismissed {
+        threads: Vec<DeskThreadRefData>,
+        dry_run: bool,
+    },
+    /// Returned by `Request::RestoreDeskThreads`.
+    DeskThreadsRestored {
+        restored: u64,
+    },
 }
 
 impl ResponseData {
@@ -2636,6 +2694,9 @@ impl ResponseData {
             | Self::DraftSafetyReportResponse { .. }
             | Self::DraftCommitments { .. }
             | Self::OwedReplies { .. }
+            | Self::Desk { .. }
+            | Self::DeskThreadsDismissed { .. }
+            | Self::DeskThreadsRestored { .. }
             | Self::ArchiveAnswer { .. }
             | Self::DecisionLog { .. }
             | Self::DecisionDetail { .. }

@@ -19,7 +19,7 @@ pub(crate) fn strip_control_chars(input: &str) -> Cow<'_, str> {
     let needs_strip = input.bytes().any(|b| {
         matches!(b,
             0x00..=0x08   // C0: NUL–BS (skip \t 0x09)
-            | 0x0B..=0x0C // C0: VT, FF (skip \n 0x0A)
+            | 0x0B..=0x0D // C0: VT, FF, CR (skip \n 0x0A)
             | 0x0E..=0x1F // C0: SO–US
             | 0x7F        // DEL
         )
@@ -135,5 +135,10 @@ mod tests {
             "rich unicode should be Cow::Borrowed"
         );
         assert_eq!(result.as_ref(), s);
+    }
+
+    #[test]
+    fn a_lone_carriage_return_is_stripped() {
+        assert_eq!(strip_control_chars("Invoice\rPaid"), "InvoicePaid");
     }
 }

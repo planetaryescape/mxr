@@ -46,15 +46,15 @@ export function toMessageRow(row: DeskRow): MessageRowView {
 }
 
 /**
- * Archive, snooze and moves take owed and new-from-people conversations off
+ * Archive, snooze, trash and moves take owed and new-from-people rows off
  * the desk, as they leave the inbox. A promise stays until it is resolved,
- * whatever happens to its thread, and a conversation you started that has no
- * reply stays under Waiting on after archive (the daemon cannot tell it was
- * archived). Those lanes only leave optimistically for trash and spam; the
- * refetch settles the rest.
+ * whatever happens to its thread, so due rows only leave for trash and spam.
+ * Waiting rows follow the daemon: snooze, trash and spam set them aside,
+ * and archive never reaches them (the desk turns it into done waiting).
  */
 export function laneLens(lane: DeskLaneKind): LensIdentity {
-  return lane === "due" || lane === "waiting" ? { kind: "other" } : { kind: "desk" };
+  if (lane === "due") return { kind: "other" };
+  return lane === "waiting" ? { kind: "desk-waiting" } : { kind: "desk" };
 }
 
 export interface DeskGroups {

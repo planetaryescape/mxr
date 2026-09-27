@@ -296,6 +296,9 @@ async fn get_desk_assigns_lanes_dedupes_and_explains_pace() {
     assert!(people_new.rows[0].unread);
 
     assert_eq!(elsewhere.reading, 1);
+    // New senders await a decision; the link knows which account has them.
+    assert!(elsewhere.screener > 0);
+    assert_eq!(elsewhere.screener_account.as_ref(), Some(&fx.account));
     assert!(last_from_people_at.is_some());
 
     // The lane limit trims rows, never totals.
@@ -461,4 +464,149 @@ async fn a_reply_to_a_dismissed_thread_lands_as_owed() {
     };
     assert_eq!(thread_ids(&owed), vec![thread]);
     assert_eq!(waiting.total, 0);
+}
+
+#[tokio::test]
+async fn a_watched_contacts_thread_obeys_done_waiting_and_covers_the_thread() {
+    let fx = Fixture::new().await;
+    // You last wrote Nora six weeks ago, outside the desk window, and you
+    // watch her at a weekly cadence: she drifts onto Waiting on.
+    let thread = ThreadId::new();
+    let first = fx
+        .message(&thread, ME, "nora@example.com", Duration::days(45), None)
+        .await;
+    // Her answer long ago, archived: a person's row ignores archive.
+    let answer = fx
+        .message(&thread, "nora@example.com", ME, Duration::days(44), None)
+        .await;
+    fx.state
+        .store
+        .set_message_labels(&answer.id, &[], EventSource::User)
+        .await
+        .unwrap();
+    fx.message(
+        &thread,
+        ME,
+        "nora@example.com",
+        Duration::days(42),
+        first.message_id_header.as_deref(),
+    )
+    .await;
+    fx.state
+        .store
+        .upsert_contact(&mxr_core::types::ContactRow {
+            account_id: fx.account.clone(),
+            email: "nora@example.com".into(),
+            display_name: Some("Nora Kim".into()),
+            first_seen_at: chrono::Utc::now() - Duration::days(200),
+            last_seen_at: chrono::Utc::now() - Duration::days(42),
+            last_inbound_at: None,
+            last_outbound_at: Some(chrono::Utc::now() - Duration::days(42)),
+            total_inbound: 0,
+            total_outbound: 2,
+            replied_count: 0,
+            cadence_days_p50: None,
+        })
+        .await
+        .unwrap();
+    fx.state
+        .store
+        .watch_cadence(
+            &mxr_store::RelationshipWatchEntry {
+                account_id: fx.account.clone(),
+                email: "nora@example.com".into(),
+                expected_days: Some(7.0),
+                note: None,
+                added_at: chrono::Utc::now(),
+            },
+            false,
+        )
+        .await
+        .unwrap();
+
+    let ResponseData::Desk { waiting, .. } = fx.desk(25).await else {
+        panic!("expected a desk");
+    };
+    assert_eq!(thread_ids(&waiting), vec![thread.clone()]);
+    let row = &waiting.rows[0];
+    assert_eq!(row.reason, "usually in touch every week");
+    assert_eq!(
+        row.message_ids.len(),
+        3,
+        "the whole thread, not one message"
+    );
+
+    // Done waiting holds for drift rows too, with nothing new since.
+    request(
+        &fx,
+        Request::DismissDeskThreads {
+            thread_ids: vec![thread.clone()],
+            dry_run: false,
+        },
+    )
+    .await;
+    let ResponseData::Desk { waiting, .. } = fx.desk(25).await else {
+        panic!("expected a desk");
+    };
+    assert_eq!(waiting.total, 0);
+}
+
+#[tokio::test]
+async fn a_promise_covers_its_whole_thread_and_shows_its_star() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let mut starred = fx
+        .message(&thread, "nora@example.com", ME, Duration::days(40), None)
+        .await;
+    starred.flags |= MessageFlags::STARRED;
+    fx.store_envelope(&starred, MessageDirection::Inbound).await;
+    let promise = fx
+        .message(
+            &thread,
+            ME,
+            "nora@example.com",
+            Duration::days(39),
+            starred.message_id_header.as_deref(),
+        )
+        .await;
+    fx.promise(&thread, &promise.id, Duration::days(1)).await;
+
+    let ResponseData::Desk { due, .. } = fx.desk(25).await else {
+        panic!("expected a desk");
+    };
+    let row = &due.rows[0];
+    assert_eq!(row.thread_id, thread);
+    assert_eq!(row.message_ids.len(), 2);
+    assert!(row.starred);
+    assert_eq!(row.subject, "Launch plan");
+}
+
+#[tokio::test]
+async fn a_delayed_message_with_an_old_date_ends_done_waiting() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let asked = fx
+        .message(&thread, ME, "jon@example.com", Duration::days(3), None)
+        .await;
+    request(
+        &fx,
+        Request::DismissDeskThreads {
+            thread_ids: vec![thread.clone()],
+            dry_run: false,
+        },
+    )
+    .await;
+    // Delivered now, dated a week ago: still news to the thread.
+    fx.message(
+        &thread,
+        ME,
+        "jon@example.com",
+        Duration::days(7),
+        asked.message_id_header.as_deref(),
+    )
+    .await;
+    let ResponseData::Desk { waiting, .. } = fx.desk(25).await else {
+        panic!("expected a desk");
+    };
+    assert_eq!(thread_ids(&waiting), vec![thread]);
 }

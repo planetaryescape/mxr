@@ -3,12 +3,37 @@ use super::*;
 
 impl App {
     pub(super) fn apply_mutation_action(&mut self, action: Action) {
-        match action {
-            // On the desk, archive is "done waiting" on a thread you wrote
-            // last: there is nothing in the inbox for archive to remove.
-            Action::Archive if self.mailbox.mailbox_view == MailboxView::Desk => {
-                self.done_waiting_on_selected_desk_row();
+        // On the desk list, verbs act on the desk row under the cursor (its
+        // account and every message of its thread), never on whatever the
+        // mailbox or reader showed last.
+        if self.desk_list_focused() {
+            match action {
+                // Archive on a thread you wrote last is "done waiting":
+                // there is nothing in the inbox for archive to remove.
+                Action::Archive if self.done_waiting_on_selected_desk_row() => return,
+                Action::Archive
+                | Action::Star
+                | Action::Trash
+                | Action::Spam
+                | Action::MarkRead
+                | Action::MarkUnread
+                | Action::MarkReadAndArchive => {}
+                Action::ApplyLabel
+                | Action::MoveToLabel
+                | Action::RouteToLabel
+                | Action::Unsubscribe
+                | Action::Snooze
+                | Action::ToggleSelect
+                | Action::VisualLineMode
+                | Action::PatternSelect(_) => {
+                    self.status_message =
+                        Some("Open the conversation (Enter) to do that from the desk".into());
+                    return;
+                }
+                _ => {}
             }
+        }
+        match action {
             Action::Archive => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {
@@ -136,8 +161,15 @@ impl App {
             Action::Star => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {
-                    // For single selection, toggle. For multi, always star.
-                    let starred = if ids.len() == 1 {
+                    // For single selection, toggle. For multi, always star. A
+                    // desk row is one conversation: toggle its thread star.
+                    let starred = if let Some(row) = self
+                        .desk_list_focused()
+                        .then(|| self.selected_desk_row())
+                        .flatten()
+                    {
+                        !row.starred
+                    } else if ids.len() == 1 {
                         if let Some(env) = self.context_envelope() {
                             !env.flags.contains(MessageFlags::STARRED)
                         } else {

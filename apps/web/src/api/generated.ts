@@ -616,6 +616,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/desk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The desk: owed replies, due promises, waiting threads and new mail from people */
+        get: operations["mail_desk"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/desk/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Done waiting: take threads off the desk's Waiting lane (dry_run previews) */
+        post: operations["mail_desk_dismiss"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/desk/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo done waiting */
+        post: operations["mail_desk_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/drafts": {
         parameters: {
             query?: never;
@@ -3378,6 +3429,108 @@ export interface components {
              */
             updated: number;
         };
+        /** @description Counts for everything that is not on the desk, for the one-line summary. */
+        DeskElsewhereData: {
+            /**
+             * Format: int32
+             * @description Deliveries that have not arrived and were not dismissed.
+             */
+            deliveries: number;
+            /**
+             * Format: int32
+             * @description Upcoming invites you have not answered.
+             */
+            invites: number;
+            /**
+             * Format: int32
+             * @description Inbox mail from automated senders (receipts, notifications) in the
+             *     recent window.
+             */
+            paper_trail: number;
+            /**
+             * Format: int32
+             * @description Unread inbox mail from newsletters and lists in the recent window.
+             */
+            reading: number;
+            /**
+             * Format: int32
+             * @description Senders with recent mail and no screener decision.
+             */
+            screener: number;
+            screener_account?: null | components["schemas"]["AccountId"];
+        };
+        /**
+         * @description One lane: the rows returned (capped by the request's `lane_limit`) and
+         *     how many there are in total.
+         */
+        DeskLaneData: {
+            rows: components["schemas"]["DeskRowData"][];
+            /** Format: int32 */
+            total: number;
+        };
+        /**
+         * @description Which part of the desk a row belongs to. A thread appears in at most one
+         *     lane; when it qualifies for several, the earlier lane in this order wins.
+         * @enum {string}
+         */
+        DeskLaneKind: "owed" | "due" | "waiting" | "people_new";
+        /** @description One row on the desk: a thread, who it is with, and why it is here. */
+        DeskRowData: {
+            account_id: components["schemas"]["AccountId"];
+            /**
+             * Format: int64
+             * @description Seconds from `since` to `generated_at`. Negative for a promise that
+             *     is not due yet.
+             */
+            age_seconds: number;
+            /** @description Due rows: the promise's id, for resolving it. */
+            commitment_id?: string | null;
+            counterparty_email: string;
+            counterparty_name?: string | null;
+            lane: components["schemas"]["DeskLaneKind"];
+            /**
+             * @description The message to open: the latest inbound message for owed and
+             *     people-new rows, your latest message for waiting rows, the promise's
+             *     evidence message for due rows.
+             */
+            message_id: components["schemas"]["MessageId"];
+            /**
+             * @description Every message of the thread in this account, so a verb on the row
+             *     (archive, snooze) covers the whole conversation.
+             */
+            message_ids: components["schemas"]["MessageId"][];
+            /** @description True when the row is past the person's usual pace, or past its due date. */
+            overdue?: boolean;
+            /** @description A short human reason, e.g. "replied to your message". */
+            reason: string;
+            /**
+             * Format: date-time
+             * @description When the clock for this row started: their message for owed and
+             *     people-new, your message for waiting, the due date for due.
+             */
+            since: string;
+            /** @description Any message in the conversation is starred. */
+            starred?: boolean;
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
+            unread?: boolean;
+            /**
+             * Format: int32
+             * @description How many past replies `usual_seconds` is based on.
+             */
+            usual_samples?: number;
+            /**
+             * Format: int64
+             * @description The usual time for the relevant reply with this person: yours to them
+             *     on owed rows, theirs to you on waiting rows. Median of past replies.
+             */
+            usual_seconds?: number | null;
+        };
+        /** @description A conversation, named with its account. */
+        DeskThreadRefData: {
+            account_id: components["schemas"]["AccountId"];
+            thread_id: components["schemas"]["ThreadId"];
+        };
         DoctorDataStats: {
             /** Format: int32 */
             accounts: number;
@@ -5238,6 +5391,24 @@ export interface components {
             cmd: "GetThreadGist";
             refresh?: boolean;
             thread_id: components["schemas"]["ThreadId"];
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "GetDesk";
+            /**
+             * Format: int32
+             * @description Rows returned per lane; each lane still reports its full total.
+             */
+            lane_limit?: number;
+        } | {
+            /** @enum {string} */
+            cmd: "DismissDeskThreads";
+            dry_run?: boolean;
+            thread_ids: components["schemas"]["ThreadId"][];
+        } | {
+            /** @enum {string} */
+            cmd: "RestoreDeskThreads";
+            thread_ids: components["schemas"]["ThreadId"][];
         };
         /**
          * @description The daemon's reply to a [`Request`], correlated by [`IpcMessage::id`].
@@ -5848,6 +6019,33 @@ export interface components {
             gist: components["schemas"]["ThreadGistData"];
             /** @enum {string} */
             kind: "ThreadGist";
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            due: components["schemas"]["DeskLaneData"];
+            elsewhere: components["schemas"]["DeskElsewhereData"];
+            /** Format: date-time */
+            generated_at: string;
+            /** @enum {string} */
+            kind: "Desk";
+            /**
+             * Format: date-time
+             * @description The latest message from a person that reached the inbox, for
+             *     "nothing from people since ..." lines.
+             */
+            last_from_people_at?: string | null;
+            owed: components["schemas"]["DeskLaneData"];
+            people_new: components["schemas"]["DeskLaneData"];
+            waiting: components["schemas"]["DeskLaneData"];
+        } | {
+            dry_run: boolean;
+            /** @enum {string} */
+            kind: "DeskThreadsDismissed";
+            threads: components["schemas"]["DeskThreadRefData"][];
+        } | {
+            /** @enum {string} */
+            kind: "DeskThreadsRestored";
+            /** Format: int64 */
+            restored: number;
         };
         /**
          * @description A single bucket of the response-time histogram. `count` rows had a
@@ -7627,6 +7825,81 @@ export interface operations {
         };
     };
     mail_count: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_desk: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_desk_dismiss: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_desk_restore: {
         parameters: {
             query?: never;
             header?: never;

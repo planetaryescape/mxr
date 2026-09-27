@@ -73,7 +73,7 @@ pub struct DeskLaneData {
 }
 
 /// Counts for everything that is not on the desk, for the one-line summary.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeskElsewhereData {
     /// Unread inbox mail from newsletters and lists in the recent window.
@@ -87,6 +87,11 @@ pub struct DeskElsewhereData {
     pub invites: u32,
     /// Senders with recent mail and no screener decision.
     pub screener: u32,
+    /// The first account (in account order) with senders waiting on a
+    /// screener decision, so a link from an all-accounts desk opens a queue
+    /// that has them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screener_account: Option<AccountId>,
 }
 
 /// A conversation, named with its account.

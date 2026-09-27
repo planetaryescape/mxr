@@ -170,17 +170,16 @@ function Elsewhere({ counts }: { counts: DeskElsewhere }) {
       <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
         Everything else
       </span>
-      {links.map((link) => (
+      {links.map(({ key, label, count, suffix, ...target }) => (
         <Link
-          key={link.key}
-          to={link.to}
-          params={link.params}
+          key={key}
+          {...target}
           className="text-foreground/85 hover:text-foreground hover:underline"
         >
-          {link.label}{" "}
+          {label}{" "}
           <span className="font-mono text-2xs tabular-nums text-muted-foreground">
-            {link.count}
-            {link.suffix ? ` ${link.suffix}` : ""}
+            {count}
+            {suffix ? ` ${suffix}` : ""}
           </span>
         </Link>
       ))}

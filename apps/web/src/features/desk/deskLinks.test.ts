@@ -19,4 +19,16 @@ describe("everything-else links", () => {
     ]);
     expect(links[1]).toMatchObject({ to: "/m/$mailbox", params: { mailbox: "inbox" } });
   });
+
+  test("the screener link opens the account whose senders were counted", () => {
+    const [screener] = elsewhereLinks({
+      reading: 0,
+      paper_trail: 0,
+      deliveries: 0,
+      invites: 0,
+      screener: 4,
+      screener_account: "acct-2",
+    });
+    expect(screener).toMatchObject({ to: "/screener", search: { account: "acct-2" } });
+  });
 });

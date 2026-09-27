@@ -1611,36 +1611,112 @@ fn pending_chord_prefix_is_exposed_for_the_hint_bar() {
     );
 }
 
-/// `e` on a Waiting row of the desk is "done waiting": it queues the
-/// daemon's dismissal for that thread, not an archive.
-#[test]
-fn e_on_a_waiting_desk_row_queues_done_waiting() {
-    use mxr_protocol::DeskLaneKind;
-    let mut app = App::new();
-    let owed = desk_row(DeskLaneKind::Owed);
-    let waiting = desk_row(DeskLaneKind::Waiting);
-    app.apply(Action::OpenDesk);
-    app.set_desk(desk_with(vec![waiting.clone(), owed]));
-
-    // On an owed row, e explains itself instead of archiving blind.
-    app.apply(Action::Archive);
-    assert!(app.pending_mutation_queue.is_empty());
-    assert!(app
-        .status_message
-        .as_deref()
-        .unwrap_or("")
-        .contains("Waiting on"));
-
-    app.mailbox.selected_index = 1;
-    app.apply(Action::Archive);
-    let queued: Vec<_> = app
-        .pending_mutation_queue
+/// What the app asked the daemon for: queued mutations, plus a bulk action
+/// waiting on its confirmation (a multi-message thread confirms first).
+fn requested(app: &App) -> Vec<Request> {
+    app.pending_mutation_queue
         .iter()
         .map(|queued| queued.request.clone())
-        .collect();
+        .chain(
+            app.modals
+                .pending_bulk_confirm
+                .as_ref()
+                .map(|pending| pending.request.clone()),
+        )
+        .collect()
+}
+
+/// `e` on a Waiting row of the desk is "done waiting": it queues the
+/// daemon's dismissal for that thread, not an archive. On other rows it
+/// archives the row's whole thread.
+#[test]
+fn e_on_the_desk_is_done_waiting_or_archive_of_that_row() {
+    use mxr_protocol::DeskLaneKind;
+    let mut app = App::new();
+    let mut owed = desk_row(DeskLaneKind::Owed);
+    owed.message_ids = vec![mxr_core::MessageId::new(), owed.message_id.clone()];
+    let waiting = desk_row(DeskLaneKind::Waiting);
+    app.apply(Action::OpenDesk);
+    app.set_desk(desk_with(vec![waiting.clone(), owed.clone()]));
+
+    app.apply(Action::Archive);
+    let queued = requested(&app);
+    assert!(
+        matches!(
+            queued.as_slice(),
+            [Request::Mutation { mutation: MutationCommand::Archive { message_ids }, .. }]
+                if message_ids == &owed.message_ids
+        ),
+        "{queued:?}"
+    );
+
+    app.pending_mutation_queue.clear();
+    app.modals.pending_bulk_confirm = None;
+    app.mailbox.selected_index = 1;
+    app.apply(Action::Archive);
+    let queued = requested(&app);
     assert!(matches!(
         queued.as_slice(),
         [Request::DismissDeskThreads { thread_ids, dry_run: false }]
             if thread_ids == &vec![waiting.thread_id.clone()]
     ));
+}
+
+/// Trash on a desk row acts on that row's thread, never on mail the
+/// mailbox or reader showed before the desk opened.
+#[test]
+fn trash_on_a_desk_row_targets_that_rows_messages() {
+    use mxr_protocol::DeskLaneKind;
+    let mut app = App::new();
+    // Something else was open before the desk.
+    let unrelated = make_test_envelopes(1).remove(0);
+    app.mailbox.envelopes = vec![unrelated.clone()];
+    app.mailbox.viewing_envelope = Some(unrelated.clone());
+    let mut owed = desk_row(DeskLaneKind::Owed);
+    owed.message_ids = vec![mxr_core::MessageId::new(), owed.message_id.clone()];
+    app.apply(Action::OpenDesk);
+    app.set_desk(desk_with(vec![owed.clone()]));
+
+    app.apply(Action::Trash);
+    let queued = requested(&app);
+    assert!(
+        matches!(
+            queued.as_slice(),
+            [Request::Mutation { mutation: MutationCommand::Trash { message_ids }, .. }]
+                if message_ids == &owed.message_ids && !message_ids.contains(&unrelated.id)
+        ),
+        "{queued:?}"
+    );
+
+    // Star toggles the row's thread star.
+    app.pending_mutation_queue.clear();
+    app.modals.pending_bulk_confirm = None;
+    let mut starred = owed.clone();
+    starred.starred = true;
+    app.set_desk(desk_with(vec![starred]));
+    app.apply(Action::Star);
+    assert!(
+        matches!(
+            requested(&app).as_slice(),
+            [Request::Mutation { mutation: MutationCommand::Star { message_ids, starred: false }, .. }]
+                if message_ids == &owed.message_ids
+        ),
+        "{:?}",
+        requested(&app)
+    );
+
+    // Selecting by pattern cannot reach the hidden mailbox from the desk.
+    app.apply(Action::PatternSelect(crate::action::PatternKind::All));
+    assert!(app.mailbox.selected_set.is_empty());
+
+    // Verbs that need one message ask for the conversation to be opened.
+    app.pending_mutation_queue.clear();
+    app.modals.pending_bulk_confirm = None;
+    app.apply(Action::ApplyLabel);
+    assert!(requested(&app).is_empty());
+    assert!(app
+        .status_message
+        .as_deref()
+        .unwrap_or("")
+        .contains("Enter"));
 }

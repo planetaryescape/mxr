@@ -781,6 +781,9 @@ impl App {
     }
 
     pub(super) fn mutation_target_ids(&self) -> Vec<MessageId> {
+        if self.desk_list_focused() {
+            return self.selected_desk_row_message_ids();
+        }
         if !self.mailbox.selected_set.is_empty() {
             return self.mailbox.selected_set.iter().cloned().collect();
         }

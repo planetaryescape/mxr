@@ -8,7 +8,7 @@ use chrono::{DateTime, Duration, Utc};
 use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::UnsubscribeMethod;
 use mxr_protocol::{DeskElsewhereData, DeskLaneKind, DeskRowData};
-use mxr_store::{DeskContact, DeskMessage, ScreenerDisposition};
+use mxr_store::{DeskContact, DeskDismissal, DeskMessage, ScreenerDisposition};
 use std::collections::{HashMap, HashSet};
 
 /// Threads with activity this recent are considered for the desk.
@@ -103,6 +103,39 @@ pub(super) fn looks_automated(email: &str) -> bool {
             .any(|label| AUTOMATED_DOMAIN_LABELS.contains(label))
 }
 
+pub(super) fn is_outbound(message: &DeskMessage, is_self: &dyn Fn(&str) -> bool) -> bool {
+    message.direction == "outbound"
+        || (message.direction != "inbound" && is_self(&message.from.email))
+}
+
+/// Every Waiting row, from a thread or from a watched contact, stays off
+/// the desk while its conversation is snoozed, trashed, or marked done
+/// waiting with nothing new since.
+pub(super) fn waiting_set_aside(thread: &[DeskMessage], dismissal: Option<&DeskDismissal>) -> bool {
+    let Some(latest) = thread.last() else {
+        return true;
+    };
+    thread.iter().any(|m| m.snoozed)
+        || latest.trashed
+        || dismissal.is_some_and(|d| d.covers(thread))
+}
+
+/// A thread you wrote last also leaves Waiting when you archive it, if it
+/// has mail from them to archive. (A watched contact's row is about the
+/// person, whose old conversation is usually archived, so it skips this.)
+fn waiting_archived(thread: &[DeskMessage], is_self: &dyn Fn(&str) -> bool) -> bool {
+    let has_inbound = thread.iter().any(|m| !is_outbound(m, is_self));
+    let in_inbox = thread.iter().any(|m| m.in_inbox && !m.trashed);
+    has_inbound && !in_inbox
+}
+
+/// Any message of the conversation is starred.
+pub(super) fn thread_starred(thread: &[DeskMessage]) -> bool {
+    thread
+        .iter()
+        .any(|m| m.flags.contains(mxr_core::MessageFlags::STARRED))
+}
+
 /// Everything the lane rules need about one account.
 pub(super) struct AccountInputs<'a> {
     pub account_id: &'a AccountId,
@@ -114,7 +147,7 @@ pub(super) struct AccountInputs<'a> {
     pub screener: &'a HashMap<String, ScreenerDisposition>,
     /// Threads marked "done waiting", through the date of their newest
     /// message at the time.
-    pub dismissed: &'a HashMap<ThreadId, DateTime<Utc>>,
+    pub dismissed: &'a HashMap<ThreadId, DeskDismissal>,
     pub is_self: &'a dyn Fn(&str) -> bool,
     pub now: DateTime<Utc>,
 }
@@ -160,8 +193,7 @@ impl AccountInputs<'_> {
     }
 
     fn is_outbound(&self, message: &DeskMessage) -> bool {
-        message.direction == "outbound"
-            || (message.direction != "inbound" && (self.is_self)(&message.from.email))
+        is_outbound(message, self.is_self)
     }
 
     pub(super) fn sender_kind(&self, message: &DeskMessage) -> SenderKind {
@@ -214,10 +246,6 @@ pub(super) struct ThreadLanes {
     pub rows: Vec<DraftRow>,
     pub elsewhere: DeskElsewhereData,
     pub last_from_people_at: Option<DateTime<Utc>>,
-    /// Thread subjects, so due rows can name their conversation.
-    pub subjects: HashMap<ThreadId, String>,
-    /// Thread message ids, so due rows can act on the whole conversation.
-    pub message_ids: HashMap<ThreadId, Vec<mxr_core::id::MessageId>>,
 }
 
 pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
@@ -232,13 +260,6 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
         let Some(latest) = thread.last() else {
             continue;
         };
-        lanes
-            .subjects
-            .insert(latest.thread_id.clone(), clean_subject(&latest.subject));
-        lanes.message_ids.insert(
-            latest.thread_id.clone(),
-            thread.iter().map(|m| m.id.clone()).collect(),
-        );
 
         // Everything-else counts and the quiet line look at recent inbox
         // mail, message by message.
@@ -304,7 +325,7 @@ fn thread_row(
     let in_inbox = thread.iter().any(|m| m.in_inbox && !m.trashed);
 
     if inputs.is_outbound(latest) {
-        return waiting_row(inputs, thread, latest, latest_inbound.is_some(), in_inbox);
+        return waiting_row(inputs, thread, latest, latest_inbound.is_some());
     }
 
     let inbound = latest_inbound?;
@@ -379,19 +400,12 @@ fn waiting_row(
     thread: &[DeskMessage],
     sent: &DeskMessage,
     has_inbound: bool,
-    in_inbox: bool,
 ) -> Option<DraftRow> {
     let now = inputs.now;
-    if sent.trashed
-        || sent.date > now - Duration::hours(WAITING_MIN_HOURS)
+    if sent.date > now - Duration::hours(WAITING_MIN_HOURS)
         || sent.date < now - Duration::days(DESK_WINDOW_DAYS)
-        // Archiving a conversation is how you say it is done with.
-        || (has_inbound && !in_inbox)
-        // So is "done waiting", until something new arrives in it.
-        || inputs
-            .dismissed
-            .get(&sent.thread_id)
-            .is_some_and(|through| sent.date <= *through)
+        || waiting_set_aside(thread, inputs.dismissed.get(&sent.thread_id))
+        || waiting_archived(thread, inputs.is_self)
     {
         return None;
     }
@@ -466,9 +480,7 @@ fn base_row(
         usual_samples: 0,
         overdue: false,
         unread,
-        starred: thread
-            .iter()
-            .any(|m| m.flags.contains(mxr_core::MessageFlags::STARRED)),
+        starred: thread_starred(thread),
         commitment_id: None,
     }
 }
@@ -569,6 +581,7 @@ mod tests {
         let outbound = from == ME;
         DeskMessage {
             id: MessageId::new(),
+            seq: now().timestamp() - hours_ago * 3600,
             thread_id: thread.clone(),
             direction: if outbound { "outbound" } else { "inbound" }.into(),
             date: now() - Duration::hours(hours_ago),

@@ -134,6 +134,11 @@ impl App {
     }
 
     pub(crate) fn context_envelope(&self) -> Option<&Envelope> {
+        // The desk list has no envelope of its own under the cursor; falling
+        // back to the mailbox or reader would act on unrelated mail.
+        if self.desk_list_focused() {
+            return None;
+        }
         if self.screen == Screen::Search {
             // In the results pane, prefer the selected search result so that
             // multi-select (ToggleSelect) targets the highlighted row rather
@@ -367,16 +372,35 @@ impl App {
             .nth(self.mailbox.selected_index)
     }
 
+    /// The desk lens owns the keyboard (its list, not a reader beside it).
+    pub(crate) fn desk_list_focused(&self) -> bool {
+        self.screen == Screen::Mailbox
+            && self.mailbox.mailbox_view == MailboxView::Desk
+            && self.mailbox.active_pane == ActivePane::MailList
+    }
+
+    /// Every message of the selected desk row's thread (the row's own
+    /// message when the daemon sent no thread list).
+    pub(crate) fn selected_desk_row_message_ids(&self) -> Vec<MessageId> {
+        self.selected_desk_row()
+            .map(|row| {
+                if row.message_ids.is_empty() {
+                    vec![row.message_id.clone()]
+                } else {
+                    row.message_ids.clone()
+                }
+            })
+            .unwrap_or_default()
+    }
+
     /// `e` on a desk row under Waiting on: done waiting, until a new message
-    /// arrives in the thread. The desk refetches once the daemon confirms.
-    pub(super) fn done_waiting_on_selected_desk_row(&mut self) {
+    /// arrives in the thread. Returns false for other rows, which archive.
+    pub(super) fn done_waiting_on_selected_desk_row(&mut self) -> bool {
         let Some(row) = self.selected_desk_row() else {
-            return;
+            return false;
         };
         if row.lane != mxr_protocol::DeskLaneKind::Waiting {
-            self.status_message =
-                Some("On the desk, e is done waiting: it works on rows under Waiting on".into());
-            return;
+            return false;
         }
         let thread_id = row.thread_id.clone();
         self.queue_mutation(
@@ -389,6 +413,7 @@ impl App {
             )),
             "Marking done...".into(),
         );
+        true
     }
 
     /// Enter on a desk row: fetch the row's message by id and open it in

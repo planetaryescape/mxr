@@ -123,6 +123,18 @@ describe("ScreenerRoute", () => {
     }
   });
 
+  test("a linked account wins over the app's scope", async () => {
+    accounts.fetchAccounts.mockResolvedValue({
+      accounts: [
+        { account_id: "account-1", name: "Work", email: "me@example.com", enabled: true },
+        { account_id: "account-2", name: "Home", email: "me@home.example", enabled: true },
+      ],
+    });
+    renderWithQueryClient(<ScreenerRoute account="account-2" />);
+    await waitFor(() => expect(screener.fetchScreenerQueue).toHaveBeenCalledWith("account-2"));
+    expect(screener.fetchScreenerQueue).not.toHaveBeenCalledWith("account-1");
+  });
+
   test("pressing a allows the focused sender", async () => {
     renderWithQueryClient(<ScreenerRoute />);
 

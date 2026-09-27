@@ -46,7 +46,7 @@ const DISPOSITION_LABELS: Record<ScreenerDisposition, string> = {
   unknown: "Unknown",
 };
 
-export function ScreenerRoute() {
+export function ScreenerRoute({ account: linked }: { account?: string } = {}) {
   const [tab, setTab] = useState<Tab>("queue");
   const [accountId, setAccountId] = useState<string | null>(null);
   // The app's account scope, so the desk's screener count and this queue
@@ -54,8 +54,9 @@ export function ScreenerRoute() {
   const scope = useUiPrefs((s) => s.accountScope);
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
   const accountList = accounts.data?.accounts ?? [];
-  // Default to the scoped account, else the first, until the user picks one.
-  const activeAccountId = accountId ?? scope ?? accountList[0]?.account_id ?? null;
+  // The user's pick, else the account a link named, else the app's scope,
+  // else the first account.
+  const activeAccountId = accountId ?? linked ?? scope ?? accountList[0]?.account_id ?? null;
   const account = accountList.find((item) => item.account_id === activeAccountId);
 
   const accountPicker =

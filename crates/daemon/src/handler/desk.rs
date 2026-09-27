@@ -6,16 +6,19 @@
 //! The lane rules live in `desk_lanes.rs`.
 
 use super::desk_lanes::{
-    apply_pace, clean_subject, dedupe_by_precedence, sort_lane, thread_lanes, AccountInputs,
-    PaceDirection, DESK_WINDOW_DAYS, DUE_AHEAD_DAYS,
+    apply_pace, clean_subject, dedupe_by_precedence, sort_lane, thread_lanes, thread_starred,
+    waiting_set_aside, AccountInputs, PaceDirection, DESK_WINDOW_DAYS, DUE_AHEAD_DAYS,
 };
 use super::HandlerResult;
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
-use mxr_core::id::AccountId;
+use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{AccountAddressLookup, CalendarPartstat};
 use mxr_protocol::{DeskElsewhereData, DeskLaneData, DeskLaneKind, DeskRowData, ResponseData};
-use mxr_store::{CommitmentDirection, CommitmentStatus, DeliveryListFilter, ScreenerDisposition};
+use mxr_store::{
+    CadenceDriftRow, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord,
+    DeliveryListFilter, DeskDismissal, DeskLatestExchange, DeskMessage, ScreenerDisposition,
+};
 use std::collections::{HashMap, HashSet};
 
 pub(super) async fn get_desk(
@@ -46,6 +49,9 @@ pub(super) async fn get_desk(
         elsewhere.reading += desk.elsewhere.reading;
         elsewhere.paper_trail += desk.elsewhere.paper_trail;
         elsewhere.screener += desk.elsewhere.screener;
+        if desk.elsewhere.screener > 0 && elsewhere.screener_account.is_none() {
+            elsewhere.screener_account = Some(account.clone());
+        }
         elsewhere.invites += desk.elsewhere.invites;
         last_from_people_at = last_from_people_at.max(desk.last_from_people_at);
     }
@@ -155,8 +161,65 @@ async fn account_desk(
         .drain(..)
         .map(|draft| (draft.row, draft.pace))
         .collect();
-    rows.extend(due_rows(state, account_id, &lanes.subjects, &lanes.message_ids, now).await?);
-    rows.extend(drift_rows(state, account_id, &rows, now).await?);
+
+    // Promises and watched contacts start from a thread, which may be older
+    // than the window: fetch those threads whole, once.
+    let due = due_commitments(state, account_id, now).await?;
+    // A watched contact already on the desk (owed, due) needs no drift row.
+    let already: HashSet<String> = rows
+        .iter()
+        .map(|(row, _)| row.counterparty_email.to_ascii_lowercase())
+        .chain(
+            due.iter()
+                .map(|(commitment, _)| commitment.email.to_ascii_lowercase()),
+        )
+        .collect();
+    let drifting: Vec<(CadenceDriftRow, DateTime<Utc>)> = store
+        .list_cadence_drift(account_id)
+        .await?
+        .into_iter()
+        .filter(|drift| !already.contains(&drift.email.to_ascii_lowercase()))
+        .filter_map(|drift| drift.last_contact_at.map(|last| (drift, last)))
+        .collect();
+    let wanted: Vec<_> = drifting
+        .iter()
+        .map(|(drift, last)| (drift.email.clone(), *last))
+        .collect();
+    let exchanges = store.desk_latest_exchanges(account_id, &wanted).await?;
+
+    // Only the threads these rows point at: from the window when there,
+    // fetched whole otherwise.
+    let wanted_threads: HashSet<ThreadId> = due
+        .iter()
+        .map(|(commitment, _)| commitment.thread_id.clone())
+        .chain(
+            exchanges
+                .values()
+                .map(|exchange| exchange.thread_id.clone()),
+        )
+        .collect();
+    let mut threads: Threads = HashMap::new();
+    for thread in messages.chunk_by(|a, b| a.thread_id == b.thread_id) {
+        if let Some(first) = thread.first() {
+            if wanted_threads.contains(&first.thread_id) {
+                threads.insert(first.thread_id.clone(), thread.to_vec());
+            }
+        }
+    }
+    let mut missing: Vec<ThreadId> = wanted_threads
+        .into_iter()
+        .filter(|thread| !threads.contains_key(thread))
+        .collect();
+    missing.sort_by_key(ThreadId::as_str);
+    for message in store.desk_messages_in_threads(account_id, &missing).await? {
+        threads
+            .entry(message.thread_id.clone())
+            .or_default()
+            .push(message);
+    }
+    rows.extend(due_rows(account_id, due, &threads, now));
+    let drift = drift_rows(account_id, drifting, exchanges, &threads, &dismissed, now);
+    rows.extend(drift);
 
     // Usual pace for every counterparty in one query.
     let mut paced: Vec<String> = rows
@@ -204,21 +267,21 @@ async fn account_desk(
     })
 }
 
+/// Every message of each thread the desk touches, keyed by thread.
+type Threads = HashMap<ThreadId, Vec<DeskMessage>>;
+
 /// Promises you made that are due within the week, or overdue this month.
-async fn due_rows(
+async fn due_commitments(
     state: &AppState,
     account_id: &AccountId,
-    subjects: &HashMap<mxr_core::id::ThreadId, String>,
-    message_ids: &HashMap<mxr_core::id::ThreadId, Vec<mxr_core::id::MessageId>>,
     now: DateTime<Utc>,
-) -> Result<Vec<(DeskRowData, Option<PaceDirection>)>, super::HandlerError> {
-    let commitments = state
-        .store
-        .list_contact_commitments(account_id, None, Some(CommitmentStatus::Open))
-        .await?;
+) -> Result<Vec<(ContactCommitmentRecord, DateTime<Utc>)>, super::HandlerError> {
     let horizon = now + Duration::days(DUE_AHEAD_DAYS);
     let floor = now - Duration::days(DESK_WINDOW_DAYS);
-    let due: Vec<_> = commitments
+    Ok(state
+        .store
+        .list_contact_commitments(account_id, None, Some(CommitmentStatus::Open))
+        .await?
         .into_iter()
         .filter_map(|commitment| {
             let by_when = commitment.by_when?;
@@ -227,46 +290,36 @@ async fn due_rows(
                 && by_when >= floor)
                 .then_some((commitment, by_when))
         })
-        .collect();
-    // Promises in threads outside the desk window name their thread from
-    // the evidence message, fetched in one batch.
-    let missing: Vec<_> = due
-        .iter()
-        .filter(|(commitment, _)| !subjects.contains_key(&commitment.thread_id))
-        .map(|(commitment, _)| commitment.evidence_msg_id.clone())
-        .collect();
-    let evidence_subjects: HashMap<_, _> = if missing.is_empty() {
-        HashMap::new()
-    } else {
-        state
-            .store
-            .list_envelopes_by_ids(&missing)
-            .await?
-            .into_iter()
-            .map(|envelope| (envelope.id, clean_subject(&envelope.subject)))
-            .collect()
-    };
-    let mut rows = Vec::new();
-    for (commitment, due) in due {
-        let subject = subjects
-            .get(&commitment.thread_id)
-            .or_else(|| evidence_subjects.get(&commitment.evidence_msg_id))
-            .cloned()
-            .unwrap_or_default();
-        let age_seconds = (now - due).num_seconds();
-        rows.push((
-            DeskRowData {
+        .collect())
+}
+
+/// A promise stands whatever happens to its thread (archive, snooze), so
+/// due rows skip the inbox checks; they still cover the whole thread.
+fn due_rows(
+    account_id: &AccountId,
+    due: Vec<(ContactCommitmentRecord, DateTime<Utc>)>,
+    threads: &Threads,
+    now: DateTime<Utc>,
+) -> Vec<(DeskRowData, Option<PaceDirection>)> {
+    due.into_iter()
+        .map(|(commitment, due)| {
+            let thread = threads
+                .get(&commitment.thread_id)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            let age_seconds = (now - due).num_seconds();
+            let row = DeskRowData {
                 lane: DeskLaneKind::Due,
                 account_id: account_id.clone(),
                 thread_id: commitment.thread_id.clone(),
                 message_id: commitment.evidence_msg_id.clone(),
-                message_ids: message_ids
-                    .get(&commitment.thread_id)
-                    .cloned()
-                    .unwrap_or_else(|| vec![commitment.evidence_msg_id.clone()]),
+                message_ids: thread_message_ids(thread, &commitment.evidence_msg_id),
                 counterparty_email: commitment.email.clone(),
                 counterparty_name: None,
-                subject,
+                subject: thread
+                    .last()
+                    .map(|latest| clean_subject(&latest.subject))
+                    .unwrap_or_default(),
                 reason: format!("\u{201c}{}\u{201d}", commitment.what.trim()),
                 since: due,
                 age_seconds,
@@ -274,48 +327,47 @@ async fn due_rows(
                 usual_samples: 0,
                 overdue: age_seconds > 0,
                 unread: false,
-                starred: false,
+                starred: thread_starred(thread),
                 commitment_id: Some(commitment.id),
-            },
-            None,
-        ));
+            };
+            (row, None)
+        })
+        .collect()
+}
+
+fn thread_message_ids(thread: &[DeskMessage], fallback: &MessageId) -> Vec<MessageId> {
+    if thread.is_empty() {
+        vec![fallback.clone()]
+    } else {
+        thread.iter().map(|message| message.id.clone()).collect()
     }
-    Ok(rows)
 }
 
 /// Watched contacts who have gone quiet longer than usual join the waiting
-/// lane, anchored on the latest conversation with them.
-async fn drift_rows(
-    state: &AppState,
+/// lane, anchored on the latest conversation with them. Snooze, trash and
+/// done waiting set them aside like every Waiting row; archive does not,
+/// because the row is about the person and their last thread is usually
+/// archived.
+fn drift_rows(
     account_id: &AccountId,
-    existing: &[(DeskRowData, Option<PaceDirection>)],
+    drifting: Vec<(CadenceDriftRow, DateTime<Utc>)>,
+    mut exchanges: HashMap<String, DeskLatestExchange>,
+    threads: &Threads,
+    dismissed: &HashMap<ThreadId, DeskDismissal>,
     now: DateTime<Utc>,
-) -> Result<Vec<(DeskRowData, Option<PaceDirection>)>, super::HandlerError> {
-    let already: HashSet<String> = existing
-        .iter()
-        .map(|(row, _)| row.counterparty_email.to_ascii_lowercase())
-        .collect();
-    let drifting: Vec<_> = state
-        .store
-        .list_cadence_drift(account_id)
-        .await?
-        .into_iter()
-        .filter(|drift| !already.contains(&drift.email.to_ascii_lowercase()))
-        .filter_map(|drift| drift.last_contact_at.map(|last| (drift, last)))
-        .collect();
-    let wanted: Vec<_> = drifting
-        .iter()
-        .map(|(drift, last)| (drift.email.clone(), *last))
-        .collect();
-    let mut exchanges = state
-        .store
-        .desk_latest_exchanges(account_id, &wanted)
-        .await?;
+) -> Vec<(DeskRowData, Option<PaceDirection>)> {
     let mut rows = Vec::new();
     for (drift, last_contact) in drifting {
         let Some(exchange) = exchanges.remove(&drift.email.to_ascii_lowercase()) else {
             continue;
         };
+        let thread = threads
+            .get(&exchange.thread_id)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        if waiting_set_aside(thread, dismissed.get(&exchange.thread_id)) {
+            continue;
+        }
         let expected_seconds = (drift.expected_days * 86_400.0).round() as i64;
         rows.push((
             DeskRowData {
@@ -323,7 +375,7 @@ async fn drift_rows(
                 account_id: account_id.clone(),
                 thread_id: exchange.thread_id,
                 message_id: exchange.message_id.clone(),
-                message_ids: vec![exchange.message_id],
+                message_ids: thread_message_ids(thread, &exchange.message_id),
                 counterparty_email: drift.email,
                 counterparty_name: drift.display_name,
                 subject: clean_subject(&exchange.subject),
@@ -338,13 +390,13 @@ async fn drift_rows(
                 usual_samples: 0,
                 overdue: true,
                 unread: false,
-                starred: false,
+                starred: thread_starred(thread),
                 commitment_id: None,
             },
             None,
         ));
     }
-    Ok(rows)
+    rows
 }
 
 fn days_phrase(days: f64) -> String {

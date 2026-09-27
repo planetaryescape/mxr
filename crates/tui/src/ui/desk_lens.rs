@@ -9,6 +9,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use crate::app::{ActivePane, DeskPageState};
+use crate::ui::sanitize::strip_control_chars;
 
 pub struct DeskView<'a> {
     pub desk: &'a DeskPageState,
@@ -120,6 +121,10 @@ fn lane_header(
     ])
 }
 
+fn one_line(text: &str) -> String {
+    strip_control_chars(text).replace(['\n', '\t'], " ")
+}
+
 fn row_line(
     kind: DeskLaneKind,
     row: &DeskRowData,
@@ -127,19 +132,26 @@ fn row_line(
     width: usize,
     theme: &crate::theme::Theme,
 ) -> Line<'static> {
-    let who = row
-        .counterparty_name
-        .clone()
-        .unwrap_or_else(|| row.counterparty_email.clone());
+    // Names, subjects and reasons come from mail: strip terminal controls,
+    // and keep each row on one line.
+    let who = one_line(
+        row.counterparty_name
+            .as_deref()
+            .unwrap_or(&row.counterparty_email),
+    );
     let who = if kind == DeskLaneKind::Due {
         format!("to {who}")
     } else {
         who
     };
     let what = if row.subject.is_empty() {
-        row.reason.clone()
+        one_line(&row.reason)
     } else {
-        format!("{} \u{b7} {}", row.subject, row.reason)
+        format!(
+            "{} \u{b7} {}",
+            one_line(&row.subject),
+            one_line(&row.reason)
+        )
     };
     let age = age_cell(row);
     let marker = if selected { "\u{258c} " } else { "  " };
@@ -306,6 +318,21 @@ mod tests {
         assert!(rendered.contains("in 2d"));
         assert!(rendered.contains("Everything else: Reading 7 \u{b7} Screener 2"));
         assert!(!rendered.contains('\u{2014}'), "no em dashes");
+    }
+
+    #[test]
+    fn mail_text_cannot_reach_the_terminal_as_control_sequences() {
+        let mut hostile = row(DeskLaneKind::Owed, "Eve\u{1b}]0;pwned\u{7}", 60, None);
+        hostile.subject = "Invoice\u{1b}[2J\r\nnow\u{9b}31m".into();
+        let rendered = render(&desk(vec![hostile], vec![]));
+        assert!(
+            !rendered
+                .chars()
+                .any(|c| matches!(c as u32, 0x00..=0x09 | 0x0B..=0x1F | 0x7F..=0x9F)),
+            "{rendered:?}"
+        );
+        assert!(rendered.contains("Eve]0;pwned"), "{rendered}");
+        assert!(rendered.contains("Invoice[2J now31m"), "{rendered}");
     }
 
     #[test]

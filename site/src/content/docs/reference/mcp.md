@@ -46,6 +46,7 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_search`
 - `mxr_read_message`
 - `mxr_read_thread`
+- `mxr_thread_context`
 - `mxr_draft_assist`
 - `mxr_save_draft`
 - `mxr_get_draft`
@@ -60,6 +61,8 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_send_draft`
 
 `mxr_read_message` only includes full body content when `include_body = true`.
+`mxr_thread_context` returns a thread's facts (counterparty, owed reply, open
+promises) and, with `include_gist = true`, the model's gist and verified ask.
 `mxr_mutate` requires `confirm = true` and should be called only after
 `mxr_mutation_preview`. `mxr_send_draft` requires `confirm = true`; the daemon
 can still reject the request if the `mcp` profile disallows sends or the draft

@@ -19,6 +19,8 @@ use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_util::codec::Framed;
 
+mod compose_and_scheduling;
+
 const TEST_AUTH_TOKEN: &str = "test-token";
 
 /// Read `session.draftPath` out of a compose-session response.
@@ -1960,7 +1962,7 @@ fn draft_summary_includes_updated_time_labels() {
         updated_at,
     };
 
-    let json = draft_summary_view(draft);
+    let json = draft_summary_view(draft, None);
 
     assert_eq!(json["updated_at_label"], format_date_label(updated_at));
     assert_eq!(json["updated_at_full"], format_date_full(updated_at));
@@ -3389,7 +3391,7 @@ fn draft_summary_reports_content_kind_so_a_client_need_not_guess() {
         updated_at,
     };
 
-    let view = draft_summary_view(base.clone());
+    let view = draft_summary_view(base.clone(), None);
     assert_eq!(view["content_kind"], "markdown");
     assert_eq!(view["inline_asset_count"], 0);
 
@@ -3401,7 +3403,7 @@ fn draft_summary_reports_content_kind_so_a_client_need_not_guess() {
         }],
         ..base
     };
-    let view = draft_summary_view(html);
+    let view = draft_summary_view(html, None);
     assert_eq!(view["content_kind"], "html");
     assert_eq!(view["inline_asset_count"], 1);
 }

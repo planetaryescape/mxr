@@ -44,7 +44,7 @@ use utoipa::{
         action_unsubscribe, action_unsubscribe_purge, action_invite_reply, attachment_open, attachment_download,
         label_create, label_rename, label_delete, mail_unsnooze_one,
         reply_later_list, reply_later_set, reminders_set, reminders_cancel,
-        scheduled_sends_create, scheduled_sends_cancel, snippets_list,
+        scheduled_sends_list, scheduled_sends_create, scheduled_sends_cancel, snippets_list,
         snippets_set, snippets_delete, sender_profile, contacts_autocomplete, screener_queue,
         screener_decisions_list, screener_decisions_set,
         screener_decisions_clear, thread_summarize, mail_draft_compose,
@@ -53,7 +53,7 @@ use utoipa::{
         mail_commitments_resolve, mail_thread_briefing, mail_contacts_briefing, mail_contacts_expert,
         compose_session_start, compose_session_refresh, compose_session_restore,
         compose_session_update, compose_session_send, compose_session_safety_check,
-        compose_session_collaborators, compose_session_save,
+        compose_session_collaborators, compose_session_save, compose_session_schedule,
         compose_session_attachment, compose_session_discard, rules_list, rule_detail, rule_form,
         rule_history, rule_dry_run, rule_upsert, rule_upsert_form, rule_delete,
         saved_searches_list, saved_searches_create, saved_searches_delete, saved_searches_update,
@@ -176,6 +176,7 @@ endpoint!(get reply_later_list "/api/v1/mail/reply-later", "List reply-later mes
 endpoint!(post reply_later_set "/api/v1/mail/reply-later/{message_id}", "Set or clear reply-later");
 endpoint!(post reminders_set "/api/v1/mail/reminders", "Schedule an auto-reminder");
 endpoint!(delete reminders_cancel "/api/v1/mail/reminders/{message_id}", "Cancel an auto-reminder");
+endpoint!(get scheduled_sends_list "/api/v1/mail/scheduled-sends", "List pending scheduled sends");
 endpoint!(post scheduled_sends_create "/api/v1/mail/scheduled-sends", "Schedule a draft send");
 endpoint!(delete scheduled_sends_cancel "/api/v1/mail/scheduled-sends/{draft_id}", "Cancel a scheduled send");
 endpoint!(get snippets_list "/api/v1/mail/snippets", "List snippets");
@@ -229,6 +230,7 @@ endpoint!(post compose_session_send "/api/v1/mail/compose/session/send", "Send c
 endpoint!(post compose_session_safety_check "/api/v1/mail/compose/session/safety-check", "Run the pre-send safety report for a compose session");
 endpoint!(post compose_session_collaborators "/api/v1/mail/compose/session/collaborators", "Suggest maybe-include recipients for a compose session");
 endpoint!(post compose_session_save "/api/v1/mail/compose/session/save", "Save compose session");
+endpoint!(post compose_session_schedule "/api/v1/mail/compose/session/schedule", "Store a compose session as a local draft and schedule it");
 endpoint!(post compose_session_attachment "/api/v1/mail/compose/session/attachment", "Upload compose attachment");
 endpoint!(post compose_session_discard "/api/v1/mail/compose/session/discard", "Discard compose session");
 

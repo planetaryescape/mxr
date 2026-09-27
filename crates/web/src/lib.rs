@@ -1030,6 +1030,102 @@ async fn save_compose_session(
     Ok(Json(json!({ "ok": true, "draft_id": draft_id })))
 }
 
+/// Store the compose session as a local draft and schedule it, in one call.
+///
+/// Parses the session file exactly like `compose/session/send` and
+/// `compose/session/save` do, so reply headers (In-Reply-To, References,
+/// thread id), the From alias, attachments and an invite reply all carry into
+/// the stored draft. Nothing is pushed to the provider. A session restored
+/// from a stored draft (`draft_id`) updates that draft in place instead of
+/// storing a copy.
+///
+/// One call rather than store-then-schedule so the client never holds a
+/// stored copy it failed to schedule, and so the bridge, not the browser,
+/// decides which draft id the schedule lands on.
+async fn schedule_compose_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(request): Json<ComposeSessionScheduleRequest>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let request_id = bridge_request_id(&headers);
+    let draft_file = Path::new(&request.draft_path)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("unknown");
+    let stored_draft_id = request
+        .draft_id
+        .as_deref()
+        .map(parse_draft_id)
+        .transpose()?;
+    let editing_stored_draft = stored_draft_id.is_some();
+    tracing::info!(
+        request_id,
+        endpoint = "compose/schedule",
+        account_id = %request.account_id,
+        draft_file,
+        editing_stored_draft,
+        "bridge compose schedule requested"
+    );
+    let draft =
+        compose_draft_from_file(&request.draft_path, &request.account_id, stored_draft_id).await?;
+    let draft_id = draft.id.clone();
+    let store_request = if editing_stored_draft {
+        Request::UpdateDraft { draft }
+    } else {
+        Request::SaveDraft { draft }
+    };
+    let stored = async {
+        match ipc_request_with_id(&state.config.socket_path, request_id, store_request).await? {
+            ResponseData::Ack => {}
+            _ => return Err(BridgeError::UnexpectedResponse),
+        }
+        match ipc_request_with_id(
+            &state.config.socket_path,
+            request_id,
+            Request::ScheduleSend {
+                draft_id: draft_id.clone(),
+                send_at: request.send_at,
+            },
+        )
+        .await?
+        {
+            ResponseData::Ack => Ok(()),
+            _ => Err(BridgeError::UnexpectedResponse),
+        }
+    }
+    .await;
+    if let Err(error) = stored {
+        tracing::warn!(
+            request_id,
+            endpoint = "compose/schedule",
+            account_id = %request.account_id,
+            draft_file,
+            error_kind = bridge_error_kind(&error),
+            "bridge compose schedule failed"
+        );
+        return Err(error);
+    }
+    // The stored draft now owns the content, so the session file and invite
+    // sidecar go. The attachment directory stays: the stored draft points at
+    // those files and reads them when the send fires.
+    remove_compose_file(Path::new(&request.draft_path)).await?;
+    remove_invite_reply_sidecar(Path::new(&request.draft_path)).await?;
+    tracing::info!(
+        request_id,
+        endpoint = "compose/schedule",
+        account_id = %request.account_id,
+        draft_file,
+        "bridge compose schedule completed"
+    );
+    Ok(Json(json!({
+        "ok": true,
+        "draft_id": draft_id,
+        "send_at": request.send_at,
+    })))
+}
+
 async fn upload_compose_attachment(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2379,7 +2475,7 @@ fn format_addresses(addresses: &[mxr_core::Address]) -> String {
         .join(", ")
 }
 
-fn draft_summary_view(draft: Draft) -> serde_json::Value {
+fn draft_summary_view(draft: Draft, send_at: Option<chrono::DateTime<Utc>>) -> serde_json::Value {
     json!({
         "id": draft.id,
         "account_id": draft.account_id,
@@ -2395,6 +2491,8 @@ fn draft_summary_view(draft: Draft) -> serde_json::Value {
         // composer is to click it and take the 409.
         "content_kind": draft.content.kind_str(),
         "inline_asset_count": draft.inline_assets.len(),
+        // Set while the draft is scheduled to send later and has not fired.
+        "send_at": send_at,
     })
 }
 
@@ -2930,12 +3028,31 @@ async fn list_drafts(
     Query(auth): Query<AuthQuery>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    match ipc_request(&state.config.socket_path, Request::ListDrafts).await? {
-        ResponseData::Drafts { drafts } => Ok(Json(json!({
-            "drafts": drafts.into_iter().map(draft_summary_view).collect::<Vec<_>>()
-        }))),
-        _ => Err(BridgeError::UnexpectedResponse),
-    }
+    let drafts = match ipc_request(&state.config.socket_path, Request::ListDrafts).await? {
+        ResponseData::Drafts { drafts } => drafts,
+        _ => return Err(BridgeError::UnexpectedResponse),
+    };
+    let send_at_by_draft = match ipc_request(
+        &state.config.socket_path,
+        Request::ListScheduledSends { account_id: None },
+    )
+    .await?
+    {
+        ResponseData::ScheduledSends { sends } => sends
+            .into_iter()
+            .map(|send| (send.draft_id, send.send_at))
+            .collect::<std::collections::HashMap<_, _>>(),
+        _ => return Err(BridgeError::UnexpectedResponse),
+    };
+    Ok(Json(json!({
+        "drafts": drafts
+            .into_iter()
+            .map(|draft| {
+                let send_at = send_at_by_draft.get(&draft.id).copied();
+                draft_summary_view(draft, send_at)
+            })
+            .collect::<Vec<_>>()
+    })))
 }
 
 async fn list_snoozed(

@@ -135,6 +135,7 @@ fn mail_router() -> Router<AppState> {
             post(suggest_compose_collaborators),
         )
         .route("/compose/session/save", post(save_compose_session))
+        .route("/compose/session/schedule", post(schedule_compose_session))
         .route(
             "/compose/session/attachment",
             post(upload_compose_attachment),

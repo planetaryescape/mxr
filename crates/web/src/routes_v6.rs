@@ -1145,6 +1145,36 @@ async fn schedule_send(
     passthrough(response)
 }
 
+#[derive(Debug, Deserialize)]
+struct ScheduledSendsQuery {
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default, alias = "account_id")]
+    account: Option<String>,
+}
+
+/// Drafts waiting to be sent later, soonest first. `?account=` scopes the
+/// list to one account; without it every account's scheduled sends are
+/// listed, like the drafts list.
+async fn list_scheduled_sends(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ScheduledSendsQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = query.account.as_deref().map(parse_account_id).transpose()?;
+    match dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::ListScheduledSends { account_id },
+    )
+    .await?
+    {
+        ResponseData::ScheduledSends { sends } => Ok(Json(json!({ "sends": sends }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
 async fn cancel_scheduled_send(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2736,7 +2766,10 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/reminders", post(set_auto_reminder))
         .route("/reminders/{message_id}", delete(cancel_auto_reminder))
         // send-later (scheduled drafts)
-        .route("/scheduled-sends", post(schedule_send))
+        .route(
+            "/scheduled-sends",
+            get(list_scheduled_sends).post(schedule_send),
+        )
         .route("/scheduled-sends/{draft_id}", delete(cancel_scheduled_send))
         // snippets
         .route("/snippets", get(list_snippets).post(set_snippet))

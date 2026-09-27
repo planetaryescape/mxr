@@ -1,6 +1,6 @@
 ---
 source: crates/web/src/tests.rs
-assertion_line: 874
+assertion_line: 972
 expression: summary
 ---
 {
@@ -146,6 +146,7 @@ expression: summary
     "SavedActivityFilterEntry",
     "SavedSearch",
     "SavedSearchId",
+    "ScheduledSendData",
     "ScreenerDecisionData",
     "ScreenerDispositionData",
     "ScreenerQueueEntryData",

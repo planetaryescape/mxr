@@ -19,6 +19,8 @@ pub enum UndoableMutationKind {
     Spam,
     SetRead,
     ReadAndArchive,
+    /// Move and label edits: restoring the prior label set reverses them.
+    Labels,
 }
 
 /// Snapshot of a single envelope's state right before a mutation was

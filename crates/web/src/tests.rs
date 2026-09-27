@@ -5171,3 +5171,85 @@ fn slugify_keeps_letters_in_every_script() {
     assert_ne!(slugify("日本"), slugify("中文"));
     assert_eq!(slugify("  Été  2026 "), "été-2026");
 }
+
+#[tokio::test]
+async fn label_and_saved_search_create_return_what_the_daemon_created() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let responder_account = account_id.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| {
+            let data = match request {
+                Request::CreateLabel { name, .. } | Request::RenameLabel { new: name, .. } => {
+                    ResponseData::Label {
+                        label: Label {
+                            id: mxr_core::LabelId::new(),
+                            account_id: responder_account.clone(),
+                            name,
+                            kind: LabelKind::User,
+                            color: None,
+                            provider_id: "Label_1".into(),
+                            unread_count: 0,
+                            total_count: 0,
+                            role: None,
+                        },
+                    }
+                }
+                Request::CreateSavedSearch { .. } => ResponseData::SavedSearchData {
+                    search: sample_saved_search(responder_account.clone()),
+                },
+                _ => return None,
+            };
+            Some(Response::Ok { data })
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+    let post = |path: &str, body: serde_json::Value| {
+        client
+            .post(format!("http://{addr}{path}"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&body)
+            .send()
+    };
+
+    let created = post(
+        "/api/v1/mail/labels/create",
+        serde_json::json!({ "name": "Receipts" }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(created.status(), reqwest::StatusCode::OK);
+    let created: serde_json::Value = created.json().await.unwrap();
+    assert_eq!(created["name"], "Receipts");
+
+    let renamed = post(
+        "/api/v1/mail/labels/rename",
+        serde_json::json!({ "old": "Receipts", "new": "Bills" }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(renamed.status(), reqwest::StatusCode::OK);
+    let renamed: serde_json::Value = renamed.json().await.unwrap();
+    assert_eq!(renamed["name"], "Bills");
+
+    let saved = post(
+        "/api/v1/platform/saved-searches/create",
+        serde_json::json!({ "name": "Today", "query": "in:inbox newer_than:1d" }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(saved.status(), reqwest::StatusCode::OK);
+    let saved: serde_json::Value = saved.json().await.unwrap();
+    assert_eq!(saved["name"], "Today");
+}

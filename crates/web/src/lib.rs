@@ -2870,7 +2870,7 @@ async fn create_saved_search(
     Json(body): Json<CreateSavedSearchBody>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    ack_request(
+    let response = ipc_request(
         &state.config.socket_path,
         Request::CreateSavedSearch {
             name: body.name,
@@ -2879,7 +2879,16 @@ async fn create_saved_search(
             search_mode: body.search_mode.unwrap_or(SearchMode::Lexical),
         },
     )
-    .await
+    .await?;
+    match response {
+        ResponseData::SavedSearchData { search } => {
+            Ok(Json(serde_json::to_value(search).map_err(|err| {
+                BridgeError::Ipc(format!("serialize saved search: {err}"))
+            })?))
+        }
+        ResponseData::Ack => Ok(Json(json!({ "ok": true }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -2970,15 +2979,17 @@ async fn create_label(
         .as_deref()
         .map(parse_account_id)
         .transpose()?;
-    ack_request(
-        &state.config.socket_path,
-        Request::CreateLabel {
-            name: body.name,
-            color: body.color,
-            account_id,
-        },
+    label_response(
+        ipc_request(
+            &state.config.socket_path,
+            Request::CreateLabel {
+                name: body.name,
+                color: body.color,
+                account_id,
+            },
+        )
+        .await?,
     )
-    .await
 }
 
 #[derive(Debug, Deserialize)]
@@ -3001,15 +3012,17 @@ async fn rename_label(
         .as_deref()
         .map(parse_account_id)
         .transpose()?;
-    ack_request(
-        &state.config.socket_path,
-        Request::RenameLabel {
-            old: body.old,
-            new: body.new,
-            account_id,
-        },
+    label_response(
+        ipc_request(
+            &state.config.socket_path,
+            Request::RenameLabel {
+                old: body.old,
+                new: body.new,
+                account_id,
+            },
+        )
+        .await?,
     )
-    .await
 }
 
 #[derive(Debug, Deserialize)]
@@ -3039,6 +3052,19 @@ async fn delete_label(
         },
     )
     .await
+}
+
+/// Label create and rename answer with the stored label.
+fn label_response(response: ResponseData) -> Result<Json<serde_json::Value>, BridgeError> {
+    match response {
+        ResponseData::Label { label } => {
+            Ok(Json(serde_json::to_value(label).map_err(|err| {
+                BridgeError::Ipc(format!("serialize label: {err}"))
+            })?))
+        }
+        ResponseData::Ack => Ok(Json(json!({ "ok": true }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
 }
 
 async fn list_drafts(

@@ -1065,8 +1065,9 @@ fn mutation_job_kind(cmd: &MutationCommand) -> &'static str {
 }
 
 /// Map a `MutationCommand` to the `UndoableMutationKind` used to drive
-/// the reverse op, or `None` if the mutation isn't reversible (Star /
-/// ModifyLabels / Move — the user already has full control there).
+/// the reverse op, or `None` if the mutation isn't reversible. Star is its
+/// own inverse (star again); a move or label edit can drop a message out
+/// of the view it was in, so those restore the prior label set.
 fn undoable_kind(cmd: &MutationCommand) -> Option<UndoableMutationKind> {
     match cmd {
         MutationCommand::Archive { .. } => Some(UndoableMutationKind::Archive),
@@ -1079,9 +1080,10 @@ fn undoable_kind(cmd: &MutationCommand) -> Option<UndoableMutationKind> {
         } else {
             UndoableMutationKind::Archive
         }),
-        MutationCommand::Star { .. }
-        | MutationCommand::ModifyLabels { .. }
-        | MutationCommand::Move { .. } => None,
+        MutationCommand::ModifyLabels { .. } | MutationCommand::Move { .. } => {
+            Some(UndoableMutationKind::Labels)
+        }
+        MutationCommand::Star { .. } => None,
     }
 }
 

@@ -498,6 +498,48 @@ async fn undo_archive_restores_inbox_label() {
     }
 }
 
+#[tokio::test]
+async fn undo_move_restores_prior_labels() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let id = sync_and_get_first_id(&state).await;
+    upsert_test_label(&state, "Follow Up").await;
+    let before = state.store.get_envelope(&id).await.unwrap().unwrap();
+
+    let moved = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::mutation(MutationCommand::Move {
+            message_ids: vec![id.clone()],
+            target_label: "Follow Up".to_string(),
+        })),
+    };
+    let result = assert_mutation_succeeded(handle_request(&state, &moved).await.payload);
+    let mutation_id = result
+        .mutation_id
+        .clone()
+        .expect("Move must return a mutation_id");
+    let after_move = state.store.get_envelope(&id).await.unwrap().unwrap();
+    assert_ne!(after_move.label_provider_ids, before.label_provider_ids);
+
+    let undo = IpcMessage {
+        id: 2,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::UndoMutation { mutation_id }),
+    };
+    match handle_request(&state, &undo).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack,
+        }) => {}
+        other => panic!("expected Ack from UndoMutation; got {other:?}"),
+    }
+    let restored = state.store.get_envelope(&id).await.unwrap().unwrap();
+    let mut expected = before.label_provider_ids.clone();
+    let mut actual = restored.label_provider_ids.clone();
+    expected.sort();
+    actual.sort();
+    assert_eq!(actual, expected);
+}
+
 /// Phase 1.4 / Behavior 4: Undo for an unknown id returns Error
 /// with "not found" so the TUI can render the right message instead
 /// of silently succeeding or panicking.

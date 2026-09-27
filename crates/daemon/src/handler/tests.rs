@@ -586,6 +586,11 @@ fn classify_request_pins_previously_broken_reads() {
         },
         Request::ListSavedActivityFilters,
         Request::GetNotificationChimes,
+        Request::ResolveTime {
+            input: "fri 3".into(),
+            now: None,
+            time_zone: None,
+        },
     ];
     for req in reads {
         assert_eq!(

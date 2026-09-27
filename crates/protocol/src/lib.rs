@@ -1136,6 +1136,30 @@ mod tests {
     }
 
     #[test]
+    fn resolve_time_wire_shape() {
+        let req: Request =
+            serde_json::from_str(r#"{"cmd":"ResolveTime","input":"fri 3"}"#).unwrap();
+        assert!(matches!(
+            &req,
+            Request::ResolveTime { input, now: None, time_zone: None } if input == "fri 3"
+        ));
+        assert_eq!(
+            serde_json::to_value(&req).unwrap(),
+            serde_json::json!({ "cmd": "ResolveTime", "input": "fri 3" })
+        );
+        assert_eq!(req.category(), IpcCategory::MxrPlatform);
+
+        let data = ResponseData::ResolvedTime {
+            input: "frday".into(),
+            resolution: None,
+            error: None,
+        };
+        let json = serde_json::to_value(&data).unwrap();
+        assert_eq!(json["kind"], "ResolvedTime");
+        assert_eq!(data.category(), IpcCategory::MxrPlatform);
+    }
+
+    #[test]
     fn response_serde_roundtrip() {
         let ok = Response::Ok {
             data: ResponseData::Pong,

@@ -490,6 +490,24 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Preview how a time phrase resolves before using it.
+    ///
+    /// Every flag that takes a time (`snooze --until`, `send --at`,
+    /// `send --remind-after`, `remind --when`, `send-time --at`) reads the
+    /// same phrases, in local time with your snooze hours: `tomorrow`,
+    /// `tonight`, `weekend`, `fri`, `fri 3`, `tue 9am`, `next week`,
+    /// `next month`, `3 oct 5pm`, `in 2h`, `3d`, `eod`, `noon`, RFC3339.
+    /// Ambiguous phrases list every reading; the first is what a flag uses.
+    Time {
+        /// The phrase to resolve, such as "fri 3" or "in 2d".
+        #[arg(required = true, num_args = 1..)]
+        phrase: Vec<String>,
+        /// Resolve relative to this RFC3339 instant instead of now.
+        #[arg(long, value_name = "RFC3339")]
+        now: Option<chrono::DateTime<chrono::Utc>>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// List or rebuild the citation-backed decision log.
     Decisions {
         #[command(subcommand)]
@@ -1554,10 +1572,9 @@ pub enum Command {
     Snooze {
         #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
         message_ids: Vec<String>,
-        /// When to resurface. Accepts: configured presets
-        /// (tomorrow|monday|weekend|tonight), conversational forms
-        /// (`in 2h`, `monday 5pm`, `tomorrow 9am`), and RFC3339 timestamps
-        /// (`2026-06-01T15:00:00Z`).
+        /// When to resurface, in local time: `tomorrow`, `tonight`,
+        /// `weekend`, `fri 3`, `tue 9am`, `next week`, `3 oct`, `in 2h`, `3d`,
+        /// or RFC3339 (`2026-06-01T15:00:00Z`). Preview with `mxr time`.
         #[arg(long)]
         until: String,
         #[arg(long)]

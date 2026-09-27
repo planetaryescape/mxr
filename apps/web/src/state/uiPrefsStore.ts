@@ -9,6 +9,8 @@ import { createJSONStorage, persist, type StateStorage } from "zustand/middlewar
 
 export type Theme = "midnight" | "light" | "eclipse" | "paper" | "system";
 export type Density = "compact" | "regular" | "comfortable";
+/** "system" follows the OS reduced-motion preference. */
+export type MotionPref = "system" | "reduced" | "full";
 export type ComposeEditor = "codemirror-vim" | "tiptap";
 export type EmailHtmlTheme = "dark" | "original";
 export type ReaderLayout = "split" | "full";
@@ -19,6 +21,7 @@ export type UndoSendSeconds = 0 | 5 | 10 | 30;
 export interface UiPrefsState {
   theme: Theme;
   density: Density;
+  motion: MotionPref;
   sidebarCollapsed: boolean;
   composeEditor: ComposeEditor;
   emailHtmlTheme: EmailHtmlTheme;
@@ -47,6 +50,7 @@ export interface UiPrefsState {
   setUndoSendSeconds: (seconds: UndoSendSeconds) => void;
   setTheme: (t: Theme) => void;
   setDensity: (d: Density) => void;
+  setMotion: (motion: MotionPref) => void;
   setSidebarCollapsed: (b: boolean) => void;
   setComposeEditor: (e: ComposeEditor) => void;
   setEmailHtmlTheme: (theme: EmailHtmlTheme) => void;
@@ -62,6 +66,7 @@ export const useUiPrefs = create<UiPrefsState>()(
     (set) => ({
       theme: "midnight",
       density: "regular",
+      motion: "system",
       sidebarCollapsed: false,
       // Locked product decision (docs/web-app.md): CodeMirror + vim is the
       // default. Only the default changes; a persisted choice is kept as is.
@@ -107,6 +112,7 @@ export const useUiPrefs = create<UiPrefsState>()(
       setUndoSendSeconds: (undoSendSeconds) => set({ undoSendSeconds }),
       setTheme: (theme) => set({ theme }),
       setDensity: (density) => set({ density }),
+      setMotion: (motion) => set({ motion }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       setComposeEditor: (composeEditor) => set({ composeEditor }),
       setEmailHtmlTheme: (emailHtmlTheme) => set({ emailHtmlTheme }),
@@ -182,4 +188,30 @@ export function watchSystemTheme(): () => void {
 export function applyDensityAttribute(density: Density): void {
   if (typeof document === "undefined") return;
   document.documentElement.setAttribute("data-density", density);
+}
+
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+export function resolveMotion(motion: MotionPref): "reduced" | "full" {
+  if (motion !== "system") return motion;
+  if (typeof window === "undefined" || !window.matchMedia) return "full";
+  return window.matchMedia(REDUCED_MOTION_QUERY).matches ? "reduced" : "full";
+}
+
+/** `data-motion` drives the reduced-motion policy in base.css. */
+export function applyMotionAttribute(motion: MotionPref): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.setAttribute("data-motion", resolveMotion(motion));
+}
+
+/** Re-resolve "system" motion when the OS preference changes. */
+export function watchSystemMotion(): () => void {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const media = window.matchMedia(REDUCED_MOTION_QUERY);
+  const onChange = () => {
+    const { motion } = useUiPrefs.getState();
+    if (motion === "system") applyMotionAttribute(motion);
+  };
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
 }

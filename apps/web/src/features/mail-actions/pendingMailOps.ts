@@ -36,6 +36,8 @@ export interface MailActionPayload {
   /** Route: queue label being cleared, and whether to archive. */
   fromQueueLabel?: string;
   archive?: boolean;
+  /** Snooze: the wake time as shown, "Friday 3 October, 15:00". */
+  untilLabel?: string;
 }
 
 export interface PendingMailOp {

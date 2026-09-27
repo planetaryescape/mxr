@@ -12,13 +12,14 @@ pub fn draw(
     pending: Option<&PendingSend>,
     send_at_input: Option<&str>,
     remind_at_input: Option<&str>,
+    time_preview: &[String],
     theme: &crate::theme::Theme,
 ) {
     let Some(pending) = pending else {
         return;
     };
 
-    let lines = modal_lines(pending, send_at_input, remind_at_input);
+    let lines = modal_lines(pending, send_at_input, remind_at_input, time_preview);
     // Size the popup to its content (accounting for wrapping at the inner
     // width) plus the 1-row top+bottom border, capped at the available height —
     // so the trailing action row is never clipped, whatever the content grows
@@ -87,6 +88,7 @@ fn modal_lines(
     pending: &PendingSend,
     send_at_input: Option<&str>,
     remind_at_input: Option<&str>,
+    time_preview: &[String],
 ) -> Vec<String> {
     let mut lines = vec![match pending.mode {
         PendingSendMode::SendOrSave => "Send this draft?".to_string(),
@@ -135,10 +137,12 @@ fn modal_lines(
 
     if let Some(input) = send_at_input {
         lines.push(format!("Send at: {input}"));
+        lines.extend(time_preview.iter().cloned());
         lines.push("Enter to schedule. Esc to cancel prompt.".to_string());
     }
     if let Some(input) = remind_at_input {
         lines.push(format!("Remind at: {input}"));
+        lines.extend(time_preview.iter().cloned());
         lines.push("Enter to send + set reminder. Esc to cancel prompt.".to_string());
     }
     lines.push(String::new());
@@ -254,6 +258,7 @@ mod tests {
                 Some(&p),
                 None,
                 None,
+                &[],
                 &crate::theme::Theme::default(),
             );
         });
@@ -277,6 +282,7 @@ mod tests {
                 Some(&p),
                 None,
                 None,
+                &[],
                 &crate::theme::Theme::default(),
             );
         });
@@ -302,6 +308,7 @@ mod tests {
                 Some(&p),
                 None,
                 None,
+                &[],
                 &crate::theme::Theme::default(),
             );
         });
@@ -328,6 +335,7 @@ mod tests {
                 )),
                 None,
                 None,
+                &[],
                 &crate::theme::Theme::default(),
             );
         });
@@ -347,6 +355,7 @@ mod tests {
                 Some(&pending(PendingSendMode::SendOrSave)),
                 None,
                 None,
+                &[],
                 &crate::theme::Theme::default(),
             );
         });
@@ -369,12 +378,32 @@ mod tests {
                 Some(&pending(PendingSendMode::SendOrSave)),
                 Some("in 2h"),
                 None,
+                &[],
                 &crate::theme::Theme::default(),
             );
         });
 
         assert!(rendered.contains("Send at: in 2h"));
         assert!(rendered.contains("Enter to schedule"));
+    }
+
+    #[test]
+    fn send_at_prompt_shows_the_time_preview_under_the_input() {
+        let preview = ["→ Friday 10 May, 15:00 (in 3 days)".to_string()];
+        let rendered = render_to_string(90, 24, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 90, 24),
+                Some(&pending(PendingSendMode::SendOrSave)),
+                Some("fri 3"),
+                None,
+                &preview,
+                &crate::theme::Theme::default(),
+            );
+        });
+
+        assert!(rendered.contains("Send at: fri 3"));
+        assert!(rendered.contains("Friday 10 May, 15:00 (in 3 days)"));
     }
 
     #[test]
@@ -386,6 +415,7 @@ mod tests {
                 Some(&pending(PendingSendMode::SendOrSave)),
                 None,
                 Some("friday 10am"),
+                &[],
                 &crate::theme::Theme::default(),
             );
         });
@@ -403,6 +433,7 @@ mod tests {
                 Some(&pending(PendingSendMode::DraftOnlyNoRecipients)),
                 None,
                 None,
+                &[],
                 &crate::theme::Theme::default(),
             );
         });
@@ -437,6 +468,7 @@ mod tests {
                 )),
                 None,
                 None,
+                &[],
                 &crate::theme::Theme::default(),
             );
         });
@@ -476,6 +508,7 @@ mod tests {
                 )),
                 None,
                 None,
+                &[],
                 &crate::theme::Theme::default(),
             );
         });
@@ -508,6 +541,7 @@ mod tests {
                 )),
                 None,
                 None,
+                &[],
                 &crate::theme::Theme::default(),
             );
         });
@@ -542,6 +576,7 @@ mod tests {
                 )),
                 None,
                 None,
+                &[],
                 &crate::theme::Theme::default(),
             );
         });
@@ -580,6 +615,7 @@ mod tests {
                 Some(&p),
                 None,
                 None,
+                &[],
                 &crate::theme::Theme::default(),
             );
         });
@@ -599,6 +635,7 @@ mod tests {
                 Some(&pending(PendingSendMode::Unchanged)),
                 None,
                 None,
+                &[],
                 &crate::theme::Theme::default(),
             );
         });

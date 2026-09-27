@@ -12,6 +12,7 @@
     reason = "integration tests use panic and unwrap to keep fixture failures direct"
 )]
 
+use chrono::{TimeZone, Timelike};
 use mxr_test_support::daemon::{daemon_lock, run_json, run_status_only, spawn_fake_daemon};
 use serde_json::Value;
 use tempfile::TempDir;
@@ -188,7 +189,29 @@ fn send_time_with_at_echoes_proposed_slot() {
     let hr = resp["proposed_hour"]
         .as_u64()
         .unwrap_or_else(|| panic!("proposed_hour missing: {resp}"));
-    assert_eq!(hr, 9, "9am UTC → hour 9: {resp}");
+    // "9am" is local wall-clock time; the response buckets by the UTC hour
+    // of that instant, like the stored reply-time buckets.
+    let local_nine = chrono::Local
+        .from_local_datetime(
+            &(chrono::Local::now().date_naive() + chrono::Days::new(1))
+                .and_hms_opt(9, 0, 0)
+                .expect("valid time"),
+        )
+        .earliest()
+        .expect("9am exists locally");
+    let expected = local_nine.with_timezone(&chrono::Utc);
+    assert_eq!(
+        hr,
+        u64::from(expected.hour()),
+        "local 9am as a UTC hour: {resp}"
+    );
+    assert_eq!(
+        resp["proposed_at"]
+            .as_str()
+            .map(|at| chrono::DateTime::parse_from_rfc3339(at).map(|at| at.timestamp())),
+        Some(Ok(expected.timestamp())),
+        "proposed_at is tomorrow 09:00 local: {resp}"
+    );
     // No history means no expected p50 for the proposed slot.
     assert!(
         resp["recipient_rows"][0]

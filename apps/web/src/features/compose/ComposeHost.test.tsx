@@ -79,6 +79,13 @@ vi.mock("@/features/accounts/api", () => ({
   fetchAccountAddresses: () => Promise.resolve({ addresses: [] }),
 }));
 vi.mock("./api", () => api);
+vi.mock("@/features/time/api", async (importOriginal) => {
+  const { fakeResolvedTime } = await import("@/features/time/testing");
+  return {
+    ...(await importOriginal<typeof import("@/features/time/api")>()),
+    resolveTime: (input: string) => Promise.resolve(fakeResolvedTime(input)),
+  };
+});
 vi.mock("sonner", () => ({ toast: toasts }));
 
 // The mocked editor exposes the editor's own send hotkey (CodeMirror's
@@ -527,6 +534,38 @@ describe("ComposeHost send confirmation", () => {
 });
 
 describe("ComposeHost send later", () => {
+  test("three rapid Enters schedule the message once", async () => {
+    let finishSchedule: (() => void) | undefined;
+    api.scheduleComposeSession.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishSchedule = () =>
+            resolve({ ok: true, draft_id: "stored-once", send_at: new Date().toISOString() });
+        }),
+    );
+    renderHost();
+    openNewMessage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Send later" }));
+    const field = await screen.findByLabelText("Or type a time");
+    fireEvent.change(field, { target: { value: "in 2 hours" } });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/in 2 hours$/));
+
+    fireEvent.keyDown(field, { key: "Enter" });
+    fireEvent.keyDown(field, { key: "Enter" });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    await waitFor(() => expect(api.scheduleComposeSession).toHaveBeenCalledTimes(1));
+    await act(async () => finishSchedule?.());
+    await waitFor(() =>
+      expect(toasts.success).toHaveBeenCalledWith(
+        expect.stringMatching(/^Send scheduled for /),
+        expect.anything(),
+      ),
+    );
+    expect(api.scheduleComposeSession).toHaveBeenCalledTimes(1);
+  });
+
   test("a scheduled send can be cancelled from its confirmation toast", async () => {
     api.scheduleComposeSession.mockResolvedValue({
       ok: true,
@@ -538,10 +577,13 @@ describe("ComposeHost send later", () => {
     openNewMessage();
 
     fireEvent.click(await screen.findByRole("button", { name: "Send later" }));
-    fireEvent.click(await screen.findByRole("button", { name: /In 2 hours/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /In 2 hours.*\d\d:\d\d/ }));
 
     await waitFor(() =>
-      expect(toasts.success).toHaveBeenCalledWith("Send scheduled", expect.anything()),
+      expect(toasts.success).toHaveBeenCalledWith(
+        expect.stringMatching(/^Send scheduled for \w+ \d+ \w+, \d\d:\d\d$/),
+        expect.anything(),
+      ),
     );
     // The bridge stores and schedules the compose file itself, so reply
     // headers and the From alias carry over.
@@ -552,8 +594,8 @@ describe("ComposeHost send later", () => {
     // The composer closes like a send.
     await waitFor(() => expect(screen.queryByLabelText("Subject")).not.toBeInTheDocument());
 
-    const options = toasts.success.mock.calls.find(
-      ([title]) => title === "Send scheduled",
+    const options = toasts.success.mock.calls.find(([title]) =>
+      title.startsWith("Send scheduled for "),
     )?.[1] as {
       action: { label: string; onClick: () => void };
     };
@@ -583,7 +625,10 @@ describe("ComposeHost send and remind", () => {
       name: /Send and remind me if no reply in/,
     });
     fireEvent.keyDown(submenu, { key: "ArrowRight" });
-    fireEvent.click(await screen.findByRole("menuitem", { name: label }));
+    // Each preset shows the exact time it resolves to before it is chosen.
+    const item = await screen.findByRole("menuitem", { name: new RegExp(`^${label}`) });
+    await waitFor(() => expect(item).toHaveTextContent(/\d\d:\d\d$/));
+    fireEvent.click(item);
   }
 
   test("sends, then sets a cancellable reminder for the sent message", async () => {
@@ -607,9 +652,14 @@ describe("ComposeHost send and remind", () => {
     expect(days).toBeLessThan(3.01);
 
     await waitFor(() =>
-      expect(toasts.success).toHaveBeenCalledWith("Reminder set", expect.anything()),
+      expect(toasts.success).toHaveBeenCalledWith(
+        expect.stringMatching(/^Reminder set for \w+ \d+ \w+, \d\d:\d\d$/),
+        expect.anything(),
+      ),
     );
-    const options = toasts.success.mock.calls.find(([title]) => title === "Reminder set")?.[1] as {
+    const options = toasts.success.mock.calls.find(([title]) =>
+      title.startsWith("Reminder set for "),
+    )?.[1] as {
       action: { label: string; onClick: () => void };
     };
     act(() => options.action.onClick());
@@ -651,7 +701,7 @@ describe("ComposeHost invite replies", () => {
     // Scheduling goes through the compose session, which carries the RSVP,
     // so invite replies can be sent later like any other reply.
     fireEvent.click(await screen.findByRole("button", { name: "Send later" }));
-    fireEvent.click(await screen.findByRole("button", { name: /In 2 hours/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /In 2 hours.*\d\d:\d\d/ }));
     await waitFor(() => expect(api.scheduleComposeSession).toHaveBeenCalledTimes(1));
   });
 });

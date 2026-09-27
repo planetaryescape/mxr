@@ -1,49 +1,66 @@
 /* @vitest-environment jsdom */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { describe, expect, test, vi } from "vitest";
 
 import { SendLaterDialog } from "./SendLaterDialog";
 
+vi.mock("@/features/time/api", async (importOriginal) => {
+  const { fakeResolvedTime } = await import("@/features/time/testing");
+  return {
+    ...(await importOriginal<typeof import("@/features/time/api")>()),
+    resolveTime: (input: string) => Promise.resolve(fakeResolvedTime(input)),
+  };
+});
+
+function renderWithQueryClient(children: ReactNode) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>);
+}
+
 describe("SendLaterDialog", () => {
-  test("previews a parsed natural-language time and confirms with it", () => {
+  test("previews the daemon's resolution and confirms with that instant", async () => {
     const onConfirm = vi.fn<(at: Date, label: string) => void>();
-    render(
+    renderWithQueryClient(
       <SendLaterDialog open scheduling={false} onOpenChange={() => {}} onConfirm={onConfirm} />,
     );
 
-    const input = screen.getByLabelText("Custom send time");
-    fireEvent.change(input, { target: { value: "in 2 hours" } });
-
-    expect(screen.getByRole("status")).toHaveTextContent(/^Sends /);
+    fireEvent.change(screen.getByLabelText("Or type a time"), {
+      target: { value: "in 2 hours" },
+    });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/in 2 hours$/));
 
     fireEvent.click(screen.getByRole("button", { name: "Schedule send" }));
 
-    expect(onConfirm).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
     const [at, label] = onConfirm.mock.calls[0] ?? [];
-    expect(at).toBeInstanceOf(Date);
-    expect((at as Date).getTime()).toBeGreaterThan(Date.now());
-    expect(label).toBeTruthy();
+    expect((at as Date).getTime() - Date.now()).toBeGreaterThan(7_000_000);
+    expect(label).toMatch(/, \d\d:\d\d$/);
   });
 
-  test("keeps confirm disabled for unparseable input", () => {
-    render(
+  test("keeps confirm disabled for a phrase it can't read", async () => {
+    renderWithQueryClient(
       <SendLaterDialog open scheduling={false} onOpenChange={() => {}} onConfirm={() => {}} />,
     );
 
-    const input = screen.getByLabelText("Custom send time");
-    fireEvent.change(input, { target: { value: "whenever you fancy" } });
+    fireEvent.change(screen.getByLabelText("Or type a time"), {
+      target: { value: "whenever you fancy" },
+    });
 
+    expect(await screen.findByText(/Didn't catch "whenever"/)).toBeVisible();
     expect(screen.getByRole("button", { name: "Schedule send" })).toBeDisabled();
   });
 
-  test("presets confirm without typing", () => {
+  test("presets show their resolved time and confirm without typing", async () => {
     const onConfirm = vi.fn<(at: Date, label: string) => void>();
-    render(
+    renderWithQueryClient(
       <SendLaterDialog open scheduling={false} onOpenChange={() => {}} onConfirm={onConfirm} />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /tomorrow 9am/i }));
+    const preset = await screen.findByRole("button", { name: /tomorrow 9am.*, 09:00/i });
+    fireEvent.click(preset);
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
     const [at] = onConfirm.mock.calls[0] ?? [];

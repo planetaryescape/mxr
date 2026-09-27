@@ -68,7 +68,7 @@ export function ToneControls({
           >
             <SlidersHorizontal className="size-3" />
             <span>{overridden ? `${register} · ${length}` : "Adjust"}</span>
-            <ChevronDown className="size-3 transition-transform duration-150 group-data-[state=open]/adjust:rotate-180" />
+            <ChevronDown className="size-3 transition-transform duration-fast group-data-[state=open]/adjust:rotate-180" />
           </button>
         </CollapsibleTrigger>
       </div>

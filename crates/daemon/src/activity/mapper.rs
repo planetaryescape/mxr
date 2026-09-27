@@ -601,6 +601,7 @@ pub fn map_request(
         | Request::GetLlmStatus
         | Request::GetLlmConfig
         | Request::GetNotificationChimes
+        | Request::ResolveTime { .. }
         | Request::GetSemanticStatus
         | Request::GetSyncStatus { .. }
         | Request::Count { .. }

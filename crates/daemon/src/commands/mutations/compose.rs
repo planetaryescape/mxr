@@ -633,6 +633,9 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     if !sending && remind_after.is_some() {
         anyhow::bail!("--remind-after requires --yes; saved drafts can be sent later with `mxr send <draft-id> --remind-after <time>`");
     }
+    // Resolve the reminder before sending: a phrase that doesn't parse must
+    // stop the send, not surface after the mail has already gone.
+    let remind_at = parse_remind_after(remind_after.as_deref(), chrono::Utc::now())?;
 
     if sending {
         let receipt = expect_send_receipt(
@@ -643,7 +646,7 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
                 })
                 .await?,
         )?;
-        set_auto_reminder_after_send(client, receipt.as_ref(), remind_after.as_deref()).await?;
+        set_auto_reminder_after_send(client, receipt.as_ref(), remind_at).await?;
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
@@ -1181,6 +1184,8 @@ pub async fn send_draft(
         return Ok(());
     }
 
+    // Resolve the reminder before sending (see `finalize_compose`).
+    let remind_at = parse_remind_after(remind_after.as_deref(), chrono::Utc::now())?;
     get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
     let resp = client
         .request(Request::SendStoredDraft {
@@ -1189,7 +1194,7 @@ pub async fn send_draft(
         })
         .await?;
     let receipt = expect_send_receipt(resp)?;
-    set_auto_reminder_after_send(&mut client, receipt.as_ref(), remind_after.as_deref()).await?;
+    set_auto_reminder_after_send(&mut client, receipt.as_ref(), remind_at).await?;
     println!("Sent draft {draft_id}");
     if let Some(info) = receipt.as_ref() {
         println!("Local message id: {}", info.local_message_id);
@@ -1393,11 +1398,7 @@ pub async fn schedule_send(
     when: String,
 ) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
-    let send_at = mxr_core::parse_relative_time(&when, chrono::Utc::now()).map_err(|e| {
-        anyhow::anyhow!(
-            "Cannot parse '{when}': {e}. Try: `in 2h`, `tomorrow 9am`, `monday 17:00`, or ISO 8601."
-        )
-    })?;
+    let send_at = crate::commands::time::parse_time_arg(&when, chrono::Utc::now())?;
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
@@ -2048,45 +2049,57 @@ struct SendReceiptInfo {
     rfc2822_message_id: String,
 }
 
-fn auto_reminder_request_after_send(
-    receipt: Option<&SendReceiptInfo>,
+/// `--remind-after` resolved before anything is sent: the instant to store
+/// and how to say it back, or an error that stops the send.
+#[derive(Debug)]
+struct RemindAt {
+    at: chrono::DateTime<chrono::Utc>,
+    description: String,
+}
+
+fn parse_remind_after(
     remind_after: Option<&str>,
     now: chrono::DateTime<chrono::Utc>,
-) -> anyhow::Result<Option<Request>> {
-    let Some(remind_after) = remind_after else {
-        return Ok(None);
-    };
+) -> anyhow::Result<Option<RemindAt>> {
+    remind_after
+        .map(|when| {
+            crate::commands::time::resolve_time_arg(when, now).map(|resolution| RemindAt {
+                at: resolution.at,
+                description: resolution.description,
+            })
+        })
+        .transpose()
+}
+
+fn auto_reminder_request_after_send(
+    receipt: Option<&SendReceiptInfo>,
+    remind_at: chrono::DateTime<chrono::Utc>,
+) -> anyhow::Result<Request> {
     let Some(receipt) = receipt else {
         anyhow::bail!("daemon did not return a sent message id; cannot set reminder");
     };
-    let remind_at = mxr_core::parse_relative_time(remind_after, now).map_err(|e| {
-        anyhow::anyhow!(
-            "Cannot parse --remind-after value '{remind_after}': {e}. Try: `in 2h`, `tomorrow 9am`, `monday 17:00`, or ISO 8601."
-        )
-    })?;
-    Ok(Some(Request::SetAutoReminder {
+    Ok(Request::SetAutoReminder {
         sent_message_id: receipt.local_message_id.clone(),
         remind_at,
-    }))
+    })
 }
 
 async fn set_auto_reminder_after_send(
     client: &mut IpcClient,
     receipt: Option<&SendReceiptInfo>,
-    remind_after: Option<&str>,
+    remind: Option<RemindAt>,
 ) -> anyhow::Result<()> {
-    let Some(request) =
-        auto_reminder_request_after_send(receipt, remind_after, chrono::Utc::now())?
-    else {
+    let Some(remind) = remind else {
         return Ok(());
     };
-    match client.request(request).await? {
+    match client
+        .request(auto_reminder_request_after_send(receipt, remind.at)?)
+        .await?
+    {
         Response::Ok {
             data: ResponseData::Ack,
         } => {
-            if let Some(when) = remind_after {
-                println!("Reminder set for {when}");
-            }
+            println!("Reminder set for {}", remind.description);
             Ok(())
         }
         Response::Error { message, .. } => anyhow::bail!("{message}"),
@@ -2612,7 +2625,7 @@ mod tests {
     }
 
     mod remind_after_tests {
-        use super::super::{auto_reminder_request_after_send, SendReceiptInfo};
+        use super::super::{auto_reminder_request_after_send, parse_remind_after, SendReceiptInfo};
         use chrono::{TimeZone, Utc};
         use mxr_core::MessageId;
         use mxr_protocol::Request;
@@ -2627,14 +2640,14 @@ mod tests {
             };
             let now = Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap();
 
-            let request =
-                auto_reminder_request_after_send(Some(&receipt), Some("in 1h"), now).unwrap();
+            let remind = parse_remind_after(Some("in 1h"), now).unwrap().unwrap();
+            let request = auto_reminder_request_after_send(Some(&receipt), remind.at).unwrap();
 
             match request {
-                Some(Request::SetAutoReminder {
+                Request::SetAutoReminder {
                     sent_message_id,
                     remind_at,
-                }) => {
+                } => {
                     assert_eq!(sent_message_id, message_id);
                     assert_eq!(remind_at, now + chrono::Duration::hours(1));
                 }
@@ -2646,7 +2659,7 @@ mod tests {
         fn remind_after_requires_send_receipt_message_id() {
             let now = Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap();
 
-            let error = auto_reminder_request_after_send(None, Some("in 1h"), now)
+            let error = auto_reminder_request_after_send(None, now)
                 .expect_err("missing receipt must be rejected");
 
             assert!(
@@ -2656,12 +2669,19 @@ mod tests {
         }
 
         #[test]
-        fn remind_after_absent_does_not_build_request() {
+        fn remind_after_absent_resolves_to_nothing() {
             let now = Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap();
 
-            let request = auto_reminder_request_after_send(None, None, now).unwrap();
+            assert!(parse_remind_after(None, now).unwrap().is_none());
+        }
 
-            assert!(request.is_none());
+        #[test]
+        fn an_unreadable_remind_after_is_an_error_before_any_send() {
+            let now = Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap();
+
+            let error = parse_remind_after(Some("frday"), now).unwrap_err();
+
+            assert!(error.to_string().contains("frday"), "{error}");
         }
     }
 

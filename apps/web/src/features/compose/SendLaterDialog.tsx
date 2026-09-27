@@ -1,13 +1,14 @@
 /*
- * Send-later dialog: natural-language time input (parseSendLater) with a
- * live preview of the parsed time, plus a few presets. Confirm hands the
- * resolved Date back to the compose controller, which materialises the
- * session into a stored draft and schedules it. The same dialog, with its
- * copy swapped, picks a custom time for "send and remind me".
+ * Send-later dialog: a natural-language time field resolved live by the
+ * daemon (the parser the CLI and TUI use), plus a few presets that show the
+ * time they resolve to. Confirm hands the previewed instant back to the
+ * compose controller, which materialises the session into a stored draft and
+ * schedules it. The same dialog, with its copy swapped, picks a custom time
+ * for "send and remind me".
  */
 
 import { Clock, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,9 +19,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { parseSendLater } from "./sendLater";
+import { describeChoice, type TimeChoice } from "@/features/time/api";
+import { NaturalTimeInput } from "@/features/time/NaturalTimeInput";
+import { useNaturalTime, useResolvedPresets } from "@/features/time/useNaturalTime";
 
 const PRESETS = [
   { label: "Tomorrow 9am", input: "tomorrow 9am" },
@@ -32,12 +34,11 @@ interface SendLaterDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   scheduling: boolean;
-  onConfirm: (at: Date, label: string) => void;
+  /** Return the submission's promise so repeated presses wait for it. */
+  onConfirm: (at: Date, label: string) => void | Promise<void>;
   title?: string;
   description?: string;
   confirmLabel?: string;
-  /** Lead-in for the parsed-time preview, e.g. "Sends" or "Remind". */
-  previewVerb?: string;
   presets?: readonly { label: string; input: string }[];
 }
 
@@ -49,22 +50,19 @@ export function SendLaterDialog({
   title = "Send later",
   description = "Schedule this message instead of sending it now. The draft is stored locally and dispatched by the daemon.",
   confirmLabel = "Schedule send",
-  previewVerb = "Sends",
   presets = PRESETS,
 }: SendLaterDialogProps) {
-  const [input, setInput] = useState("");
+  const time = useNaturalTime({ enabled: open });
+  const { reset } = time;
 
   useEffect(() => {
-    if (!open) setInput("");
-  }, [open]);
+    if (!open) reset();
+  }, [open, reset]);
 
-  const parsed = useMemo(() => parseSendLater(input), [input]);
+  const presetTimes = useResolvedPresets(presets, { enabled: open });
 
-  function confirm(text: string) {
-    if (scheduling) return;
-    const result = parseSendLater(text);
-    if (!result) return;
-    onConfirm(result.at, result.label);
+  function confirm(choice: TimeChoice) {
+    return onConfirm(new Date(choice.at), describeChoice(choice));
   }
 
   return (
@@ -76,22 +74,24 @@ export function SendLaterDialog({
         </DialogHeader>
 
         <div className="grid gap-2">
-          {presets.map((preset) => {
-            const presetParse = parseSendLater(preset.input);
+          {presets.map((preset, index) => {
+            const choice = presetTimes[index]?.choice;
             return (
               <Button
                 key={preset.input}
                 variant="outline"
                 className="h-auto justify-start rounded-lg px-3 py-2 text-left"
-                onClick={() => confirm(preset.input)}
-                disabled={!presetParse || scheduling}
+                onClick={() => {
+                  if (choice) void time.runExclusive(() => confirm(choice));
+                }}
+                disabled={!choice || scheduling || time.submitting}
               >
                 <Clock className="size-3.5" />
                 <span className="grid gap-0.5">
                   <span className="text-xs font-medium">{preset.label}</span>
-                  {presetParse ? (
-                    <span className="font-mono text-2xs text-muted-foreground">
-                      {presetParse.label}
+                  {choice ? (
+                    <span className="font-mono text-2xs text-muted-foreground tabular-nums">
+                      {describeChoice(choice)}
                     </span>
                   ) : null}
                 </span>
@@ -101,42 +101,24 @@ export function SendLaterDialog({
         </div>
 
         <div className="space-y-2 rounded-xl border border-border bg-muted/40 p-3">
-          <Label htmlFor="send-later-time">Custom send time</Label>
-          <Input
+          <Label htmlFor="send-later-time">Or type a time</Label>
+          <NaturalTimeInput
             id="send-later-time"
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                confirm(input);
-              }
-            }}
-            placeholder="tomorrow 9am, in 2h, monday 17:00"
+            state={time}
+            onCommit={confirm}
+            placeholder="fri 3, tomorrow 9am, in 2d"
             autoFocus
           />
-          <div className="text-2xs" role="status">
-            {parsed ? (
-              <span className="text-success">
-                {previewVerb} {parsed.label}
-              </span>
-            ) : input.trim() ? (
-              <span className="text-muted-foreground">
-                Can&apos;t read that time yet. Try &quot;in 2h&quot; or &quot;tomorrow 9am&quot;.
-              </span>
-            ) : (
-              <span className="text-muted-foreground">
-                Examples: in 2h, tomorrow 9am, monday 17:00.
-              </span>
-            )}
-          </div>
         </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={scheduling}>
             Cancel
           </Button>
-          <Button onClick={() => confirm(input)} disabled={!parsed || scheduling}>
+          <Button
+            onClick={() => void time.commit(confirm)}
+            disabled={!time.canCommit || scheduling}
+          >
             {scheduling ? (
               <Loader2 className="size-3 animate-spin" />
             ) : (

@@ -52,6 +52,8 @@ pub struct SnoozePanelState {
     /// Most recent parser error for the custom input, surfaced in the
     /// modal so the user can correct without leaving the prompt.
     pub custom_error: Option<String>,
+    /// The custom time's previewed resolution and selected reading.
+    pub custom_time: crate::ui::time_preview::TimePreview,
 }
 
 #[derive(Default)]

@@ -1149,6 +1149,12 @@ impl AppState {
         self.config.read().clone()
     }
 
+    /// The snooze hours the time parser needs, without cloning the config;
+    /// `ResolveTime` runs on every debounced keystroke in the web app.
+    pub fn snooze_time_prefs(&self) -> mxr_core::natural_time::TimePrefs {
+        self.config.read().snooze.time_prefs()
+    }
+
     pub fn attachment_dir(&self) -> std::path::PathBuf {
         self.config_snapshot().general.attachment_dir
     }

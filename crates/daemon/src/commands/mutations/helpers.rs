@@ -2,7 +2,6 @@ use crate::cli::OutputFormat;
 use crate::commands::selection::{parse_message_id as selection_parse_id, SelectionLimit};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
-use chrono::Utc;
 use mxr_core::id::{MessageId, ThreadId};
 use mxr_core::types::{Envelope, UnsubscribeMethod};
 use mxr_protocol::*;
@@ -834,22 +833,6 @@ pub(super) struct MutationRunOptions<'a> {
     pub(super) format: Option<OutputFormat>,
     pub(super) destructive: bool,
     pub(super) async_job: bool,
-}
-
-pub(super) fn parse_snooze_until(until: &str) -> anyhow::Result<chrono::DateTime<Utc>> {
-    // Try the config-driven preset parser first ("tomorrow", "weekend",
-    // "tonight" — uses the user's configured wake hour for each preset).
-    let config = mxr_config::load_config().unwrap_or_default().snooze;
-    if let Some(absolute) = mxr_config::snooze::parse_snooze_until(until, &config) {
-        return Ok(absolute);
-    }
-    // Fall through to the conversational parser which handles richer
-    // forms: `in 2h`, `monday 5pm`, `tomorrow 9am`, RFC3339, etc.
-    mxr_core::parse_relative_time(until, chrono::Utc::now()).map_err(|e| {
-        anyhow::anyhow!(
-            "Cannot parse '{until}': {e}. Try: `in 2h`, `tomorrow 9am`, `monday 17:00`, or ISO 8601."
-        )
-    })
 }
 
 pub(super) fn format_bytes(bytes: u64) -> String {

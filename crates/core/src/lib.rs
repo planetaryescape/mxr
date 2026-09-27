@@ -21,8 +21,9 @@
 //!   (submission), and [`IdleWatcher`] (push notifications). Daemon code
 //!   talks to providers only through these seams.
 //! - [`error`] — [`MxrError`], the shared error type.
-//! - [`time_parse`] — human time expressions ("tomorrow 9am", "in 2h") for
-//!   snooze/remind/send-later, via [`parse_relative_time`].
+//! - [`natural_time`] — the one natural-language time parser ("fri 3",
+//!   "tomorrow 9am", "in 2h") for snooze, send later and reminders, with
+//!   spans, assumptions and choices.
 //! - [`text`] and [`i18n`] — small text-normalisation and localisation
 //!   helpers shared across crates.
 
@@ -37,15 +38,14 @@
 pub mod error;
 pub mod i18n;
 pub mod id;
+pub mod natural_time;
 pub mod provider;
 pub mod text;
-pub mod time_parse;
 pub mod types;
 
 pub use error::MxrError;
 pub use id::*;
 pub use provider::*;
-pub use time_parse::{parse_relative_time, TimeParseError};
 pub use types::*;
 
 #[cfg(test)]

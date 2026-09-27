@@ -48,10 +48,28 @@
   --shell-rightrail-w: 380px;
   --shell-list-w: 420px;
 
+  /*
+   * Motion. Motion is for orientation (a popover growing from its trigger,
+   * a dialog arriving) and for state that can be undone; repeated keyboard
+   * actions never animate. Exits use the fast duration so leaving never
+   * blocks the next action. Only transform and opacity move.
+   *
+   * `--ease-*` and `--transition-duration-*` are Tailwind theme namespaces,
+   * so `ease-out`, `ease-drawer`, `duration-fast` and `duration-base` are
+   * utilities that read these values (tw-animate's enter/exit too).
+   */
   --motion-duration-fast: 120ms;
   --motion-duration-base: 180ms;
   --motion-duration-slow: 280ms;
-  --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --transition-duration-fast: var(--motion-duration-fast);
+  --transition-duration-base: var(--motion-duration-base);
+  --transition-duration-slow: var(--motion-duration-slow);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --motion-ease: var(--ease-out);
+  --default-transition-duration: var(--motion-duration-fast);
+  --default-transition-timing-function: var(--ease-out);
 
   --reading-measure: 72ch;
 }

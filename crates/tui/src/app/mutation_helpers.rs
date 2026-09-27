@@ -26,7 +26,8 @@ impl App {
                     Some("Type a time, e.g. `tomorrow 9am` or `in 2h`".into());
                 return;
             }
-            match mxr_core::time_parse::parse_relative_time(trimmed, chrono::Utc::now()) {
+            // Commit the instant the panel previewed, not a fresh parse.
+            match self.modals.snooze_panel.custom_time.chosen() {
                 Ok(wake_at) => {
                     if let Some(env) = self.context_envelope() {
                         let id = env.id.clone();
@@ -47,9 +48,10 @@ impl App {
                     self.modals.snooze_panel.visible = false;
                     self.modals.snooze_panel.custom_input = None;
                     self.modals.snooze_panel.custom_error = None;
+                    self.modals.snooze_panel.custom_time.clear();
                 }
-                Err(e) => {
-                    self.modals.snooze_panel.custom_error = Some(e.to_string());
+                Err(message) => {
+                    self.modals.snooze_panel.custom_error = Some(message);
                 }
             }
             return;
@@ -63,6 +65,7 @@ impl App {
         if selected >= presets.len() {
             self.modals.snooze_panel.custom_input = Some(String::new());
             self.modals.snooze_panel.custom_error = None;
+            self.modals.snooze_panel.custom_time.clear();
             return;
         }
         if let Some(env) = self.context_envelope() {

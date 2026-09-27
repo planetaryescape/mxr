@@ -48,6 +48,7 @@ mod snippets;
 mod status_helpers;
 mod suggest_recipients;
 pub(crate) mod summarize;
+mod time;
 mod triage;
 mod user_voice;
 mod whois;
@@ -765,6 +766,11 @@ async fn dispatch(
             platform::update_llm_config(state, config.as_ref().clone()).await
         }
         Request::GetNotificationChimes => notifications::get_notification_chimes(state).await,
+        Request::ResolveTime {
+            input,
+            now,
+            time_zone,
+        } => time::resolve(state, input, *now, time_zone.as_deref()),
         Request::UpdateNotificationChimes { config } => {
             notifications::update_notification_chimes(state, config.as_ref().clone()).await
         }
@@ -1834,6 +1840,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetLlmStatus
         | Request::GetLlmConfig
         | Request::GetNotificationChimes
+        | Request::ResolveTime { .. }
         | Request::GetSemanticStatus
         | Request::RunSavedSearch { .. }
         | Request::ListJobs
@@ -2095,6 +2102,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetLlmConfig => "get_llm_config",
         Request::UpdateLlmConfig { .. } => "update_llm_config",
         Request::GetNotificationChimes => "get_notification_chimes",
+        Request::ResolveTime { .. } => "resolve_time",
         Request::UpdateNotificationChimes { .. } => "update_notification_chimes",
         Request::PreviewNotificationChime { .. } => "preview_notification_chime",
         Request::GetSemanticStatus => "get_semantic_status",

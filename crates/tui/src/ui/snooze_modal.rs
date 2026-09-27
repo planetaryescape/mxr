@@ -123,7 +123,7 @@ fn draw_custom_input(
         Paragraph::new(prompt).style(Style::default().fg(theme.text_primary)),
         chunks[1],
     );
-    let hint = "Examples: in 2h · tomorrow 9am · monday 17:00 · 2026-06-01T15:00:00Z";
+    let hint = "Examples: fri 3 · tomorrow 9am · in 2h · next week · 3 oct";
     frame.render_widget(
         Paragraph::new(hint).style(Style::default().fg(theme.text_secondary)),
         chunks[2],
@@ -133,9 +133,27 @@ fn draw_custom_input(
             Paragraph::new(format!("Error: {error}")).style(Style::default().fg(theme.error)),
             chunks[3],
         );
+    } else {
+        let style = if panel.custom_time.is_resolved() {
+            Style::default().fg(theme.text_primary)
+        } else {
+            Style::default().fg(theme.text_secondary)
+        };
+        let preview = panel
+            .custom_time
+            .lines()
+            .into_iter()
+            .map(Line::from)
+            .collect::<Vec<_>>();
+        frame.render_widget(
+            Paragraph::new(preview)
+                .style(style)
+                .wrap(Wrap { trim: false }),
+            chunks[3],
+        );
     }
     frame.render_widget(
-        Paragraph::new("Enter parse  Backspace  Esc back to presets")
+        Paragraph::new("Enter snooze  Tab other reading  Esc back to presets")
             .style(Style::default().fg(theme.text_secondary)),
         chunks[4],
     );
@@ -185,7 +203,7 @@ mod tests {
             visible: true,
             selected_index: custom_row_index(),
             custom_input: Some("in 2h".into()),
-            custom_error: None,
+            ..Default::default()
         };
         let snapshot = render_to_string(80, 24, |frame| {
             draw(
@@ -211,12 +229,37 @@ mod tests {
     }
 
     #[test]
+    fn custom_mode_previews_the_resolved_time_live() {
+        let mut panel = SnoozePanelState {
+            visible: true,
+            selected_index: custom_row_index(),
+            custom_input: Some("in 2h".into()),
+            ..Default::default()
+        };
+        panel.custom_time.update("in 2h", &SnoozeConfig::default());
+        let snapshot = render_to_string(100, 24, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 100, 24),
+                &panel,
+                &SnoozeConfig::default(),
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(
+            snapshot.contains("(in 2 hours)"),
+            "resolution preview must appear before Enter; got:\n{snapshot}",
+        );
+    }
+
+    #[test]
     fn renders_validation_error_inline_in_custom_mode() {
         let panel = SnoozePanelState {
             visible: true,
             selected_index: custom_row_index(),
             custom_input: Some("asdf".into()),
             custom_error: Some("couldn't parse `asdf` as a time".into()),
+            ..Default::default()
         };
         let snapshot = render_to_string(80, 24, |frame| {
             draw(

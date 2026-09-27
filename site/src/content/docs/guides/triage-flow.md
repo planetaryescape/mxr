@@ -58,18 +58,20 @@ provider label so the categorisation rolls out to all your devices.
 ## Custom snooze (first pass, defer)
 
 When "reply later" is too vague — you know exactly when this should
-come back. The `--until` parser accepts conversational forms:
+come back. `--until` takes a time in words, resolved in your local time:
 
 ```bash
+mxr time "fri 3"                         # preview first
+mxr snooze --until "fri 3" MESSAGE_ID
 mxr snooze --until "in 2h" MESSAGE_ID
 mxr snooze --until "tomorrow 9am" MESSAGE_ID
-mxr snooze --until "monday 17:00" MESSAGE_ID
-mxr snooze --until "friday 5pm" MESSAGE_ID
+mxr snooze --until "next week" MESSAGE_ID
 mxr snooze --until "2026-06-01T15:00:00Z" MESSAGE_ID
 ```
 
-Or the configured presets (`tomorrow`, `weekend`, `tonight`, `monday`)
-that resolve via your `[snooze]` config block.
+Phrases without a time (`tomorrow`, `weekend`, `tonight`, `monday`) use
+the hours in your `[snooze]` config block. See
+[Time phrases](/reference/time-phrases/) for everything mxr accepts.
 
 ## The sender view (second pass)
 

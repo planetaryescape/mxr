@@ -31,4 +31,5 @@ utoipa = { workspace = true, optional = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+chrono-tz = { workspace = true }
 proptest = { workspace = true }

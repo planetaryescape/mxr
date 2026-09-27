@@ -42,7 +42,7 @@ const SECTIONS: SectionDef[] = [
   {
     id: "theme",
     label: "Appearance",
-    description: "Theme and density.",
+    description: "Theme, density and motion.",
     icon: Palette,
     render: () => <AppearanceSection />,
     aliases: ["density", "appearance"],

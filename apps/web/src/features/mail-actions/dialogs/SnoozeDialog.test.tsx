@@ -10,13 +10,27 @@ import { SnoozeDialog } from "./SnoozeDialog";
 const api = vi.hoisted(() => ({
   fetchSnoozePresets: vi.fn<() => Promise<unknown>>(),
   performMailAction:
-    vi.fn<(action: string, ids: string[], options?: { until?: string }) => Promise<unknown>>(),
+    vi.fn<
+      (
+        action: string,
+        ids: string[],
+        options?: { until?: string; payload?: { untilLabel?: string } },
+      ) => Promise<unknown>
+    >(),
 }));
 
 vi.mock("@/features/mailbox/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/features/mailbox/api")>()),
   fetchSnoozePresets: api.fetchSnoozePresets,
 }));
+
+vi.mock("@/features/time/api", async (importOriginal) => {
+  const { fakeResolvedTime } = await import("@/features/time/testing");
+  return {
+    ...(await importOriginal<typeof import("@/features/time/api")>()),
+    resolveTime: (input: string) => Promise.resolve(fakeResolvedTime(input)),
+  };
+});
 
 vi.mock("../mailMutations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../mailMutations")>()),
@@ -48,16 +62,22 @@ describe("SnoozeDialog", () => {
     vi.clearAllMocks();
   });
 
-  test("snoozes selected messages with a bridge preset", async () => {
+  test("a preset stores the wake time it showed", async () => {
     const onOpenChange = vi.fn<(open: boolean) => void>();
     renderWithQueryClient(<SnoozeDialog open messageIds={["msg-1"]} onOpenChange={onOpenChange} />);
 
     fireEvent.click(await screen.findByText("Tomorrow morning"));
 
     await waitFor(() =>
-      expect(api.performMailAction).toHaveBeenCalledWith("snooze", ["msg-1"], {
-        until: "tomorrow",
-      }),
+      expect(api.performMailAction).toHaveBeenCalledWith(
+        "snooze",
+        ["msg-1"],
+        expect.objectContaining({
+          until: "2026-05-12T09:00:00Z",
+          // The toast names the time the row showed.
+          payload: { untilLabel: expect.stringMatching(/\d/) },
+        }),
+      ),
     );
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
@@ -68,22 +88,60 @@ describe("SnoozeDialog", () => {
 
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "1" });
 
-    expect(api.performMailAction).toHaveBeenCalledWith("snooze", ["msg-4"], {
-      until: "tomorrow",
-    });
+    expect(api.performMailAction).toHaveBeenCalledWith(
+      "snooze",
+      ["msg-4"],
+      expect.objectContaining({ until: "2026-05-12T09:00:00Z" }),
+    );
   });
 
-  test("snoozes selected messages with a custom natural-language time", async () => {
+  test("a typed time stores the instant the preview showed", async () => {
     renderWithQueryClient(<SnoozeDialog open messageIds={["msg-2"]} onOpenChange={() => {}} />);
 
     fireEvent.change(await screen.findByLabelText(/or type a time/i), {
       target: { value: "in 2h" },
     });
+    await screen.findByText(/in 2 hours/);
     fireEvent.click(screen.getByRole("button", { name: /^snooze$/i }));
 
-    await waitFor(() =>
-      expect(api.performMailAction).toHaveBeenCalledWith("snooze", ["msg-2"], { until: "in 2h" }),
-    );
+    await waitFor(() => expect(api.performMailAction).toHaveBeenCalledTimes(1));
+    const [, ids, options] = api.performMailAction.mock.calls[0] ?? [];
+    expect(ids).toEqual(["msg-2"]);
+    // An RFC3339 instant, not the words, so the daemon can't re-resolve it.
+    expect(new Date(options?.until ?? "").getTime() - Date.now()).toBeGreaterThan(7_000_000);
+  });
+
+  test("an ambiguous time offers both readings and snoozes to the one picked", async () => {
+    renderWithQueryClient(<SnoozeDialog open messageIds={["msg-5"]} onOpenChange={() => {}} />);
+
+    const field = await screen.findByLabelText(/or type a time/i);
+    fireEvent.change(field, { target: { value: "fri 3" } });
+
+    const afternoon = await screen.findByRole("radio", { name: /15:00/ });
+    const early = screen.getByRole("radio", { name: /03:00/ });
+    expect(afternoon).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.keyDown(field, { key: "ArrowDown" });
+    expect(early).toHaveAttribute("aria-checked", "true");
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    await waitFor(() => expect(api.performMailAction).toHaveBeenCalledTimes(1));
+    const options = api.performMailAction.mock.calls[0]?.[2];
+    expect(new Date(options?.until ?? "").getHours()).toBe(3);
+    expect(options?.payload?.untilLabel).toMatch(/, 03:00$/);
+  });
+
+  test("a phrase it can't read says so and can't be submitted", async () => {
+    renderWithQueryClient(<SnoozeDialog open messageIds={["msg-6"]} onOpenChange={() => {}} />);
+
+    fireEvent.change(await screen.findByLabelText(/or type a time/i), {
+      target: { value: "frday" },
+    });
+
+    expect(
+      await screen.findByText('Didn\'t catch "frday". Try "fri 3pm" or "in 2d".'),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: /^snooze$/i })).toBeDisabled();
   });
 
   test("hides the tonight preset when it resolves to tomorrow", async () => {

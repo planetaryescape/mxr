@@ -47,7 +47,8 @@ mxr send DRAFT_ID --check --format json \
 
 ### Time syntax
 
-The `--at` flag accepts the same forms as `mxr snooze --until`:
+The `--at` flag accepts the same [time phrases](/reference/time-phrases/)
+as `mxr snooze --until`:
 
 | Form | Example |
 |---|---|

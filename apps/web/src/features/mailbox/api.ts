@@ -8,6 +8,8 @@ export interface SnoozePreset {
   label?: string;
   wakeAt?: string;
   wake_at?: string;
+  /** The daemon's wording of the wake time, "Friday 3 October, 15:00". */
+  description?: string;
 }
 
 export interface MailboxLensParams {
@@ -374,8 +376,11 @@ export function undoMutation(mutationId: string): Promise<unknown> {
   });
 }
 
-export function fetchSnoozePresets(): Promise<{ presets: SnoozePreset[] }> {
-  return apiFetch<{ presets: SnoozePreset[] }>("/api/v1/mail/actions/snooze/presets");
+export function fetchSnoozePresets(timeZone: string): Promise<{ presets: SnoozePreset[] }> {
+  const query = new URLSearchParams({ time_zone: timeZone });
+  return apiFetch<{ presets: SnoozePreset[] }>(
+    `/api/v1/mail/actions/snooze/presets?${query.toString()}`,
+  );
 }
 
 export function snoozeMessage(input: { messageId: string; until: string }): Promise<unknown> {

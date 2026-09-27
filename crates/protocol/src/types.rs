@@ -1478,6 +1478,23 @@ pub enum Request {
     DeleteSavedActivityFilter {
         slug: String,
     },
+
+    // ----- Natural-language time -----
+    /// Resolve a time phrase ("fri 3", "tomorrow 9am", "in 2d") in the
+    /// daemon's local zone with the user's snooze hours. Read-only; clients
+    /// preview with it and send the chosen instant to the real mutation.
+    ResolveTime {
+        input: String,
+        /// Anchor for relative phrases. Defaults to the daemon's clock;
+        /// set it for reproducible output.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        now: Option<chrono::DateTime<chrono::Utc>>,
+        /// IANA zone to resolve in, such as "Europe/London". The web app
+        /// sends the browser's zone because the browser may not be on the
+        /// daemon's machine; omitted means the daemon's local zone.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        time_zone: Option<String>,
+    },
 }
 
 impl Request {
@@ -1661,7 +1678,8 @@ impl Request {
             | Self::CreateSavedSearch { .. }
             | Self::DeleteSavedSearch { .. }
             | Self::UpdateSavedSearch { .. }
-            | Self::RunSavedSearch { .. } => IpcCategory::MxrPlatform,
+            | Self::RunSavedSearch { .. }
+            | Self::ResolveTime { .. } => IpcCategory::MxrPlatform,
             Self::ListEvents { .. }
             | Self::GetLogs { .. }
             | Self::GetDoctorReport
@@ -2489,9 +2507,38 @@ pub enum ResponseData {
     EventLogCount {
         count: i64,
     },
+
+    /// Returned by `Request::ResolveTime`. Exactly one of `resolution` and
+    /// `error` is set; a phrase that doesn't resolve is a normal answer,
+    /// not an IPC failure, so live previews can show why.
+    ResolvedTime {
+        input: String,
+        resolution: Option<mxr_core::natural_time::TimeResolution>,
+        error: Option<mxr_core::natural_time::TimeResolveError>,
+    },
 }
 
 impl ResponseData {
+    /// The `ResolveTime` answer for `input`: a failed parse is data, not an
+    /// IPC error, so previews can show why.
+    pub fn resolved_time(
+        input: &str,
+        result: Result<
+            mxr_core::natural_time::TimeResolution,
+            mxr_core::natural_time::TimeResolveError,
+        >,
+    ) -> Self {
+        let (resolution, error) = match result {
+            Ok(resolution) => (Some(resolution), None),
+            Err(error) => (None, Some(error)),
+        };
+        Self::ResolvedTime {
+            input: input.to_string(),
+            resolution,
+            error,
+        }
+    }
+
     pub const fn category(&self) -> IpcCategory {
         match self {
             Self::Envelopes { .. }
@@ -2592,7 +2639,8 @@ impl ResponseData {
             | Self::NotificationChimes { .. }
             | Self::NotificationChimePreview { .. }
             | Self::SemanticStatus { .. }
-            | Self::SavedSearchData { .. } => IpcCategory::MxrPlatform,
+            | Self::SavedSearchData { .. }
+            | Self::ResolvedTime { .. } => IpcCategory::MxrPlatform,
             Self::EventLogEntries { .. }
             | Self::LogLines { .. }
             | Self::DoctorReport { .. }

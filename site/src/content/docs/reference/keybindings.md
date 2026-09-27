@@ -328,7 +328,7 @@ Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your ma
 | Attachments | `j` / `k`, `Enter` / `o`, `d`, `Esc` |
 | Bulk confirm | `Enter` / `y` confirm, `Esc` / `n` cancel |
 | Snooze (preset list) | `j` / `k` move, `Enter` confirm, `Esc` close |
-| Snooze (custom mode) | typing, `Enter` parse + snooze, `Backspace`, `Esc` back to presets |
+| Snooze (custom mode) | typing (live preview), `Tab` other reading, `Enter` snooze, `Backspace`, `Esc` back to presets |
 | Reply queue | `j` / `k`, `Esc` close |
 | Snippets browser | `j` / `k`, `Esc` close |
 | Sender profile | `j` / `k` select other sender email, `Enter` / `o` open selected email, `Esc` close |

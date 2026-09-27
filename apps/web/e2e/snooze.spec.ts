@@ -27,7 +27,8 @@ test("Z snoozes to a preset; the conversation waits on /snoozed until Wake now",
 
   await expect(dialog).toHaveCount(0);
   await expect(rowById(page, rowId)).toHaveCount(0);
-  await expect(page.getByText(/^Snoozed \d+ messages?$/)).toBeVisible();
+  // The toast names the exact wake time the preset showed.
+  await expect(page.getByText(/^Snoozed until \w+ \d+ \w+, \d\d:\d\d$/)).toBeVisible();
 
   await pressSequence(page, "g", "n");
   await expect(page).toHaveURL(/\/snoozed$/);

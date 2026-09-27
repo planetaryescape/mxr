@@ -345,7 +345,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         open={controller.sendLaterOpen}
         onOpenChange={controller.setSendLaterOpen}
         scheduling={controller.scheduling}
-        onConfirm={(at, label) => void controller.scheduleSend(at, label)}
+        onConfirm={(at, label) => controller.scheduleSend(at, label)}
       />
       <SendLaterDialog
         open={controller.remindDialogOpen}
@@ -355,7 +355,6 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         title="Send and remind me"
         description="Send now. If nobody replies by this time, mxr reminds you."
         confirmLabel="Send and set reminder"
-        previewVerb="Remind if no reply by"
         presets={REMIND_DIALOG_PRESETS}
       />
       <DiscardConfirmDialog

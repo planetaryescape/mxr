@@ -1709,6 +1709,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/time/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resolve a natural-language time phrase */
+        get: operations["mail_time_resolve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/whois": {
         parameters: {
             query?: never;
@@ -3747,6 +3764,11 @@ export interface components {
             /** Format: int32 */
             score: number;
         };
+        /**
+         * @description A part of the result the user did not type and the parser assumed.
+         * @enum {string}
+         */
+        ImpliedPart: "date" | "year" | "time" | "meridiem";
         /** @enum {string} */
         IndexFreshness: "unknown" | "current" | "stale" | "disabled" | "indexing" | "error" | "repair_required";
         /**
@@ -5136,6 +5158,22 @@ export interface components {
             /** @enum {string} */
             cmd: "DeleteSavedActivityFilter";
             slug: string;
+        } | {
+            /** @enum {string} */
+            cmd: "ResolveTime";
+            input: string;
+            /**
+             * Format: date-time
+             * @description Anchor for relative phrases. Defaults to the daemon's clock;
+             *     set it for reproducible output.
+             */
+            now?: string | null;
+            /**
+             * @description IANA zone to resolve in, such as "Europe/London". The web app
+             *     sends the browser's zone because the browser may not be on the
+             *     daemon's machine; omitted means the daemon's local zone.
+             */
+            time_zone?: string | null;
         };
         /**
          * @description The daemon's reply to a [`Request`], correlated by [`IpcMessage::id`].
@@ -5732,6 +5770,12 @@ export interface components {
             count: number;
             /** @enum {string} */
             kind: "EventLogCount";
+        } | {
+            error?: null | components["schemas"]["TimeResolveError"];
+            input: string;
+            /** @enum {string} */
+            kind: "ResolvedTime";
+            resolution?: null | components["schemas"]["TimeResolution"];
         };
         /**
          * @description A single bucket of the response-time histogram. `count` rows had a
@@ -6258,6 +6302,63 @@ export interface components {
             generated_at: string;
             model: string;
             text: string;
+        };
+        /** @description One reading of the phrase. */
+        TimeChoice: {
+            /**
+             * Format: date-time
+             * @description The instant to store. Send this back to the mutation unchanged so
+             *     what was previewed is what is saved.
+             */
+            at: string;
+            /** @description "Friday 3 October", with the year only when it isn't this year. */
+            date_label: string;
+            implied: components["schemas"]["ImpliedPart"][];
+            /** @description Short text for a choice chip, such as "15:00". */
+            label: string;
+            /** @description The same instant as RFC3339 in the resolving zone. */
+            local: string;
+            /** @description Set when a clock change moved or doubled the requested wall time. */
+            note?: string | null;
+            /** @description "in 6 days", "tomorrow", "in 2 hours". */
+            relative_label: string;
+            /** @description "15:00". */
+            time_label: string;
+        };
+        /** @description A phrase resolved to at least one instant. */
+        TimeResolution: {
+            /**
+             * Format: date-time
+             * @description The default choice's instant.
+             */
+            at: string;
+            /**
+             * @description Every reading, default first. More than one means the phrase was
+             *     ambiguous.
+             */
+            choices: components["schemas"]["TimeChoice"][];
+            /** @description "Friday 3 October, 15:00" for the default choice. */
+            description: string;
+            input: string;
+            /** @description Byte ranges of `input` that were understood. */
+            spans: components["schemas"]["TimeSpan"][];
+        };
+        /** @description Why a phrase didn't resolve, phrased for the user. */
+        TimeResolveError: {
+            kind: components["schemas"]["TimeResolveErrorKind"];
+            /** @description A calm, specific message with an example that works. */
+            message: string;
+            /** @description The word that wasn't understood, for `unrecognized` and `conflict`. */
+            token?: string | null;
+            /** @description Byte ranges understood before the problem. */
+            understood: components["schemas"]["TimeSpan"][];
+        };
+        /** @enum {string} */
+        TimeResolveErrorKind: "empty" | "unrecognized" | "conflict" | "needs_time" | "invalid_date" | "in_past" | "out_of_range";
+        /** @description A byte range of the input the parser understood. */
+        TimeSpan: {
+            end: number;
+            start: number;
         };
         TriageMessageData: {
             account_id: components["schemas"]["AccountId"];
@@ -9110,6 +9211,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_time_resolve: {
+        parameters: {
+            query: {
+                /** @description The phrase, such as "fri 3" or "in 2d" */
+                input: string;
+                /** @description RFC3339 anchor for relative phrases; defaults to the daemon's clock */
+                now?: string;
+                /** @description IANA zone to resolve in, such as "Europe/London"; defaults to the daemon's zone */
+                time_zone?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `ResolvedTime` variant: exactly one of `resolution` and `error` is set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

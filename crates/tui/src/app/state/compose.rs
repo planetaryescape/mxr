@@ -129,6 +129,8 @@ pub struct ComposeState {
     pub pending_send_confirm: Option<PendingSend>,
     pub pending_send_at_input: Option<String>,
     pub pending_remind_at_input: Option<String>,
+    /// The send-at / remind prompt's previewed time and selected reading.
+    pub pending_time: crate::ui::time_preview::TimePreview,
     pub compose_picker: ComposePicker,
     /// Reply contexts prewarmed when the user opens a message, so
     /// pressing `r`/`a` opens the editor without waiting on the daemon.

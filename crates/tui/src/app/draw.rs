@@ -455,12 +455,14 @@ impl App {
         );
 
         // Send confirmation overlay
+        let time_preview = self.compose.pending_time.lines();
         ui::send_confirm_modal::draw(
             frame,
             area,
             self.compose.pending_send_confirm.as_ref(),
             self.compose.pending_send_at_input.as_deref(),
             self.compose.pending_remind_at_input.as_deref(),
+            &time_preview,
             theme,
         );
 

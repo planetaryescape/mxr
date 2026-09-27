@@ -93,7 +93,8 @@ export const MailboxRow = memo(function MailboxRow({
         "grid-cols-[28px_minmax(0,1fr)_auto] gap-x-3 px-3 py-2.5",
         "@2xl:grid-cols-[28px_minmax(120px,190px)_minmax(0,1fr)_auto]",
         "[[data-density=compact]_&]:py-1.5 [[data-density=comfortable]_&]:py-3.5",
-        "transition-colors duration-100",
+        // No transition: j/k moves the highlight on every keypress, and
+        // repeated keyboard actions must not animate.
         selected ? "bg-primary-muted/70" : open ? "bg-accent" : "hover:bg-accent/60",
         focused && "bg-accent",
       )}

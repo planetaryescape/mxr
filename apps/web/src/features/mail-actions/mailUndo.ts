@@ -57,6 +57,17 @@ export function claimUndo(): UndoClaim {
   };
 }
 
+/** "Archived 2 messages"; a snooze names the exact wake time it stored. */
+function successMessage(action: MailAction, count: number, payload?: MailActionPayload): string {
+  const until = action === "snooze" ? payload?.untilLabel : undefined;
+  if (until) {
+    return count === 1
+      ? `Snoozed until ${until}`
+      : `Snoozed ${plural(count, "message")} until ${until}`;
+  }
+  return `${verb(action, payload)} ${plural(count, "message")}`;
+}
+
 /** Toast the result; returns its undo, recorded only if nothing newer took the slot. */
 export function announceSuccess(
   action: MailAction,
@@ -66,7 +77,7 @@ export function announceSuccess(
   payload?: MailActionPayload,
 ): (() => Promise<boolean>) | null {
   const count = response.result?.succeeded ?? ids.length;
-  const message = `${verb(action, payload)} ${plural(count, "message")}`;
+  const message = successMessage(action, count, payload);
   const mutationId = response.result?.mutation_id;
   const jobUndoIds = response.result?.undo_ids ?? [];
   const reverse = mutationId

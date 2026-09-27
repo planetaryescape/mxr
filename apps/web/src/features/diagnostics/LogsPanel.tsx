@@ -3,7 +3,9 @@ import { Pause, Play, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { fetchLogs } from "./api";
+import { PageError, PageSkeleton } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
+import { plural } from "@/lib/format";
 
 const LEVELS = ["all", "trace", "debug", "info", "warn", "error"] as const;
 const LIMITS = [50, 200, 500, 1000];
@@ -38,13 +40,13 @@ function parseLine(line: string): LogRow {
 function levelClasses(level?: string): string {
   switch ((level ?? "").toLowerCase()) {
     case "error":
-      return "bg-red-100 text-red-900 dark:bg-red-900/30 dark:text-red-200";
+      return "bg-destructive/10 text-destructive";
     case "warn":
-      return "bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200";
+      return "bg-warning/10 text-warning";
     case "info":
-      return "bg-blue-100 text-blue-900 dark:bg-blue-900/30 dark:text-blue-200";
+      return "bg-primary-muted text-primary";
     case "debug":
-      return "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-200";
+      return "bg-success/10 text-success";
     case "trace":
       return "bg-muted text-muted-foreground";
     default:
@@ -85,12 +87,14 @@ export function LogsPanel() {
   }, [logs.data]);
 
   return (
-    <section className="rounded-xl border border-border bg-surface p-4">
+    <section>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold">Daemon logs</h2>
+          <h2 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+            Daemon logs
+          </h2>
           <p className="text-2xs text-muted-foreground">
-            {rows.length} line{rows.length === 1 ? "" : "s"} · live tail every 3s
+            {plural(rows.length, "line")} · {follow ? "refreshing every 3s" : "paused"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -99,12 +103,12 @@ export function LogsPanel() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search log lines"
-            className="w-64 rounded border border-border bg-background px-2 py-1 text-2xs"
+            className="w-64 h-8 rounded-md border border-border bg-background px-2 text-2xs"
           />
           <select
             value={level}
             onChange={(e) => setLevel(e.target.value)}
-            className="rounded border border-border bg-background px-2 py-1 text-2xs"
+            className="h-8 rounded-md border border-border bg-background px-2 text-2xs"
           >
             {LEVELS.map((l) => (
               <option key={l} value={l}>
@@ -115,7 +119,7 @@ export function LogsPanel() {
           <select
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}
-            className="rounded border border-border bg-background px-2 py-1 text-2xs"
+            className="h-8 rounded-md border border-border bg-background px-2 text-2xs"
           >
             {LIMITS.map((n) => (
               <option key={n} value={n}>
@@ -135,20 +139,28 @@ export function LogsPanel() {
           <Button
             variant="ghost"
             size="sm"
+            aria-label="Refresh logs"
             onClick={() => queryClient.invalidateQueries({ queryKey: ["diagnostics", "logs"] })}
           >
             <RefreshCw className="size-3" />
           </Button>
         </div>
       </div>
-      {logs.isError && <p className="text-2xs text-destructive">{(logs.error as Error).message}</p>}
-      {!logs.isError && rows.length === 0 && (
-        <div className="rounded-lg bg-muted p-3 text-2xs text-muted-foreground">
+      {logs.isPending && <PageSkeleton rows={8} label="Loading logs" />}
+      {logs.isError && (
+        <PageError
+          title="Logs unavailable"
+          error={logs.error}
+          onRetry={() => void logs.refetch()}
+        />
+      )}
+      {logs.isSuccess && rows.length === 0 && (
+        <div className="border-y border-border/60 py-6 text-center text-[13px] text-muted-foreground">
           No log lines match the current filters.
         </div>
       )}
       {rows.length > 0 && (
-        <div className="max-h-[480px] overflow-auto rounded-lg bg-muted/50 font-mono text-2xs">
+        <div className="max-h-[calc(100vh-18rem)] min-h-64 overflow-auto border-y border-border/60 font-mono text-2xs">
           <table className="w-full">
             <tbody>
               {rows.map((row) => (

@@ -3,17 +3,18 @@
 import { QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
+import type { ActionContext } from "@/lib/actions/types";
 import { setActiveQueryClient } from "@/lib/queryClient";
 
 import { diagnosticsActions } from "./actions";
 
-const baseCtx = {
+const baseCtx: ActionContext = {
   path: "/m/inbox",
-  activePane: "mailbox" as const,
+  activePane: "mailbox",
+  scopes: ["global"],
   selectionCount: 0,
   accountCount: 0,
   hasFocusedThread: false,
-  hasFocusedMessage: false,
   isFirstAccountOnly: false,
 };
 

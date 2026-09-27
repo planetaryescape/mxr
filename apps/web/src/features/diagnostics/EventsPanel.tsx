@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { fetchEventCategories, fetchEventCount, fetchEvents, type EventLogEntry } from "./api";
+import { PageError, PageSkeleton } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
 
 const LEVELS = ["all", "trace", "debug", "info", "warn", "error"] as const;
@@ -17,13 +18,13 @@ const WINDOWS = [
 function levelClasses(level: string): string {
   switch (level.toLowerCase()) {
     case "error":
-      return "bg-red-100 text-red-900 dark:bg-red-900/30 dark:text-red-200";
+      return "bg-destructive/10 text-destructive";
     case "warn":
-      return "bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200";
+      return "bg-warning/10 text-warning";
     case "info":
-      return "bg-blue-100 text-blue-900 dark:bg-blue-900/30 dark:text-blue-200";
+      return "bg-primary-muted text-primary";
     case "debug":
-      return "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-200";
+      return "bg-success/10 text-success";
     default:
       return "bg-muted text-muted-foreground";
   }
@@ -98,10 +99,12 @@ export function EventsPanel() {
   }
 
   return (
-    <section className="rounded-xl border border-border bg-surface p-4">
+    <section>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold">Event log</h2>
+          <h2 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+            Event log
+          </h2>
           <p className="text-2xs text-muted-foreground">
             Showing {entries.length} of {total} · page {page + 1} of {totalPages}
           </p>
@@ -109,6 +112,7 @@ export function EventsPanel() {
         <Button
           variant="ghost"
           size="sm"
+          aria-label="Refresh events"
           onClick={() => {
             void queryClient.invalidateQueries({ queryKey: ["diagnostics", "events"] });
           }}
@@ -123,12 +127,12 @@ export function EventsPanel() {
           value={search}
           onChange={(e) => applyFilter(() => setSearch(e.target.value))}
           placeholder="Search summary + details"
-          className="w-full rounded border border-border bg-background px-2 py-1 text-2xs"
+          className="w-full h-8 rounded-md border border-border bg-background px-2 text-2xs"
         />
         <select
           value={level}
           onChange={(e) => applyFilter(() => setLevel(e.target.value))}
-          className="rounded border border-border bg-background px-2 py-1 text-2xs"
+          className="h-8 rounded-md border border-border bg-background px-2 text-2xs"
         >
           {LEVELS.map((l) => (
             <option key={l} value={l}>
@@ -139,7 +143,7 @@ export function EventsPanel() {
         <select
           value={category}
           onChange={(e) => applyFilter(() => setCategory(e.target.value))}
-          className="rounded border border-border bg-background px-2 py-1 text-2xs"
+          className="h-8 rounded-md border border-border bg-background px-2 text-2xs"
         >
           <option value="all">all categories</option>
           {(categories.data?.categories ?? []).map((c) => (
@@ -162,18 +166,23 @@ export function EventsPanel() {
         </div>
       </div>
 
+      {events.isPending && <PageSkeleton rows={8} label="Loading events" />}
       {events.isError && (
-        <p className="text-2xs text-destructive">{(events.error as Error).message}</p>
+        <PageError
+          title="Events unavailable"
+          error={events.error}
+          onRetry={() => void events.refetch()}
+        />
       )}
 
-      {!events.isError && entries.length === 0 && (
-        <div className="rounded-lg bg-muted p-3 text-2xs text-muted-foreground">
+      {events.isSuccess && entries.length === 0 && (
+        <div className="border-y border-border/60 py-6 text-center text-[13px] text-muted-foreground">
           No events match the current filters. Try a wider window or clear the search.
         </div>
       )}
 
       {entries.length > 0 && (
-        <div className="overflow-x-auto rounded border border-border">
+        <div className="overflow-x-auto border-y border-border/60">
           <table className="w-full text-2xs">
             <thead className="bg-muted/50">
               <tr>
@@ -184,8 +193,10 @@ export function EventsPanel() {
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry) => {
-                const key = eventEntryKey(entry);
+              {entries.map((entry, index) => {
+                // Identical events in the same second exist (repeated sync), so the
+                // row position disambiguates.
+                const key = `${eventEntryKey(entry)}|${page * pageSize + index}`;
                 const isOpen = expanded === key;
                 return (
                   <tr
@@ -246,7 +257,7 @@ export function EventsPanel() {
         <select
           value={pageSize}
           onChange={(e) => applyFilter(() => setPageSize(Number(e.target.value)))}
-          className="rounded border border-border bg-background px-2 py-1"
+          className="h-8 rounded-md border border-border bg-background px-2"
         >
           {[25, 50, 100, 200, 500].map((n) => (
             <option key={n} value={n}>

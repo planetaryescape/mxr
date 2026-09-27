@@ -326,8 +326,9 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
             size="sm"
             onClick={() => repair.mutate()}
             disabled={repair.isPending}
+            title="Writes this account's IMAP/SMTP password back to mxr's local secrets file. For accounts that sign in with a password."
           >
-            Repair sync state
+            Re-save password
           </Button>
         </div>
       </PageSection>

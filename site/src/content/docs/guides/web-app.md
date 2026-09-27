@@ -269,10 +269,10 @@ filters what the web shows.
 **Accounts** lists each account with **Make default** and **Disable**; open
 one to manage it. The account page has **Test connection**, **Sign in again**
 (for OAuth accounts), **Make default**, send-as addresses, and **Disable** or
-**Remove account** (optionally deleting its local mail). **Repair sync
-state** calls `POST /platform/accounts/repair`, which writes the account's
-IMAP and SMTP passwords back to local storage; accounts without
-password-backed credentials report that there is nothing to repair.
+**Remove account** (optionally deleting its local mail). **Re-save
+password** writes the account's IMAP and SMTP passwords back to mxr's local
+secrets file; accounts that sign in with OAuth report that there is nothing
+to re-save.
 
 The **Screener** page has a **Queue** tab of first-time senders and a
 **Decisions** tab where you can **Clear** an earlier call. Each sender row has

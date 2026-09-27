@@ -167,16 +167,27 @@ export function MailboxList({
     if (row) setFocusedId(rowKey(row));
   }, [activeThreadId, focusedThreadId, rows]);
 
-  const virtualizer = useVirtualizer({
-    count: flat.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: (index) =>
-      flat[index]?.kind === "header" ? (airyHeaders ? 40 : 30) : ROW_ESTIMATE[density],
-    overscan: 12,
-    getItemKey: (index) => {
+  // Stable per list: the virtualizer recomputes every item's position
+  // whenever `getItemKey` changes identity. An inline function did that on
+  // every scroll frame, 5,000 keys at a time on a long list.
+  const getItemKey = useCallback(
+    (index: number) => {
       const item = flat[index];
       return item ? (item.kind === "header" ? item.id : rowKey(item.row)) : index;
     },
+    [flat],
+  );
+  const estimateSize = useCallback(
+    (index: number) =>
+      flat[index]?.kind === "header" ? (airyHeaders ? 40 : 30) : ROW_ESTIMATE[density],
+    [airyHeaders, density, flat],
+  );
+  const virtualizer = useVirtualizer({
+    count: flat.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize,
+    overscan: 12,
+    getItemKey,
   });
   const virtualItems = virtualizer.getVirtualItems();
 

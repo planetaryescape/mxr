@@ -364,9 +364,16 @@ test("focus mode reads well on a phone", async ({ page }) => {
   );
   expect(overflow).toBeLessThanOrEqual(0);
   // Stacked: the conversation ends before the reply starts.
-  const conversation = await page.getByRole("region", { name: "Conversation" }).boundingBox();
-  const replyBox = await page.getByRole("region", { name: "Your reply" }).boundingBox();
-  expect(conversation!.y + conversation!.height).toBeLessThanOrEqual(replyBox!.y + 1);
+  // Measured once layout settles: the thread and the reply load separately.
+  await expect
+    .poll(async () => {
+      const conversation = await page.getByRole("region", { name: "Conversation" }).boundingBox();
+      const replyBox = await page.getByRole("region", { name: "Your reply" }).boundingBox();
+      return conversation && replyBox
+        ? conversation.y + conversation.height <= replyBox.y + 1
+        : false;
+    })
+    .toBe(true);
 });
 
 test("the desk's You owe lane opens focus mode on those replies", async ({ page }) => {

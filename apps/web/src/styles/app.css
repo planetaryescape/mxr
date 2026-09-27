@@ -41,6 +41,29 @@
   animation: pending-pulse 1500ms var(--motion-ease) infinite;
 }
 
+/*
+ * The undo-send countdown drains once, linearly: it is a clock, not a UI
+ * transition. Reduced motion keeps the seconds and drops the bar.
+ */
+@utility countdown-drain {
+  animation: countdown-drain var(--countdown-duration, 10s) linear forwards;
+  transform-origin: left;
+}
+
+:root[data-motion="reduced"] .countdown-drain {
+  animation: none;
+  visibility: hidden;
+}
+
+@keyframes countdown-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
 @keyframes row-exit {
   to {
     opacity: 0;

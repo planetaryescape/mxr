@@ -65,6 +65,9 @@ export function useComposeSession(
     queryFn: () => loadInitialComposeSession(intent),
     retry: false,
     staleTime: Infinity,
+    // Reopening an intent (undoing a send, a reply closed and reopened)
+    // must read the saved file, not the session as it was first loaded.
+    gcTime: 0,
   });
 
   const [draft, setDraft] = useState<ComposeDraftState | null>(null);

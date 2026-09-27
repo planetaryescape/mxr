@@ -23,6 +23,7 @@ const PAGE_TITLES: Record<string, string> = {
   drafts: "Drafts",
   "reply-queue": "Reply queue",
   owed: "Owed replies",
+  focus: "Focus & reply",
   snoozed: "Snoozed",
   screener: "Screener",
   subscriptions: "Subscriptions",

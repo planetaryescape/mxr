@@ -31,6 +31,12 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
   { title: "Reader", intro: "", match: (action) => only(action, "reader") },
   { title: "Sidebar", intro: "", match: (action) => only(action, "sidebar") },
   { title: "Screener", intro: "", match: (action) => only(action, "screener") },
+  {
+    title: "Focus & reply",
+    intro:
+      "One conversation at a time. In the reply, ⌘Enter sends and moves on; Tab out of the reply (or Esc in the rich-text editor) to use these keys.",
+    match: (action) => only(action, "focus"),
+  },
 ];
 
 function isGlobal(action: Action): boolean {

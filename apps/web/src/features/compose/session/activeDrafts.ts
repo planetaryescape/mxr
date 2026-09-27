@@ -20,7 +20,16 @@ export async function loadInitialComposeSession(intent: ComposeIntent) {
   const active = readActiveDraft(intent.key);
   if (active?.draftPath) {
     try {
-      return await refreshComposeSession(active.draftPath);
+      const refreshed = await refreshComposeSession(active.draftPath);
+      // The refresh reads the file, which doesn't name the account; the
+      // entry kept it. Without it the send and safety check have no account.
+      return {
+        ...refreshed,
+        session: {
+          ...refreshed.session,
+          accountId: refreshed.session.accountId ?? active.accountId,
+        },
+      };
     } catch {
       forgetActiveDraft(intent.key);
     }

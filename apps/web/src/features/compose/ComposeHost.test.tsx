@@ -195,7 +195,13 @@ describe("ComposeHost send safety", () => {
 
     const send = await screen.findByRole("button", { name: "Send⌘↵" });
     fireEvent.click(send);
-    await waitFor(() => expect(toasts).toHaveBeenCalledWith("Sending in 5s", expect.anything()));
+    // The countdown toast: live seconds as its title, the 5s window as its life.
+    await waitFor(() =>
+      expect(toasts).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ duration: 5000 }),
+      ),
+    );
 
     // Every other way to send while the undo countdown runs.
     expect(send).toBeDisabled();

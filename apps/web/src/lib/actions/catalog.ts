@@ -10,6 +10,7 @@ import { analyticsActions } from "@/features/analytics/actions";
 import { askActions } from "@/features/ask/actions";
 import { composeActions } from "@/features/compose/actions";
 import { diagnosticsActions } from "@/features/diagnostics/actions";
+import { focusActions } from "@/features/focus/actions";
 import { mailVerbActions } from "@/features/mail-actions/verbActions";
 import { mailboxActions } from "@/features/mailbox/actions";
 import { lensesFromShell, savedSearchLenses } from "@/features/mailbox/lenses";
@@ -54,6 +55,7 @@ const featureActions: Action[] = [
   ...listActions,
   ...readerActions,
   ...screenerActions,
+  ...focusActions,
   ...diagnosticsActions,
   ...rulesActions,
   ...accountsActions,

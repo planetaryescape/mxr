@@ -14,20 +14,38 @@ import type { ComposeIntent } from "./useComposeSession";
 
 export type ComposeSurface = "inline" | "overlay" | "fullscreen";
 
+/**
+ * What a view hosting the inline composer (focus mode) can ask of the open
+ * session without owning it: the keys work from outside the editor too.
+ */
+export interface ComposeCommands {
+  /** The intent these commands act on, so a stale page can't send another. */
+  intentKey: string;
+  send: () => void;
+  /** Open "send and remind me if nobody replies" with its time field. */
+  sendAndRemind: () => void;
+  /** Open Draft for me and ask for a draft in the user's voice. */
+  draftForMe: () => void;
+}
+
 export interface ComposeUiState {
   intent: ComposeIntent | null;
   surface: ComposeSurface;
+  commands: ComposeCommands | null;
   openCompose: (intent: ComposeIntent, surface?: ComposeSurface) => void;
   setSurface: (surface: ComposeSurface) => void;
   closeCompose: () => void;
+  setCommands: (commands: ComposeCommands | null) => void;
 }
 
 export const useComposeUi = create<ComposeUiState>((set) => ({
   intent: null,
   surface: "overlay",
+  commands: null,
   openCompose: (intent, surface = "overlay") => set({ intent, surface }),
   setSurface: (surface) => set({ surface }),
   closeCompose: () => set({ intent: null }),
+  setCommands: (commands) => set({ commands }),
 }));
 
 /** Intent for a brand-new message (the global `c` shortcut). */

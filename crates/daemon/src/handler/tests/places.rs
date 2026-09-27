@@ -630,6 +630,14 @@ async fn a_sweep_never_takes_mail_its_preview_did_not_list() {
         .contains("preview it first"));
 }
 
+fn paper_trail_scope(fx: &Fixture) -> crate::handler::places::SweepScope {
+    crate::handler::places::SweepScope {
+        place: MailPlaceData::PaperTrail,
+        account_id: Some(fx.account.clone()),
+        sender_email: None,
+    }
+}
+
 /// The archive job rechecks pins chunk by chunk: a message pinned after
 /// the sweep started, in a later chunk, stays in the inbox and out of undo.
 #[tokio::test]
@@ -662,7 +670,7 @@ async fn a_sweep_job_leaves_out_messages_pinned_before_their_chunk() {
             message_ids: ids.clone(),
         },
         None,
-        super::mutations::ChunkGuard::SkipPinned,
+        super::mutations::ChunkGuard::Sweep(paper_trail_scope(&fx)),
     )
     .await
     .unwrap();
@@ -724,4 +732,140 @@ async fn a_bundle_pages_through_its_messages() {
         vec!["Receipt 4", "Receipt 3"]
     );
     assert_eq!(subjects(fx.send(page(4)).await), vec!["Receipt 0"]);
+}
+
+/// The job rechecks place membership chunk by chunk too: a sender moved to
+/// People while the sweep runs keeps its mail, counted as skipped.
+#[tokio::test]
+async fn a_sweep_job_leaves_out_a_sender_moved_before_its_chunk() {
+    let fx = Fixture::new().await;
+    let mut ids = Vec::new();
+    for index in 0..100 {
+        ids.push(
+            fx.inbound(
+                &fx.account,
+                ROBOT,
+                &format!("Receipt {index}"),
+                Duration::minutes(index),
+                false,
+            )
+            .await
+            .id,
+        );
+    }
+    let alerts = "status@alerts.example.com";
+    let mut later = Vec::new();
+    for index in 0..3 {
+        later.push(
+            fx.inbound(
+                &fx.account,
+                alerts,
+                &format!("Alert {index}"),
+                Duration::minutes(index),
+                false,
+            )
+            .await
+            .id,
+        );
+    }
+    ids.extend(later.iter().cloned());
+    // The second chunk's sender becomes a person before that chunk runs.
+    fx.send(Request::SetSenderKind {
+        account_id: fx.account.clone(),
+        sender_email: alerts.into(),
+        kind: Some(SenderKindData::People),
+    })
+    .await;
+    let started = super::mutations::start_mutation_job(
+        fx.state.clone(),
+        MutationCommand::Archive {
+            message_ids: ids.clone(),
+        },
+        None,
+        super::mutations::ChunkGuard::Sweep(paper_trail_scope(&fx)),
+    )
+    .await
+    .unwrap();
+    let ResponseData::JobStarted { job } = started else {
+        panic!("expected a job");
+    };
+    let job = fx.wait_for_job(&job.job_id).await;
+    assert_eq!(job.status, JobStatusData::Succeeded, "{job:?}");
+    assert_eq!(job.progress.succeeded, 100);
+    assert_eq!(job.progress.skipped, 3);
+    assert_eq!(
+        job.undo_ids.len(),
+        1,
+        "no undo for the chunk that archived nothing"
+    );
+    for id in &later {
+        assert!(fx.in_inbox(id).await, "moved to People mid-sweep");
+    }
+}
+
+/// An undo that restores only part of its messages keeps the rest under
+/// the same id for a retry, and says so instead of claiming success.
+#[tokio::test]
+async fn a_partly_failed_undo_keeps_what_failed_for_a_retry() {
+    let fx = Fixture::new().await;
+    let restorable = fx
+        .inbound(&fx.account, ROBOT, "Receipt", Duration::hours(1), false)
+        .await;
+    // A message whose account has no provider right now cannot be restored.
+    let offline = mxr_core::Account {
+        id: mxr_core::AccountId::new(),
+        name: "Offline".into(),
+        email: "offline@example.com".into(),
+        sync_backend: None,
+        send_backend: None,
+        enabled: true,
+    };
+    fx.state.store.insert_account(&offline).await.unwrap();
+    fx.inbox_label(&offline.id).await;
+    let stuck = fx
+        .inbound(&offline.id, ROBOT, "Receipt", Duration::hours(1), false)
+        .await;
+    let snapshot = |envelope: &Envelope| mxr_store::UndoEntrySnapshot {
+        message_id: envelope.id.clone(),
+        account_id: envelope.account_id.clone(),
+        provider_id: envelope.provider_id.clone(),
+        prior_flags_bits: 0,
+        prior_label_provider_ids: vec!["INBOX".into()],
+    };
+    let now = chrono::Utc::now().timestamp();
+    fx.state
+        .store
+        .write_undo_entry(&mxr_store::UndoEntry {
+            mutation_id: "undo-partial".into(),
+            kind: mxr_store::UndoableMutationKind::Archive,
+            snapshots: vec![snapshot(&restorable), snapshot(&stuck)],
+            applied_at: now,
+            expires_at: now + 60,
+        })
+        .await
+        .unwrap();
+
+    let message = fx
+        .refused(Request::UndoMutation {
+            mutation_id: "undo-partial".into(),
+        })
+        .await;
+    assert!(message.contains("restored 1, 1 failed"), "{message}");
+    let kept = fx
+        .state
+        .store
+        .read_undo_entry("undo-partial")
+        .await
+        .unwrap()
+        .expect("kept for a retry");
+    assert_eq!(kept.snapshots.len(), 1);
+    assert_eq!(kept.snapshots[0].message_id, stuck.id);
+
+    // The retry tries only what failed.
+    let again = fx
+        .refused(Request::UndoMutation {
+            mutation_id: "undo-partial".into(),
+        })
+        .await;
+    assert!(again.contains("restored 0, 1 failed"), "{again}");
 }

@@ -1994,6 +1994,10 @@ pub async fn run() -> anyhow::Result<()> {
             let result_tx_inner = result_tx.clone();
             let _ = submit_task(&queued, async move {
                 let verb = mutation_verb_past(&req);
+                let undo_id = match &req {
+                    Request::UndoMutation { mutation_id } => Some(mutation_id.clone()),
+                    _ => None,
+                };
                 let resp = ipc_call(&bg, req).await;
                 let outcome = match resp {
                     Ok(Response::Ok {
@@ -2065,7 +2069,22 @@ pub async fn run() -> anyhow::Result<()> {
                             | ResponseData::DeskThreadsRestored { .. }
                             | ResponseData::MessagesPinned { .. },
                     }) => Ok(effect),
-                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => {
+                        // A partly failed undo keeps what failed under the
+                        // same id: `u` again retries just those.
+                        if let (Some(mutation_id), Some(failed)) =
+                            (undo_id, undo_retry_count(&message))
+                        {
+                            let _ =
+                                result_tx_inner.send(AsyncResult::UndoCaptured(app::PendingUndo {
+                                    action: app::UndoAction::Mutations(vec![mutation_id]),
+                                    verb_past: "Not yet restored:".into(),
+                                    count: failed,
+                                    applied_at: std::time::Instant::now(),
+                                }));
+                        }
+                        Err(MxrError::Ipc(message))
+                    }
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response to mutation".into())),
                 };
@@ -3335,6 +3354,17 @@ pub async fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// From the daemon's "undo: partly done: restored N, M failed and can be
+/// retried" refusal, how many are left to retry.
+fn undo_retry_count(message: &str) -> Option<u32> {
+    let rest = message.strip_prefix("undo: partly done: restored ")?;
+    let (_, rest) = rest.split_once(", ")?;
+    let (failed, rest) = rest.split_once(' ')?;
+    rest.starts_with("failed and can be retried")
+        .then(|| failed.parse().ok())
+        .flatten()
+}
+
 /// How often a sweep checks on its archive job.
 const SWEEP_JOB_POLL: std::time::Duration = std::time::Duration::from_millis(300);
 
@@ -3458,3 +3488,17 @@ pub(crate) fn desk_request() -> Request {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod undo_retry_tests {
+    #[test]
+    fn a_partly_failed_undo_says_how_many_to_retry() {
+        assert_eq!(
+            super::undo_retry_count(
+                "undo: partly done: restored 3, 2 failed and can be retried with the same undo (x)"
+            ),
+            Some(2)
+        );
+        assert_eq!(super::undo_retry_count("undo: window expired"), None);
+    }
+}

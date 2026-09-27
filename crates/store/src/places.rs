@@ -13,7 +13,6 @@ use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{MessageFlags, UnsubscribeMethod};
 use sqlx::Row;
-use std::collections::HashSet;
 use std::time::Instant;
 
 /// One inbox message with what deciding its kind needs.
@@ -75,30 +74,6 @@ impl super::Store {
         row.as_ref().map(decode_place_message).transpose()
     }
 
-    /// Which of `message_ids` are pinned right now: a sweep checks each
-    /// chunk just before archiving it.
-    pub async fn pinned_message_ids(
-        &self,
-        message_ids: &[MessageId],
-    ) -> Result<HashSet<MessageId>, sqlx::Error> {
-        if message_ids.is_empty() {
-            return Ok(HashSet::new());
-        }
-        let wanted = encode_json(
-            &message_ids
-                .iter()
-                .map(MessageId::as_str)
-                .collect::<Vec<_>>(),
-        )?;
-        let rows = sqlx::query(PINNED_AMONG_SQL)
-            .bind(wanted)
-            .fetch_all(self.reader())
-            .await?;
-        rows.iter()
-            .map(|row| decode_id(row.try_get::<&str, _>("message_id")?))
-            .collect()
-    }
-
     /// Pin or unpin messages. Returns how many changed; unknown ids and
     /// messages already in the wanted state are skipped.
     pub async fn set_message_pins(
@@ -139,10 +114,6 @@ impl super::Store {
         Ok(result.rows_affected())
     }
 }
-
-/// `?1` a JSON array of message ids; each is a primary-key lookup.
-const PINNED_AMONG_SQL: &str = "SELECT p.message_id FROM json_each(?1) wanted
-     CROSS JOIN message_pins p ON p.message_id = wanted.value";
 
 fn hidden_flags() -> i64 {
     i64::from((MessageFlags::TRASH | MessageFlags::SPAM).bits())
@@ -269,14 +240,6 @@ mod tests {
 
         let one = plan(&store, &place_message_sql()).await;
         assert!(!one.iter().any(|s| s.starts_with("SCAN")), "{one:#?}");
-
-        let pins = plan(&store, PINNED_AMONG_SQL).await;
-        assert!(
-            pins.iter()
-                .any(|s| s
-                    .starts_with("SEARCH p USING COVERING INDEX sqlite_autoindex_message_pins_1")),
-            "{pins:#?}"
-        );
     }
 
     #[tokio::test]
@@ -335,11 +298,6 @@ mod tests {
         );
         let pinned = store.place_candidates(&account.id).await.unwrap();
         assert!(pinned.iter().any(|m| m.id == ids[0] && m.pinned));
-
-        assert_eq!(
-            store.pinned_message_ids(&ids).await.unwrap(),
-            HashSet::from([ids[0].clone()])
-        );
 
         assert_eq!(store.set_message_pins(&ids[..1], false).await.unwrap(), 1);
         let archived = store.place_message(&ids[2]).await.unwrap().unwrap();

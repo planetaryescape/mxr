@@ -394,10 +394,25 @@ const MAX_SWEEP_PREVIEWS: usize = 64;
 
 /// What a sweep covers.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct SweepScope {
-    place: MailPlaceData,
-    account_id: Option<AccountId>,
-    sender_email: Option<String>,
+pub(super) struct SweepScope {
+    pub place: MailPlaceData,
+    pub account_id: Option<AccountId>,
+    pub sender_email: Option<String>,
+}
+
+/// Which of `ids` a sweep of `scope` may still archive: in the place and
+/// unpinned right now. The sweep's job asks before every chunk.
+pub(super) async fn still_sweepable(
+    state: &AppState,
+    scope: &SweepScope,
+    ids: &[MessageId],
+) -> Result<HashSet<MessageId>, HandlerError> {
+    let allowed: HashSet<MessageId> = ids.iter().cloned().collect();
+    Ok(sweep_selection(state, scope, Some(&allowed))
+        .await?
+        .message_ids
+        .into_iter()
+        .collect())
 }
 
 struct SweepPreviewEntry {
@@ -582,7 +597,7 @@ pub(super) async fn sweep_place(
             message_ids: selection.message_ids,
         },
         None,
-        mutations::ChunkGuard::SkipPinned,
+        mutations::ChunkGuard::Sweep(scope),
     )
     .await?;
     let ResponseData::JobStarted { job } = started else {

@@ -1,12 +1,19 @@
 import { Link } from "@tanstack/react-router";
 import { Check } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { useDeskQuery, type Desk, type DeskElsewhere, type DeskLaneKind } from "./api";
+import {
+  DESK_FULL_LANE_LIMIT,
+  DESK_LANE_LIMIT,
+  useDeskQuery,
+  type Desk,
+  type DeskElsewhere,
+  type DeskLaneKind,
+} from "./api";
 import { deskHeadline, LANE_TITLES } from "./deskCopy";
 import { elsewhereLinks } from "./deskLinks";
-import { deskGroups } from "./deskRows";
+import { deskGroups, partialLane } from "./deskRows";
 import { markDoneWaiting, useDoneWaiting } from "./doneWaiting";
 import { DeskRow } from "./DeskRow";
 import { invalidateMailQueries } from "@/features/mail-actions/mailMutations";
@@ -29,7 +36,10 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
  */
 export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
   const account = useUiPrefs((s) => s.accountScope);
-  const desk = useDeskQuery();
+  // A lane's page starts with the first rows of each lane and can ask for
+  // the whole lane; the choice resets when the lane changes.
+  const [wholeLane, setWholeLane] = useState<DeskLaneKind | null>(null);
+  const desk = useDeskQuery(lane && wholeLane === lane ? DESK_FULL_LANE_LIMIT : DESK_LANE_LIMIT);
   const ops = usePendingMailOps((s) => s.ops);
   const hidden = useDoneWaiting((s) => s.hidden);
   const { groups, index } = useMemo(
@@ -97,6 +107,7 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
 
   const title = lane ? LANE_TITLES[lane] : "Desk";
   const laneTotal = lane && desk.data ? desk.data[lane].total : null;
+  const partial = partialLane(desk.data, lane);
   return (
     <ListWithReader
       basePath="/desk"
@@ -111,6 +122,20 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
         ) : null
       }
       heading={!lane && desk.data ? <DeskHeading desk={desk.data} /> : undefined}
+      toolbar={
+        lane && partial ? (
+          <p className="text-[12px] text-muted-foreground">
+            Showing {partial.shown.toLocaleString()} of {partial.total.toLocaleString()}.{" "}
+            <button
+              type="button"
+              onClick={() => setWholeLane(lane)}
+              className="text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-primary"
+            >
+              Show all
+            </button>
+          </p>
+        ) : undefined
+      }
       footer={!lane && desk.data ? <Elsewhere counts={desk.data.elsewhere} /> : null}
       groups={groups}
       scopeKey={`desk|${lane ?? "all"}|${account ?? "all"}`}

@@ -101,3 +101,16 @@ export function deskGroups(
   }
   return { groups, index };
 }
+
+/**
+ * On a lane's page, how much of the lane the daemon sent, when that is
+ * less than all of it ("Showing 100 of 143").
+ */
+export function partialLane(
+  desk: Desk | undefined,
+  lane: DeskLaneKind | undefined,
+): { shown: number; total: number } | null {
+  if (!desk || !lane) return null;
+  const { rows, total } = desk[lane];
+  return rows.length < total ? { shown: rows.length, total } : null;
+}

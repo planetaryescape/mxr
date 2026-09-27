@@ -257,9 +257,9 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
     let facts = WindowFacts::from_inputs(inputs);
 
     for thread in inputs.messages.chunk_by(|a, b| a.thread_id == b.thread_id) {
-        let Some(latest) = thread.last() else {
+        if thread.is_empty() {
             continue;
-        };
+        }
 
         // Everything-else counts and the quiet line look at recent inbox
         // mail, message by message.
@@ -305,7 +305,24 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
         if thread.iter().any(|m| m.snoozed) {
             continue;
         }
-        if let Some(row) = thread_row(inputs, &facts, thread, latest) {
+        // A message dated in the future (a bad Date header) must not pose
+        // as the newest and decide the lane: who wrote last is judged on
+        // mail up to a day ahead. Messages are in date order, so those are
+        // a suffix. Verbs still cover the whole thread.
+        let cutoff = inputs.now + Duration::days(1);
+        let current = &thread[..thread.partition_point(|m| m.date <= cutoff)];
+        let Some(latest) = current.last() else {
+            continue;
+        };
+        if let Some(row) = thread_row(
+            inputs,
+            &facts,
+            Conversation {
+                all: thread,
+                current,
+            },
+            latest,
+        ) {
             lanes.rows.push(row);
         }
     }
@@ -313,19 +330,28 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
     lanes
 }
 
+/// A thread's messages: all of them (what a verb acts on) and those not
+/// dated in the future (what decides the lane).
+#[derive(Clone, Copy)]
+struct Conversation<'a> {
+    all: &'a [DeskMessage],
+    current: &'a [DeskMessage],
+}
+
 fn thread_row(
     inputs: &AccountInputs<'_>,
     facts: &WindowFacts,
-    thread: &[DeskMessage],
+    conversation: Conversation<'_>,
     latest: &DeskMessage,
 ) -> Option<DraftRow> {
+    let thread = conversation.current;
     let now = inputs.now;
     let latest_inbound = thread.iter().rev().find(|m| !inputs.is_outbound(m));
     let latest_outbound = thread.iter().rev().find(|m| inputs.is_outbound(m));
     let in_inbox = thread.iter().any(|m| m.in_inbox && !m.trashed);
 
     if inputs.is_outbound(latest) {
-        return waiting_row(inputs, thread, latest, latest_inbound.is_some());
+        return waiting_row(inputs, conversation, latest, latest_inbound.is_some());
     }
 
     let inbound = latest_inbound?;
@@ -379,7 +405,7 @@ fn thread_row(
         row: base_row(
             inputs,
             lane,
-            thread,
+            conversation.all,
             inbound,
             email,
             inbound
@@ -397,14 +423,16 @@ fn thread_row(
 
 fn waiting_row(
     inputs: &AccountInputs<'_>,
-    thread: &[DeskMessage],
+    conversation: Conversation<'_>,
     sent: &DeskMessage,
     has_inbound: bool,
 ) -> Option<DraftRow> {
+    let thread = conversation.current;
     let now = inputs.now;
     if sent.date > now - Duration::hours(WAITING_MIN_HOURS)
         || sent.date < now - Duration::days(DESK_WINDOW_DAYS)
-        || waiting_set_aside(thread, inputs.dismissed.get(&sent.thread_id))
+        // Done waiting counts every stored message, future-dated or not.
+        || waiting_set_aside(conversation.all, inputs.dismissed.get(&sent.thread_id))
         || waiting_archived(thread, inputs.is_self)
     {
         return None;
@@ -434,7 +462,7 @@ fn waiting_row(
         row: base_row(
             inputs,
             DeskLaneKind::Waiting,
-            thread,
+            conversation.all,
             sent,
             email,
             recipient
@@ -741,6 +769,27 @@ mod tests {
             .unwrap();
         assert_eq!(theo.row.lane, DeskLaneKind::PeopleNew);
         assert_eq!(theo.row.reason, "wrote to you");
+    }
+
+    #[test]
+    fn a_future_dated_message_cannot_hide_an_owed_reply() {
+        let thread = ThreadId::new();
+        let mut messages = vec![
+            message(&thread, ME, "maya@example.com", 30),
+            message(&thread, "maya@example.com", ME, 5),
+            // Your outbound with a bogus Date a year ahead.
+            message(&thread, ME, "maya@example.com", 0),
+        ];
+        messages[2].date = now() + Duration::days(365);
+        let lanes = lanes(&messages, &[]);
+        let row = &lanes.rows[0].row;
+        assert_eq!(row.lane, DeskLaneKind::Owed);
+        assert_eq!(row.message_id, messages[1].id);
+        assert_eq!(
+            row.message_ids.len(),
+            3,
+            "verbs still cover the whole thread"
+        );
     }
 
     #[test]

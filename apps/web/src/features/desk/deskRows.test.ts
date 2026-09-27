@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { Desk, DeskRow } from "./api";
-import { DESK_LANE_CAP, deskGroups } from "./deskRows";
+import { DESK_LANE_CAP, deskGroups, partialLane } from "./deskRows";
 import type { PendingMailOp } from "@/features/mail-actions/pendingMailOps";
 
 function row(lane: DeskRow["lane"], id: string): DeskRow {
@@ -88,5 +88,11 @@ describe("desk groups", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0]!.rows).toHaveLength(7);
     expect(groups[0]!.more).toBeUndefined();
+  });
+
+  test("a lane page knows when the daemon sent only part of the lane", () => {
+    expect(partialLane(desk(), "owed")).toEqual({ shown: 7, total: 9 });
+    expect(partialLane(desk(), "due")).toBeNull();
+    expect(partialLane(desk(), undefined)).toBeNull();
   });
 });

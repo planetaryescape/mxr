@@ -37,11 +37,12 @@ import { AccountSwitcher } from "@/components/AccountSwitcher";
 import { ThemePicker } from "@/components/ThemePicker";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useDeskQuery } from "@/features/desk/api";
+import { useDeskQuery, type Desk } from "@/features/desk/api";
 import { lensesFromShell, type MailLens } from "@/features/mailbox/lenses";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
 import { fetchReplyQueue } from "@/features/reply-queue/api";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
+import { plural } from "@/lib/format";
 import { formatChord } from "@/lib/keys/chord";
 import { useScopeController } from "@/lib/keys/controllers";
 import { cn } from "@/lib/utils";
@@ -50,11 +51,13 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 
 type Icon = ComponentType<{ className?: string }>;
 
-interface NavEntry {
+export interface NavEntry {
   key: string;
   to: string;
   /** Query the place is defined by (a desk lane). */
-  search?: { lane: "waiting" };
+  search?: { lane: "waiting" } | { account?: string };
+  /** Says what a count covers when the page it opens shows less of it. */
+  hint?: string;
   label: string;
   Icon: Icon;
   /** Only work carries a count: owed and due, the reply queue, screening. */
@@ -141,6 +144,28 @@ function folderEntries(lenses: MailLens[]): NavEntry[] {
   return entries;
 }
 
+/**
+ * Screener, only while someone new waits for a decision. Same rule as the
+ * desk's link: it opens the first account with senders waiting. Across
+ * every account the count is a sum, so the entry says so.
+ */
+export function screenerEntry(desk: Desk): NavEntry | null {
+  const count = desk.elsewhere.screener;
+  if (count <= 0) return null;
+  return {
+    key: "screener",
+    to: "/screener",
+    search: { account: desk.elsewhere.screener_account ?? undefined },
+    label: "Screener",
+    Icon: Shield,
+    count,
+    hint: desk.account_id
+      ? undefined
+      : `${plural(count, "new sender")} across your accounts; opens the first account with any`,
+    shortcut: "g S",
+  };
+}
+
 /** Sections whose entries open a mail list, so the keyboard follows. */
 const LIST_SECTIONS = new Set(["places", "saved", "more", "labels"]);
 
@@ -149,8 +174,10 @@ function isActive(path: string, lane: unknown, entry: NavEntry): boolean {
   if (base === "/settings/theme") return path.startsWith("/settings");
   const onPath = path === base || path.startsWith(`${base}/`);
   // The desk and "Waiting on" share a path; the lane tells them apart.
-  if (base === "/desk")
-    return onPath && (entry.search?.lane ?? null) === (lane === "waiting" ? "waiting" : null);
+  if (base === "/desk") {
+    const entryLane = entry.search && "lane" in entry.search ? entry.search.lane : null;
+    return onPath && entryLane === (lane === "waiting" ? "waiting" : null);
+  }
   return onPath;
 }
 
@@ -180,7 +207,6 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
     const labels = lenses.filter((lens) => lens.section === "labels");
     const saved = lenses.filter((lens) => lens.section === "saved");
     const deskWork = desk.data ? desk.data.owed.total + desk.data.due.total : undefined;
-    const screener = desk.data?.elsewhere.screener ?? 0;
     const places: NavEntry[] = [
       { key: "desk", to: "/desk", label: "Desk", Icon: LampDesk, count: deskWork, shortcut: "g d" },
       { key: "inbox", to: "/m/inbox", label: "Inbox", Icon: Inbox, shortcut: "g i" },
@@ -202,16 +228,8 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       },
       { key: "snoozed", to: "/snoozed", label: "Snoozed", Icon: Clock, shortcut: "g n" },
     ];
-    if (screener > 0) {
-      places.push({
-        key: "screener",
-        to: "/screener",
-        label: "Screener",
-        Icon: Shield,
-        count: screener,
-        shortcut: "g S",
-      });
-    }
+    const screenerPlace = desk.data ? screenerEntry(desk.data) : null;
+    if (screenerPlace) places.push(screenerPlace);
     const result: NavSection[] = [{ id: "places", foldable: false, entries: places }];
     if (saved.length > 0) {
       result.push({
@@ -425,6 +443,7 @@ function SidebarLink({
     <Link
       to={entry.to}
       search={entry.search}
+      title={entry.hint}
       onClick={onActivate}
       data-nav-index={index}
       aria-current={active ? "page" : undefined}

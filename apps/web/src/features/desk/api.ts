@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";
 import type { components } from "@/api/generated";
@@ -26,12 +26,15 @@ export const DESK_LANES = [
  */
 export const DESK_LANE_LIMIT = 100;
 
-export function deskKey(account: string | null) {
-  return ["desk", account ?? "all"] as const;
+/** A lane's page can ask for all of it; the daemon composes the same desk. */
+export const DESK_FULL_LANE_LIMIT = 5000;
+
+export function deskKey(account: string | null, laneLimit = DESK_LANE_LIMIT) {
+  return ["desk", account ?? "all", laneLimit] as const;
 }
 
-export function fetchDesk(account: string | null): Promise<Desk> {
-  const query = new URLSearchParams({ lane_limit: String(DESK_LANE_LIMIT) });
+export function fetchDesk(account: string | null, laneLimit = DESK_LANE_LIMIT): Promise<Desk> {
+  const query = new URLSearchParams({ lane_limit: String(laneLimit) });
   if (account) query.set("account", account);
   return apiFetch<Desk>(`/api/v1/mail/desk?${query.toString()}`);
 }
@@ -40,12 +43,14 @@ export function fetchDesk(account: string | null): Promise<Desk> {
  * The desk for the current account scope. The sidebar badge and the desk
  * page share this query, so a mutation's invalidation updates both.
  */
-export function useDeskQuery() {
+export function useDeskQuery(laneLimit = DESK_LANE_LIMIT) {
   const account = useUiPrefs((s) => s.accountScope);
   return useQuery({
-    queryKey: deskKey(account),
-    queryFn: () => fetchDesk(account),
+    queryKey: deskKey(account, laneLimit),
+    queryFn: () => fetchDesk(account, laneLimit),
     staleTime: 15_000,
     refetchInterval: 60_000,
+    // Asking for a whole lane keeps the rows already shown on screen.
+    placeholderData: keepPreviousData,
   });
 }

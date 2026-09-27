@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { useEffect } from "react";
 
@@ -8,7 +8,7 @@ import { fetchThread } from "@/features/mailbox/api";
 import { Centered } from "@/features/mailbox/MailViewParts";
 import { useOpenThread } from "@/state/openThreadStore";
 
-import { fetchThreadContext, threadContextKey } from "./context/api";
+import { threadContextQuery, threadGistQuery } from "./context/api";
 import { ReaderSkeleton } from "./ReaderSkeleton";
 import { ThreadReader } from "./ThreadReader";
 
@@ -22,12 +22,14 @@ export function ThreadPane({ threadId }: { threadId: string }) {
   // its reserved gist slot are in place before the first message paints:
   // nothing below them moves afterwards. Both are local reads; a failed
   // context read just leaves the block out.
-  const context = useQuery({
-    queryKey: threadContextKey(threadId),
-    queryFn: () => fetchThreadContext(threadId),
-    staleTime: 30_000,
-  });
+  const context = useQuery(threadContextQuery(threadId));
   const llm = useLlmStatus();
+  // Ask for the gist as soon as the thread is known, not after the reader
+  // mounts: the model is the slow part.
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (llm.enabled) void queryClient.prefetchQuery(threadGistQuery(threadId));
+  }, [llm.enabled, queryClient, threadId]);
   const setOpenThread = useOpenThread((s) => s.setThreadId);
   useEffect(() => {
     setOpenThread(threadId);

@@ -26,6 +26,25 @@ type GistResponse = Extract<Schemas["ResponseData"], { kind: "ThreadGist" }>;
 export const threadContextKey = (threadId: string) => ["thread", threadId, "context"] as const;
 export const threadGistKey = (threadId: string) => ["thread", threadId, "gist"] as const;
 
+/** Query options shared by the pane (which waits for it) and the reader. */
+export function threadContextQuery(threadId: string) {
+  return {
+    queryKey: threadContextKey(threadId),
+    queryFn: () => fetchThreadContext(threadId),
+    staleTime: 30_000,
+  };
+}
+
+/** The gist: cached by the daemon per newest message, so no retries here. */
+export function threadGistQuery(threadId: string) {
+  return {
+    queryKey: threadGistKey(threadId),
+    queryFn: () => fetchThreadGist(threadId),
+    staleTime: 5 * 60_000,
+    retry: false,
+  };
+}
+
 export async function fetchThreadContext(threadId: string): Promise<ThreadContext> {
   const response = await apiFetch<ContextResponse>(
     `/api/v1/mail/threads/${encodeURIComponent(threadId)}/context`,

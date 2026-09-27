@@ -58,10 +58,12 @@ export function MessageBody({
   );
 
   // The gist can land after the frame has loaded; mark (or unmark) then.
+  // Frames that never had a quote are left alone.
+  const marked = useRef(false);
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || (!highlight && !marked.current)) return;
     const body = iframeRef.current?.contentDocument?.body;
-    if (body) markQuoteInDocument(body, highlight ?? "");
+    if (body) marked.current = markQuoteInDocument(body, highlight ?? "") !== null;
   }, [highlight, loaded]);
 
   function resizeToContent() {

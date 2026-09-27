@@ -41,9 +41,9 @@ mxr briefing context THREAD_ID --format json    # {context, gist}
 Gist      The canary stays at 5% until the dashboard is quiet.
 Asks you  confirm who owns the rollout check
           "Can you confirm who owns the rollout check before Monday?"
-With      Maya Ortiz <maya@example.com>, 41 emails (23 from them, 18 from you) · you usually reply within 4h · last spoke Sat 12 Sep
-You owe   a reply since Thu 24 Sep
-Promises  you: send the runbook link, due Fri 2 Oct
+With      Maya (maya@example.com): 41 emails · you usually reply within 4h · last spoke 12 Sep
+You owe   a reply since Thu
+Promises  You promised: send the runbook link, due 2 Oct
 AI        local model qwen2.5:7b · from this thread only
 ```
 

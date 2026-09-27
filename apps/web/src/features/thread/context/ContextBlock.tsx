@@ -12,13 +12,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 import type { ThreadContext, ThreadGist } from "./api";
-import {
-  firstName,
-  owedReplyLabel,
-  promiseViews,
-  provenanceLabel,
-  relationshipParts,
-} from "./contextFormat";
+import { contextFacts, firstName, promiseViews, provenanceLabel } from "./contextFormat";
 
 export interface GistState {
   /** A model is configured, so the slot is reserved. */
@@ -45,9 +39,7 @@ export function ContextBlock({
   resolving,
 }: ContextBlockProps) {
   const person = context?.counterparty ?? null;
-  const facts = person ? relationshipParts(person) : [];
-  const owed = context ? owedReplyLabel(context) : null;
-  if (owed) facts.push(owed);
+  const facts = context ? contextFacts(context) : [];
   const promises = context ? promiseViews(context) : [];
   if (!gist.reserved && facts.length === 0 && promises.length === 0) return null;
 

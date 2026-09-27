@@ -9,8 +9,8 @@ describe("findQuote", () => {
     const text =
       "Rollout risk.\nCan you confirm who owns the\nrollout check before Monday?\nThanks";
     const range = findQuote(text, QUOTE);
-    expect(range).not.toBeNull();
-    expect(text.slice(range!.start, range!.end)).toBe(
+    if (!range) throw new Error("quote not found");
+    expect(text.slice(range.start, range.end)).toBe(
       "Can you confirm who owns the\nrollout check before Monday?",
     );
   });

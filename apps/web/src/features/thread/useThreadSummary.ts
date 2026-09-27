@@ -9,7 +9,6 @@ import { toast } from "sonner";
 
 import { summarizeThread } from "@/features/mailbox/api";
 import type { ThreadResponse } from "@/features/mailbox/types";
-import { useLlmStatus } from "@/features/llm/useLlmStatus";
 import { normalizeThreadSummary, type ThreadSummaryView } from "./ThreadInsights";
 
 export function useThreadSummary(data: ThreadResponse) {
@@ -18,20 +17,13 @@ export function useThreadSummary(data: ThreadResponse) {
   );
 
   const summarize = useMutation({
-    mutationFn: (_input: { silent: boolean }) => summarizeThread(data.thread.id),
-    onSuccess: (result, input) => {
+    mutationFn: () => summarizeThread(data.thread.id),
+    onSuccess: (result) => {
       const next = normalizeThreadSummary(result);
       if (next) setSummary(next);
-      else if (!input.silent)
-        toast.error("Summary failed", { description: "The daemon returned no summary." });
+      else toast.error("Summary failed", { description: "The daemon returned no summary." });
     },
-    onError: (error, input) => {
-      if (!input.silent) toast.error("Summary failed", { description: error.message });
-    },
+    onError: (error) => toast.error("Summary failed", { description: error.message }),
   });
-  // Long threads get no automatic overview: the context block's gist covers
-  // what they are about, and `y` asks for the full summary.
-  const llm = useLlmStatus();
-
-  return { summary, setSummary, summarize, llm };
+  return { summary, setSummary, summarize };
 }

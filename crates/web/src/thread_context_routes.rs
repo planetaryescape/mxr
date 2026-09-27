@@ -4,7 +4,6 @@
 
 use super::routes_v6::{dispatch, passthrough};
 use super::*;
-use std::str::FromStr;
 
 #[derive(Debug, Deserialize)]
 struct TokenQuery {
@@ -18,11 +17,6 @@ struct GistQuery {
     token: Option<String>,
     #[serde(default)]
     refresh: bool,
-}
-
-fn parse_thread_id(raw: &str) -> Result<ThreadId, BridgeError> {
-    ThreadId::from_str(raw)
-        .map_err(|err| BridgeError::BadRequest(format!("invalid thread_id: {err}")))
 }
 
 async fn thread_context(

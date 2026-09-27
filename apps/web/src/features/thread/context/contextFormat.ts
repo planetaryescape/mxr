@@ -4,7 +4,7 @@
  * when recent and absolute when older.
  */
 
-import { plural } from "@/lib/format";
+import { plural, startOfDay } from "@/lib/format";
 
 import type { AiProvenance, Commitment, ThreadContext, ThreadCounterparty } from "./api";
 
@@ -21,10 +21,6 @@ export function shortDuration(seconds: number): string {
   if (minutes < 60) return `${minutes}m`;
   if (minutes < 48 * 60) return `${Math.ceil(minutes / 60)}h`;
   return `${Math.ceil(minutes / (24 * 60))}d`;
-}
-
-function startOfDay(date: Date): number {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
 /** "today", "yesterday", "Thu", "12 Sep", "12 Sep 2025". */
@@ -65,6 +61,15 @@ export function relationshipParts(person: ThreadCounterparty, now = new Date()):
       : "your first conversation",
   );
   return parts;
+}
+
+/** The facts line: how you know them, then whether you owe a reply. */
+export function contextFacts(context: ThreadContext, now = new Date()): string[] {
+  const owed = owedReplyLabel(context, now);
+  return [
+    ...(context.counterparty ? relationshipParts(context.counterparty, now) : []),
+    ...(owed ? [owed] : []),
+  ];
 }
 
 export function owedReplyLabel(context: ThreadContext, now = new Date()): string | null {

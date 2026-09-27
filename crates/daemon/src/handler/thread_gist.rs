@@ -8,7 +8,7 @@
 //! is returned, so a client can highlight it without trusting the model.
 //! Answers are cached per thread and newest message.
 
-use super::thread_context::load_thread_context;
+use super::thread_context::{build_thread_context, owned_addresses};
 use super::HandlerResult;
 use crate::state::{llm_feature_is_local, relationship_data_allowed, AppState};
 use mxr_core::id::{MessageId, ThreadId};
@@ -25,6 +25,7 @@ use mxr_reader::{clean, ReaderConfig};
 use mxr_store::{new_briefing_id, BriefingKind, ContextBriefing};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::{BTreeSet, HashMap};
 
 /// Bump when the prompt or the output rules change, so cached gists
 /// written under the old rules regenerate.
@@ -122,19 +123,13 @@ pub(super) async fn get_thread_gist(
         }
     }
 
+    let owned = owned_addresses(state, &account_id).await?;
     let facts = if share_history {
-        Some(load_thread_context(state, thread_id).await?)
+        Some(build_thread_context(state, thread_id, &envelopes, &owned).await?)
     } else {
         None
     };
     let texts = message_texts(state, &envelopes).await;
-    let owned = state
-        .store
-        .list_account_addresses(&account_id)
-        .await?
-        .into_iter()
-        .map(|address| address.email.to_ascii_lowercase())
-        .collect::<Vec<_>>();
     let history = facts.as_ref().and_then(history_line);
     let prompt = build_user_prompt(&owned, &envelopes, &texts, history.as_deref());
     let mut sources = vec![AiSourceData::ThisThread];
@@ -263,13 +258,16 @@ fn gist_content_hash(envelopes: &[Envelope], share_history: bool, model: &str) -
     base16ct::lower::encode_string(&hash.finalize())
 }
 
-/// Each message's readable text: the plain part when there is one, else the
-/// HTML reduced to text. The same text the quote is verified against.
+/// Readable text for the newest messages that fit the prompt budget, oldest
+/// first: the plain part when there is one, else the HTML reduced to text,
+/// capped per message. The same text the quote is verified against. Older
+/// messages past the budget are never read.
 async fn message_texts(state: &AppState, envelopes: &[Envelope]) -> Vec<(MessageId, String)> {
-    let mut out = Vec::with_capacity(envelopes.len());
-    for envelope in envelopes {
+    let mut out = Vec::new();
+    let mut used = 0usize;
+    for envelope in envelopes.iter().rev() {
         let body = state.store.get_body(&envelope.id).await.ok().flatten();
-        let text = match body {
+        let mut text = match body {
             Some(body) if body.text_plain.is_some() || body.text_html.is_some() => {
                 let cleaned = clean(
                     body.text_plain.as_deref(),
@@ -285,13 +283,19 @@ async fn message_texts(state: &AppState, envelopes: &[Envelope]) -> Vec<(Message
             }
             _ => envelope.snippet.clone(),
         };
+        mxr_core::text::truncate_to_char_boundary(&mut text, MESSAGE_MAX_CHARS);
+        if used + text.len() > TRANSCRIPT_MAX_CHARS && !out.is_empty() {
+            break;
+        }
+        used += text.len();
         out.push((envelope.id.clone(), text));
     }
+    out.reverse();
     out
 }
 
 fn build_user_prompt(
-    owned: &[String],
+    owned: &BTreeSet<String>,
     envelopes: &[Envelope],
     texts: &[(MessageId, String)],
     history: Option<&str>,
@@ -304,29 +308,24 @@ fn build_user_prompt(
         prompt.push_str(&format!("- {email}\n"));
     }
 
-    // Newest messages matter most: keep them and drop the oldest first.
-    let mut blocks = Vec::new();
-    let mut used = 0usize;
-    for (envelope, (_, text)) in envelopes.iter().zip(texts).rev() {
-        let mut body = text.trim().to_string();
-        mxr_core::text::truncate_to_char_boundary(&mut body, MESSAGE_MAX_CHARS);
-        let from_owner = owned.contains(&envelope.from.email.to_ascii_lowercase());
-        let block = format!(
-            "[msg_id={}]\nFrom: {}{}\nDate: {}\nSubject: {}\n{}\n",
-            envelope.id,
-            envelope.from.email,
-            if from_owner { " (you)" } else { "" },
-            envelope.date.to_rfc3339(),
-            envelope.subject,
-            body,
-        );
-        if used + block.len() > TRANSCRIPT_MAX_CHARS && !blocks.is_empty() {
-            break;
-        }
-        used += block.len();
-        blocks.push(block);
-    }
-    blocks.reverse();
+    let bodies: HashMap<&MessageId, &str> =
+        texts.iter().map(|(id, text)| (id, text.as_str())).collect();
+    let blocks: Vec<String> = envelopes
+        .iter()
+        .filter_map(|envelope| {
+            let body = bodies.get(&envelope.id)?;
+            let from_owner = owned.contains(&envelope.from.email.to_ascii_lowercase());
+            Some(format!(
+                "[msg_id={}]\nFrom: {}{}\nDate: {}\nSubject: {}\n{}\n",
+                envelope.id,
+                envelope.from.email,
+                if from_owner { " (you)" } else { "" },
+                envelope.date.to_rfc3339(),
+                envelope.subject,
+                body.trim(),
+            ))
+        })
+        .collect();
 
     let mut untrusted = String::new();
     if let Some(history) = history {

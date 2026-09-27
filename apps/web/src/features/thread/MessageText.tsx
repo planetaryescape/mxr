@@ -121,8 +121,10 @@ function stripQuoteMarks(text: string): string {
 }
 
 function Paragraphs({ text, highlight }: { text: string; highlight?: string }) {
-  const tidy = text.replace(/\n{3,}/g, "\n\n").replace(/^\n+|\n+$/g, "");
-  const range = highlight ? findQuote(tidy, highlight) : null;
+  const { tidy, range } = useMemo(() => {
+    const cleaned = text.replace(/\n{3,}/g, "\n\n").replace(/^\n+|\n+$/g, "");
+    return { tidy: cleaned, range: highlight ? findQuote(cleaned, highlight) : null };
+  }, [text, highlight]);
   return (
     <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
       {range ? (

@@ -269,7 +269,7 @@ function Body({
       imagesAllowed={allowRemote}
       onShowImages={() => {
         onAllowRemote();
-        if (view !== "formatted") onShowFormatted();
+        onShowFormatted();
       }}
       senderEmail={senderEmail}
       onAlwaysAllowSender={allowSender}

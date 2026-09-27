@@ -1547,5 +1547,8 @@ async fn opened_thread_shows_its_context_above_the_messages() {
         output.contains("Gist      Maya wants the deck."),
         "{output}"
     );
-    assert!(output.contains("you and Maya: 5 emails"), "{output}");
+    assert!(
+        output.contains("Maya (maya@example.com): 5 emails"),
+        "{output}"
+    );
 }

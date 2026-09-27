@@ -157,7 +157,7 @@ test("r opens the reply at the end of the thread, in view; so does the field", a
   // The composer sits after the last message.
   const lastMessage = await threadMessages(page).last().boundingBox();
   const composerBox = await composer(page).boundingBox();
-  expect(composerBox!.y).toBeGreaterThan(lastMessage!.y);
+  expect(composerBox?.y ?? 0).toBeGreaterThan(lastMessage?.y ?? Infinity);
 
   await composer(page).getByRole("button", { name: "Close composer (saves draft)" }).click();
   await expect(field).toBeVisible();

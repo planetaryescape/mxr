@@ -1,11 +1,11 @@
 //! `GetThreadContext`: what the store already knows about a conversation,
-//! with no model involved. The reader shows it before the messages, so it
-//! must stay cheap: a handful of indexed reads.
+//! with no model involved. The reader shows it before the messages, so its
+//! reads run concurrently.
 
 use super::relationship_profile::commitment_data;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
-use mxr_core::id::ThreadId;
+use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::{Envelope, MessageDirection, ResponseTimeDirection, UnsubscribeMethod};
 use mxr_protocol::{OwedReplyHereData, ResponseData, ThreadContextData, ThreadCounterpartyData};
 use std::collections::{BTreeSet, HashMap};
@@ -24,20 +24,43 @@ pub(super) async fn load_thread_context(
     let Some(first) = envelopes.first() else {
         return Err(format!("thread {thread_id} not found").into());
     };
-    let account_id = first.account_id.clone();
-    let owned: BTreeSet<String> = state
+    let owned = owned_addresses(state, &first.account_id).await?;
+    build_thread_context(state, thread_id, &envelopes, &owned).await
+}
+
+/// The account's own addresses, lowercased.
+pub(super) async fn owned_addresses(
+    state: &AppState,
+    account_id: &AccountId,
+) -> Result<BTreeSet<String>, HandlerError> {
+    Ok(state
         .store
-        .list_account_addresses(&account_id)
+        .list_account_addresses(account_id)
         .await?
         .into_iter()
         .map(|address| address.email.to_ascii_lowercase())
-        .collect();
-    let directions: HashMap<_, _> = state
-        .store
-        .thread_message_directions(thread_id)
-        .await?
-        .into_iter()
-        .collect();
+        .collect())
+}
+
+/// Facts for a thread whose envelopes (non-empty) and owned addresses the
+/// caller already loaded.
+pub(super) async fn build_thread_context(
+    state: &AppState,
+    thread_id: &ThreadId,
+    envelopes: &[Envelope],
+    owned: &BTreeSet<String>,
+) -> Result<ThreadContextData, HandlerError> {
+    let Some(first) = envelopes.first() else {
+        return Err(format!("thread {thread_id} not found").into());
+    };
+    let account_id = first.account_id.clone();
+    let (directions, commitments) = tokio::try_join!(
+        state.store.thread_message_directions(thread_id),
+        state
+            .store
+            .list_open_thread_commitments(&account_id, thread_id),
+    )?;
+    let directions: HashMap<_, _> = directions.into_iter().collect();
     let is_yours = |envelope: &Envelope| match directions.get(&envelope.id) {
         Some(MessageDirection::Outbound) => true,
         Some(MessageDirection::Inbound) => false,
@@ -65,28 +88,18 @@ pub(super) async fn load_thread_context(
     let counterparty = match counterparty_address {
         Some(address) if !address.email.trim().is_empty() => {
             let email = address.email.trim().to_ascii_lowercase();
-            let exchange = state
-                .store
-                .counterparty_exchange(&account_id, &email, thread_id)
-                .await?;
-            let yours = state
-                .store
-                .list_response_time(
-                    Some(&account_id),
-                    ResponseTimeDirection::IReplied,
-                    Some(&email),
-                    None,
-                )
-                .await?;
-            let theirs = state
-                .store
-                .list_response_time(
-                    Some(&account_id),
-                    ResponseTimeDirection::TheyReplied,
-                    Some(&email),
-                    None,
-                )
-                .await?;
+            let median = |direction| {
+                state
+                    .store
+                    .list_response_time(Some(&account_id), direction, Some(&email), None)
+            };
+            let (exchange, yours, theirs) = tokio::try_join!(
+                state
+                    .store
+                    .counterparty_exchange(&account_id, &email, thread_id),
+                median(ResponseTimeDirection::IReplied),
+                median(ResponseTimeDirection::TheyReplied),
+            )?;
             let bulk_sender = exchange.list_sender
                 || envelopes.iter().any(|envelope| {
                     envelope.from.email.eq_ignore_ascii_case(&email)
@@ -123,20 +136,12 @@ pub(super) async fn load_thread_context(
         })
     });
 
-    let commitments = state
-        .store
-        .list_open_thread_commitments(&account_id, thread_id)
-        .await?
-        .into_iter()
-        .map(commitment_data)
-        .collect();
-
     Ok(ThreadContextData {
         thread_id: thread_id.clone(),
         account_id,
         counterparty,
         owed_reply,
-        commitments,
+        commitments: commitments.into_iter().map(commitment_data).collect(),
     })
 }
 

@@ -6,6 +6,7 @@ import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
 import { createMailVerbs } from "@/features/mail-actions/mailVerbs";
+import { useLlmStatus } from "@/features/llm/useLlmStatus";
 import { useProjectedMessages } from "@/features/mail-actions/pendingMailOps";
 import { targetFromThread } from "@/features/mail-actions/target";
 import { resolveCommitment } from "@/features/mailbox/api";
@@ -20,10 +21,11 @@ import { useModals } from "@/state/modalStore";
 import { useUiPrefs, type ReaderView } from "@/state/uiPrefsStore";
 
 import {
-  fetchThreadContext,
   fetchThreadGist,
   threadContextKey,
+  threadContextQuery,
   threadGistKey,
+  threadGistQuery,
 } from "./context/api";
 import { ASK_MARK_ATTRIBUTE } from "./context/askQuote";
 import { ContextBlock } from "./context/ContextBlock";
@@ -67,7 +69,8 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
   const [focusIndex, setFocusIndex] = useState(() =>
     Math.max(0, lastExpandedIndex(data, initialExpanded(data))),
   );
-  const { summary, setSummary, summarize, llm } = useThreadSummary(data);
+  const { summary, setSummary, summarize } = useThreadSummary(data);
+  const llm = useLlmStatus();
 
   const readerFocused = activePane === "reader";
   const singlePane = useMediaQuery(SINGLE_PANE_QUERY);
@@ -123,18 +126,8 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
 
   const threadId = data.thread.id;
   const queryClient = useQueryClient();
-  const context = useQuery({
-    queryKey: threadContextKey(threadId),
-    queryFn: () => fetchThreadContext(threadId),
-    staleTime: 30_000,
-  });
-  const gist = useQuery({
-    queryKey: threadGistKey(threadId),
-    queryFn: () => fetchThreadGist(threadId),
-    enabled: llm.enabled,
-    staleTime: 5 * 60_000,
-    retry: false,
-  });
+  const context = useQuery(threadContextQuery(threadId));
+  const gist = useQuery({ ...threadGistQuery(threadId), enabled: llm.enabled });
   const resolve = useMutation({
     mutationFn: resolveCommitment,
     onSuccess: () => {
@@ -305,7 +298,7 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
         });
         return;
       }
-      summarize.mutate({ silent: false });
+      summarize.mutate();
     },
     fullscreen: () => setReaderLayout(readerLayout === "full" ? "split" : "full"),
     draftAssist: () =>

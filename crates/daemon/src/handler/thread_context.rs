@@ -91,18 +91,26 @@ pub(super) async fn build_thread_context(
     let counterparty = match counterparty_address {
         Some(address) if !address.email.trim().is_empty() => {
             let email = address.email.trim().to_ascii_lowercase();
-            // The address as their mail spells it, so the store can use its
-            // from-address index.
-            let variants: Vec<String> = envelopes
+            // Every spelling of the address in this thread (From, To, Cc):
+            // the store matches them exactly so its address indexes apply,
+            // while reply pairs and From headers keep the original case.
+            let mut variants: Vec<String> = envelopes
                 .iter()
-                .map(|envelope| &envelope.from.email)
-                .filter(|from| from.trim().eq_ignore_ascii_case(&email))
-                .map(|from| from.trim().to_string())
+                .flat_map(|envelope| {
+                    std::iter::once(&envelope.from)
+                        .chain(&envelope.to)
+                        .chain(&envelope.cc)
+                })
+                .map(|address| address.email.trim())
+                .filter(|spelling| spelling.eq_ignore_ascii_case(&email))
+                .map(str::to_string)
                 .collect();
+            variants.sort_unstable();
+            variants.dedup();
             let median = |direction| {
                 state
                     .store
-                    .reply_latency_median(&account_id, direction, &email)
+                    .reply_latency_median(&account_id, direction, &email, &variants)
             };
             let (exchange, (your_samples, your_p50), (their_samples, their_p50)) = tokio::try_join!(
                 state
@@ -405,6 +413,53 @@ mod tests {
                 ("task c".to_string(), "Carol".to_string()),
             ]
         );
+    }
+
+    /// Reply pairs keep the address as the mail spelled it; a mixed-case
+    /// sender still gets a usual reply time.
+    #[tokio::test]
+    async fn a_mixed_case_address_still_has_a_usual_reply_time() {
+        let state = AppState::in_memory().await.unwrap();
+        let account_id = state.default_account_id();
+        let here = ThreadId::new();
+        let mut asked = TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .thread_id(here.clone())
+            .provider_id("case-ask")
+            .sender_address("Maya", "Maya@Example.com")
+            .date(at(3))
+            .build();
+        asked.message_id_header = Some("<case-ask@x>".into());
+        state
+            .store
+            .upsert_envelope_with_direction(&asked, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        let mut answered = TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .thread_id(here.clone())
+            .provider_id("case-answer")
+            .sender_address("Me", "me@example.com")
+            .recipient_address(Some("Maya"), "Maya@Example.com")
+            .date(at(3) + chrono::Duration::hours(2))
+            .build();
+        answered.in_reply_to = Some("<case-ask@x>".into());
+        state
+            .store
+            .upsert_envelope_with_direction(&answered, MessageDirection::Outbound)
+            .await
+            .unwrap();
+        assert!(state
+            .store
+            .try_create_reply_pair(&answered, MessageDirection::Outbound)
+            .await
+            .unwrap());
+
+        let facts = context(get_thread_context(&state, &here).await.unwrap());
+        let person = facts.counterparty.unwrap();
+        assert_eq!(person.email, "maya@example.com");
+        assert_eq!(person.your_reply_samples, 1);
+        assert_eq!(person.your_reply_p50_seconds, Some(2 * 3600));
     }
 
     #[tokio::test]

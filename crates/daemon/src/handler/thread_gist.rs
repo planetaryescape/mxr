@@ -10,12 +10,12 @@
 
 use super::thread_context::{build_thread_context, owned_addresses};
 use super::HandlerResult;
-use crate::state::{llm_feature_is_local, relationship_data_allowed, AppState};
+use crate::state::{llm_endpoint_is_local, AppState};
 use mxr_core::id::{MessageId, ThreadId};
 use mxr_core::types::Envelope;
 use mxr_llm::{
     guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
-    LlmFeature,
+    LlmFeature, PinnedLlm,
 };
 use mxr_protocol::{
     AiLocalityData, AiProvenanceData, AiSourceData, ResponseData, ThreadAskData, ThreadContextData,
@@ -103,15 +103,18 @@ pub(super) async fn get_thread_gist(
         return Err(format!("thread {thread_id} not found").into());
     };
     let account_id = newest.account_id.clone();
-    let llm_config = state.config_snapshot().llm;
-    let runtime = state.llm.for_feature(FEATURE);
-    let share_history = relationship_data_allowed(&llm_config, FEATURE);
-    let locality = if llm_feature_is_local(&llm_config, FEATURE) {
+    // Pin the provider once: what the prompt may carry, the provenance label
+    // and the call itself all follow this one endpoint, even if a config
+    // reload swaps the runtime mid-request.
+    let llm = state.llm.for_feature(FEATURE).pin();
+    let local = llm_endpoint_is_local(llm.base_url());
+    let share_history = local || state.config_snapshot().llm.allow_cloud_relationship_data;
+    let locality = if local {
         AiLocalityData::Local
     } else {
         AiLocalityData::Cloud
     };
-    let content_hash = gist_content_hash(&envelopes, share_history, &runtime.model_name());
+    let content_hash = gist_content_hash(&envelopes, share_history, &llm);
     let key = cache_key(thread_id);
 
     if !refresh {
@@ -153,7 +156,7 @@ pub(super) async fn get_thread_gist(
         max_tokens: Some(400),
         temperature: Some(0.1),
     };
-    let response = match runtime.complete(request).await {
+    let response = match llm.complete(request).await {
         Ok(response) => response,
         Err(LlmError::Disabled) => {
             return Ok(unavailable(
@@ -198,7 +201,7 @@ pub(super) async fn get_thread_gist(
         ));
     };
     let model = if response.model.trim().is_empty() {
-        runtime.model_name()
+        llm.model_name().to_string()
     } else {
         response.model
     };
@@ -268,9 +271,11 @@ fn unavailable(thread_id: &ThreadId, status: ThreadGistStatusData, reason: &str)
     }
 }
 
-/// Changes when a message arrives, the prompt changes, the model changes,
-/// or the privacy setting changes what the prompt may carry.
-fn gist_content_hash(envelopes: &[Envelope], share_history: bool, model: &str) -> String {
+/// Changes when a message arrives, the prompt changes, the model or its
+/// endpoint changes (so a same-named model moved from local to cloud never
+/// serves a gist with the old provenance), or the privacy setting changes
+/// what the prompt may carry.
+fn gist_content_hash(envelopes: &[Envelope], share_history: bool, llm: &PinnedLlm) -> String {
     let mut hash = Sha256::new();
     hash.update(GIST_PROMPT_VERSION.as_bytes());
     hash.update(envelopes.len().to_le_bytes());
@@ -279,7 +284,9 @@ fn gist_content_hash(envelopes: &[Envelope], share_history: bool, model: &str) -
         hash.update(newest.date.timestamp().to_le_bytes());
     }
     hash.update([u8::from(share_history)]);
-    hash.update(model.as_bytes());
+    hash.update(llm.model_name().as_bytes());
+    hash.update(b"|");
+    hash.update(llm.base_url().unwrap_or("on-machine").as_bytes());
     base16ct::lower::encode_string(&hash.finalize())
 }
 
@@ -551,14 +558,21 @@ mod tests {
         answer: String,
         calls: AtomicUsize,
         prompts: Mutex<Vec<String>>,
+        base_url: Option<String>,
     }
 
     impl ScriptedLlm {
         fn new(answer: impl Into<String>) -> Arc<Self> {
+            Self::at(answer, None)
+        }
+
+        /// A stub that reports `base_url` as its endpoint.
+        fn at(answer: impl Into<String>, base_url: Option<&str>) -> Arc<Self> {
             Arc::new(Self {
                 answer: answer.into(),
                 calls: AtomicUsize::new(0),
                 prompts: Mutex::new(Vec::new()),
+                base_url: base_url.map(str::to_string),
             })
         }
     }
@@ -588,6 +602,9 @@ mod tests {
         }
         fn model_name(&self) -> &str {
             "qwen2.5:7b"
+        }
+        fn base_url(&self) -> Option<&str> {
+            self.base_url.as_deref()
         }
     }
 
@@ -802,7 +819,10 @@ mod tests {
         config.llm.allow_cloud_relationship_data = false;
         state.set_config_for_test(config.clone()).await;
         let (thread_id, message_id) = seed_thread(&state).await;
-        let llm = ScriptedLlm::new(answer_for(&message_id));
+        let llm = ScriptedLlm::at(
+            answer_for(&message_id),
+            Some("https://api.example-cloud.com/v1"),
+        );
         state.llm.replace(llm.clone());
 
         let cloud = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
@@ -870,6 +890,34 @@ mod tests {
             fresh.ask.and_then(|ask| ask.quote).map(|quote| quote.text),
             Some(ASK_SENTENCE.to_string())
         );
+    }
+
+    /// What the prompt may carry follows the endpoint actually called, not
+    /// the config: a cloud provider behind a config that still says local
+    /// gets no history, and moving the same model from local to cloud never
+    /// serves the cached local gist.
+    #[tokio::test]
+    async fn the_called_endpoint_decides_history_and_the_cache() {
+        let state = AppState::in_memory().await.unwrap();
+        let (thread_id, message_id) = seed_thread(&state).await;
+        let local = ScriptedLlm::at(answer_for(&message_id), Some("http://localhost:11434/v1"));
+        state.llm.replace(local.clone());
+        let first = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        assert_eq!(first.provenance.unwrap().locality, AiLocalityData::Local);
+
+        // Config untouched (local by default, no cloud opt-in); the runtime
+        // now serves the same model from the cloud.
+        let cloud = ScriptedLlm::at(
+            answer_for(&message_id),
+            Some("https://api.example-cloud.com/v1"),
+        );
+        state.llm.replace(cloud.clone());
+        let second = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        assert!(!second.from_cache, "the endpoint is part of the cache key");
+        let provenance = second.provenance.unwrap();
+        assert_eq!(provenance.locality, AiLocalityData::Cloud);
+        assert_eq!(provenance.sources, vec![AiSourceData::ThisThread]);
+        assert!(!cloud.prompts.lock().unwrap()[0].contains("History with"));
     }
 
     #[tokio::test]

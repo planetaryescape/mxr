@@ -61,11 +61,7 @@ impl super::Store {
     ) -> Result<CounterpartyExchange, sqlx::Error> {
         let started_at = Instant::now();
         let email = email.trim().to_ascii_lowercase();
-        let mut variants: Vec<&str> = from_variants.iter().map(String::as_str).collect();
-        variants.push(&email);
-        variants.sort_unstable();
-        variants.dedup();
-        let variants = serde_json::to_string(&variants).unwrap_or_else(|_| "[]".into());
+        let variants = address_spellings(&email, from_variants);
 
         let inbound_query = sqlx::query(
             r#"SELECT COUNT(*) AS total,
@@ -167,14 +163,18 @@ impl super::Store {
         account_id: &AccountId,
         direction: mxr_core::types::ResponseTimeDirection,
         email: &str,
+        spellings: &[String],
     ) -> Result<(u32, Option<u32>), sqlx::Error> {
         let started_at = Instant::now();
-        let email = email.trim().to_ascii_lowercase();
+        // Reply pairs keep the address as the mail spelled it; match every
+        // known spelling exactly (plus lowercase) so the party index applies.
+        let spellings = address_spellings(email, spellings);
         let count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM reply_pairs INDEXED BY idx_reply_pairs_party
-             WHERE counterparty_email = ?1 AND account_id = ?2 AND direction = ?3",
+             WHERE counterparty_email IN (SELECT value FROM json_each(?1))
+               AND account_id = ?2 AND direction = ?3",
         )
-        .bind(&email)
+        .bind(&spellings)
         .bind(account_id.as_str())
         .bind(direction.as_db_str())
         .fetch_one(self.reader())
@@ -184,11 +184,12 @@ impl super::Store {
         } else {
             sqlx::query_scalar(
                 "SELECT latency_seconds FROM reply_pairs INDEXED BY idx_reply_pairs_party
-                 WHERE counterparty_email = ?1 AND account_id = ?2 AND direction = ?3
+                 WHERE counterparty_email IN (SELECT value FROM json_each(?1))
+                   AND account_id = ?2 AND direction = ?3
                  ORDER BY latency_seconds
                  LIMIT 1 OFFSET ?4",
             )
-            .bind(&email)
+            .bind(&spellings)
             .bind(account_id.as_str())
             .bind(direction.as_db_str())
             .bind(count / 2)
@@ -222,6 +223,17 @@ impl super::Store {
             .fetch_optional(self.reader())
             .await
     }
+}
+
+/// The JSON array of spellings to match exactly: those given plus the
+/// lowercase form, deduplicated.
+fn address_spellings(email: &str, spellings: &[String]) -> String {
+    let lower = email.trim().to_ascii_lowercase();
+    let mut all: Vec<&str> = spellings.iter().map(String::as_str).collect();
+    all.push(&lower);
+    all.sort_unstable();
+    all.dedup();
+    serde_json::to_string(&all).unwrap_or_else(|_| "[]".into())
 }
 
 /// `m` was sent to `?2` (lowercased) on To, Cc or Bcc.
@@ -429,6 +441,7 @@ mod tests {
                 &account_id,
                 mxr_core::types::ResponseTimeDirection::IReplied,
                 "maya@example.com",
+                &[],
             )
             .await
             .unwrap();
@@ -460,7 +473,7 @@ mod tests {
                 "INSERT INTO reply_pairs (reply_message_id, parent_message_id, account_id,
                      counterparty_email, direction, parent_received_at, replied_at,
                      latency_seconds, created_at)
-                 VALUES (?, ?, ?, 'maya@example.com', 'i_replied', 0, ?, ?, 0)",
+                 VALUES (?, ?, ?, 'Maya@Example.com', 'i_replied', 0, ?, ?, 0)",
             )
             .bind(reply.as_str())
             .bind(parent.as_str())
@@ -475,7 +488,23 @@ mod tests {
             .reply_latency_median(
                 &account_id,
                 mxr_core::types::ResponseTimeDirection::IReplied,
-                "MAYA@example.com",
+                "maya@example.com",
+                &[],
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            (count, median),
+            (0, None),
+            "stored as Maya@Example.com: lowercase alone misses it"
+        );
+        // Given the spelling the thread uses, the stored pairs are found.
+        let (count, median) = store
+            .reply_latency_median(
+                &account_id,
+                mxr_core::types::ResponseTimeDirection::IReplied,
+                "maya@example.com",
+                &["Maya@Example.com".to_string()],
             )
             .await
             .unwrap();

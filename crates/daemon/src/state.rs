@@ -364,15 +364,11 @@ pub(crate) fn relationship_data_allowed(
     !effective.enabled || is_local_llm_url(&effective.base_url)
 }
 
-/// Whether the model serving `feature` runs on this machine, for the
-/// provenance line on model-written text. The demo instance answers from
-/// canned text and never leaves the machine.
-pub(crate) fn llm_feature_is_local(
-    config: &mxr_config::LlmConfig,
-    feature: mxr_llm::LlmFeature,
-) -> bool {
-    mxr_config::is_demo_instance()
-        || is_local_llm_url(&effective_llm_config_for(config, feature).base_url)
+/// Whether a provider's endpoint is on this machine, for what model-written
+/// text may carry and how it is labelled. No endpoint (disabled, demo,
+/// tests) means nothing leaves the machine.
+pub(crate) fn llm_endpoint_is_local(base_url: Option<&str>) -> bool {
+    mxr_config::is_demo_instance() || base_url.is_none_or(is_local_llm_url)
 }
 
 fn effective_llm_config_for(

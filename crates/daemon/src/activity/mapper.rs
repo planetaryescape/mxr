@@ -626,6 +626,7 @@ pub fn map_request(
         | Request::ListDecisionLog { .. }
         | Request::GetDecision { .. }
         | Request::ListOwedReplies { .. }
+        | Request::GetDesk { .. }
         | Request::ListDrafts
         | Request::ListScheduledSends { .. }
         | Request::ListOrphanedDrafts

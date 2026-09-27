@@ -1,4 +1,4 @@
-//! Relationship and archive-insight routes: owed replies, whois, cadence
+//! Relationship and archive-insight routes: the desk, owed replies, whois, cadence
 //! watch/drift, send-time recommendation and ask-the-archive.
 //!
 //! Thin IPC passthroughs like `routes_v6`. Most of these daemon requests
@@ -12,6 +12,7 @@ use mxr_protocol::ArchiveAskFiltersData;
 // Mirror the protocol's serde defaults (private to `mxr-protocol`) so an
 // omitted `limit` behaves the same over HTTP as over IPC.
 const DEFAULT_OWED_REPLY_LIMIT: u32 = 50;
+const DEFAULT_DESK_LANE_LIMIT: u32 = 25;
 const DEFAULT_WHOIS_LIMIT: u32 = 10;
 const DEFAULT_ARCHIVE_ASK_LIMIT: u32 = 8;
 
@@ -49,6 +50,33 @@ async fn owed_replies(
             older_than_days: query.older_than_days,
             within_days: query.within_days,
             limit: query.limit.unwrap_or(DEFAULT_OWED_REPLY_LIMIT),
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct DeskQuery {
+    /// Omitted: every account, unlike the single-account insight routes.
+    #[serde(default, alias = "account_id")]
+    account: Option<String>,
+    #[serde(default)]
+    lane_limit: Option<u32>,
+}
+
+async fn desk(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<DeskQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, None, &state.config.auth_token)?;
+    let account_id = query.account.as_deref().map(parse_account_id).transpose()?;
+    let response = ipc_request(
+        &state.config.socket_path,
+        Request::GetDesk {
+            account_id,
+            lane_limit: query.lane_limit.unwrap_or(DEFAULT_DESK_LANE_LIMIT),
         },
     )
     .await?;
@@ -252,6 +280,7 @@ async fn cadence_unwatch(
 pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
     router
         .route("/owed", get(owed_replies))
+        .route("/desk", get(desk))
         .route("/whois", get(whois))
         .route("/send-time", get(send_time))
         .route("/archive-ask", post(archive_ask))

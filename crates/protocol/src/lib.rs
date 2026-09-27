@@ -74,6 +74,61 @@ mod tests {
         assert!(!parsed.undo_unavailable);
     }
 
+    #[test]
+    fn get_desk_defaults_and_desk_response_shape() {
+        // An omitted lane limit and account decode to the documented defaults.
+        let parsed: Request =
+            serde_json::from_value(serde_json::json!({"cmd": "GetDesk"})).unwrap();
+        match parsed {
+            Request::GetDesk {
+                account_id,
+                lane_limit,
+            } => {
+                assert!(account_id.is_none());
+                assert_eq!(lane_limit, 25);
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+
+        let now = chrono::Utc::now();
+        let data = ResponseData::Desk {
+            account_id: None,
+            owed: DeskLaneData::default(),
+            due: DeskLaneData::default(),
+            waiting: DeskLaneData::default(),
+            people_new: DeskLaneData {
+                rows: vec![DeskRowData {
+                    lane: DeskLaneKind::PeopleNew,
+                    account_id: mxr_core::id::AccountId::new(),
+                    thread_id: mxr_core::id::ThreadId::new(),
+                    message_id: mxr_core::id::MessageId::new(),
+                    message_ids: vec![],
+                    counterparty_email: "maya@example.com".into(),
+                    counterparty_name: None,
+                    subject: "Hello".into(),
+                    reason: "first message from them".into(),
+                    since: now,
+                    age_seconds: 60,
+                    usual_seconds: None,
+                    usual_samples: 0,
+                    overdue: false,
+                    unread: true,
+                    commitment_id: None,
+                }],
+                total: 1,
+            },
+            elsewhere: DeskElsewhereData::default(),
+            last_from_people_at: None,
+            generated_at: now,
+        };
+        let json = serde_json::to_value(&data).unwrap();
+        assert_eq!(json["kind"], "Desk");
+        assert_eq!(json["people_new"]["rows"][0]["lane"], "people_new");
+        assert!(json["people_new"]["rows"][0].get("usual_seconds").is_none());
+        let back: ResponseData = serde_json::from_value(json).unwrap();
+        assert!(matches!(back, ResponseData::Desk { people_new, .. } if people_new.total == 1));
+    }
+
     use mxr_core::id::*;
     use mxr_core::{
         Address, Draft, DraftContent, DraftIntent, ExportFormat, SavedSearch, SearchMode,

@@ -423,6 +423,14 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::owed::run(account, older_than_days, within_days, limit, format).await?;
         }
+        Some(Command::Desk {
+            account,
+            limit,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::desk::run(account, limit, format).await?;
+        }
         Some(Command::SuggestRecipients {
             draft,
             subject,

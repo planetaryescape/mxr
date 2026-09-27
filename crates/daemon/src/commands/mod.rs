@@ -15,6 +15,7 @@ pub mod daemon;
 pub mod decisions;
 pub mod deliveries;
 pub mod demo;
+pub mod desk;
 pub mod doctor;
 pub mod draft;
 pub mod draft_assist;

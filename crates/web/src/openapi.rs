@@ -75,7 +75,7 @@ use utoipa::{
         mail_signature_defaults_list, mail_signature_default_set,
         mail_signature_default_clear, mail_signature_resolve, mail_signatures_delete,
         platform_accounts_authorize, platform_accounts_repair, platform_voice_get,
-        platform_voice_rebuild, mail_mutation_jobs, mail_owed, mail_whois,
+        platform_voice_rebuild, mail_mutation_jobs, mail_owed, mail_desk, mail_whois,
         mail_send_time, mail_archive_ask, saved_searches_unread_counts,
         analytics_cadence_drift, cadence_watch_list, cadence_watch, cadence_unwatch,
         mail_time_resolve, mail_thread_context, mail_thread_gist
@@ -202,6 +202,7 @@ endpoint!(get mail_thread_briefing "/api/v1/mail/threads/{thread_id}/briefing", 
 endpoint!(get mail_contacts_briefing "/api/v1/mail/contacts/briefing", "Recipient briefing for compose context");
 endpoint!(get mail_contacts_expert "/api/v1/mail/contacts/expert", "Find experts who answered similar questions");
 endpoint!(get mail_owed "/api/v1/mail/owed", "List threads that owe a reply");
+endpoint!(get mail_desk "/api/v1/mail/desk", "The desk: owed replies, due promises, waiting threads and new mail from people");
 endpoint!(get mail_whois "/api/v1/mail/whois", "Explain a person or term from local evidence");
 endpoint!(get mail_send_time "/api/v1/mail/send-time", "Recommend a send time for recipients");
 endpoint!(post mail_archive_ask "/api/v1/mail/archive-ask", "Ask the archive a question with citations");

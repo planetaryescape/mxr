@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.38](https://github.com/planetaryescape/mxr/compare/v0.6.37...v0.6.38) (2026-09-27)
+
+
+### Features
+
+* give mail that isn't from people its own places: Reading and Paper trail, with pins and sweep ([#245](https://github.com/planetaryescape/mxr/issues/245)) ([4abc93c](https://github.com/planetaryescape/mxr/commit/4abc93c53e5511f8b97add6e2e22f5cd623efa89))
+
+
+### Bug Fixes
+
+* make the large-list e2e measure the app's work, not the runner's load ([#244](https://github.com/planetaryescape/mxr/issues/244)) ([2076791](https://github.com/planetaryescape/mxr/commit/2076791f8cfd366eabbdac33195e5c8d80d79186))
+
 ## [0.6.37](https://github.com/planetaryescape/mxr/compare/v0.6.36...v0.6.37) (2026-09-27)
 
 

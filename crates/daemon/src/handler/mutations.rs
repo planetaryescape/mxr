@@ -712,10 +712,21 @@ pub(super) async fn mutation(
     Ok(ResponseData::MutationResult { result })
 }
 
+/// A check a job runs on each chunk just before applying it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ChunkGuard {
+    None,
+    /// A sweep: leave out messages that are no longer in its place or were
+    /// pinned since it was queued. A pin or a sender move made while the
+    /// job runs still keeps its mail.
+    Sweep(super::places::SweepScope),
+}
+
 pub(super) async fn start_mutation_job(
     state: Arc<AppState>,
     cmd: MutationCommand,
     client_correlation_id: Option<String>,
+    guard: ChunkGuard,
 ) -> HandlerResult {
     let total = mutation_message_ids(&cmd).len() as u32;
     if total == 0 {
@@ -745,7 +756,7 @@ pub(super) async fn start_mutation_job(
 
     let background_job_id = job_id.clone();
     tokio::spawn(async move {
-        run_mutation_job(state, background_job_id, cmd, client_correlation_id).await;
+        run_mutation_job(state, background_job_id, cmd, client_correlation_id, guard).await;
     });
 
     Ok(ResponseData::JobStarted { job })
@@ -781,6 +792,7 @@ async fn run_mutation_job(
     job_id: String,
     cmd: MutationCommand,
     client_correlation_id: Option<String>,
+    guard: ChunkGuard,
 ) {
     update_job(&state, &job_id, |job| {
         job.status = JobStatusData::Running;
@@ -805,7 +817,22 @@ async fn run_mutation_job(
     let mut terminal_error: Option<String> = None;
 
     for ids in mutation_message_ids(&cmd).chunks(MUTATION_JOB_CHUNK_SIZE) {
-        let chunk_cmd = mutation_command_with_ids(&cmd, ids.to_vec());
+        let ids = match guard_chunk(&state, &guard, ids).await {
+            Ok((kept, left_out)) => {
+                // Left out on purpose, so not a failure: counted as skipped
+                // without stopping the job.
+                aggregate.skipped += left_out;
+                kept
+            }
+            Err(error) => {
+                terminal_error = Some(error);
+                break;
+            }
+        };
+        if ids.is_empty() {
+            continue;
+        }
+        let chunk_cmd = mutation_command_with_ids(&cmd, ids);
         match mutation(&state, &chunk_cmd, client_correlation_id.as_deref()).await {
             Ok(ResponseData::MutationResult { result }) => {
                 if let Some(mutation_id) = result.mutation_id.as_ref() {
@@ -904,6 +931,29 @@ async fn run_mutation_job(
                 ),
             },
         ),
+    }
+}
+
+/// The chunk's ids that `guard` lets through, and how many it left out.
+async fn guard_chunk(
+    state: &AppState,
+    guard: &ChunkGuard,
+    ids: &[mxr_core::MessageId],
+) -> Result<(Vec<mxr_core::MessageId>, u32), String> {
+    match guard {
+        ChunkGuard::None => Ok((ids.to_vec(), 0)),
+        ChunkGuard::Sweep(scope) => {
+            let sweepable = super::places::still_sweepable(state, scope, ids)
+                .await
+                .map_err(|e| e.to_string())?;
+            let kept: Vec<_> = ids
+                .iter()
+                .filter(|id| sweepable.contains(*id))
+                .cloned()
+                .collect();
+            let left_out = (ids.len() - kept.len()) as u32;
+            Ok((kept, left_out))
+        }
     }
 }
 
@@ -1134,13 +1184,16 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
 
     let mut restored = 0u32;
     let mut irreversible = 0u32;
+    // Failures a retry can fix (a provider or account hiccup), kept so the
+    // same id undoes just those next time.
+    let mut retryable: Vec<UndoEntrySnapshot> = Vec::new();
     let mut last_error: Option<String> = None;
     for (account_id, snapshots) in by_account {
         let provider = match state.get_provider(Some(&account_id)) {
             Ok(p) => p,
             Err(error) => {
                 last_error = Some(format!("account unavailable: {error}"));
-                irreversible += snapshots.len() as u32;
+                retryable.extend(snapshots.into_iter().cloned());
                 continue;
             }
         };
@@ -1152,23 +1205,43 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
                     last_error = Some(msg);
                 }
                 Err(SnapshotError::Other(msg)) => {
+                    retryable.push(snapshot.clone());
                     last_error = Some(msg);
                 }
             }
         }
     }
 
-    if restored == 0 {
-        let detail = last_error.unwrap_or_else(|| "no messages restored".into());
-        return Err(format!("undo: irreversible ({irreversible} message(s)) — {detail}").into());
+    if retryable.is_empty() {
+        if restored == 0 {
+            let detail = last_error.unwrap_or_else(|| "no messages restored".into());
+            return Err(
+                format!("undo: irreversible ({irreversible} message(s)) — {detail}").into(),
+            );
+        }
+        // Done: drop the entry so the same id can't be replayed.
+        log_non_fatal(
+            "undo: failed to delete spent undo entry (the id could be replayed until it expires)",
+            state.store.delete_undo_entry(&entry.mutation_id).await,
+        );
+        return Ok(ResponseData::Ack);
     }
 
-    // Successful undo: drop the entry so the same id can't be replayed.
-    log_non_fatal(
-        "undo: failed to delete spent undo entry (the id could be replayed until it expires)",
-        state.store.delete_undo_entry(&entry.mutation_id).await,
-    );
-    Ok(ResponseData::Ack)
+    // Part failed: keep only what failed under the same id, so `u` or
+    // `mxr undo` retries exactly those, and say how it went.
+    let failed = retryable.len();
+    state
+        .store
+        .write_undo_entry(&UndoEntry {
+            snapshots: retryable,
+            ..entry
+        })
+        .await?;
+    let detail = last_error.unwrap_or_default();
+    Err(format!(
+        "undo: partly done: restored {restored}, {failed} failed and can be retried with the same undo ({detail})"
+    )
+    .into())
 }
 
 enum SnapshotError {

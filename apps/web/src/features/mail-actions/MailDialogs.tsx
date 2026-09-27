@@ -1,3 +1,6 @@
+import { SenderKindDialog } from "@/features/places/SenderKindDialog";
+import { SweepDialog } from "@/features/places/SweepDialog";
+
 import { ConfirmDialog } from "./dialogs/ConfirmDialog";
 import { LabelsDialog } from "./dialogs/LabelsDialog";
 import { LinksDialog } from "./dialogs/LinksDialog";
@@ -38,6 +41,25 @@ export function MailDialogs() {
       return <UnsubscribeDialog target={dialog.target} onDone={dialog.onDone} onClose={close} />;
     case "links":
       return <LinksDialog target={dialog.target} onClose={close} />;
+    case "sweep":
+      return (
+        <SweepDialog
+          scope={dialog.scope}
+          senderLabel={dialog.senderLabel}
+          shownHere={dialog.shownHere}
+          onClose={close}
+        />
+      );
+    case "sender-kind":
+      return (
+        <SenderKindDialog
+          accountId={dialog.accountId}
+          senderEmail={dialog.senderEmail}
+          senderLabel={dialog.senderLabel}
+          current={dialog.current}
+          onClose={close}
+        />
+      );
     case "confirm":
       return (
         <ConfirmDialog

@@ -49,7 +49,7 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             app.mailbox.pending_labels_refresh = true;
             app.mailbox.pending_all_envelopes_refresh = true;
             app.mailbox.pending_subscriptions_refresh = true;
-            app.mailbox.pending_desk_refresh = true;
+            app.refresh_places();
             app.diagnostics.pending_status_refresh = true;
             if let Some(label_id) = app.mailbox.active_label.clone() {
                 app.mailbox.pending_label_fetch = Some(label_id);
@@ -157,7 +157,7 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             app.mailbox.pending_labels_refresh = true;
             app.mailbox.pending_all_envelopes_refresh = true;
             app.mailbox.pending_subscriptions_refresh = true;
-            app.mailbox.pending_desk_refresh = true;
+            app.refresh_places();
             app.diagnostics.pending_status_refresh = true;
             if let Some(label_id) = app.mailbox.active_label.clone() {
                 app.mailbox.pending_label_fetch = Some(label_id);

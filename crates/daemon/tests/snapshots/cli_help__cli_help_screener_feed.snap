@@ -2,7 +2,7 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Route to a feed (skip inbox)
+Put this sender in Reading (kept off the desk)
 
 Usage: mxr screener feed [OPTIONS] <SENDER_EMAIL>
 

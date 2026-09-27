@@ -160,13 +160,20 @@ The web app opens on the [desk](/guides/desk/): replies you owe, promises
 coming due, threads waiting on someone and new mail from people, each row
 with the reason it is there and how long it has been next to that person's
 usual pace. Everything else (reading, paper trail, deliveries, invites,
-screener) is one line of links at the bottom. `g d` goes to the desk, `g i`
+screener) is one line of links at the bottom, with week counts that are
+never unread counts. [Reading and Paper trail](/guides/reading-and-paper-trail/)
+hold the mail that isn't from people: Reading is a feed with every issue
+already open, Paper trail bundles receipts and notifications by sender, `K`
+moves a sender for good, and `s` or `S` sweeps a bundle or the whole place
+after a preview, with undo. `g d` goes to the desk, `g i`
 to the inbox in arrival order, and **Settings, Appearance, Home** makes the
-inbox the home instead.
+inbox the home instead. The arrival-order inbox deliberately shows
+everything, Reading and Paper trail mail included; the separation lives on
+the desk and in the places.
 
 The sidebar holds places rather than folders: Desk, Inbox, Reply queue,
-Waiting on, Snoozed and, when someone new is waiting for a decision,
-Screener. Folders (Starred, Sent, Drafts, All Mail, Spam, Trash) and the
+Waiting on, Snoozed, Reading, Paper trail and, when someone new is waiting
+for a decision, Screener. Folders (Starred, Sent, Drafts, All Mail, Spam, Trash) and the
 rarer lists sit under **More**, and labels under **Labels**; both start
 folded. Only work carries a count: the desk (owed and due), the reply queue
 and the screener. Unread mail still shows as bold rows, but the inbox and

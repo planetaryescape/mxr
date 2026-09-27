@@ -101,6 +101,8 @@ impl App {
                 MutationEffect::ModifyLabels { message_ids, .. } => message_ids.clone(),
                 MutationEffect::RefreshList
                 | MutationEffect::StatusOnly(_)
+                | MutationEffect::RefreshPlaces(_)
+                | MutationEffect::SenderMoved(_)
                 | MutationEffect::SentSuccess { .. } => Vec::new(),
             })
             .collect()
@@ -109,7 +111,10 @@ impl App {
     pub fn selected_mail_row(&self) -> Option<MailListRow> {
         if matches!(
             self.mailbox.mailbox_view,
-            MailboxView::Subscriptions | MailboxView::CalendarInvites | MailboxView::Desk
+            MailboxView::Subscriptions
+                | MailboxView::CalendarInvites
+                | MailboxView::Desk
+                | MailboxView::Place(_)
         ) {
             return None;
         }

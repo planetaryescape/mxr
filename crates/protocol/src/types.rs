@@ -3,10 +3,12 @@ use mxr_core::types::*;
 use serde::{Deserialize, Serialize};
 
 mod desk;
+mod places;
 mod platform;
 mod promises;
 mod thread_context;
 pub use desk::*;
+pub use places::*;
 pub use platform::*;
 pub use promises::*;
 pub use thread_context::*;
@@ -67,6 +69,14 @@ fn default_owed_reply_limit() -> u32 {
 
 fn default_desk_lane_limit() -> u32 {
     25
+}
+
+fn default_place_limit() -> u32 {
+    50
+}
+
+fn default_place_messages_per_bundle() -> u32 {
+    20
 }
 
 fn default_archive_ask_limit() -> u32 {
@@ -1576,6 +1586,66 @@ pub enum Request {
         #[serde(default)]
         dry_run: bool,
     },
+    /// A place (Reading or Paper trail): inbox mail of that kind grouped by
+    /// sender, newest bundle first, each with the reason it is there.
+    /// `account_id: None` covers every enabled account.
+    ListPlace {
+        place: MailPlaceData,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        /// Only this sender's bundle.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sender_email: Option<String>,
+        /// Bundles per page.
+        #[serde(default = "default_place_limit")]
+        limit: u32,
+        #[serde(default)]
+        offset: u32,
+        /// Messages listed per bundle; counts always cover the whole bundle.
+        #[serde(default = "default_place_messages_per_bundle")]
+        messages_per_bundle: u32,
+        /// Messages to skip in each bundle, for paging through one
+        /// sender's mail (pinned messages list first).
+        #[serde(default)]
+        message_offset: u32,
+    },
+    /// Why one message is where it is: its kind, rule and reason.
+    GetMessageKind {
+        message_id: MessageId,
+    },
+    /// Move a sender to a kind for this and all future mail, or with
+    /// `kind: None` return it to automatic. Stored as the sender's screener
+    /// decision (People: allow, Reading: feed, Paper trail: paper trail,
+    /// Screened out: deny).
+    SetSenderKind {
+        account_id: AccountId,
+        sender_email: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<SenderKindData>,
+    },
+    /// Pin or unpin messages: a pinned message stays put when its bundle
+    /// or place is swept. Local to this machine.
+    PinMessages {
+        message_ids: Vec<MessageId>,
+        pinned: bool,
+    },
+    /// Archive every unpinned message in a place, or in one sender's bundle.
+    /// `dry_run` returns what would be archived and a `preview_token`. The
+    /// real sweep needs that token and archives only what the preview
+    /// listed that is still in the place and still unpinned, never mail
+    /// that arrived or moved in since, as an undoable archive job.
+    SweepPlace {
+        place: MailPlaceData,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sender_email: Option<String>,
+        #[serde(default)]
+        dry_run: bool,
+        /// From the dry run; required when `dry_run` is false.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        preview_token: Option<String>,
+    },
 }
 
 impl Request {
@@ -1686,6 +1756,11 @@ impl Request {
             | Self::GetDesk { .. }
             | Self::DismissDeskThreads { .. }
             | Self::RestoreDeskThreads { .. }
+            | Self::ListPlace { .. }
+            | Self::GetMessageKind { .. }
+            | Self::SetSenderKind { .. }
+            | Self::PinMessages { .. }
+            | Self::SweepPlace { .. }
             | Self::ArchiveAsk { .. }
             | Self::ListDecisionLog { .. }
             | Self::GetDecision { .. }
@@ -2648,6 +2723,48 @@ pub enum ResponseData {
         commitment: CommitmentData,
         dry_run: bool,
     },
+    /// Returned by `Request::ListPlace`.
+    Place {
+        place: MailPlaceData,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        bundles: Vec<PlaceBundleData>,
+        /// Bundles in the whole place, not just this page.
+        total_bundles: u32,
+        /// Messages in the whole place.
+        total_messages: u32,
+        generated_at: chrono::DateTime<chrono::Utc>,
+    },
+    /// Returned by `Request::GetMessageKind`.
+    MessageKind {
+        account_id: AccountId,
+        message_id: MessageId,
+        sender_email: String,
+        mail_kind: MailKindData,
+    },
+    /// Returned by `Request::SetSenderKind`. `previous` is the kind the user
+    /// had chosen before (`None`: automatic), for undo.
+    SenderKindSet {
+        account_id: AccountId,
+        sender_email: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sender_kind: Option<SenderKindData>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        previous: Option<SenderKindData>,
+    },
+    /// Returned by `Request::PinMessages`: how many messages changed.
+    MessagesPinned {
+        changed: u32,
+        pinned: bool,
+    },
+    /// Returned by `Request::SweepPlace`. `job` is the archive job, absent
+    /// for a dry run or when nothing matched.
+    PlaceSwept {
+        preview: SweepPreviewData,
+        dry_run: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        job: Option<JobData>,
+    },
 }
 
 impl ResponseData {
@@ -2737,6 +2854,11 @@ impl ResponseData {
             | Self::Desk { .. }
             | Self::DeskThreadsDismissed { .. }
             | Self::DeskThreadsRestored { .. }
+            | Self::Place { .. }
+            | Self::MessageKind { .. }
+            | Self::SenderKindSet { .. }
+            | Self::MessagesPinned { .. }
+            | Self::PlaceSwept { .. }
             | Self::ArchiveAnswer { .. }
             | Self::DecisionLog { .. }
             | Self::DecisionDetail { .. }

@@ -175,6 +175,10 @@ impl App {
                     self.open_selected_desk_row();
                     return;
                 }
+                if matches!(self.mailbox.mailbox_view, MailboxView::Place(_)) {
+                    self.open_selected_place_row();
+                    return;
+                }
                 if let Some(row) = self.selected_mail_row() {
                     self.open_envelope(row.representative);
                     self.mailbox.layout_mode = LayoutMode::ThreePane;
@@ -337,6 +341,8 @@ impl App {
                     self.open_selected_invite_message();
                 } else if self.mailbox.mailbox_view == MailboxView::Desk {
                     self.open_selected_desk_row();
+                } else if matches!(self.mailbox.mailbox_view, MailboxView::Place(_)) {
+                    self.open_selected_place_row();
                 } else if let Some(row) = self.selected_mail_row() {
                     self.open_envelope(row.representative);
                     self.mailbox.layout_mode = LayoutMode::ThreePane;

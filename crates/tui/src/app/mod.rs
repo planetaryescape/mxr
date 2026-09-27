@@ -18,6 +18,7 @@ mod mutation_actions;
 mod mutation_helpers;
 pub mod mutation_snapshot;
 mod pending_optimistic;
+mod place_actions;
 mod platform_actions;
 mod promises;
 mod recorder;
@@ -105,6 +106,12 @@ pub enum MutationEffect {
     },
     RefreshList,
     StatusOnly(String),
+    /// A pin or a sender-kind change: refetch the place on screen and the
+    /// desk, then say what happened.
+    RefreshPlaces(String),
+    /// A sender moved to another kind by the user: refresh like
+    /// `RefreshPlaces`, and offer `u` to move it back.
+    SenderMoved(String),
     /// Successful SendDraft. Refreshes the active label so a Sent-view user
     /// sees the just-sent message immediately (no manual sync), and shows
     /// `status` in the status bar.
@@ -161,12 +168,27 @@ const CONNECTION_STALE_THRESHOLD: std::time::Duration = std::time::Duration::fro
 /// stops offering an undo affordance the daemon would refuse.
 const UNDO_HINT_TTL: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// What `u` reverses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UndoAction {
+    /// Daemon mutations by id: usually one; a batch job (a sweep) leaves
+    /// one per chunk, all undone together.
+    Mutations(Vec<String>),
+    /// A sender moved to another kind: put it back where it was
+    /// (`None`: automatic).
+    SenderKind {
+        account_id: mxr_core::AccountId,
+        sender_email: String,
+        previous: Option<mxr_protocol::SenderKindData>,
+    },
+}
+
 /// Captured handle for a recent undoable mutation. The TUI uses this to
 /// show "Archived 5 — u to undo" in the status bar and to dispatch
 /// `Request::UndoMutation` when the user presses `u`.
 #[derive(Debug, Clone)]
 pub struct PendingUndo {
-    pub mutation_id: String,
+    pub action: UndoAction,
     pub verb_past: String,
     pub count: u32,
     pub applied_at: std::time::Instant,

@@ -15,6 +15,8 @@ import { Route as SearchRouteImport } from './routes/search'
 import { Route as ScreenerRouteImport } from './routes/screener'
 import { Route as RulesRouteImport } from './routes/rules'
 import { Route as ReplyQueueRouteImport } from './routes/reply-queue'
+import { Route as ReadingRouteImport } from './routes/reading'
+import { Route as PaperTrailRouteImport } from './routes/paper-trail'
 import { Route as OwedRouteImport } from './routes/owed'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as JobsRouteImport } from './routes/jobs'
@@ -35,6 +37,8 @@ import { Route as SenderAddressRouteImport } from './routes/sender.$address'
 import { Route as SearchThreadIdRouteImport } from './routes/search.$threadId'
 import { Route as RulesIdRouteImport } from './routes/rules.$id'
 import { Route as ReplyQueueThreadIdRouteImport } from './routes/reply-queue.$threadId'
+import { Route as ReadingThreadIdRouteImport } from './routes/reading.$threadId'
+import { Route as PaperTrailThreadIdRouteImport } from './routes/paper-trail.$threadId'
 import { Route as OwedThreadIdRouteImport } from './routes/owed.$threadId'
 import { Route as MMailboxRouteImport } from './routes/m.$mailbox'
 import { Route as DeskThreadIdRouteImport } from './routes/desk.$threadId'
@@ -76,6 +80,16 @@ const RulesRoute = RulesRouteImport.update({
 const ReplyQueueRoute = ReplyQueueRouteImport.update({
   id: '/reply-queue',
   path: '/reply-queue',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReadingRoute = ReadingRouteImport.update({
+  id: '/reading',
+  path: '/reading',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PaperTrailRoute = PaperTrailRouteImport.update({
+  id: '/paper-trail',
+  path: '/paper-trail',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OwedRoute = OwedRouteImport.update({
@@ -178,6 +192,16 @@ const ReplyQueueThreadIdRoute = ReplyQueueThreadIdRouteImport.update({
   path: '/$threadId',
   getParentRoute: () => ReplyQueueRoute,
 } as any)
+const ReadingThreadIdRoute = ReadingThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => ReadingRoute,
+} as any)
+const PaperTrailThreadIdRoute = PaperTrailThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => PaperTrailRoute,
+} as any)
 const OwedThreadIdRoute = OwedThreadIdRouteImport.update({
   id: '/$threadId',
   path: '/$threadId',
@@ -254,6 +278,8 @@ export interface FileRoutesByFullPath {
   '/jobs': typeof JobsRoute
   '/onboarding': typeof OnboardingRoute
   '/owed': typeof OwedRouteWithChildren
+  '/paper-trail': typeof PaperTrailRouteWithChildren
+  '/reading': typeof ReadingRouteWithChildren
   '/reply-queue': typeof ReplyQueueRouteWithChildren
   '/rules': typeof RulesRouteWithChildren
   '/screener': typeof ScreenerRoute
@@ -267,6 +293,8 @@ export interface FileRoutesByFullPath {
   '/desk/$threadId': typeof DeskThreadIdRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
   '/owed/$threadId': typeof OwedThreadIdRoute
+  '/paper-trail/$threadId': typeof PaperTrailThreadIdRoute
+  '/reading/$threadId': typeof ReadingThreadIdRoute
   '/reply-queue/$threadId': typeof ReplyQueueThreadIdRoute
   '/rules/$id': typeof RulesIdRoute
   '/search/$threadId': typeof SearchThreadIdRoute
@@ -294,6 +322,8 @@ export interface FileRoutesByTo {
   '/jobs': typeof JobsRoute
   '/onboarding': typeof OnboardingRoute
   '/owed': typeof OwedRouteWithChildren
+  '/paper-trail': typeof PaperTrailRouteWithChildren
+  '/reading': typeof ReadingRouteWithChildren
   '/reply-queue': typeof ReplyQueueRouteWithChildren
   '/rules': typeof RulesRouteWithChildren
   '/screener': typeof ScreenerRoute
@@ -307,6 +337,8 @@ export interface FileRoutesByTo {
   '/desk/$threadId': typeof DeskThreadIdRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
   '/owed/$threadId': typeof OwedThreadIdRoute
+  '/paper-trail/$threadId': typeof PaperTrailThreadIdRoute
+  '/reading/$threadId': typeof ReadingThreadIdRoute
   '/reply-queue/$threadId': typeof ReplyQueueThreadIdRoute
   '/rules/$id': typeof RulesIdRoute
   '/search/$threadId': typeof SearchThreadIdRoute
@@ -335,6 +367,8 @@ export interface FileRoutesById {
   '/jobs': typeof JobsRoute
   '/onboarding': typeof OnboardingRoute
   '/owed': typeof OwedRouteWithChildren
+  '/paper-trail': typeof PaperTrailRouteWithChildren
+  '/reading': typeof ReadingRouteWithChildren
   '/reply-queue': typeof ReplyQueueRouteWithChildren
   '/rules': typeof RulesRouteWithChildren
   '/screener': typeof ScreenerRoute
@@ -348,6 +382,8 @@ export interface FileRoutesById {
   '/desk/$threadId': typeof DeskThreadIdRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
   '/owed/$threadId': typeof OwedThreadIdRoute
+  '/paper-trail/$threadId': typeof PaperTrailThreadIdRoute
+  '/reading/$threadId': typeof ReadingThreadIdRoute
   '/reply-queue/$threadId': typeof ReplyQueueThreadIdRoute
   '/rules/$id': typeof RulesIdRoute
   '/search/$threadId': typeof SearchThreadIdRoute
@@ -377,6 +413,8 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/onboarding'
     | '/owed'
+    | '/paper-trail'
+    | '/reading'
     | '/reply-queue'
     | '/rules'
     | '/screener'
@@ -390,6 +428,8 @@ export interface FileRouteTypes {
     | '/desk/$threadId'
     | '/m/$mailbox'
     | '/owed/$threadId'
+    | '/paper-trail/$threadId'
+    | '/reading/$threadId'
     | '/reply-queue/$threadId'
     | '/rules/$id'
     | '/search/$threadId'
@@ -417,6 +457,8 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/onboarding'
     | '/owed'
+    | '/paper-trail'
+    | '/reading'
     | '/reply-queue'
     | '/rules'
     | '/screener'
@@ -430,6 +472,8 @@ export interface FileRouteTypes {
     | '/desk/$threadId'
     | '/m/$mailbox'
     | '/owed/$threadId'
+    | '/paper-trail/$threadId'
+    | '/reading/$threadId'
     | '/reply-queue/$threadId'
     | '/rules/$id'
     | '/search/$threadId'
@@ -457,6 +501,8 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/onboarding'
     | '/owed'
+    | '/paper-trail'
+    | '/reading'
     | '/reply-queue'
     | '/rules'
     | '/screener'
@@ -470,6 +516,8 @@ export interface FileRouteTypes {
     | '/desk/$threadId'
     | '/m/$mailbox'
     | '/owed/$threadId'
+    | '/paper-trail/$threadId'
+    | '/reading/$threadId'
     | '/reply-queue/$threadId'
     | '/rules/$id'
     | '/search/$threadId'
@@ -498,6 +546,8 @@ export interface RootRouteChildren {
   JobsRoute: typeof JobsRoute
   OnboardingRoute: typeof OnboardingRoute
   OwedRoute: typeof OwedRouteWithChildren
+  PaperTrailRoute: typeof PaperTrailRouteWithChildren
+  ReadingRoute: typeof ReadingRouteWithChildren
   ReplyQueueRoute: typeof ReplyQueueRouteWithChildren
   RulesRoute: typeof RulesRouteWithChildren
   ScreenerRoute: typeof ScreenerRoute
@@ -555,6 +605,20 @@ declare module '@tanstack/react-router' {
       path: '/reply-queue'
       fullPath: '/reply-queue'
       preLoaderRoute: typeof ReplyQueueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reading': {
+      id: '/reading'
+      path: '/reading'
+      fullPath: '/reading'
+      preLoaderRoute: typeof ReadingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/paper-trail': {
+      id: '/paper-trail'
+      path: '/paper-trail'
+      fullPath: '/paper-trail'
+      preLoaderRoute: typeof PaperTrailRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/owed': {
@@ -697,6 +761,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReplyQueueThreadIdRouteImport
       parentRoute: typeof ReplyQueueRoute
     }
+    '/reading/$threadId': {
+      id: '/reading/$threadId'
+      path: '/$threadId'
+      fullPath: '/reading/$threadId'
+      preLoaderRoute: typeof ReadingThreadIdRouteImport
+      parentRoute: typeof ReadingRoute
+    }
+    '/paper-trail/$threadId': {
+      id: '/paper-trail/$threadId'
+      path: '/$threadId'
+      fullPath: '/paper-trail/$threadId'
+      preLoaderRoute: typeof PaperTrailThreadIdRouteImport
+      parentRoute: typeof PaperTrailRoute
+    }
     '/owed/$threadId': {
       id: '/owed/$threadId'
       path: '/$threadId'
@@ -828,6 +906,29 @@ const OwedRouteChildren: OwedRouteChildren = {
 
 const OwedRouteWithChildren = OwedRoute._addFileChildren(OwedRouteChildren)
 
+interface PaperTrailRouteChildren {
+  PaperTrailThreadIdRoute: typeof PaperTrailThreadIdRoute
+}
+
+const PaperTrailRouteChildren: PaperTrailRouteChildren = {
+  PaperTrailThreadIdRoute: PaperTrailThreadIdRoute,
+}
+
+const PaperTrailRouteWithChildren = PaperTrailRoute._addFileChildren(
+  PaperTrailRouteChildren,
+)
+
+interface ReadingRouteChildren {
+  ReadingThreadIdRoute: typeof ReadingThreadIdRoute
+}
+
+const ReadingRouteChildren: ReadingRouteChildren = {
+  ReadingThreadIdRoute: ReadingThreadIdRoute,
+}
+
+const ReadingRouteWithChildren =
+  ReadingRoute._addFileChildren(ReadingRouteChildren)
+
 interface ReplyQueueRouteChildren {
   ReplyQueueThreadIdRoute: typeof ReplyQueueThreadIdRoute
 }
@@ -923,6 +1024,8 @@ const rootRouteChildren: RootRouteChildren = {
   JobsRoute: JobsRoute,
   OnboardingRoute: OnboardingRoute,
   OwedRoute: OwedRouteWithChildren,
+  PaperTrailRoute: PaperTrailRouteWithChildren,
+  ReadingRoute: ReadingRouteWithChildren,
   ReplyQueueRoute: ReplyQueueRouteWithChildren,
   RulesRoute: RulesRouteWithChildren,
   ScreenerRoute: ScreenerRoute,

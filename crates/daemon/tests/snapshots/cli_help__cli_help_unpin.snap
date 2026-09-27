@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Unpin messages: the next sweep takes them too
+
+Usage: mxr unpin [OPTIONS] <MESSAGE_ID>...
+
+Arguments:
+  <MESSAGE_ID>...
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

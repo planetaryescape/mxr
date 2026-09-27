@@ -15,6 +15,7 @@ import { mailVerbActions } from "@/features/mail-actions/verbActions";
 import { mailboxActions } from "@/features/mailbox/actions";
 import { lensesFromShell, savedSearchLenses } from "@/features/mailbox/lenses";
 import type { ShellResponse } from "@/features/mailbox/types";
+import { placeActions } from "@/features/places/actions";
 import { rulesActions } from "@/features/rules/actions";
 import { screenerActions } from "@/features/screener/actions";
 import { getActiveQueryClient } from "@/lib/queryClient";
@@ -56,6 +57,7 @@ const featureActions: Action[] = [
   ...readerActions,
   ...screenerActions,
   ...focusActions,
+  ...placeActions,
   ...diagnosticsActions,
   ...rulesActions,
   ...accountsActions,

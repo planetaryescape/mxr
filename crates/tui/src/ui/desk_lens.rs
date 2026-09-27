@@ -9,7 +9,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use crate::app::{ActivePane, DeskPageState};
-use crate::ui::sanitize::strip_control_chars;
+use crate::ui::sanitize::{one_line, truncate};
 
 pub struct DeskView<'a> {
     pub desk: &'a DeskPageState,
@@ -121,10 +121,6 @@ fn lane_header(
     ])
 }
 
-fn one_line(text: &str) -> String {
-    strip_control_chars(text).replace(['\n', '\t'], " ")
-}
-
 fn row_line(
     kind: DeskLaneKind,
     row: &DeskRowData,
@@ -211,31 +207,23 @@ fn short_duration(seconds: i64) -> String {
 
 /// "Everything else: Reading 7 · Deliveries 1", only the non-zero parts.
 pub(crate) fn elsewhere_line(elsewhere: &DeskElsewhereData) -> String {
+    // Reading and Paper trail counts are this week's mail, never unread
+    // counts, and say so.
     let parts: Vec<String> = [
-        ("Reading", elsewhere.reading),
-        ("Paper trail", elsewhere.paper_trail),
-        ("Deliveries", elsewhere.deliveries),
-        ("Invites", elsewhere.invites),
-        ("Screener", elsewhere.screener),
+        ("Reading", elsewhere.reading, " new this week (g r)"),
+        ("Paper trail", elsewhere.paper_trail, " this week (g p)"),
+        ("Deliveries", elsewhere.deliveries, ""),
+        ("Invites", elsewhere.invites, ""),
+        ("Screener", elsewhere.screener, ""),
     ]
     .iter()
-    .filter(|(_, count)| *count > 0)
-    .map(|(label, count)| format!("{label} {count}"))
+    .filter(|(_, count, _)| *count > 0)
+    .map(|(label, count, suffix)| format!("{label} {count}{suffix}"))
     .collect();
     if parts.is_empty() {
         "  enter open".to_string()
     } else {
         format!("  Everything else: {}", parts.join(" \u{b7} "))
-    }
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        s.to_string()
-    } else {
-        let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
-        out.push('\u{2026}');
-        out
     }
 }
 
@@ -316,7 +304,9 @@ mod tests {
         assert!(rendered.contains("2d \u{b7} usually 4h"));
         assert!(rendered.contains("to Nora"));
         assert!(rendered.contains("in 2d"));
-        assert!(rendered.contains("Everything else: Reading 7 \u{b7} Screener 2"));
+        assert!(
+            rendered.contains("Everything else: Reading 7 new this week (g r) \u{b7} Screener 2")
+        );
         assert!(!rendered.contains('\u{2014}'), "no em dashes");
     }
 

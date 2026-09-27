@@ -37,6 +37,11 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
       "One conversation at a time. In the reply, ⌘Enter sends and moves on; Tab out of the reply (or Esc in the rich-text editor) to use these keys.",
     match: (action) => only(action, "focus"),
   },
+  {
+    title: "Reading and Paper trail",
+    intro: "Bundles of mail that isn't from people. The reader keeps its own keys.",
+    match: (action) => only(action, "place"),
+  },
 ];
 
 function isGlobal(action: Action): boolean {

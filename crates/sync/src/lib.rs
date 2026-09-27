@@ -636,7 +636,9 @@ mod tests {
             .unwrap()
             .unwrap();
         let label_ids = store.get_message_label_ids(&msg_id).await.unwrap();
-        assert!(!label_ids.contains(&inbox.id));
+        // Reading is a view over the inbox: feed mail keeps INBOX and gains
+        // the route label.
+        assert!(label_ids.contains(&inbox.id));
         assert!(label_ids.contains(&feed.id));
     }
 

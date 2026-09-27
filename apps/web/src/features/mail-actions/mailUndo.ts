@@ -24,11 +24,37 @@ export async function performUndo(mutationId: string): Promise<boolean> {
     await invalidateMailQueries();
     return true;
   } catch (error) {
-    toast.error("Undo failed", {
-      description: error instanceof Error ? error.message : String(error),
-    });
+    const message = error instanceof Error ? error.message : String(error);
+    if (isRetryableUndo(message)) {
+      offerRetry([mutationId], message);
+      await invalidateMailQueries().catch(() => undefined);
+    } else {
+      toast.error("Undo failed", { description: message });
+    }
     return false;
   }
+}
+
+/**
+ * The daemon keeps what a partly failed undo could not restore under the
+ * same id; undoing it again retries just those.
+ */
+function isRetryableUndo(message: string): boolean {
+  return message.includes("can be retried with the same undo");
+}
+
+/** Say what is left, and hand `u` and the toast a retry of those ids. */
+function offerRetry(undoIds: string[], description: string): void {
+  const retry = async () => {
+    useUndo.getState().retireUndo(retry);
+    return undoIds.length === 1 ? performUndo(undoIds[0]!) : undoAll(undoIds);
+  };
+  useUndo.getState().recordUndo(retry, undoIds.at(-1));
+  toast.error("Some messages weren't restored", {
+    description,
+    duration: 60_000,
+    action: { label: "Retry", onClick: () => void retry() },
+  });
 }
 
 interface UndoClaim {
@@ -129,19 +155,27 @@ export function offerUndo(
 }
 
 /** A batch job's chunks each undo separately; reverse them all, newest first. */
-async function undoAll(undoIds: string[]): Promise<boolean> {
+export async function undoAll(undoIds: string[]): Promise<boolean> {
   let ok = true;
+  const retryable: string[] = [];
+  let retryMessage = "";
   for (const id of undoIds.toReversed()) {
     try {
       // Chunks undo in reverse order, one at a time, like they were applied.
       // oxlint-disable-next-line no-await-in-loop
       await undoMutation(id);
-    } catch {
+    } catch (error) {
       ok = false;
+      const message = error instanceof Error ? error.message : String(error);
+      if (isRetryableUndo(message)) {
+        retryable.unshift(id);
+        retryMessage = message;
+      }
     }
   }
   await invalidateMailQueries().catch(() => undefined);
   if (ok) toast.success("Undone");
+  else if (retryable.length > 0) offerRetry(retryable, retryMessage);
   else
     toast.error("Part of the batch couldn't be undone", {
       description: "Its undo window may have passed.",

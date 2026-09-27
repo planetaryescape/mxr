@@ -23,6 +23,7 @@ pub mod mail_list;
 pub mod message_view;
 pub mod onboarding_modal;
 pub mod owed_lens;
+pub mod place_lens;
 pub mod platform_modal;
 pub mod reply_queue_modal;
 pub mod rules_page;

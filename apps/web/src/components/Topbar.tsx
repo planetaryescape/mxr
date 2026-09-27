@@ -26,6 +26,8 @@ const PAGE_TITLES: Record<string, string> = {
   focus: "Focus & reply",
   snoozed: "Snoozed",
   screener: "Screener",
+  reading: "Reading",
+  "paper-trail": "Paper trail",
   subscriptions: "Subscriptions",
   analytics: "Analytics",
   rules: "Rules",
@@ -41,9 +43,12 @@ const PAGE_TITLES: Record<string, string> = {
   compose: "Compose",
 };
 
+/** Pages whose second path segment is an open conversation. */
+const THREAD_PLACES = new Set(["search", "desk", "reading", "paper-trail"]);
+
 function threadIdInPath(parts: string[]): string | undefined {
   if (parts[0] === "m") return parts[1] === "label" || parts[1] === "saved" ? parts[3] : parts[2];
-  if (parts[0] === "search" || parts[0] === "desk") return parts[1];
+  if (THREAD_PLACES.has(parts[0] ?? "")) return parts[1];
   return undefined;
 }
 
@@ -84,8 +89,8 @@ function useBreadcrumb(path: string, search: string): Crumb[] {
     if (openThreadId) crumbs.push({ label: subject });
     return crumbs;
   }
-  if (parts[0] === "desk") {
-    const crumbs: Crumb[] = [{ label: title, to: "/desk" }];
+  if (parts[0] === "desk" || parts[0] === "reading" || parts[0] === "paper-trail") {
+    const crumbs: Crumb[] = [{ label: title, to: `/${parts[0]}` }];
     if (openThreadId) crumbs.push({ label: subject });
     return crumbs;
   }

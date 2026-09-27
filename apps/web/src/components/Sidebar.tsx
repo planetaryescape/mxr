@@ -16,7 +16,9 @@ import {
   LampDesk,
   ListChecks,
   MailX,
+  Newspaper,
   Package,
+  Receipt,
   Reply,
   Search,
   Send,
@@ -227,6 +229,15 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         shortcut: "g w",
       },
       { key: "snoozed", to: "/snoozed", label: "Snoozed", Icon: Clock, shortcut: "g n" },
+      // Mail that isn't from people: no counts, since none of it is work.
+      { key: "reading", to: "/reading", label: "Reading", Icon: Newspaper, shortcut: "g R" },
+      {
+        key: "paper-trail",
+        to: "/paper-trail",
+        label: "Paper trail",
+        Icon: Receipt,
+        shortcut: "g P",
+      },
     ];
     const screenerPlace = desk.data ? screenerEntry(desk.data) : null;
     if (screenerPlace) places.push(screenerPlace);

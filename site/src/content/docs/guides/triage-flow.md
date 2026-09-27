@@ -34,8 +34,8 @@ The decision you make once per *sender* rather than per message:
 
 - `allow` — you want their mail in the inbox
 - `deny` — auto-trash + mark-read
-- `feed` — newsletters / non-urgent: skip inbox, route to a feed view
-- `paper-trail` — receipts / records: archive on ingest
+- `feed`: newsletters and lists. Their mail lives in [Reading](/guides/reading-and-paper-trail/), off the desk.
+- `paper-trail`: receipts and notifications. Their mail lives in [Paper trail](/guides/reading-and-paper-trail/), off the desk.
 
 ```bash
 mxr screener queue                 # senders waiting for a decision

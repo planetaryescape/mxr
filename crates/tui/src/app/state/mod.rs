@@ -28,8 +28,9 @@ pub use mailbox::{
     ActivePane, AttachmentOperation, AttachmentPanelState, AttachmentSummary, BodySource,
     BodyViewMetadata, BodyViewMode, BodyViewState, CalendarInvitesPageState, DeskPageState,
     LayoutMode, MailListMode, MailListRow, MailboxState, MailboxView, OwedRepliesPageState,
-    PendingAttachmentAction, PendingBrowserOpen, SidebarItem, SidebarSection, SubscriptionEntry,
-    SubscriptionsPageState, ThreadSummaryPreview,
+    PendingAttachmentAction, PendingBrowserOpen, PendingSweepConfirm, PlaceFetch, PlacePageState,
+    SenderKindMenu, SidebarItem, SidebarSection, SubscriptionEntry, SubscriptionsPageState,
+    SweepTarget, ThreadSummaryPreview, PLACE_PAGE_MESSAGES, PLACE_PAGE_SENDERS,
 };
 pub use modals::{
     ActivityModalState, AnalyticsFilterField, AnalyticsFilterModalState, BriefingModalState,

@@ -47,6 +47,23 @@ pub(crate) fn strip_control_chars(input: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
+/// Mail text on one terminal line: controls stripped, breaks and tabs made
+/// spaces.
+pub(crate) fn one_line(text: &str) -> String {
+    strip_control_chars(text).replace(['\n', '\t', '\r'], " ")
+}
+
+/// At most `max` characters, with an ellipsis when cut.
+pub(crate) fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
+        out.push('\u{2026}');
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

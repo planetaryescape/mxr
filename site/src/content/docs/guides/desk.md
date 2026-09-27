@@ -14,10 +14,12 @@ long it has been:
 | **Waiting on** | You wrote last, at least 12 hours ago, and they have not answered. Watched contacts who have gone quiet longer than usual join this lane too. | Since your message, next to how fast they usually reply. |
 | **New from people** | Recent mail (the last 7 days) from a person you have not written to before. | When it arrived. |
 
-Everything that is not work is summarised in one line of counts: **Reading**
-(unread newsletters and lists), **Paper trail** (receipts and notifications),
-**Deliveries**, **Invites** and **Screener** (new senders with no decision
-yet). None of those counts are badges; the only badges count work.
+Everything that is not work is summarised in one line of links:
+[**Reading**](/guides/reading-and-paper-trail/) (newsletters and lists that
+arrived this week, read or not), [**Paper trail**](/guides/reading-and-paper-trail/)
+(receipts and notifications that arrived this week), **Deliveries**,
+**Invites** and **Screener** (new senders with no decision yet). None of
+those counts are badges; the only badges count work.
 
 The desk is built from what mxr already knows locally: who wrote last in each
 conversation, your contacts, screener decisions, past reply times, open
@@ -29,12 +31,18 @@ as any other local read.
 A message counts as mail from a person unless the sender looks like one of
 these:
 
-- a list or newsletter (a `List-Id` header, an unsubscribe method, or a
-  sender marked as a list), or a sender you screened into the feed;
-- a machine: a `noreply`, `notifications` or `alerts` style address or
+- a list or newsletter (a `List-Id` header, an unsubscribe method, a
+  `newsletter@` style address, or a sender marked as a list), or a sender
+  you moved to Reading;
+- a machine: a `no-reply`, `notifications` or `alerts` style address or
   sending domain, a delivery update, a calendar invite, or a sender you
-  screened into the paper trail;
-- a sender you denied in the screener, which never shows on the desk.
+  moved to Paper trail;
+- a sender you screened out, which never shows on the desk.
+
+A sender you mark as a person (`K` in Reading or Paper trail, then `p`)
+counts as one whatever their headers say. The full rules, with the reason
+each placement shows, are in
+[Reading and Paper trail](/guides/reading-and-paper-trail/).
 
 A conversation shows on the desk only while it is in the inbox. Archiving or
 snoozing it takes it off; undo puts it back. A conversation you started has

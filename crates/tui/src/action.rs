@@ -69,6 +69,22 @@ pub enum Action {
     OpenSubscriptions,
     OpenOwedReplies,
     OpenDesk,
+    /// Open Reading or Paper trail (`Request::ListPlace`).
+    OpenPlace(mxr_protocol::MailPlaceData),
+    /// Pin or unpin the message under the cursor in a place.
+    TogglePin,
+    /// Open the "move sender to…" menu for the sender under the cursor.
+    OpenSenderKindMenu,
+    /// Move that sender to a kind (`None`: back to automatic).
+    SetSenderKind(Option<mxr_protocol::SenderKindData>),
+    /// Preview sweeping the bundle under the cursor.
+    SweepBundle,
+    /// Preview sweeping the whole place on screen.
+    SweepPlace,
+    /// Load the next page of senders in a place.
+    MorePlaceSenders,
+    /// Load more of the sender under the cursor.
+    MoreFromSender,
     /// Open the calendar-invites lens (sidebar item). Loads invites via
     /// `Request::ListInvites` into the dedicated lens view.
     OpenCalendarInvites,

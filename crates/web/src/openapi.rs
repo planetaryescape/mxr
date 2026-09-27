@@ -79,7 +79,9 @@ use utoipa::{
         mail_send_time, mail_archive_ask, saved_searches_unread_counts,
         analytics_cadence_drift, cadence_watch_list, cadence_watch, cadence_unwatch,
         mail_time_resolve, mail_thread_context, mail_thread_gist,
-        compose_session_promises, mail_commitments_record
+        compose_session_promises, mail_commitments_record,
+        mail_place_list, mail_place_sweep, mail_message_kind, mail_messages_pin,
+        mail_sender_kind
     ),
     components(schemas(
         Request,
@@ -87,6 +89,9 @@ use utoipa::{
         ResponseData,
         DaemonEvent,
         MutationCommand,
+        SweepPlaceBody,
+        PinMessagesBody,
+        SenderKindBody,
     )),
     modifiers(&BearerSecurity),
     security(("bearer" = []))
@@ -273,6 +278,123 @@ fn compose_session_promises() {}
 fn mail_commitments_record() {}
 endpoint!(get mail_thread_context "/api/v1/mail/threads/{thread_id}/context", "Store facts for the reader's context block");
 endpoint!(get mail_thread_gist "/api/v1/mail/threads/{thread_id}/context/gist", "Model-written gist and ask for a conversation, cached per newest message");
+
+/// Body of `POST /api/v1/mail/places/{place}/sweep`.
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+struct SweepPlaceBody {
+    /// Omitted: every account.
+    account_id: Option<String>,
+    /// Only this sender's bundle.
+    sender_email: Option<String>,
+    /// Preview only; nothing is archived.
+    dry_run: Option<bool>,
+    /// From the dry run's preview; required unless `dry_run`. The sweep
+    /// archives only what that preview listed.
+    preview_token: Option<String>,
+}
+
+/// Body of `POST /api/v1/mail/messages/pin`.
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+struct PinMessagesBody {
+    message_ids: Vec<String>,
+    pinned: bool,
+}
+
+/// Body of `POST /api/v1/mail/senders/kind`.
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+struct SenderKindBody {
+    account_id: String,
+    sender_email: String,
+    /// `null` or omitted: back to automatic.
+    kind: Option<mxr_protocol::SenderKindData>,
+}
+
+/// Reading or Paper trail, bundled by sender, with the reason for each.
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/places/{place}",
+    summary = "List a place (Reading or Paper trail) as bundles by sender",
+    params(
+        ("place" = String, Path, description = "`reading` or `paper-trail`"),
+        ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
+        ("sender" = Option<String>, Query, description = "Only this sender's bundle"),
+        ("limit" = Option<u32>, Query, description = "Bundles per page (default 50)"),
+        ("offset" = Option<u32>, Query, description = "Bundles to skip"),
+        ("messages_per_bundle" = Option<u32>, Query, description = "Messages listed per bundle (default 20)"),
+        ("message_offset" = Option<u32>, Query, description = "Messages to skip in each bundle, for paging one sender"),
+    ),
+    responses(
+        (status = 200, description = "The `Place` variant", body = ResponseData),
+        (status = 400, description = "Unknown place or bad account id"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_place_list() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/places/{place}/sweep",
+    summary = "Archive everything unpinned in a place or one sender's bundle (dry_run previews)",
+    params(("place" = String, Path, description = "`reading` or `paper-trail`")),
+    request_body = SweepPlaceBody,
+    responses(
+        (
+            status = 200,
+            description = "The `PlaceSwept` variant: the preview, and the archive job unless dry_run",
+            body = ResponseData
+        ),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_place_sweep() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/messages/{message_id}/kind",
+    summary = "Why a message is where it is: its kind, rule and reason",
+    params(("message_id" = String, Path, description = "Message id")),
+    responses(
+        (status = 200, description = "The `MessageKind` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_message_kind() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/messages/pin",
+    summary = "Pin or unpin messages so a sweep leaves them where they are",
+    request_body = PinMessagesBody,
+    responses(
+        (status = 200, description = "The `MessagesPinned` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_messages_pin() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/senders/kind",
+    summary = "Move a sender to people, Reading, Paper trail or screened out, or back to automatic",
+    request_body = SenderKindBody,
+    responses(
+        (
+            status = 200,
+            description = "The `SenderKindSet` variant, with the previous kind for undo",
+            body = ResponseData
+        ),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_sender_kind() {}
 
 endpoint!(post compose_session_start "/api/v1/mail/compose/session", "Start compose session");
 endpoint!(post compose_session_refresh "/api/v1/mail/compose/session/refresh", "Refresh compose session");

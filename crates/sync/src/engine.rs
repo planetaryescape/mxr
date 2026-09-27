@@ -159,12 +159,6 @@ impl SyncEngine {
 
         let mut routed = envelope;
         match decision.disposition {
-            ScreenerDisposition::Allow => {
-                add_route_label(
-                    &mut routed.label_provider_ids,
-                    decision.route_label.as_deref(),
-                );
-            }
             ScreenerDisposition::Deny => {
                 routed.flags.insert(MessageFlags::READ);
                 routed
@@ -176,10 +170,13 @@ impl SyncEngine {
                     decision.route_label.as_deref(),
                 );
             }
-            ScreenerDisposition::Feed | ScreenerDisposition::PaperTrail => {
-                routed
-                    .label_provider_ids
-                    .retain(|label| !label.eq_ignore_ascii_case(system_labels::INBOX));
+            // Reading and Paper trail are views over the inbox, so their
+            // mail keeps INBOX like allowed mail: dropping it here would
+            // sweep the sender's new mail out of the place the user just
+            // moved them to.
+            ScreenerDisposition::Allow
+            | ScreenerDisposition::Feed
+            | ScreenerDisposition::PaperTrail => {
                 add_route_label(
                     &mut routed.label_provider_ids,
                     decision.route_label.as_deref(),

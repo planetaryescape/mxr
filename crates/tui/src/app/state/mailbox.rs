@@ -40,6 +40,9 @@ pub enum MailboxView {
     /// from the dedicated `calendar_invites` store table and re-fetched
     /// after an RSVP. Groundwork for future calendar/event features.
     CalendarInvites,
+    /// Reading or Paper trail (`Request::ListPlace`): mail that isn't from
+    /// people, bundled by sender, each bundle with the reason it is there.
+    Place(mxr_protocol::MailPlaceData),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,6 +163,8 @@ pub enum SidebarItem {
     AllMail,
     Subscriptions,
     Desk,
+    Reading,
+    PaperTrail,
     Owed,
     CalendarInvites,
     Label(Box<Label>),
@@ -172,6 +177,8 @@ pub(crate) enum SidebarSelectionKey {
     AllMail,
     Subscriptions,
     Desk,
+    Reading,
+    PaperTrail,
     Owed,
     CalendarInvites,
     Label(mxr_core::LabelId),
@@ -242,6 +249,213 @@ impl DeskPageState {
             .map(|(_, lane)| lane.total as usize)
             .sum()
     }
+}
+
+/// A place (Reading or Paper trail) as last fetched. One cursor walks every
+/// message of every bundle; bundle headers are not stops.
+#[derive(Debug, Clone, Default)]
+pub struct PlacePageState {
+    pub place: Option<mxr_protocol::MailPlaceData>,
+    pub bundles: Vec<mxr_protocol::PlaceBundleData>,
+    pub total_bundles: u32,
+    pub total_messages: u32,
+    pub loaded: bool,
+}
+
+impl PlacePageState {
+    /// Build from a `ResponseData::Place`; `None` for any other response.
+    pub fn from_response(data: mxr_protocol::ResponseData) -> Option<Self> {
+        let mxr_protocol::ResponseData::Place {
+            place,
+            bundles,
+            total_bundles,
+            total_messages,
+            ..
+        } = data
+        else {
+            return None;
+        };
+        Some(Self {
+            place: Some(place),
+            bundles,
+            total_bundles,
+            total_messages,
+            loaded: true,
+        })
+    }
+
+    /// Every listed message in display order with its bundle.
+    pub fn rows(
+        &self,
+    ) -> impl Iterator<
+        Item = (
+            &mxr_protocol::PlaceBundleData,
+            &mxr_protocol::PlaceMessageData,
+        ),
+    > {
+        self.bundles
+            .iter()
+            .flat_map(|bundle| bundle.messages.iter().map(move |message| (bundle, message)))
+    }
+
+    pub fn row_count(&self) -> usize {
+        self.bundles
+            .iter()
+            .map(|bundle| bundle.messages.len())
+            .sum()
+    }
+
+    /// Flip a message's pin locally, so the lens shows it before the
+    /// refetch lands.
+    pub fn set_pinned(&mut self, message_id: &MessageId, pinned: bool) {
+        for bundle in &mut self.bundles {
+            let mut changed = false;
+            for message in &mut bundle.messages {
+                if &message.message_id == message_id && message.pinned != pinned {
+                    message.pinned = pinned;
+                    changed = true;
+                }
+            }
+            if changed {
+                bundle.pinned_count = if pinned {
+                    bundle.pinned_count + 1
+                } else {
+                    bundle.pinned_count.saturating_sub(1)
+                };
+            }
+        }
+    }
+}
+
+/// Senders fetched per page of the place lens.
+pub const PLACE_PAGE_SENDERS: u32 = 50;
+/// Messages fetched per sender per page.
+pub const PLACE_PAGE_MESSAGES: u32 = 20;
+
+/// A fetch for the place lens, and how its answer joins what is shown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlaceFetch {
+    /// The first page again, as many senders and messages as are loaded.
+    Refresh {
+        place: mxr_protocol::MailPlaceData,
+        senders: u32,
+        messages_per_sender: u32,
+    },
+    /// The next page of senders, appended.
+    MoreSenders {
+        place: mxr_protocol::MailPlaceData,
+        offset: u32,
+    },
+    /// The next page of one sender's messages, appended to its bundle.
+    MoreFromSender {
+        place: mxr_protocol::MailPlaceData,
+        account_id: mxr_core::AccountId,
+        sender_email: String,
+        message_offset: u32,
+    },
+}
+
+impl PlacePageState {
+    /// What refreshing the lens should fetch so nothing loaded disappears.
+    pub fn refresh_fetch(&self, place: mxr_protocol::MailPlaceData) -> PlaceFetch {
+        let loaded = if self.place == Some(place) {
+            self
+        } else {
+            &Self::default()
+        };
+        PlaceFetch::Refresh {
+            place,
+            senders: (loaded.bundles.len() as u32).max(PLACE_PAGE_SENDERS),
+            messages_per_sender: loaded
+                .bundles
+                .iter()
+                .map(|bundle| bundle.messages.len() as u32)
+                .max()
+                .unwrap_or(0)
+                .max(PLACE_PAGE_MESSAGES),
+        }
+    }
+
+    /// Fold a fetched page in: replace, append senders, or append one
+    /// sender's messages.
+    pub fn apply(&mut self, fetch: &PlaceFetch, page: Self) {
+        match fetch {
+            PlaceFetch::Refresh { .. } => *self = page,
+            PlaceFetch::MoreSenders { .. } => {
+                let known: HashSet<(mxr_core::AccountId, String)> = self
+                    .bundles
+                    .iter()
+                    .map(|b| (b.account_id.clone(), b.sender_email.clone()))
+                    .collect();
+                self.bundles.extend(
+                    page.bundles.into_iter().filter(|b| {
+                        !known.contains(&(b.account_id.clone(), b.sender_email.clone()))
+                    }),
+                );
+                self.total_bundles = page.total_bundles;
+                self.total_messages = page.total_messages;
+            }
+            PlaceFetch::MoreFromSender {
+                account_id,
+                sender_email,
+                ..
+            } => {
+                let Some(fresh) = page.bundles.into_iter().next() else {
+                    return;
+                };
+                if let Some(bundle) = self
+                    .bundles
+                    .iter_mut()
+                    .find(|b| &b.account_id == account_id && &b.sender_email == sender_email)
+                {
+                    let known: HashSet<MessageId> = bundle
+                        .messages
+                        .iter()
+                        .map(|m| m.message_id.clone())
+                        .collect();
+                    bundle.messages.extend(
+                        fresh
+                            .messages
+                            .into_iter()
+                            .filter(|m| !known.contains(&m.message_id)),
+                    );
+                    bundle.message_count = fresh.message_count;
+                }
+            }
+        }
+    }
+
+    /// More senders exist than are loaded.
+    pub fn has_more_senders(&self) -> bool {
+        (self.bundles.len() as u32) < self.total_bundles
+    }
+}
+
+/// What a sweep covers: a whole place, or one sender's bundle in it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SweepTarget {
+    pub place: mxr_protocol::MailPlaceData,
+    pub account_id: Option<mxr_core::AccountId>,
+    pub sender_email: Option<String>,
+}
+
+/// A sweep waiting on the user's yes, with the daemon's dry-run preview.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingSweepConfirm {
+    pub target: SweepTarget,
+    pub preview: mxr_protocol::SweepPreviewData,
+    /// How many of the previewed messages the lens has loaded: a sweep can
+    /// reach mail not yet shown, and the preview says so.
+    pub shown: u32,
+}
+
+/// The "move sender to…" menu for the sender under the cursor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SenderKindMenu {
+    pub account_id: mxr_core::AccountId,
+    pub sender_email: String,
+    pub display: String,
+    pub current: mxr_protocol::MailKindData,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -332,6 +546,7 @@ pub struct MailboxState {
     pub subscriptions_page: SubscriptionsPageState,
     pub owed_page: OwedRepliesPageState,
     pub desk_page: DeskPageState,
+    pub place_page: PlacePageState,
     pub calendar_invites_page: CalendarInvitesPageState,
     pub active_label: Option<mxr_core::LabelId>,
     pub pending_label_fetch: Option<mxr_core::LabelId>,
@@ -341,6 +556,18 @@ pub struct MailboxState {
     pub pending_subscriptions_refresh: bool,
     pub pending_owed_refresh: bool,
     pub pending_desk_refresh: bool,
+    /// The place to (re)fetch for the place lens.
+    pub pending_place_refresh: Option<mxr_protocol::MailPlaceData>,
+    /// A further page for the place lens (more senders, or more from one).
+    pub pending_place_more: Option<PlaceFetch>,
+    /// A sweep whose dry-run preview the runtime should fetch.
+    pub pending_sweep_preview: Option<SweepTarget>,
+    /// A confirmed sweep for the runtime to run, bounded by its preview.
+    pub pending_sweep: Option<PendingSweepConfirm>,
+    /// The preview on screen, waiting for Enter or Esc.
+    pub sweep_confirm: Option<PendingSweepConfirm>,
+    /// The open "move sender to…" menu.
+    pub sender_kind_menu: Option<SenderKindMenu>,
     pub pending_calendar_invites_refresh: bool,
     /// Set when the user opens an invite from the calendar-invites lens or a
     /// row on the desk. The runtime fetches the envelope by id
@@ -421,6 +648,7 @@ impl MailboxState {
             subscriptions_page: SubscriptionsPageState::default(),
             owed_page: OwedRepliesPageState::default(),
             desk_page: DeskPageState::default(),
+            place_page: PlacePageState::default(),
             calendar_invites_page: CalendarInvitesPageState::default(),
             active_label: None,
             pending_label_fetch: None,
@@ -432,6 +660,12 @@ impl MailboxState {
             // Fetch once at startup so the sidebar badge is right before
             // the desk is first opened.
             pending_desk_refresh: true,
+            pending_place_refresh: None,
+            pending_place_more: None,
+            pending_sweep_preview: None,
+            pending_sweep: None,
+            sweep_confirm: None,
+            sender_kind_menu: None,
             pending_calendar_invites_refresh: false,
             pending_invite_open: None,
             pending_commitment_counts_refresh: false,

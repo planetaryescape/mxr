@@ -137,9 +137,9 @@ export async function fetchContactsAutocomplete(
 export interface ComposeSendResponse {
   ok: boolean;
   draft_id?: string;
-  /** Local id of the message just sent (the daemon's SendReceipt). Needed
-   * to set a no-reply reminder; absent when the bridge doesn't return it. */
-  local_message_id?: string;
+  /** Local id of the message just sent (the daemon's send receipt). Needed
+   * to set a no-reply reminder; null when the daemon only acknowledged. */
+  message_id?: string | null;
 }
 
 export function sendComposeSession(
@@ -202,50 +202,25 @@ export function suggestComposeCollaborators(
   );
 }
 
-export interface DraftAddress {
-  name: string | null;
-  email: string;
-}
-
 /**
- * Payload for `POST /drafts/save-local` (the daemon `Draft` shape). Scheduled
- * sends operate on stored drafts, so the compose session is materialised into
- * one before scheduling.
- *
- * Markdown-only by construction, and deliberately so: the browser composer
- * edits compose files, which cannot represent a supplied HTML document. That
- * makes the required `body_markdown` honest here — but it also makes `id`
- * dangerous. `save-local` is an upsert, and a draft whose stored body is HTML
- * would be *replaced* by the markdown one in this payload, discarding the
- * document. Only ever send an `id` that came from a markdown compose session.
+ * Store the open compose session as a local draft and schedule it, in one
+ * call. The bridge parses the compose file the same way send does, so reply
+ * headers, invite replies, attachments and the From alias carry over.
  */
-export interface LocalDraftPayload {
-  id: string;
-  account_id: string;
-  /** Send-as override; omitted to send from the account's primary address. */
-  from?: DraftAddress;
-  intent: ComposeKind;
-  to: DraftAddress[];
-  cc: DraftAddress[];
-  bcc: DraftAddress[];
-  subject: string;
-  body_markdown: string;
-  attachments: string[];
-  created_at: string;
-  updated_at: string;
-}
-
-export function saveLocalDraft(draft: LocalDraftPayload): Promise<unknown> {
-  return apiFetch<unknown>("/api/v1/mail/drafts/save-local", {
+export function scheduleComposeSession(input: {
+  draftPath: string;
+  accountId: string;
+  draftId?: string;
+  sendAt: Date;
+}): Promise<{ ok: boolean; draft_id: string; send_at: string }> {
+  return apiFetch("/api/v1/mail/compose/session/schedule", {
     method: "POST",
-    body: draft,
-  });
-}
-
-export function createScheduledSend(draftId: string, sendAt: Date): Promise<unknown> {
-  return apiFetch<unknown>("/api/v1/mail/scheduled-sends", {
-    method: "POST",
-    body: { draft_id: draftId, send_at: sendAt.toISOString() },
+    body: {
+      draft_path: input.draftPath,
+      account_id: input.accountId,
+      ...(input.draftId ? { draft_id: input.draftId } : {}),
+      send_at: input.sendAt.toISOString(),
+    },
   });
 }
 

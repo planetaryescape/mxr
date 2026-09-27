@@ -17,8 +17,7 @@ import {
   cancelAutoReminder,
   cancelScheduledSend,
   checkComposeSafety,
-  createScheduledSend,
-  saveLocalDraft,
+  scheduleComposeSession,
   sendComposeSession,
   setAutoReminder,
   type ComposeSession,
@@ -27,10 +26,8 @@ import {
 import { forgetActiveDraft } from "./activeDrafts";
 import {
   draftFingerprint,
-  draftIntentFromKind,
   errorMessage,
   localComposeIssues,
-  parseDraftAddresses,
   splitAddresses,
   type ComposeDraftState,
   type ComposeIntent,
@@ -117,30 +114,15 @@ export function useComposeSend({
     mutationFn: async (at: Date) => {
       const current = draftRef.current;
       if (!current) throw new Error("No draft is open");
-      const now = new Date().toISOString();
-      // Editing an existing stored draft must save it in place; only mint a
-      // fresh id for a genuinely new compose session (save-local is an
-      // upsert-by-id, so reusing the id updates rather than duplicates it).
-      const draftId = intent.draftId ?? crypto.randomUUID();
-      const from = current.frontmatter.from.trim();
-      await saveLocalDraft({
-        id: draftId,
-        account_id: current.accountId,
-        // Keep a chosen send-as alias; without it the daemon sends from the
-        // account's primary address.
-        ...(from ? { from: { name: null, email: from } } : {}),
-        intent: draftIntentFromKind(current.kind),
-        to: parseDraftAddresses(current.frontmatter.to),
-        cc: parseDraftAddresses(current.frontmatter.cc),
-        bcc: parseDraftAddresses(current.frontmatter.bcc),
-        subject: current.frontmatter.subject,
-        body_markdown: current.bodyMarkdown,
-        attachments: [...current.frontmatter.attach],
-        created_at: now,
-        updated_at: now,
+      // Editing a stored draft reschedules it in place; a new compose
+      // session lets the bridge mint the stored draft's id.
+      const response = await scheduleComposeSession({
+        draftPath: current.draftPath,
+        accountId: current.accountId,
+        draftId: intent.draftId,
+        sendAt: at,
       });
-      await createScheduledSend(draftId, at);
-      return draftId;
+      return response.draft_id;
     },
   });
 
@@ -232,14 +214,6 @@ export function useComposeSend({
     const current = draftRef.current;
     if (!current) return;
     if (sendLockRef.current) return;
-    // Scheduling stores the draft through save-local, which has no field for
-    // the iCal REPLY; the scheduled message would go out without the answer.
-    if (intent.kind === "invite_reply") {
-      toast.info("Send later isn't available for invite replies", {
-        description: "The calendar response would be lost. Send it now instead.",
-      });
-      return;
-    }
     markSendAttempted();
     if (hasBlockingIssues(current)) {
       onValidationBlocked();
@@ -358,7 +332,7 @@ export function useComposeSend({
           markSessionFinished();
           forgetActiveDraft(intent.key);
           toast.success("Message sent");
-          if (remind) await setReminderAfterSend(response.local_message_id, remind);
+          if (remind) await setReminderAfterSend(response.message_id ?? undefined, remind);
           if (archiveSourceId) {
             try {
               await archiveMessages([archiveSourceId]);

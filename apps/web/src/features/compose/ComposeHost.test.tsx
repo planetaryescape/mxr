@@ -22,7 +22,6 @@ const api = vi.hoisted(() => ({
   cancelScheduledSend: vi.fn<(draftId: string) => Promise<unknown>>(),
   checkComposeSafety:
     vi.fn<(draftPath: string, accountId: string) => Promise<{ report: DraftSafetyReport }>>(),
-  createScheduledSend: vi.fn<(draftId: string, at: Date) => Promise<unknown>>(),
   discardComposeSession: vi.fn<(draftPath: string) => Promise<unknown>>(),
   fetchAccounts: vi.fn<() => Promise<unknown>>(),
   fetchContactsAutocomplete: vi.fn<(query: string) => Promise<unknown[]>>(),
@@ -30,7 +29,14 @@ const api = vi.hoisted(() => ({
   restoreComposeSession: vi.fn<(draftId: string) => Promise<unknown>>(),
   saveComposeSession:
     vi.fn<(draftPath: string, accountId: string, draftId?: string) => Promise<unknown>>(),
-  saveLocalDraft: vi.fn<(draft: unknown) => Promise<unknown>>(),
+  scheduleComposeSession:
+    vi.fn<
+      (input: { draftPath: string; accountId: string; draftId?: string; sendAt: Date }) => Promise<{
+        ok: boolean;
+        draft_id: string;
+        send_at: string;
+      }>
+    >(),
   sendComposeSession:
     vi.fn<(draftPath: string, accountId: string, token?: string) => Promise<unknown>>(),
   startComposeSession:
@@ -523,8 +529,11 @@ describe("ComposeHost send confirmation", () => {
 
 describe("ComposeHost send later", () => {
   test("a scheduled send can be cancelled from its confirmation toast", async () => {
-    api.saveLocalDraft.mockResolvedValue({ ok: true });
-    api.createScheduledSend.mockResolvedValue({ ok: true });
+    api.scheduleComposeSession.mockResolvedValue({
+      ok: true,
+      draft_id: "stored-1",
+      send_at: new Date().toISOString(),
+    });
     api.cancelScheduledSend.mockResolvedValue({ ok: true });
     renderHost();
     openNewMessage();
@@ -535,10 +544,12 @@ describe("ComposeHost send later", () => {
     await waitFor(() =>
       expect(toasts.success).toHaveBeenCalledWith("Send scheduled", expect.anything()),
     );
-    const scheduledId = api.createScheduledSend.mock.calls[0]?.[0];
-    const stored = api.saveLocalDraft.mock.calls[0]?.[0] as { id: string; from?: unknown };
-    expect(stored.id).toBe(scheduledId);
-    expect(stored.from).toEqual({ name: null, email: "me@example.com" });
+    // The bridge stores and schedules the compose file itself, so reply
+    // headers and the From alias carry over.
+    const request = api.scheduleComposeSession.mock.calls[0]?.[0];
+    expect(request?.draftPath).toBeTruthy();
+    expect(request?.sendAt).toBeInstanceOf(Date);
+    const scheduledId = "stored-1";
     // The composer closes like a send.
     await waitFor(() => expect(screen.queryByLabelText("Subject")).not.toBeInTheDocument());
 
@@ -580,7 +591,7 @@ describe("ComposeHost send and remind", () => {
     api.sendComposeSession.mockResolvedValue({
       ok: true,
       draft_id: "draft-1",
-      local_message_id: "msg-9",
+      message_id: "msg-9",
     });
     renderHost();
     openNewMessage();
@@ -624,7 +635,12 @@ describe("ComposeHost send and remind", () => {
 });
 
 describe("ComposeHost invite replies", () => {
-  test("open a session carrying the invite action, and refuse send later", async () => {
+  test("open a session carrying the invite action, and schedule it with the answer", async () => {
+    api.scheduleComposeSession.mockResolvedValue({
+      ok: true,
+      draft_id: "stored-invite",
+      send_at: new Date().toISOString(),
+    });
     renderHost();
     act(() => {
       useComposeUi.getState().openCompose(inviteReplyIntent("m-3", "tentative"), "overlay");
@@ -633,11 +649,11 @@ describe("ComposeHost invite replies", () => {
     expect((await screen.findAllByText("Tentative with comment"))[0]).toBeVisible();
     expect(api.startComposeSession).toHaveBeenCalledWith("invite_reply", "m-3", "tentative");
 
+    // Scheduling goes through the compose session, which carries the RSVP,
+    // so invite replies can be sent later like any other reply.
     fireEvent.click(await screen.findByRole("button", { name: "Send later" }));
-    expect(toasts.info).toHaveBeenCalledWith("Send later isn't available for invite replies", {
-      description: "The calendar response would be lost. Send it now instead.",
-    });
-    expect(screen.queryByRole("dialog", { name: "Send later" })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: /In 2 hours/ }));
+    await waitFor(() => expect(api.scheduleComposeSession).toHaveBeenCalledTimes(1));
   });
 });
 

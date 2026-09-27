@@ -7,10 +7,9 @@
 import type {
   ComposeFrontmatter,
   ComposeIssue,
-  ComposeKind,
+
   ComposeSession,
   ComposeSessionKind,
-  DraftAddress,
   InviteReplyAction,
 } from "../api";
 
@@ -156,19 +155,6 @@ export function firstAddress(value: string): string | undefined {
   if (!first) return undefined;
   const match = first.match(/<([^>]+)>/);
   return (match?.[1] ?? first).trim() || undefined;
-}
-
-export function draftIntentFromKind(kind: string): ComposeKind {
-  return kind === "reply" || kind === "reply_all" || kind === "forward" ? kind : "new";
-}
-
-/** "Name <email>" / bare-email chips → daemon `Address` values. */
-export function parseDraftAddresses(value: string): DraftAddress[] {
-  return splitAddresses(value).map((raw) => {
-    const match = raw.match(/^(.*?)\s*<([^>]+)>$/);
-    if (match?.[2]) return { name: match[1]?.trim() || null, email: match[2].trim() };
-    return { name: null, email: raw };
-  });
 }
 
 export function countRecipients(frontmatter: ComposeFrontmatter): number {

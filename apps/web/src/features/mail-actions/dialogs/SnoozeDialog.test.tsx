@@ -9,13 +9,18 @@ import { SnoozeDialog } from "./SnoozeDialog";
 
 const api = vi.hoisted(() => ({
   fetchSnoozePresets: vi.fn<() => Promise<unknown>>(),
-  snoozeMessages: vi.fn<(ids: string[], until: string) => Promise<unknown[]>>(),
+  performMailAction:
+    vi.fn<(action: string, ids: string[], options?: { until?: string }) => Promise<unknown>>(),
 }));
 
-vi.mock("./api", () => ({
+vi.mock("@/features/mailbox/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/features/mailbox/api")>()),
   fetchSnoozePresets: api.fetchSnoozePresets,
-  shellKey: ["shell"],
-  snoozeMessages: api.snoozeMessages,
+}));
+
+vi.mock("../mailMutations", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../mailMutations")>()),
+  performMailAction: api.performMailAction,
 }));
 
 function renderWithQueryClient(children: ReactNode) {
@@ -36,7 +41,7 @@ describe("SnoozeDialog", () => {
         },
       ],
     });
-    api.snoozeMessages.mockResolvedValue([]);
+    api.performMailAction.mockResolvedValue({ ok: true });
   });
 
   afterEach(() => {
@@ -47,21 +52,38 @@ describe("SnoozeDialog", () => {
     const onOpenChange = vi.fn<(open: boolean) => void>();
     renderWithQueryClient(<SnoozeDialog open messageIds={["msg-1"]} onOpenChange={onOpenChange} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /tomorrow morning/i }));
+    fireEvent.click(await screen.findByText("Tomorrow morning"));
 
-    await waitFor(() => expect(api.snoozeMessages).toHaveBeenCalledWith(["msg-1"], "tomorrow"));
+    await waitFor(() =>
+      expect(api.performMailAction).toHaveBeenCalledWith("snooze", ["msg-1"], {
+        until: "tomorrow",
+      }),
+    );
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  test("number keys pick a preset", async () => {
+    renderWithQueryClient(<SnoozeDialog open messageIds={["msg-4"]} onOpenChange={() => {}} />);
+    await screen.findByText("Tomorrow morning");
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "1" });
+
+    expect(api.performMailAction).toHaveBeenCalledWith("snooze", ["msg-4"], {
+      until: "tomorrow",
+    });
   });
 
   test("snoozes selected messages with a custom natural-language time", async () => {
     renderWithQueryClient(<SnoozeDialog open messageIds={["msg-2"]} onOpenChange={() => {}} />);
 
-    fireEvent.change(await screen.findByLabelText(/custom snooze time/i), {
+    fireEvent.change(await screen.findByLabelText(/or type a time/i), {
       target: { value: "in 2h" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /snooze custom time/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^snooze$/i }));
 
-    await waitFor(() => expect(api.snoozeMessages).toHaveBeenCalledWith(["msg-2"], "in 2h"));
+    await waitFor(() =>
+      expect(api.performMailAction).toHaveBeenCalledWith("snooze", ["msg-2"], { until: "in 2h" }),
+    );
   });
 
   test("hides the tonight preset when it resolves to tomorrow", async () => {
@@ -84,8 +106,8 @@ describe("SnoozeDialog", () => {
 
     renderWithQueryClient(<SnoozeDialog open messageIds={["msg-3"]} onOpenChange={() => {}} />);
 
-    expect(await screen.findByRole("button", { name: /tomorrow morning/i })).toBeVisible();
-    expect(screen.queryByRole("button", { name: /tonight/i })).not.toBeInTheDocument();
+    expect(await screen.findByText("Tomorrow morning")).toBeVisible();
+    expect(screen.queryByText("Tonight")).not.toBeInTheDocument();
   });
 });
 

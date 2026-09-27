@@ -10,10 +10,10 @@ import { diagnosticsActions } from "./actions";
 const baseCtx = {
   path: "/m/inbox",
   activePane: "mailbox" as const,
+  scopes: ["global" as const],
   selectionCount: 0,
   accountCount: 0,
   hasFocusedThread: false,
-  hasFocusedMessage: false,
   isFirstAccountOnly: false,
 };
 

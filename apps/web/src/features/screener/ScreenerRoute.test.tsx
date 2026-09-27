@@ -5,6 +5,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { getRegistry, snapshotActionContext } from "@/lib/actions";
+import { installKeyDispatcher } from "@/lib/keys/dispatcher";
+
 import { ScreenerRoute } from "./ScreenerRoute";
 
 const accounts = vi.hoisted(() => ({
@@ -39,6 +42,8 @@ vi.mock("sonner", () => ({
     error: vi.fn<(message: string, options?: unknown) => void>(),
   },
 }));
+
+let uninstall: () => void = () => {};
 
 function renderWithQueryClient(children: ReactNode) {
   const queryClient = new QueryClient({
@@ -86,7 +91,17 @@ describe("ScreenerRoute", () => {
     screener.clearScreenerDecision.mockResolvedValue({ ok: true });
   });
 
+  beforeEach(() => {
+    // The app's one key dispatcher: screener keys reach the view through
+    // the registry's "screener" scope, not a listener of its own.
+    uninstall = installKeyDispatcher(window, {
+      registry: getRegistry(),
+      context: snapshotActionContext,
+    });
+  });
+
   afterEach(() => {
+    uninstall();
     vi.clearAllMocks();
   });
 
@@ -106,12 +121,56 @@ describe("ScreenerRoute", () => {
     });
   });
 
+  test("j moves the cursor before deciding, and a failure is reported", async () => {
+    screener.fetchScreenerQueue.mockResolvedValue({
+      entries: [
+        {
+          sender_email: "first@example.com",
+          display_name: "First",
+          message_count: 1,
+          latest_subject: "Hi",
+          latest_at: "2026-05-11T10:00:00Z",
+        },
+        {
+          sender_email: "second@example.com",
+          display_name: "Second",
+          message_count: 2,
+          latest_subject: "Hello",
+          latest_at: "2026-05-11T11:00:00Z",
+        },
+      ],
+    });
+    screener.setScreenerDecision.mockRejectedValue(new Error("daemon said no"));
+    const { toast } = await import("sonner");
+    renderWithQueryClient(<ScreenerRoute />);
+
+    expect(await screen.findByText("Second")).toBeVisible();
+    expect(screen.getByText("1 message", { exact: false })).toBeVisible();
+    fireEvent.keyDown(window, { key: "j" });
+    fireEvent.keyDown(window, { key: "d" });
+
+    await waitFor(() => {
+      expect(screener.setScreenerDecision).toHaveBeenCalledWith({
+        accountId: "account-1",
+        senderEmail: "second@example.com",
+        disposition: "deny",
+      });
+    });
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+  });
+
+  test("shows a skeleton, not an empty queue, while loading", async () => {
+    screener.fetchScreenerQueue.mockReturnValue(new Promise(() => {}));
+    renderWithQueryClient(<ScreenerRoute />);
+
+    expect(await screen.findByRole("status", { name: /loading screener queue/i })).toBeVisible();
+    expect(screen.queryByText("Queue empty")).not.toBeInTheDocument();
+  });
+
   test("Decisions tab lists decisions and clears one", async () => {
     renderWithQueryClient(<ScreenerRoute />);
 
     const decisionsTab = await screen.findByRole("tab", { name: /decisions/i });
-    // Radix Tabs activates on mousedown; click alone doesn't flip the panel in jsdom.
-    fireEvent.mouseDown(decisionsTab);
     fireEvent.click(decisionsTab);
 
     expect(await screen.findByText("spammer@example.com")).toBeVisible();

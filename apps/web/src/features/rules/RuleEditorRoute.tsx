@@ -1,25 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { Check, Play, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Check, FlaskConical, Play, Trash2 } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
-import { dryRunRule, fetchRuleForm, fetchRuleHistory, upsertRuleForm, type RuleForm } from "./api";
-import { fetchSearch } from "@/features/search/api";
 import {
-  archiveMessages,
-  markReadMessages,
-  modifyLabels,
-  moveMessagesToLabel,
-  readAndArchiveMessages,
-  shellKey,
-  spamMessages,
-  starMessages,
-  trashMessages,
-  undoMutation,
-} from "@/features/mailbox/api";
-import type { MutationResponse } from "@/features/mailbox/types";
-import { EmptyState } from "@/components/EmptyState";
+  deleteRule,
+  dryRunRule,
+  fetchRuleForm,
+  fetchRuleHistory,
+  upsertRuleForm,
+  type RuleForm,
+} from "./api";
+import { mailActions, runMailActions } from "./ruleActions";
+import { Page, PageSection } from "@/components/Page";
+import {
+  PageEmpty,
+  PageError,
+  PageNote,
+  PageSkeleton,
+  RuledList,
+  RuledRow,
+} from "@/components/PageParts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,12 +31,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { shellKey, undoMutation } from "@/features/mailbox/api";
+import { fetchSearch } from "@/features/search/api";
+import { formatRelative, plural } from "@/lib/format";
 
 const emptyRule: RuleForm = {
   name: "",
@@ -43,35 +48,77 @@ const emptyRule: RuleForm = {
   priority: 100,
   enabled: true,
 };
-type RulePreview = { results: unknown[] };
+
+const ACTION_PRESETS = [
+  "archive",
+  "mark-read,archive",
+  "label:Receipts",
+  "move:Archive",
+  "star",
+  "trash",
+  "spam",
+];
+
+/** A message the rule would touch; the same ids Apply now acts on. */
+interface PreviewMatch {
+  message_id: string;
+  from: string;
+  subject: string;
+}
 
 export function RuleEditorRoute() {
   const { id } = useParams({ from: "/rules/$id" });
   const isNew = id === "new";
-  const navigate = useNavigate();
-  const qc = useQueryClient();
   const formQuery = useQuery({
     queryKey: ["rule-form", id],
     queryFn: () => fetchRuleForm(id),
     enabled: !isNew,
     retry: false,
   });
-  const [form, setForm] = useState<RuleForm>(emptyRule);
+
+  if (!isNew && formQuery.isPending)
+    return (
+      <Page title="Rule" eyebrow="Rules" width="default">
+        <PageSkeleton label="Loading rule" />
+      </Page>
+    );
+  if (!isNew && formQuery.isError)
+    return (
+      <Page title="Rule" eyebrow="Rules">
+        <PageError
+          title="Rule unavailable"
+          error={formQuery.error}
+          onRetry={() => void formQuery.refetch()}
+        />
+      </Page>
+    );
+  return <RuleEditor key={id} id={id} saved={isNew ? null : (formQuery.data?.form ?? null)} />;
+}
+
+function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
+  const isNew = saved === null;
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [form, setForm] = useState<RuleForm>(saved ?? emptyRule);
   const [applyConfirmOpen, setApplyConfirmOpen] = useState(false);
+  const condition = useDebounced(form.condition.trim(), 350);
+  // The daemon's dry run evaluates the saved rule. While the condition is
+  // unsaved (new rule, or edited), preview with the same query as a search.
+  const usesSavedRule = !isNew && condition === saved.condition.trim();
 
-  useEffect(() => {
-    if (formQuery.data?.form) setForm(formQuery.data.form);
-    if (isNew) setForm(emptyRule);
-  }, [formQuery.data?.form, isNew]);
-
-  const dryRun = useQuery({
-    queryKey: ["rule-dry-run", isNew ? form.condition : id, form.condition],
-    queryFn: async (): Promise<RulePreview> => {
-      if (!isNew) return dryRunRule(id);
-      const search = await fetchSearch({ q: form.condition, limit: 20 });
-      return { results: search.groups.flatMap((group) => group.rows) };
+  const preview = useQuery({
+    queryKey: ["rule-preview", usesSavedRule ? `saved:${id}` : `query:${condition}`],
+    queryFn: async (): Promise<PreviewMatch[]> => {
+      if (usesSavedRule) {
+        const response = await dryRunRule(id);
+        return response.results.flatMap((result) => result.matches);
+      }
+      const search = await fetchSearch({ q: condition, limit: 50, scope: "messages" });
+      return search.groups
+        .flatMap((group) => group.rows)
+        .map((row) => ({ message_id: row.id, from: row.sender, subject: row.subject }));
     },
-    enabled: (isNew ? form.condition : id).trim().length > 0,
+    enabled: condition.length > 0,
   });
   const history = useQuery({
     queryKey: ["rule-history", id],
@@ -81,340 +128,322 @@ export function RuleEditorRoute() {
   const save = useMutation({
     mutationFn: () => upsertRuleForm(form, isNew ? null : id),
     onSuccess: async () => {
-      toast.success("Rule saved");
+      toast.success(`Saved ${form.name}`);
       void qc.invalidateQueries({ queryKey: ["rules"] });
-      if (isNew) await navigate({ to: "/rules" });
+      void qc.invalidateQueries({ queryKey: ["rule-form"] });
+      void qc.invalidateQueries({ queryKey: ["rule-preview"] });
+      if (isNew || form.name !== id)
+        await navigate({ to: "/rules/$id", params: { id: form.name } });
     },
     onError: (error) => toast.error("Save failed", { description: error.message }),
   });
+  const remove = useMutation({
+    mutationFn: () => deleteRule(id),
+    onSuccess: async () => {
+      toast.success(`Deleted ${id}`);
+      void qc.invalidateQueries({ queryKey: ["rules"] });
+      await navigate({ to: "/rules" });
+    },
+    onError: (error) => toast.error("Delete failed", { description: error.message }),
+  });
+
+  const matches = preview.data ?? [];
+  const parsedActions = mailActions(form.action);
   const applyNow = useMutation({
     mutationFn: async () => {
-      const action = mailActions(form.action);
-      const ids: string[] = [];
-      for (const row of previewRows) {
-        const previewId = messageId(row);
-        if (previewId) ids.push(previewId);
-      }
-      if (!action) throw new Error("This action is not supported by apply-now yet");
-      if (ids.length === 0) throw new Error("No preview messages to apply this rule to");
-      return runMailActions(action, ids);
+      if (!parsedActions) throw new Error("This action cannot be applied from the web yet");
+      const ids = matches.map((match) => match.message_id);
+      if (ids.length === 0) throw new Error("The preview has no messages to apply this rule to");
+      return runMailActions(parsedActions, ids);
     },
     onSuccess: (response) => {
       setApplyConfirmOpen(false);
-      if (!response) return;
       const count = response.result?.succeeded ?? 0;
       const mutationId = response.result?.mutation_id;
-      if (mutationId) {
-        toast.success(`Applied rule to ${count} messages`, {
-          duration: 60_000,
-          action: {
-            label: "Undo",
-            onClick: () => {
-              undoMutation(mutationId)
-                .then(() => {
-                  toast.success("Rule application undone");
-                  void qc.invalidateQueries({ queryKey: ["mailbox"] });
-                  void qc.invalidateQueries({ queryKey: shellKey });
-                })
-                .catch((error: Error) =>
-                  toast.error("Undo failed", { description: error.message }),
-                );
-            },
-          },
-        });
-      } else {
-        toast.success(`Applied rule to ${count} messages`);
-      }
+      toast.success(`Applied to ${plural(count, "message")}`, {
+        duration: mutationId ? 60_000 : undefined,
+        action: mutationId
+          ? {
+              label: "Undo",
+              onClick: () => {
+                undoMutation(mutationId)
+                  .then(() => {
+                    toast.success("Rule application undone");
+                    void qc.invalidateQueries({ queryKey: ["mailbox"] });
+                    void qc.invalidateQueries({ queryKey: shellKey });
+                  })
+                  .catch((error: Error) =>
+                    toast.error("Undo failed", { description: error.message }),
+                  );
+              },
+            }
+          : undefined,
+      });
     },
     onError: (error) => toast.error("Apply failed", { description: error.message }),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ["mailbox"] });
       void qc.invalidateQueries({ queryKey: shellKey });
+      void qc.invalidateQueries({ queryKey: ["rule-preview"] });
     },
   });
 
-  if (formQuery.isError && !isNew)
-    return (
-      <EmptyState icon={RefreshCw} title="Rule unavailable" description={formQuery.error.message} />
-    );
-  const previewRows = dryRun.data?.results ?? [];
+  const canSave = Boolean(form.name.trim() && form.condition.trim() && form.action.trim());
 
   return (
-    <div className="grid min-w-0 flex-1 grid-cols-1 bg-background lg:grid-cols-[minmax(360px,520px)_1fr]">
-      <section className="border-r border-border p-6">
-        <div className="mb-5">
-          <div className="font-mono text-2xs uppercase tracking-wide text-muted-foreground">
-            Rule builder
-          </div>
-          <h1 className="text-xl font-semibold tracking-tight">
-            {isNew ? "New rule" : form.name || id}
-          </h1>
-        </div>
-        <div className="space-y-4">
-          <Field label="Name">
-            <Input
-              value={form.name}
-              onChange={(event) => setForm({ ...form, name: event.target.value })}
-              placeholder="Archive newsletters"
-            />
-          </Field>
-          <Field label="Condition">
-            <Input
-              value={form.condition}
-              onChange={(event) => setForm({ ...form, condition: event.target.value })}
-              placeholder="from:news@example.com"
-            />
-          </Field>
-          <Field label="Action">
-            <Input
-              value={form.action}
-              onChange={(event) => setForm({ ...form, action: event.target.value })}
-              placeholder="mark-read,archive or label:News,archive"
-            />
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {[
-                "mark-read,archive",
-                "archive",
-                "trash",
-                "spam",
-                "star",
-                "read",
-                "unread",
-                "read-and-archive",
-                "label:Receipts",
-                "move:Archive",
-              ].map((action) => (
-                <Button
-                  key={action}
-                  type="button"
-                  variant={form.action === action ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setForm({ ...form, action })}
-                >
-                  {action}
+    <Page
+      eyebrow="Rules"
+      title={isNew ? "New rule" : saved.name}
+      description="Preview what a rule matches before you save or apply it."
+      actions={
+        <>
+          {!isNew ? (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="sm" disabled={remove.isPending}>
+                  <Trash2 className="size-3" />
+                  Delete
                 </Button>
-              ))}
-            </div>
-          </Field>
-          <Field label="Priority">
-            <Input
-              type="number"
-              value={form.priority}
-              onChange={(event) => setForm({ ...form, priority: Number(event.target.value) })}
-            />
-          </Field>
-          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
-            <div>
-              <div className="text-xs font-medium">Enabled</div>
-              <div className="text-2xs text-muted-foreground">
-                Daemon can run this rule during sync.
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete {saved.name}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    The rule stops running. Mail it already changed stays as it is.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction variant="destructive" onClick={() => remove.mutate()}>
+                    Delete rule
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : null}
+          <Button size="sm" onClick={() => save.mutate()} disabled={!canSave || save.isPending}>
+            <Check className="size-3" />
+            {isNew ? "Save rule" : "Save changes"}
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-x-10 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+        <PageSection title="Definition">
+          <div className="space-y-4">
+            <Field label="Name" htmlFor="rule-name">
+              <Input
+                id="rule-name"
+                value={form.name}
+                onChange={(event) => setForm({ ...form, name: event.target.value })}
+                placeholder="Archive newsletters"
+                className="h-8 text-[13px]"
+              />
+            </Field>
+            <Field
+              label="When a message matches"
+              htmlFor="rule-condition"
+              hint="Search syntax, e.g. from:news@example.com older_than:7d"
+            >
+              <Input
+                id="rule-condition"
+                value={form.condition}
+                onChange={(event) => setForm({ ...form, condition: event.target.value })}
+                placeholder="from:news@example.com"
+                className="h-8 font-mono text-xs"
+              />
+            </Field>
+            <Field label="Do" htmlFor="rule-action" hint="Comma-separated steps, run in order.">
+              <Input
+                id="rule-action"
+                value={form.action}
+                onChange={(event) => setForm({ ...form, action: event.target.value })}
+                placeholder="mark-read,archive"
+                className="h-8 font-mono text-xs"
+              />
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {ACTION_PRESETS.map((action) => (
+                  <Button
+                    key={action}
+                    type="button"
+                    variant={form.action === action ? "secondary" : "outline"}
+                    size="xs"
+                    className="font-mono"
+                    onClick={() => setForm({ ...form, action })}
+                  >
+                    {action}
+                  </Button>
+                ))}
               </div>
+            </Field>
+            <Field label="Priority" htmlFor="rule-priority" hint="Lower runs first.">
+              <Input
+                id="rule-priority"
+                type="number"
+                value={form.priority}
+                onChange={(event) => setForm({ ...form, priority: Number(event.target.value) })}
+                className="h-8 w-24 text-xs"
+              />
+            </Field>
+            <div className="flex items-center justify-between gap-4 border-t border-border/60 pt-3">
+              <Label htmlFor="rule-enabled" className="text-[13px] font-normal">
+                Run during sync
+              </Label>
+              <Switch
+                id="rule-enabled"
+                checked={form.enabled}
+                onCheckedChange={(enabled) => setForm({ ...form, enabled })}
+              />
             </div>
-            <Switch
-              checked={form.enabled}
-              onCheckedChange={(enabled) => setForm({ ...form, enabled })}
-            />
           </div>
-          <Button
-            onClick={() => save.mutate()}
-            disabled={
-              save.isPending || !form.name.trim() || !form.condition.trim() || !form.action.trim()
+        </PageSection>
+        <div className="min-w-0">
+          <PageSection
+            title="Dry run"
+            description={
+              condition.length === 0
+                ? undefined
+                : usesSavedRule
+                  ? "The daemon's dry run of the saved rule."
+                  : "Messages matching the unsaved condition. Save to run the daemon's dry run."
+            }
+            actions={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setApplyConfirmOpen(true)}
+                disabled={!parsedActions || matches.length === 0 || applyNow.isPending}
+              >
+                <Play className="size-3" />
+                Apply to {plural(matches.length, "message")}
+              </Button>
             }
           >
-            <Check className="size-3" />
-            Save rule
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => setApplyConfirmOpen(true)}
-            disabled={!mailActions(form.action) || previewRows.length === 0 || applyNow.isPending}
-          >
-            <Play className="size-3" />
-            Apply preview now
-          </Button>
-          <AlertDialog open={applyConfirmOpen} onOpenChange={setApplyConfirmOpen}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Apply {form.action} to preview?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will mutate {previewRows.length} preview messages using the same path as
-                  mailbox bulk actions.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={applyNow.isPending}>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  disabled={applyNow.isPending}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    applyNow.mutate();
-                  }}
-                >
-                  Apply now
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-          {!mailActions(form.action) ? (
-            <div className="text-2xs text-muted-foreground">
-              Apply-now supports ordered chains of archive, trash, spam, star, read, unread,
-              label:Name, and move:Name.
-            </div>
+            {!parsedActions && form.action.trim() ? (
+              <PageNote>
+                Apply now supports archive, trash, spam, star, read, unread, label:Name,
+                unlabel:Name and move:Name. The daemon still runs other actions during sync.
+              </PageNote>
+            ) : null}
+            {condition.length === 0 ? (
+              <PageEmpty
+                icon={<FlaskConical className="size-5" />}
+                title="Nothing to preview"
+                body="Write a condition to see which messages this rule would change."
+              />
+            ) : preview.isPending ? (
+              <PageSkeleton rows={5} label="Running dry run" />
+            ) : preview.isError ? (
+              <PageError
+                title="Dry run failed"
+                error={preview.error}
+                onRetry={() => void preview.refetch()}
+              />
+            ) : matches.length === 0 ? (
+              <PageEmpty title="No matches" body="This rule would not change any message now." />
+            ) : (
+              <>
+                <p className="mb-2 font-mono text-2xs text-muted-foreground">
+                  {plural(matches.length, "message")} would get: {form.action || "no action"}
+                </p>
+                <RuledList label="Dry run matches">
+                  {matches.slice(0, 50).map((match) => (
+                    <RuledRow
+                      key={match.message_id}
+                      title={match.subject.trim() || "(no subject)"}
+                      meta={match.from}
+                    />
+                  ))}
+                </RuledList>
+              </>
+            )}
+          </PageSection>
+          {!isNew ? (
+            <PageSection title="History" description="Recent runs of this rule.">
+              {history.isPending ? (
+                <PageSkeleton rows={3} label="Loading history" />
+              ) : history.isError ? (
+                <PageError
+                  title="History unavailable"
+                  error={history.error}
+                  onRetry={() => void history.refetch()}
+                />
+              ) : history.data.entries.length === 0 ? (
+                <p className="text-[13px] text-muted-foreground">This rule has not run yet.</p>
+              ) : (
+                <RuledList label="Rule history">
+                  {history.data.entries.map((entry) => (
+                    <RuledRow
+                      key={`${entry.timestamp}-${entry.message_id}`}
+                      title={entry.actions_applied.join(", ") || "no actions"}
+                      meta={`message ${entry.message_id.slice(0, 8)}${entry.error ? ` · ${entry.error}` : ""}`}
+                      aside={
+                        <span className={entry.success ? undefined : "text-destructive"}>
+                          {entry.success ? formatRelative(entry.timestamp) : "failed"}
+                        </span>
+                      }
+                    />
+                  ))}
+                </RuledList>
+              )}
+            </PageSection>
           ) : null}
         </div>
-      </section>
-      <section className="min-h-0 overflow-auto p-6">
-        <div className="grid gap-4 xl:grid-cols-2">
-          <Panel title="Always-visible dry-run">
-            {dryRun.isLoading ? (
-              <div className="text-xs text-muted-foreground">Running preview...</div>
-            ) : previewRows.length === 0 ? (
-              <div className="text-xs text-muted-foreground">No matches yet.</div>
-            ) : (
-              <pre className="max-h-[52vh] overflow-auto rounded-md bg-muted p-3 text-2xs">
-                {JSON.stringify(previewRows.slice(0, 20), null, 2)}
-              </pre>
-            )}
-          </Panel>
-          <Panel title="History">
-            {isNew ? (
-              <div className="text-xs text-muted-foreground">
-                Save first to collect run history.
-              </div>
-            ) : (
-              <pre className="max-h-[52vh] overflow-auto rounded-md bg-muted p-3 text-2xs">
-                {JSON.stringify(history.data?.entries ?? [], null, 2)}
-              </pre>
-            )}
-          </Panel>
-        </div>
-      </section>
-    </div>
+      </div>
+      <AlertDialog open={applyConfirmOpen} onOpenChange={setApplyConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apply to {plural(matches.length, "message")}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Runs <span className="font-mono">{form.action}</span> on exactly the messages in the
+              dry run, through the same path as mailbox bulk actions. You can undo from the toast.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={applyNow.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={applyNow.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                applyNow.mutate();
+              }}
+            >
+              Apply now
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Page>
   );
 }
 
-type SupportedRuleAction =
-  | { kind: "archive" }
-  | { kind: "trash" }
-  | { kind: "spam" }
-  | { kind: "star" }
-  | { kind: "read" }
-  | { kind: "unread" }
-  | { kind: "read-and-archive" }
-  | { kind: "label-add"; label: string }
-  | { kind: "label-remove"; label: string }
-  | { kind: "move"; label: string };
-
-function mailActions(value: string): SupportedRuleAction[] | null {
-  const actions = value
-    .split(/[;,]/)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map(mailAction);
-  if (actions.length === 0 || actions.some((action) => action === null)) return null;
-  return actions as SupportedRuleAction[];
+function useDebounced<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(timer);
+  }, [value, ms]);
+  return debounced;
 }
 
-function mailAction(value: string): SupportedRuleAction | null {
-  const normalized = value.trim();
-  const lower = normalized.toLowerCase();
-  if (lower === "archive") return { kind: "archive" };
-  if (lower === "trash") return { kind: "trash" };
-  if (lower === "spam") return { kind: "spam" };
-  if (lower === "star") return { kind: "star" };
-  if (lower === "read" || lower === "mark-read" || lower === "mark_read") return { kind: "read" };
-  if (lower === "unread" || lower === "mark-unread" || lower === "mark_unread")
-    return { kind: "unread" };
-  if (lower === "read-and-archive" || lower === "read_and_archive")
-    return { kind: "read-and-archive" };
-  const labelMatch = normalized.match(/^(?:add-label|label):(.+)$/i);
-  if (labelMatch && labelMatch[1]?.trim()) {
-    return { kind: "label-add", label: labelMatch[1].trim() };
-  }
-  const removeLabelMatch = normalized.match(/^(?:remove-label|unlabel):(.+)$/i);
-  if (removeLabelMatch && removeLabelMatch[1]?.trim()) {
-    return { kind: "label-remove", label: removeLabelMatch[1].trim() };
-  }
-  const moveMatch = normalized.match(/^move:(.+)$/i);
-  if (moveMatch && moveMatch[1]?.trim()) {
-    return { kind: "move", label: moveMatch[1].trim() };
-  }
-  return null;
-}
-
-async function runMailActions(
-  actions: SupportedRuleAction[],
-  ids: string[],
-): Promise<MutationResponse> {
-  if (actions.length === 2 && actions[0]?.kind === "read" && actions[1]?.kind === "archive") {
-    return readAndArchiveMessages(ids);
-  }
-  const last = await actions.reduce<Promise<MutationResponse | null>>(
-    (previous, action) => previous.then(() => runMailAction(action, ids)),
-    Promise.resolve(null),
-  );
-  if (!last) throw new Error("No actions to apply");
-  return last;
-}
-
-function runMailAction(action: SupportedRuleAction, ids: string[]): Promise<MutationResponse> {
-  switch (action.kind) {
-    case "archive":
-      return archiveMessages(ids);
-    case "trash":
-      return trashMessages(ids);
-    case "spam":
-      return spamMessages(ids);
-    case "star":
-      return starMessages(ids, true);
-    case "read":
-      return markReadMessages(ids, true);
-    case "unread":
-      return markReadMessages(ids, false);
-    case "read-and-archive":
-      return readAndArchiveMessages(ids);
-    case "label-add":
-      return modifyLabels(ids, [action.label], []);
-    case "label-remove":
-      return modifyLabels(ids, [], [action.label]);
-    case "move":
-      return moveMessagesToLabel(ids, action.label);
-  }
-}
-
-function messageId(row: unknown): string | undefined {
-  if (!row || typeof row !== "object") return undefined;
-  const candidate = row as Record<string, unknown>;
-  for (const key of ["id", "message_id", "messageId"]) {
-    if (typeof candidate[key] === "string") return candidate[key];
-  }
-  const message = candidate.message;
-  if (
-    message &&
-    typeof message === "object" &&
-    typeof (message as Record<string, unknown>).id === "string"
-  ) {
-    return (message as Record<string, unknown>).id as string;
-  }
-  return undefined;
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  htmlFor,
+  hint,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  hint?: string;
+  children: ReactNode;
+}) {
   return (
     <div className="space-y-1">
-      <Label>{label}</Label>
+      <Label htmlFor={htmlFor} className="text-xs">
+        {label}
+      </Label>
       {children}
+      {hint ? <p className="text-2xs text-muted-foreground">{hint}</p> : null}
     </div>
-  );
-}
-
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
   );
 }

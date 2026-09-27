@@ -14,17 +14,14 @@ export function TokenSection() {
   const reason = new URLSearchParams(window.location.search).get("reason");
 
   return (
-    <div className="flex h-full w-full flex-col">
-      <div className="border-b border-border px-6 py-4">
-        <h1 className="text-md font-semibold">Bridge token</h1>
-        <p className="mt-1 max-w-prose text-2xs text-muted-foreground">
-          The web app authenticates to the local <code>mxr</code> daemon using a bearer token. Local
-          launches normally fetch it through the same-machine handshake and persist it to
-          <code>localStorage</code>. If you see <em>no token</em> or 401 errors, paste the token
-          from the active profile's <code>bridge-token</code> file here.
-        </p>
-      </div>
-      <div className="space-y-4 p-6">
+    <div>
+      <p className="mb-5 max-w-prose text-[13px] text-muted-foreground">
+        The app authenticates to the local <code>mxr</code> daemon with a bearer token. Local
+        launches fetch it through the same-machine handshake and keep it in{" "}
+        <code>localStorage</code>. If you see 401 errors, paste the token from the active profile's{" "}
+        <code>bridge-token</code> file here.
+      </p>
+      <div className="space-y-4">
         {reason === "expired" ? (
           <Alert variant="destructive" className="px-3 py-2 text-xs">
             The bridge token was rejected. Paste a valid token to reconnect.

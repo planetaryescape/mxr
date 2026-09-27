@@ -44,6 +44,16 @@ vi.mock("./api", () => ({
   useSemanticProfile: diagnosticsApi.useSemanticProfile,
 }));
 
+const router = vi.hoisted(() => ({
+  search: {} as { panel?: string },
+  navigate: vi.fn<(options: unknown) => Promise<void>>(),
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+  useSearch: () => router.search,
+  useNavigate: () => router.navigate,
+}));
+
 vi.mock("@/features/accounts/api", () => ({
   fetchAccounts: accountsApi.fetchAccounts,
 }));
@@ -124,6 +134,27 @@ describe("DiagnosticValue", () => {
 });
 
 describe("DiagnosticsRoute", () => {
+  test("?panel=logs opens the logs panel", async () => {
+    router.search = { panel: "logs" };
+    renderWithQueryClient(<DiagnosticsRoute />);
+
+    expect(await screen.findByRole("tab", { name: "Logs", selected: true })).toBeVisible();
+    await waitFor(() => expect(diagnosticsApi.fetchLogs).toHaveBeenCalled());
+    expect(screen.queryByText("Semantic controls")).not.toBeInTheDocument();
+    router.search = {};
+  });
+
+  test("choosing a tab puts the panel in the URL", async () => {
+    renderWithQueryClient(<DiagnosticsRoute />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Events" }));
+    expect(router.navigate).toHaveBeenCalledWith({
+      to: "/diagnostics",
+      search: { panel: "events" },
+      replace: true,
+    });
+  });
+
   test("surfaces semantic lifecycle controls", async () => {
     renderWithQueryClient(<DiagnosticsRoute />);
 

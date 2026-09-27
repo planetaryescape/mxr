@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { resolveCommitment as resolveCommitmentApi } from "@/features/mailbox/api";
+import { AskArchivePanel } from "@/features/ask/AskArchivePanel";
+import { WhoisPanel, isWhoisPayload } from "@/features/ask/WhoisPanel";
 import { ExpertFinderPanel } from "@/features/mailbox/ExpertFinderPanel";
 import { AttachmentActions } from "@/features/thread/AttachmentActions";
 import { DraftAssistPanel } from "@/features/thread/DraftAssistPanel";
@@ -93,6 +95,12 @@ function RailContent({ kind, payload }: { kind: string; payload: unknown }) {
   if (kind === "expert-finder") {
     return <ExpertFinderPanel />;
   }
+  if (kind === "whois" && isWhoisPayload(payload)) {
+    return <WhoisPanel entity={payload.entity} accountId={payload.accountId} />;
+  }
+  if (kind === "ask-archive") {
+    return <AskArchivePanel />;
+  }
   return (
     <p className="py-8 text-center text-[13px] text-muted-foreground">Nothing to show here.</p>
   );
@@ -108,6 +116,7 @@ const RAIL_TITLES: Record<string, string> = {
   "recipient-briefing": "Recipient briefing",
   "expert-finder": "Find an expert",
   whois: "Who is this?",
+  "ask-archive": "Ask your archive",
 };
 
 function isThreadContext(value: unknown): value is { title?: string; items?: string[] } {

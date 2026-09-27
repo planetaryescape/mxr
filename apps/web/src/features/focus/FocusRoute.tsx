@@ -17,6 +17,7 @@ import { targetFromThread } from "@/features/mail-actions/target";
 import type { ThreadResponse } from "@/features/mailbox/types";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { runCommand, useScopeController } from "@/lib/keys/controllers";
+import { ownsKeyboard } from "@/lib/keys/dispatcher";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
 import { FocusFinish } from "./FocusFinish";
@@ -58,9 +59,24 @@ export function FocusRoute({ from }: { from?: string }) {
   const focusReply = () =>
     replyRef.current?.querySelector<HTMLElement>(".cm-content, .ProseMirror")?.focus();
 
+  // A held key, or a skip while the next reply is still opening, would spin
+  // through the queue faster than anyone reads it.
+  const skip = () => {
+    if (replyOpen && !replyCommands()) return;
+    focus.skip();
+  };
+  useEffect(() => {
+    const dropRepeats = (event: KeyboardEvent) => {
+      if (!event.repeat || ownsKeyboard(event.target)) return;
+      if (event.key === "s" || event.key === "Tab") event.preventDefault();
+    };
+    window.addEventListener("keydown", dropRepeats, true);
+    return () => window.removeEventListener("keydown", dropRepeats, true);
+  }, []);
+
   useScopeController("focus", {
     send: () => replyCommands()?.send(),
-    skip: focus.skip,
+    skip,
     snooze,
     remind: () => replyCommands()?.sendAndRemind(),
     draft: () => replyCommands()?.draftForMe(),
@@ -86,7 +102,10 @@ export function FocusRoute({ from }: { from?: string }) {
     return () => node.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const finished = !focus.loading && !current;
+  // A failed source can't prove nobody is waiting: that is an error to
+  // retry, never a finish.
+  const failed = !focus.loading && !current && focus.error !== null;
+  const finished = !focus.loading && !current && !failed;
 
   return (
     <div
@@ -98,7 +117,7 @@ export function FocusRoute({ from }: { from?: string }) {
       onKeyDown={(event) => {
         if (event.key !== "Tab" || event.shiftKey || event.target !== event.currentTarget) return;
         event.preventDefault();
-        focus.skip();
+        if (!event.repeat) skip();
       }}
       className="flex min-h-0 min-w-0 flex-1 flex-col bg-background outline-none"
     >
@@ -143,14 +162,43 @@ export function FocusRoute({ from }: { from?: string }) {
         </div>
       </header>
 
-      {focus.error && !current && !focus.loading ? (
-        <p className="px-5 py-3 text-xs text-destructive">
-          Couldn't load everyone you owe: {focus.error.message}
+      {focus.error && current ? (
+        <p className="px-5 py-2 text-xs text-destructive" role="status">
+          Some of who you owe couldn't be loaded: {focus.error.message}{" "}
+          <button type="button" className="underline" onClick={focus.refetch}>
+            Try again
+          </button>
         </p>
       ) : null}
 
-      {finished ? (
-        <FocusFinish replied={progress.done} empty={progress.total === 0} onLeave={leave} />
+      {failed ? (
+        <div
+          data-testid="focus-error"
+          className="mx-auto flex max-w-[34rem] flex-1 flex-col justify-center px-6 py-16"
+        >
+          <h2 className="text-balance text-xl font-semibold tracking-tight">
+            Couldn't load who you owe a reply.
+          </h2>
+          <p className="mt-2 text-[14px] text-muted-foreground">{focus.error?.message}</p>
+          <div className="mt-6 flex gap-2">
+            <Button size="sm" onClick={focus.refetch}>
+              Try again
+            </Button>
+            <Button variant="outline" size="sm" onClick={leave}>
+              Back to mail
+            </Button>
+          </div>
+        </div>
+      ) : finished ? (
+        <FocusFinish
+          replied={progress.done}
+          empty={progress.total === 0}
+          deferred={focus.deferred}
+          capped={focus.capped}
+          onRevisit={focus.revisit}
+          onContinue={focus.refetch}
+          onLeave={leave}
+        />
       ) : (
         <div className="grid min-h-0 flex-1 grid-rows-[auto_auto] overflow-y-auto md:grid-cols-2 md:grid-rows-1 md:overflow-hidden">
           <section aria-label="Conversation" className="min-w-0 md:min-h-0 md:overflow-y-auto">

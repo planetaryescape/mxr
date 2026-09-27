@@ -513,6 +513,7 @@ fn sent_success_effect_refreshes_active_label_and_sets_status() {
             status: "Sent!".into(),
             remind_at: None,
             sent_message_id: None,
+            in_reply_to: None,
         },
         true,
     );
@@ -546,6 +547,7 @@ fn sent_success_with_reminder_queues_auto_reminder_for_sent_message() {
             status: "Sent!".into(),
             remind_at: Some(remind_at),
             sent_message_id: Some(sent_message_id.clone()),
+            in_reply_to: None,
         },
         true,
     );
@@ -580,6 +582,7 @@ fn sent_success_effect_with_no_active_label_only_updates_status() {
             status: "Sent!".into(),
             remind_at: None,
             sent_message_id: None,
+            in_reply_to: None,
         },
         true,
     );

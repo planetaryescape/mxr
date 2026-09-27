@@ -5,14 +5,15 @@
  * comes up at once; undo (or a failed send) puts it back in front.
  */
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useReducer, useRef } from "react";
 
+import { fetchAccounts } from "@/features/accounts/api";
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { onSendEvent } from "@/features/compose/session/sendEvents";
 import { invalidateMailQueries } from "@/features/mail-actions/mailMutations";
 import { fetchThread } from "@/features/mailbox/api";
-import { fetchOwedReplies } from "@/features/owed/api";
+import { fetchOwedReplies, type OwedReplyRow } from "@/features/owed/api";
 import { fetchReplyQueue } from "@/features/reply-queue/api";
 import { threadContextQuery } from "@/features/thread/context/api";
 import { useUiPrefs } from "@/state/uiPrefsStore";
@@ -29,29 +30,92 @@ export function focusReplyIntent(item: FocusItem) {
   return replyIntent(item.messageId, "single");
 }
 
+/**
+ * One sitting's worth of owed replies per account. The daemon has no
+ * paging, so a full page means there may be more: the finish says so and
+ * offers to continue rather than claiming that's everyone.
+ */
+const OWED_PER_ACCOUNT = 500;
+
+/** Account ids a scope covers: that account, or every enabled one. */
+export function useScopeAccountIds(scope: string | null) {
+  const accounts = useQuery({
+    queryKey: ["accounts"],
+    queryFn: fetchAccounts,
+    staleTime: 60_000,
+    enabled: !scope,
+  });
+  const ids = scope
+    ? [scope]
+    : (accounts.data?.accounts ?? []).filter((a) => a.enabled).map((a) => a.account_id);
+  return { ids, accounts: scope ? null : accounts };
+}
+
+type OwedResult = UseQueryResult<{ rows: OwedReplyRow[] }>;
+
+/**
+ * Module scope, so TanStack keeps the combined result (and its `rows`
+ * array) unchanged until a query's data does. Merged most overdue first.
+ */
+function combineOwed(results: OwedResult[]) {
+  const pages = results.map((result) => result.data?.rows ?? []);
+  return {
+    rows:
+      pages.length === 1
+        ? (pages[0] ?? [])
+        : pages.flat().toSorted((a, b) => b.overdue_score - a.overdue_score),
+    pending: results.some((result) => result.isPending),
+    error: results.find((result) => result.error)?.error ?? null,
+    capped: pages.some((rows) => rows.length >= OWED_PER_ACCOUNT),
+    refetch: () => Promise.all(results.map((result) => result.refetch())),
+  };
+}
+
+/**
+ * Owed replies for the account scope: that account, or every enabled one
+ * under "All accounts" (the endpoint alone would answer for the default
+ * account only).
+ */
+function useOwedAcrossScope(scope: string | null) {
+  const { ids, accounts } = useScopeAccountIds(scope);
+  const owed = useQueries({
+    queries: ids.map((accountId) => ({
+      queryKey: ["owed", accountId, { limit: OWED_PER_ACCOUNT }],
+      queryFn: () => fetchOwedReplies(accountId, OWED_PER_ACCOUNT),
+      // Owed replies can be slow on a big mailbox; a window refocus
+      // shouldn't ask again mid-sitting. Sends refresh them anyway.
+      staleTime: 60_000,
+    })),
+    combine: combineOwed,
+  });
+  return {
+    ...owed,
+    pending: Boolean(accounts?.isPending) || owed.pending,
+    error: accounts?.error ?? owed.error,
+    refetch: () => {
+      void accounts?.refetch();
+      return owed.refetch();
+    },
+  };
+}
+
 export function useFocusSession() {
   const account = useUiPrefs((s) => s.accountScope);
-  // Owed replies can be slow on a big mailbox; a window refocus shouldn't
-  // ask again while you work through the queue. Sends refresh it anyway.
-  const owed = useQuery({
-    queryKey: ["owed", account],
-    queryFn: () => fetchOwedReplies(account),
-    staleTime: 60_000,
-  });
+  const owed = useOwedAcrossScope(account);
   const replyLater = useQuery({ queryKey: ["reply-queue"], queryFn: fetchReplyQueue });
   const [session, dispatch] = useReducer(focusReducer, emptyFocusSession);
 
   // Start with whichever source answers first and add the other when it
   // does, so a slow or failed source never holds up the rest.
-  const anySettled = !owed.isPending || !replyLater.isPending;
-  const gathering = owed.isPending || replyLater.isPending;
+  const anySettled = !owed.pending || !replyLater.isPending;
+  const gathering = owed.pending || replyLater.isPending;
   useEffect(() => {
     if (!anySettled) return;
     dispatch({
       kind: "sync",
-      items: buildFocusQueue(owed.data?.rows ?? [], replyLater.data?.messages ?? [], account),
+      items: buildFocusQueue(owed.rows, replyLater.data?.messages ?? [], account),
     });
-  }, [anySettled, owed.data, replyLater.data, account]);
+  }, [anySettled, owed.rows, replyLater.data, account]);
 
   const currentId = session.queue[0];
   const current = currentId ? session.items[currentId] : undefined;
@@ -131,6 +195,17 @@ export function useFocusSession() {
     loading: !session.loaded || (session.queue.length === 0 && gathering),
     gathering,
     error: owed.error ?? replyLater.error ?? null,
+    /** A full page of owed replies came back: there may be more. */
+    capped: owed.capped,
+    /** Conversations skipped when nothing else was left. */
+    deferred: session.deferred.length,
+    /** Ask again. Owed has no paging: after a capped batch, the ones you
+     * replied to have dropped out, so asking again brings the next ones. */
+    refetch: () => {
+      void owed.refetch();
+      void replyLater.refetch();
+    },
+    revisit: () => dispatch({ kind: "revisit" }),
     skip: () => dispatch({ kind: "skip" }),
     markHandled: (threadId: string) => dispatch({ kind: "handled", threadId }),
     reopenReply: () => {

@@ -699,11 +699,12 @@ fn reply_queue_enter_starts_reply_compose_for_selected_message() {
     );
 }
 
-fn sent_success(sent_message_id: MessageId) -> MutationEffect {
+fn sent_success(sent_message_id: MessageId, in_reply_to: Option<&str>) -> MutationEffect {
     MutationEffect::SentSuccess {
         status: "Sent!".into(),
         remind_at: None,
         sent_message_id: Some(sent_message_id),
+        in_reply_to: in_reply_to.map(str::to_string),
     }
 }
 
@@ -725,6 +726,7 @@ fn focus_run_replies_to_each_queued_message_and_advances_only_on_its_own_reply()
     for (index, message) in messages.iter_mut().enumerate() {
         message.message_id_header = Some(format!("<queued-{index}@example.com>"));
     }
+    let header = |index: usize| messages[index].message_id_header.clone();
     app.modals.reply_queue.open_loading();
     app.modals.reply_queue.set_messages(messages.clone());
     app.modals.reply_queue.select_next();
@@ -742,28 +744,54 @@ fn focus_run_replies_to_each_queued_message_and_advances_only_on_its_own_reply()
         .unwrap()
         .starts_with("Focus 1 of 3"));
 
-    // An unrelated send never moves the run on.
+    // Unrelated sends (another thread, a new message) never move the run on.
     app.compose.pending_compose = None;
-    app.note_focus_send(Some("<something-else@example.com>"));
-    app.apply_mutation_completion(sent_success(MessageId::new()), true);
+    app.apply_mutation_completion(
+        sent_success(MessageId::new(), Some("<something-else@example.com>")),
+        true,
+    );
+    app.apply_mutation_completion(sent_success(MessageId::new(), None), true);
     assert_eq!(app.compose.pending_compose, None);
+    assert_eq!(app.focus_run.as_ref().unwrap().position(), 1);
 
     // The reply to the current message opens the next reply.
-    app.note_focus_send(messages[1].message_id_header.as_deref());
     let sent = MessageId::new();
-    app.apply_mutation_completion(sent_success(sent.clone()), true);
+    app.apply_mutation_completion(sent_success(sent.clone(), header(1).as_deref()), true);
     expect_reply_compose(&app, &messages[2]);
     assert_eq!(app.pending_promise_check, Some(sent));
 
-    app.note_focus_send(messages[2].message_id_header.as_deref());
-    app.apply_mutation_completion(sent_success(MessageId::new()), true);
+    app.apply_mutation_completion(sent_success(MessageId::new(), header(2).as_deref()), true);
     expect_reply_compose(&app, &messages[0]);
 
     app.compose.pending_compose = None;
-    app.note_focus_send(messages[0].message_id_header.as_deref());
-    app.apply_mutation_completion(sent_success(MessageId::new()), true);
+    app.apply_mutation_completion(sent_success(MessageId::new(), header(0).as_deref()), true);
     assert!(app.focus_run.is_none(), "the run ends after the last reply");
     assert_eq!(app.compose.pending_compose, None);
+}
+
+#[test]
+fn a_failed_focus_reply_is_never_counted_by_a_later_unrelated_send() {
+    let mut app = App::new();
+    let mut messages = make_test_envelopes(2);
+    for (index, message) in messages.iter_mut().enumerate() {
+        message.message_id_header = Some(format!("<queued-{index}@example.com>"));
+    }
+    app.modals.reply_queue.open_loading();
+    app.modals.reply_queue.set_messages(messages.clone());
+    app.apply(Action::ReplyQueueModalFocus);
+    expect_reply_compose(&app, &messages[0]);
+
+    // The focus reply is dispatched, then fails: nothing completes for it.
+    app.compose.pending_compose = None;
+    // A later send of something else succeeds.
+    app.apply_mutation_completion(
+        sent_success(MessageId::new(), Some("<another-thread@example.com>")),
+        true,
+    );
+    assert_eq!(app.compose.pending_compose, None);
+    let run = app.focus_run.as_ref().expect("still on the first message");
+    assert_eq!(run.current.id, messages[0].id);
+    assert_eq!(run.position(), 1);
 }
 
 fn dated_detection(what: &str) -> mxr_protocol::PromiseDetectionData {

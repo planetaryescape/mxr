@@ -500,18 +500,17 @@ fn verify_quote(
     msg_id: &str,
     texts: &[(MessageId, &str)],
 ) -> Option<VerifiedQuoteData> {
-    let wanted: Vec<char> = collapse_whitespace(quote)
-        .trim_matches(['"', '\u{201C}', '\u{201D}'])
-        .chars()
-        .map(fold_quotes)
-        .collect();
+    let wanted = normalize(
+        collapse_whitespace(quote).trim_matches(['"', '\u{201C}', '\u{201D}']),
+        fold_quotes,
+    );
     if wanted.len() < QUOTE_MIN_CHARS || wanted.len() > QUOTE_MAX_CHARS {
         return None;
     }
     let cited = texts.iter().filter(|(id, _)| id.as_str() == msg_id);
     let others = texts.iter().rev().filter(|(id, _)| id.as_str() != msg_id);
     cited.chain(others).find_map(|(id, text)| {
-        let span = find_normalized(text, &wanted)?;
+        let span = find_normalized(text, &wanted, fold_quotes)?;
         Some(VerifiedQuoteData {
             message_id: id.clone(),
             text: text[span].to_string(),
@@ -519,9 +518,31 @@ fn verify_quote(
     })
 }
 
+/// `phrase` as it is written in `text`, matching the way quotes are checked
+/// but also ignoring letter case: the original slice, or `None` when the
+/// text doesn't say it. Model output is only shown when it passes this.
+pub(super) fn find_phrase_ignoring_case<'a>(text: &'a str, phrase: &str) -> Option<&'a str> {
+    let fold = |c: char| fold_quotes(c.to_lowercase().next().unwrap_or(c));
+    let wanted = normalize(&collapse_whitespace(phrase), fold);
+    if wanted.is_empty() {
+        return None;
+    }
+    find_normalized(text, &wanted, fold).map(|span| &text[span])
+}
+
+/// `phrase` (already whitespace-collapsed) as the chars `find_normalized`
+/// compares against.
+fn normalize(phrase: &str, fold: impl Fn(char) -> char) -> Vec<char> {
+    phrase.chars().map(fold).collect()
+}
+
 /// Byte range in `text` whose whitespace-collapsed, quote-folded form equals
 /// `wanted` (already collapsed and folded).
-fn find_normalized(text: &str, wanted: &[char]) -> Option<std::ops::Range<usize>> {
+fn find_normalized(
+    text: &str,
+    wanted: &[char],
+    fold: impl Fn(char) -> char,
+) -> Option<std::ops::Range<usize>> {
     // Each normalized char with the byte range of the original it stands for.
     let mut normalized: Vec<(char, usize, usize)> = Vec::new();
     for (index, c) in text.char_indices() {
@@ -532,7 +553,7 @@ fn find_normalized(text: &str, wanted: &[char]) -> Option<std::ops::Range<usize>
                 _ => normalized.push((' ', index, end)),
             }
         } else {
-            normalized.push((fold_quotes(c), index, end));
+            normalized.push((fold(c), index, end));
         }
     }
     let start = normalized

@@ -50,7 +50,6 @@ impl App {
         override_safety_token: Option<String>,
         remind_at: Option<chrono::DateTime<chrono::Utc>>,
     ) {
-        self.note_focus_send(pending.fm.in_reply_to.as_deref());
         let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
         let reply_headers =
             pending
@@ -98,6 +97,7 @@ impl App {
                 status: "Sent!".into(),
                 remind_at,
                 sent_message_id: None,
+                in_reply_to: pending.fm.in_reply_to.clone(),
             },
             "Sending...".into(),
         );

@@ -51,7 +51,11 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   // latest controller is read at call time.
   const controllerRef = useRef(controller);
   controllerRef.current = controller;
+  // Registered once the session has loaded, so "the reply is ready" and
+  // "its commands exist" are the same fact for a host page.
+  const sessionReady = !controller.sessionLoading && controller.draft !== null;
   useEffect(() => {
+    if (!sessionReady) return;
     const commands = {
       intentKey: intent.key,
       send: () => controllerRef.current.requestSend(),
@@ -65,7 +69,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     return () => {
       if (useComposeUi.getState().commands === commands) useComposeUi.getState().setCommands(null);
     };
-  }, [intent.key]);
+  }, [intent.key, sessionReady]);
 
   // The inline slot lives at the bottom of the thread reader; re-resolve
   // it whenever the route changes.

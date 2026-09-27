@@ -511,6 +511,7 @@ fn sent_success_effect_triggers_owed_refresh() {
             status: "Sent!".into(),
             remind_at: None,
             sent_message_id: None,
+            in_reply_to: None,
         },
         true,
     );

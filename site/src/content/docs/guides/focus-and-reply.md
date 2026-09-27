@@ -11,9 +11,12 @@ left, your reply on the right. Send it and the next one comes up.
 
 The queue is the daemon's owed replies (the people waiting on you, most
 overdue by your usual pace with each of them first), then your reply-later
-queue, one entry per conversation. It follows the account picker. The order
-is fixed when you start, so nothing reshuffles while you work; mail that
-arrives meanwhile joins the end.
+queue, one entry per conversation. It follows the account picker; with
+**All accounts** it gathers every enabled account. The order is fixed when
+you start, so nothing reshuffles while you work; mail that arrives meanwhile
+joins the end. One sitting holds up to 500 owed conversations per account;
+when there are more, the end says so and **Load the next ones**
+fetches them.
 
 ### Opening it
 
@@ -47,7 +50,10 @@ you unless you ask with `d` or **Draft for me**.
 
 When the queue is empty, focus mode says so and names the next thing you
 promised that is due, for example "Next thing due: Mon, send the notes to
-nora@example.com."
+nora@example.com." Skipping the last conversation sets it aside instead:
+the end says how many you skipped, with **Come back to it**. If who you owe
+couldn't be loaded, you get the error and **Try again**, never "Nobody is
+waiting".
 
 ### From the command line
 
@@ -83,10 +89,13 @@ nothing. If you undo the send, the offer goes with it.
 
 How it works:
 
-- A language model reads the message you are sending and names each thing you
-  promised and the words that say when. mxr keeps the words only if they are
-  in your message, and reads them with the same time parser every time field
-  uses, in your time zone. The date you see is the parser's, not the model's.
+- A language model reads the message you are sending and points at each
+  thing you promised and the words that say when. mxr keeps a promise only
+  if both are in your message, and shows them in your own words. It reads
+  the date with the same time parser every time field uses, in your time
+  zone. The date you see is the parser's, not the model's.
+- Only mail filed as sent (in your Sent folder, or sent by mxr) and from one
+  of your addresses holds your promises; a From header alone doesn't.
 - Mail without "I'll", "I will" or "I can" is never sent to the model.
 - The model sees only the message you are sending and its recipients, under
   the privacy settings for commitments. Each offer says whether a local or
@@ -106,7 +115,8 @@ You promised: send the deck, due Friday 2 October, 09:00 ("by Friday").
   Remind me: mxr commitments add MESSAGE_ID --what 'send the deck' --due 2026-10-02T08:00:00+00:00
 ```
 
-With `--format json` the note goes to stderr so stdout stays one document.
+The note goes to stdout only for table output on a terminal. Piped, or with
+`--format json`, it goes to stderr so stdout stays exactly what scripts read.
 You can also check a sent message and keep a promise yourself:
 
 ```bash
@@ -124,5 +134,6 @@ marks it done.
 in** in any reply, sends and sets a reminder for a time you type. If nobody
 has written in the conversation by then, it comes back to your reply-later
 queue. A reply cancels the reminder, whether it answers your message or an
-earlier one in the same conversation. See
+earlier one in the same conversation, including one in the same second as
+your send. See
 [Automated follow-ups](/guides/automated-followups/) for the command line.

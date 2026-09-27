@@ -158,9 +158,12 @@ impl super::Store {
         now: DateTime<Utc>,
     ) -> Result<u64, sqlx::Error> {
         let now_ts = now.timestamp();
-        // The unary `+` keeps SQLite on the thread index: left to itself it
-        // walks (account_id, date) over every later message in the account,
-        // ~70ms per reminder on a 110k-message store against ~0.03ms.
+        // Dates have second precision, so a reply in the same second as the
+        // send counts (`>=`); the sent message and your own follow-ups are
+        // excluded by id and sender. The unary `+` keeps SQLite on the
+        // thread index: left to itself it walks (account_id, date) over
+        // every later message in the account, ~70ms per reminder on a
+        // 110k-message store against ~0.03ms.
         let result = sqlx::query(
             r#"UPDATE auto_reminders
                SET cancelled_at = ?
@@ -174,7 +177,7 @@ impl super::Store {
                      ON reply.thread_id = sent.thread_id
                     AND +reply.account_id = sent.account_id
                     AND reply.id != sent.id
-                    AND +reply.date > sent.date
+                    AND +reply.date >= sent.date
                    WHERE sent.id = auto_reminders.sent_message_id
                      AND reply.direction != 'outbound'
                      AND LOWER(reply.from_email) != LOWER(sent.from_email)
@@ -423,8 +426,9 @@ mod tests {
             "your own follow-up and mail from before the send are not replies"
         );
 
+        // A headerless reply in the same second as the send still counts.
         store
-            .upsert_envelope(&add("reply", maya, sent.date + Duration::hours(2)))
+            .upsert_envelope(&add("reply", maya, sent.date))
             .await
             .unwrap();
         assert_eq!(

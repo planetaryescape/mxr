@@ -112,6 +112,9 @@ pub enum MutationEffect {
         status: String,
         remind_at: Option<chrono::DateTime<chrono::Utc>>,
         sent_message_id: Option<MessageId>,
+        /// Message-ID header the sent reply answers, so a focus run moves
+        /// on only for its own reply.
+        in_reply_to: Option<String>,
     },
 }
 

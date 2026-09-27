@@ -5,15 +5,16 @@
  * is where a celebration can go later; nothing celebrates here yet.
  */
 
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { KeyChip } from "@/components/KeyChip";
-import { fetchAccounts } from "@/features/accounts/api";
 import { listCommitments } from "@/features/mailbox/api";
 import type { Commitment } from "@/features/promises/api";
 import { plural } from "@/lib/format";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+
+import { useScopeAccountIds } from "./useFocusSession";
 
 /** An open promise of yours with its due instant parsed. */
 interface DuePromise {
@@ -24,26 +25,43 @@ interface DuePromise {
 export function FocusFinish({
   replied,
   empty,
+  deferred,
+  capped,
+  onRevisit,
+  onContinue,
   onLeave,
 }: {
   /** Conversations handled this session. */
   replied: number;
   /** Nobody was waiting when the session started. */
   empty: boolean;
+  /** Skipped when nothing else was left. */
+  deferred: number;
+  /** The owed list was cut at one sitting's worth: there may be more. */
+  capped: boolean;
+  onRevisit: () => void;
+  onContinue: () => void;
   onLeave: () => void;
 }) {
   const next = useNextPromise();
+  // Only claim everyone when nobody is left anywhere.
+  const title = capped
+    ? "That's this batch."
+    : deferred > 0
+      ? `${plural(deferred, "conversation")} skipped.`
+      : empty
+        ? "Nobody is waiting on a reply from you."
+        : "That's everyone.";
   return (
     <div
       data-testid="focus-finish"
       className="mx-auto flex max-w-[34rem] flex-1 flex-col justify-center px-6 py-16"
     >
       <div data-slot="focus-finish-moment" />
-      <h2 className="text-balance text-2xl font-semibold tracking-tight">
-        {empty ? "Nobody is waiting on a reply from you." : "That's everyone."}
-      </h2>
+      <h2 className="text-balance text-2xl font-semibold tracking-tight">{title}</h2>
       <p className="mt-2 text-pretty text-[14px] leading-6 text-muted-foreground tabular-nums">
-        {empty ? null : `${plural(replied, "conversation")} handled. `}
+        {replied > 0 ? `${plural(replied, "conversation")} handled. ` : null}
+        {capped ? "More people are waiting on a reply. " : null}
         {next ? (
           <>
             Next thing due:{" "}
@@ -57,7 +75,17 @@ export function FocusFinish({
           "Nothing you promised is due."
         )}
       </p>
-      <div className="mt-6">
+      <div className="mt-6 flex flex-wrap gap-2">
+        {capped ? (
+          <Button size="sm" onClick={onContinue}>
+            Load the next ones
+          </Button>
+        ) : null}
+        {deferred > 0 ? (
+          <Button size="sm" variant={capped ? "outline" : "default"} onClick={onRevisit}>
+            Come back to {deferred === 1 ? "it" : "them"}
+          </Button>
+        ) : null}
         <Button variant="outline" size="sm" onClick={onLeave} className="gap-2">
           Back to mail <KeyChip className="h-4 px-1">esc</KeyChip>
         </Button>
@@ -69,10 +97,7 @@ export function FocusFinish({
 /** The soonest open promise you made that has a date, across the scope. */
 function useNextPromise(): DuePromise | null {
   const scope = useUiPrefs((s) => s.accountScope);
-  const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts, staleTime: 60_000 });
-  const ids = scope
-    ? [scope]
-    : (accounts.data?.accounts ?? []).map((account) => account.account_id);
+  const { ids } = useScopeAccountIds(scope);
   const lists = useQueries({
     queries: ids.map((accountId) => ({
       queryKey: ["commitments", accountId, "open"],

@@ -13,14 +13,14 @@
 use super::commitments_extract::COMMITMENT_PREFILTER;
 use super::relationship_profile::commitment_data;
 use super::thread_context::owned_addresses;
-use super::thread_gist::{collapse_whitespace, json_object, plain_text};
+use super::thread_gist::{collapse_whitespace, find_phrase_ignoring_case, json_object, plain_text};
 use super::time::{parse_zone, resolve_in_zone};
 use super::{HandlerError, HandlerResult};
 use crate::state::{llm_endpoint_is_local, AppState};
 use chrono::{DateTime, Utc};
 use mxr_core::id::MessageId;
 use mxr_core::natural_time::TimeResolution;
-use mxr_core::types::Address;
+use mxr_core::types::{Address, MessageFlags};
 use mxr_llm::{
     guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
     LlmFeature,
@@ -53,7 +53,7 @@ pub(crate) const SYSTEM_PROMPT: &str = r#"You find promises the SENDER of an ema
 Output STRICT JSON and nothing else:
 {"promises": [{"what": string, "due": string or null}]}
 
-what: the deliverable as a short clause starting with a verb, at most 100 characters, for example "send the deck". Skip vague intentions ("think about it", "keep you posted"), things already done, and anything someone else promises.
+what: the deliverable copied exactly as the email words it, starting with the verb, at most 100 characters: from "I'll send you the deck by Friday" it is "send you the deck". Skip vague intentions ("think about it", "keep you posted"), things already done, and anything someone else promises.
 due: the words in the email that say when, copied exactly as written, for example "by Friday", "tomorrow", "next week", "on 3 October". Use null when no time is named.
 If the sender promises nothing, return {"promises": []}."#;
 
@@ -134,8 +134,13 @@ async fn sent_envelope(
         .get_envelope(message_id)
         .await?
         .ok_or_else(|| format!("Message not found: {message_id}"))?;
+    // Sent means filed as sent: the provider's Sent label or folder, or
+    // mxr's own record of the send (both set MessageFlags::SENT), and from
+    // an address of this account. A From header alone is only a claim.
     let owned = owned_addresses(state, &envelope.account_id).await?;
-    if !owned.contains(&envelope.from.email.to_ascii_lowercase()) {
+    if !envelope.flags.contains(MessageFlags::SENT)
+        || !owned.contains(&envelope.from.email.to_ascii_lowercase())
+    {
         return Err(format!(
             "Message {message_id} was not sent from this account, so it holds no promises of yours"
         )
@@ -213,23 +218,22 @@ async fn detect(
             "The model's answer wasn't usable.",
         ));
     };
-    let searchable = collapse_whitespace(&outgoing.body).to_lowercase();
     let mut promises = Vec::new();
     for raw in raw.promises {
-        let what = plain_text(&raw.what, WHAT_MAX_CHARS);
-        if what.is_empty()
-            || promises
-                .iter()
-                .any(|p: &DetectedPromiseData| p.what == what)
+        // Only what the message says is offered, in its own words: an
+        // invented deliverable is dropped even when its date is real.
+        let Some(what) = verified(&outgoing.body, &raw.what, WHAT_MAX_CHARS) else {
+            continue;
+        };
+        if promises
+            .iter()
+            .any(|p: &DetectedPromiseData| p.what.eq_ignore_ascii_case(&what))
         {
             continue;
         }
         let due_phrase = raw
             .due
-            .map(|due| plain_text(&due, DUE_MAX_CHARS))
-            .filter(|due| {
-                !due.is_empty() && searchable.contains(&collapse_whitespace(due).to_lowercase())
-            });
+            .and_then(|due| verified(&outgoing.body, &due, DUE_MAX_CHARS));
         let due = match due_phrase.as_deref() {
             Some(phrase) => resolve_due(state, phrase, now, time_zone)?,
             None => None,
@@ -257,6 +261,15 @@ async fn detect(
             sources: vec![AiSourceData::YourMessage],
         }),
     ))
+}
+
+/// Model text found in the message, as the message writes it (whitespace
+/// collapsed for display), or `None` when it isn't there or is too long.
+fn verified(body: &str, model_text: &str, max_chars: usize) -> Option<String> {
+    let wanted = model_text.trim().trim_end_matches(['.', ',', ';', '!']);
+    let slice = find_phrase_ignoring_case(body, wanted)?;
+    let text = collapse_whitespace(slice);
+    (text.chars().count() <= max_chars).then_some(text)
 }
 
 fn answer(
@@ -497,6 +510,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_invented_deliverable_is_dropped_even_with_a_real_date() {
+        let (state, account_id, _) = fixture(
+            r#"{"promises":[
+                {"what":"send the signed contract","due":"by Friday"},
+                {"what":"Send   the “deck”","due":"BY FRIDAY"}
+            ]}"#,
+            Duration::ZERO,
+        )
+        .await;
+        let detection = run(
+            &state,
+            &account_id,
+            "Thanks. I'll send the \"deck\"\nby Friday.",
+        )
+        .await;
+        assert_eq!(
+            detection.promises.len(),
+            1,
+            "the contract was never promised"
+        );
+        let promise = &detection.promises[0];
+        // The message's own words, not the model's spelling.
+        assert_eq!(promise.what, "send the \"deck\"");
+        assert_eq!(promise.due_phrase.as_deref(), Some("by Friday"));
+        assert!(promise.due.is_some());
+    }
+
+    #[tokio::test]
     async fn mail_without_a_promise_marker_never_reaches_the_model() {
         let (state, account_id, stub) = fixture(r#"{"promises":[]}"#, Duration::ZERO).await;
         let detection = run(&state, &account_id, "Thanks, looks good to me.").await;
@@ -600,6 +641,7 @@ mod tests {
             name: None,
             email: from,
         };
+        envelope.flags |= MessageFlags::SENT;
         envelope.to = vec![Address {
             name: None,
             email: "nora@example.com".into(),
@@ -673,6 +715,27 @@ mod tests {
         assert_eq!(rows.len(), 1, "recording again never duplicates");
         assert_eq!(again.id, commitment.id);
         assert_eq!(rows[0].by_when, Some(monday));
+    }
+
+    #[tokio::test]
+    async fn a_spoofed_from_is_not_mail_you_sent() {
+        let (state, account_id, _) = fixture(r#"{"promises":[]}"#, Duration::ZERO).await;
+        let sent = stored_sent_message(&state, &account_id).await;
+        // Inbound mail whose From header claims to be you: not filed as sent.
+        let mut spoofed = state.store.get_envelope(&sent).await.unwrap().unwrap();
+        spoofed.id = MessageId::new();
+        spoofed.provider_id = "spoofed".into();
+        spoofed.flags.remove(MessageFlags::SENT);
+        state.store.upsert_envelope(&spoofed).await.unwrap();
+        let friday = Utc.with_ymd_and_hms(2026, 10, 2, 8, 0, 0).unwrap();
+        let error = record_promise(&state, &spoofed.id, "send the deck", friday, false)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("not sent from this account"));
+        let source = PromiseSourceData::SentMessage {
+            message_id: spoofed.id.clone(),
+        };
+        assert!(detect_promises(&state, &source, None, None).await.is_err());
     }
 
     #[tokio::test]

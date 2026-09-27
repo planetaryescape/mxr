@@ -178,6 +178,103 @@ test("undo inside the countdown restores the reply and puts the conversation bac
   expect(sends).toBe(0);
 });
 
+test("fast back and forth never loses the latest reply text", async ({ page }) => {
+  test.setTimeout(60_000);
+  const three = await queueOfThree(page);
+  // Slow saves, so leaving A and coming back overtakes its save.
+  await page.route("**/api/v1/mail/compose/session/update", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue();
+  });
+  await openApp(page, "/focus");
+  await expect(heading(page)).toHaveText(three[0]!.subject);
+  await typeReply(page, "Latest words for A");
+  // Straight out and through the queue back to A, without waiting for saves.
+  for (const next of [three[1]!, three[2]!, three[0]!]) {
+    await reply(page).locator(".cm-content").click();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("s");
+    await expect(heading(page)).toHaveText(next.subject);
+    await expect(reply(page).locator(".cm-content")).toBeVisible();
+  }
+  await expect(reply(page).locator(".cm-content")).toContainText("Latest words for A");
+});
+
+test("skipping the last one sets it aside, and you can come back to it", async ({ page }) => {
+  const three = await queueOfThree(page);
+  await page.route("**/api/v1/mail/owed?**", async (route) => {
+    const upstream = await route.fetch();
+    const json = (await upstream.json()) as { rows: OwedRow[] };
+    await route.fulfill({
+      response: upstream,
+      json: { ...json, rows: json.rows.filter((row) => row.thread_id === three[0]!.thread_id) },
+    });
+  });
+  await openApp(page, "/focus");
+  await expect(page.getByTestId("focus-progress")).toContainText("1 of 1");
+  await reply(page).locator(".cm-content").click();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("s");
+  const finish = page.getByTestId("focus-finish");
+  await expect(finish).toContainText("1 conversation skipped.");
+  await expect(finish).not.toContainText("That's everyone");
+  await finish.getByRole("button", { name: "Come back to it" }).click();
+  await expect(heading(page)).toHaveText(three[0]!.subject);
+});
+
+test("a failed load is an error to retry, never a finish", async ({ page }) => {
+  let fail = true;
+  await page.route("**/api/v1/mail/owed?**", async (route) => {
+    if (fail) return route.fulfill({ status: 500, json: { error: "daemon unavailable" } });
+    return route.fulfill({ json: { kind: "OwedReplies", rows: [] } });
+  });
+  await page.route("**/api/v1/mail/reply-later", (route) =>
+    route.fulfill({ json: { kind: "ReplyQueue", messages: [] } }),
+  );
+  await openApp(page, "/focus");
+  await expect(page.getByTestId("focus-error")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/Nobody is waiting|That's everyone/)).toHaveCount(0);
+  fail = false;
+  await page.getByTestId("focus-error").getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByTestId("focus-finish")).toContainText("Nobody is waiting");
+});
+
+test("all accounts gathers owed replies from every enabled account", async ({ page }) => {
+  const three = await queueOfThree(page);
+  const state = readE2EState();
+  const accounts = (await (
+    await page.request.get(`${state.bridgeUrl}/api/v1/platform/accounts`, { headers: auth() })
+  ).json()) as { accounts: { account_id: string; enabled: boolean }[] };
+  const real = accounts.accounts[0]!;
+  const second = {
+    ...real,
+    account_id: "second-account",
+    name: "Second",
+    email: "second@example.com",
+    is_default: false,
+  };
+  await page.route("**/api/v1/platform/accounts", (route) =>
+    route.fulfill({ json: { accounts: [...accounts.accounts, second] } }),
+  );
+  const asked: string[] = [];
+  await page.route("**/api/v1/mail/owed?**", async (route) => {
+    const url = new URL(route.request().url());
+    const account = url.searchParams.get("account") ?? "";
+    asked.push(account);
+    // The real account owes the first two; the second account owes the third.
+    const upstream = await route.fetch({ url: `${url.origin}${url.pathname}?limit=200` });
+    const json = (await upstream.json()) as { rows: OwedRow[] };
+    const mine = account === "second-account" ? [three[2]!] : [three[0]!, three[1]!];
+    const ids = new Set(mine.map((row) => row.thread_id));
+    await route.fulfill({
+      json: { ...json, rows: json.rows.filter((row) => ids.has(row.thread_id)) },
+    });
+  });
+  await openApp(page, "/focus");
+  await expect(page.getByTestId("focus-progress")).toContainText("of 3");
+  expect(new Set(asked)).toEqual(new Set([real.account_id, "second-account"]));
+});
+
 test("a dated promise in a reply is offered with its time and kept as a reminder", async ({
   page,
 }) => {

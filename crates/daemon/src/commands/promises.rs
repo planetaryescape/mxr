@@ -13,6 +13,7 @@ use mxr_protocol::{
     CommitmentData, PromiseDetectionData, PromiseDetectionStatusData, PromiseSourceData, Request,
     Response, ResponseData,
 };
+use std::io::IsTerminal;
 
 pub(crate) async fn detect(
     client: &mut IpcClient,
@@ -108,8 +109,9 @@ fn added_line(commitment: &CommitmentData, due: &str, dry_run: bool) -> String {
 
 /// After a send: say what the message promised and how to keep each
 /// promise. Never fails the command, since the mail already went out. The
-/// note goes to stdout for people and stderr for machine formats, so
-/// piped output stays one document.
+/// note is for a person: it goes to stdout only for table output on a
+/// terminal, and to stderr otherwise, so piped or machine-format stdout
+/// stays exactly what scripts parse.
 pub(crate) async fn report_after_send(
     client: &mut IpcClient,
     sent_message_id: &MessageId,
@@ -129,10 +131,15 @@ pub(crate) async fn report_after_send(
         return;
     }
     let lines = promise_lines(&detection, sent_message_id);
-    match format.unwrap_or(OutputFormat::Table) {
-        OutputFormat::Table => print!("{lines}"),
-        _ => eprint!("{lines}"),
+    if note_on_stdout(format.as_ref(), std::io::stdout().is_terminal()) {
+        print!("{lines}");
+    } else {
+        eprint!("{lines}");
     }
+}
+
+fn note_on_stdout(format: Option<&OutputFormat>, stdout_is_terminal: bool) -> bool {
+    stdout_is_terminal && matches!(format, None | Some(OutputFormat::Table))
 }
 
 async fn request_detection(
@@ -194,6 +201,24 @@ mod tests {
     use chrono::TimeZone;
     use mxr_core::natural_time::{resolve_time, TimePrefs};
     use mxr_protocol::DetectedPromiseData;
+
+    #[test]
+    fn the_note_never_lands_on_piped_or_machine_stdout() {
+        // Piped stdout (not a terminal): stderr, whatever the format.
+        for format in [
+            None,
+            Some(OutputFormat::Table),
+            Some(OutputFormat::Json),
+            Some(OutputFormat::Jsonl),
+            Some(OutputFormat::Ids),
+        ] {
+            assert!(!note_on_stdout(format.as_ref(), false), "{format:?}");
+        }
+        // A person at a terminal reading table output sees it inline.
+        assert!(note_on_stdout(None, true));
+        assert!(note_on_stdout(Some(&OutputFormat::Table), true));
+        assert!(!note_on_stdout(Some(&OutputFormat::Json), true));
+    }
 
     #[test]
     fn promise_lines_give_the_exact_command_that_keeps_each_promise() {

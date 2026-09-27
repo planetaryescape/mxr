@@ -69,6 +69,8 @@ export interface FocusSession {
   queue: string[];
   /** Sent (or in its undo window) or snoozed, in the order handled. */
   handled: string[];
+  /** Skipped when nothing else was left: set aside until you come back. */
+  deferred: string[];
   /** The source has answered at least once. */
   loaded: boolean;
 }
@@ -77,9 +79,17 @@ export type FocusEvent =
   | { kind: "sync"; items: FocusItem[] }
   | { kind: "skip" }
   | { kind: "handled"; threadId: string }
-  | { kind: "restore"; threadId: string };
+  | { kind: "restore"; threadId: string }
+  /** Bring the set-aside conversations back into the queue. */
+  | { kind: "revisit" };
 
-export const emptyFocusSession: FocusSession = { items: {}, queue: [], handled: [], loaded: false };
+export const emptyFocusSession: FocusSession = {
+  items: {},
+  queue: [],
+  handled: [],
+  deferred: [],
+  loaded: false,
+};
 
 export function focusReducer(session: FocusSession, event: FocusEvent): FocusSession {
   switch (event.kind) {
@@ -92,7 +102,7 @@ export function focusReducer(session: FocusSession, event: FocusEvent): FocusSes
       }
       const current = session.queue[0];
       const kept = session.queue.filter((id) => id === current || inSource.has(id));
-      const known = new Set([...kept, ...session.handled]);
+      const known = new Set([...kept, ...session.handled, ...session.deferred]);
       const arrivals = event.items.map((item) => item.threadId).filter((id) => !known.has(id));
       const queue = [...kept, ...arrivals];
       // A refetch that changes nothing keeps the same session, so the page
@@ -104,12 +114,19 @@ export function focusReducer(session: FocusSession, event: FocusEvent): FocusSes
       ) {
         return session;
       }
-      return { items, queue, handled: session.handled, loaded: true };
+      return { ...session, items, queue, loaded: true };
     }
     case "skip": {
       const [current, ...rest] = session.queue;
-      if (current === undefined || rest.length === 0) return session;
+      if (current === undefined) return session;
+      // The last one left is set aside rather than shown again.
+      if (rest.length === 0)
+        return { ...session, queue: [], deferred: [...session.deferred, current] };
       return { ...session, queue: [...rest, current] };
+    }
+    case "revisit": {
+      if (session.deferred.length === 0) return session;
+      return { ...session, queue: [...session.queue, ...session.deferred], deferred: [] };
     }
     case "handled": {
       if (!session.queue.includes(event.threadId)) return session;
@@ -138,7 +155,7 @@ export interface FocusProgress {
 }
 
 export function focusProgress(session: FocusSession): FocusProgress {
-  const total = session.queue.length + session.handled.length;
+  const total = session.queue.length + session.handled.length + session.deferred.length;
   const done = session.handled.length;
   return { position: Math.min(done + 1, total), total, done };
 }

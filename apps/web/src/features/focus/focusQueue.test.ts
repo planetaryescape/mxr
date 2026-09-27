@@ -134,6 +134,21 @@ describe("focusReducer", () => {
     expect(focusProgress(session).done).toBe(0);
   });
 
+  test("skipping the last one sets it aside until you come back to it", () => {
+    const skipped = run(
+      { kind: "sync", items: [item("a"), item("b")] },
+      { kind: "handled", threadId: "a" },
+      { kind: "skip" },
+    );
+    expect(skipped.queue).toEqual([]);
+    expect(skipped.deferred).toEqual(["b"]);
+    expect(focusProgress(skipped)).toEqual({ position: 2, total: 2, done: 1 });
+    // A refetch that still lists it doesn't bring it back unasked.
+    const synced = focusReducer(skipped, { kind: "sync", items: [item("b")] });
+    expect(synced.queue).toEqual([]);
+    expect(focusReducer(synced, { kind: "revisit" }).queue).toEqual(["b"]);
+  });
+
   test("finishing leaves an empty queue with everything handled", () => {
     const session = run({ kind: "sync", items: [item("a")] }, { kind: "handled", threadId: "a" });
     expect(session.queue).toEqual([]);

@@ -10,6 +10,8 @@ const api = vi.hoisted(() => ({
 vi.mock("../api", () => api);
 
 const { loadInitialComposeSession, rememberActiveDraft } = await import("./activeDrafts");
+const { requestCoordinator } = await import("@/lib/requestCoordinator");
+const { composeQueueKey } = await import("./composeDraft");
 
 // Node's own inert localStorage can shadow jsdom's; give the test a real one.
 function memoryStorage(): Storage {
@@ -59,5 +61,48 @@ describe("resuming a compose session", () => {
     expect(api.refreshComposeSession).toHaveBeenCalledWith("/tmp/draft.md");
     expect(loaded.session.accountId).toBe("acct-1");
     expect(loaded.session.bodyMarkdown).toBe("Kept");
+  });
+
+  test("reopening waits for the closed composer's save, so A to B to A shows the latest text", async () => {
+    const intent = {
+      key: "compose:reply:a",
+      title: "Reply",
+      kind: "reply" as const,
+      messageId: "a",
+    };
+    rememberActiveDraft(intent.key, {
+      draftPath: "/tmp/a.md",
+      accountId: "acct-1",
+    } as Parameters<typeof rememberActiveDraft>[1]);
+    // What the file holds: the older text until the save lands.
+    let onDisk = "older reply";
+    api.refreshComposeSession.mockImplementation(async () => ({
+      session: {
+        draftPath: "/tmp/a.md",
+        bodyMarkdown: onDisk,
+      } as ComposeSessionResponse["session"],
+    }));
+    let finishSave!: () => void;
+    // The composer for A closed (focus moved to B) with its save in flight.
+    const saving = requestCoordinator.queueComposeLatest(
+      composeQueueKey("/tmp/a.md"),
+      () =>
+        new Promise<void>((resolve) => {
+          finishSave = () => {
+            onDisk = "newer reply";
+            resolve();
+          };
+        }),
+    );
+
+    // Back to A before the save is done.
+    const reopening = loadInitialComposeSession(intent);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(api.refreshComposeSession).not.toHaveBeenCalled();
+
+    finishSave();
+    await saving;
+    const loaded = await reopening;
+    expect(loaded.session.bodyMarkdown).toBe("newer reply");
   });
 });

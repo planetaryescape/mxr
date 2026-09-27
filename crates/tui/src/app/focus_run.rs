@@ -14,9 +14,6 @@ pub struct FocusRun {
     pub remaining: VecDeque<Envelope>,
     /// The message whose reply is open (or about to be).
     pub current: Envelope,
-    /// Set once the reply to `current` is on its way; its `SentSuccess`
-    /// moves the run on.
-    pub reply_sent: bool,
     pub total: usize,
 }
 
@@ -52,7 +49,6 @@ impl App {
         self.focus_run = Some(FocusRun {
             remaining,
             current,
-            reply_sent: false,
             total,
         });
         self.open_focus_reply();
@@ -73,31 +69,20 @@ impl App {
         self.status_message = Some(status);
     }
 
-    /// Called when a composed message is dispatched: only the reply to the
-    /// run's current message counts.
-    pub(crate) fn note_focus_send(&mut self, in_reply_to: Option<&str>) {
+    /// After a successful send: open the next reply if what went out was the
+    /// reply to the run's current message, or finish. Any other send, and a
+    /// failed one (which never gets here), leaves the run where it is.
+    pub(crate) fn advance_focus_run_after_send(&mut self, in_reply_to: Option<&str>) {
         let Some(run) = self.focus_run.as_mut() else {
             return;
         };
         let current = run.current.message_id_header.as_deref();
-        if in_reply_to.is_some() && in_reply_to == current {
-            run.reply_sent = true;
-        }
-    }
-
-    /// After a successful send: open the next reply if the run's reply went
-    /// out, or finish.
-    pub(crate) fn advance_focus_run_after_send(&mut self) {
-        let Some(run) = self.focus_run.as_mut() else {
-            return;
-        };
-        if !run.reply_sent {
+        if in_reply_to.is_none() || in_reply_to != current {
             return;
         }
         match run.remaining.pop_front() {
             Some(next) => {
                 run.current = next;
-                run.reply_sent = false;
                 self.open_focus_reply();
             }
             None => {

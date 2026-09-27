@@ -5,7 +5,9 @@
  */
 
 import { refreshComposeSession, restoreComposeSession, startComposeSession } from "../api";
-import type { ComposeDraftState, ComposeIntent } from "./composeDraft";
+import { requestCoordinator } from "@/lib/requestCoordinator";
+
+import { composeQueueKey, type ComposeDraftState, type ComposeIntent } from "./composeDraft";
 
 const activeDraftStorageKey = "mxr.compose.activeDrafts";
 
@@ -20,6 +22,9 @@ export async function loadInitialComposeSession(intent: ComposeIntent) {
   const active = readActiveDraft(intent.key);
   if (active?.draftPath) {
     try {
+      // A composer that just closed (focus mode moving on, a reply closed
+      // and reopened) may still be saving this file: read it after that.
+      await requestCoordinator.settleCompose(composeQueueKey(active.draftPath));
       const refreshed = await refreshComposeSession(active.draftPath);
       // The refresh reads the file, which doesn't name the account; the
       // entry kept it. Without it the send and safety check have no account.

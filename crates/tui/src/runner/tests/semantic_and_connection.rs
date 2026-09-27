@@ -1306,6 +1306,7 @@ fn sent_success_effect_suppresses_status_when_more_in_flight() {
             status: "Sent!".into(),
             remind_at: None,
             sent_message_id: None,
+            in_reply_to: None,
         },
         false, // not last in the batch
     );

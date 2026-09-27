@@ -1956,17 +1956,15 @@ pub async fn run() -> anyhow::Result<()> {
                             ResponseData::SendReceipt {
                                 local_message_id, ..
                             },
-                    }) => Ok(match effect {
-                        app::MutationEffect::SentSuccess {
-                            status,
-                            remind_at,
-                            sent_message_id: _,
-                        } => app::MutationEffect::SentSuccess {
-                            status,
-                            remind_at,
-                            sent_message_id: Some(local_message_id),
-                        },
-                        other => other,
+                    }) => Ok({
+                        let mut effect = effect;
+                        if let app::MutationEffect::SentSuccess {
+                            sent_message_id, ..
+                        } = &mut effect
+                        {
+                            *sent_message_id = Some(local_message_id);
+                        }
+                        effect
                     }),
                     Ok(Response::Ok {
                         data: ResponseData::MutationResult { result },

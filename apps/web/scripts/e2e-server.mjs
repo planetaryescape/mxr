@@ -114,7 +114,23 @@ function startDaemon() {
     .on("close", () => {});
 }
 
+// The daemon's output is drained (a full pipe would stall it) and its tail
+// kept, so an unexpected exit says why instead of just "signal=SIGABRT".
+const daemonTail = [];
+function keepTail(stream) {
+  stream?.setEncoding("utf8");
+  stream?.on("data", (chunk) => {
+    for (const line of chunk.split("\n")) {
+      if (!line) continue;
+      daemonTail.push(line);
+      if (daemonTail.length > 80) daemonTail.shift();
+    }
+  });
+}
+
 function watchDaemon(child) {
+  keepTail(child.stdout);
+  keepTail(child.stderr);
   child.on("exit", (code, signal) => {
     if (shuttingDown) return;
     if (daemonStoppedByControl) {
@@ -123,6 +139,7 @@ function watchDaemon(child) {
       return;
     }
     console.error(`[e2e-server] daemon exited code=${code} signal=${signal}`);
+    console.error("[e2e-server] last daemon output:\n" + daemonTail.join("\n"));
     shutdown(1);
   });
 }

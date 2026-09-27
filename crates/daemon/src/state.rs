@@ -363,8 +363,10 @@ pub(crate) fn relationship_data_allowed(
     let effective = llm_override_entries(&config.overrides)
         .into_iter()
         .find(|(entry, _)| *entry == feature)
-        .map(|(_, override_config)| config.effective_override(override_config))
-        .unwrap_or_else(|| base_llm_config(config));
+        .map_or_else(
+            || base_llm_config(config),
+            |(_, override_config)| config.effective_override(override_config),
+        );
     !effective.enabled || is_local_llm_url(&effective.base_url)
 }
 

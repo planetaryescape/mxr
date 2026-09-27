@@ -408,8 +408,6 @@ mod tests {
     use super::*;
     use crate::state::AppState;
     use crate::test_fixtures::TestEnvelopeBuilder;
-    #[cfg(feature = "local")]
-    use mxr_core::types::Address as CoreAddress;
     use mxr_core::types::{MessageBody, MessageDirection, MessageMetadata};
     use mxr_llm::{CompletionResponse, LlmCapabilities, LlmProvider};
     use mxr_protocol::ResponseData;
@@ -935,8 +933,7 @@ mod tests {
             .unwrap()
             .into_iter()
             .next()
-            .map(|address| address.email)
-            .unwrap_or_else(|| "user@example.com".to_string());
+            .map_or_else(|| "user@example.com".into(), |address| address.email);
 
         async fn seed(
             state: &AppState,

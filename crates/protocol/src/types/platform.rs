@@ -494,7 +494,7 @@ pub enum VoiceMatchConfidenceData {
 /// One replayed reply from `mxr draft eval`: the draft the model wrote from
 /// what was known just before the user replied, next to what they sent.
 /// Local only; never recorded in the activity log.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DraftEvalCaseData {
     pub reply_message_id: MessageId,

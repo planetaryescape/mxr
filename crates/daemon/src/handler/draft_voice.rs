@@ -197,7 +197,7 @@ pub(crate) async fn voice_material(
                     for_habits: bool| {
         let mine = clean_for_voice(mine_raw);
         let words = mine.split_whitespace().count();
-        if words < EXAMPLE_MIN_WORDS || words > EXAMPLE_MAX_WORDS {
+        if !(EXAMPLE_MIN_WORDS..=EXAMPLE_MAX_WORDS).contains(&words) {
             return;
         }
         let key: String = mine.chars().take(80).collect::<String>().to_lowercase();

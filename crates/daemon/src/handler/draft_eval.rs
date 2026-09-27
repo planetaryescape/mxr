@@ -256,8 +256,7 @@ mod tests {
             .unwrap()
             .into_iter()
             .next()
-            .map(|address| address.email)
-            .unwrap_or_else(|| "user@example.com".into());
+            .map_or_else(|| "user@example.com".into(), |address| address.email);
         let now = chrono::Utc::now();
         let thread = mxr_core::ThreadId::new();
 

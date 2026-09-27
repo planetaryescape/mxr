@@ -195,6 +195,7 @@ mod tests {
     use mxr_core::id::MessageId;
     use mxr_core::types::{Address, Envelope, MessageBody, MessageDirection, MessageMetadata};
 
+    #[allow(clippy::too_many_arguments)]
     async fn message(
         store: &Store,
         account: &mxr_core::types::Account,

@@ -44,7 +44,7 @@ pub struct WritingHabits {
     pub uses_emoji: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Habit {
     pub text: String,
     pub count: usize,
@@ -165,7 +165,7 @@ impl WritingHabits {
                 of(habit.count)
             )),
             _ if self.greeting_rate < 0.2 => {
-                out.push("Usually starts straight in, with no greeting.".to_string())
+                out.push("Usually starts straight in, with no greeting.".to_string());
             }
             _ => {}
         }

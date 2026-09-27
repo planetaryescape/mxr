@@ -62,7 +62,7 @@ pub use mutation_snapshot::{
 pub use pending_optimistic::PendingOptimisticState;
 pub use promises::PromisePrompt;
 #[cfg(test)]
-pub(crate) use promises::PROMISE_PROMPT_TTL;
+pub(crate) use promises::{PROMISE_ANSWER_GUARD, PROMISE_PROMPT_TTL};
 use state::PendingPreviewRead;
 pub use state::*;
 
@@ -112,9 +112,10 @@ pub enum MutationEffect {
         status: String,
         remind_at: Option<chrono::DateTime<chrono::Utc>>,
         sent_message_id: Option<MessageId>,
-        /// Message-ID header the sent reply answers, so a focus run moves
-        /// on only for its own reply.
-        in_reply_to: Option<String>,
+        /// The compose file the message was written in, so a focus run
+        /// moves on only for its own reply (a source without a Message-ID
+        /// header gives nothing else to match on).
+        draft_path: Option<std::path::PathBuf>,
     },
 }
 

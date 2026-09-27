@@ -120,7 +120,16 @@ pub(crate) async fn report_after_send(
     let source = PromiseSourceData::SentMessage {
         message_id: sent_message_id.clone(),
     };
-    let detection = match request_detection(client, source).await {
+    // The daemon's own budget starts at the model call, after any wait for
+    // a model slot; the command must not hang behind that. On time or not,
+    // the mail already went out, so this only ever skips the note.
+    let Some(detection) =
+        within_deadline(AFTER_SEND_DEADLINE, request_detection(client, source)).await
+    else {
+        eprintln!("No promise check this time: the model didn't answer in time.");
+        return;
+    };
+    let detection = match detection {
         Ok(detection) => detection,
         Err(error) => {
             tracing::debug!(%error, "promise check after send failed");
@@ -136,6 +145,16 @@ pub(crate) async fn report_after_send(
     } else {
         eprint!("{lines}");
     }
+}
+
+/// The whole promise check after a send, model slot wait included.
+const AFTER_SEND_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+
+async fn within_deadline<T>(
+    deadline: std::time::Duration,
+    work: impl std::future::Future<Output = T>,
+) -> Option<T> {
+    tokio::time::timeout(deadline, work).await.ok()
 }
 
 fn note_on_stdout(format: Option<&OutputFormat>, stdout_is_terminal: bool) -> bool {
@@ -201,6 +220,19 @@ mod tests {
     use chrono::TimeZone;
     use mxr_core::natural_time::{resolve_time, TimePrefs};
     use mxr_protocol::DetectedPromiseData;
+
+    #[tokio::test(start_paused = true)]
+    async fn a_promise_check_that_never_answers_is_dropped_at_the_deadline() {
+        let started = tokio::time::Instant::now();
+        let answer = within_deadline(AFTER_SEND_DEADLINE, std::future::pending::<()>()).await;
+        assert!(answer.is_none());
+        assert_eq!(started.elapsed(), AFTER_SEND_DEADLINE);
+        assert!(AFTER_SEND_DEADLINE <= std::time::Duration::from_secs(10));
+        assert_eq!(
+            within_deadline(AFTER_SEND_DEADLINE, async { 7 }).await,
+            Some(7)
+        );
+    }
 
     #[test]
     fn the_note_never_lands_on_piped_or_machine_stdout() {

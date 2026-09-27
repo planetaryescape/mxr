@@ -2886,6 +2886,7 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                         }
                         AsyncResult::ComposeReady(Ok(data)) => {
+                            app.note_focus_compose(data.intent, &data.draft_path);
                             let status = run_with_terminal_suspended(&mut terminal, &mut events, || {
                                 let editor = mxr_compose::editor::resolve_editor(None);
                                 std::process::Command::new(&editor)

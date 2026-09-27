@@ -275,7 +275,7 @@ impl App {
                 status,
                 remind_at,
                 sent_message_id,
-                in_reply_to,
+                draft_path,
             } => {
                 // Refresh the active label so a Sent-view user sees the new
                 // message immediately. Subscriptions also refresh because
@@ -292,7 +292,7 @@ impl App {
                     self.push_toast(Toast::success(status));
                 }
                 self.pending_promise_check = sent_message_id.clone();
-                self.advance_focus_run_after_send(in_reply_to.as_deref());
+                self.advance_focus_run_after_send(draft_path.as_deref());
                 if let (Some(sent_message_id), Some(remind_at)) = (sent_message_id, remind_at) {
                     self.queue_mutation(
                         Request::SetAutoReminder {

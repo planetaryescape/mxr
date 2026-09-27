@@ -5,8 +5,9 @@
 
 use super::App;
 use crate::app::Toast;
-use mxr_core::types::Envelope;
+use mxr_core::types::{DraftIntent, Envelope};
 use std::collections::VecDeque;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct FocusRun {
@@ -14,6 +15,8 @@ pub struct FocusRun {
     pub remaining: VecDeque<Envelope>,
     /// The message whose reply is open (or about to be).
     pub current: Envelope,
+    /// The compose file of the current reply, once its editor opens.
+    pub reply_draft: Option<PathBuf>,
     pub total: usize,
 }
 
@@ -49,6 +52,7 @@ impl App {
         self.focus_run = Some(FocusRun {
             remaining,
             current,
+            reply_draft: None,
             total,
         });
         self.open_focus_reply();
@@ -69,20 +73,31 @@ impl App {
         self.status_message = Some(status);
     }
 
-    /// After a successful send: open the next reply if what went out was the
-    /// reply to the run's current message, or finish. Any other send, and a
-    /// failed one (which never gets here), leaves the run where it is.
-    pub(crate) fn advance_focus_run_after_send(&mut self, in_reply_to: Option<&str>) {
+    /// The reply the run asked for is ready: remember its compose file.
+    /// Only the first reply to open after the run moved on counts.
+    pub(crate) fn note_focus_compose(&mut self, intent: DraftIntent, draft_path: &Path) {
+        if let Some(run) = self.focus_run.as_mut() {
+            if run.reply_draft.is_none() && intent == DraftIntent::Reply {
+                run.reply_draft = Some(draft_path.to_path_buf());
+            }
+        }
+    }
+
+    /// After a successful send: open the next reply if what went out was
+    /// written in the current reply's compose file, or finish. Any other
+    /// send, and a failed one (which never gets here), leaves the run where
+    /// it is.
+    pub(crate) fn advance_focus_run_after_send(&mut self, draft_path: Option<&Path>) {
         let Some(run) = self.focus_run.as_mut() else {
             return;
         };
-        let current = run.current.message_id_header.as_deref();
-        if in_reply_to.is_none() || in_reply_to != current {
+        if draft_path.is_none() || run.reply_draft.as_deref() != draft_path {
             return;
         }
         match run.remaining.pop_front() {
             Some(next) => {
                 run.current = next;
+                run.reply_draft = None;
                 self.open_focus_reply();
             }
             None => {

@@ -699,12 +699,12 @@ fn reply_queue_enter_starts_reply_compose_for_selected_message() {
     );
 }
 
-fn sent_success(sent_message_id: MessageId, in_reply_to: Option<&str>) -> MutationEffect {
+fn sent_success(sent_message_id: MessageId, draft_path: Option<&str>) -> MutationEffect {
     MutationEffect::SentSuccess {
         status: "Sent!".into(),
         remind_at: None,
         sent_message_id: Some(sent_message_id),
-        in_reply_to: in_reply_to.map(str::to_string),
+        draft_path: draft_path.map(std::path::PathBuf::from),
     }
 }
 
@@ -719,14 +719,17 @@ fn expect_reply_compose(app: &App, envelope: &Envelope) {
     );
 }
 
+/// The reply the run asked for opens in its editor (the runner does this
+/// when `ComposeReady` arrives).
+fn reply_opens(app: &mut App, draft: &str) {
+    app.compose.pending_compose = None;
+    app.note_focus_compose(DraftIntent::Reply, std::path::Path::new(draft));
+}
+
 #[test]
 fn focus_run_replies_to_each_queued_message_and_advances_only_on_its_own_reply() {
     let mut app = App::new();
-    let mut messages = make_test_envelopes(3);
-    for (index, message) in messages.iter_mut().enumerate() {
-        message.message_id_header = Some(format!("<queued-{index}@example.com>"));
-    }
-    let header = |index: usize| messages[index].message_id_header.clone();
+    let messages = make_test_envelopes(3);
     app.modals.reply_queue.open_loading();
     app.modals.reply_queue.set_messages(messages.clone());
     app.modals.reply_queue.select_next();
@@ -743,51 +746,75 @@ fn focus_run_replies_to_each_queued_message_and_advances_only_on_its_own_reply()
         .as_deref()
         .unwrap()
         .starts_with("Focus 1 of 3"));
+    reply_opens(&mut app, "/tmp/focus-reply-1.md");
 
-    // Unrelated sends (another thread, a new message) never move the run on.
-    app.compose.pending_compose = None;
+    // Unrelated sends (another compose file, none at all) never move it on.
     app.apply_mutation_completion(
-        sent_success(MessageId::new(), Some("<something-else@example.com>")),
+        sent_success(MessageId::new(), Some("/tmp/something-else.md")),
         true,
     );
     app.apply_mutation_completion(sent_success(MessageId::new(), None), true);
     assert_eq!(app.compose.pending_compose, None);
     assert_eq!(app.focus_run.as_ref().unwrap().position(), 1);
 
-    // The reply to the current message opens the next reply.
+    // The reply written in the current reply's file opens the next reply.
     let sent = MessageId::new();
-    app.apply_mutation_completion(sent_success(sent.clone(), header(1).as_deref()), true);
+    app.apply_mutation_completion(
+        sent_success(sent.clone(), Some("/tmp/focus-reply-1.md")),
+        true,
+    );
     expect_reply_compose(&app, &messages[2]);
     assert_eq!(app.pending_promise_check, Some(sent));
+    reply_opens(&mut app, "/tmp/focus-reply-2.md");
 
-    app.apply_mutation_completion(sent_success(MessageId::new(), header(2).as_deref()), true);
+    app.apply_mutation_completion(
+        sent_success(MessageId::new(), Some("/tmp/focus-reply-2.md")),
+        true,
+    );
     expect_reply_compose(&app, &messages[0]);
+    reply_opens(&mut app, "/tmp/focus-reply-0.md");
 
-    app.compose.pending_compose = None;
-    app.apply_mutation_completion(sent_success(MessageId::new(), header(0).as_deref()), true);
+    app.apply_mutation_completion(
+        sent_success(MessageId::new(), Some("/tmp/focus-reply-0.md")),
+        true,
+    );
     assert!(app.focus_run.is_none(), "the run ends after the last reply");
     assert_eq!(app.compose.pending_compose, None);
 }
 
 #[test]
-fn a_failed_focus_reply_is_never_counted_by_a_later_unrelated_send() {
+fn a_focus_reply_to_a_message_without_a_message_id_still_moves_the_run_on() {
     let mut app = App::new();
     let mut messages = make_test_envelopes(2);
-    for (index, message) in messages.iter_mut().enumerate() {
-        message.message_id_header = Some(format!("<queued-{index}@example.com>"));
+    for message in &mut messages {
+        message.message_id_header = None;
     }
     app.modals.reply_queue.open_loading();
     app.modals.reply_queue.set_messages(messages.clone());
     app.apply(Action::ReplyQueueModalFocus);
-    expect_reply_compose(&app, &messages[0]);
+    reply_opens(&mut app, "/tmp/no-header-reply.md");
 
-    // The focus reply is dispatched, then fails: nothing completes for it.
-    app.compose.pending_compose = None;
-    // A later send of something else succeeds.
     app.apply_mutation_completion(
-        sent_success(MessageId::new(), Some("<another-thread@example.com>")),
+        sent_success(MessageId::new(), Some("/tmp/no-header-reply.md")),
         true,
     );
+    expect_reply_compose(&app, &messages[1]);
+}
+
+#[test]
+fn a_failed_focus_reply_is_never_counted_by_a_later_unrelated_send() {
+    let mut app = App::new();
+    let messages = make_test_envelopes(2);
+    app.modals.reply_queue.open_loading();
+    app.modals.reply_queue.set_messages(messages.clone());
+    app.apply(Action::ReplyQueueModalFocus);
+    expect_reply_compose(&app, &messages[0]);
+    reply_opens(&mut app, "/tmp/failed-reply.md");
+
+    // The focus reply fails: nothing completes for it. A later send of
+    // something else (a new message opens as New) succeeds.
+    app.note_focus_compose(DraftIntent::New, std::path::Path::new("/tmp/other.md"));
+    app.apply_mutation_completion(sent_success(MessageId::new(), Some("/tmp/other.md")), true);
     assert_eq!(app.compose.pending_compose, None);
     let run = app.focus_run.as_ref().expect("still on the first message");
     assert_eq!(run.current.id, messages[0].id);
@@ -841,6 +868,7 @@ fn a_dated_promise_is_offered_and_y_keeps_it_as_a_reminder() {
         .starts_with("You promised: send the deck. Remind me "));
     assert_eq!(toast.action_hint.as_deref(), Some("y remind · n not now"));
 
+    settle_prompts(&mut app);
     assert_eq!(
         app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE)),
         None
@@ -863,6 +891,45 @@ fn a_dated_promise_is_offered_and_y_keeps_it_as_a_reminder() {
     }
 }
 
+/// Put every prompt past its answer guard, as if it had been on screen a while.
+fn settle_prompts(app: &mut App) {
+    for prompt in &mut app.promise_prompts {
+        prompt.shown_at -= crate::app::PROMISE_ANSWER_GUARD * 2;
+    }
+}
+
+#[test]
+fn a_held_y_answers_one_promise_not_the_ones_behind_it() {
+    let mut app = App::new();
+    app.offer_promises(MessageId::new(), dated_detection("send the deck"));
+    app.offer_promises(MessageId::new(), dated_detection("book the room"));
+    app.offer_promises(MessageId::new(), dated_detection("share the notes"));
+    settle_prompts(&mut app);
+
+    // Terminals with key-repeat reporting send Repeat events: ignored.
+    let mut held = KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE);
+    app.handle_key(held);
+    held.kind = crossterm::event::KeyEventKind::Repeat;
+    app.handle_key(held);
+    app.handle_key(held);
+    // Most terminals send a held key as fresh presses: the next prompt
+    // ignores answers until it has been on screen for a moment.
+    app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+
+    assert_eq!(
+        app.pending_mutation_queue.len(),
+        1,
+        "one reminder, not three"
+    );
+    assert_eq!(app.promise_prompts.len(), 2);
+
+    // Once it has been seen, it answers.
+    settle_prompts(&mut app);
+    app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+    assert_eq!(app.pending_mutation_queue.len(), 2);
+}
+
 #[test]
 fn n_lets_a_promise_go_and_unanswered_prompts_expire() {
     let mut app = App::new();
@@ -870,6 +937,7 @@ fn n_lets_a_promise_go_and_unanswered_prompts_expire() {
     app.offer_promises(MessageId::new(), dated_detection("book the room"));
     assert_eq!(app.promise_prompts.len(), 2);
 
+    settle_prompts(&mut app);
     app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
     assert_eq!(app.promise_prompts.len(), 1);
     assert!(app.pending_mutation_queue.is_empty(), "n stores nothing");

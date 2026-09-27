@@ -12,6 +12,10 @@ use std::time::{Duration, Instant};
 
 /// Long enough to read and answer, short enough not to linger.
 pub(crate) const PROMISE_PROMPT_TTL: Duration = Duration::from_secs(30);
+/// A prompt ignores answers this soon after it appears. Most terminals send
+/// a held key as repeated presses, not as repeats, so this is what stops a
+/// held `y` from accepting the prompts queued behind the first.
+pub(crate) const PROMISE_ANSWER_GUARD: Duration = Duration::from_millis(400);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PromisePrompt {
@@ -50,7 +54,13 @@ impl App {
     }
 
     /// `y` (keep) or `n` (let go) for the prompt on screen.
-    pub(crate) fn answer_promise(&mut self, keep: bool) {
+    pub(crate) fn answer_promise(&mut self, keep: bool, now: Instant) {
+        let Some(front) = self.promise_prompts.front() else {
+            return;
+        };
+        if now.saturating_duration_since(front.shown_at) < PROMISE_ANSWER_GUARD {
+            return;
+        }
         let Some(prompt) = self.promise_prompts.pop_front() else {
             return;
         };
@@ -66,7 +76,7 @@ impl App {
                 "Setting reminder...".into(),
             );
         }
-        self.restart_next_promise(Instant::now());
+        self.restart_next_promise(now);
     }
 
     /// Drop the prompt on screen once it has been up for its whole window.

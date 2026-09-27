@@ -1164,16 +1164,17 @@ impl App {
         // A promise prompt answers to y / n / Esc once no modal or prompt
         // above it wants the key; every other key works as usual.
         if !self.promise_prompts.is_empty() {
-            match (key.code, key.modifiers) {
-                (KeyCode::Char('y'), KeyModifiers::NONE) => {
-                    self.answer_promise(true);
-                    return None;
+            let answer = match (key.code, key.modifiers) {
+                (KeyCode::Char('y'), KeyModifiers::NONE) => Some(true),
+                (KeyCode::Char('n'), KeyModifiers::NONE) | (KeyCode::Esc, _) => Some(false),
+                _ => None,
+            };
+            if let Some(keep) = answer {
+                // A held key must not answer the next prompt too.
+                if key.kind != crossterm::event::KeyEventKind::Repeat {
+                    self.answer_promise(keep, std::time::Instant::now());
                 }
-                (KeyCode::Char('n'), KeyModifiers::NONE) | (KeyCode::Esc, _) => {
-                    self.answer_promise(false);
-                    return None;
-                }
-                _ => {}
+                return None;
             }
         }
 

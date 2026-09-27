@@ -344,39 +344,51 @@ export function useComposeSend({
     // is kept for this message and dropped if this send is undone.
     const sendEvent = { intentKey: intent.key, sendId: `${intent.key}@${Date.now()}` };
 
+    // Only the send itself can fail a send. Everything after it (reminder,
+    // archive, closing the composer) reports its own trouble: letting it
+    // reach the failure path would put a sent reply back and invite a
+    // second send.
+    const afterSend = async (response: Awaited<ReturnType<typeof sendComposeSession>>) => {
+      markSessionFinished();
+      forgetActiveDraft(intent.key);
+      emitSendEvent({
+        kind: "sent",
+        ...sendEvent,
+        sentMessageId: response.message_id ?? undefined,
+      });
+      toast.success("Message sent");
+      if (remind) await setReminderAfterSend(response.message_id ?? undefined, remind);
+      if (archiveSourceId) {
+        try {
+          await archiveMessages([archiveSourceId]);
+          void queryClient.invalidateQueries({ queryKey: ["mailbox"] });
+          void queryClient.invalidateQueries({ queryKey: ["thread"] });
+          toast.success("Conversation archived");
+        } catch (error) {
+          toast.error("Archive after send failed", { description: errorMessage(error) });
+        }
+      }
+      if (options.onSent) {
+        options.onSent();
+      } else {
+        await navigate({ to: "/m/$mailbox", params: { mailbox: "sent" } });
+      }
+    };
     const fire = () => {
       sendSession
         .mutateAsync({ draftPath, accountId, overrideToken })
-        .then(async (response) => {
-          markSessionFinished();
-          forgetActiveDraft(intent.key);
-          emitSendEvent({
-            kind: "sent",
-            ...sendEvent,
-            sentMessageId: response.message_id ?? undefined,
-          });
-          toast.success("Message sent");
-          if (remind) await setReminderAfterSend(response.message_id ?? undefined, remind);
-          if (archiveSourceId) {
-            try {
-              await archiveMessages([archiveSourceId]);
-              void queryClient.invalidateQueries({ queryKey: ["mailbox"] });
-              void queryClient.invalidateQueries({ queryKey: ["thread"] });
-              toast.success("Conversation archived");
-            } catch (error) {
-              toast.error("Archive after send failed", { description: errorMessage(error) });
-            }
-          }
-          if (options.onSent) {
-            options.onSent();
-          } else {
-            await navigate({ to: "/m/$mailbox", params: { mailbox: "sent" } });
-          }
-        })
-        .catch((err: Error) => {
-          emitSendEvent({ kind: "failed", ...sendEvent });
-          toast.error("Send failed", { description: err.message });
-        })
+        .then(
+          (response) =>
+            afterSend(response).catch((error: unknown) =>
+              toast.error("Sent, but something after the send failed", {
+                description: errorMessage(error),
+              }),
+            ),
+          (err: Error) => {
+            emitSendEvent({ kind: "failed", ...sendEvent });
+            toast.error("Send failed", { description: err.message });
+          },
+        )
         .finally(() => {
           setPendingSends((count) => Math.max(0, count - 1));
           releaseSendLock();

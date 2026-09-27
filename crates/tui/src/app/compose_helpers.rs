@@ -97,7 +97,7 @@ impl App {
                 status: "Sent!".into(),
                 remind_at,
                 sent_message_id: None,
-                in_reply_to: pending.fm.in_reply_to.clone(),
+                draft_path: Some(pending.draft_path.clone()),
             },
             "Sending...".into(),
         );

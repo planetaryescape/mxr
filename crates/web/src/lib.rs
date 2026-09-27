@@ -884,14 +884,65 @@ async fn send_compose_session(
             return Err(error);
         }
     };
-    remove_compose_file(Path::new(&request.draft_path)).await?;
-    remove_compose_attachment_dir(Path::new(&request.draft_path)).await?;
-    remove_invite_reply_sidecar(Path::new(&request.draft_path)).await?;
+    // The message is out. A leftover session file must never turn that into
+    // a failed request: the client would put the reply back and a retry
+    // would send it again under a new draft id.
+    let cleanup_warnings = cleanup_committed_session(
+        Path::new(&request.draft_path),
+        SessionCleanup::WithAttachments,
+        request_id,
+        "compose/send",
+    )
+    .await;
     Ok(Json(json!({
         "ok": true,
         "draft_id": draft_id,
         "message_id": message_id,
+        "cleanup_warnings": cleanup_warnings,
     })))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SessionCleanup {
+    WithAttachments,
+    /// The stored draft still reads the attachments when it sends.
+    KeepAttachments,
+}
+
+/// Remove a compose session whose content has already been committed (sent,
+/// or stored and scheduled). Failures are logged and returned as warnings,
+/// never errors: the commit already happened.
+async fn cleanup_committed_session(
+    draft_path: &Path,
+    cleanup: SessionCleanup,
+    request_id: u64,
+    endpoint: &'static str,
+) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let mut note = |what: &str, result: Result<(), BridgeError>| {
+        if let Err(error) = result {
+            tracing::warn!(
+                request_id,
+                endpoint,
+                stage = what,
+                error_kind = bridge_error_kind(&error),
+                "compose session cleanup failed after commit"
+            );
+            warnings.push(format!("Couldn't remove the {what}: {error}"));
+        }
+    };
+    note("session file", remove_compose_file(draft_path).await);
+    if cleanup == SessionCleanup::WithAttachments {
+        note(
+            "attachment folder",
+            remove_compose_attachment_dir(draft_path).await,
+        );
+    }
+    note(
+        "invite reply sidecar",
+        remove_invite_reply_sidecar(draft_path).await,
+    );
+    warnings
 }
 
 /// Run the pre-send safety gate against the current compose session
@@ -1128,8 +1179,13 @@ async fn schedule_compose_session(
     // The stored draft now owns the content, so the session file and invite
     // sidecar go. The attachment directory stays: the stored draft points at
     // those files and reads them when the send fires.
-    remove_compose_file(Path::new(&request.draft_path)).await?;
-    remove_invite_reply_sidecar(Path::new(&request.draft_path)).await?;
+    let cleanup_warnings = cleanup_committed_session(
+        Path::new(&request.draft_path),
+        SessionCleanup::KeepAttachments,
+        request_id,
+        "compose/schedule",
+    )
+    .await;
     tracing::info!(
         request_id,
         endpoint = "compose/schedule",
@@ -1141,6 +1197,7 @@ async fn schedule_compose_session(
         "ok": true,
         "draft_id": draft_id,
         "send_at": request.send_at,
+        "cleanup_warnings": cleanup_warnings,
     })))
 }
 

@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Show drafts scheduled to send later that have not gone out yet, soonest first. Schedule with `mxr send <draft-id> --at <TIME>`; cancel with `mxr unsend <draft-id>`
+
+Usage: mxr drafts scheduled
+
+Options:
+  -h, --help  Print help

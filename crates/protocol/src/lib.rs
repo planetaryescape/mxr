@@ -645,6 +645,10 @@ mod tests {
             ),
             (Request::ListDrafts, IpcCategory::CoreMail),
             (
+                Request::ListScheduledSends { account_id: None },
+                IpcCategory::CoreMail,
+            ),
+            (
                 Request::ExportThread {
                     thread_id: ThreadId::new(),
                     format: ExportFormat::Markdown,
@@ -832,6 +836,10 @@ mod tests {
             ),
             (
                 ResponseData::Drafts { drafts: Vec::new() },
+                IpcCategory::CoreMail,
+            ),
+            (
+                ResponseData::ScheduledSends { sends: Vec::new() },
                 IpcCategory::CoreMail,
             ),
             (

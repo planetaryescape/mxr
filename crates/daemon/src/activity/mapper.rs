@@ -623,6 +623,7 @@ pub fn map_request(
         | Request::GetDecision { .. }
         | Request::ListOwedReplies { .. }
         | Request::ListDrafts
+        | Request::ListScheduledSends { .. }
         | Request::ListOrphanedDrafts
         | Request::GetDraft { .. } => {
             skip_activity!(

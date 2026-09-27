@@ -1024,6 +1024,9 @@ async fn dispatch(
         Request::CancelScheduledSend { draft_id } => {
             mutations::cancel_scheduled_send(state, draft_id).await
         }
+        Request::ListScheduledSends { account_id } => {
+            mutations::list_scheduled_sends(state, account_id.as_ref()).await
+        }
         Request::ListSnippets => snippets::list_snippets(state).await,
         Request::SetSnippet { name, body, vars } => {
             snippets::set_snippet(state, name.clone(), body.clone(), vars.clone()).await
@@ -1533,6 +1536,7 @@ async fn request_account_scope(
         Request::ListAccounts
         | Request::ListAccountsConfig
         | Request::ListDrafts
+        | Request::ListScheduledSends { account_id: None }
         | Request::ListOrphanedDrafts
         | Request::ListSnoozed
         | Request::ListReplyQueue
@@ -1860,6 +1864,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListCadenceWatch { .. }
         | Request::ListCadenceDrift { .. }
         | Request::ListDrafts
+        | Request::ListScheduledSends { .. }
         | Request::ListOrphanedDrafts
         | Request::GetDraft { .. }
         | Request::ExportThread { .. }
@@ -2107,6 +2112,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::CancelAutoReminder { .. } => "cancel_auto_reminder",
         Request::ScheduleSend { .. } => "schedule_send",
         Request::CancelScheduledSend { .. } => "cancel_scheduled_send",
+        Request::ListScheduledSends { .. } => "list_scheduled_sends",
         Request::ListSnippets => "list_snippets",
         Request::SetSnippet { .. } => "set_snippet",
         Request::DeleteSnippet { .. } => "delete_snippet",
@@ -2231,7 +2237,8 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListContactAsymmetry { account_id, .. }
         | Request::ListContactDecay { account_id, .. }
         | Request::ListResponseTime { account_id, .. }
-        | Request::SyncNow { account_id, .. } => account_id.as_ref(),
+        | Request::SyncNow { account_id, .. }
+        | Request::ListScheduledSends { account_id } => account_id.as_ref(),
         Request::ListAccountAddresses { account_id }
         | Request::AddAccountAddress { account_id, .. }
         | Request::RemoveAccountAddress { account_id, .. }

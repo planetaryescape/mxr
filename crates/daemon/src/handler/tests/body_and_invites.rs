@@ -1290,6 +1290,109 @@ async fn dispatch_cancel_scheduled_send_prevents_flush() {
     );
 }
 
+fn scheduled_test_draft(account_id: mxr_core::AccountId, subject: &str) -> mxr_core::types::Draft {
+    mxr_core::types::Draft {
+        id: mxr_core::id::DraftId::new(),
+        account_id,
+        from: None,
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![mxr_core::types::Address {
+            name: Some("You".into()),
+            email: "you@example.com".into(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: subject.into(),
+        content: mxr_core::types::DraftContent::markdown("Body"),
+        inline_assets: Vec::new(),
+        attachments: vec![],
+        inline_calendar_reply: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    }
+}
+
+async fn list_scheduled_sends(
+    state: &Arc<AppState>,
+    account_id: Option<mxr_core::AccountId>,
+) -> Vec<mxr_protocol::ScheduledSendData> {
+    let resp = handle_request(
+        state,
+        &IpcMessage {
+            id: 420,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::ListScheduledSends { account_id }),
+        },
+    )
+    .await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::ScheduledSends { sends },
+        }) => sends,
+        other => panic!("Expected ScheduledSends, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn dispatch_list_scheduled_sends_lists_pending_across_accounts_and_scopes() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let default_account_id = state.default_account_id();
+    let other_account_id = mxr_core::AccountId::new();
+    state
+        .store
+        .insert_account(&crate::test_fixtures::test_account_with_id(
+            other_account_id.clone(),
+        ))
+        .await
+        .unwrap();
+
+    let later = scheduled_test_draft(default_account_id.clone(), "later");
+    let sooner = scheduled_test_draft(other_account_id.clone(), "sooner");
+    let unscheduled = scheduled_test_draft(default_account_id, "not scheduled");
+    for draft in [&later, &sooner, &unscheduled] {
+        state.store.insert_draft(draft).await.unwrap();
+    }
+    let sooner_at = chrono::Utc::now() + chrono::Duration::hours(1);
+    let later_at = chrono::Utc::now() + chrono::Duration::hours(4);
+    for (draft_id, send_at) in [(&later.id, later_at), (&sooner.id, sooner_at)] {
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 421,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::ScheduleSend {
+                    draft_id: draft_id.clone(),
+                    send_at,
+                }),
+            },
+        )
+        .await;
+        assert!(matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+    }
+
+    let all = list_scheduled_sends(&state, None).await;
+    assert_eq!(
+        all.iter().map(|s| s.draft_id.clone()).collect::<Vec<_>>(),
+        vec![sooner.id.clone(), later.id.clone()],
+        "soonest first, unscheduled drafts excluded"
+    );
+    assert_eq!(all[0].subject, "sooner");
+    assert_eq!(all[0].account_id, other_account_id);
+    assert_eq!(all[0].to[0].email, "you@example.com");
+    assert_eq!(all[0].send_at.timestamp(), sooner_at.timestamp());
+    assert_eq!(all[0].last_attempt_outcome, None);
+
+    let scoped = list_scheduled_sends(&state, Some(other_account_id)).await;
+    assert_eq!(scoped.len(), 1);
+    assert_eq!(scoped[0].draft_id, sooner.id);
+}
+
 #[tokio::test]
 async fn dispatch_mutation_star() {
     let state = Arc::new(AppState::in_memory().await.unwrap());

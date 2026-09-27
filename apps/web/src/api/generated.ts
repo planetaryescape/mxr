@@ -497,6 +497,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/compose/session/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Store a compose session as a local draft and schedule it */
+        post: operations["compose_session_schedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/compose/session/send": {
         parameters: {
             query?: never;
@@ -1269,7 +1286,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List pending scheduled sends */
+        get: operations["scheduled_sends_list"];
         put?: never;
         /** Schedule a draft send */
         post: operations["scheduled_sends_create"];
@@ -4610,6 +4628,10 @@ export interface components {
             cmd: "CancelScheduledSend";
             draft_id: components["schemas"]["DraftId"];
         } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "ListScheduledSends";
+        } | {
             /** @enum {string} */
             cmd: "ListSnippets";
         } | {
@@ -5200,6 +5222,10 @@ export interface components {
             snippets: components["schemas"]["SnippetData"][];
         } | {
             /** @enum {string} */
+            kind: "ScheduledSends";
+            sends: components["schemas"]["ScheduledSendData"][];
+        } | {
+            /** @enum {string} */
             kind: "SnippetData";
             snippet: components["schemas"]["SnippetData"];
         } | {
@@ -5711,6 +5737,28 @@ export interface components {
         };
         /** Format: uuid */
         SavedSearchId: string;
+        /** @description One draft waiting to be sent later. */
+        ScheduledSendData: {
+            account_id: components["schemas"]["AccountId"];
+            bcc?: components["schemas"]["Address"][];
+            cc?: components["schemas"]["Address"][];
+            draft_id: components["schemas"]["DraftId"];
+            /**
+             * Format: date-time
+             * @description When this draft last fired, if it fired before and was then
+             *     rescheduled (for example after a failed or blocked send).
+             */
+            last_attempt_at?: string | null;
+            /**
+             * @description Outcome of that firing: `sent`, `blocked`, `failed` or
+             *     `interrupted`. The error text itself is not persisted.
+             */
+            last_attempt_outcome?: string | null;
+            /** Format: date-time */
+            send_at: string;
+            subject: string;
+            to?: components["schemas"]["Address"][];
+        };
         ScreenerDecisionData: {
             account_id: components["schemas"]["AccountId"];
             /** Format: date-time */
@@ -7091,6 +7139,31 @@ export interface operations {
             };
         };
     };
+    compose_session_schedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     compose_session_send: {
         parameters: {
             query?: never;
@@ -8192,6 +8265,31 @@ export interface operations {
         };
     };
     reply_later_set: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    scheduled_sends_list: {
         parameters: {
             query?: never;
             header?: never;

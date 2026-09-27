@@ -20,7 +20,9 @@ fetches them.
 
 ### Opening it
 
-- `g F` from anywhere in the web app.
+- `g F` from anywhere in the web app. From the desk it works through the
+  **You owe** lane alone, and the lane's header offers the same: "Reply to
+  all 14 in focus mode".
 - The **Focus & reply** entry in the command palette (`⌘K`).
 - In the TUI, open the reply queue (`Ctrl-p`, then **Reply Queue**) and press
   `F`.

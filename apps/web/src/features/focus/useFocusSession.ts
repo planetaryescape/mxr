@@ -99,23 +99,34 @@ function useOwedAcrossScope(scope: string | null) {
   };
 }
 
-export function useFocusSession() {
+export function useFocusSession(lane?: "owed") {
   const account = useUiPrefs((s) => s.accountScope);
   const owed = useOwedAcrossScope(account);
-  const replyLater = useQuery({ queryKey: ["reply-queue"], queryFn: fetchReplyQueue });
+  // The desk's You owe lane is owed replies only.
+  const withReplyLater = lane !== "owed";
+  const replyLater = useQuery({
+    queryKey: ["reply-queue"],
+    queryFn: fetchReplyQueue,
+    enabled: withReplyLater,
+  });
+  const replyLaterPending = withReplyLater && replyLater.isPending;
   const [session, dispatch] = useReducer(focusReducer, emptyFocusSession);
 
   // Start with whichever source answers first and add the other when it
   // does, so a slow or failed source never holds up the rest.
-  const anySettled = !owed.pending || !replyLater.isPending;
-  const gathering = owed.pending || replyLater.isPending;
+  const anySettled = !owed.pending || !replyLaterPending;
+  const gathering = owed.pending || replyLaterPending;
   useEffect(() => {
     if (!anySettled) return;
     dispatch({
       kind: "sync",
-      items: buildFocusQueue(owed.rows, replyLater.data?.messages ?? [], account),
+      items: buildFocusQueue(
+        owed.rows,
+        withReplyLater ? (replyLater.data?.messages ?? []) : [],
+        account,
+      ),
     });
-  }, [anySettled, owed.rows, replyLater.data, account]);
+  }, [anySettled, owed.rows, replyLater.data, account, withReplyLater]);
 
   const currentId = session.queue[0];
   const current = currentId ? session.items[currentId] : undefined;
@@ -194,7 +205,7 @@ export function useFocusSession() {
     // never call it finished before everyone is known.
     loading: !session.loaded || (session.queue.length === 0 && gathering),
     gathering,
-    error: owed.error ?? replyLater.error ?? null,
+    error: owed.error ?? (withReplyLater ? replyLater.error : null) ?? null,
     /** A full page of owed replies came back: there may be more. */
     capped: owed.capped,
     /** Conversations skipped when nothing else was left. */
@@ -203,7 +214,7 @@ export function useFocusSession() {
      * replied to have dropped out, so asking again brings the next ones. */
     refetch: () => {
       void owed.refetch();
-      void replyLater.refetch();
+      if (withReplyLater) void replyLater.refetch();
     },
     revisit: () => dispatch({ kind: "revisit" }),
     skip: () => dispatch({ kind: "skip" }),

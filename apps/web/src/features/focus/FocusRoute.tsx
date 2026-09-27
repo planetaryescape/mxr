@@ -24,9 +24,9 @@ import { FocusFinish } from "./FocusFinish";
 import { FocusThread } from "./FocusThread";
 import { focusReplyIntent, useFocusSession } from "./useFocusSession";
 
-export function FocusRoute({ from }: { from?: string }) {
+export function FocusRoute({ from, lane }: { from?: string; lane?: "owed" }) {
   const navigate = useNavigate();
-  const focus = useFocusSession();
+  const focus = useFocusSession(lane);
   const { current, progress } = focus;
   const replyKey = current ? focusReplyIntent(current).key : null;
   const replyOpen = useComposeUi(

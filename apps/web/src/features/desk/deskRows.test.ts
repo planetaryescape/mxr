@@ -47,6 +47,11 @@ describe("desk groups", () => {
     expect(owed.rows).toHaveLength(DESK_LANE_CAP);
     expect(owed.count).toBe(9);
     expect(owed.more).toEqual({ label: "Show all 9", href: "/desk?lane=owed" });
+    expect(owed.action).toEqual({
+      label: "Reply to all 9 in focus mode",
+      href: "/focus?lane=owed&from=%2Fdesk",
+      keys: "g F",
+    });
     // Rows act on the whole conversation.
     expect(owed.rows[0]).toMatchObject({ kind: "thread", message_ids: ["o0-0", "o0"] });
     expect(index.get("d0")?.commitment_id).toBe("c1");

@@ -366,3 +366,20 @@ test("focus mode reads well on a phone", async ({ page }) => {
   const replyBox = await page.getByRole("region", { name: "Your reply" }).boundingBox();
   expect(conversation!.y + conversation!.height).toBeLessThanOrEqual(replyBox!.y + 1);
 });
+
+test("the desk's You owe lane opens focus mode on those replies", async ({ page }) => {
+  const three = await queueOfThree(page);
+  await openApp(page, "/desk");
+  const action = page.getByTestId("group-action-owed");
+  await expect(action).toContainText(/Reply to (all \d+|them) in focus mode/);
+  await action.click();
+  await expect(page).toHaveURL(/\/focus\?lane=owed&from=%2Fdesk$/);
+  await expect(heading(page)).toHaveText(three[0]!.subject);
+
+  // Esc goes back to the desk, and g F from there opens the same lane.
+  await page.locator('[aria-label="Focus and reply"]').focus();
+  await page.keyboard.press("Escape");
+  await expect(page).toHaveURL(/\/desk$/);
+  await pressSequence(page, "g", "F");
+  await expect(page).toHaveURL(/\/focus\?lane=owed&from=%2Fdesk$/);
+});

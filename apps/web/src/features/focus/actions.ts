@@ -11,7 +11,10 @@ import type { Action } from "@/lib/actions/types";
 
 /** Where focus mode returns to on Esc: the page it was opened from. */
 export function focusPath(from = window.location.pathname + window.location.search): string {
-  return from.startsWith("/focus") ? "/focus" : `/focus?from=${encodeURIComponent(from)}`;
+  if (from.startsWith("/focus")) return "/focus";
+  // From the desk, focus works through its You owe lane.
+  const lane = from.startsWith("/desk") ? "lane=owed&" : "";
+  return `/focus?${lane}from=${encodeURIComponent(from)}`;
 }
 
 function focusKey(

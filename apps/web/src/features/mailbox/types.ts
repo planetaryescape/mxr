@@ -53,6 +53,8 @@ export interface MessageGroupView {
   count?: number;
   /** Where the rest of the group lives, when only some rows are shown. */
   more?: { label: string; href: string };
+  /** A way to work through the whole group, e.g. in focus mode. */
+  action?: { label: string; href: string; keys?: string };
 }
 
 export interface MailboxCounts {

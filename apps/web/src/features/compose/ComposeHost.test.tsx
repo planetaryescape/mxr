@@ -29,14 +29,13 @@ const api = vi.hoisted(() => ({
   restoreComposeSession: vi.fn<(draftId: string) => Promise<unknown>>(),
   saveComposeSession:
     vi.fn<(draftPath: string, accountId: string, draftId?: string) => Promise<unknown>>(),
-  scheduleComposeSession:
-    vi.fn<
-      (input: { draftPath: string; accountId: string; draftId?: string; sendAt: Date }) => Promise<{
-        ok: boolean;
-        draft_id: string;
-        send_at: string;
-      }>
-    >(),
+  scheduleComposeSession: vi.fn<
+    (input: { draftPath: string; accountId: string; draftId?: string; sendAt: Date }) => Promise<{
+      ok: boolean;
+      draft_id: string;
+      send_at: string;
+    }>
+  >(),
   sendComposeSession:
     vi.fn<(draftPath: string, accountId: string, token?: string) => Promise<unknown>>(),
   startComposeSession:

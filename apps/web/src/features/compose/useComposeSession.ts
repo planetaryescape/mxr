@@ -334,7 +334,11 @@ export function useComposeSession(
       const active = document.activeElement;
       if (active instanceof HTMLElement && active.closest("[data-compose-surface]")) return;
       if (draftRef.current?.frontmatter.to.trim()) {
-        document.querySelector<HTMLElement>("[data-compose-surface] .cm-content, [data-compose-surface] .ProseMirror")?.focus();
+        document
+          .querySelector<HTMLElement>(
+            "[data-compose-surface] .cm-content, [data-compose-surface] .ProseMirror",
+          )
+          ?.focus();
       } else {
         toInputRef.current?.focus();
       }

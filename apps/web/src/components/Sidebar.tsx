@@ -172,7 +172,11 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
 
   // Saved searches show unread counts like labels (TUI tab strip). Counts
   // are keyed by saved-search id; the shell knows them by name.
-  const savedSearches = useQuery({ queryKey: ["saved-searches"], queryFn: fetchSavedSearches, staleTime: 60_000 });
+  const savedSearches = useQuery({
+    queryKey: ["saved-searches"],
+    queryFn: fetchSavedSearches,
+    staleTime: 60_000,
+  });
   const savedCounts = useQuery({
     queryKey: ["saved-search-counts"],
     queryFn: fetchSavedSearchUnreadCounts,
@@ -181,7 +185,9 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   });
   const unreadBySavedName = useMemo(() => {
     const counts = savedCounts.data?.counts ?? {};
-    return new Map((savedSearches.data?.searches ?? []).map((search) => [search.name, counts[search.id] ?? 0]));
+    return new Map(
+      (savedSearches.data?.searches ?? []).map((search) => [search.name, counts[search.id] ?? 0]),
+    );
   }, [savedCounts.data, savedSearches.data]);
 
   const sections = useMemo<NavSection[]>(() => {

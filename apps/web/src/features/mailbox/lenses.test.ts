@@ -5,10 +5,11 @@ import type { ShellResponse, SidebarItem } from "./types";
 
 // Mirrors the bridge's sidebar (crates/web/src/chrome.rs): item ids are the
 // ASCII slug of the name, user labels carry their provider label id.
+/** Mirrors the bridge's `slugify` (crates/web/src/envelope_list.rs). */
 function bridgeSlug(value: string): string {
   return value
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, "-")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-+|-+$/g, "");
 }
 
@@ -120,10 +121,9 @@ describe("resolveLens", () => {
     expect(resolveLens({ kind: "label", name }, lenses)?.labelName).toBe("Réunion");
   });
 
-  // Bug: label paths come from the bridge's ASCII-only slug, so names that
-  // differ only in non-ASCII characters share a path and the second label
-  // can never be opened (a fully non-ASCII name gets an empty slug).
-  test.fails("labels whose names are non-ASCII get distinct, resolvable paths", () => {
+  // Label paths come from a Unicode-aware slug, so non-ASCII names get
+  // distinct paths that resolve back to the right label.
+  test("labels whose names are non-ASCII get distinct, resolvable paths", () => {
     const cjk = lensesFromShell({
       sidebar: {
         sections: [

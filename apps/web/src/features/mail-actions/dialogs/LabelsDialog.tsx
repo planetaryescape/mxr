@@ -146,6 +146,8 @@ export function LabelsDialog({ target, onClose }: { target: MailTarget; onClose:
                     value={name}
                     onSelect={() => toggle(name)}
                     className="group gap-2.5"
+                    aria-label={`${name}: ${state === "all" ? "applied" : state === "some" ? "on some" : "not applied"}${changed ? ", changed" : ""}`}
+                    data-state-presence={state}
                   >
                     <span
                       aria-hidden

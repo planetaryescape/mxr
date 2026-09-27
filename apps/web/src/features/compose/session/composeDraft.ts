@@ -7,7 +7,6 @@
 import type {
   ComposeFrontmatter,
   ComposeIssue,
-
   ComposeSession,
   ComposeSessionKind,
   InviteReplyAction,

@@ -86,6 +86,8 @@ export function UnsubscribeDialog({
       <DialogContent
         className="max-w-md"
         onKeyDown={(event) => {
+          // Enter on a focused option is that option's click, not a shortcut.
+          if (event.key === "Enter" && event.target instanceof HTMLButtonElement) return;
           if (event.key === "u" || event.key === "Enter") {
             event.preventDefault();
             unsubscribeOnly();

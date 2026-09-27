@@ -82,7 +82,7 @@ export function SnoozeDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-1" role="list">
+        <div className="grid gap-1" role="group" aria-label="Snooze presets">
           {presets.isLoading
             ? Array.from({ length: 4 }, (_, index) => (
                 <div key={index} className="h-11 animate-pulse rounded-md bg-muted/60" />
@@ -99,7 +99,6 @@ export function SnoozeDialog({
               <button
                 key={`${presetLabel(preset)}-${wake ?? index}`}
                 type="button"
-                role="listitem"
                 onClick={() => snooze(presetValue(preset))}
                 className="flex items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-accent focus-visible:bg-accent"
               >

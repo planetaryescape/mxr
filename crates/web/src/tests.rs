@@ -5161,3 +5161,13 @@ fn urlencoding(value: &str) -> String {
         })
         .collect()
 }
+
+#[test]
+fn slugify_keeps_letters_in_every_script() {
+    use crate::envelope_list::slugify;
+    assert_eq!(slugify("Follow Up"), "follow-up");
+    assert_eq!(slugify("A & B"), "a-b");
+    assert_eq!(slugify("中文"), "中文");
+    assert_ne!(slugify("日本"), slugify("中文"));
+    assert_eq!(slugify("  Été  2026 "), "été-2026");
+}

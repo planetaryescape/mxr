@@ -447,14 +447,19 @@ pub(crate) fn dedupe_search_results_by_thread(
         .collect()
 }
 
+/// URL slug for a label or saved search. Letters and digits in any script
+/// survive: an ASCII-only slug turned "中文" into "" and made labels that
+/// differ only in non-ASCII characters share one URL.
 pub(crate) fn slugify(value: &str) -> String {
-    value
-        .to_ascii_lowercase()
-        .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string()
+    let mut slug = String::with_capacity(value.len());
+    for ch in value.chars().flat_map(char::to_lowercase) {
+        if ch.is_alphanumeric() {
+            slug.push(ch);
+        } else if !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+    slug.trim_matches('-').to_string()
 }
 
 pub(crate) fn sorted_saved_searches(mut searches: Vec<SavedSearch>) -> Vec<SavedSearch> {

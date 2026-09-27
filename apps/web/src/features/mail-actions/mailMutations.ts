@@ -142,11 +142,20 @@ function jobCommand(
     case "unread":
       return { mutation: "SetRead", ...base, read: action === "read" };
     case "labels":
-      return { mutation: "ModifyLabels", ...base, add: payload?.add ?? [], remove: payload?.remove ?? [] };
+      return {
+        mutation: "ModifyLabels",
+        ...base,
+        add: payload?.add ?? [],
+        remove: payload?.remove ?? [],
+      };
     case "label-add":
-      return payload?.label ? { mutation: "ModifyLabels", ...base, add: [payload.label], remove: [] } : null;
+      return payload?.label
+        ? { mutation: "ModifyLabels", ...base, add: [payload.label], remove: [] }
+        : null;
     case "label-remove":
-      return payload?.label ? { mutation: "ModifyLabels", ...base, add: [], remove: [payload.label] } : null;
+      return payload?.label
+        ? { mutation: "ModifyLabels", ...base, add: [], remove: [payload.label] }
+        : null;
     case "move":
       return payload?.label ? { mutation: "Move", ...base, target_label: payload.label } : null;
     default:
@@ -157,7 +166,13 @@ function jobCommand(
 interface JobSnapshot {
   job_id: string;
   status: "queued" | "running" | "succeeded" | "failed";
-  progress: { total: number; completed: number; succeeded: number; skipped: number; failed: number };
+  progress: {
+    total: number;
+    completed: number;
+    succeeded: number;
+    skipped: number;
+    failed: number;
+  };
   undo_ids?: string[];
   error?: string | null;
   result?: MutationResponse["result"];
@@ -188,10 +203,13 @@ async function runAsJob(
     );
     const { completed, total } = job.progress;
     if (job.status === "queued" || job.status === "running") {
-      toast.loading(`${verb(action, payload)} ${completed.toLocaleString()} of ${plural(total, "message")}`, {
-        id: toastId,
-        description: "Running in the background",
-      });
+      toast.loading(
+        `${verb(action, payload)} ${completed.toLocaleString()} of ${plural(total, "message")}`,
+        {
+          id: toastId,
+          description: "Running in the background",
+        },
+      );
       continue;
     }
     toast.dismiss(toastId);
@@ -206,7 +224,22 @@ async function runAsJob(
       undo_ids: job.undo_ids ?? [],
     };
     if (job.status === "failed" && job.error) {
-      return { ok: false, result: { ...result, accounts: [{ account_id: "", account_name: "job", succeeded: result.succeeded, skipped: result.skipped, failed: result.failed, error: job.error }] } };
+      return {
+        ok: false,
+        result: {
+          ...result,
+          accounts: [
+            {
+              account_id: "",
+              account_name: "job",
+              succeeded: result.succeeded,
+              skipped: result.skipped,
+              failed: result.failed,
+              error: job.error,
+            },
+          ],
+        },
+      };
     }
     return { ok: job.status === "succeeded", result };
   }
@@ -462,7 +495,10 @@ async function undoAll(undoIds: string[]): Promise<boolean> {
   useUndo.getState().setLastUndo(null);
   await invalidateMailQueries().catch(() => undefined);
   if (ok) toast.success("Undone");
-  else toast.error("Part of the batch couldn't be undone", { description: "Its undo window may have passed." });
+  else
+    toast.error("Part of the batch couldn't be undone", {
+      description: "Its undo window may have passed.",
+    });
   return ok;
 }
 

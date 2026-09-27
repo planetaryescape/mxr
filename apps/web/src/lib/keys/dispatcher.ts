@@ -8,7 +8,7 @@ import type { ActionRegistry } from "@/lib/actions/registry";
 import { invokeAction } from "@/lib/actions/registry";
 import type { ActionContext, ActionScope } from "@/lib/actions/types";
 
-import { tokenFromEvent, type KeyToken } from "./chord";
+import { isMacPlatform, tokenFromEvent, type KeyToken } from "./chord";
 
 export const SEQUENCE_TIMEOUT_MS = 1000;
 
@@ -23,6 +23,19 @@ export interface DispatcherOptions {
 }
 
 export function installKeyDispatcher(target: Window, options: DispatcherOptions): () => void {
+  const mac = options.mac ?? isMacPlatform();
+  // Off macOS, Ctrl is the Mod key, so a keypress parses as "Mod+d". TUI
+  // chords written as "Ctrl+d" must still match there.
+  const spellings = (chord: string): string[] =>
+    mac || !chord.includes("Mod+") ? [chord] : [chord, chord.replaceAll("Mod+", "Ctrl+")];
+  const registry = {
+    resolve: (chord: string, scopes: ActionScope[]) =>
+      spellings(chord)
+        .map((spelling) => options.registry.resolve(spelling, scopes))
+        .find(Boolean),
+    hasContinuation: (chord: string, scopes: ActionScope[]) =>
+      spellings(chord).some((spelling) => options.registry.hasContinuation(spelling, scopes)),
+  };
   let buffer: KeyToken[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
   let deferred: (() => void) | null = null;
@@ -40,7 +53,7 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
   };
 
   const run = (scopes: ActionScope[], chord: string, ctx: ActionContext): boolean => {
-    const binding = options.registry.resolve(chord, scopes);
+    const binding = registry.resolve(chord, scopes);
     if (!binding) return false;
     invokeAction(binding.action, ctx);
     return true;
@@ -48,7 +61,7 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.defaultPrevented || event.isComposing) return;
-    const token = tokenFromEvent(event, options.mac);
+    const token = tokenFromEvent(event, mac);
     if (!token) return;
     if (ownsKeyboard(event.target) || options.isSuspended?.()) {
       // A global modifier chord (⌘K) is never text input, so it works from
@@ -56,7 +69,7 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
       // chords stay with the field.
       const global =
         isModifierChord(token) && !EDITING_CHORDS.has(token)
-          ? options.registry.resolve(token, ["global"])
+          ? registry.resolve(token, ["global"])
           : undefined;
       if (!global || options.isSuspended?.()) return;
       event.preventDefault();
@@ -70,8 +83,8 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
     const scopes = ctx.scopes;
     const sequence = [...buffer, token];
     const chord = sequence.join(" ");
-    const exact = options.registry.resolve(chord, scopes);
-    const continues = options.registry.hasContinuation(chord, scopes);
+    const exact = registry.resolve(chord, scopes);
+    const continues = registry.hasContinuation(chord, scopes);
 
     if (exact && !continues) {
       event.preventDefault();
@@ -96,11 +109,11 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
       // Dead end: drop the prefix and treat this key on its own, the way
       // vim does after a mistyped "g".
       clear();
-      const single = options.registry.resolve(token, scopes);
-      if (single && !options.registry.hasContinuation(token, scopes)) {
+      const single = registry.resolve(token, scopes);
+      if (single && !registry.hasContinuation(token, scopes)) {
         event.preventDefault();
         invokeAction(single.action, ctx);
-      } else if (options.registry.hasContinuation(token, scopes)) {
+      } else if (registry.hasContinuation(token, scopes)) {
         event.preventDefault();
         setPending([token]);
         timer = setTimeout(clear, SEQUENCE_TIMEOUT_MS);

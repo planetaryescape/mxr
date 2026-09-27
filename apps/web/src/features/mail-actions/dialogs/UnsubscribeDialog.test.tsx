@@ -177,10 +177,8 @@ describe("UnsubscribeDialog", () => {
     );
   });
 
-  // Bug: the dialog maps Enter to "unsubscribe only" on its content, so
-  // Enter on the focused "Unsubscribe and archive" button runs the other
-  // option and the click never happens.
-  test.fails("Enter on the focused archive button archives", async () => {
+  // Enter on a focused option must run that option, not the Enter shortcut.
+  test("Enter on the focused archive button archives", async () => {
     api.unsubscribeAndClearSender.mockResolvedValue(preview());
     renderDialog();
     const archive = await screen.findByRole("button", { name: /Unsubscribe and archive 12/ });

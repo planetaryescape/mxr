@@ -134,7 +134,10 @@ export async function apiFetch<T>(path: string, opts: RawFetchOpts = {}): Promis
 }
 
 /** Like `apiFetch`, for endpoints that return bytes (inline images). */
-export async function apiFetchBlob(path: string, opts: { signal?: AbortSignal } = {}): Promise<Blob> {
+export async function apiFetchBlob(
+  path: string,
+  opts: { signal?: AbortSignal } = {},
+): Promise<Blob> {
   let token = getToken();
   if (!token) token = await tryLocalHandshake();
   const headers = new Headers();

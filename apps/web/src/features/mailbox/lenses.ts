@@ -31,11 +31,12 @@ export interface MailLens {
 
 const SYSTEM_ORDER = ["inbox", "starred", "sent", "drafts", "archive", "spam", "trash"];
 
+/** Same rule as the bridge: letters and digits in any script survive. */
 export function slugify(value: string): string {
   return value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-|-$/g, "");
 }
 
@@ -152,7 +153,8 @@ export function resolveLens(route: LensRoute, lenses: MailLens[]): MailLens | nu
     );
   }
   if (route.kind === "label") {
-    const target = decodeURIComponent(route.name);
+    // Older bridges kept dash runs ("a---b"); bookmarks from then still work.
+    const target = decodeURIComponent(route.name).replace(/-{2,}/g, "-");
     return (
       lenses.find(
         (lens) =>

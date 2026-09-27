@@ -21,8 +21,8 @@ export function inlineImageSources(html: string): string[] {
 function toDataUri(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error ?? new Error("could not read image"));
+    reader.addEventListener("load", () => resolve(String(reader.result)));
+    reader.addEventListener("error", () => reject(reader.error ?? new Error("could not read image")));
     reader.readAsDataURL(blob);
   });
 }
@@ -55,7 +55,9 @@ export function useInlineImages(messageId: string | undefined, html: string | nu
         }),
       );
       // A part that fails to load stays a broken image; the rest still show.
-      return new Map(settled.flatMap((result) => (result.status === "fulfilled" ? [result.value] : [])));
+      return new Map(
+        settled.flatMap((result) => (result.status === "fulfilled" ? [result.value] : [])),
+      );
     },
   });
   return useMemo(() => {

@@ -27,7 +27,10 @@ const CommandPaletteMount = lazyNamed(
   "CommandPaletteMount",
 );
 const ComposeHost = lazyNamed(() => import("@/features/compose/ComposeHost"), "ComposeHost");
-const ComposeLauncher = lazyNamed(() => import("@/features/compose/ComposeLauncher"), "ComposeLauncher");
+const ComposeLauncher = lazyNamed(
+  () => import("@/features/compose/ComposeLauncher"),
+  "ComposeLauncher",
+);
 const MailDialogs = lazyNamed(() => import("@/features/mail-actions/MailDialogs"), "MailDialogs");
 const SearchPalette = lazyNamed(() => import("@/features/search/SearchPalette"), "SearchPalette");
 

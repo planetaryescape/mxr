@@ -259,9 +259,9 @@ describe("installKeyDispatcher", () => {
     });
   });
 
-  // Bug: the list binds "Ctrl+d"/"Ctrl+u" (TUI half-page), but off macOS
-  // tokenFromEvent turns Ctrl into "Mod", so the key never matches there.
-  test.fails("Ctrl+d pages the list down on Windows and Linux", () => {
+  // The list binds "Ctrl+d"/"Ctrl+u" (TUI half-page); off macOS Ctrl parses
+  // as "Mod", and the dispatcher must still match the Ctrl spelling.
+  test("Ctrl+d pages the list down on Windows and Linux", () => {
     registry.defineMany(listActions);
     const pageDown = vi.fn<() => void>();
     setController("list", { pageDown });

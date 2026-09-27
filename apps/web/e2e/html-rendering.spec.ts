@@ -66,55 +66,50 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
   });
 
   await openApp(page, "/m/inbox");
-  await page.getByRole("heading", { name: "sandbox smoke" }).click();
+  await page.getByRole("option", { name: /sandbox smoke/ }).click();
+  const reader = page.getByRole("article", { name: "Conversation: sandbox smoke" });
+  await expect(reader).toBeVisible();
 
-  const frame = page.locator("iframe[sandbox]").first();
+  const frame = reader.locator("iframe[sandbox]").first();
   await expect(frame).toBeVisible();
   await expect(frame).toHaveAttribute("sandbox", /allow-popups/);
   await expect(frame).not.toHaveAttribute("sandbox", /allow-scripts/);
   expect(await page.evaluate(() => (window as { PWNED?: number }).PWNED)).toBeUndefined();
-  await expect(frame.contentFrame().getByText("visible body")).toBeVisible();
-  await expect(frame.contentFrame().getByText("fine print")).toHaveCSS("color", "rgb(119, 119, 119)");
-  await expect(frame.contentFrame().getByText("fine print")).toHaveCSS("font-size", "12px");
-  await expect(frame.contentFrame().locator("#white-panel")).not.toHaveCSS(
-    "background-color",
-    "rgb(255, 255, 255)",
-  );
-  await expect(frame.contentFrame().getByRole("link", { name: "visible link" })).toHaveCSS(
+  const body = frame.contentFrame();
+  await expect(body.getByText("visible body")).toBeVisible();
+  await expect(body.getByText("fine print")).toHaveCSS("color", "rgb(119, 119, 119)");
+  await expect(body.getByText("fine print")).toHaveCSS("font-size", "12px");
+  // A white panel from a light-theme email is not pasted onto the dark reader.
+  await expect(body.locator("#white-panel")).not.toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(body.getByRole("link", { name: "visible link" })).toHaveCSS(
     "text-decoration-line",
     "underline",
   );
-  await expect(frame.contentFrame().getByAltText("newsletter image")).toHaveAttribute(
+  // Tracking pixels are stripped; other remote images wait for consent.
+  await expect(body.getByAltText("tracking pixel")).toHaveCount(0);
+  const newsletter = body.getByAltText("newsletter image");
+  await expect(newsletter).not.toHaveAttribute("src", /.+/);
+  await expect(newsletter).toHaveAttribute(
+    "data-original-src",
+    "https://cdn.example.com/newsletter.png",
+  );
+  await reader.getByRole("button", { name: /^Load images/ }).click();
+  await expect(reader.locator("iframe[sandbox]").first().contentFrame().getByAltText("newsletter image")).toHaveAttribute(
     "src",
     "https://cdn.example.com/newsletter.png",
   );
-  await expect(frame.contentFrame().getByAltText("tracking pixel")).toHaveCount(0);
-  await expect(frame.contentFrame().locator("body")).toHaveCSS("background-color", "rgb(17, 17, 15)");
 
   const heights = await page.getByTestId("thread-scroll").evaluate((scrollNode) => {
-    const messageNode = scrollNode.querySelector('[data-testid="thread-message"]');
     const frameNode = scrollNode.querySelector("iframe");
-    if (!messageNode) throw new Error("thread message not found");
     if (!frameNode) throw new Error("message iframe not found");
-    return {
-      scroll: scrollNode.getBoundingClientRect().height,
-      message: messageNode.getBoundingClientRect().height,
-      frame: frameNode.getBoundingClientRect().height,
-    };
+    return frameNode.getBoundingClientRect().height;
   });
-  expect(heights.message).toBeGreaterThan(heights.scroll * 0.75);
-  expect(heights.frame).toBeGreaterThan(150);
+  expect(heights).toBeGreaterThan(150);
 
-  await expect(page.getByText("Inbox").last()).toBeVisible();
-  await expect(page.getByText("to Planetary Escape <planetary@example.com>")).toBeVisible();
-  await expect(page.getByText("now").last()).toContainText("2 hours ago");
-  const reader = page.getByRole("article", { name: "Thread reader" });
-  await expect(reader.getByRole("button", { name: /star/i })).toBeVisible();
-  await expect(reader.getByRole("button", { name: /^archive$/i })).toBeVisible();
-  await expect(reader.getByRole("button", { name: /^spam$/i })).toBeVisible();
-  await expect(reader.getByRole("button", { name: /^mark unread$/i })).toBeVisible();
-  await expect(reader.getByRole("button", { name: /^reply$/i })).toBeVisible();
-  await expect(reader.getByRole("button", { name: /^reply all$/i })).toBeVisible();
+  await expect(reader.getByRole("button", { name: /^to Planetary Escape/ })).toBeVisible();
+  for (const name of ["Archive (e)", "Star (s)", "Mark unread (U)", "Reply r", "Labels (l)"]) {
+    await expect(reader.getByRole("button", { name, exact: true })).toBeVisible();
+  }
 });
 
 test("message attachments can be opened and downloaded", async ({ page }) => {
@@ -199,7 +194,7 @@ test("message attachments can be opened and downloaded", async ({ page }) => {
   });
 
   await openApp(page, "/m/inbox");
-  await page.getByRole("heading", { name: "attachment smoke" }).click();
+  await page.getByRole("option", { name: /attachment smoke/ }).click();
 
   await page.getByRole("button", { name: "Open report.pdf" }).click();
   await expect.poll(() => openBody).toEqual({ message_id: "msg-attachment", attachment_id: "att-report" });
@@ -225,6 +220,9 @@ test("message attachments can be opened and downloaded", async ({ page }) => {
     };
   });
 
-  expect(layout.frameHeight).toBeGreaterThan(150);
-  expect(layout.gapBeforeAttachments).toBeLessThan(32);
+  // A one-line body sizes to its content, not to a fixed tall frame.
+  expect(layout.frameHeight).toBeGreaterThan(40);
+  // Attachments (with their count heading) sit under the body, not below a
+  // fixed-height frame.
+  expect(layout.gapBeforeAttachments).toBeLessThan(64);
 });

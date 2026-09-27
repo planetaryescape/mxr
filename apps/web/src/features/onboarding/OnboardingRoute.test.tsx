@@ -65,7 +65,7 @@ async function reachAuthStep(provider: "gmail" | "outlook", startSession: AuthSe
   renderOnboarding(<OnboardingRoute />);
   fireEvent.click(screen.getByRole("button", { name: /connect first account/i }));
   if (provider === "outlook") {
-    fireEvent.click(screen.getByRole("button", { name: /outlook/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /outlook/i }));
   }
   fireEvent.change(screen.getByPlaceholderText(/you@example\.com/i), {
     target: { value: `user@${provider}.com` },
@@ -117,6 +117,9 @@ describe("OnboardingRoute auth step", () => {
     await waitFor(() => expect(api.completeAuthSession).toHaveBeenCalledWith("sess-1"));
     // Step 4 (initial sync) exposes the "Open inbox" affordance.
     expect(await screen.findByRole("button", { name: /open inbox/i })).toBeVisible();
+    // No sync progress has arrived yet, so it must not claim to be ready.
+    expect(screen.getByText(/waiting for the first sync to start/i)).toBeVisible();
+    expect(screen.queryByText(/^ready$/i)).toBeNull();
   });
 
   test("a failed session surfaces the error and Complete stays disabled", async () => {
@@ -136,6 +139,20 @@ describe("OnboardingRoute auth step", () => {
     fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
 
     await waitFor(() => expect(api.cancelAuthSession).toHaveBeenCalledWith("sess-1"));
-    expect(await screen.findByRole("heading", { name: /choose provider/i })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: /choose a provider/i })).toBeVisible();
+  });
+});
+
+describe("OnboardingRoute status copy", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  test("the auth step explains the daemon state instead of printing it", async () => {
+    await reachAuthStep(
+      "gmail",
+      session({ state: "waiting_for_user", auth_url: "https://accounts.google.com/x" }),
+    );
+
+    expect(await screen.findByText(/approve access in the gmail tab/i)).toBeVisible();
+    expect(screen.queryByText("waiting_for_user")).toBeNull();
   });
 });

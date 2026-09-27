@@ -21,6 +21,8 @@ export interface MailboxQueryParams extends MailboxLensParams {
   limit?: number;
   offset?: number;
   view?: "threads" | "messages";
+  /** Scope to one account; omitted means every account. */
+  account?: string | null;
 }
 
 export function mailboxKey(params: MailboxQueryParams) {
@@ -42,11 +44,12 @@ export async function fetchMailbox(params: MailboxQueryParams): Promise<MailboxR
   if (params.label_id) query.set("label_id", params.label_id);
   if (params.saved_search) query.set("saved_search", params.saved_search);
   if (params.sender_email) query.set("sender_email", params.sender_email);
+  if (params.account) query.set("account", params.account);
   return apiFetch<MailboxResponse>(`/api/v1/mail/mailbox?${query.toString()}`);
 }
 
 export function fetchThread(threadId: string): Promise<ThreadResponse> {
-  return apiFetch<ThreadResponse>(`/api/v1/mail/threads/${threadId}`);
+  return apiFetch<ThreadResponse>(`/api/v1/mail/threads/${encodeURIComponent(threadId)}`);
 }
 
 const SUMMARY_TIMEOUT_MS = 125_000;
@@ -228,6 +231,13 @@ export function modifyLabels(
   });
 }
 
+export function createLabel(input: { name: string; accountId?: string }): Promise<unknown> {
+  return apiFetch<unknown>("/api/v1/mail/labels/create", {
+    method: "POST",
+    body: { name: input.name, ...(input.accountId ? { account_id: input.accountId } : {}) },
+  });
+}
+
 export function renameLabel(input: {
   oldName: string;
   newName: string;
@@ -305,6 +315,8 @@ export interface UnsubscribePurgeResponse {
     address: string;
     status: string;
     method?: unknown;
+    query?: string;
+    message_ids?: string[];
     message_count: number;
     archived_count: number;
     mutation_id?: string | null;
@@ -373,6 +385,23 @@ export function snoozeMessage(input: { messageId: string; until: string }): Prom
   });
 }
 
-export async function snoozeMessages(messageIds: string[], until: string): Promise<unknown[]> {
-  return Promise.all(messageIds.map((messageId) => snoozeMessage({ messageId, until })));
+export function unsnoozeMessage(messageId: string): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/mail/snoozed/${encodeURIComponent(messageId)}/wake`, {
+    method: "POST",
+  });
+}
+
+export interface SnoozedEntry {
+  message_id: string;
+  thread_id?: string;
+  wake_at: string;
+  sender?: string;
+  subject?: string;
+  snippet?: string;
+  unread?: boolean;
+  has_attachments?: boolean;
+}
+
+export function fetchSnoozed(): Promise<{ snoozed: SnoozedEntry[] }> {
+  return apiFetch<{ snoozed: SnoozedEntry[] }>("/api/v1/mail/snoozed");
 }

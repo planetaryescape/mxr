@@ -1,30 +1,19 @@
 import { expect, test } from "@playwright/test";
 
+import { expectCursorOn, mailList, mailRows, openList, reader, renderedRowIds } from "./helpers/mail";
 import { openApp } from "./helpers/state";
 
-test("keyboard-only mailbox navigation opens the focused thread", async ({ page }) => {
-  await openApp(page, "/m/inbox");
+test.use({ viewport: { width: 1440, height: 900 } });
 
-  const list = page.getByTestId("mailbox-list");
-  await expect(list).toBeVisible();
-  await expect(list.getByRole("article").first()).toBeVisible();
-
+test("h hands the keyboard to the sidebar; j and Enter open the next mailbox", async ({
+  page,
+}) => {
+  await openList(page, "/m/inbox");
+  await page.keyboard.press("h");
+  await expect(mailList(page)).not.toHaveAttribute("data-active-pane", "true");
   await page.keyboard.press("j");
   await page.keyboard.press("Enter");
-
-  await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
-  await expect(page.getByRole("radio", { name: /^reader$/i })).toBeVisible();
-  await expect(page.getByRole("radio", { name: /^HTML$/ })).toBeVisible();
-});
-
-test("h moves mailbox focus to sidebar navigation", async ({ page }) => {
-  await openApp(page, "/m/inbox");
-  await expect(page.getByTestId("mailbox-list")).toBeVisible();
-
-  await page.keyboard.press("h");
-  await page.keyboard.press("j");
-
-  await expect(page.getByRole("link", { name: /^Search/ })).toHaveAttribute("data-focused", "true");
+  await expect(page).toHaveURL(/\/m\/starred$/);
 });
 
 test("collapsed sidebar keeps the expand control reachable", async ({ page }) => {
@@ -37,7 +26,6 @@ test("collapsed sidebar keeps the expand control reachable", async ({ page }) =>
   const rects = await expand.evaluate((button) => {
     const sidebar = button.closest(".app-shell-sidebar");
     if (!sidebar) throw new Error("sidebar shell not found");
-
     const buttonRect = button.getBoundingClientRect();
     const sidebarRect = sidebar.getBoundingClientRect();
     return {
@@ -47,7 +35,6 @@ test("collapsed sidebar keeps the expand control reachable", async ({ page }) =>
       sidebarRight: sidebarRect.right,
     };
   });
-
   expect(rects.buttonLeft).toBeGreaterThanOrEqual(rects.sidebarLeft);
   expect(rects.buttonRight).toBeLessThanOrEqual(rects.sidebarRight);
 
@@ -55,80 +42,83 @@ test("collapsed sidebar keeps the expand control reachable", async ({ page }) =>
   await expect(page.getByRole("button", { name: "Collapse sidebar" })).toBeVisible();
 });
 
-test("opened reader owns j/k until focus returns to mailbox list", async ({ page }) => {
-  await openApp(page, "/m/inbox");
-  const list = page.getByTestId("mailbox-list");
-  await expect(list).toBeVisible();
+test("the open reader owns j/k until h returns the keyboard to the list", async ({ page }) => {
+  await openList(page, "/m/inbox");
+  const [first, second] = await renderedRowIds(page);
 
-  await page.keyboard.press("o");
+  await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
   const openedThreadUrl = page.url();
-  await expect(page.getByRole("article", { name: "Thread reader" })).toHaveAttribute(
-    "data-active-pane",
-    "true",
-  );
+  await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
 
+  // In the reader j scrolls; it does not change the conversation.
   await page.keyboard.press("j");
   await expect(page).toHaveURL(openedThreadUrl);
+  await expectCursorOn(page, first!);
 
+  // Back in the list, j moves the cursor and previews the next conversation.
   await page.keyboard.press("h");
+  await expect(mailList(page)).toHaveAttribute("data-active-pane", "true");
   await page.keyboard.press("j");
-  await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
-  expect(page.url()).not.toBe(openedThreadUrl);
-});
-
-test("returning from reader restores mailbox j/k navigation", async ({ page }) => {
-  await openApp(page, "/m/inbox");
-  await expect(page.getByTestId("mailbox-list")).toBeVisible();
-
-  await page.keyboard.press("l");
-  await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
-
-  await page.keyboard.press("u");
-  await expect(page).toHaveURL(/\/m\/inbox$/);
-
-  await page.keyboard.press("j");
-  await page.keyboard.press("o");
+  await expectCursorOn(page, second!);
+  await expect(page).not.toHaveURL(openedThreadUrl);
   await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
 });
 
-test("number keys jump between primary workspaces", async ({ page }) => {
-  await openApp(page, "/m/inbox");
-  await expect(page.getByTestId("mailbox-list")).toBeVisible();
+test("reader views switch with R and H", async ({ page }) => {
+  await openList(page, "/m/inbox");
+  await page.keyboard.press("Enter");
+  const views = reader(page).getByRole("radiogroup", { name: "Message view" });
+  await expect(views.getByRole("radio", { name: "Formatted" })).toBeChecked();
 
-  await page.keyboard.press("Digit2");
-  await expect(page).toHaveURL(/\/search$/);
-
-  await page.keyboard.press("Digit3");
-  await expect(page).toHaveURL(/\/analytics\/storage$/);
-
-  await page.keyboard.press("Digit4");
-  await expect(page).toHaveURL(/\/rules$/);
-
-  await page.keyboard.press("Digit5");
-  await expect(page).toHaveURL(/\/screener$/);
-
-  await page.keyboard.press("Digit1");
-  await expect(page).toHaveURL(/\/m\/inbox$/);
+  await page.keyboard.press("R");
+  await expect(views.getByRole("radio", { name: "Reader" })).toBeChecked();
+  await page.keyboard.press("H");
+  await expect(views.getByRole("radio", { name: "Formatted" })).toBeChecked();
 });
 
-test("compact density materially tightens mailbox rows", async ({ page }) => {
-  await openApp(page, "/m/inbox");
-  const firstRow = page.getByTestId("mailbox-list").getByRole("article").first();
-  await expect(firstRow).toBeVisible();
+test("number keys jump between the TUI tabs", async ({ page }) => {
+  await openList(page, "/m/inbox");
 
-  await page.getByRole("button", { name: /Regular/ }).click();
-  const regularHeight = await firstRow.evaluate((node) => node.getBoundingClientRect().height);
+  const tabs: [string, RegExp][] = [
+    ["2", /\/search$/],
+    ["3", /\/rules$/],
+    ["4", /\/accounts$/],
+    ["5", /\/diagnostics$/],
+    ["6", /\/analytics(\/storage)?$/],
+    ["7", /\/deliveries$/],
+    ["1", /\/m\/inbox$/],
+  ];
+  for (const [key, url] of tabs) {
+    // The search page focuses its query box when empty; leave it first.
+    if (new URL(page.url()).pathname === "/search") await page.keyboard.press("Escape");
+    await page.keyboard.press(key);
+    await expect(page, `digit ${key}`).toHaveURL(url);
+  }
+});
 
-  await page.getByRole("button", { name: /Compact/ }).click();
-  const compactHeight = await firstRow.evaluate((node) => node.getBoundingClientRect().height);
-
-  expect(compactHeight).toBeLessThan(regularHeight - 10);
+test("g chords jump to the TUI's views", async ({ page }) => {
+  await openList(page, "/m/inbox");
+  const chords: [string, RegExp][] = [
+    ["s", /\/m\/starred$/],
+    ["t", /\/m\/sent$/],
+    ["a", /\/m\/archive$/],
+    ["d", /\/drafts$/],
+    ["n", /\/snoozed$/],
+    ["q", /\/reply-queue$/],
+    ["o", /\/owed$/],
+    ["A", /\/analytics/],
+    ["i", /\/m\/inbox$/],
+  ];
+  for (const [key, url] of chords) {
+    await page.keyboard.press("g");
+    await page.keyboard.press(key);
+    await expect(page, `g ${key}`).toHaveURL(url);
+  }
 });
 
 test("analytics opens dashboards through TUI-style tabs", async ({ page }) => {
   await openApp(page, "/analytics");
-
   await expect(page).toHaveURL(/\/analytics\/storage$/);
 
   const tabs = page.getByRole("tablist", { name: "Analytics dashboards" });
@@ -141,49 +131,40 @@ test("analytics opens dashboards through TUI-style tabs", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1, name: "Wrapped" })).toBeVisible();
 });
 
-test("mailbox and thread reader text are readable by default", async ({ page }) => {
-  await openApp(page, "/m/inbox");
+test("list rows and reader text are readable by default", async ({ page }) => {
+  // Largest text in a subtree: the subject in a row, the body in a message.
+  const largestText = (root: Element) =>
+    Math.max(
+      ...[...root.querySelectorAll("span, p, pre, div")]
+        .filter((el) => [...el.childNodes].some((n) => n.nodeType === 3 && (n.textContent ?? "").trim()))
+        .map((el) => Number.parseFloat(getComputedStyle(el).fontSize)),
+    );
 
-  const list = page.getByTestId("mailbox-list");
-  await expect(list).toBeVisible();
+  await openList(page, "/m/inbox");
+  expect(await mailRows(page).first().evaluate(largestText)).toBeGreaterThanOrEqual(13);
 
-  const subjectSize = await list
-    .getByRole("article")
-    .first()
-    .getByRole("heading", { level: 2 })
-    .evaluate((node) => Number.parseFloat(window.getComputedStyle(node).fontSize));
-  expect(subjectSize).toBeGreaterThanOrEqual(13);
-
-  await list.getByRole("article").first().press("Enter");
-  await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
-
-  const bodySize = await page
-    .locator("pre")
-    .first()
-    .evaluate((node) => Number.parseFloat(window.getComputedStyle(node).fontSize));
-  expect(bodySize).toBeGreaterThanOrEqual(15);
+  await page.keyboard.press("Enter");
+  await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
+  await page.keyboard.press("R");
+  await expect(reader(page).getByRole("radio", { name: "Reader" })).toBeChecked();
+  expect(
+    await reader(page).getByTestId("thread-message").last().evaluate(largestText),
+  ).toBeGreaterThanOrEqual(14);
 });
 
-test("thread reader uses the available reading pane width", async ({ page }) => {
+test("the reader fills the reading pane at 1920px", async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 900 });
-  await openApp(page, "/m/inbox");
-
-  const list = page.getByTestId("mailbox-list");
-  await expect(list).toBeVisible();
-  await list.getByRole("article").first().press("Enter");
-  await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
-
-  const reader = page.locator("article").last();
-  const message = page.locator("pre").first().locator("xpath=ancestor::section[1]");
+  await openList(page, "/m/inbox");
+  await page.keyboard.press("Enter");
+  const message = reader(page).getByTestId("thread-message").last();
   await expect(message).toBeVisible();
-
-  const widths = await reader.evaluate((readerNode) => {
-    const messageNode = readerNode.querySelector("section");
-    if (!messageNode) throw new Error("message section not found");
+  const widths = await reader(page).evaluate((node) => {
+    const card = node.querySelector('[data-testid="thread-message"]:last-of-type');
     return {
-      reader: readerNode.getBoundingClientRect().width,
-      message: messageNode.getBoundingClientRect().width,
+      reader: node.getBoundingClientRect().width,
+      message: card?.getBoundingClientRect().width ?? 0,
     };
   });
-  expect(widths.message).toBeGreaterThan(widths.reader * 0.82);
+  // Messages cap at a readable measure but still use most of the pane.
+  expect(widths.message).toBeGreaterThan(Math.min(widths.reader * 0.8, 900));
 });

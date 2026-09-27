@@ -18,6 +18,10 @@ pub(super) struct MailboxQuery {
     pub(super) saved_search: Option<String>,
     #[serde(default)]
     pub(super) sender_email: Option<String>,
+    /// Scope the mailbox to one account id. Absent means the daemon default
+    /// (labels) or all accounts (envelope/thread lists).
+    #[serde(default, alias = "account_id")]
+    pub(super) account: Option<String>,
     #[serde(default)]
     pub(super) token: Option<String>,
 }
@@ -93,6 +97,9 @@ pub(super) struct SearchQuery {
     pub(super) verdict: Option<String>,
     #[serde(default)]
     pub(super) group_by: Option<mxr_protocol::SearchAggregationGroupBy>,
+    /// Restrict results to one account id; absent searches every account.
+    #[serde(default, alias = "account_id")]
+    pub(super) account: Option<String>,
     #[serde(default)]
     pub(super) token: Option<String>,
 }
@@ -182,6 +189,18 @@ pub(super) struct ComposeSessionSendRequest {
     /// blockers. Forwarded to `SendDraft`; ignored by save/check handlers.
     #[serde(default)]
     pub(super) override_safety_token: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct ComposeSessionScheduleRequest {
+    pub(super) draft_path: String,
+    pub(super) account_id: String,
+    /// The stored draft this session was restored from, if any. With it the
+    /// schedule updates that draft in place; without it a new local draft is
+    /// stored.
+    #[serde(default)]
+    pub(super) draft_id: Option<String>,
+    pub(super) send_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Deserialize)]

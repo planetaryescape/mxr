@@ -62,13 +62,25 @@ export interface ComposeAttachmentUploadResponse {
 
 export type ComposeKind = "new" | "reply" | "reply_all" | "forward";
 
+/** Calendar invite response carried by an `invite_reply` compose session. */
+export type InviteReplyAction = "accept" | "tentative" | "decline";
+
+/** Kinds the bridge can open a compose session for. `invite_reply` is a
+ * reply with an attached iCal REPLY; it is not a stored-draft intent. */
+export type ComposeSessionKind = ComposeKind | "invite_reply";
+
 export function startComposeSession(
-  kind: ComposeKind,
+  kind: ComposeSessionKind,
   messageId?: string,
+  inviteAction?: InviteReplyAction,
 ): Promise<ComposeSessionResponse> {
   return apiFetch<ComposeSessionResponse>("/api/v1/mail/compose/session", {
     method: "POST",
-    body: { kind, message_id: messageId },
+    body: {
+      kind,
+      message_id: messageId,
+      ...(kind === "invite_reply" && inviteAction ? { action: inviteAction } : {}),
+    },
   });
 }
 
@@ -122,12 +134,20 @@ export async function fetchContactsAutocomplete(
   return data.contacts ?? [];
 }
 
+export interface ComposeSendResponse {
+  ok: boolean;
+  draft_id?: string;
+  /** Local id of the message just sent (the daemon's send receipt). Needed
+   * to set a no-reply reminder; null when the daemon only acknowledged. */
+  message_id?: string | null;
+}
+
 export function sendComposeSession(
   draftPath: string,
   accountId: string,
   overrideSafetyToken?: string,
-): Promise<{ ok: boolean }> {
-  return apiFetch<{ ok: boolean }>("/api/v1/mail/compose/session/send", {
+): Promise<ComposeSendResponse> {
+  return apiFetch<ComposeSendResponse>("/api/v1/mail/compose/session/send", {
     method: "POST",
     body: {
       draft_path: draftPath,
@@ -182,48 +202,46 @@ export function suggestComposeCollaborators(
   );
 }
 
-export interface DraftAddress {
-  name: string | null;
-  email: string;
-}
-
 /**
- * Payload for `POST /drafts/save-local` (the daemon `Draft` shape). Scheduled
- * sends operate on stored drafts, so the compose session is materialised into
- * one before scheduling.
- *
- * Markdown-only by construction, and deliberately so: the browser composer
- * edits compose files, which cannot represent a supplied HTML document. That
- * makes the required `body_markdown` honest here — but it also makes `id`
- * dangerous. `save-local` is an upsert, and a draft whose stored body is HTML
- * would be *replaced* by the markdown one in this payload, discarding the
- * document. Only ever send an `id` that came from a markdown compose session.
+ * Store the open compose session as a local draft and schedule it, in one
+ * call. The bridge parses the compose file the same way send does, so reply
+ * headers, invite replies, attachments and the From alias carry over.
  */
-export interface LocalDraftPayload {
-  id: string;
-  account_id: string;
-  intent: ComposeKind;
-  to: DraftAddress[];
-  cc: DraftAddress[];
-  bcc: DraftAddress[];
-  subject: string;
-  body_markdown: string;
-  attachments: string[];
-  created_at: string;
-  updated_at: string;
-}
-
-export function saveLocalDraft(draft: LocalDraftPayload): Promise<unknown> {
-  return apiFetch<unknown>("/api/v1/mail/drafts/save-local", {
+export function scheduleComposeSession(input: {
+  draftPath: string;
+  accountId: string;
+  draftId?: string;
+  sendAt: Date;
+}): Promise<{ ok: boolean; draft_id: string; send_at: string }> {
+  return apiFetch("/api/v1/mail/compose/session/schedule", {
     method: "POST",
-    body: draft,
+    body: {
+      draft_path: input.draftPath,
+      account_id: input.accountId,
+      ...(input.draftId ? { draft_id: input.draftId } : {}),
+      send_at: input.sendAt.toISOString(),
+    },
   });
 }
 
-export function createScheduledSend(draftId: string, sendAt: Date): Promise<unknown> {
-  return apiFetch<unknown>("/api/v1/mail/scheduled-sends", {
+/** "Remind me if no reply by `remindAt`" for a message already sent. */
+export function setAutoReminder(sentMessageId: string, remindAt: Date): Promise<unknown> {
+  return apiFetch<unknown>("/api/v1/mail/reminders", {
     method: "POST",
-    body: { draft_id: draftId, send_at: sendAt.toISOString() },
+    body: { sent_message_id: sentMessageId, remind_at: remindAt.toISOString() },
+  });
+}
+
+export function cancelAutoReminder(sentMessageId: string): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/mail/reminders/${encodeURIComponent(sentMessageId)}`, {
+    method: "DELETE",
+  });
+}
+
+/** Cancel a scheduled send. The stored draft itself is kept. */
+export function cancelScheduledSend(draftId: string): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/mail/scheduled-sends/${encodeURIComponent(draftId)}`, {
+    method: "DELETE",
   });
 }
 

@@ -1,63 +1,26 @@
 import { apiFetch } from "@/api/client";
+import type { components } from "@/api/generated";
+
+type Schemas = components["schemas"];
 
 export type AnalyticsRange = "7d" | "30d" | "90d" | "1y";
 export type StorageGroupBy = "sender" | "mimetype" | "label";
 export type ResponseDirection = "they_replied" | "i_replied";
 
+/** Row shapes come from the daemon's OpenAPI schema so they cannot drift. */
 export interface StorageBucket {
-  label?: string;
-  key?: string;
-  value?: string;
-  bytes?: number;
-  total_bytes?: number;
-  count?: number;
+  key: string;
+  bytes: number;
+  count: number;
 }
-export interface LargestMessage {
-  message_id?: string;
-  thread_id?: string;
-  sender?: string;
-  subject?: string;
-  size_bytes?: number;
-  date?: string;
-}
-export interface StaleThread {
-  thread_id?: string;
-  subject?: string;
-  counterparty?: string;
-  age_days?: number;
-  message_count?: number;
-  latest_at?: string;
-}
-export interface ContactRow {
-  email?: string;
-  display_name?: string;
-  inbound?: number;
-  outbound?: number;
-  total_inbound?: number;
-  total_outbound?: number;
-  days_since_last_seen?: number;
-  score?: number;
-}
-export interface ResponseTimeSummary {
-  p50_minutes?: number;
-  p90_minutes?: number;
-  p95_minutes?: number;
-  count?: number;
-  buckets?: Array<{ label: string; value: number }>;
-}
-export interface WrappedSummary {
-  volume?: { inbound_count?: number; outbound_count?: number; thread_count?: number };
-  top_contacts?: {
-    most_emailed_to_me?: ContactRow[];
-    most_emailed_by_me?: ContactRow[];
-    most_asymmetric?: ContactRow[];
-  };
-  superlatives?: {
-    longest_thread?: { subject?: string; message_count?: number } | null;
-    most_ghosted?: { email?: string; inbound_count?: number; outbound_count?: number } | null;
-  };
-  [key: string]: unknown;
-}
+export type LargestMessage = Schemas["LargestMessageRow"];
+export type StaleThread = Schemas["StaleThreadRow"];
+export type ContactAsymmetry = Schemas["ContactAsymmetryRow"];
+export type ContactDecay = Schemas["ContactDecayRow"];
+export type ResponseTimeSummary = Schemas["ResponseTimeSummary"];
+export type WrappedSummary = Schemas["WrappedSummary"];
+export type CadenceDriftRow = Schemas["CadenceDriftRowData"];
+export type CadenceWatchEntry = Schemas["RelationshipWatchEntryData"];
 
 export interface SubscriptionSummary {
   account_id?: string;
@@ -73,7 +36,7 @@ export interface SubscriptionSummary {
   latest_date?: string;
 }
 
-function rangeToDays(range: AnalyticsRange): number {
+export function rangeDays(range: AnalyticsRange): number {
   switch (range) {
     case "7d":
       return 7;
@@ -88,7 +51,7 @@ function rangeToDays(range: AnalyticsRange): number {
 
 export function analyticsWindow(range: AnalyticsRange) {
   const until = Math.floor(Date.now() / 1000);
-  return { since_unix: until - rangeToDays(range) * 24 * 60 * 60, until_unix: until };
+  return { since_unix: until - rangeDays(range) * 24 * 60 * 60, until_unix: until };
 }
 
 export function fetchStorageBreakdown(groupBy: StorageGroupBy = "sender", limit = 20) {
@@ -103,20 +66,24 @@ export function fetchLargestMessages(limit = 25, sinceDays = 90) {
   );
 }
 
-export function fetchStaleThreads(perspective = "mine", olderThanDays = 14, withinDays = 180) {
+export function fetchStaleThreads(
+  perspective: "mine" | "theirs" = "mine",
+  olderThanDays = 14,
+  withinDays = 180,
+) {
   return apiFetch<{ rows: StaleThread[] }>(
     `/api/v1/platform/analytics/stale-threads?perspective=${perspective}&older_than_days=${olderThanDays}&within_days=${withinDays}&limit=50`,
   );
 }
 
 export function fetchContactAsymmetry(limit = 40) {
-  return apiFetch<{ rows: ContactRow[] }>(
+  return apiFetch<{ rows: ContactAsymmetry[] }>(
     `/api/v1/platform/analytics/contact-asymmetry?limit=${limit}`,
   );
 }
 
 export function fetchContactDecay(limit = 40, thresholdDays = 30, maxLookbackDays = 365) {
-  return apiFetch<{ rows: ContactRow[] }>(
+  return apiFetch<{ rows: ContactDecay[] }>(
     `/api/v1/platform/analytics/contact-decay?threshold_days=${thresholdDays}&max_lookback_days=${maxLookbackDays}&limit=${limit}`,
   );
 }
@@ -145,6 +112,47 @@ export function fetchWrapped(range: AnalyticsRange) {
   return apiFetch<{ summary: WrappedSummary }>(
     `/api/v1/platform/analytics/wrapped?since_unix=${window.since_unix}&until_unix=${window.until_unix}&label=wrapped`,
   );
+}
+
+function accountQuery(accountId: string | null): string {
+  return accountId ? `?account=${encodeURIComponent(accountId)}` : "";
+}
+
+/** Watched contacts past their usual cadence (TUI "Cadence drift"). */
+export function fetchCadenceDrift(accountId: string | null) {
+  return apiFetch<{ rows: CadenceDriftRow[] }>(
+    `/api/v1/platform/analytics/cadence-drift${accountQuery(accountId)}`,
+  );
+}
+
+export function fetchCadenceWatchlist(accountId: string | null) {
+  return apiFetch<{ entries: CadenceWatchEntry[] }>(
+    `/api/v1/platform/cadence/watch${accountQuery(accountId)}`,
+  );
+}
+
+export function watchCadence(input: {
+  accountId: string | null;
+  email: string;
+  expectedDays?: number | null;
+  note?: string | null;
+}) {
+  return apiFetch<unknown>("/api/v1/platform/cadence/watch", {
+    method: "POST",
+    body: {
+      account_id: input.accountId ?? undefined,
+      email: input.email,
+      expected_days: input.expectedDays ?? undefined,
+      note: input.note ?? undefined,
+    },
+  });
+}
+
+export function unwatchCadence(input: { accountId: string | null; email: string }) {
+  return apiFetch<unknown>("/api/v1/platform/cadence/unwatch", {
+    method: "POST",
+    body: { account_id: input.accountId ?? undefined, email: input.email },
+  });
 }
 
 export function refreshAnalyticsContacts(): Promise<{ ok: boolean }> {

@@ -1,25 +1,31 @@
 /*
- * Public surface of the action registry. Consumers (CommandPalette, keymap,
- * HelpDialog, StatusBar) import from here only.
- *
- * Importing this module triggers catalog registration as a side-effect.
+ * Public surface of the action registry. Importing this module registers
+ * the catalog as a side effect.
  */
 
 import "./catalog";
 
-export { useActionContext } from "./context";
+export { buildActionContext, snapshotActionContext, useActionContext } from "./context";
 export { ensureCatalogRegistered, resetCatalogRegistration } from "./catalog";
 export {
-  actionShortcutSections,
   formatChord,
+  shortcutSections,
   useActionPrimaryHints,
   useActionsByGroup,
-  useActionShortcutSections,
+  useShortcutSections,
   useVisibleActions,
   type ShortcutHint,
   type ShortcutSection,
 } from "./hints";
-export { ActionRegistry, getRegistry, resetRegistry } from "./registry";
+export {
+  ActionRegistry,
+  chordsOf,
+  getRegistry,
+  invokeAction,
+  isAvailable,
+  resetRegistry,
+  scopesOf,
+} from "./registry";
 export { getRuntimeNavigate, setRuntimeNavigate } from "./runtime";
 export type {
   Action,
@@ -27,6 +33,7 @@ export type {
   ActionGroup,
   ActionPredicate,
   ActionRunner,
+  ActionScope,
   ShortcutChord,
 } from "./types";
 export {
@@ -36,7 +43,6 @@ export {
   onPane,
   onRoute,
   or,
-  withFocusedMessage,
   withFocusedThread,
   withSelection,
 } from "./when";

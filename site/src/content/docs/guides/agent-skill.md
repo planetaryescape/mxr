@@ -55,6 +55,7 @@ mxr export <thread_id>                       # Markdown export
 mxr compose --to a@x.com --subject "Hi" --body "Hello"
 mxr reply <id> --body "Thanks!"
 mxr send <draft_id> --at "monday 9am"        # Scheduled send
+mxr drafts scheduled                         # What is going out later
 mxr unsend <draft_id>                        # Cancel a scheduled send
 mxr undo <mutation_id>                       # ~60s window on destructive ops
 

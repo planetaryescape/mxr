@@ -135,6 +135,7 @@ fn mail_router() -> Router<AppState> {
             post(suggest_compose_collaborators),
         )
         .route("/compose/session/save", post(save_compose_session))
+        .route("/compose/session/schedule", post(schedule_compose_session))
         .route(
             "/compose/session/attachment",
             post(upload_compose_attachment),
@@ -195,16 +196,20 @@ pub fn app(config: WebServerConfig) -> Router {
         .route("/auth/local-token", get(local_token_handshake))
         .route("/i18n", get(i18n_bundle))
         .nest("/admin", routes_v6::extend_admin(admin_router()))
-        .nest("/mail", routes_v6::extend_mail(mail_router()))
-        .nest("/platform", routes_v6::extend_platform(platform_router()))
+        .nest(
+            "/mail",
+            insight_routes::extend_mail(routes_v6::extend_mail(mail_router())),
+        )
+        .nest(
+            "/platform",
+            insight_routes::extend_platform(routes_v6::extend_platform(platform_router())),
+        )
         .nest("/client", client_router())
         .route("/events", get(events))
         .with_state(state.clone());
 
     let docs_router = Router::new()
-        .merge(
-            SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::ApiDoc::openapi()),
-        )
+        .merge(SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::cached_spec()))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::require_bridge_auth,

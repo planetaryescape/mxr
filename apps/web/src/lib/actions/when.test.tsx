@@ -17,10 +17,10 @@ import {
 const baseCtx: ActionContext = {
   path: "/m/inbox",
   activePane: "mailbox",
+  scopes: ["global"],
   selectionCount: 0,
   accountCount: 1,
   hasFocusedThread: false,
-  hasFocusedMessage: false,
   isFirstAccountOnly: true,
 };
 
@@ -46,9 +46,18 @@ describe("when predicates", () => {
   });
 
   test("or returns true when any predicate matches", () => {
-    const pred = or(() => false, () => true, () => false);
+    const pred = or(
+      () => false,
+      () => true,
+      () => false,
+    );
     expect(pred(baseCtx)).toBe(true);
-    expect(or(() => false, () => false)(baseCtx)).toBe(false);
+    expect(
+      or(
+        () => false,
+        () => false,
+      )(baseCtx),
+    ).toBe(false);
   });
 
   test("not inverts the wrapped predicate", () => {

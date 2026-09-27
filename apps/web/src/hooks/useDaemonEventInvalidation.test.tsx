@@ -35,8 +35,20 @@ function setup() {
   );
   render(wrapper(<Harness />));
   const emit = (event: DaemonEvent) => events.handler?.(event);
+  // Mail events invalidate by predicate (the shared mail query families),
+  // so report which of a representative set of cached keys each call hits.
+  const mailKeys = [["mailbox"], ["thread"], ["search"], ["reply-queue"], ["shell"], ["settings"]];
   const invalidatedKeys = () =>
-    invalidate.mock.calls.map((call) => JSON.stringify(call[0]?.queryKey));
+    invalidate.mock.calls.flatMap((call) => {
+      const filters = call[0];
+      if (filters?.queryKey) return [JSON.stringify(filters.queryKey)];
+      if (filters?.predicate) {
+        return mailKeys
+          .filter((queryKey) => filters.predicate?.({ queryKey } as never))
+          .map((queryKey) => JSON.stringify(queryKey));
+      }
+      return [];
+    });
   const invalidatedEverything = () => invalidate.mock.calls.some((call) => call[0] === undefined);
   return { emit, invalidatedKeys, invalidatedEverything };
 }
@@ -88,6 +100,7 @@ describe("useDaemonEventInvalidation", () => {
     expect(keys).toContain(JSON.stringify(["mailbox"]));
     expect(keys).toContain(JSON.stringify(["thread"]));
     expect(keys).toContain(JSON.stringify(["search"]));
+    expect(keys).not.toContain(JSON.stringify(["settings"]));
     expect(toastMock.error).toHaveBeenCalledWith("Action didn't stick: Gmail rejected the archive");
   });
 

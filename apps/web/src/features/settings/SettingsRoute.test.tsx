@@ -5,7 +5,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { ComposeSettingsSection, LlmSettingsSection } from "./SettingsRoute";
+import { ComposeSettingsSection } from "./ComposeSettingsSection";
+import { LlmSettingsSection } from "./LlmSettingsSection";
 
 const api = vi.hoisted(() => ({
   fetch: vi.fn<(path: string, opts?: unknown) => Promise<unknown>>(),

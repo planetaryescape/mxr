@@ -3,9 +3,9 @@ import { expect, test } from "@playwright/test";
 import { openApp, restartDaemon, stopDaemon } from "./helpers/state";
 
 test("WS offline > 30s shows sticky offline banner", async ({ page }) => {
-  test.setTimeout(45_000);
+  test.setTimeout(90_000);
   await openApp(page, "/m/inbox");
-  await expect(page.getByRole("complementary").getByText(/^connected$/i)).toBeVisible();
+  await expect(page.getByRole("contentinfo").getByText(/^connected$/i)).toBeVisible();
 
   await stopDaemon();
   try {
@@ -14,5 +14,7 @@ test("WS offline > 30s shows sticky offline banner", async ({ page }) => {
     await restartDaemon();
   }
 
-  await expect(page.locator("[data-offline-banner]")).toBeHidden({ timeout: 5_000 });
+  // After 30s offline the socket's backoff has reached its 30s ceiling, so
+  // the reconnect can take up to one more full interval.
+  await expect(page.locator("[data-offline-banner]")).toBeHidden({ timeout: 35_000 });
 });

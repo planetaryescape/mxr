@@ -1,142 +1,88 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { useRouterState } from "@tanstack/react-router";
 
-import { fetchMailbox, fetchShell, mailboxKey, shellKey, type MailboxLensParams } from "./api";
-import type { MailboxResponse, MessageGroupView, ShellResponse, SidebarItem } from "./types";
+import { fetchMailbox, fetchShell, mailboxKey, shellKey } from "./api";
+import type { MailLens } from "./lenses";
+import type { MailboxResponse, MessageGroupView } from "./types";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
-const MAILBOX_PAGE_SIZE = 200;
-
-function slugify(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function itemsFromShell(shell?: ShellResponse): SidebarItem[] {
-  return shell?.sidebar?.sections?.flatMap((section) => section.items) ?? [];
-}
-
-function lensFromItem(item: SidebarItem): MailboxLensParams | undefined {
-  const lens = item.lens;
-  if (!lens) return undefined;
-  if (lens.kind === "label" && lens.labelId) {
-    return { lens_kind: "label", label_id: lens.labelId };
-  }
-  if (lens.kind === "saved_search" && lens.savedSearch) {
-    return { lens_kind: "saved_search", saved_search: lens.savedSearch };
-  }
-  if (lens.kind === "subscription" && lens.senderEmail) {
-    return { lens_kind: "subscription", sender_email: lens.senderEmail };
-  }
-  if (lens.kind === "all_mail") return { lens_kind: "all_mail" };
-  if (lens.kind === "inbox") return { lens_kind: "inbox" };
-  return undefined;
-}
-
-export function resolveMailboxLens(pathname: string, shell?: ShellResponse): MailboxLensParams {
-  const items = itemsFromShell(shell);
-  const parts = pathname.split("/").filter(Boolean).map(decodeURIComponent);
-  if (parts[0] !== "m") return { lens_kind: "inbox" };
-
-  if (parts[1] === "label" && parts[2]) {
-    const target = parts[2];
-    const item = items.find(
-      (candidate) => candidate.id === target || slugify(candidate.label) === target,
-    );
-    return lensFromItem(item ?? ({} as SidebarItem)) ?? { lens_kind: "all_mail" };
-  }
-
-  if (parts[1] === "saved" && parts[2]) {
-    const target = parts[2];
-    const item = items.find(
-      (candidate) =>
-        candidate.id === `saved-search-${target}` || slugify(candidate.label) === target,
-    );
-    return lensFromItem(item ?? ({} as SidebarItem)) ?? { lens_kind: "inbox" };
-  }
-
-  const mailbox = parts[1] ?? "inbox";
-  if (mailbox === "inbox") return { lens_kind: "inbox" };
-  if (mailbox === "archive" || mailbox === "all-mail") return { lens_kind: "all_mail" };
-  const item = items.find(
-    (candidate) => slugify(candidate.label) === mailbox || candidate.id === mailbox,
-  );
-  return lensFromItem(item ?? ({} as SidebarItem)) ?? { lens_kind: "all_mail" };
-}
+const MAILBOX_PAGE_SIZE = 150;
 
 export function useShellQuery() {
   return useQuery({ queryKey: shellKey, queryFn: fetchShell, staleTime: 30_000 });
 }
 
-export function useMailboxQuery() {
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const shell = useShellQuery();
-  const lens = resolveMailboxLens(pathname, shell.data);
+/**
+ * Paged rows for one lens, honouring the account scope and list mode. The
+ * cache keeps TanStack's `{pages, pageParams}` shape; optimistic changes are
+ * projected at render time (see pendingMailOps), never written into it.
+ */
+export function useMailboxQuery(lens: MailLens | null) {
+  const account = useUiPrefs((s) => s.accountScope);
+  const view = useUiPrefs((s) => s.listMode);
+  const params = lens ? { ...lens.params, view, limit: MAILBOX_PAGE_SIZE, account } : null;
   return useInfiniteQuery({
-    queryKey: mailboxKey({ ...lens, view: "threads", limit: MAILBOX_PAGE_SIZE }),
+    queryKey: mailboxKey(params ?? { lens_kind: "inbox" }),
     queryFn: ({ pageParam }) =>
-      fetchMailbox({ ...lens, view: "threads", limit: MAILBOX_PAGE_SIZE, offset: pageParam }),
+      fetchMailbox({ ...(params ?? { lens_kind: "inbox" }), offset: pageParam }),
     initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages) => {
-      // Saved-search runs can't paginate: Request::RunSavedSearch takes no
-      // offset. A subscription drilldown (sender_email set) runs through
-      // Request::Search, which does — the bridge reports has_more for it.
-      if (lens.lens_kind === "saved_search") return undefined;
-      if (lens.lens_kind === "subscription" && !lens.sender_email) return undefined;
-      if (lastPage.mailbox.has_more && typeof lastPage.mailbox.next_offset === "number") {
-        return lastPage.mailbox.next_offset;
-      }
-      const loadedPages = allPages.length;
-      const lastPageRows = lastPage.mailbox.groups.reduce(
-        (total, group) => total + group.rows.length,
-        0,
-      );
-      return lastPageRows >= MAILBOX_PAGE_SIZE ? loadedPages * MAILBOX_PAGE_SIZE : undefined;
-    },
-    select: (data) => mergeMailboxPages(data.pages),
-    enabled: shell.isSuccess,
+    getNextPageParam: (lastPage) =>
+      lastPage.mailbox.has_more && typeof lastPage.mailbox.next_offset === "number"
+        ? lastPage.mailbox.next_offset
+        : undefined,
+    select: (data) => mergeMailboxPages(data.pages, view),
+    enabled: params !== null,
     staleTime: 10_000,
+    placeholderData: (previous, previousQuery) =>
+      // Keep rows on screen while the mode or scope changes within a lens.
+      previousQuery?.queryKey[1] &&
+      (previousQuery.queryKey[1] as { lens_kind?: string; label_id?: string }).lens_kind ===
+        params?.lens_kind &&
+      (previousQuery.queryKey[1] as { label_id?: string }).label_id === params?.label_id
+        ? previous
+        : undefined,
   });
 }
 
-function mergeMailboxPages(pages: MailboxResponse[]): MailboxResponse | undefined {
+/**
+ * Join pages into one grouped list. Thread views dedupe by thread: a busy
+ * conversation can surface on two pages as new mail shifts the offsets.
+ */
+export function mergeMailboxPages(
+  pages: MailboxResponse[],
+  view: "threads" | "messages",
+): MailboxResponse | undefined {
   const first = pages[0];
   if (!first) return undefined;
-
   const groups: MessageGroupView[] = [];
   const groupIndexes = new Map<string, number>();
-  const seenRows = new Set<string>();
+  const seen = new Set<string>();
 
   for (const page of pages) {
     for (const group of page.mailbox.groups) {
       const rows = group.rows.filter((row) => {
-        if (seenRows.has(row.id)) return false;
-        seenRows.add(row.id);
+        const key = view === "threads" ? row.thread_id || row.id : row.id;
+        if (seen.has(key)) return false;
+        seen.add(key);
         return true;
       });
       if (rows.length === 0) continue;
-
-      const existingIndex = groupIndexes.get(group.id);
-      if (existingIndex === undefined) {
+      const existing = groupIndexes.get(group.id);
+      if (existing === undefined) {
         groupIndexes.set(group.id, groups.length);
         groups.push({ ...group, rows });
       } else {
-        const existing = groups[existingIndex];
-        if (!existing) continue;
-        groups[existingIndex] = {
-          ...existing,
-          rows: [...existing.rows, ...rows],
-        };
+        const current = groups[existing]!;
+        groups[existing] = { ...current, rows: [...current.rows, ...rows] };
       }
     }
   }
-
+  const last = pages.at(-1) ?? first;
   return {
     ...first,
     mailbox: {
       ...first.mailbox,
+      has_more: last.mailbox.has_more,
+      next_offset: last.mailbox.next_offset,
       groups,
     },
   };

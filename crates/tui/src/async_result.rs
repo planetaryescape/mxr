@@ -199,7 +199,13 @@ pub(crate) enum AsyncResult {
     },
     /// Snapshot of the user's locally-stored drafts (all accounts, most
     /// recently updated first), surfaced by the stored-drafts modal.
-    StoredDraftsLoaded(Result<Vec<Draft>, MxrError>),
+    /// With when each scheduled draft will send.
+    StoredDraftsLoaded(Result<(Vec<Draft>, Vec<mxr_protocol::ScheduledSendData>), MxrError>),
+    /// Completion of a confirmed scheduled-send cancellation.
+    StoredDraftUnscheduled {
+        draft_id: mxr_core::DraftId,
+        result: Result<(), MxrError>,
+    },
     /// Completion of a confirmed local-draft deletion.
     StoredDraftDeleted {
         draft_id: mxr_core::DraftId,

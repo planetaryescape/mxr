@@ -1,14 +1,12 @@
-import { createFileRoute, useRouterState } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
-import { MailboxRoute } from "@/features/mailbox/MailboxRoute";
-import { ThreadRoute } from "@/features/thread/ThreadRoute";
+import { MailView } from "@/features/mailbox/MailView";
 
 export const Route = createFileRoute("/m/$mailbox")({
-  component: MailRoute,
+  component: SystemMailbox,
 });
 
-function MailRoute() {
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const parts = pathname.split("/").filter(Boolean);
-  return parts.length >= 3 ? <ThreadRoute /> : <MailboxRoute />;
+function SystemMailbox() {
+  const { mailbox } = Route.useParams();
+  return <MailView route={{ kind: "system", mailbox }} />;
 }

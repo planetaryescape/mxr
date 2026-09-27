@@ -1,326 +1,479 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
-  Activity,
   Archive,
-  Calendar,
+  BarChart3,
+  Bookmark,
+  CalendarDays,
+  ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Clock,
   FileText,
-  Filter,
   History,
+  Hourglass,
   Inbox,
   ListChecks,
-  Mail,
-  MessageSquareReply,
+  MailX,
   Package,
+  Reply,
   Search,
   Send,
   Settings,
   Shield,
-  Sparkles,
+  ShieldAlert,
   Star,
+  Stethoscope,
+  Tag,
   Trash2,
-  UserCog,
+  Users,
+  Workflow,
 } from "lucide-react";
-import { useEffect, useMemo, type ComponentType, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ComponentType } from "react";
 
 import { AccountSwitcher } from "@/components/AccountSwitcher";
 import { ThemePicker } from "@/components/ThemePicker";
-import { ConnectionPill } from "@/components/ConnectionPill";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { lensesFromShell, type MailLens } from "@/features/mailbox/lenses";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
-import type { SidebarItem } from "@/features/mailbox/types";
+import { fetchSavedSearches, fetchSavedSearchUnreadCounts } from "@/features/search/api";
+import { useShortcutScope } from "@/hooks/useShortcutScope";
+import { formatChord } from "@/lib/keys/chord";
+import { useScopeController } from "@/lib/keys/controllers";
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
-interface NavItem {
+type Icon = ComponentType<{ className?: string }>;
+
+interface NavEntry {
+  key: string;
   to: string;
   label: string;
-  Icon: ComponentType<{ className?: string }>;
-  badge?: string | number;
+  Icon: Icon;
+  count?: number;
+  /** Bold count: unread that deserves attention (Inbox, labels). */
+  emphasize?: boolean;
   shortcut?: string;
 }
 
-const primary: NavItem[] = [
-  { to: "/m/inbox", label: "Mail", Icon: Mail, shortcut: "1" },
-  { to: "/drafts", label: "Drafts", Icon: FileText },
-  { to: "/search", label: "Search", Icon: Search, shortcut: "2" },
-  { to: "/analytics", label: "Analytics", Icon: Activity, shortcut: "3" },
-  { to: "/rules", label: "Rules", Icon: Filter, shortcut: "4" },
-  { to: "/screener", label: "Screener", Icon: Shield, shortcut: "5" },
-  { to: "/subscriptions", label: "Subscriptions", Icon: Sparkles, shortcut: "6" },
-  { to: "/reply-queue", label: "Reply queue", Icon: MessageSquareReply, shortcut: "7" },
-  { to: "/invites", label: "Calendar invites", Icon: Calendar },
-  { to: "/deliveries", label: "Deliveries", Icon: Package },
-  { to: "/accounts", label: "Accounts", Icon: UserCog, shortcut: "8" },
-];
-
-const fallbackLenses: NavItem[] = [
-  { to: "/m/inbox", label: "Inbox", Icon: Inbox },
-  { to: "/m/starred", label: "Starred", Icon: Star },
-  { to: "/m/snoozed", label: "Snoozed", Icon: Sparkles },
-  { to: "/m/sent", label: "Sent", Icon: Send },
-  { to: "/m/archive", label: "Archive", Icon: Archive },
-  { to: "/m/trash", label: "Trash", Icon: Trash2 },
-];
-
-const systemItems: NavItem[] = [
-  { to: "/activity", label: "Activity log", Icon: History },
-  { to: "/jobs", label: "Jobs", Icon: ListChecks },
-  { to: "/diagnostics", label: "Diagnostics", Icon: Activity, shortcut: "9" },
-  { to: "/settings/theme", label: "Settings", Icon: Settings, shortcut: "0" },
-];
-
 interface NavSection {
-  label: string;
-  items: NavItem[];
+  id: string;
+  title?: string;
+  foldable: boolean;
+  entries: NavEntry[];
 }
 
-export function Sidebar() {
-  const collapsed = useUiPrefs((s) => s.sidebarCollapsed);
+const SYSTEM_ICONS: Record<string, Icon> = {
+  inbox: Inbox,
+  starred: Star,
+  sent: Send,
+  archive: Archive,
+  spam: ShieldAlert,
+  trash: Trash2,
+};
+
+const SYSTEM_SHORTCUTS: Record<string, string> = {
+  inbox: "g i",
+  starred: "g s",
+  sent: "g t",
+  archive: "g a",
+  spam: "g !",
+  trash: "g #",
+};
+
+const TRIAGE: NavEntry[] = [
+  { key: "reply-queue", to: "/reply-queue", label: "Reply queue", Icon: Reply, shortcut: "g q" },
+  { key: "owed", to: "/owed", label: "Owed replies", Icon: Hourglass, shortcut: "g o" },
+  { key: "screener", to: "/screener", label: "Screener", Icon: Shield, shortcut: "g S" },
+  { key: "invites", to: "/invites", label: "Invites", Icon: CalendarDays, shortcut: "g v" },
+  {
+    key: "subscriptions",
+    to: "/subscriptions",
+    label: "Subscriptions",
+    Icon: MailX,
+    shortcut: "g u",
+  },
+];
+
+const TOOLS: NavEntry[] = [
+  { key: "search", to: "/search", label: "Search", Icon: Search, shortcut: "2" },
+  { key: "analytics", to: "/analytics", label: "Analytics", Icon: BarChart3, shortcut: "g A" },
+  { key: "rules", to: "/rules", label: "Rules", Icon: Workflow, shortcut: "3" },
+  { key: "deliveries", to: "/deliveries", label: "Deliveries", Icon: Package, shortcut: "7" },
+  { key: "accounts", to: "/accounts", label: "Accounts", Icon: Users, shortcut: "4" },
+  { key: "activity", to: "/activity", label: "Activity", Icon: History, shortcut: "g y" },
+  { key: "jobs", to: "/jobs", label: "Jobs", Icon: ListChecks },
+  {
+    key: "diagnostics",
+    to: "/diagnostics",
+    label: "Diagnostics",
+    Icon: Stethoscope,
+    shortcut: "5",
+  },
+  { key: "settings", to: "/settings/theme", label: "Settings", Icon: Settings, shortcut: "g c" },
+];
+
+function mailEntries(lenses: MailLens[]): NavEntry[] {
+  const system = lenses.filter((lens) => lens.section === "system" && lens.key !== "drafts");
+  const entries: NavEntry[] = system.map((lens) => ({
+    key: lens.key,
+    to: lens.path,
+    label: lens.label,
+    Icon: SYSTEM_ICONS[lens.key] ?? Inbox,
+    count: lens.key === "inbox" ? lens.unread : lens.key === "starred" ? lens.total : undefined,
+    emphasize: lens.key === "inbox",
+    shortcut: SYSTEM_SHORTCUTS[lens.key],
+  }));
+  if (entries.length === 0) {
+    entries.push({ key: "inbox", to: "/m/inbox", label: "Inbox", Icon: Inbox, shortcut: "g i" });
+  }
+  // Snooze and drafts have their own pages, not label lenses.
+  const afterStarred = Math.max(1, entries.findIndex((entry) => entry.key === "starred") + 1);
+  entries.splice(afterStarred, 0, {
+    key: "snoozed",
+    to: "/snoozed",
+    label: "Snoozed",
+    Icon: Clock,
+    shortcut: "g n",
+  });
+  const afterSent = entries.findIndex((entry) => entry.key === "sent") + 1;
+  entries.splice(afterSent > 0 ? afterSent : entries.length, 0, {
+    key: "drafts",
+    to: "/drafts",
+    label: "Drafts",
+    Icon: FileText,
+    shortcut: "g d",
+  });
+  return entries;
+}
+
+function isActive(path: string, to: string): boolean {
+  const base = to.split("?")[0] ?? to;
+  if (base === "/settings/theme") return path.startsWith("/settings");
+  return path === base || path.startsWith(`${base}/`);
+}
+
+export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const setCollapsed = useUiPrefs((s) => s.setSidebarCollapsed);
+  const userCollapsed = useUiPrefs((s) => s.sidebarCollapsed);
+  const folded = useUiPrefs((s) => s.collapsedSections);
+  const toggleSection = useUiPrefs((s) => s.toggleSection);
+  const setSectionCollapsed = useUiPrefs((s) => s.setSectionCollapsed);
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const shell = useShellQuery();
-  const dynamicSections = shell.data?.sidebar?.sections;
-  const activePane = useMailboxPane((state) => state.activePane);
-  const setActivePane = useMailboxPane((state) => state.setActivePane);
-  const sidebarIndex = useMailboxPane((state) => state.sidebarIndex);
-  const setSidebarIndex = useMailboxPane((state) => state.setSidebarIndex);
+  const activePane = useMailboxPane((s) => s.activePane);
+  const setActivePane = useMailboxPane((s) => s.setActivePane);
+  const focusIndex = useMailboxPane((s) => s.sidebarIndex);
+  const setFocusIndex = useMailboxPane((s) => s.setSidebarIndex);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Saved searches show unread counts like labels (TUI tab strip). Counts
+  // are keyed by saved-search id; the shell knows them by name.
+  const savedSearches = useQuery({
+    queryKey: ["saved-searches"],
+    queryFn: fetchSavedSearches,
+    staleTime: 60_000,
+  });
+  const savedCounts = useQuery({
+    queryKey: ["saved-search-counts"],
+    queryFn: fetchSavedSearchUnreadCounts,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const unreadBySavedName = useMemo(() => {
+    const counts = savedCounts.data?.counts ?? {};
+    return new Map(
+      (savedSearches.data?.searches ?? []).map((search) => [search.name, counts[search.id] ?? 0]),
+    );
+  }, [savedCounts.data, savedSearches.data]);
+
   const sections = useMemo<NavSection[]>(() => {
-    const lensSections =
-      dynamicSections && dynamicSections.length > 0
-        ? dynamicSections.map((section) => ({
-            label: section.title,
-            items: section.items.map((item) => ({
-              to: sidebarItemPath(item),
-              label: item.label,
-              Icon: iconForSidebarItem(item),
-              badge: item.unread && item.unread > 0 ? item.unread : undefined,
-            })),
-          }))
-        : [{ label: "Lenses", items: fallbackLenses }];
-    return [
-      { label: "Workspace", items: primary },
-      ...lensSections,
-      { label: "System", items: systemItems },
+    const lenses = lensesFromShell(shell.data);
+    const labels = lenses.filter((lens) => lens.section === "labels");
+    const saved = lenses.filter((lens) => lens.section === "saved");
+    const result: NavSection[] = [
+      { id: "mail", foldable: false, entries: mailEntries(lenses) },
+      { id: "triage", title: "Triage", foldable: true, entries: TRIAGE },
     ];
-  }, [dynamicSections]);
-  const navigationItems = useMemo(() => sections.flatMap((section) => section.items), [sections]);
-
-  useEffect(() => {
-    const activeIndex = navigationItems.findIndex((item) => isItemActive(path, item.to));
-    if (activeIndex >= 0 && activePane !== "sidebar" && sidebarIndex !== activeIndex) {
-      setSidebarIndex(activeIndex);
+    if (labels.length > 0) {
+      result.push({
+        id: "labels",
+        title: "Labels",
+        foldable: true,
+        entries: labels.map((lens) => ({
+          key: lens.key,
+          to: lens.path,
+          label: lens.label,
+          Icon: Tag,
+          count: lens.unread,
+          emphasize: true,
+        })),
+      });
     }
-  }, [activePane, navigationItems, path, setSidebarIndex, sidebarIndex]);
+    if (saved.length > 0) {
+      result.push({
+        id: "saved",
+        title: "Saved searches",
+        foldable: true,
+        entries: saved.map((lens, index) => ({
+          key: lens.key,
+          to: lens.path,
+          label: lens.label,
+          Icon: Bookmark,
+          count: unreadBySavedName.get(lens.label),
+          emphasize: true,
+          shortcut: index < 9 ? `g ${index + 1}` : undefined,
+        })),
+      });
+    }
+    result.push({ id: "tools", title: "Tools", foldable: true, entries: TOOLS });
+    return result;
+  }, [shell.data, unreadBySavedName]);
 
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (activePane !== "sidebar") return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable=true]")) return;
-      if (event.key === "j" || event.key === "ArrowDown") {
-        event.preventDefault();
-        setSidebarIndex(Math.min(navigationItems.length - 1, sidebarIndex + 1));
-      } else if (event.key === "k" || event.key === "ArrowUp") {
-        event.preventDefault();
-        setSidebarIndex(Math.max(0, sidebarIndex - 1));
-      } else if (
-        event.key === "l" ||
-        event.key === "ArrowRight" ||
-        event.key === "Enter" ||
-        event.key === "o"
+  // Keyboard walks only what is visible: folded sections contribute their
+  // header, not their entries.
+  const visible = useMemo(
+    () =>
+      sections.flatMap((section) =>
+        section.foldable && folded.includes(section.id) && !collapsed
+          ? []
+          : section.entries.map((entry) => ({ entry, section })),
+      ),
+    [collapsed, folded, sections],
+  );
+
+  const sidebarFocused = activePane === "sidebar";
+  useShortcutScope("sidebar", sidebarFocused);
+  const clamp = (index: number) => Math.max(0, Math.min(visible.length - 1, index));
+  const visibleCount = visible.length;
+  const current = visible[clamp(focusIndex)];
+  useScopeController("sidebar", {
+    down: () => setFocusIndex(clamp(focusIndex + 1)),
+    up: () => setFocusIndex(clamp(focusIndex - 1)),
+    top: () => setFocusIndex(0),
+    bottom: () => setFocusIndex(visible.length - 1),
+    open: () => {
+      if (!current) return;
+      void navigate({ to: current.entry.to });
+      if (
+        current.section.id === "mail" ||
+        current.section.id === "labels" ||
+        current.section.id === "saved"
       ) {
-        event.preventDefault();
-        const item = navigationItems[sidebarIndex];
-        if (item) {
-          void navigate({ to: item.to });
-          setActivePane("mailbox");
-        }
+        setActivePane("mailbox");
       }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activePane, navigate, navigationItems, setActivePane, setSidebarIndex, sidebarIndex]);
+    },
+    collapse: () =>
+      current && current.section.foldable && setSectionCollapsed(current.section.id, true),
+    expand: () => {
+      const next = sections.find((section) => section.foldable && folded.includes(section.id));
+      if (next) setSectionCollapsed(next.id, false);
+    },
+  });
 
-  let itemIndex = 0;
+  // Keep the keyboard cursor on the page the user is on when they arrive.
+  useEffect(() => {
+    if (sidebarFocused) return;
+    const index = visible.findIndex(({ entry }) => isActive(path, entry.to));
+    if (index >= 0 && index !== focusIndex) setFocusIndex(index);
+  }, [focusIndex, path, setFocusIndex, sidebarFocused, visible]);
 
+  // Follow the keyboard cursor, only when it moves: scrolling on every
+  // render would pull the list away from under a pointer mid-click.
+  useEffect(() => {
+    if (!sidebarFocused) return;
+    const index = Math.max(0, Math.min(visibleCount - 1, focusIndex));
+    listRef.current
+      ?.querySelector<HTMLElement>(`[data-nav-index="${index}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [focusIndex, sidebarFocused, visibleCount]);
+
+  let runningIndex = -1;
   return (
-    <aside
-      className="flex h-full flex-col bg-sidebar text-sidebar-foreground"
-      aria-label="Mailbox sidebar"
+    <div
+      className="flex h-full min-h-0 flex-col"
+      onMouseDown={(event) => {
+        // The pressed item becomes the cursor before the pane takes the
+        // keyboard, so the cursor-follow scroll has nowhere else to go.
+        const item = (event.target as Element).closest<HTMLElement>("[data-nav-index]");
+        if (item) setFocusIndex(Number(item.dataset.navIndex));
+        setActivePane("sidebar");
+      }}
     >
       <div className="border-b border-sidebar-border p-2">
         <AccountSwitcher collapsed={collapsed} />
       </div>
 
-      <ScrollArea className="flex-1">
-        <div className="px-2 py-3">
-          {sections.map((section, sectionIndex) => (
-            <SidebarSection
-              key={section.label}
-              label={section.label}
-              collapsed={collapsed}
-              className={sectionIndex > 0 ? "mt-4" : undefined}
+      <div
+        ref={listRef}
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-2"
+        data-active-pane={sidebarFocused ? "true" : undefined}
+      >
+        {sections.map((section) => {
+          const isFolded = section.foldable && folded.includes(section.id) && !collapsed;
+          return (
+            <nav
+              key={section.id}
+              aria-label={section.title ?? "Mail"}
+              className={cn(section.id !== "mail" && "mt-3")}
             >
-              {section.items.map((item) => {
-                const index = itemIndex;
-                itemIndex += 1;
-                return (
-                  <SidebarLink
-                    key={`${section.label}-${item.to}-${item.label}`}
-                    item={item}
-                    collapsed={collapsed}
-                    active={isItemActive(path, item.to)}
-                    focused={activePane === "sidebar" && sidebarIndex === index}
-                    onFocusPane={() => {
-                      setSidebarIndex(index);
-                      setActivePane("sidebar");
-                    }}
+              {section.title && !collapsed ? (
+                <button
+                  type="button"
+                  onClick={() => toggleSection(section.id)}
+                  aria-expanded={!isFolded}
+                  className="group mb-0.5 flex w-full items-center gap-1 rounded px-2 py-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground hover:text-sidebar-foreground"
+                >
+                  <ChevronRight
+                    className={cn("size-3 transition-transform", !isFolded && "rotate-90")}
                   />
-                );
-              })}
-            </SidebarSection>
-          ))}
-        </div>
-      </ScrollArea>
+                  {section.title}
+                </button>
+              ) : section.title && collapsed ? (
+                <div className="mx-3 my-2 border-t border-sidebar-border" aria-hidden />
+              ) : null}
+              {isFolded
+                ? null
+                : section.entries.map((entry) => {
+                    runningIndex += 1;
+                    const index = runningIndex;
+                    return (
+                      <SidebarLink
+                        key={entry.key}
+                        entry={entry}
+                        index={index}
+                        onActivate={() => {
+                          setFocusIndex(index);
+                          // A clicked mailbox is where the keyboard goes next.
+                          if (
+                            section.id === "mail" ||
+                            section.id === "labels" ||
+                            section.id === "saved"
+                          ) {
+                            setActivePane("mailbox");
+                          }
+                        }}
+                        collapsed={collapsed}
+                        active={isActive(path, entry.to)}
+                        focused={sidebarFocused && clamp(focusIndex) === index}
+                      />
+                    );
+                  })}
+            </nav>
+          );
+        })}
+      </div>
 
       <div
         className={cn(
-          "border-t border-sidebar-border px-2 py-2",
-          collapsed
-            ? "flex flex-col items-center gap-1"
-            : "flex items-center justify-between gap-2",
+          "flex border-t border-sidebar-border p-1.5",
+          collapsed ? "flex-col items-center gap-1" : "items-center justify-between",
         )}
       >
-        <ConnectionPill compact={collapsed} />
-        <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
-          <ThemePicker />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setCollapsed(!collapsed)}
-                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              >
-                {collapsed ? (
-                  <ChevronsRight className="size-3.5" />
-                ) : (
-                  <ChevronsLeft className="size-3.5" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{collapsed ? "Expand" : "Collapse"}</TooltipContent>
-          </Tooltip>
-        </div>
+        <ThemePicker />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setCollapsed(!userCollapsed)}
+              aria-label={userCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {userCollapsed ? (
+                <ChevronsRight className="size-4" />
+              ) : (
+                <ChevronsLeft className="size-4" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {userCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          </TooltipContent>
+        </Tooltip>
       </div>
-    </aside>
-  );
-}
-
-interface SectionProps {
-  label: string;
-  collapsed: boolean;
-  className?: string;
-  children: ReactNode;
-}
-
-function SidebarSection({ label, collapsed, className, children }: SectionProps) {
-  return (
-    <div className={className}>
-      {!collapsed && (
-        <div className="mb-1 px-2 text-2xs font-semibold uppercase tracking-wide text-sidebar-foreground/60">
-          {label}
-        </div>
-      )}
-      <nav className="flex flex-col gap-0.5">{children}</nav>
     </div>
   );
 }
 
-interface LinkProps {
-  item: NavItem;
+function SidebarLink({
+  entry,
+  index,
+  collapsed,
+  active,
+  focused,
+  onActivate,
+}: {
+  entry: NavEntry;
+  index: number;
+  onActivate: () => void;
   collapsed: boolean;
   active: boolean;
   focused: boolean;
-  onFocusPane: () => void;
-}
-
-function SidebarLink({ item, collapsed, active, focused, onFocusPane }: LinkProps) {
-  const inner = (
+}) {
+  const count = entry.count && entry.count > 0 ? entry.count : null;
+  const link = (
     <Link
-      to={item.to}
-      data-focused={focused ? "true" : undefined}
-      onFocus={onFocusPane}
-      className={cn(
-        "group flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
-        active
-          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        focused && "outline outline-1 outline-sidebar-ring/80",
-      )}
+      to={entry.to}
+      onClick={onActivate}
+      data-nav-index={index}
       aria-current={active ? "page" : undefined}
+      aria-label={collapsed ? `${entry.label}${count ? `, ${count} unread` : ""}` : undefined}
+      className={cn(
+        "group relative flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors",
+        collapsed && "justify-center px-0",
+        active
+          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+          : "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+        focused && "ring-1 ring-inset ring-sidebar-ring",
+      )}
     >
-      <item.Icon className={cn("size-3.5 shrink-0", active && "text-sidebar-primary")} />
-      {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-      {!collapsed && item.badge !== undefined ? (
+      {active ? (
         <span
-          className={cn(
-            "font-mono text-2xs",
-            active ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/60",
-          )}
-        >
-          {item.badge}
+          aria-hidden
+          className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-sidebar-primary"
+        />
+      ) : null}
+      <entry.Icon
+        className={cn("size-4 shrink-0", active ? "text-sidebar-primary" : "text-muted-foreground")}
+      />
+      {!collapsed ? <span className="min-w-0 flex-1 truncate">{entry.label}</span> : null}
+      {!collapsed && entry.shortcut ? (
+        <span className="hidden font-mono text-2xs text-muted-foreground group-hover:inline">
+          {formatChord(entry.shortcut)}
         </span>
       ) : null}
-      {!collapsed && item.shortcut ? (
-        <kbd className="rounded border border-sidebar-border bg-sidebar-accent px-1.5 py-0.5 font-mono text-2xs text-sidebar-foreground/60">
-          {item.shortcut}
-        </kbd>
+      {!collapsed && count ? (
+        <span
+          className={cn(
+            "font-mono text-2xs tabular-nums group-hover:hidden",
+            entry.emphasize
+              ? "font-semibold text-sidebar-accent-foreground"
+              : "text-muted-foreground",
+          )}
+        >
+          {count > 9999 ? "9999+" : count.toLocaleString()}
+        </span>
+      ) : null}
+      {collapsed && count && entry.emphasize ? (
+        <span aria-hidden className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
       ) : null}
     </Link>
   );
-  if (collapsed) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>{inner}</TooltipTrigger>
-        <TooltipContent side="right">{item.label}</TooltipContent>
-      </Tooltip>
-    );
-  }
-  return inner;
-}
-
-function isItemActive(path: string, to: string): boolean {
-  if (to === "/m/inbox") return path === to || path.startsWith(`${to}/`);
-  return path === to || path.startsWith(`${to}/`);
-}
-
-function sidebarItemPath(item: SidebarItem): string {
-  const lens = item.lens;
-  if (!lens) return "/m/inbox";
-  if (lens.kind === "inbox") return "/m/inbox";
-  if (lens.kind === "all_mail") return "/m/archive";
-  if (lens.kind === "saved_search") return `/m/saved/${item.id.replace(/^saved-search-/, "")}`;
-  if (lens.kind === "label") return `/m/label/${item.id}`;
-  if (lens.kind === "subscription") return `/m/label/${item.id}`;
-  return "/m/inbox";
-}
-
-function iconForSidebarItem(item: SidebarItem): NavItem["Icon"] {
-  const label = item.label.toLowerCase();
-  if (label.includes("inbox")) return Inbox;
-  if (label.includes("star")) return Star;
-  if (label.includes("sent")) return Send;
-  if (label.includes("draft")) return Mail;
-  if (label.includes("spam")) return Shield;
-  if (label.includes("trash")) return Trash2;
-  if (label.includes("archive") || label.includes("all mail")) return Archive;
-  if (label.includes("subscription")) return Sparkles;
-  return Mail;
+  if (!collapsed) return link;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{link}</TooltipTrigger>
+      <TooltipContent side="right">
+        {entry.label}
+        {entry.shortcut ? (
+          <span className="ml-2 font-mono text-muted-foreground">
+            {formatChord(entry.shortcut)}
+          </span>
+        ) : null}
+      </TooltipContent>
+    </Tooltip>
+  );
 }

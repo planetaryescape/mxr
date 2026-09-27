@@ -12,6 +12,7 @@ export type Density = "compact" | "regular" | "comfortable";
 export type ComposeEditor = "codemirror-vim" | "tiptap";
 export type EmailHtmlTheme = "dark" | "original";
 export type ReaderLayout = "split" | "full";
+export type ReaderView = "formatted" | "reader" | "plain";
 /** Undo-send window in seconds; 0 sends immediately. */
 export type UndoSendSeconds = 0 | 5 | 10 | 30;
 
@@ -26,6 +27,23 @@ export interface UiPrefsState {
   notifyAllNewMail: boolean;
   vipAllowlist: string[];
   undoSendSeconds: UndoSendSeconds;
+  /** Account the mail views are scoped to; null shows every account. */
+  accountScope: string | null;
+  /** Sidebar sections the user folded. */
+  collapsedSections: string[];
+  /** Group the list by conversation (TUI thread mode) or show messages. */
+  listMode: "threads" | "messages";
+  /** Body view the reader opens with: sanitized HTML, cleaned text, or raw text. */
+  readerView: ReaderView;
+  /** Senders whose remote images load without asking. */
+  remoteImageSenders: string[];
+  setReaderView: (view: ReaderView) => void;
+  allowRemoteImagesFrom: (sender: string) => void;
+  forgetRemoteImagesFrom: (sender: string) => void;
+  setAccountScope: (accountId: string | null) => void;
+  toggleSection: (sectionId: string) => void;
+  setSectionCollapsed: (sectionId: string, collapsed: boolean) => void;
+  setListMode: (mode: "threads" | "messages") => void;
   setUndoSendSeconds: (seconds: UndoSendSeconds) => void;
   setTheme: (t: Theme) => void;
   setDensity: (d: Density) => void;
@@ -45,13 +63,47 @@ export const useUiPrefs = create<UiPrefsState>()(
       theme: "midnight",
       density: "regular",
       sidebarCollapsed: false,
-      composeEditor: "tiptap",
+      // Locked product decision (docs/web-app.md): CodeMirror + vim is the
+      // default. Only the default changes; a persisted choice is kept as is.
+      composeEditor: "codemirror-vim",
       emailHtmlTheme: "dark",
       readerLayout: "split",
       notificationsEnabled: false,
       notifyAllNewMail: false,
       vipAllowlist: [],
       undoSendSeconds: 10,
+      accountScope: null,
+      collapsedSections: ["tools"],
+      listMode: "threads",
+      readerView: "formatted",
+      remoteImageSenders: [],
+      setReaderView: (readerView) => set({ readerView }),
+      allowRemoteImagesFrom: (sender) =>
+        set((s) => ({
+          remoteImageSenders: s.remoteImageSenders.includes(sender.toLowerCase())
+            ? s.remoteImageSenders
+            : [...s.remoteImageSenders, sender.toLowerCase()],
+        })),
+      forgetRemoteImagesFrom: (sender) =>
+        set((s) => ({
+          remoteImageSenders: s.remoteImageSenders.filter(
+            (entry) => entry !== sender.toLowerCase(),
+          ),
+        })),
+      setAccountScope: (accountScope) => set({ accountScope }),
+      toggleSection: (sectionId) =>
+        set((s) => ({
+          collapsedSections: s.collapsedSections.includes(sectionId)
+            ? s.collapsedSections.filter((id) => id !== sectionId)
+            : [...s.collapsedSections, sectionId],
+        })),
+      setSectionCollapsed: (sectionId, collapsed) =>
+        set((s) => ({
+          collapsedSections: collapsed
+            ? [...new Set([...s.collapsedSections, sectionId])]
+            : s.collapsedSections.filter((id) => id !== sectionId),
+        })),
+      setListMode: (listMode) => set({ listMode }),
       setUndoSendSeconds: (undoSendSeconds) => set({ undoSendSeconds }),
       setTheme: (theme) => set({ theme }),
       setDensity: (density) => set({ density }),
@@ -97,15 +149,34 @@ function uiPrefsStorage(): StateStorage {
   };
 }
 
+const LIGHT_THEMES = new Set<Theme>(["light", "paper"]);
+
+export function resolveTheme(theme: Theme): Exclude<Theme, "system"> {
+  if (theme !== "system") return theme;
+  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "midnight";
+}
+
 export function applyThemeAttribute(theme: Theme): void {
   if (typeof document === "undefined") return;
-  const resolved =
-    theme === "system"
-      ? window.matchMedia("(prefers-color-scheme: light)").matches
-        ? "light"
-        : "midnight"
-      : theme;
+  const resolved = resolveTheme(theme);
   document.documentElement.setAttribute("data-theme", resolved);
+  // `dark:` utilities key off the scheme, so custom dark themes get them too.
+  document.documentElement.setAttribute(
+    "data-scheme",
+    LIGHT_THEMES.has(resolved) ? "light" : "dark",
+  );
+}
+
+/** Re-resolve the "system" theme when the OS appearance changes. */
+export function watchSystemTheme(): () => void {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const media = window.matchMedia("(prefers-color-scheme: light)");
+  const onChange = () => {
+    const { theme } = useUiPrefs.getState();
+    if (theme === "system") applyThemeAttribute(theme);
+  };
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
 }
 
 export function applyDensityAttribute(density: Density): void {

@@ -51,6 +51,7 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_get_draft`
 - `mxr_update_draft`
 - `mxr_list_drafts`
+- `mxr_list_scheduled_sends`
 - `mxr_delete_draft`
 - `mxr_sync_draft_to_provider`
 - `mxr_copy_draft_to_provider`

@@ -1,25 +1,24 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
 import { Mail, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  fetchContactAsymmetry,
-  fetchContactDecay,
-  type ContactRow,
-} from "@/features/analytics/api";
+import { fetchContactAsymmetry, fetchContactDecay } from "@/features/analytics/api";
 import { cn } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
+import { prefilledMessageIntent, useComposeUi } from "./composeUiStore";
 
 type ComposeStep = "to" | "subject";
-type RecipientContact = Required<Pick<ContactRow, "email">> &
-  Pick<ContactRow, "display_name" | "inbound" | "outbound">;
+interface RecipientContact {
+  email: string;
+  display_name?: string | null;
+  /** Mail exchanged both ways; people you write with most rank first. */
+  volume: number;
+}
 
 export function ComposeLauncher() {
-  const navigate = useNavigate();
   const open = useModals((state) => state.composeLauncherOpen);
   const setOpen = useModals((state) => state.setComposeLauncherOpen);
   const [step, setStep] = useState<ComposeStep>("to");
@@ -54,15 +53,11 @@ export function ComposeLauncher() {
     setStep("subject");
   }
 
+  // Hands off to the one compose surface; the launcher is only a fast way
+  // to fill To and Subject first.
   function openCompose() {
     close();
-    void navigate({
-      to: "/compose/new",
-      search: {
-        ...(to.trim() ? { to: to.trim() } : {}),
-        ...(subject.trim() ? { subject: subject.trim() } : {}),
-      },
-    });
+    useComposeUi.getState().openCompose(prefilledMessageIntent(to, subject), "overlay");
   }
 
   const isToStep = step === "to";
@@ -202,13 +197,22 @@ async function fetchRecipientContacts(): Promise<RecipientContact[]> {
     fetchContactAsymmetry(80),
     fetchContactDecay(80),
   ]);
-  const rows = [
-    ...(asymmetry.status === "fulfilled" ? asymmetry.value.rows : []),
-    ...(decay.status === "fulfilled" ? decay.value.rows : []),
+  const rows: RecipientContact[] = [
+    ...(asymmetry.status === "fulfilled" ? asymmetry.value.rows : []).map((row) => ({
+      email: row.email,
+      display_name: row.display_name,
+      volume: row.total_inbound + row.total_outbound,
+    })),
+    // Fading contacts carry no counts; they still belong in suggestions.
+    ...(decay.status === "fulfilled" ? decay.value.rows : []).map((row) => ({
+      email: row.email,
+      display_name: row.display_name,
+      volume: 0,
+    })),
   ];
   const contacts = new Map<string, RecipientContact>();
   for (const row of rows) {
-    const email = row.email?.trim();
+    const email = row.email.trim();
     if (!email) continue;
     const key = email.toLowerCase();
     if (!contacts.has(key)) contacts.set(key, { ...row, email });
@@ -230,7 +234,7 @@ function matchRecipientSuggestions(contacts: RecipientContact[], fragment: strin
       const name = contact.display_name?.toLowerCase() ?? "";
       return email.includes(needle) || name.includes(needle);
     })
-    .toSorted((a, b) => contactScore(b) - contactScore(a))
+    .toSorted((a, b) => b.volume - a.volume)
     .slice(0, 5);
 }
 
@@ -244,8 +248,4 @@ function replaceLastRecipientFragment(value: string, email: string): string {
   if (commaIndex === -1) return email;
   const prefix = value.slice(0, commaIndex + 1);
   return `${prefix}${prefix.endsWith(" ") ? "" : " "}${email}`;
-}
-
-function contactScore(contact: Pick<ContactRow, "inbound" | "outbound">): number {
-  return (contact.inbound ?? 0) + (contact.outbound ?? 0);
 }

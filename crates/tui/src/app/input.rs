@@ -441,6 +441,7 @@ impl App {
                 (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::StoredDraftsModalPrev),
                 (KeyCode::Enter | KeyCode::Char('e'), _) => Some(Action::StoredDraftsModalEdit),
                 (KeyCode::Char('d'), _) => Some(Action::StoredDraftsModalPreviewDelete),
+                (KeyCode::Char('c'), _) => Some(Action::StoredDraftsModalPreviewCancelSchedule),
                 (KeyCode::Char('p'), _) => Some(Action::StoredDraftsModalPreviewPush),
                 _ => None,
             };
@@ -1368,6 +1369,24 @@ impl App {
     }
 
     fn handle_draft_options_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        // The instruction is a text field: letters type, they don't navigate.
+        if self.modals.draft_options.active == crate::app::DraftOptionsField::Instruction {
+            match key.code {
+                KeyCode::Char(c)
+                    if !key
+                        .modifiers
+                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                {
+                    self.modals.draft_options.instruction.push(c);
+                    return None;
+                }
+                KeyCode::Backspace => {
+                    self.modals.draft_options.instruction.pop();
+                    return None;
+                }
+                _ => {}
+            }
+        }
         match (key.code, key.modifiers) {
             (KeyCode::Esc, _) => self.modals.draft_options.close(),
             (KeyCode::Enter, _) => self.submit_draft_options_modal(),

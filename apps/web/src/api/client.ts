@@ -133,6 +133,24 @@ export async function apiFetch<T>(path: string, opts: RawFetchOpts = {}): Promis
   return (await res.json()) as T;
 }
 
+/** Like `apiFetch`, for endpoints that return bytes (inline images). */
+export async function apiFetchBlob(
+  path: string,
+  opts: { signal?: AbortSignal } = {},
+): Promise<Blob> {
+  let token = getToken();
+  if (!token) token = await tryLocalHandshake();
+  const headers = new Headers();
+  if (token) headers.set("authorization", `Bearer ${token}`);
+  const res = await fetch(`${getBridgeBaseUrl()}${path}`, { headers, signal: opts.signal });
+  if (res.status === 401) throw new UnauthorizedError();
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw bridgeRequestError(res.status, res.statusText, text);
+  }
+  return res.blob();
+}
+
 export function logoutAndReload(): void {
   clearToken();
   if (typeof window !== "undefined") window.location.reload();

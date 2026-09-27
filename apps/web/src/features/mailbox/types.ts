@@ -24,6 +24,11 @@ export interface MessageRowView {
   /// `"none"` when missing.
   link_density?: "none" | "some" | "heavy";
   message_count?: number | null;
+  /** Thread rows: every message in the thread, so actions cover the whole
+   * conversation. Absent on message rows. */
+  message_ids?: string[] | null;
+  /** Thread rows: up to five participants. */
+  participants?: AddressView[] | null;
   attachment_id?: string | null;
   attachment_filename?: string | null;
   attachment_size_bytes?: number | null;
@@ -219,6 +224,8 @@ export interface MutationResult {
   failed: number;
   accounts?: AccountMutationResult[];
   mutation_id?: string;
+  /** Batch jobs: one undo id per daemon chunk. */
+  undo_ids?: string[];
 }
 
 export interface MutationResponse {

@@ -276,6 +276,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/archive-ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask the archive a question with citations */
+        post: operations["mail_archive_ask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/attachments/download": {
         parameters: {
             query?: never;
@@ -474,6 +491,23 @@ export interface paths {
         put?: never;
         /** Save compose session */
         post: operations["compose_session_save"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/compose/session/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Store a compose session as a local draft and schedule it */
+        post: operations["compose_session_schedule"];
         delete?: never;
         options?: never;
         head?: never;
@@ -939,6 +973,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/messages/{message_id}/inline-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bytes of one inline (cid:) image, by its HTML src */
+        get: operations["mail_message_inline_image"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/mutation-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start a mutation as a background job */
+        post: operations["mail_mutation_jobs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/mutations/archive": {
         parameters: {
             query?: never;
@@ -1109,6 +1177,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/owed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List threads that owe a reply */
+        get: operations["mail_owed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/relationship": {
         parameters: {
             query?: never;
@@ -1218,7 +1303,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List pending scheduled sends */
+        get: operations["scheduled_sends_list"];
         put?: never;
         /** Schedule a draft send */
         post: operations["scheduled_sends_create"];
@@ -1307,6 +1393,23 @@ export interface paths {
         };
         /** Group a mail search result set */
         get: operations["mail_search_groups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/send-time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recommend a send time for recipients */
+        get: operations["mail_send_time"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1606,6 +1709,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/whois": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Explain a person or term from local evidence */
+        get: operations["mail_whois"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/openapi.json": {
         parameters: {
             query?: never;
@@ -1828,6 +1948,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/analytics/cadence-drift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Watched contacts past their usual cadence */
+        get: operations["analytics_cadence_drift"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/analytics/contact-asymmetry": {
         parameters: {
             query?: never;
@@ -2043,6 +2180,41 @@ export interface paths {
         put?: never;
         /** Complete OAuth session */
         post: operations["auth_session_complete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/cadence/unwatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove a contact from the cadence watchlist */
+        post: operations["cadence_unwatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/cadence/watch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the cadence watchlist */
+        get: operations["cadence_watch_list"];
+        put?: never;
+        /** Add a contact to the cadence watchlist */
+        post: operations["cadence_watch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2282,6 +2454,23 @@ export interface paths {
         put?: never;
         /** Run saved search */
         post: operations["saved_searches_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/saved-searches/unread-counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Unread match counts per saved search */
+        get: operations["saved_searches_unread_counts"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3302,6 +3491,54 @@ export interface components {
             body_markdown?: string | null;
             /** @description Optional `text/plain` alternative supplied alongside `body_html`. */
             body_text?: string | null;
+        };
+        /**
+         * @description One replayed reply from `mxr draft eval`: the draft the model wrote from
+         *     what was known just before the user replied, next to what they sent.
+         *     Local only; never recorded in the activity log.
+         */
+        DraftEvalCaseData: {
+            actual: string;
+            /** Format: int32 */
+            actual_words: number;
+            counterparty: string;
+            draft: string;
+            /** Format: int32 */
+            draft_words: number;
+            error?: string | null;
+            /** @description Both open the same way (or neither greets). */
+            greeting_match: boolean;
+            /** @description Numbers in the draft that appear nowhere the model could see. */
+            invented_numbers: string[];
+            /**
+             * Format: int32
+             * @description `[[?: …]]` gaps the model left for the user.
+             */
+            placeholders: number;
+            reply_message_id: components["schemas"]["MessageId"];
+            /** @description Both close the same way (or neither signs off). */
+            sign_off_match: boolean;
+        };
+        DraftEvalSummaryData: {
+            /** Format: int32 */
+            cases: number;
+            /** Format: int32 */
+            failed: number;
+            /** Format: double */
+            greeting_match_rate: number;
+            /**
+             * Format: double
+             * @description Share of drafts with at least one invented number.
+             */
+            invented_number_rate: number;
+            /**
+             * Format: double
+             * @description Median of draft words / actual words (1.0 is the user's length).
+             */
+            median_length_ratio: number;
+            model: string;
+            /** Format: double */
+            sign_off_match_rate: number;
         };
         /** Format: uuid */
         DraftId: string;
@@ -4456,6 +4693,10 @@ export interface components {
             cmd: "CancelScheduledSend";
             draft_id: components["schemas"]["DraftId"];
         } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "ListScheduledSends";
+        } | {
             /** @enum {string} */
             cmd: "ListSnippets";
         } | {
@@ -4634,10 +4875,21 @@ export interface components {
             thread_id?: null | components["schemas"]["ThreadId"];
             to?: null | components["schemas"]["Address"];
         } | {
+            /**
+             * @description The text to refine, when the editor has changes the stored draft
+             *     doesn't yet; the stored body otherwise.
+             */
+            body?: string | null;
             /** @enum {string} */
             cmd: "DraftRefine";
             draft_id: components["schemas"]["DraftId"];
             knobs: components["schemas"]["DraftRefineKnobsData"];
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "DraftEval";
+            /** Format: int32 */
+            limit: number;
         } | {
             /** @enum {string} */
             cmd: "PrepareReply";
@@ -5046,6 +5298,10 @@ export interface components {
             snippets: components["schemas"]["SnippetData"][];
         } | {
             /** @enum {string} */
+            kind: "ScheduledSends";
+            sends: components["schemas"]["ScheduledSendData"][];
+        } | {
+            /** @enum {string} */
             kind: "SnippetData";
             snippet: components["schemas"]["SnippetData"];
         } | {
@@ -5150,6 +5406,11 @@ export interface components {
             /** Format: int32 */
             rewrite_iterations?: number;
             voice_match?: null | components["schemas"]["VoiceMatchData"];
+        } | {
+            cases: components["schemas"]["DraftEvalCaseData"][];
+            /** @enum {string} */
+            kind: "DraftEval";
+            summary: components["schemas"]["DraftEvalSummaryData"];
         } | {
             content: string;
             /** @enum {string} */
@@ -5557,6 +5818,28 @@ export interface components {
         };
         /** Format: uuid */
         SavedSearchId: string;
+        /** @description One draft waiting to be sent later. */
+        ScheduledSendData: {
+            account_id: components["schemas"]["AccountId"];
+            bcc?: components["schemas"]["Address"][];
+            cc?: components["schemas"]["Address"][];
+            draft_id: components["schemas"]["DraftId"];
+            /**
+             * Format: date-time
+             * @description When this draft last fired, if it fired before and was then
+             *     rescheduled (for example after a failed or blocked send).
+             */
+            last_attempt_at?: string | null;
+            /**
+             * @description Outcome of that firing: `sent`, `blocked`, `failed` or
+             *     `interrupted`. The error text itself is not persisted.
+             */
+            last_attempt_outcome?: string | null;
+            /** Format: date-time */
+            send_at: string;
+            subject: string;
+            to?: components["schemas"]["Address"][];
+        };
         ScreenerDecisionData: {
             account_id: components["schemas"]["AccountId"];
             /** Format: date-time */
@@ -6605,6 +6888,31 @@ export interface operations {
             };
         };
     };
+    mail_archive_ask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     attachment_download: {
         parameters: {
             query?: never;
@@ -6888,6 +7196,31 @@ export interface operations {
         };
     };
     compose_session_save: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    compose_session_schedule: {
         parameters: {
             query?: never;
             header?: never;
@@ -7587,6 +7920,56 @@ export interface operations {
             };
         };
     };
+    mail_message_inline_image: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_mutation_jobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     mutation_archive: {
         parameters: {
             query?: never;
@@ -7837,6 +8220,31 @@ export interface operations {
             };
         };
     };
+    mail_owed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     mail_relationship_profile: {
         parameters: {
             query?: never;
@@ -7963,6 +8371,31 @@ export interface operations {
         };
     };
     reply_later_set: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    scheduled_sends_list: {
         parameters: {
             query?: never;
             header?: never;
@@ -8163,6 +8596,31 @@ export interface operations {
         };
     };
     mail_search_groups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_send_time: {
         parameters: {
             query?: never;
             header?: never;
@@ -8662,6 +9120,31 @@ export interface operations {
             };
         };
     };
+    mail_whois: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     openapi_json: {
         parameters: {
             query?: never;
@@ -9012,6 +9495,31 @@ export interface operations {
             };
         };
     };
+    analytics_cadence_drift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     analytics_contact_asymmetry: {
         parameters: {
             query?: never;
@@ -9313,6 +9821,81 @@ export interface operations {
         };
     };
     auth_session_complete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cadence_unwatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cadence_watch_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cadence_watch: {
         parameters: {
             query?: never;
             header?: never;
@@ -9688,6 +10271,31 @@ export interface operations {
         };
     };
     saved_searches_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    saved_searches_unread_counts: {
         parameters: {
             query?: never;
             header?: never;

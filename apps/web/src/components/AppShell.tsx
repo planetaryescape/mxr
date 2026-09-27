@@ -1,68 +1,100 @@
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect, useMemo } from "react";
-import { toast } from "sonner";
+import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from "react";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { HelpDialog } from "@/components/HelpDialog";
 import { OfflineBanner } from "@/components/OfflineBanner";
-import { RightRail } from "@/components/RightRail";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBar } from "@/components/StatusBar";
 import { Topbar } from "@/components/Topbar";
-import { CommandPaletteMount } from "@/features/command-palette/CommandPalette";
-import { ComposeHost } from "@/features/compose/ComposeHost";
-import { ComposeLauncher } from "@/features/compose/ComposeLauncher";
-import { SearchPalette } from "@/features/search/SearchPalette";
 import { fetchAccounts } from "@/features/accounts/api";
 import { useNewMessageNotifier } from "@/features/notifications/useNewMessageNotifier";
-import { useKeybindings } from "@/hooks/useKeybindings";
-import { buildGlobalKeymap } from "@/lib/keymap";
-import { useMailboxPane } from "@/state/mailboxPaneStore";
+import { useKeyDispatcher } from "@/hooks/useKeyDispatcher";
+import { NARROW_SHELL_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
+import { setRuntimeNavigate } from "@/lib/actions";
+import { useComposeUi } from "@/features/compose/composeUiStore";
+import { useMailDialogs } from "@/features/mail-actions/mailDialogStore";
 import { useModals } from "@/state/modalStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
-const G_A_MIGRATION_KEY = "mxr.shortcut.ga-migration-shown.v1";
+// Everything below only exists while open, so it loads on first use and
+// stays out of the entry chunk (compose alone pulls in editors, the HTML
+// sanitizer and address parsing).
+const loadPalette = () => import("@/features/command-palette/CommandPalette");
+const loadSearchPalette = () => import("@/features/search/SearchPalette");
+const HelpDialog = lazyNamed(() => import("@/components/HelpDialog"), "HelpDialog");
+const RightRail = lazyNamed(() => import("@/components/RightRail"), "RightRail");
+const CommandPaletteMount = lazyNamed(loadPalette, "CommandPaletteMount");
+const ComposeHost = lazyNamed(() => import("@/features/compose/ComposeHost"), "ComposeHost");
+const ComposeLauncher = lazyNamed(
+  () => import("@/features/compose/ComposeLauncher"),
+  "ComposeLauncher",
+);
+const MailDialogs = lazyNamed(() => import("@/features/mail-actions/MailDialogs"), "MailDialogs");
+const SearchPalette = lazyNamed(loadSearchPalette, "SearchPalette");
+
+/**
+ * The palettes open from a key and the user types straight on, so their
+ * chunks must be ready before the first ⌘K or /: letters typed while a
+ * chunk is still loading have nowhere to go.
+ */
+function usePreloadPalettes(): void {
+  useEffect(() => {
+    const preload = () => {
+      void loadPalette();
+      void loadSearchPalette();
+    };
+    if ("requestIdleCallback" in window) {
+      const handle = window.requestIdleCallback(preload, { timeout: 2000 });
+      return () => window.cancelIdleCallback(handle);
+    }
+    const timer = setTimeout(preload, 500);
+    return () => clearTimeout(timer);
+  }, []);
+}
+
+function lazyNamed<M, K extends keyof M>(load: () => Promise<M>, name: K) {
+  type Props = M[K] extends ComponentType<infer P> ? P : never;
+  return lazy(async () => ({ default: (await load())[name] as ComponentType<Props> }));
+}
+
+/** Mount once first needed, then keep mounted so state and focus survive. */
+function useOnceTrue(value: boolean): boolean {
+  const [seen, setSeen] = useState(value);
+  if (value && !seen) setSeen(true);
+  return seen || value;
+}
 
 export function AppShell() {
   const sidebarCollapsed = useUiPrefs((s) => s.sidebarCollapsed);
+  const narrow = useMediaQuery(NARROW_SHELL_QUERY);
   const rightRail = useModals((s) => s.rightRail);
   const helpOpen = useModals((s) => s.helpOpen);
   const setHelpOpen = useModals((s) => s.setHelpOpen);
-  const activePane = useMailboxPane((s) => s.activePane);
   const navigate = useNavigate();
   const path = useRouterState({ select: (state) => state.location.pathname });
   useNewMessageNotifier();
+  usePreloadPalettes();
   const accounts = useQuery({
     queryKey: ["accounts"],
     queryFn: fetchAccounts,
     retry: false,
     staleTime: 60_000,
   });
-  const keymap = useMemo(
-    () => buildGlobalKeymap({ navigate: (to) => navigate({ to }) }),
-    [navigate],
-  );
-  useKeybindings(keymap, { disabled: path.startsWith("/compose") });
 
-  // Auto-close right rail on full route change to avoid stale context
   useEffect(() => {
-    return () => useModals.getState().closeRightRail();
-  }, []);
+    setRuntimeNavigate({ navigate: (to) => void navigate({ to }) });
+  }, [navigate]);
+  useKeyDispatcher();
 
-  // One-time migration notice: `g a` used to open Analytics in some surfaces;
-  // it now consistently opens All Mail (matches Gmail + the global keymap).
-  // Analytics moved to `g y`. Suppressed after first display.
+  // A rail shows context for what was on screen; leaving that page (not
+  // just opening another thread in the same lens) closes it.
+  const railSection = path.split("/").slice(0, 3).join("/");
+  const lastSection = useRef(railSection);
   useEffect(() => {
-    if (path !== "/m/archive") return;
-    if (typeof window === "undefined") return;
-    if (window.localStorage.getItem(G_A_MIGRATION_KEY)) return;
-    toast.info("`g a` now opens All Mail. Analytics moved to `g y`. Press ? for the full list.", {
-      duration: 8000,
-      onDismiss: () => window.localStorage.setItem(G_A_MIGRATION_KEY, "1"),
-      onAutoClose: () => window.localStorage.setItem(G_A_MIGRATION_KEY, "1"),
-    });
-  }, [path]);
+    if (lastSection.current !== railSection) useModals.getState().closeRightRail();
+    lastSection.current = railSection;
+  }, [railSection]);
 
   useEffect(() => {
     if (path !== "/onboarding" && accounts.data?.accounts.length === 0) {
@@ -70,37 +102,61 @@ export function AppShell() {
     }
   }, [accounts.data?.accounts.length, navigate, path]);
 
+  const collapsed = sidebarCollapsed || narrow;
+  const paletteOpen = useModals((s) => s.commandPaletteOpen);
+  const searchOpen = useModals((s) => s.searchPaletteOpen);
+  const launcherOpen = useModals((s) => s.composeLauncherOpen);
+  const composing = useComposeUi((s) => s.intent !== null);
+  const mailDialog = useMailDialogs((s) => s.dialog !== null);
+  const mountPalette = useOnceTrue(paletteOpen);
+  const mountSearch = useOnceTrue(searchOpen);
+  const mountLauncher = useOnceTrue(launcherOpen);
+  const mountCompose = useOnceTrue(composing);
+  const mountDialogs = useOnceTrue(mailDialog);
+  const mountHelp = useOnceTrue(helpOpen);
+
   return (
     <div
       className="app-shell"
       data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
       data-rightrail-open={rightRail ? "true" : "false"}
     >
-      <div className="app-shell-sidebar">
-        <Sidebar />
-      </div>
-      <div className="app-shell-topbar">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-primary focus:px-3 focus:py-1.5 focus:text-primary-foreground"
+      >
+        Skip to content
+      </a>
+      <aside className="app-shell-sidebar" aria-label="Mailboxes">
+        <Sidebar collapsed={collapsed} />
+      </aside>
+      <header className="app-shell-topbar">
         <Topbar />
-      </div>
-      <div className="app-shell-main">
+      </header>
+      <main id="main" className="app-shell-main">
         <OfflineBanner />
-        <ErrorBoundary>
+        <ErrorBoundary resetKey={path}>
           <Outlet />
         </ErrorBoundary>
-      </div>
+      </main>
       {rightRail ? (
-        <div className="app-shell-rightrail">
-          <RightRail />
-        </div>
+        <aside className="app-shell-rightrail" aria-label="Context">
+          <Suspense fallback={null}>
+            <RightRail />
+          </Suspense>
+        </aside>
       ) : null}
-      <div className="app-shell-statusbar">
+      <footer className="app-shell-statusbar">
         <StatusBar />
-      </div>
-      <CommandPaletteMount />
-      <ComposeLauncher />
-      <ComposeHost />
-      <SearchPalette />
-      <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} path={path} activePane={activePane} />
+      </footer>
+      <Suspense fallback={null}>
+        {mountPalette ? <CommandPaletteMount /> : null}
+        {mountLauncher ? <ComposeLauncher /> : null}
+        {mountCompose ? <ComposeHost /> : null}
+        {mountSearch ? <SearchPalette /> : null}
+        {mountDialogs ? <MailDialogs /> : null}
+        {mountHelp ? <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} /> : null}
+      </Suspense>
     </div>
   );
 }

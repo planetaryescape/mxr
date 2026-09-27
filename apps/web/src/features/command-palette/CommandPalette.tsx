@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Inbox } from "lucide-react";
+import { Bookmark, Inbox, Tag } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
 
@@ -24,9 +24,10 @@ import {
   type SemanticProfile,
 } from "@/features/diagnostics/api";
 import { fetchShell } from "@/features/mailbox/api";
-import type { SidebarItem } from "@/features/mailbox/types";
+import { lensesFromShell, type MailLens } from "@/features/mailbox/lenses";
 import {
   formatChord,
+  invokeAction,
   useActionContext,
   useActionsByGroup,
   type Action,
@@ -35,7 +36,9 @@ import {
 import { useModals } from "@/state/modalStore";
 
 const GROUP_ORDER: ActionGroup[] = [
+  "Mail",
   "Compose",
+  "Read",
   "Navigate",
   "Search",
   "Triage",
@@ -46,12 +49,14 @@ const GROUP_ORDER: ActionGroup[] = [
   "Diagnostics",
   "Settings",
   "View",
-  "Mail",
+  "Select",
+  "Move",
 ];
 
 export function CommandPaletteMount() {
   const navigate = useNavigate();
   const open = useModals((state) => state.commandPaletteOpen);
+  const mode = useModals((state) => state.commandPaletteMode);
   const setOpen = useModals((state) => state.setCommandPaletteOpen);
 
   const shell = useQuery({
@@ -91,15 +96,50 @@ export function CommandPaletteMount() {
   });
 
   const semanticProfileItems = useMemo(
-    () => buildSemanticProfileActions(semanticStatus, semanticInstall.mutate, semanticUseMutation.mutate, setOpen),
+    () =>
+      buildSemanticProfileActions(
+        semanticStatus,
+        semanticInstall.mutate,
+        semanticUseMutation.mutate,
+        setOpen,
+      ),
     [semanticStatus, semanticInstall.mutate, semanticUseMutation.mutate, setOpen],
   );
 
-  const sidebarItems = shell.data?.sidebar?.sections?.flatMap((section) => section.items) ?? [];
+  const lenses = useMemo(() => lensesFromShell(shell.data), [shell.data]);
+  const lensGroup = (
+    <CommandGroup heading="Mailboxes, labels and saved searches">
+      {lenses.map((lens) => (
+        <CommandItem
+          key={lens.key}
+          value={`${lens.label} ${lens.section}`}
+          onSelect={() => openLens(lens, navigate, setOpen)}
+        >
+          <LensIcon lens={lens} />
+          <span>{lens.label}</span>
+          {lens.unread > 0 ? (
+            <CommandShortcut>{lens.unread.toLocaleString()}</CommandShortcut>
+          ) : null}
+        </CommandItem>
+      ))}
+    </CommandGroup>
+  );
+
+  if (mode === "lens") {
+    return (
+      <CommandDialog open={open} onOpenChange={setOpen}>
+        <CommandInput placeholder="Jump to a mailbox, label or saved search…" />
+        <CommandList>
+          <CommandEmpty>No mailbox or label by that name.</CommandEmpty>
+          {lensGroup}
+        </CommandList>
+      </CommandDialog>
+    );
+  }
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder="Type a command or destination..." />
+      <CommandInput placeholder="Run a command or jump somewhere…" />
       <CommandList>
         <CommandEmpty>No command found.</CommandEmpty>
         {GROUP_ORDER.flatMap((group) => {
@@ -113,7 +153,7 @@ export function CommandPaletteMount() {
                   value={`${action.label} ${action.description ?? ""}`}
                   onSelect={() => {
                     setOpen(false);
-                    void action.run(ctx);
+                    invokeAction(action, ctx);
                   }}
                 >
                   {renderIcon(action)}
@@ -123,7 +163,7 @@ export function CommandPaletteMount() {
                       <div className="text-2xs text-muted-foreground">{action.description}</div>
                     ) : null}
                   </div>
-                  {action.shortcut ? (
+                  {action.shortcut && !action.paletteOnly ? (
                     <CommandShortcut>{formatChord(action.shortcut)}</CommandShortcut>
                   ) : null}
                 </CommandItem>
@@ -139,7 +179,7 @@ export function CommandPaletteMount() {
                 <CommandItem
                   key={action.id}
                   value={`${action.label} ${action.description ?? ""}`}
-                  onSelect={() => action.run({} as never)}
+                  onSelect={() => invokeAction(action, ctx)}
                 >
                   <div>
                     <div>{action.label}</div>
@@ -151,19 +191,7 @@ export function CommandPaletteMount() {
             <CommandSeparator />
           </>
         ) : null}
-        <CommandGroup heading="Lenses">
-          {sidebarItems.map((item) => (
-            <CommandItem
-              key={item.id}
-              value={item.label}
-              onSelect={() => runSidebarItem(item, navigate, setOpen)}
-            >
-              <Inbox className="size-3.5" />
-              <span>{item.label}</span>
-              {item.unread ? <CommandShortcut>{item.unread}</CommandShortcut> : null}
-            </CommandItem>
-          ))}
-        </CommandGroup>
+        {lensGroup}
       </CommandList>
     </CommandDialog>
   );
@@ -188,9 +216,7 @@ function buildSemanticProfileActions(
   return semanticProfiles.map<Action>((profile) => {
     const isInstalled = installed.has(profile);
     return {
-      id: isInstalled
-        ? `semantic.profile.use.${profile}`
-        : `semantic.profile.install.${profile}`,
+      id: isInstalled ? `semantic.profile.use.${profile}` : `semantic.profile.install.${profile}`,
       label: isInstalled
         ? `Use semantic profile: ${profile}`
         : `Install semantic profile: ${profile}`,
@@ -211,25 +237,17 @@ function buildSemanticProfileActions(
   });
 }
 
-function runSidebarItem(
-  item: SidebarItem,
+function openLens(
+  lens: MailLens,
   navigate: ReturnType<typeof useNavigate>,
   setOpen: (open: boolean) => void,
 ) {
   setOpen(false);
-  if (item.lens?.kind === "saved_search") {
-    void navigate({
-      to: "/m/saved/$slug",
-      params: { slug: item.id.replace(/^saved-search-/, "") },
-    });
-    return;
-  }
-  if (item.lens?.kind === "label") {
-    void navigate({ to: "/m/label/$name", params: { name: item.id } });
-    return;
-  }
-  void navigate({
-    to: "/m/$mailbox",
-    params: { mailbox: item.id.replace(/^mailbox-/, "") || "inbox" },
-  });
+  void navigate({ to: lens.path });
+}
+
+function LensIcon({ lens }: { lens: MailLens }) {
+  if (lens.section === "labels") return <Tag className="size-3.5" />;
+  if (lens.section === "saved") return <Bookmark className="size-3.5" />;
+  return <Inbox className="size-3.5" />;
 }

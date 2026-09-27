@@ -10,7 +10,7 @@
  */
 
 import type { DaemonEvent, DaemonEventHandler } from "@/api/events";
-import { getBridgeWsUrl, getToken } from "@/lib/tokenStorage";
+import { getBridgeWsUrl, getToken, onTokenChange } from "@/lib/tokenStorage";
 
 export type ConnectionState =
   | "connecting"
@@ -42,9 +42,14 @@ class DaemonEventClient {
   private retryHandle?: ReturnType<typeof setTimeout>;
   private retryAttempt = 0;
   private wantOpen = false;
+  private unsubscribeToken: (() => void) | undefined;
 
   start(): void {
     this.wantOpen = true;
+    this.unsubscribeToken?.();
+    this.unsubscribeToken = onTokenChange(() => {
+      if (this.wantOpen && this.status.state !== "connected") this.reconnectNow();
+    });
     this.openSocket();
     if (typeof window !== "undefined") {
       window.addEventListener("online", this.onOnline);
@@ -55,6 +60,8 @@ class DaemonEventClient {
 
   stop(): void {
     this.wantOpen = false;
+    this.unsubscribeToken?.();
+    this.unsubscribeToken = undefined;
     if (typeof window !== "undefined") {
       window.removeEventListener("online", this.onOnline);
       window.removeEventListener("offline", this.onOffline);

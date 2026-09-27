@@ -1,308 +1,358 @@
-/* @vitest-environment jsdom */
-
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { MailboxList } from "./MailboxList";
-import { MailboxRow } from "./MailboxRow";
-import type { MessageGroupView, MessageRowView } from "./types";
+import { MailboxList, type MailboxListProps } from "./MailboxList";
+import type { MessageGroupView, MessageRowView, MutationResponse } from "./types";
+import { usePendingMailOps, useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
+import { useMailDialogs } from "@/features/mail-actions/mailDialogStore";
+import { getRegistry, invokeAction, isAvailable, snapshotActionContext } from "@/lib/actions";
+import { installKeyDispatcher } from "@/lib/keys/dispatcher";
+import { useKeyScope } from "@/state/keyScopeStore";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useSelection } from "@/state/selectionStore";
 
-const router = vi.hoisted(() => ({
-  navigate: vi.fn<(options: unknown) => Promise<void>>(),
+// jsdom has no layout, so the real virtualizer renders nothing. Render every
+// item; scrolling isn't what these tests are about.
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: (options: { count: number; getItemKey: (index: number) => string | number }) => ({
+    getVirtualItems: () =>
+      Array.from({ length: options.count }, (_, index) => ({
+        index,
+        key: options.getItemKey(index),
+        start: index * 40,
+        end: index * 40 + 40,
+        size: 40,
+        lane: 0,
+      })),
+    getTotalSize: () => options.count * 40,
+    measure: () => undefined,
+    measureElement: () => undefined,
+    scrollToIndex: () => undefined,
+  }),
 }));
 
-const mutation = vi.hoisted(() => ({
-  mutate: vi.fn<(ids: string[]) => void>(),
-  isPending: false,
+vi.mock("./BulkActionBar", () => ({ BulkActionBar: () => null }));
+
+const api = vi.hoisted(() => ({
+  archiveMessages: vi.fn<(ids: string[]) => Promise<MutationResponse>>(),
+}));
+vi.mock("@/features/mailbox/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/features/mailbox/api")>()),
+  archiveMessages: api.archiveMessages,
 }));
 
-vi.mock("@tanstack/react-router", () => ({
-  useNavigate: () => router.navigate,
-}));
+function row(n: number, overrides: Partial<MessageRowView> = {}): MessageRowView {
+  return {
+    id: `msg-${n}`,
+    kind: "thread",
+    thread_id: `thread-${n}`,
+    provider_id: `provider-${n}`,
+    sender: `Sender ${n}`,
+    subject: `Subject ${n}`,
+    snippet: "Snippet",
+    date: "2026-05-11T10:00:00Z",
+    date_label: "May 11",
+    date_full: "May 11, 2026, 10:00 AM",
+    date_relative: "now",
+    unread: false,
+    starred: false,
+    has_attachments: false,
+    message_ids: [`msg-${n}`],
+    ...overrides,
+  };
+}
 
-vi.mock("./BulkActionBar", () => ({
-  BulkActionBar: () => null,
-}));
-
-vi.mock("./useOptimisticMailMutation", () => ({
-  useOptimisticMailMutation: () => mutation,
-}));
-
-const rows: MessageRowView[] = ["msg-1", "msg-2", "msg-3"].map((id, index) => ({
-  id,
-  kind: "thread",
-  thread_id: `thread-${index + 1}`,
-  provider_id: `provider-${index + 1}`,
-  sender: `Sender ${index + 1}`,
-  subject: `Subject ${index + 1}`,
-  snippet: "Snippet",
-  date: "2026-05-11T10:00:00Z",
-  date_label: "May 11",
-  date_full: "May 11, 2026, 10:00 AM",
-  date_relative: "now",
-  unread: false,
-  starred: false,
-  has_attachments: false,
-}));
-
+const rows = [row(1), row(2, { unread: true }), row(3), row(4, { unread: true })];
 const groups: MessageGroupView[] = [{ id: "today", label: "Today", rows }];
 
-describe("MailboxList keyboard selection", () => {
-  beforeEach(() => {
-    useMailboxPane.setState({
-      activePane: "mailbox",
-      sidebarIndex: 0,
-      suppressNextReaderFocus: false,
-    });
-    useSelection.setState({ scope: null, ids: new Set(), lastClickedId: null });
+/** The list as the inbox renders it: pending ops projected over server rows. */
+function Inbox(props: Omit<MailboxListProps, "scopeKey" | "empty" | "label">) {
+  const projected = useProjectedGroups(props.groups, { kind: "inbox" });
+  return (
+    <MailboxList
+      {...props}
+      groups={projected}
+      scopeKey="inbox"
+      empty={<p>Empty</p>}
+      label="Inbox"
+    />
+  );
+}
+
+let onOpenRow: ReturnType<typeof vi.fn<MailboxListProps["onOpenRow"]>>;
+let onCloseThread: ReturnType<typeof vi.fn<() => void>>;
+let uninstall: () => void;
+
+function renderList(props: Partial<MailboxListProps> = {}) {
+  const view = render(
+    <Inbox groups={groups} onOpenRow={onOpenRow} onCloseThread={onCloseThread} {...props} />,
+  );
+  return {
+    ...view,
+    rerenderList: (next: Partial<MailboxListProps>) =>
+      view.rerender(
+        <Inbox
+          groups={groups}
+          onOpenRow={onOpenRow}
+          onCloseThread={onCloseThread}
+          {...props}
+          {...next}
+        />,
+      ),
+  };
+}
+
+function list() {
+  return screen.getByRole("listbox", { name: "Inbox" });
+}
+
+function type(...keys: KeyboardEventInit[]) {
+  for (const init of keys) fireEvent.keyDown(document.activeElement ?? document.body, init);
+}
+
+function cursor(): string | null {
+  return list().getAttribute("aria-activedescendant");
+}
+
+function selectedIds(): string[] {
+  return within(list())
+    .getAllByRole("option")
+    .filter((option) => option.getAttribute("aria-selected") === "true")
+    .map((option) => option.id.replace("mail-row-", ""));
+}
+
+beforeEach(() => {
+  onOpenRow = vi.fn<MailboxListProps["onOpenRow"]>();
+  onCloseThread = vi.fn<() => void>();
+  useMailboxPane.setState({
+    activePane: "mailbox",
+    sidebarIndex: 0,
+    suppressNextReaderFocus: false,
   });
-
-  afterEach(() => {
-    vi.clearAllMocks();
-    useSelection.getState().clear();
-    useMailboxPane.setState({
-      activePane: "mailbox",
-      sidebarIndex: 0,
-      suppressNextReaderFocus: false,
-    });
-  });
-
-  test("selects all visible rows with ctrl-a and clears with escape", async () => {
-    render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
-
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
-
-    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
-
-    expect([...useSelection.getState().ids]).toEqual(["msg-1", "msg-2", "msg-3"]);
-
-    fireEvent.keyDown(window, { key: "Escape" });
-
-    expect(useSelection.getState().ids.size).toBe(0);
-  });
-
-  test("extends selection from the last selected row with shift-x", async () => {
-    render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
-
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
-
-    fireEvent.keyDown(window, { key: "x" });
-    fireEvent.keyDown(window, { key: "j" });
-    fireEvent.keyDown(window, { key: "X", shiftKey: true });
-
-    expect([...useSelection.getState().ids]).toEqual(["msg-1", "msg-2"]);
-  });
-
-  test("keeps keyboard focus on the same message when rows shift", async () => {
-    const { rerender } = render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
-
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
-
-    fireEvent.keyDown(window, { key: "j" });
-
-    const first = rows[0];
-    if (!first) throw new Error("missing first row");
-    const prepended: MessageRowView = {
-      ...first,
-      id: "msg-0",
-      thread_id: "thread-0",
-      provider_id: "provider-0",
-      subject: "Subject 0",
-    };
-    rerender(
-      <MailboxList
-        groups={[{ id: "today", label: "Today", rows: [prepended, ...rows] }]}
-        mailboxPath="/m/inbox"
-      />,
-    );
-
-    fireEvent.keyDown(window, { key: "x" });
-
-    expect([...useSelection.getState().ids]).toEqual(["msg-2"]);
-  });
-
-  test("jumps to the top with gg and bottom with G", async () => {
-    render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
-
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
-
-    fireEvent.keyDown(window, { key: "G", shiftKey: true });
-    fireEvent.keyDown(window, { key: "x" });
-
-    expect([...useSelection.getState().ids]).toEqual(["msg-3"]);
-
-    fireEvent.keyDown(window, { key: "Escape" });
-    fireEvent.keyDown(window, { key: "g" });
-    fireEvent.keyDown(window, { key: "g" });
-    fireEvent.keyDown(window, { key: "x" });
-
-    expect([...useSelection.getState().ids]).toEqual(["msg-1"]);
-  });
-
-  test("keeps mailbox pane active when keyboard preview opens the next thread", async () => {
-    render(
-      <MailboxList
-        groups={groups}
-        mailboxPath="/m/inbox"
-        activeThreadId="thread-1"
-        previewOnFocus
-      />,
-    );
-
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
-
-    fireEvent.keyDown(window, { key: "j" });
-
-    expect(useMailboxPane.getState().activePane).toBe("mailbox");
-    expect(useMailboxPane.getState().suppressNextReaderFocus).toBe(true);
-    expect(router.navigate).toHaveBeenCalledWith({
-      to: "/m/$mailbox/$threadId",
-      params: { mailbox: "inbox", threadId: "thread-2" },
-    });
-  });
-
-  test("escape closes an open clicked thread when there is no active selection", async () => {
-    render(
-      <MailboxList
-        groups={groups}
-        mailboxPath="/m/inbox"
-        activeThreadId="thread-1"
-        previewOnFocus
-      />,
-    );
-
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
-
-    fireEvent.keyDown(window, { key: "Escape" });
-
-    expect(router.navigate).toHaveBeenCalledWith({ to: "/m/inbox" });
-  });
-
-  test("shows attachment status in the mailbox row", async () => {
-    render(
-      <MailboxRow
-        row={{ ...rows[0]!, has_attachments: true, attachment_filename: "quote.pdf" }}
-        selected={false}
-        focused={false}
-        onOpen={vi.fn<() => void>()}
-        onFocusPane={vi.fn<() => void>()}
-        onToggleSelection={vi.fn<(shift: boolean) => void>()}
-      />,
-    );
-
-    expect(screen.getByLabelText("Has attachments")).toBeVisible();
-    expect(screen.getByRole("article", { name: /has attachments/i })).toBeVisible();
-  });
-
-  test("shows conversation thread count in the mailbox row", async () => {
-    render(
-      <MailboxRow
-        row={{ ...rows[0]!, message_count: 4 }}
-        selected={false}
-        focused={false}
-        onOpen={vi.fn<() => void>()}
-        onFocusPane={vi.fn<() => void>()}
-        onToggleSelection={vi.fn<(shift: boolean) => void>()}
-      />,
-    );
-
-    expect(screen.getByLabelText("Conversation thread with 4 messages")).toBeVisible();
-    expect(
-      screen.getByRole("article", { name: /conversation thread with 4 messages/i }),
-    ).toBeVisible();
-  });
-
-  test("shows open commitment count in the mailbox row", async () => {
-    render(
-      <MailboxRow
-        row={{ ...rows[0]!, open_commitment_count: 2 }}
-        selected={false}
-        focused={false}
-        onOpen={vi.fn<() => void>()}
-        onFocusPane={vi.fn<() => void>()}
-        onToggleSelection={vi.fn<(shift: boolean) => void>()}
-      />,
-    );
-
-    expect(screen.getByLabelText("2 open commitments")).toBeVisible();
-    expect(screen.getByRole("article", { name: /2 open commitments/i })).toBeVisible();
+  useSelection.setState({ scope: null, ids: new Set(), lastClickedId: null });
+  useKeyScope.setState({ stack: [], pendingPrefix: null });
+  usePendingMailOps.setState({ ops: [] });
+  useMailDialogs.setState({ dialog: null });
+  uninstall = installKeyDispatcher(window, {
+    registry: getRegistry(),
+    context: snapshotActionContext,
+    mac: false,
   });
 });
 
-describe("MailboxList readOnly mode", () => {
-  beforeEach(() => {
-    useMailboxPane.setState({
-      activePane: "mailbox",
-      sidebarIndex: 0,
-      suppressNextReaderFocus: false,
+afterEach(() => {
+  uninstall();
+  vi.clearAllMocks();
+});
+
+describe("MailboxList keyboard", () => {
+  test("the list takes focus and the cursor starts on the first row", () => {
+    renderList();
+
+    expect(document.activeElement).toBe(list());
+    expect(cursor()).toBe("mail-row-msg-1");
+  });
+
+  test("j and k move the cursor, clamped at the ends", () => {
+    renderList();
+
+    type({ key: "j" }, { key: "j" });
+    expect(cursor()).toBe("mail-row-msg-3");
+    type({ key: "k" });
+    expect(cursor()).toBe("mail-row-msg-2");
+    type({ key: "k" }, { key: "k" }, { key: "k" });
+    expect(cursor()).toBe("mail-row-msg-1");
+  });
+
+  test("G jumps to the last row and g g back to the first", () => {
+    renderList();
+
+    type({ key: "G", shiftKey: true });
+    expect(cursor()).toBe("mail-row-msg-4");
+    type({ key: "g" }, { key: "g" });
+    expect(cursor()).toBe("mail-row-msg-1");
+  });
+
+  test("x selects the row and moves down", () => {
+    renderList();
+
+    type({ key: "x" });
+    expect(selectedIds()).toEqual(["msg-1"]);
+    expect(cursor()).toBe("mail-row-msg-2");
+
+    type({ key: "x" });
+    expect(selectedIds()).toEqual(["msg-1", "msg-2"]);
+  });
+
+  test("V starts visual mode and j extends the selection", () => {
+    renderList();
+
+    type({ key: "j" }, { key: "V", shiftKey: true });
+    expect(selectedIds()).toEqual(["msg-2"]);
+    type({ key: "j" }, { key: "j" });
+    expect(selectedIds()).toEqual(["msg-2", "msg-3", "msg-4"]);
+    type({ key: "k" });
+    expect(selectedIds()).toEqual(["msg-2", "msg-3"]);
+  });
+
+  test("* u selects unread rows and * n clears", () => {
+    renderList();
+
+    type({ key: "*", shiftKey: true }, { key: "u" });
+    expect(selectedIds()).toEqual(["msg-2", "msg-4"]);
+
+    type({ key: "*", shiftKey: true }, { key: "n" });
+    expect(selectedIds()).toEqual([]);
+  });
+
+  test("Escape leaves visual mode, then clears the selection, then closes the thread", () => {
+    renderList();
+
+    type({ key: "V", shiftKey: true }, { key: "j" });
+    expect(selectedIds()).toEqual(["msg-1", "msg-2"]);
+
+    type({ key: "Escape" });
+    // Visual mode ends; the selection stays and j no longer extends it.
+    type({ key: "j" });
+    expect(selectedIds()).toEqual(["msg-1", "msg-2"]);
+
+    type({ key: "Escape" });
+    expect(selectedIds()).toEqual([]);
+    expect(onCloseThread).not.toHaveBeenCalled();
+
+    type({ key: "Escape" });
+    expect(onCloseThread).toHaveBeenCalledTimes(1);
+  });
+
+  test("Enter opens the focused row in the reader", () => {
+    renderList();
+
+    type({ key: "j" }, { key: "Enter" });
+
+    expect(onOpenRow).toHaveBeenCalledWith(rows[1], { focusReader: true });
+  });
+
+  test("clicking a row opens it without moving focus to the reader", () => {
+    renderList();
+
+    fireEvent.click(screen.getByRole("option", { name: /Subject 3/ }));
+
+    expect(onOpenRow).toHaveBeenCalledWith(rows[2], { focusReader: false });
+    expect(cursor()).toBe("mail-row-msg-3");
+  });
+
+  test("with previewOnFocus, moving the cursor previews the next thread", () => {
+    renderList({ previewOnFocus: true, activeThreadId: "thread-1" });
+
+    type({ key: "j" });
+
+    expect(onOpenRow).toHaveBeenCalledWith(rows[1], { focusReader: false });
+  });
+
+  test("keys are inactive while another pane has focus", () => {
+    renderList();
+    act(() => useMailboxPane.getState().setActivePane("reader"));
+
+    type({ key: "j" });
+
+    expect(cursor()).toBe("mail-row-msg-1");
+  });
+
+  test("e archives the focused row; the cursor stays at the same position", async () => {
+    let finish!: (value: MutationResponse) => void;
+    api.archiveMessages.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    renderList();
+
+    type({ key: "j" }, { key: "e" });
+
+    await vi.waitFor(() => expect(api.archiveMessages).toHaveBeenCalledWith(["msg-2"]));
+    expect(screen.queryByRole("option", { name: /Subject 2/ })).not.toBeInTheDocument();
+    expect(cursor()).toBe("mail-row-msg-3");
+
+    await act(async () => {
+      finish({ ok: true, result: { requested: 1, succeeded: 1, skipped: 0, failed: 0 } });
+      await Promise.resolve();
     });
-    useSelection.setState({ scope: null, ids: new Set(), lastClickedId: null });
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
-    useSelection.getState().clear();
+  test("the cursor follows the same row when rows are added above it", () => {
+    const { rerenderList } = renderList();
+    type({ key: "j" });
+
+    rerenderList({ groups: [{ id: "today", label: "Today", rows: [row(0), ...rows] }] });
+
+    expect(cursor()).toBe("mail-row-msg-2");
   });
 
-  test("hides bulk selection and ignores mutation keys", async () => {
-    render(<MailboxList groups={groups} mailboxPath="/analytics/stale" readOnly />);
+  test("removing the last row under the cursor clamps it to the new last row", () => {
+    const { rerenderList } = renderList();
+    type({ key: "j" }, { key: "j" }, { key: "j" });
+    expect(cursor()).toBe("mail-row-msg-4");
 
-    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
-    expect(screen.queryByRole("button", { name: /select all/i })).toBeNull();
-
-    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
-    expect(useSelection.getState().ids.size).toBe(0);
-    fireEvent.keyDown(window, { key: "x" });
-    expect(useSelection.getState().ids.size).toBe(0);
-  });
-
-  test("non-readOnly still exposes bulk selection", async () => {
-    render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
-    expect(await screen.findByRole("button", { name: /select all/i })).toBeVisible();
+    rerenderList({ groups: [{ id: "today", label: "Today", rows: rows.slice(0, 3) }] });
+    expect(cursor()).toBe("mail-row-msg-3");
   });
 });
 
-describe("MailboxRow readOnly + trailingAction", () => {
-  test("readOnly row hides star and selection controls", () => {
-    render(
-      <MailboxRow
-        row={rows[0]!}
-        selected={false}
-        focused={false}
-        onOpen={vi.fn<() => void>()}
-        onFocusPane={vi.fn<() => void>()}
-        onToggleSelection={vi.fn<(shift: boolean) => void>()}
-        readOnly
-      />,
-    );
+describe("MailboxList palette actions", () => {
+  test("Route out of this queue is offered only in a queue label and opens the route dialog", () => {
+    const route = getRegistry().get("mail.route")!;
+    const { unmount } = renderList();
+    expect(isAvailable(route, snapshotActionContext())).toBe(false);
+    unmount();
 
-    expect(screen.queryByRole("button", { name: /star/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /select message|deselect message/i })).toBeNull();
+    renderList({ queueLabel: "Follow Up" });
+    type({ key: "j" });
+    const context = snapshotActionContext();
+    expect(isAvailable(route, context)).toBe(true);
+    act(() => invokeAction(route, context));
+
+    expect(useMailDialogs.getState().dialog).toMatchObject({
+      kind: "move",
+      route: { fromQueueLabel: "Follow Up" },
+      target: { messageIds: ["msg-2"] },
+    });
+  });
+});
+
+describe("MailboxList readOnly", () => {
+  test("navigates but ignores selection and mutation keys", () => {
+    renderList({ readOnly: true });
+
+    type({ key: "x" }, { key: "e" });
+
+    expect(list()).toHaveAttribute("aria-multiselectable", "false");
+    expect(selectedIds()).toEqual([]);
+    expect(api.archiveMessages).not.toHaveBeenCalled();
+    expect(usePendingMailOps.getState().ops).toEqual([]);
+
+    type({ key: "j" });
+    expect(cursor()).toBe("mail-row-msg-2");
+  });
+});
+
+describe("MailboxList rows", () => {
+  test("rows announce thread size, attachments and unread state", () => {
+    renderList({
+      groups: [
+        {
+          id: "today",
+          label: "Today",
+          rows: [row(1, { message_count: 3, has_attachments: true, unread: true })],
+        },
+      ],
+    });
+
+    const option = screen.getByRole("option");
+    expect(option).toHaveAccessibleName(/^Unread\./);
+    expect(option).toHaveAccessibleName(/3 messages in conversation/);
+    expect(option).toHaveAccessibleName(/Has attachments/);
   });
 
-  test("trailing action fires without opening the row", () => {
-    const onAction = vi.fn<(id: string) => void>();
-    const onOpen = vi.fn<() => void>();
-    render(
-      <MailboxRow
-        row={rows[0]!}
-        selected={false}
-        focused={false}
-        onOpen={onOpen}
-        onFocusPane={vi.fn<() => void>()}
-        onToggleSelection={vi.fn<(shift: boolean) => void>()}
-        trailingAction={
-          <button type="button" onClick={() => onAction(rows[0]!.id)}>
-            Remove
-          </button>
-        }
-      />,
-    );
+  test("renders the empty state when there are no rows", () => {
+    renderList({ groups: [] });
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
-    expect(onAction).toHaveBeenCalledWith("msg-1");
-    expect(onOpen).not.toHaveBeenCalled();
+    expect(screen.getByText("Empty")).toBeInTheDocument();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 });

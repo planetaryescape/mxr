@@ -1,5 +1,7 @@
-import { ChevronDown, Mail, UserPlus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { Check, ChevronsUpDown, Layers, Settings2, UserPlus } from "lucide-react";
+import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -11,80 +13,107 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { fetchAccounts } from "@/features/accounts/api";
+import { initials } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
+/**
+ * Scopes every mail view to one account, or all of them. Unlike the TUI,
+ * which switches by rewriting the default account, this changes nothing
+ * on disk: it only filters what the web shows.
+ */
 export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) {
-  const accounts = useQuery({
-    queryKey: ["accounts"],
-    queryFn: fetchAccounts,
-    staleTime: 60_000,
-  });
-  const rows = accounts.data?.accounts ?? [];
-  const account =
-    rows.find((row) => row.enabled && row.is_default) ??
-    rows.find((row) => row.enabled) ??
-    rows[0] ?? { name: "All accounts", email: "" };
+  const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts, staleTime: 60_000 });
+  const scope = useUiPrefs((s) => s.accountScope);
+  const setScope = useUiPrefs((s) => s.setAccountScope);
+  const rows = (accounts.data?.accounts ?? []).filter((row) => row.enabled !== false);
+  const scoped = rows.find((row) => row.account_id === scope);
+  const title = scoped
+    ? scoped.name || scoped.email
+    : rows.length > 1
+      ? "All accounts"
+      : (rows[0]?.name ?? "mxr");
+  // A scope pointing at a removed or disabled account would hide all mail.
+  useEffect(() => {
+    if (scope && accounts.isSuccess && !scoped) setScope(null);
+  }, [accounts.isSuccess, scope, scoped, setScope]);
+  const subtitle = scoped
+    ? scoped.email
+    : rows.length > 1
+      ? `${rows.length} accounts`
+      : (rows[0]?.email ?? "");
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className="h-9 w-full justify-start gap-2 px-2 text-left"
-          aria-label="Account switcher"
+          className={cn(
+            "h-10 w-full justify-start gap-2 px-2 text-left",
+            collapsed && "justify-center px-0",
+          )}
+          aria-label={`Account: ${title}. Switch account`}
         >
-          <div className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary-muted text-primary">
-            <Mail className="size-3" />
-          </div>
+          <span className="grid size-7 shrink-0 place-items-center rounded-md bg-primary-muted font-mono text-[11px] font-semibold text-primary">
+            {scoped || rows.length === 1 ? initials(title) : <Layers className="size-3.5" />}
+          </span>
           {!collapsed && (
             <>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-xs font-medium leading-tight">{account.name}</div>
-                {account.email ? (
-                  <div className="truncate font-mono text-2xs text-muted-foreground">
-                    {account.email}
-                  </div>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-semibold leading-tight">
+                  {title}
+                </span>
+                {subtitle ? (
+                  <span className="block truncate font-mono text-2xs text-muted-foreground">
+                    {subtitle}
+                  </span>
                 ) : null}
-              </div>
-              <ChevronDown className="size-3 shrink-0 opacity-60" />
+              </span>
+              <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
             </>
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-60">
-        <DropdownMenuLabel>Accounts</DropdownMenuLabel>
-        <DropdownMenuSeparator />
+      <DropdownMenuContent align="start" className="w-64">
+        <DropdownMenuLabel className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+          Show mail from
+        </DropdownMenuLabel>
         {accounts.isLoading ? (
-          <DropdownMenuItem disabled className="text-2xs text-muted-foreground">
-            Loading accounts...
+          <DropdownMenuItem disabled>Loading accounts…</DropdownMenuItem>
+        ) : null}
+        {rows.length > 1 ? (
+          <DropdownMenuItem onSelect={() => setScope(null)}>
+            <Layers className="size-3.5" />
+            <span className="flex-1">All accounts</span>
+            {scope === null ? <Check className="size-3.5 text-primary" /> : null}
           </DropdownMenuItem>
-        ) : rows.length === 0 ? (
-          <DropdownMenuItem disabled className="text-2xs text-muted-foreground">
-            No accounts loaded yet
+        ) : null}
+        {rows.map((row) => (
+          <DropdownMenuItem key={row.account_id} onSelect={() => setScope(row.account_id)}>
+            <span className="grid size-5 place-items-center rounded bg-muted font-mono text-[10px]">
+              {initials(row.name || row.email)}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate">{row.name || row.email}</span>
+              <span className="block truncate font-mono text-2xs text-muted-foreground">
+                {row.email}
+              </span>
+            </span>
+            {scope === row.account_id || (scope === null && rows.length === 1) ? (
+              <Check className="size-3.5 text-primary" />
+            ) : null}
           </DropdownMenuItem>
-        ) : (
-          rows.map((row) => (
-            <DropdownMenuItem key={row.account_id} asChild>
-              <a href={`/accounts/${encodeURIComponent(row.key ?? row.account_id)}`}>
-                <Mail className="size-3" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{row.name || row.email}</span>
-                  <span className="block truncate font-mono text-2xs text-muted-foreground">
-                    {row.email}
-                  </span>
-                </span>
-                {row.is_default ? (
-                  <span className="rounded bg-primary-muted px-1 text-2xs text-primary">
-                    default
-                  </span>
-                ) : null}
-              </a>
-            </DropdownMenuItem>
-          ))
-        )}
+        ))}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <a href="/accounts/new">
-            <UserPlus className="size-3" /> Add account
-          </a>
+          <Link to="/accounts">
+            <Settings2 className="size-3.5" /> Manage accounts
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/accounts/$key" params={{ key: "new" }}>
+            <UserPlus className="size-3.5" /> Add account
+          </Link>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

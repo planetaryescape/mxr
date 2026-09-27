@@ -32,21 +32,34 @@ export interface Delivery {
 export type DeliveryFilter = "active" | "delivered" | "all" | "dismissed";
 
 export function fetchDeliveries(filter: DeliveryFilter) {
-  return apiFetch<{ deliveries: Delivery[] }>(
-    `/api/v1/mail/deliveries?filter=${filter}`,
-  );
+  return apiFetch<{ deliveries: Delivery[] }>(`/api/v1/mail/deliveries?filter=${filter}`);
 }
 
 export function resolveDelivery(id: string) {
-  return apiFetch<unknown>(
-    `/api/v1/mail/deliveries/${encodeURIComponent(id)}/resolve`,
-    { method: "POST" },
-  );
+  return apiFetch<unknown>(`/api/v1/mail/deliveries/${encodeURIComponent(id)}/resolve`, {
+    method: "POST",
+  });
 }
 
 export function dismissDelivery(id: string) {
-  return apiFetch<unknown>(
-    `/api/v1/mail/deliveries/${encodeURIComponent(id)}/dismiss`,
-    { method: "POST" },
-  );
+  return apiFetch<unknown>(`/api/v1/mail/deliveries/${encodeURIComponent(id)}/dismiss`, {
+    method: "POST",
+  });
+}
+
+/** `DeliveryScanSummary` from the daemon. */
+export interface DeliveryScanSummary {
+  scanned: number;
+  created: number;
+  updated: number;
+  shortlisted: number;
+  dry_run: boolean;
+}
+
+/** Re-run delivery detection over recent mail (the daemon also runs it after sync). */
+export function scanDeliveries(input: { sinceDays?: number; dryRun?: boolean } = {}) {
+  return apiFetch<{ summary: DeliveryScanSummary }>("/api/v1/mail/deliveries/scan", {
+    method: "POST",
+    body: { since_days: input.sinceDays, dry_run: input.dryRun ?? false },
+  });
 }

@@ -1065,8 +1065,9 @@ fn mutation_job_kind(cmd: &MutationCommand) -> &'static str {
 }
 
 /// Map a `MutationCommand` to the `UndoableMutationKind` used to drive
-/// the reverse op, or `None` if the mutation isn't reversible (Star /
-/// ModifyLabels / Move — the user already has full control there).
+/// the reverse op, or `None` if the mutation isn't reversible. Star is its
+/// own inverse (star again); a move or label edit can drop a message out
+/// of the view it was in, so those restore the prior label set.
 fn undoable_kind(cmd: &MutationCommand) -> Option<UndoableMutationKind> {
     match cmd {
         MutationCommand::Archive { .. } => Some(UndoableMutationKind::Archive),
@@ -1079,9 +1080,10 @@ fn undoable_kind(cmd: &MutationCommand) -> Option<UndoableMutationKind> {
         } else {
             UndoableMutationKind::Archive
         }),
-        MutationCommand::Star { .. }
-        | MutationCommand::ModifyLabels { .. }
-        | MutationCommand::Move { .. } => None,
+        MutationCommand::ModifyLabels { .. } | MutationCommand::Move { .. } => {
+            Some(UndoableMutationKind::Labels)
+        }
+        MutationCommand::Star { .. } => None,
     }
 }
 
@@ -2729,6 +2731,30 @@ pub(super) async fn cancel_scheduled_send(
 ) -> HandlerResult {
     state.store.cancel_scheduled_send(draft_id).await?;
     Ok(ResponseData::Ack)
+}
+
+pub(super) async fn list_scheduled_sends(
+    state: &AppState,
+    account_id: Option<&mxr_core::AccountId>,
+) -> HandlerResult {
+    let sends = state
+        .store
+        .list_pending_scheduled_sends(account_id)
+        .await?
+        .into_iter()
+        .map(|send| mxr_protocol::ScheduledSendData {
+            draft_id: send.draft_id,
+            account_id: send.account_id,
+            send_at: send.send_at,
+            subject: send.subject,
+            to: send.to,
+            cc: send.cc,
+            bcc: send.bcc,
+            last_attempt_at: send.last_attempt_at,
+            last_attempt_outcome: send.last_attempt_outcome,
+        })
+        .collect();
+    Ok(ResponseData::ScheduledSends { sends })
 }
 
 pub(crate) async fn send_stored_draft(

@@ -77,7 +77,7 @@ export function DraftAssist({
             <Sparkles className="size-4 shrink-0 text-primary" />
             <span className="text-xs font-medium text-foreground">Draft for me</span>
             <span className="hidden min-w-0 truncate text-2xs text-muted-foreground sm:inline">
-              Knows how you write to this person — describe it and edit freely.
+              Knows how you write to this person. Describe it and edit freely.
             </span>
             <DraftQualityBadges suggestion={suggestion} compact />
             <ChevronDown className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-180" />

@@ -44,7 +44,7 @@ use utoipa::{
         action_unsubscribe, action_unsubscribe_purge, action_invite_reply, attachment_open, attachment_download,
         label_create, label_rename, label_delete, mail_unsnooze_one,
         reply_later_list, reply_later_set, reminders_set, reminders_cancel,
-        scheduled_sends_create, scheduled_sends_cancel, snippets_list,
+        scheduled_sends_list, scheduled_sends_create, scheduled_sends_cancel, snippets_list,
         snippets_set, snippets_delete, sender_profile, contacts_autocomplete, screener_queue,
         screener_decisions_list, screener_decisions_set,
         screener_decisions_clear, thread_summarize, mail_draft_compose,
@@ -53,7 +53,7 @@ use utoipa::{
         mail_commitments_resolve, mail_thread_briefing, mail_contacts_briefing, mail_contacts_expert,
         compose_session_start, compose_session_refresh, compose_session_restore,
         compose_session_update, compose_session_send, compose_session_safety_check,
-        compose_session_collaborators, compose_session_save,
+        compose_session_collaborators, compose_session_save, compose_session_schedule,
         compose_session_attachment, compose_session_discard, rules_list, rule_detail, rule_form,
         rule_history, rule_dry_run, rule_upsert, rule_upsert_form, rule_delete,
         saved_searches_list, saved_searches_create, saved_searches_delete, saved_searches_update,
@@ -68,14 +68,16 @@ use utoipa::{
         analytics_stale_threads, analytics_contact_asymmetry,
         analytics_contact_decay, analytics_response_time,
         analytics_refresh_contacts, analytics_rebuild,
-        mail_message_body, mail_message_html_images, mail_message_raw_headers,
+        mail_message_body, mail_message_html_images, mail_message_inline_image, mail_message_raw_headers,
         mail_message_set_flags, mail_export_search, mail_drafts_orphaned_list,
         mail_drafts_save_local, mail_drafts_reset_orphan, mail_drafts_send_stored,
         mail_drafts_delete_stored, mail_signatures_list, mail_signatures_upsert,
         mail_signature_defaults_list, mail_signature_default_set,
         mail_signature_default_clear, mail_signature_resolve, mail_signatures_delete,
         platform_accounts_authorize, platform_accounts_repair, platform_voice_get,
-        platform_voice_rebuild
+        platform_voice_rebuild, mail_mutation_jobs, mail_owed, mail_whois,
+        mail_send_time, mail_archive_ask, saved_searches_unread_counts,
+        analytics_cadence_drift, cadence_watch_list, cadence_watch, cadence_unwatch
     ),
     components(schemas(
         Request,
@@ -141,6 +143,7 @@ endpoint!(get mail_thread_export "/api/v1/mail/threads/{thread_id}/export", "Exp
 endpoint!(get mail_drafts "/api/v1/mail/drafts", "List drafts");
 endpoint!(get mail_snoozed "/api/v1/mail/snoozed", "List snoozed messages");
 endpoint!(get mail_count "/api/v1/mail/count", "Count matching messages");
+endpoint!(post mail_mutation_jobs "/api/v1/mail/mutation-jobs", "Start a mutation as a background job");
 endpoint!(get mail_jobs "/api/v1/mail/jobs", "List background jobs");
 endpoint!(get mail_job_detail "/api/v1/mail/jobs/{job_id}", "Inspect a background job");
 endpoint!(get mail_sync_status "/api/v1/mail/sync/status", "Sync status");
@@ -173,6 +176,7 @@ endpoint!(get reply_later_list "/api/v1/mail/reply-later", "List reply-later mes
 endpoint!(post reply_later_set "/api/v1/mail/reply-later/{message_id}", "Set or clear reply-later");
 endpoint!(post reminders_set "/api/v1/mail/reminders", "Schedule an auto-reminder");
 endpoint!(delete reminders_cancel "/api/v1/mail/reminders/{message_id}", "Cancel an auto-reminder");
+endpoint!(get scheduled_sends_list "/api/v1/mail/scheduled-sends", "List pending scheduled sends");
 endpoint!(post scheduled_sends_create "/api/v1/mail/scheduled-sends", "Schedule a draft send");
 endpoint!(delete scheduled_sends_cancel "/api/v1/mail/scheduled-sends/{draft_id}", "Cancel a scheduled send");
 endpoint!(get snippets_list "/api/v1/mail/snippets", "List snippets");
@@ -196,6 +200,10 @@ endpoint!(post mail_commitments_resolve "/api/v1/mail/commitments/{commitment_id
 endpoint!(get mail_thread_briefing "/api/v1/mail/threads/{thread_id}/briefing", "Briefing for a dormant thread");
 endpoint!(get mail_contacts_briefing "/api/v1/mail/contacts/briefing", "Recipient briefing for compose context");
 endpoint!(get mail_contacts_expert "/api/v1/mail/contacts/expert", "Find experts who answered similar questions");
+endpoint!(get mail_owed "/api/v1/mail/owed", "List threads that owe a reply");
+endpoint!(get mail_whois "/api/v1/mail/whois", "Explain a person or term from local evidence");
+endpoint!(get mail_send_time "/api/v1/mail/send-time", "Recommend a send time for recipients");
+endpoint!(post mail_archive_ask "/api/v1/mail/archive-ask", "Ask the archive a question with citations");
 
 endpoint!(post compose_session_start "/api/v1/mail/compose/session", "Start compose session");
 endpoint!(post compose_session_refresh "/api/v1/mail/compose/session/refresh", "Refresh compose session");
@@ -222,6 +230,7 @@ endpoint!(post compose_session_send "/api/v1/mail/compose/session/send", "Send c
 endpoint!(post compose_session_safety_check "/api/v1/mail/compose/session/safety-check", "Run the pre-send safety report for a compose session");
 endpoint!(post compose_session_collaborators "/api/v1/mail/compose/session/collaborators", "Suggest maybe-include recipients for a compose session");
 endpoint!(post compose_session_save "/api/v1/mail/compose/session/save", "Save compose session");
+endpoint!(post compose_session_schedule "/api/v1/mail/compose/session/schedule", "Store a compose session as a local draft and schedule it");
 endpoint!(post compose_session_attachment "/api/v1/mail/compose/session/attachment", "Upload compose attachment");
 endpoint!(post compose_session_discard "/api/v1/mail/compose/session/discard", "Discard compose session");
 
@@ -239,6 +248,7 @@ endpoint!(post saved_searches_create "/api/v1/platform/saved-searches/create", "
 endpoint!(post saved_searches_update "/api/v1/platform/saved-searches/update", "Patch a saved search by name");
 endpoint!(post saved_searches_delete "/api/v1/platform/saved-searches/delete", "Delete saved search");
 endpoint!(post saved_searches_run "/api/v1/platform/saved-searches/run", "Run saved search");
+endpoint!(get saved_searches_unread_counts "/api/v1/platform/saved-searches/unread-counts", "Unread match counts per saved search");
 
 endpoint!(get accounts_list "/api/v1/platform/accounts", "List runtime accounts");
 endpoint!(get accounts_config "/api/v1/platform/accounts/config", "List configured accounts");
@@ -277,9 +287,14 @@ endpoint!(get analytics_contact_decay "/api/v1/platform/analytics/contact-decay"
 endpoint!(get analytics_response_time "/api/v1/platform/analytics/response-time", "Response-time analytics");
 endpoint!(post analytics_refresh_contacts "/api/v1/platform/analytics/refresh-contacts", "Refresh contacts");
 endpoint!(post analytics_rebuild "/api/v1/platform/analytics/rebuild", "Rebuild analytics");
+endpoint!(get analytics_cadence_drift "/api/v1/platform/analytics/cadence-drift", "Watched contacts past their usual cadence");
+endpoint!(get cadence_watch_list "/api/v1/platform/cadence/watch", "List the cadence watchlist");
+endpoint!(post cadence_watch "/api/v1/platform/cadence/watch", "Add a contact to the cadence watchlist");
+endpoint!(post cadence_unwatch "/api/v1/platform/cadence/unwatch", "Remove a contact from the cadence watchlist");
 
 endpoint!(get mail_message_body "/api/v1/mail/messages/{message_id}/body", "Get message body (IPC GetBody)");
 endpoint!(get mail_message_html_images "/api/v1/mail/messages/{message_id}/html-images", "List HTML-linked image assets");
+endpoint!(get mail_message_inline_image "/api/v1/mail/messages/{message_id}/inline-image", "Bytes of one inline (cid:) image, by its HTML src");
 endpoint!(get mail_message_raw_headers "/api/v1/mail/messages/{message_id}/headers", "Raw RFC headers");
 endpoint!(post mail_message_set_flags "/api/v1/mail/messages/{message_id}/flags", "Set message flags bitmask");
 endpoint!(post mail_export_search "/api/v1/mail/export-search", "Export all threads matching a search");
@@ -330,4 +345,24 @@ impl Modify for BearerSecurity {
             ),
         );
     }
+}
+
+/// The bridge's OpenAPI document, built once. utoipa's generated schema
+/// code for the large `Request`/`ResponseData` enums needs a stack frame of
+/// several megabytes in debug builds, more than a Tokio worker's 2 MiB: the
+/// daemon aborted with a stack overflow on startup when the enum grew. It is
+/// built on a thread with room to spare and shared from then on.
+pub fn cached_spec() -> utoipa::openapi::OpenApi {
+    use std::sync::OnceLock;
+    static SPEC: OnceLock<utoipa::openapi::OpenApi> = OnceLock::new();
+    SPEC.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("openapi-spec".into())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(ApiDoc::openapi)
+            .expect("spawn the OpenAPI spec builder thread")
+            .join()
+            .expect("build the OpenAPI spec")
+    })
+    .clone()
 }

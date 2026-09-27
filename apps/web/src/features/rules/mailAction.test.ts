@@ -34,8 +34,7 @@ function mailAction(value: string): SupportedRuleAction | null {
   if (lower === "trash") return { kind: "trash" };
   if (lower === "spam") return { kind: "spam" };
   if (lower === "star") return { kind: "star" };
-  if (lower === "read" || lower === "mark-read" || lower === "mark_read")
-    return { kind: "read" };
+  if (lower === "read" || lower === "mark-read" || lower === "mark_read") return { kind: "read" };
   if (lower === "unread" || lower === "mark-unread" || lower === "mark_unread")
     return { kind: "unread" };
   if (lower === "read-and-archive" || lower === "read_and_archive")
@@ -76,9 +75,7 @@ describe("rules mailAction parser", () => {
       },
     ]);
     expect(mailActions("unlabel:Inbox")).toEqual([{ kind: "label-remove", label: "Inbox" }]);
-    expect(mailActions("remove-label: Queue ")).toEqual([
-      { kind: "label-remove", label: "Queue" },
-    ]);
+    expect(mailActions("remove-label: Queue ")).toEqual([{ kind: "label-remove", label: "Queue" }]);
   });
 
   test("parses move:Target", () => {

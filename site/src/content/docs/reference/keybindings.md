@@ -343,44 +343,175 @@ Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your ma
 
 ## Web app
 
-The web app uses its own global keymap, derived from the shared action
-registry at `apps/web/src/lib/actions/`. Page-internal vim keys (j/k,
-x, etc.) are handled per-page; the keys below are the global chords.
+The web app follows the TUI's live bindings. One dispatcher reads every key
+from the shared action registry (`apps/web/src/lib/actions/`), so these
+tables, the in-app help (`?`), the command palette and **Settings →
+Keybindings** always agree. Where the web deliberately differs from the TUI,
+the note says why. Keys never fire while you type in a field or while
+compose is open, except `⌘K` / `Ctrl+K`.
 
-### Global
+<!-- web-keys:start (generated from the action registry; run UPDATE_KEY_DOCS=1 npm test) -->
 
-| Key | Action |
-|-----|--------|
-| `⌘K` / `Ctrl-K` | Open command palette |
-| `:` | Open command palette (alt) |
-| `/` | Open search palette |
-| `?` | Toggle help dialog |
-| `c` | Open compose launcher |
-| `1` … `9`, `0` | Quick nav (Inbox, Search, Analytics, Rules, Screener, Subscriptions, Reply queue, Accounts, Diagnostics, Settings) |
+### Everywhere
 
-### Vim-style navigation
+Work on every page except while typing in a field or compose.
 
-| Key | Action |
-|-----|--------|
-| `g i` | Go to Inbox |
-| `g s` | Go to Starred |
-| `g d` | Go to Drafts |
-| `g t` | Go to Trash |
-| `g a` | Go to **All Mail** (matches Gmail muscle memory) |
-| `g n` | Go to Snoozed |
-| `g l` | Go to Reply queue |
-| `g u` | Go to Subscriptions |
-| `g r` | Go to Rules |
-| `g y` | Open Analytics |
+| Key | Action | Note |
+|-----|--------|------|
+| `⌘K / Ctrl+K`, `:`, `Ctrl+P` | Command palette | Ctrl+P works on macOS; elsewhere it stays the browser's Print |
+| `/` | Search mail |  |
+| `?` | Keyboard help |  |
+| `c` | Compose |  |
+| `u`, `z` | Undo last action | z also undoes, for Gmail muscle memory |
 
-Note: in earlier builds the web command palette labelled Analytics as
-`g a`, colliding with the global keymap. As of the parity-closure work
-the palette and keymap share one registry, `g a` is consistently
-All Mail, and Analytics has moved to `g y`. On first visit to `/m/archive`
-after the migration a one-time toast announces the move.
+### Go to
+
+`g` then a letter, as in the TUI. Digits match the TUI's tabs.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `g 1` … `g 9` | Open saved search 1 to 9 | In sidebar order, as the TUI's tab strip |
+| `g i`, `g 0` | Go to Inbox |  |
+| `g s` | Go to Starred |  |
+| `g t` | Go to Sent |  |
+| `g d`, `g E` | Go to Drafts |  |
+| `g a` | Go to All Mail |  |
+| `g l` | Go to label |  |
+| `g A` | Analytics |  |
+| `g y` | Activity log |  |
+| `g L` | Daemon logs |  |
+| `g c`, `0` | Settings | The TUI opens config.toml in $EDITOR; the web opens Settings |
+| `g n` | Go to Snoozed | Web only |
+| `g #` | Go to Trash | Web only |
+| `g !` | Go to Spam | Web only |
+| `g q` | Reply queue | Palette only in the TUI |
+| `g o` | Owed replies | Sidebar lens in the TUI |
+| `g v`, `9` | Calendar invites | Sidebar lens in the TUI |
+| `g u` | Subscriptions | Sidebar lens in the TUI |
+| `g S`, `8` | Screener | Palette only in the TUI |
+| `1` | Mail |  |
+| `2` | Search page |  |
+| `3`, `g r` | Rules |  |
+| `4` | Accounts |  |
+| `5` | Diagnostics |  |
+| `6` | Analytics (tab) |  |
+| `7` | Deliveries |  |
+
+### Mail actions
+
+In the mail list they act on the selection or the row under the cursor; in the reader, on the open conversation.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `e` | Archive |  |
+| `m` | Mark read and archive | Same as the TUI; read/unread are I and U |
+| `#`, `Delete`, `Backspace` | Move to Trash |  |
+| `!` | Mark as spam |  |
+| `s` | Star or unstar |  |
+| `I` | Mark read |  |
+| `U` | Mark unread |  |
+| `l` | Labels… |  |
+| `v` | Move to label… |  |
+| `Z` | Snooze… |  |
+| `D` | Unsubscribe… |  |
+| `b` | Reply later |  |
+| `r` | Reply |  |
+| `a` | Reply all |  |
+| `f` | Forward |  |
+| `E` | Export as Markdown |  |
+| `B` | Thread briefing |  |
+| `W` | Who is this sender? |  |
+| `p` | Sender profile | Palette only in the TUI |
+| `L` | Links in this message |  |
+| `A` | Attachments |  |
+| `i a` | Accept invite |  |
+| `i m` | Maybe (invite) |  |
+| `i d` | Decline invite |  |
+| `i A` | Accept with comment |  |
+| `i M` | Maybe with comment |  |
+| `i D` | Decline with comment |  |
+
+### Mail list
+
+| Key | Action | Note |
+|-----|--------|------|
+| `j`, `ArrowDown` | Next conversation |  |
+| `k`, `ArrowUp` | Previous conversation |  |
+| `g g`, `Home` | First conversation |  |
+| `G`, `End` | Last conversation |  |
+| `Ctrl+D`, `PageDown` | Half page down |  |
+| `Ctrl+U`, `PageUp` | Half page up |  |
+| `H` | Top of screen |  |
+| `M` | Middle of screen | L (bottom of screen) opens links, as in the TUI's list pane |
+| `Enter`, `o`, `ArrowRight` | Open conversation |  |
+| `h`, `ArrowLeft` | Go to sidebar |  |
+| `w` | This list's row action | Web only |
+| `x` | Select and move down |  |
+| `V` | Visual line mode |  |
+| `* a`, `⌘A / Ctrl+A` | Select all |  |
+| `* n` | Select none |  |
+| `* r` | Select read | Web only |
+| `* u` | Select unread | Web only |
+| `* s` | Select starred | Web only |
+| `Esc` | Clear selection, then close |  |
+| `g f`, `Ctrl+F` | Filter this list | TUI Ctrl-f; Ctrl+F stays the browser's Find off macOS, so g f works everywhere |
+
+### Reader
+
+| Key | Action | Note |
+|-----|--------|------|
+| `j`, `ArrowDown` | Scroll down |  |
+| `k`, `ArrowUp` | Scroll up |  |
+| `Ctrl+D`, `PageDown`, `Space` | Page down |  |
+| `Ctrl+U`, `PageUp`, `Shift+Space` | Page up |  |
+| `g g`, `Home` | Top of thread |  |
+| `G`, `End` | End of thread |  |
+| `J` | Next message |  |
+| `K` | Previous message |  |
+| `o` | Expand or collapse message | Web only; the TUI shows every message |
+| `X` | Expand or collapse all | Web only |
+| `n` | Next conversation | The TUI steps results with n/N; the web steps conversations |
+| `N` | Previous conversation |  |
+| `]` | Archive, open next | Web only |
+| `[` | Archive, open previous | Web only |
+| `h`, `ArrowLeft` | Back to list |  |
+| `Esc`, `q` | Close conversation |  |
+| `R` | Reader view, or back to plain |  |
+| `H` | Formatted (HTML) view, or back to plain |  |
+| `M` | Load remote images |  |
+| `S` | Show or hide signatures |  |
+| `Q` | Show or hide quoted text | Web only |
+| `g h` | Raw headers | CLI `mxr cat --view headers`; not in the TUI |
+| `O` | Open original in a new tab |  |
+| `y` | Summarize thread |  |
+| `F` | Full-width reader |  |
+
+### Sidebar
+
+| Key | Action | Note |
+|-----|--------|------|
+| `j`, `ArrowDown` | Next item |  |
+| `k`, `ArrowUp` | Previous item |  |
+| `g g` | First item |  |
+| `G` | Last item |  |
+| `Enter`, `o`, `l`, `ArrowRight` | Open |  |
+| `[` | Collapse section |  |
+| `]` | Expand section |  |
+
+### Screener
+
+| Key | Action | Note |
+|-----|--------|------|
+| `a` | Allow sender |  |
+| `d` | Deny sender |  |
+| `f` | Send to feed |  |
+| `p` | Send to paper trail |  |
+| `j`, `ArrowDown` | Next sender |  |
+| `k`, `ArrowUp` | Previous sender |  |
+
+<!-- web-keys:end -->
 
 ### Customization
 
-The web keymap is currently built into the SPA — there is no `keys.toml`
-equivalent yet. The Settings → Keybindings page renders the full
-registry-derived list, including which actions are palette-only.
+The web keymap is built into the app; there is no `keys.toml` equivalent
+yet.

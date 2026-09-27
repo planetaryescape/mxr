@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 interface Props {
   children: ReactNode;
   fallback?: (error: Error, reset: () => void) => ReactNode;
+  /** When this changes (e.g. the route path), a caught error is cleared. */
+  resetKey?: string;
 }
 
 interface State {
@@ -24,6 +26,10 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   reset = () => this.setState({ error: undefined });
+
+  override componentDidUpdate(previous: Props): void {
+    if (this.state.error && previous.resetKey !== this.props.resetKey) this.reset();
+  }
 
   override render(): ReactNode {
     if (this.state.error) {

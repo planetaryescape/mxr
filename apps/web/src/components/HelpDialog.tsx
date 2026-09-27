@@ -9,73 +9,82 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  type ActionContext,
-  type ShortcutHint,
-  type ShortcutSection,
-  useActionShortcutSections,
-} from "@/lib/actions";
-import type { MailPane } from "@/state/mailboxPaneStore";
+import { type ShortcutHint, useActionContext, useShortcutSections } from "@/lib/actions";
 
 interface HelpDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  path: string;
-  activePane: MailPane;
-  accountCount?: number;
 }
 
-interface HelpRow extends ShortcutHint {
-  section: string;
-}
-
-export function HelpDialog({
-  open,
-  onOpenChange,
-  path,
-  activePane,
-  accountCount = 0,
-}: HelpDialogProps) {
+/**
+ * Keyboard reference generated from the action registry: the current
+ * view's keys first, then mail actions, global keys, and other views.
+ * Keys that differ from the TUI say so inline.
+ */
+export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
   const [query, setQuery] = useState("");
-  const ctx = useMemo<ActionContext>(
-    () => ({
-      path,
-      activePane,
-      selectionCount: 0,
-      accountCount,
-      hasFocusedThread: /^\/m\/[^/]+\/[^/]+/.test(path),
-      hasFocusedMessage: /^\/m\/[^/]+\/[^/]+\/[^/]+/.test(path),
-      isFirstAccountOnly: accountCount === 1,
-    }),
-    [path, activePane, accountCount],
-  );
-  const sections = useActionShortcutSections(ctx);
-  const rows = useMemo(() => flattenSections(sections), [sections]);
-  const filtered = filterRows(rows, query);
+  const ctx = useActionContext();
+  const sections = useShortcutSections(ctx);
+  const normalized = query.trim().toLowerCase();
+  const visible = useMemo(() => {
+    if (!normalized) return sections;
+    return sections
+      .map((section) => ({
+        ...section,
+        hints: section.hints.filter((hint) =>
+          `${section.title} ${hint.keys.join(" ")} ${hint.label} ${hint.note ?? ""}`
+            .toLowerCase()
+            .includes(normalized),
+        ),
+      }))
+      .filter((section) => section.hints.length > 0);
+  }, [normalized, sections]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) setQuery("");
+        onOpenChange(next);
+      }}
+    >
+      <DialogContent className="flex max-h-[85dvh] max-w-4xl flex-col gap-3">
         <DialogHeader>
-          <DialogTitle>Help</DialogTitle>
+          <DialogTitle>Keyboard</DialogTitle>
           <DialogDescription>
-            Contextual keyboard reference. Press ? again or Esc to close.
+            Keys follow the mxr TUI. Type to filter; Esc closes.
           </DialogDescription>
         </DialogHeader>
         <Input
-          aria-label="Search help"
+          autoFocus
+          aria-label="Filter shortcuts"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search shortcuts, actions, or screens"
+          placeholder="archive, label, g i…"
           className="h-9"
         />
-        <div className="max-h-[62vh] overflow-auto rounded-xl border border-border bg-surface p-3">
-          {query.trim() ? (
-            <HelpRows rows={filtered} />
+        <div
+          className="min-h-0 flex-1 overflow-auto rounded-sm pr-1 focus-visible:outline-2 focus-visible:outline-ring"
+          // Scrollable, so it must be reachable by keyboard (arrow keys scroll it).
+          tabIndex={0}
+          role="region"
+          aria-label="Shortcuts"
+        >
+          {visible.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">No matching shortcuts.</p>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {sections.map((section) => (
-                <HelpSectionView key={section.title} section={section} />
+            <div className="columns-1 gap-8 md:columns-2">
+              {visible.map((section) => (
+                <section key={section.id} className="mb-5 break-inside-avoid">
+                  <h2 className="mb-1.5 border-b border-border pb-1 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+                    {section.title}
+                  </h2>
+                  <ul>
+                    {section.hints.map((hint) => (
+                      <HelpRow key={`${section.id}-${hint.id}`} hint={hint} />
+                    ))}
+                  </ul>
+                </section>
               ))}
             </div>
           )}
@@ -85,49 +94,24 @@ export function HelpDialog({
   );
 }
 
-function HelpSectionView({ section }: { section: ShortcutSection }) {
+function HelpRow({ hint }: { hint: ShortcutHint }) {
   return (
-    <section>
-      <h2 className="mb-2 text-xs font-semibold text-foreground">{section.title}</h2>
-      <HelpRows rows={section.hints.map((hint) => ({ ...hint, section: section.title }))} />
-    </section>
-  );
-}
-
-function HelpRows({ rows }: { rows: HelpRow[] }) {
-  if (rows.length === 0) {
-    return <div className="text-xs text-muted-foreground">No matching shortcuts.</div>;
-  }
-  return (
-    <div className="divide-y divide-border">
-      {rows.map((row) => (
-        <div
-          key={`${row.section}-${row.key}-${row.label}`}
-          className="flex items-center gap-3 py-2"
-        >
-          <div className="w-24 shrink-0">
-            <KeyChip>{row.key}</KeyChip>
-          </div>
-          <div className="min-w-0">
-            <div className="truncate text-xs font-medium text-foreground">{row.label}</div>
-            <div className="truncate text-2xs text-muted-foreground">{row.section}</div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function flattenSections(sections: ShortcutSection[]): HelpRow[] {
-  return sections.flatMap((section) =>
-    section.hints.map((hint) => ({ ...hint, section: section.title })),
-  );
-}
-
-function filterRows(rows: HelpRow[], query: string): HelpRow[] {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return rows;
-  return rows.filter((row) =>
-    `${row.section} ${row.key} ${row.label}`.toLowerCase().includes(normalized),
+    <li className="flex items-start gap-3 py-1">
+      <span className="flex w-28 shrink-0 flex-wrap gap-1">
+        {hint.keys.slice(0, 2).map((key) => (
+          <KeyChip key={key}>{key}</KeyChip>
+        ))}
+      </span>
+      <span className="min-w-0 text-[13px] leading-5">
+        {/* Keys that don't apply here step back in colour, not opacity: a
+            faded muted note would fall below 4.5:1. */}
+        <span className={hint.live ? "text-foreground" : "text-muted-foreground"}>
+          {hint.label}
+        </span>
+        {hint.note ? (
+          <span className="block text-2xs leading-4 text-muted-foreground">{hint.note}</span>
+        ) : null}
+      </span>
+    </li>
   );
 }

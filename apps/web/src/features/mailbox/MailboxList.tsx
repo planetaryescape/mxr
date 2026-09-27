@@ -1,123 +1,157 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { toast } from "sonner";
 
 import { BulkActionBar } from "./BulkActionBar";
-import { MailboxRow } from "./MailboxRow";
+import { MailboxRow, RowActionChip, type RowAction, type RowQuickAction } from "./MailboxRow";
+import { rowKey } from "./rowKey";
 import type { MessageGroupView, MessageRowView } from "./types";
-import { useOptimisticMailMutation } from "./useOptimisticMailMutation";
-import { EmptyState } from "@/components/EmptyState";
-import { Button } from "@/components/ui/button";
+import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
+import { performMailAction } from "@/features/mail-actions/mailMutations";
+import { createMailVerbs } from "@/features/mail-actions/mailVerbs";
+import { rowMessageIds } from "@/features/mail-actions/pendingMailOps";
+import { targetFromRows, type MailTarget } from "@/features/mail-actions/target";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
-import { useKeyScope } from "@/state/keyScopeStore";
+import { useScopeController } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useSelection } from "@/state/selectionStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
-import { Inbox } from "lucide-react";
 
-interface MailboxListProps {
+export interface MailboxListProps {
   groups: MessageGroupView[];
-  mailboxPath: string;
+  /** Selection is cleared when this changes (lens, query, account). */
+  scopeKey: string;
   activeThreadId?: string;
+  /** While a thread is open, moving the cursor opens the next one (TUI three-pane). */
   previewOnFocus?: boolean;
+  onOpenRow: (row: MessageRowView, options: { focusReader: boolean }) => void;
+  onCloseThread?: () => void;
   hasMore?: boolean;
+  /** Open the list's quick filter (TUI Ctrl-f). */
+  onFilter?: () => void;
   loadingMore?: boolean;
   onLoadMore?: () => void;
-  /**
-   * Read-only lists drop selection, bulk actions, and message mutations
-   * (star/archive/read/etc.) — keeping navigation and open. Use for
-   * lists whose rows aren't directly mutable messages (e.g. stale
-   * thread aggregates with no message id).
-   */
+  /** Lists of aggregates that aren't mutable messages: navigation only. */
   readOnly?: boolean;
-  /** Optional per-row trailing control, e.g. a list-specific action. */
-  rowAction?: (row: MessageRowView) => ReactNode;
-}
-
-interface FlatHeader {
-  kind: "header";
-  id: string;
+  /** The list's own verb for a row (wake, done): `w`, or a click on the row's chip. */
+  rowAction?: RowAction;
+  /** Current queue label, enabling "Route out of this queue". */
+  queueLabel?: string;
+  empty: ReactNode;
   label: string;
 }
-interface FlatRow {
-  kind: "row";
-  row: MessageRowView;
+
+type FlatItem =
+  | { kind: "header"; id: string; label: string }
+  | { kind: "row"; row: MessageRowView };
+
+function flatten(groups: MessageGroupView[]): FlatItem[] {
+  const items: FlatItem[] = [];
+  for (const group of groups) {
+    items.push({ kind: "header", id: `header-${group.id}`, label: group.label });
+    for (const row of group.rows) items.push({ kind: "row", row });
+  }
+  return items;
 }
-type FlatItem = FlatHeader | FlatRow;
+
+function domId(row: MessageRowView): string {
+  return `mail-row-${rowKey(row)}`;
+}
+
+const ROW_ESTIMATE = { compact: 38, regular: 64, comfortable: 80 } as const;
 
 export function MailboxList({
   groups,
-  mailboxPath,
+  scopeKey,
   activeThreadId,
-  previewOnFocus,
+  previewOnFocus = false,
+  onOpenRow,
+  onCloseThread,
   hasMore = false,
+  onFilter,
   loadingMore = false,
   onLoadMore,
   readOnly = false,
   rowAction,
+  queueLabel,
+  empty,
+  label,
 }: MailboxListProps) {
-  const parentRef = useRef<HTMLDivElement>(null);
-  const pendingGoTimerRef = useRef<number | null>(null);
-  const pendingStarTimerRef = useRef<number | null>(null);
-  const navigate = useNavigate();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const density = useUiPrefs((s) => s.density);
+  const setListMode = useUiPrefs((s) => s.setListMode);
+  const listMode = useUiPrefs((s) => s.listMode);
+  const activePane = useMailboxPane((s) => s.activePane);
+  const setActivePane = useMailboxPane((s) => s.setActivePane);
+  const selectedIds = useSelection((s) => s.ids);
+  const setSelectionScope = useSelection((s) => s.setScope);
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const activePane = useMailboxPane((state) => state.activePane);
-  const setActivePane = useMailboxPane((state) => state.setActivePane);
-  const setSuppressNextReaderFocus = useMailboxPane((state) => state.setSuppressNextReaderFocus);
-  const setScope = useSelection((state) => state.setScope);
-  const selectedIds = useSelection((state) => state.ids);
-  const toggle = useSelection((state) => state.toggle);
-  const selectRange = useSelection((state) => state.selectRange);
-  const selectMany = useSelection((state) => state.selectMany);
-  const clearSelection = useSelection((state) => state.clear);
-  const lastClickedId = useSelection((state) => state.lastClickedId);
-  const archive = useOptimisticMailMutation("archive");
-  const spam = useOptimisticMailMutation("spam");
-  const trash = useOptimisticMailMutation("trash");
-  const star = useOptimisticMailMutation("star");
-  const unstar = useOptimisticMailMutation("unstar");
-  const read = useOptimisticMailMutation("read");
-  const unread = useOptimisticMailMutation("unread");
-  const density = useUiPrefs((state) => state.density);
+  const lastIndexRef = useRef(0);
+  const [visualAnchor, setVisualAnchor] = useState<string | null>(null);
 
   const flat = useMemo(() => flatten(groups), [groups]);
   const rows = useMemo(
     () => flat.flatMap((item) => (item.kind === "row" ? [item.row] : [])),
     [flat],
   );
-  const focusedIndex = useMemo(() => {
-    if (!focusedId) return rows.length > 0 ? 0 : -1;
-    const index = rows.findIndex((row) => row.id === focusedId);
-    return index >= 0 ? index : rows.length > 0 ? 0 : -1;
-  }, [focusedId, rows]);
-  const focusedRow = focusedIndex >= 0 ? rows[focusedIndex] : undefined;
-
-  useEffect(() => setScope(mailboxPath), [mailboxPath, setScope]);
-
-  useEffect(() => {
-    setFocusedId((current) => {
-      if (rows.length === 0) return null;
-      if (current && rows.some((row) => row.id === current)) return current;
-      return rows[0]?.id ?? null;
+  const rowIndexById = useMemo(
+    () => new Map(rows.map((row, index) => [rowKey(row), index])),
+    [rows],
+  );
+  const flatIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    flat.forEach((item, index) => {
+      if (item.kind === "row") map.set(rowKey(item.row), index);
     });
-  }, [rows]);
+    return map;
+  }, [flat]);
 
+  useEffect(() => setSelectionScope(scopeKey), [scopeKey, setSelectionScope]);
+  useEffect(() => setVisualAnchor(null), [scopeKey]);
+
+  // Resolve the cursor. When the focused row disappears (archived,
+  // filtered) the cursor stays at the same position, so the next
+  // conversation comes up under it, the way the TUI behaves.
+  const focusedIndex = (() => {
+    if (rows.length === 0) return -1;
+    const index = focusedId ? rowIndexById.get(focusedId) : undefined;
+    if (index !== undefined) return index;
+    return Math.min(lastIndexRef.current, rows.length - 1);
+  })();
+  const focusedRow = focusedIndex >= 0 ? rows[focusedIndex] : undefined;
+  useLayoutEffect(() => {
+    if (focusedIndex >= 0) lastIndexRef.current = focusedIndex;
+    if (focusedRow && rowKey(focusedRow) !== focusedId) setFocusedId(rowKey(focusedRow));
+  }, [focusedId, focusedIndex, focusedRow]);
+
+  // Follow the reader: opening a thread elsewhere puts the cursor on it.
+  // Only when the cursor is on another conversation: in message mode a
+  // thread has several rows, and snapping back to its first row would trap
+  // j on the second.
+  const focusedThreadId = focusedRow?.thread_id;
   useEffect(() => {
-    if (!activeThreadId) return;
+    if (!activeThreadId || focusedThreadId === activeThreadId) return;
     const row = rows.find((item) => item.thread_id === activeThreadId);
-    if (row) setFocusedId(row.id);
-  }, [activeThreadId, rows]);
+    if (row) setFocusedId(rowKey(row));
+  }, [activeThreadId, focusedThreadId, rows]);
 
   const virtualizer = useVirtualizer({
     count: flat.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: (index) => {
-      if (flat[index]?.kind === "header") return density === "compact" ? 26 : 32;
-      if (density === "compact") return 32;
-      if (density === "comfortable") return 68;
-      return 52;
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (index) => (flat[index]?.kind === "header" ? 30 : ROW_ESTIMATE[density]),
+    overscan: 12,
+    getItemKey: (index) => {
+      const item = flat[index];
+      return item ? (item.kind === "header" ? item.id : rowKey(item.row)) : index;
     },
-    overscan: 10,
   });
   const virtualItems = virtualizer.getVirtualItems();
 
@@ -126,369 +160,344 @@ export function MailboxList({
   }, [density, virtualizer]);
 
   useEffect(() => {
-    const lastItem = virtualItems.at(-1);
-    if (!lastItem || !hasMore || loadingMore || !onLoadMore) return;
-    if (lastItem.index >= flat.length - 8) onLoadMore();
+    const last = virtualItems.at(-1);
+    if (!last || !hasMore || loadingMore || !onLoadMore) return;
+    if (last.index >= flat.length - 10) onLoadMore();
   }, [flat.length, hasMore, loadingMore, onLoadMore, virtualItems]);
 
+  // Opening or closing the reader changes the list's width, rows reflow
+  // and re-measure, and the virtualizer's offsets shift. Keep the cursor
+  // row where it was on screen so returning from the reader lands the user
+  // exactly where they left.
+  const focusedDomIdRef = useRef<string | null>(null);
+  focusedDomIdRef.current = focusedRow ? domId(focusedRow) : null;
+  const anchorRef = useRef<{ id: string; top: number } | null>(null);
+  const captureAnchor = useCallback(() => {
+    const list = scrollRef.current;
+    const id = focusedDomIdRef.current;
+    const row = id ? document.getElementById(id) : null;
+    anchorRef.current =
+      list && id && row
+        ? { id, top: row.getBoundingClientRect().top - list.getBoundingClientRect().top }
+        : null;
+  }, []);
   useEffect(() => {
-    if (!focusedRow) return;
-    const flatIndex = flat.findIndex(
-      (item) => item.kind === "row" && item.row.id === focusedRow.id,
-    );
-    if (flatIndex >= 0) virtualizer.scrollToIndex(flatIndex, { align: "auto" });
-  }, [flat, focusedRow, virtualizer]);
-
-  const openRow = useCallback(
-    (row: MessageRowView, pane: "mailbox" | "reader") => {
-      setActivePane(pane);
-      setSuppressNextReaderFocus(pane === "mailbox");
-      void navigate({
-        to: "/m/$mailbox/$threadId",
-        params: {
-          mailbox: mailboxSegment(mailboxPath),
-          threadId: row.thread_id,
-        },
-      });
-    },
-    [mailboxPath, navigate, setActivePane, setSuppressNextReaderFocus],
-  );
-
-  useShortcutScope("mailbox", activePane === "mailbox");
-  const setPendingPrefix = useKeyScope((state) => state.setPendingPrefix);
-
-  const clearGoPrefix = useCallback(() => {
-    if (pendingGoTimerRef.current === null) return;
-    window.clearTimeout(pendingGoTimerRef.current);
-    pendingGoTimerRef.current = null;
-    setPendingPrefix(null);
-  }, [setPendingPrefix]);
-
-  const clearStarPrefix = useCallback(() => {
-    if (pendingStarTimerRef.current === null) return;
-    window.clearTimeout(pendingStarTimerRef.current);
-    pendingStarTimerRef.current = null;
-    setPendingPrefix(null);
-  }, [setPendingPrefix]);
-
-  const focusRowAt = useCallback(
-    (index: number, align: "auto" | "start" | "end" = "auto") => {
-      if (rows.length === 0) return;
-      const next = Math.max(0, Math.min(rows.length - 1, index));
-      const row = rows[next];
-      if (!row) return;
-      setFocusedId(row.id);
-      const flatIndex = flat.findIndex((item) => item.kind === "row" && item.row.id === row.id);
-      if (flatIndex >= 0) virtualizer.scrollToIndex(flatIndex, { align });
-      if (previewOnFocus && row.thread_id !== activeThreadId) openRow(row, "mailbox");
-    },
-    [activeThreadId, flat, openRow, previewOnFocus, rows, virtualizer],
-  );
-
-  const moveFocus = useCallback(
-    (delta: number) => {
-      if (rows.length === 0) return;
-      const current = focusedIndex >= 0 ? focusedIndex : 0;
-      focusRowAt(current + delta);
-    },
-    [focusRowAt, focusedIndex, rows.length],
-  );
-
+    requestAnimationFrame(captureAnchor);
+  }, [captureAnchor, focusedId]);
   useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (activePane !== "mailbox") return;
-      const target = event.target;
-      if (target instanceof HTMLElement) {
-        if (target.closest("input, textarea, select, [contenteditable=true]")) return;
-      }
-      // Read-only lists support navigation + open only; block selection
-      // and message mutations.
-      if (readOnly) {
-        const k = event.key;
-        const blocked =
-          ((event.metaKey || event.ctrlKey) && k.toLowerCase() === "a") ||
-          ["x", "e", "s", "m"].includes(k.toLowerCase()) ||
-          k === "!" ||
-          k === "*" ||
-          k === "Delete" ||
-          k === "Backspace";
-        if (blocked) return;
-      }
-      const rowItems = rows;
-      // Gmail-style * sequences: *a select all, *n select none.
-      if (pendingStarTimerRef.current !== null) {
-        clearStarPrefix();
-        if (event.key === "a") {
-          event.preventDefault();
-          selectMany(rowItems.map((row) => row.id));
-          return;
+    const list = scrollRef.current;
+    if (!list || typeof ResizeObserver === "undefined") return;
+    let width = list.clientWidth;
+    let settling = 0;
+    const observer = new ResizeObserver(() => {
+      if (list.clientWidth === width) return;
+      width = list.clientWidth;
+      const anchor = anchorRef.current;
+      if (!anchor) return;
+      cancelAnimationFrame(settling);
+      // Rows re-measure over the next frames; put the row back each time.
+      let frames = 0;
+      const settle = () => {
+        const row = document.getElementById(anchor.id);
+        if (row) {
+          const top = row.getBoundingClientRect().top - list.getBoundingClientRect().top;
+          list.scrollTop += top - anchor.top;
         }
-        if (event.key === "n") {
-          event.preventDefault();
-          clearSelection();
-          return;
+        frames += 1;
+        if (frames < 6) {
+          settling = requestAnimationFrame(settle);
+        } else {
+          settling = 0;
+          anchorRef.current = anchor;
         }
-      }
-      if (event.key === "*") {
-        event.preventDefault();
-        clearGoPrefix();
-        pendingStarTimerRef.current = window.setTimeout(() => {
-          pendingStarTimerRef.current = null;
-          setPendingPrefix(null);
-        }, 1500);
-        setPendingPrefix("*");
-        return;
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
-        event.preventDefault();
-        selectMany(rowItems.map((row) => row.id));
-      } else if (event.key === "G") {
-        event.preventDefault();
-        clearGoPrefix();
-        focusRowAt(rowItems.length - 1, "end");
-      } else if (event.key === "g") {
-        if (pendingGoTimerRef.current !== null) {
-          event.preventDefault();
-          clearGoPrefix();
-          focusRowAt(0, "start");
-          return;
-        }
-        pendingGoTimerRef.current = window.setTimeout(() => {
-          pendingGoTimerRef.current = null;
-          setPendingPrefix(null);
-        }, 800);
-        setPendingPrefix("g");
-      } else if (event.key === "j") {
-        clearGoPrefix();
-        event.preventDefault();
-        moveFocus(1);
-      } else if (event.key === "k") {
-        clearGoPrefix();
-        event.preventDefault();
-        moveFocus(-1);
-      } else if (event.key === "h" || event.key === "ArrowLeft") {
-        clearGoPrefix();
-        event.preventDefault();
-        setActivePane("sidebar");
-      } else if (event.key.toLowerCase() === "x") {
-        clearGoPrefix();
-        event.preventDefault();
-        const row = rowItems[focusedIndex];
-        if (!row) return;
-        if (event.shiftKey && lastClickedId) {
-          const ordered = rowItems.map((item) => item.id);
-          const a = ordered.indexOf(lastClickedId);
-          const b = ordered.indexOf(row.id);
-          if (a >= 0 && b >= 0) {
-            const [start, end] = a < b ? [a, b] : [b, a];
-            selectRange(ordered.slice(start, end + 1));
-            return;
-          }
-        }
-        toggle(row.id);
-      } else if (event.key === "Enter" || event.key === "o") {
-        clearGoPrefix();
-        event.preventDefault();
-        const row = rowItems[focusedIndex];
-        if (row) openRow(row, "reader");
-      } else if (event.key === "l" || event.key === "ArrowRight") {
-        clearGoPrefix();
-        event.preventDefault();
-        const row = rowItems[focusedIndex];
-        if (row) openRow(row, "reader");
-      } else if (event.key === "e") {
-        clearGoPrefix();
-        event.preventDefault();
-        const ids =
-          selectedIds.size > 0
-            ? [...selectedIds]
-            : rowItems[focusedIndex]
-              ? [rowItems[focusedIndex].id]
-              : [];
-        if (ids.length > 0) archive.mutate(ids);
-      } else if (event.key === "!") {
-        clearGoPrefix();
-        event.preventDefault();
-        const ids =
-          selectedIds.size > 0
-            ? [...selectedIds]
-            : rowItems[focusedIndex]
-              ? [rowItems[focusedIndex].id]
-              : [];
-        if (ids.length > 0) spam.mutate(ids);
-      } else if (event.key === "Delete" || event.key === "Backspace") {
-        clearGoPrefix();
-        event.preventDefault();
-        const ids =
-          selectedIds.size > 0
-            ? [...selectedIds]
-            : rowItems[focusedIndex]
-              ? [rowItems[focusedIndex].id]
-              : [];
-        if (ids.length > 0) trash.mutate(ids);
-      } else if (event.key === "s") {
-        clearGoPrefix();
-        event.preventDefault();
-        const row = rowItems[focusedIndex];
-        if (row) (row.starred ? unstar : star).mutate([row.id]);
-      } else if (event.key === "m") {
-        clearGoPrefix();
-        event.preventDefault();
-        const row = rowItems[focusedIndex];
-        if (row) (row.unread ? read : unread).mutate([row.id]);
-      } else if (event.key === "Escape") {
-        clearGoPrefix();
-        event.preventDefault();
-        if (selectedIds.size > 0) {
-          clearSelection();
-        } else if (activeThreadId) {
-          void navigate({ to: mailboxPath });
-        }
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      clearGoPrefix();
-      clearStarPrefix();
+      };
+      settling = requestAnimationFrame(settle);
+    });
+    const onScroll = () => {
+      if (!settling) captureAnchor();
     };
-  }, [
-    activePane,
-    activeThreadId,
-    archive,
-    clearGoPrefix,
-    clearStarPrefix,
-    setPendingPrefix,
-    clearSelection,
-    focusRowAt,
-    focusedIndex,
-    lastClickedId,
-    mailboxPath,
-    moveFocus,
-    navigate,
-    openRow,
-    previewOnFocus,
-    read,
-    readOnly,
-    rows,
-    selectMany,
-    selectRange,
-    selectedIds,
-    setActivePane,
-    spam,
-    star,
-    toggle,
-    trash,
-    unread,
-    unstar,
-  ]);
+    observer.observe(list);
+    list.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(settling);
+      observer.disconnect();
+      list.removeEventListener("scroll", onScroll);
+    };
+  }, [captureAnchor]);
 
-  if (rows.length === 0) {
-    return (
-      <EmptyState
-        icon={Inbox}
-        title="No mail here"
-        description="This lens is empty, or sync has not delivered messages yet."
-      />
-    );
-  }
+  const scrollToRow = useCallback(
+    (row: MessageRowView | undefined, align: "auto" | "start" | "center" | "end" = "auto") => {
+      const index = row ? flatIndexById.get(rowKey(row)) : undefined;
+      if (index !== undefined) virtualizer.scrollToIndex(index, { align });
+    },
+    [flatIndexById, virtualizer],
+  );
 
-  function toggleRow(row: MessageRowView, shift: boolean) {
-    if (shift && lastClickedId) {
-      const ordered = rows.map((item) => item.id);
-      const a = ordered.indexOf(lastClickedId);
-      const b = ordered.indexOf(row.id);
-      if (a >= 0 && b >= 0) {
+  const listFocused = activePane === "mailbox";
+  useShortcutScope("list", listFocused);
+
+  // DOM focus follows the logical pane so screen readers and Tab agree.
+  useEffect(() => {
+    if (!listFocused) return;
+    const active = document.activeElement;
+    if (
+      active &&
+      active !== document.body &&
+      active.closest("input, textarea, [contenteditable=true], [role=dialog]")
+    ) {
+      return;
+    }
+    scrollRef.current?.focus({ preventScroll: true });
+  }, [listFocused]);
+
+  const moveTo = useCallback(
+    (index: number, align: "auto" | "start" | "center" | "end" = "auto") => {
+      if (rows.length === 0) return;
+      const next = rows[Math.max(0, Math.min(rows.length - 1, index))];
+      if (!next) return;
+      setFocusedId(rowKey(next));
+      scrollToRow(next, align);
+      if (visualAnchor) {
+        // If the anchor row left the list, restart the range at the cursor
+        // rather than selecting everything from the top.
+        const a = rowIndexById.get(visualAnchor) ?? rowIndexById.get(rowKey(next)) ?? 0;
+        const b = rowIndexById.get(rowKey(next)) ?? 0;
         const [start, end] = a < b ? [a, b] : [b, a];
-        selectRange(ordered.slice(start, end + 1));
+        useSelection.getState().selectMany(rows.slice(start, end + 1).map(rowKey));
+      }
+      if (previewOnFocus && next.thread_id !== activeThreadId) {
+        onOpenRow(next, { focusReader: false });
+      }
+    },
+    [activeThreadId, onOpenRow, previewOnFocus, rowIndexById, rows, scrollToRow, visualAnchor],
+  );
+
+  const pageSize = () => {
+    const height = scrollRef.current?.clientHeight ?? 600;
+    return Math.max(1, Math.floor(height / 2 / ROW_ESTIMATE[density]));
+  };
+
+  const viewportIndex = (where: "top" | "middle") => {
+    const scrollTop = scrollRef.current?.scrollTop ?? 0;
+    const height = scrollRef.current?.clientHeight ?? 0;
+    const target = where === "top" ? scrollTop + 4 : scrollTop + height / 2;
+    const item = virtualItems.find((virtual) => virtual.start + virtual.size >= target);
+    for (let index = item?.index ?? 0; index < flat.length; index += 1) {
+      const candidate = flat[index];
+      if (candidate?.kind === "row") return rowIndexById.get(rowKey(candidate.row)) ?? 0;
+    }
+    return 0;
+  };
+
+  const selectedRows = () => {
+    const ids = useSelection.getState().ids;
+    return rows.filter((row) => ids.has(rowKey(row)));
+  };
+
+  const getTarget = (): MailTarget | null => {
+    if (readOnly) return null;
+    const selected = selectedRows();
+    if (selected.length > 0) return targetFromRows(selected, "list");
+    return focusedRow ? targetFromRows([focusedRow], "list") : null;
+  };
+
+  const selectWhere = (predicate: (row: MessageRowView) => boolean) => {
+    useSelection.getState().selectMany(rows.filter(predicate).map(rowKey));
+  };
+
+  const verbs = createMailVerbs({
+    getTarget,
+    composeSurface: "overlay",
+    afterLeave: () => setVisualAnchor(null),
+  });
+
+  useScopeController("list", {
+    ...(readOnly ? {} : verbs),
+    down: () => moveTo(focusedIndex + 1),
+    up: () => moveTo(focusedIndex - 1),
+    top: () => moveTo(0, "start"),
+    bottom: () => moveTo(rows.length - 1, "end"),
+    pageDown: () => moveTo(focusedIndex + pageSize()),
+    pageUp: () => moveTo(focusedIndex - pageSize()),
+    viewportTop: () => moveTo(viewportIndex("top")),
+    viewportMiddle: () => moveTo(viewportIndex("middle")),
+    open: () => focusedRow && onOpenRow(focusedRow, { focusReader: true }),
+    ...(rowAction ? { rowAction: () => focusedRow && rowAction.run(focusedRow) } : {}),
+    focusSidebar: () => setActivePane("sidebar"),
+    ...(onFilter ? { filter: onFilter } : {}),
+    escape: () => {
+      if (visualAnchor) {
+        setVisualAnchor(null);
         return;
       }
+      if (useSelection.getState().ids.size > 0) {
+        useSelection.getState().clear();
+        return;
+      }
+      onCloseThread?.();
+    },
+    ...(readOnly
+      ? {}
+      : {
+          toggleSelect: () => {
+            if (!focusedRow) return;
+            useSelection.getState().toggle(rowKey(focusedRow));
+            moveTo(focusedIndex + 1);
+          },
+          visual: () => {
+            if (!focusedRow) return;
+            if (visualAnchor) {
+              setVisualAnchor(null);
+              return;
+            }
+            setVisualAnchor(rowKey(focusedRow));
+            useSelection
+              .getState()
+              .selectMany([...useSelection.getState().ids, rowKey(focusedRow)]);
+            toast.info("Visual mode: j/k extend, Esc to leave", {
+              id: "visual-mode",
+              duration: 2500,
+            });
+          },
+          selectAll: () => selectWhere(() => true),
+          selectNone: () => useSelection.getState().clear(),
+          selectRead: () => selectWhere((row) => !row.unread),
+          selectUnread: () => selectWhere((row) => row.unread),
+          selectStarred: () => selectWhere((row) => row.starred),
+          toggleThreads: () => setListMode(listMode === "threads" ? "messages" : "threads"),
+          ...(queueLabel
+            ? {
+                route: () => {
+                  const target = getTarget();
+                  if (!target) return;
+                  openMailDialog({ kind: "move", target, route: { fromQueueLabel: queueLabel } });
+                },
+              }
+            : {}),
+        }),
+  });
+
+  const onQuickAction = useCallback((row: MessageRowView, action: RowQuickAction) => {
+    const ids = rowMessageIds(row);
+    switch (action) {
+      case "archive":
+        void performMailAction("archive", ids);
+        break;
+      case "trash":
+        void performMailAction("trash", ids);
+        break;
+      case "toggleRead":
+        void performMailAction(row.unread ? "read" : "unread", ids);
+        break;
+      case "toggleStar":
+        void performMailAction(row.starred ? "unstar" : "star", ids);
+        break;
+      case "snooze":
+        openMailDialog({ kind: "snooze", target: targetFromRows([row], "list") });
+        break;
     }
-    toggle(row.id);
-  }
+  }, []);
+
+  const onToggleSelection = useCallback(
+    (row: MessageRowView, shift: boolean) => {
+      const selection = useSelection.getState();
+      if (shift && selection.lastClickedId) {
+        const a = rowIndexById.get(selection.lastClickedId);
+        const b = rowIndexById.get(rowKey(row));
+        if (a !== undefined && b !== undefined) {
+          const [start, end] = a < b ? [a, b] : [b, a];
+          selection.selectRange(rows.slice(start, end + 1).map(rowKey));
+          return;
+        }
+      }
+      selection.toggle(rowKey(row));
+    },
+    [rowIndexById, rows],
+  );
+
+  const handleOpen = useCallback(
+    (row: MessageRowView) => {
+      setFocusedId(rowKey(row));
+      setActivePane("mailbox");
+      onOpenRow(row, { focusReader: false });
+    },
+    [onOpenRow, setActivePane],
+  );
+
+  if (rows.length === 0) return <>{empty}</>;
+
+  const selecting = selectedIds.size > 0;
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
-      <div className="flex h-9 items-center justify-between gap-3 border-b border-border px-3">
-        <div className="min-w-0 truncate font-mono text-xs text-muted-foreground">
-          {rows.length} loaded
-          {loadingMore ? " · loading more" : hasMore ? " · scroll for more" : ""}
-          {!readOnly && selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
-        </div>
-        {readOnly ? null : (
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="xs"
-              onClick={() => selectMany(rows.map((row) => row.id))}
-            >
-              Select all
-            </Button>
-            {selectedIds.size > 0 ? (
-              <Button variant="outline" size="xs" onClick={clearSelection}>
-                Clear
-              </Button>
-            ) : null}
-          </div>
-        )}
-      </div>
+    <div className="@container relative flex min-h-0 flex-1 flex-col">
       <div
-        ref={parentRef}
-        role="region"
-        aria-label="Mailbox messages"
-        className="min-h-0 flex-1 overflow-auto"
-        data-active-pane={activePane === "mailbox" ? "true" : undefined}
+        ref={scrollRef}
+        role="listbox"
+        aria-label={label}
+        aria-multiselectable={!readOnly}
+        aria-activedescendant={focusedRow ? domId(focusedRow) : undefined}
+        tabIndex={0}
+        className="min-h-0 flex-1 overflow-y-auto outline-none"
+        data-active-pane={listFocused ? "true" : undefined}
         data-testid="mailbox-list"
+        onFocus={() => setActivePane("mailbox")}
         onMouseDown={() => setActivePane("mailbox")}
       >
-        <div style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
+        <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualItems.map((virtualItem) => {
             const item = flat[virtualItem.index];
             if (!item) return null;
             return (
               <div
-                key={item.kind === "header" ? item.id : item.row.id}
+                key={virtualItem.key}
                 data-index={virtualItem.index}
                 ref={virtualizer.measureElement}
                 className="absolute left-0 top-0 w-full"
                 style={{ transform: `translateY(${virtualItem.start}px)` }}
               >
                 {item.kind === "header" ? (
-                  <div className="mailbox-group-header sticky top-0 z-[1] flex h-8 items-center border-b border-border bg-background/95 px-3 font-mono text-2xs uppercase tracking-wide text-muted-foreground backdrop-blur">
+                  <div
+                    role="presentation"
+                    className="flex h-[30px] items-end border-b border-border/60 bg-background px-4 pb-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground"
+                  >
                     {item.label}
                   </div>
                 ) : (
                   <MailboxRow
                     row={item.row}
-                    selected={!readOnly && selectedIds.has(item.row.id)}
-                    focused={focusedRow?.id === item.row.id}
-                    onToggleSelection={(shift) => toggleRow(item.row, shift)}
-                    onFocusPane={() => setActivePane("mailbox")}
-                    onOpen={() => openRow(item.row, "mailbox")}
+                    domId={domId(item.row)}
+                    selected={!readOnly && selectedIds.has(rowKey(item.row))}
+                    focused={
+                      listFocused &&
+                      focusedRow !== undefined &&
+                      rowKey(focusedRow) === rowKey(item.row)
+                    }
+                    open={item.row.thread_id === activeThreadId}
+                    selecting={selecting}
                     readOnly={readOnly}
-                    trailingAction={rowAction?.(item.row)}
+                    onOpen={handleOpen}
+                    onToggleSelection={onToggleSelection}
+                    onQuickAction={onQuickAction}
+                    trailingAction={
+                      rowAction ? <RowActionChip action={rowAction} row={item.row} /> : undefined
+                    }
                   />
                 )}
               </div>
             );
           })}
         </div>
+        {hasMore || loadingMore ? (
+          <div className="px-4 py-3 text-center font-mono text-2xs text-muted-foreground">
+            {loadingMore ? "Loading more…" : ""}
+          </div>
+        ) : rows.length > 20 ? (
+          <div className="px-4 py-4 text-center font-mono text-2xs text-muted-foreground">
+            End of list
+          </div>
+        ) : null}
       </div>
-      {readOnly ? null : <BulkActionBar />}
+      {readOnly ? null : <BulkActionBar rows={rows} getTarget={getTarget} />}
     </div>
   );
-}
-
-function flatten(groups: MessageGroupView[]): FlatItem[] {
-  const items: FlatItem[] = [];
-  for (const group of groups) {
-    items.push({ kind: "header", id: group.id, label: group.label });
-    for (const row of group.rows) items.push({ kind: "row", row });
-  }
-  return items;
-}
-
-function mailboxSegment(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  return parts[1] && parts[1] !== "label" && parts[1] !== "saved" ? parts[1] : "inbox";
 }

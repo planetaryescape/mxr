@@ -1,26 +1,78 @@
 use super::*;
+use mxr_protocol::IpcErrorKind;
 
 #[derive(Debug, thiserror::Error)]
 pub(super) enum BridgeError {
+    /// The daemon socket could not be reached at all.
     #[error("failed to connect to mxr daemon at {0}")]
     Connect(String),
+    /// Transport failure after connecting: closed socket, io error, bad frame.
     #[error("ipc error: {0}")]
     Ipc(String),
+    /// The daemon did not answer within the IPC deadline.
+    #[error("ipc error: {0}")]
+    Timeout(String),
+    /// The daemon answered with an error. `kind` is the daemon's own failure
+    /// class, so the HTTP status follows it instead of blaming the gateway.
+    #[error("{message}")]
+    Daemon { message: String, kind: IpcErrorKind },
+    /// The HTTP request itself is malformed (bad id, unknown enum value,
+    /// missing lens parameter). Never reaches the daemon.
+    #[error("{0}")]
+    BadRequest(String),
+    /// The compose file the caller wrote does not parse or fails draft
+    /// validation (no recipients, bad From, broken frontmatter). The user
+    /// has to fix the draft; retrying cannot help, and the daemon is fine.
+    #[error("{0}")]
+    InvalidDraft(String),
     #[error("unauthorized")]
     Unauthorized,
     #[error("unexpected response from daemon")]
     UnexpectedResponse,
 }
 
+impl BridgeError {
+    pub(super) fn status(&self) -> StatusCode {
+        match self {
+            Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::InvalidDraft(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::Connect(_) => StatusCode::SERVICE_UNAVAILABLE,
+            Self::Timeout(_) => StatusCode::GATEWAY_TIMEOUT,
+            Self::Ipc(_) | Self::UnexpectedResponse => StatusCode::BAD_GATEWAY,
+            Self::Daemon { kind, .. } => match kind {
+                IpcErrorKind::InvalidRequest | IpcErrorKind::Policy | IpcErrorKind::Unsupported => {
+                    StatusCode::UNPROCESSABLE_ENTITY
+                }
+                IpcErrorKind::NotFound => StatusCode::NOT_FOUND,
+                IpcErrorKind::RateLimited => StatusCode::TOO_MANY_REQUESTS,
+                // The daemon's `Auth` kind is the mail provider rejecting its
+                // credentials, not this HTTP caller; a 401 here would make the
+                // SPA drop a valid bridge token.
+                IpcErrorKind::Auth | IpcErrorKind::Provider => StatusCode::BAD_GATEWAY,
+                IpcErrorKind::Store | IpcErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+        }
+    }
+
+    /// Machine-readable companion to `error`: the daemon's `IpcErrorKind`
+    /// code for daemon errors, otherwise the bridge failure class.
+    pub(super) fn code(&self) -> &'static str {
+        match self {
+            Self::Daemon { kind, .. } => kind.as_code(),
+            // Same code the daemon uses for its own draft validation, so a
+            // client handles "fix your draft" once whichever side caught it.
+            Self::InvalidDraft(_) => IpcErrorKind::InvalidRequest.as_code(),
+            other => bridge_error_kind(other),
+        }
+    }
+}
+
 impl IntoResponse for BridgeError {
     fn into_response(self) -> Response {
-        let status = match self {
-            Self::Unauthorized => StatusCode::UNAUTHORIZED,
-            _ => StatusCode::BAD_GATEWAY,
-        };
         (
-            status,
-            Json(serde_json::json!({ "error": self.to_string() })),
+            self.status(),
+            Json(serde_json::json!({ "error": self.to_string(), "code": self.code() })),
         )
             .into_response()
     }
@@ -122,6 +174,10 @@ pub(super) fn bridge_error_kind(error: &BridgeError) -> &'static str {
     match error {
         BridgeError::Connect(_) => "connect",
         BridgeError::Ipc(_) => "ipc",
+        BridgeError::Timeout(_) => "timeout",
+        BridgeError::Daemon { .. } => "daemon",
+        BridgeError::BadRequest(_) => "bad_request",
+        BridgeError::InvalidDraft(_) => "invalid_draft",
         BridgeError::Unauthorized => "unauthorized",
         BridgeError::UnexpectedResponse => "unexpected_response",
     }

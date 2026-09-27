@@ -1235,8 +1235,9 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
-    /// Manage drafts: list (default), recover orphaned in-flight sends,
-    /// resume one for retry, edit, delete, or sync drafts with a provider.
+    /// Manage drafts: list (default), show scheduled sends, recover orphaned
+    /// in-flight sends, resume one for retry, edit, delete, or sync drafts
+    /// with a provider.
     Drafts {
         #[command(subcommand)]
         action: Option<DraftsAction>,
@@ -1793,6 +1794,10 @@ pub enum DemoAction {
 pub enum DraftsAction {
     /// Show all drafts (default if no subcommand)
     List,
+    /// Show drafts scheduled to send later that have not gone out yet,
+    /// soonest first. Schedule with `mxr send <draft-id> --at <TIME>`;
+    /// cancel with `mxr unsend <draft-id>`.
+    Scheduled,
     /// Show drafts that look orphaned mid-send (status `'sending'`,
     /// stale heartbeat). The startup loop already auto-resets these
     /// after 1h; this surfaces them earlier so you can act now.
@@ -1847,6 +1852,15 @@ pub enum DraftAction {
         less_emoji: bool,
         #[arg(long = "add-context")]
         add_context: Option<String>,
+    },
+    /// Replay your most recent replies: draft each one from what was known
+    /// just before you replied and compare it with what you sent (greeting,
+    /// sign-off, length, invented numbers). Calls your LLM once per reply;
+    /// nothing is saved or sent. Uses --account when given.
+    Eval {
+        /// How many replies to replay (at most 50).
+        #[arg(long, default_value_t = 10)]
+        limit: u32,
     },
 }
 

@@ -1,10 +1,10 @@
 /*
- * Shared action registry types. Pure types — zero React imports.
+ * Shared action registry types. Pure types, no React imports.
  *
- * The registry is consumed by the command palette, the global keymap, and the
- * help dialog. Each surface filters by `when` and groups by `group`. Durable
- * app-level actions live here; page-local motion and terminal-only TUI state
- * stay close to the view that owns them.
+ * Every keyboard binding in the app is an Action: global navigation, mail
+ * verbs, and list/reader motion alike. The command palette, the key
+ * dispatcher, the help dialog and the keybindings settings page all read
+ * this one table, so a key cannot do one thing while help says another.
  */
 
 import type { ComponentType } from "react";
@@ -23,26 +23,30 @@ export type ActionGroup =
   | "Rules"
   | "Analytics"
   | "Triage"
-  | "View";
+  | "View"
+  | "Move"
+  | "Select"
+  | "Read";
 
-/** tinykeys grammar — e.g. "g a", "$mod+KeyK", "Shift+Slash". */
+/** Chord grammar from `lib/keys/chord.ts`, e.g. "g i", "?", "Mod+k". */
 export type ShortcutChord = string;
 
 /**
- * Binding scope. "global" chords fire everywhere; scoped chords only fire
- * while their scope is active (pushed by the owning view via
- * useShortcutScope). The same chord may bind different actions in different
- * scopes; within one scope it must be unique.
+ * Where a binding is live. "global" fires anywhere outside text fields.
+ * The others fire while the matching view is mounted and focused: it
+ * pushes its scope (`useShortcutScope`) and registers a controller
+ * (`useScopeController`) that implements the action's `command`.
  */
-export type ActionScope = "global" | "mailbox" | "thread" | "compose" | "screener";
+export type ActionScope = "global" | "sidebar" | "list" | "reader" | "screener";
 
 export interface ActionContext {
   path: string;
   activePane: MailPane;
+  /** Active scopes, innermost first, always ending in "global". */
+  scopes: ActionScope[];
   selectionCount: number;
   accountCount: number;
   hasFocusedThread: boolean;
-  hasFocusedMessage: boolean;
   isFirstAccountOnly: boolean;
 }
 
@@ -52,25 +56,43 @@ export type ActionPredicate = (ctx: ActionContext) => boolean;
 
 type IconComponent = ComponentType<{ className?: string }>;
 
-export interface Action {
+interface ActionBase {
   id: string;
   label: string;
   description?: string;
   group: ActionGroup;
   icon?: IconComponent;
   shortcut?: ShortcutChord;
-  /** Additional chords that bind to the same action (e.g. numeric quick-nav). */
+  /** More chords bound to the same action in the same scopes. */
   aliases?: ShortcutChord[];
-  /** When true, action does not bind to the global keymap even if `shortcut` is set. */
+  /** Listed in the palette but never bound to a key. */
   paletteOnly?: boolean;
-  /** Binding scope; defaults to "global". Only meaningful for bound shortcuts. */
-  scope?: ActionScope;
+  /** Scopes the binding is live in; defaults to ["global"]. */
+  scopes?: ActionScope[];
+  /** Hide from the palette (motion keys are noise there). */
+  hideInPalette?: boolean;
   /**
-   * Documentation-only entry: appears in help/palette with its chord, but the
-   * key handling lives in a page component (vim-style motion keys). Never
-   * bound by the keymap; `run` may still be invoked from the palette.
+   * Set when the web binding deliberately differs from the TUI's live key
+   * (browser conventions, or the TUI key being unreachable). Shown in help.
    */
-  displayOnly?: boolean;
+  tuiNote?: string;
   when?: ActionPredicate;
-  run: ActionRunner;
 }
+
+/** A self-contained action: `run` does the work. */
+export interface RunAction extends ActionBase {
+  run: ActionRunner;
+  command?: undefined;
+}
+
+/**
+ * A scoped action: `command` names a method on the active scope's
+ * controller, so "e" archives the focused row in the list and the open
+ * thread in the reader.
+ */
+export interface CommandAction extends ActionBase {
+  command: string;
+  run?: undefined;
+}
+
+export type Action = RunAction | CommandAction;

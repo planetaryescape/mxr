@@ -59,6 +59,7 @@ mod triage;
 mod undo;
 mod user_activity;
 mod user_voice_profile;
+mod voice_samples;
 mod wrapped;
 
 pub use calendar::CalendarInviteRecord;
@@ -78,6 +79,7 @@ pub use owed_replies::OwedReplyRow;
 pub use pool::Store;
 pub use relationship_watchlist::{CadenceDriftRow, RelationshipWatchEntry};
 pub use rules::{row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecordInput};
+pub use scheduled_sends::PendingScheduledSend;
 pub use screener::{ScreenerDecision, ScreenerDisposition, ScreenerQueueEntry};
 pub use semantic::SemanticIndexRow;
 pub use send_time::{SendTimeBucket, SendTimeConfidence, SendTimeRecommendation};
@@ -90,6 +92,7 @@ pub use snippets::Snippet;
 pub use sync_log::{SyncLogEntry, SyncStatus};
 pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 pub use sync_upsert::SyncUpsert;
+pub use voice_samples::{MyReplySample, MySentSample};
 
 /// Bind parameters per `IN (...)` query. SQLite's default limit is 32,766;
 /// this leaves room for the query's other binds and keeps a page-sized id

@@ -48,15 +48,12 @@ export function ComposeTopBar({
   onFromChange,
 }: ComposeTopBarProps) {
   return (
-    <header className="shrink-0 border-b border-border">
-      <div className="mx-auto flex h-14 w-full max-w-[860px] items-center justify-between gap-3 px-5">
-        <div className="min-w-0">
-          <div className="font-mono text-2xs uppercase tracking-wide text-muted-foreground">
-            Compose
-          </div>
-          <h1 className="truncate text-sm font-semibold tracking-tight">{title}</h1>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
+    // The host's chrome already names the draft ("Reply all"); this row
+    // is the From line, aligned with To and Subject below it.
+    <header className="shrink-0 border-b border-border" aria-label={title}>
+      <div className="mx-auto flex h-11 w-full max-w-[860px] items-center gap-3 px-5">
+        <span className="w-12 shrink-0 text-right text-[12.5px] text-muted-foreground">From</span>
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
           <FromControl
             accounts={accounts}
             value={accountId}

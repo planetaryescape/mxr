@@ -209,6 +209,7 @@ impl App {
             | Action::StoredDraftsModalPrev
             | Action::StoredDraftsModalEdit
             | Action::StoredDraftsModalPreviewDelete
+            | Action::StoredDraftsModalPreviewCancelSchedule
             | Action::StoredDraftsModalPreviewPush
             | Action::StoredDraftsModalCancelConfirmation
             | Action::StoredDraftsModalConfirm

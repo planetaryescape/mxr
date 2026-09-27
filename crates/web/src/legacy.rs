@@ -1,12 +1,17 @@
-//! 301-redirect shim that translates v0.4.x flat paths to the v0.5
+//! 308-redirect shim that translates v0.4.x flat paths to the v0.5
 //! bucketed `/api/v1/<bucket>/...` paths. Will be removed in v0.6.
 //!
 //! Mapping is intentionally exhaustive (rather than rule-based) so a typo
 //! in a single redirect can be caught by the slice 3 integration test.
+//!
+//! Several legacy paths (`/search`, `/drafts`, `/rules`, `/accounts`, ...)
+//! are also client-side routes of the embedded SPA. Only API clients are
+//! redirected; a browser navigation falls through so a hard refresh or deep
+//! link reaches the SPA instead of a JSON endpoint.
 
 use axum::{
     extract::Request,
-    http::{header, StatusCode, Uri},
+    http::{header, HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Redirect, Response},
 };
 
@@ -130,9 +135,32 @@ fn target_uri(target_path: &str, original: &Uri) -> String {
     }
 }
 
-/// Axum middleware: 301-redirect known v0.4.x paths to their v0.5
-/// equivalent. Pass through everything else to the next layer.
+/// A request is a browser page load when it asks for HTML or the browser
+/// marks it as a navigation, and carries no bridge token (API clients always
+/// authenticate by header; the SPA's own fetches ask for JSON).
+fn is_browser_navigation(headers: &HeaderMap) -> bool {
+    if crate::auth::extract_token(headers).is_some() {
+        return false;
+    }
+    let navigates = headers
+        .get("sec-fetch-mode")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|mode| mode.eq_ignore_ascii_case("navigate"));
+    let wants_html = headers
+        .get(header::ACCEPT)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|accept| accept.to_ascii_lowercase().contains("text/html"));
+    navigates || wants_html
+}
+
+/// Axum middleware: 308-redirect known v0.4.x paths to their v0.5
+/// equivalent for API clients. Browser navigations and everything else pass
+/// through to the next layer. 308 (not 301) preserves the method for POST
+/// routes, and `Redirect::permanent` is 308 in axum.
 pub async fn redirect_legacy_paths(request: Request, next: axum::middleware::Next) -> Response {
+    if is_browser_navigation(request.headers()) {
+        return next.run(request).await;
+    }
     let uri = request.uri().clone();
     let path = uri.path();
 
@@ -220,6 +248,29 @@ mod tests {
         assert!(translate("/api/v1/admin/status").is_none());
         assert!(translate("/").is_none());
         assert!(translate_dynamic("/api/v1/mail/threads/foo").is_none());
+    }
+
+    #[test]
+    fn browser_navigation_detection() {
+        let mut html = HeaderMap::new();
+        html.insert(
+            header::ACCEPT,
+            "text/html,application/xhtml+xml,*/*;q=0.8".parse().unwrap(),
+        );
+        assert!(is_browser_navigation(&html));
+
+        let mut navigate = HeaderMap::new();
+        navigate.insert("sec-fetch-mode", "navigate".parse().unwrap());
+        assert!(is_browser_navigation(&navigate));
+
+        let mut json = HeaderMap::new();
+        json.insert(header::ACCEPT, "application/json".parse().unwrap());
+        assert!(!is_browser_navigation(&json));
+        assert!(!is_browser_navigation(&HeaderMap::new()));
+
+        let mut html_with_token = html.clone();
+        html_with_token.insert(header::AUTHORIZATION, "Bearer abc".parse().unwrap());
+        assert!(!is_browser_navigation(&html_with_token));
     }
 
     #[test]

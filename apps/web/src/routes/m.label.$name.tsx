@@ -1,7 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { MailboxRoute } from "@/features/mailbox/MailboxRoute";
+import { MailView } from "@/features/mailbox/MailView";
 
 export const Route = createFileRoute("/m/label/$name")({
-  component: MailboxRoute,
+  component: LabelMailbox,
 });
+
+function LabelMailbox() {
+  const { name } = Route.useParams();
+  return <MailView route={{ kind: "label", name }} />;
+}

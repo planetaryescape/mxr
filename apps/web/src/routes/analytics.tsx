@@ -1,6 +1,4 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
-
-import { AnalyticsIndexRoute } from "@/features/analytics/AnalyticsIndexRoute";
+import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/analytics")({
   beforeLoad: ({ location }) => {
@@ -8,5 +6,5 @@ export const Route = createFileRoute("/analytics")({
       throw redirect({ to: "/analytics/$dashboard", params: { dashboard: "storage" } });
     }
   },
-  component: AnalyticsIndexRoute,
+  component: Outlet,
 });

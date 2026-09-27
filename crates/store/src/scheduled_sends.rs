@@ -5,9 +5,10 @@
 //! send_at IS NOT NULL`. The flusher loop scans by partial index on
 //! that combination.
 
-use crate::{decode_id, decode_timestamp, trace_query};
+use crate::{decode_id, decode_json, decode_timestamp, trace_query};
 use chrono::{DateTime, Utc};
-use mxr_core::id::DraftId;
+use mxr_core::id::{AccountId, DraftId};
+use mxr_core::types::Address;
 use sqlx::Row;
 
 /// A scheduled-send firing whose outcome was never recorded — the daemon
@@ -17,6 +18,26 @@ use sqlx::Row;
 pub struct LostScheduledSend {
     pub draft_id: DraftId,
     pub attempted_at: DateTime<Utc>,
+}
+
+/// A draft still waiting to go out: scheduled (`send_at` set) and not
+/// yet claimed by the flusher. Carries the headline fields a client needs
+/// to show "what's going out later" without a second draft lookup.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingScheduledSend {
+    pub draft_id: DraftId,
+    pub account_id: AccountId,
+    pub send_at: DateTime<Utc>,
+    pub subject: String,
+    pub to: Vec<Address>,
+    pub cc: Vec<Address>,
+    pub bcc: Vec<Address>,
+    /// Most recent earlier firing of this draft, if it was scheduled,
+    /// fired, and then rescheduled (e.g. after a failed or blocked send).
+    pub last_attempt_at: Option<DateTime<Utc>>,
+    /// Outcome of that attempt (`sent`, `blocked`, `failed`,
+    /// `interrupted`), or `None` while it is unresolved.
+    pub last_attempt_outcome: Option<String>,
 }
 
 impl super::Store {
@@ -132,6 +153,57 @@ impl super::Store {
             None => Ok(None),
             Some(ts) => Ok(Some(decode_timestamp(ts)?)),
         }
+    }
+
+    /// Pending scheduled sends, soonest first, optionally scoped to one
+    /// account. "Pending" uses the flusher's own predicate
+    /// (`status = 'draft' AND send_at IS NOT NULL`), so this lists exactly
+    /// what `get_due_scheduled_drafts` will pick up once due.
+    pub async fn list_pending_scheduled_sends(
+        &self,
+        account_id: Option<&AccountId>,
+    ) -> Result<Vec<PendingScheduledSend>, sqlx::Error> {
+        let started_at = std::time::Instant::now();
+        // Unchecked query: a read-only join that would otherwise force a
+        // workspace-wide `.sqlx` cache regeneration.
+        let rows = sqlx::query(
+            r#"SELECT d.id, d.account_id, d.send_at, d.subject,
+                      d.to_addrs, d.cc_addrs, d.bcc_addrs,
+                      a.attempted_at AS last_attempt_at,
+                      a.outcome AS last_attempt_outcome
+               FROM drafts d
+               LEFT JOIN scheduled_send_attempts a
+                 ON a.draft_id = d.id
+                AND a.attempted_at = (
+                      SELECT MAX(attempted_at) FROM scheduled_send_attempts
+                      WHERE draft_id = d.id)
+               WHERE d.status = 'draft'
+                 AND d.send_at IS NOT NULL
+                 AND (?1 IS NULL OR d.account_id = ?1)
+               ORDER BY d.send_at ASC, d.id ASC"#,
+        )
+        .bind(account_id.map(AccountId::as_str))
+        .fetch_all(self.reader())
+        .await?;
+        trace_query("scheduled_sends.list_pending", started_at, rows.len());
+        rows.into_iter()
+            .map(|row| {
+                Ok(PendingScheduledSend {
+                    draft_id: decode_id(&row.get::<String, _>("id"))?,
+                    account_id: decode_id(&row.get::<String, _>("account_id"))?,
+                    send_at: decode_timestamp(row.get::<i64, _>("send_at"))?,
+                    subject: row.get::<String, _>("subject"),
+                    to: decode_json(&row.get::<String, _>("to_addrs"))?,
+                    cc: decode_json(&row.get::<String, _>("cc_addrs"))?,
+                    bcc: decode_json(&row.get::<String, _>("bcc_addrs"))?,
+                    last_attempt_at: row
+                        .get::<Option<i64>, _>("last_attempt_at")
+                        .map(decode_timestamp)
+                        .transpose()?,
+                    last_attempt_outcome: row.get::<Option<String>, _>("last_attempt_outcome"),
+                })
+            })
+            .collect()
     }
 
     /// Drafts due to fire by `now`: scheduled (`send_at` non-null,
@@ -372,5 +444,105 @@ mod tests {
             vec![b.id.clone(), a.id.clone(), c.id.clone()],
             "oldest send_at first"
         );
+    }
+
+    #[tokio::test]
+    async fn list_pending_returns_scheduled_drafts_soonest_first_with_headline_fields() {
+        let store = Store::in_memory().await.unwrap();
+        let later = seed_draft(&store).await;
+        let sooner = seed_draft(&store).await;
+        let unscheduled = seed_draft(&store).await;
+        store
+            .schedule_send(&later, anchor() + Duration::hours(3))
+            .await
+            .unwrap();
+        store
+            .schedule_send(&sooner, anchor() + Duration::hours(1))
+            .await
+            .unwrap();
+
+        let pending = store.list_pending_scheduled_sends(None).await.unwrap();
+
+        let ids: Vec<_> = pending.iter().map(|p| p.draft_id.clone()).collect();
+        assert_eq!(ids, vec![sooner.clone(), later.clone()]);
+        assert!(!ids.contains(&unscheduled));
+        assert_eq!(pending[0].send_at, anchor() + Duration::hours(1));
+        assert_eq!(pending[0].subject, "Test");
+        assert_eq!(pending[0].to[0].email, "you@example.com");
+        assert_eq!(pending[0].last_attempt_at, None);
+        assert_eq!(pending[0].last_attempt_outcome, None);
+    }
+
+    #[tokio::test]
+    async fn list_pending_excludes_fired_and_sending_drafts() {
+        let store = Store::in_memory().await.unwrap();
+        let fired = seed_draft(&store).await;
+        let sending = seed_draft(&store).await;
+        store.schedule_send(&fired, anchor()).await.unwrap();
+        store
+            .clear_send_at_and_record_attempt(&fired, anchor())
+            .await
+            .unwrap();
+        store.schedule_send(&sending, anchor()).await.unwrap();
+        store
+            .cas_draft_status(&sending, DraftStatus::Draft, DraftStatus::Sending)
+            .await
+            .unwrap();
+
+        assert!(store
+            .list_pending_scheduled_sends(None)
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_pending_reports_latest_prior_attempt_after_reschedule() {
+        let store = Store::in_memory().await.unwrap();
+        let id = seed_draft(&store).await;
+        let first = anchor() - Duration::hours(2);
+        let second = anchor() - Duration::hours(1);
+        for (at, outcome) in [(first, "blocked"), (second, "failed")] {
+            store.schedule_send(&id, at).await.unwrap();
+            store
+                .clear_send_at_and_record_attempt(&id, at)
+                .await
+                .unwrap();
+            store
+                .record_scheduled_send_outcome(&id, at, outcome)
+                .await
+                .unwrap();
+        }
+        store
+            .schedule_send(&id, anchor() + Duration::hours(1))
+            .await
+            .unwrap();
+
+        let pending = store.list_pending_scheduled_sends(None).await.unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].last_attempt_at, Some(second));
+        assert_eq!(pending[0].last_attempt_outcome.as_deref(), Some("failed"));
+    }
+
+    #[tokio::test]
+    async fn list_pending_scopes_to_account() {
+        let store = Store::in_memory().await.unwrap();
+        let id = seed_draft(&store).await;
+        store
+            .schedule_send(&id, anchor() + Duration::hours(1))
+            .await
+            .unwrap();
+        let owner = store.get_draft(&id).await.unwrap().unwrap().account_id;
+
+        let mine = store
+            .list_pending_scheduled_sends(Some(&owner))
+            .await
+            .unwrap();
+        assert_eq!(mine.len(), 1);
+        let other = store
+            .list_pending_scheduled_sends(Some(&mxr_core::id::AccountId::new()))
+            .await
+            .unwrap();
+        assert!(other.is_empty());
     }
 }

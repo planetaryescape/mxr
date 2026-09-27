@@ -112,13 +112,10 @@ export async function redactActivity(
   filter: ActivityFilter | null,
   dry_run: boolean,
 ) {
-  return apiFetch<{ count: number; dry_run: boolean }>(
-    "/api/v1/admin/activity/redact",
-    {
-      method: "POST",
-      body: { ids: ids ?? [], filter: filter ?? null, dry_run },
-    },
-  );
+  return apiFetch<{ count: number; dry_run: boolean }>("/api/v1/admin/activity/redact", {
+    method: "POST",
+    body: { ids: ids ?? [], filter: filter ?? null, dry_run },
+  });
 }
 
 export async function pauseActivity(until_ts: number | null) {

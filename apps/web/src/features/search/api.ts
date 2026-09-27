@@ -99,6 +99,13 @@ export function fetchSearchGroups(
   });
 }
 
+/** Unread matches per saved search id (TUI saved-search tabs). */
+export function fetchSavedSearchUnreadCounts(): Promise<{ counts: Record<string, number> }> {
+  return apiFetch<{ counts: Record<string, number> }>(
+    "/api/v1/platform/saved-searches/unread-counts",
+  );
+}
+
 export function fetchSavedSearches(): Promise<{ searches: SavedSearch[] }> {
   return apiFetch<{ searches: SavedSearch[] }>("/api/v1/platform/saved-searches");
 }

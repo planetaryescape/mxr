@@ -1073,7 +1073,8 @@ fn draft_assist_action_queues_selected_thread_request() {
             ..
         } => {
             assert_eq!(queued, &thread_id);
-            assert_eq!(instruction, "Draft a concise reply.");
+            // No instruction: the daemon answers what the message asks.
+            assert_eq!(instruction, "");
             // The plain assist action drafts on auto tone (no override).
             assert!(register.is_none());
             assert!(length_hint.is_none());
@@ -1093,9 +1094,17 @@ fn draft_with_options_modal_applies_chosen_tone() {
     let thread_id = envelope.thread_id.clone();
     app.mailbox.envelopes = vec![envelope];
 
-    // Open the modal, choose register = Formal (index 3), then confirm.
+    // Open the modal, type what to say (h/l/j/k type, they don't
+    // navigate), choose register = Formal (index 3), then confirm.
     app.apply(Action::DraftWithOptions);
     assert!(app.modals.draft_options.visible);
+    for c in "say lunch is fine".chars() {
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char(c),
+            crossterm::event::KeyModifiers::NONE,
+        ));
+    }
+    assert_eq!(app.modals.draft_options.instruction, "say lunch is fine");
     app.modals.draft_options.register_idx = 3;
     app.submit_draft_options_modal();
     assert!(!app.modals.draft_options.visible);
@@ -1106,9 +1115,11 @@ fn draft_with_options_modal_applies_chosen_tone() {
         Request::DraftCompose {
             thread_id: Some(queued),
             register,
+            instruction,
             ..
         } => {
             assert_eq!(queued, &thread_id);
+            assert_eq!(instruction, "say lunch is fine");
             assert_eq!(register, &Some(mxr_protocol::VoiceRegisterData::Formal));
         }
         other => panic!("expected DraftCompose reply with override, got {other:?}"),
@@ -1233,9 +1244,10 @@ fn draft_new_for_sender_action_queues_selected_sender_request() {
             );
             assert_eq!(
                 instruction,
-                "Follow up on the selected thread: Quarterly plan"
+                "Follow up on our conversation \"Quarterly plan\"."
             );
-            assert!(source_message_id.is_some());
+            // A new email to the sender, not a reply in the thread.
+            assert!(source_message_id.is_none());
             assert!(register.is_none());
             assert!(length_hint.is_none());
         }
@@ -1292,6 +1304,7 @@ fn refine_pending_draft_saves_then_queues_refine_request() {
         Request::DraftRefine {
             draft_id: queued,
             knobs,
+            ..
         } => {
             assert_eq!(queued, &draft_id);
             assert_eq!(knobs, &mxr_protocol::DraftRefineKnobsData::default());

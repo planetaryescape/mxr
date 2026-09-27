@@ -1,4 +1,3 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import {
   Bell,
@@ -6,1213 +5,212 @@ import {
   Bot,
   Code2,
   Info,
+  KeyRound,
   Keyboard,
-  Layers,
+  Mic,
   Palette,
   Pencil,
-  Plus,
-  Trash2,
+  SearchX,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import type { ComponentType, ReactNode } from "react";
 
-import { KeyChip } from "@/components/KeyChip";
-import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { AppearanceSection } from "./AppearanceSection";
+import { ComposeSettingsSection } from "./ComposeSettingsSection";
+import { KeybindingsSection } from "./KeybindingsSection";
+import { LlmSettingsSection } from "./LlmSettingsSection";
+import { NotificationsSection } from "./NotificationsSection";
+import { ReaderSection } from "./ReaderSection";
+import { SnippetsSection } from "./SnippetsSection";
+import { TokenSection } from "./TokenSection";
+import { VoiceSection } from "./VoiceSection";
+import { FactList, PageEmpty } from "@/components/PageParts";
+import { Page } from "@/components/Page";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { apiFetch } from "@/api/client";
-import { fetchAccounts, setDefaultAccount } from "@/features/accounts/api";
-import { TokenSection } from "@/features/settings/TokenSection";
-import { useActionShortcutSections } from "@/lib/actions";
-import {
-  useUiPrefs,
-  type ComposeEditor,
-  type Density,
-  type EmailHtmlTheme,
-  type ReaderLayout,
-  type Theme,
-  type UndoSendSeconds,
-} from "@/state/uiPrefsStore";
+import { cn } from "@/lib/utils";
 
-const sections = [
-  ["theme", "Theme", Palette],
-  ["density", "Density", Layers],
-  ["reader", "Reader", BookOpen],
-  ["keybindings", "Keybindings", Keyboard],
-  ["notifications", "Notifications", Bell],
-  ["compose", "Compose", Pencil],
-  ["voice", "Voice", Bot],
-  ["llm", "LLM", Bot],
-  ["snippets", "Snippets", Code2],
-  ["token", "Token", Code2],
-  ["about", "About", Info],
-] as const;
-
-interface Snippet {
-  name: string;
-  body: string;
-  vars?: string[];
-  updated_at?: string;
-}
-
-interface Signature {
+interface SectionDef {
   id: string;
-  name: string;
-  body: string;
-  created_at?: string;
-  updated_at?: string;
+  label: string;
+  description: string;
+  icon: ComponentType<{ className?: string }>;
+  render: () => ReactNode;
+  /** Old ids that still land here (palette actions, bookmarks). */
+  aliases?: string[];
 }
 
-interface SignatureDefault {
-  kind: "new" | "reply";
-  account_id?: string | null;
-  from_email?: string | null;
-  signature: Signature;
+const SECTIONS: SectionDef[] = [
+  {
+    id: "theme",
+    label: "Appearance",
+    description: "Theme and density.",
+    icon: Palette,
+    render: () => <AppearanceSection />,
+    aliases: ["density", "appearance"],
+  },
+  {
+    id: "reader",
+    label: "Reader",
+    description: "How mail lists and conversations open and render.",
+    icon: BookOpen,
+    render: () => <ReaderSection />,
+  },
+  {
+    id: "keybindings",
+    label: "Keyboard",
+    description: "Every key, grouped by where it works.",
+    icon: Keyboard,
+    render: () => <KeybindingsSection />,
+  },
+  {
+    id: "notifications",
+    label: "Notifications",
+    description: "Browser alerts for new mail.",
+    icon: Bell,
+    render: () => <NotificationsSection />,
+  },
+  {
+    id: "compose",
+    label: "Compose",
+    description: "Editor, undo send, default account and signatures.",
+    icon: Pencil,
+    render: () => <ComposeSettingsSection />,
+  },
+  {
+    id: "snippets",
+    label: "Snippets",
+    description: "Reusable text, expanded in compose with ;name.",
+    icon: Code2,
+    render: () => <SnippetsSection />,
+  },
+  {
+    id: "llm",
+    label: "Language model",
+    description: "The model behind summaries, briefings, draft assist and Ask your archive.",
+    icon: Bot,
+    render: () => <LlmSettingsSection />,
+  },
+  {
+    id: "voice",
+    label: "Voice",
+    description: "How you write, learned from sent mail so drafts sound like you.",
+    icon: Mic,
+    render: () => <VoiceSection />,
+  },
+  {
+    id: "token",
+    label: "Bridge token",
+    description: "How this page authenticates to the local daemon.",
+    icon: KeyRound,
+    render: () => <TokenSection />,
+  },
+  {
+    id: "about",
+    label: "About",
+    description: "Versions and where this app gets its data.",
+    icon: Info,
+    render: () => (
+      <FactList
+        columns={1}
+        facts={[
+          ["App", "mxr web"],
+          ["Version", import.meta.env.PACKAGE_VERSION ?? "dev"],
+          ["Data", "local daemon over HTTP and WebSocket"],
+        ]}
+      />
+    ),
+  },
+];
+
+function findSection(id: string): SectionDef | undefined {
+  return SECTIONS.find((section) => section.id === id || section.aliases?.includes(id));
 }
-
-interface LlmConfig {
-  enabled: boolean;
-  base_url: string;
-  model: string;
-  api_key_env: string;
-  context_window: number;
-  request_timeout_secs: number;
-  allow_cloud_relationship_data: boolean;
-  overrides?: LlmOverrides | null;
-}
-
-type LlmOverrideKey = (typeof llmOverrideFeatures)[number]["key"];
-
-interface LlmOverrideConfig {
-  enabled?: boolean | null;
-  base_url?: string | null;
-  model?: string | null;
-  api_key_env?: string | null;
-  context_window?: number | null;
-  request_timeout_secs?: number | null;
-}
-
-type LlmOverrides = Partial<Record<LlmOverrideKey, LlmOverrideConfig | null>>;
-
-interface LlmStatus {
-  enabled: boolean;
-  provider: string;
-  model: string;
-  configured_model: string;
-  base_url: string | null;
-  api_key_env: string | null;
-  api_key_present: boolean;
-  context_window: number;
-  supports_streaming: boolean;
-  request_timeout_secs: number;
-}
-
-interface UserVoiceProfile {
-  account_id: string;
-  formality_score: number;
-  avg_sentence_len: number;
-  msg_count_used: number;
-  register_modes?: Array<{
-    register: string;
-    formality_score: number;
-    avg_sentence_len: number;
-    exemplar_message_ids?: string[];
-  }>;
-  computed_at: string;
-}
-
-const defaultLlmConfig: LlmConfig = {
-  enabled: false,
-  base_url: "http://localhost:11434/v1",
-  model: "qwen2.5:3b-instruct",
-  api_key_env: "",
-  context_window: 8192,
-  request_timeout_secs: 120,
-  allow_cloud_relationship_data: false,
-  overrides: {},
-};
-
-const llmOverrideFeatures = [
-  { key: "summarize", label: "Summaries" },
-  { key: "relationship_summary", label: "Relationship summaries" },
-  { key: "commitments", label: "Commitments" },
-  { key: "draft_assist", label: "Draft assist" },
-  { key: "draft_new", label: "Draft new" },
-  { key: "draft_refine", label: "Draft refine" },
-  { key: "voice_match", label: "Voice match" },
-  { key: "humanize_rewrite", label: "Humanizer rewrite" },
-] as const;
 
 export function SettingsRoute() {
-  const { section } = useParams({ from: "/settings/$section" });
+  const { section: requested } = useParams({ from: "/settings/$section" });
+  const section = findSection(requested);
+
   return (
-    <div className="grid min-w-0 flex-1 grid-cols-[220px_1fr] bg-background">
-      <aside className="border-r border-border bg-surface p-3">
-        <div className="mb-3 px-2 font-mono text-2xs uppercase tracking-wide text-muted-foreground">
+    <div className="flex min-h-0 min-w-0 flex-1">
+      <nav
+        aria-label="Settings sections"
+        className="hidden w-52 shrink-0 overflow-y-auto border-r border-border px-2 py-5 md:block"
+      >
+        <div className="mb-2 px-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
           Settings
         </div>
-        <nav className="space-y-1">
-          {sections.map(([id, label, Icon]) => (
-            <Link
-              key={id}
-              to="/settings/$section"
-              params={{ section: id }}
-              className={
-                id === section
-                  ? "flex items-center gap-2 rounded-md bg-primary-muted px-2 py-1.5 text-xs text-foreground"
-                  : "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-              }
-            >
-              <Icon className="size-3.5" />
-              {label}
-            </Link>
-          ))}
-        </nav>
-      </aside>
-      <main className="min-h-0 overflow-auto">
-        {section === "token" ? <TokenSection /> : <SettingsSection section={section} />}
-      </main>
-    </div>
-  );
-}
-
-function SettingsSection({ section }: { section: string }) {
-  const theme = useUiPrefs((state) => state.theme);
-  const density = useUiPrefs((state) => state.density);
-  const emailHtmlTheme = useUiPrefs((state) => state.emailHtmlTheme);
-  const readerLayout = useUiPrefs((state) => state.readerLayout);
-  const notificationsEnabled = useUiPrefs((state) => state.notificationsEnabled);
-  const notifyAllNewMail = useUiPrefs((state) => state.notifyAllNewMail);
-  const vipAllowlist = useUiPrefs((state) => state.vipAllowlist);
-  const setTheme = useUiPrefs((state) => state.setTheme);
-  const setDensity = useUiPrefs((state) => state.setDensity);
-  const setEmailHtmlTheme = useUiPrefs((state) => state.setEmailHtmlTheme);
-  const setReaderLayout = useUiPrefs((state) => state.setReaderLayout);
-  const setNotificationsEnabled = useUiPrefs((state) => state.setNotificationsEnabled);
-  const setNotifyAllNewMail = useUiPrefs((state) => state.setNotifyAllNewMail);
-  const addVip = useUiPrefs((state) => state.addVip);
-  const removeVip = useUiPrefs((state) => state.removeVip);
-  const [vip, setVip] = useState("");
-
-  if (section === "theme")
-    return (
-      <Shell title="Theme">
-        <SelectRow
-          label="Theme"
-          value={theme}
-          values={["midnight", "eclipse", "paper", "light", "system"]}
-          onChange={(value) => setTheme(value as Theme)}
-        />
-        <SelectRow
-          label="HTML email"
-          value={emailHtmlTheme}
-          values={["dark", "original"]}
-          onChange={(value) => setEmailHtmlTheme(value as EmailHtmlTheme)}
-        />
-        <p className="mt-3 text-xs text-muted-foreground">
-          Dark makes HTML mail use a dark canvas by default while preserving images and links.
-        </p>
-      </Shell>
-    );
-  if (section === "density")
-    return (
-      <Shell title="Density">
-        <SelectRow
-          label="Density"
-          value={density}
-          values={["compact", "regular", "comfortable"]}
-          onChange={(value) => setDensity(value as Density)}
-        />
-      </Shell>
-    );
-  if (section === "reader")
-    return (
-      <Shell title="Reader">
-        <SelectRow
-          label="Default reader layout"
-          value={readerLayout}
-          values={["split", "full"]}
-          onChange={(value) => setReaderLayout(value as ReaderLayout)}
-        />
-      </Shell>
-    );
-  if (section === "compose")
-    return <ComposeSettingsSection />;
-  if (section === "notifications")
-    return (
-      <Shell title="Notifications">
-        <div className="space-y-4">
-          <Toggle
-            label="Browser notifications"
-            checked={notificationsEnabled}
-            onChange={async (checked) => {
-              if (checked && Notification.permission === "default")
-                await Notification.requestPermission();
-              setNotificationsEnabled(checked);
-            }}
-          />
-          <Toggle
-            label="Notify on all new mail"
-            checked={notifyAllNewMail}
-            onChange={setNotifyAllNewMail}
-          />
-          <div className="space-y-2">
-            <Label>VIP allowlist</Label>
-            <div className="flex gap-2">
-              <Input
-                value={vip}
-                onChange={(event) => setVip(event.target.value)}
-                placeholder="alice@example.com or @acme.com"
-              />
-              <Button
-                onClick={() => {
-                  addVip(vip.trim());
-                  setVip("");
-                }}
-                disabled={!vip.trim()}
-              >
-                Add
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {vipAllowlist.map((item) => (
-                <Badge key={item} variant="outline" className="py-1">
-                  {item}
-                  <button onClick={() => removeVip(item)}>
-                    <Trash2 className="size-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Shell>
-    );
-  if (section === "keybindings") return <KeybindingsSection />;
-  if (section === "voice") return <VoiceSettingsSection />;
-  if (section === "llm") return <LlmSettingsSection />;
-  if (section === "snippets") return <SnippetsSection />;
-  if (section === "about")
-    return (
-      <Shell title="About">
-        <pre className="rounded-lg bg-muted p-3 text-2xs">
-          {JSON.stringify(
-            {
-              app: "mxr web",
-              version: import.meta.env.PACKAGE_VERSION ?? "dev",
-              bridge: "local daemon HTTP/WebSocket",
-            },
-            null,
-            2,
-          )}
-        </pre>
-      </Shell>
-    );
-  return (
-    <Shell title="Settings">
-      <p className="text-xs text-muted-foreground">Unknown section.</p>
-    </Shell>
-  );
-}
-
-export function ComposeSettingsSection() {
-  const qc = useQueryClient();
-  const composeEditor = useUiPrefs((state) => state.composeEditor);
-  const setComposeEditor = useUiPrefs((state) => state.setComposeEditor);
-  const undoSendSeconds = useUiPrefs((state) => state.undoSendSeconds);
-  const setUndoSendSeconds = useUiPrefs((state) => state.setUndoSendSeconds);
-  const accounts = useQuery({
-    queryKey: ["accounts"],
-    queryFn: fetchAccounts,
-    staleTime: 60_000,
-  });
-  const signatures = useQuery({
-    queryKey: ["signatures"],
-    queryFn: fetchSignatures,
-    staleTime: 60_000,
-  });
-  const defaults = useQuery({
-    queryKey: ["signature-defaults"],
-    queryFn: fetchSignatureDefaults,
-    staleTime: 60_000,
-  });
-  const [signatureName, setSignatureName] = useState("");
-  const [signatureBody, setSignatureBody] = useState("");
-  const makeDefault = useMutation({
-    mutationFn: (key: string) => setDefaultAccount(key),
-    onSuccess: () => {
-      toast.success("Default account updated");
-      void qc.invalidateQueries({ queryKey: ["accounts"] });
-    },
-    onError: (error) =>
-      toast.error("Default account update failed", { description: error.message }),
-  });
-  const save = useMutation({
-    mutationFn: () => saveSignature(signatureName.trim(), signatureBody),
-    onSuccess: () => {
-      toast.success("Signature saved");
-      setSignatureName("");
-      setSignatureBody("");
-      void qc.invalidateQueries({ queryKey: ["signatures"] });
-    },
-    onError: (error) => toast.error("Signature save failed", { description: error.message }),
-  });
-  const remove = useMutation({
-    mutationFn: deleteSignature,
-    onSuccess: () => {
-      toast.success("Signature deleted");
-      void qc.invalidateQueries({ queryKey: ["signatures"] });
-      void qc.invalidateQueries({ queryKey: ["signature-defaults"] });
-    },
-    onError: (error) => toast.error("Signature delete failed", { description: error.message }),
-  });
-  const setDefaultSignature = useMutation({
-    mutationFn: setSignatureDefault,
-    onSuccess: () => {
-      toast.success("Signature default updated");
-      void qc.invalidateQueries({ queryKey: ["signature-defaults"] });
-    },
-    onError: (error) =>
-      toast.error("Signature default update failed", { description: error.message }),
-  });
-
-  const rows = accounts.data?.accounts ?? [];
-  const signatureRows = signatures.data?.signatures ?? [];
-  const defaultRows = defaults.data?.defaults ?? [];
-
-  return (
-    <Shell title="Compose">
-      <div className="space-y-4">
-        <Card className="space-y-3 p-4">
-          <SelectRow
-            label="Editor"
-            value={composeEditor}
-            values={["codemirror-vim", "tiptap"]}
-            onChange={(value) => setComposeEditor(value as ComposeEditor)}
-          />
-          <SelectRow
-            label="Undo send window"
-            value={String(undoSendSeconds)}
-            values={["0", "5", "10", "30"]}
-            onChange={(value) => setUndoSendSeconds(Number(value) as UndoSendSeconds)}
-          />
-          <p className="text-xs text-muted-foreground">
-            Seconds to cancel after pressing send (z or the toast). 0 sends immediately.
-          </p>
-        </Card>
-
-        <Card className="space-y-3 p-4">
-          <div>
-            <h2 className="text-sm font-semibold">Default account</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Used for new drafts unless a reply or sender choice overrides it.
-            </p>
-          </div>
-          <div className="divide-y divide-border">
-            {accounts.isLoading ? (
-              <div className="py-2 text-xs text-muted-foreground">Loading accounts...</div>
-            ) : rows.length === 0 ? (
-              <div className="py-2 text-xs text-muted-foreground">No accounts configured.</div>
-            ) : (
-              rows.map((account) => {
-                const key = account.key ?? account.account_id;
-                return (
-                  <div
-                    key={account.account_id}
-                    className="flex items-center justify-between gap-3 py-2 text-xs"
-                  >
-                    <div>
-                      <div className="font-medium">{account.name || account.email}</div>
-                      <div className="font-mono text-2xs text-muted-foreground">
-                        {account.email}
-                      </div>
-                    </div>
-                    {account.is_default ? (
-                      <Badge variant="secondary">default</Badge>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={makeDefault.isPending}
-                        aria-label={`Use ${account.name || account.email} as compose default`}
-                        onClick={() => makeDefault.mutate(key)}
-                      >
-                        Use default
-                      </Button>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </Card>
-
-        <Card className="space-y-4 p-4">
-          <div>
-            <h2 className="text-sm font-semibold">Signatures</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Signature blocks are stored in the daemon and shared with CLI compose.
-            </p>
-          </div>
-          <div className="grid gap-3 md:grid-cols-[220px_1fr_auto] md:items-end">
-            <Field label="Signature name">
-              <Input
-                aria-label="Signature name"
-                value={signatureName}
-                onChange={(event) => setSignatureName(event.target.value)}
-                placeholder="sig"
-              />
-            </Field>
-            <Field label="Signature body">
-              <Textarea
-                aria-label="Signature body"
-                value={signatureBody}
-                onChange={(event) => setSignatureBody(event.target.value)}
-                className="min-h-24"
-                placeholder="Best,\nYou"
-              />
-            </Field>
-            <Button
-              disabled={!signatureName.trim() || !signatureBody.trim() || save.isPending}
-              onClick={() => save.mutate()}
-            >
-              Save signature
-            </Button>
-          </div>
-          <div className="divide-y divide-border">
-            {signatures.isLoading ? (
-              <div className="py-2 text-xs text-muted-foreground">Loading signatures...</div>
-            ) : signatureRows.length === 0 ? (
-              <div className="py-2 text-xs text-muted-foreground">No signatures yet.</div>
-            ) : (
-              signatureRows.map((signature) => (
-                <div
-                  key={signature.id}
-                  className="grid gap-3 py-3 text-xs md:grid-cols-[1fr_auto] md:items-center"
+        <ul className="space-y-0.5">
+          {SECTIONS.map(({ id, label, icon: Icon }) => {
+            const active = section?.id === id;
+            return (
+              <li key={id}>
+                <Link
+                  to="/settings/$section"
+                  params={{ section: id }}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    active
+                      ? "bg-primary-muted text-foreground"
+                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                  )}
                 >
-                  <div>
-                    <div className="font-medium">{signature.name}</div>
-                    <pre className="mt-1 whitespace-pre-wrap text-2xs text-muted-foreground">
-                      {signature.body}
-                    </pre>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {defaultRows
-                        .filter((item) => item.signature.name === signature.name)
-                        .map((item) => (
-                          <Badge key={item.kind} variant="outline">
-                            default {item.kind}
-                          </Badge>
-                        ))}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={setDefaultSignature.isPending}
-                      aria-label={`Use ${signature.name} for new messages`}
-                      onClick={() =>
-                        setDefaultSignature.mutate({ name: signature.name, kind: "new" })
-                      }
-                    >
-                      New default
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={setDefaultSignature.isPending}
-                      aria-label={`Use ${signature.name} for replies`}
-                      onClick={() =>
-                        setDefaultSignature.mutate({ name: signature.name, kind: "reply" })
-                      }
-                    >
-                      Reply default
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={remove.isPending}
-                      aria-label={`Delete signature ${signature.name}`}
-                      onClick={() => remove.mutate(signature.name)}
-                    >
-                      <Trash2 className="size-3" />
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </Card>
-      </div>
-    </Shell>
-  );
-}
-
-function VoiceSettingsSection() {
-  const [accountId, setAccountId] = useState("");
-  const voice = useQuery({
-    queryKey: ["user-voice", accountId],
-    queryFn: () =>
-      apiFetch<{ profile: UserVoiceProfile }>(
-        `/api/v1/platform/voice?account_id=${encodeURIComponent(accountId)}`,
-      ),
-    enabled: accountId.trim().length > 0,
-  });
-  const rebuild = useMutation({
-    mutationFn: () =>
-      apiFetch<{ profile: UserVoiceProfile }>(
-        `/api/v1/platform/voice/rebuild?account_id=${encodeURIComponent(accountId)}`,
-        { method: "POST" },
-      ),
-    onSuccess: () => {
-      toast.success("Voice profile rebuilt");
-      void voice.refetch();
-    },
-    onError: (error) => toast.error("Voice rebuild failed", { description: error.message }),
-  });
-  const profile = voice.data?.profile;
-  return (
-    <Shell title="Voice">
-      <div className="space-y-4">
-        <Card className="space-y-3 p-4">
-          <div>
-            <h2 className="text-sm font-semibold">Inspectable user voice</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Paste an account id to inspect or rebuild the local outbound voice profile.
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Input
-              value={accountId}
-              onChange={(event) => setAccountId(event.target.value)}
-              placeholder="account UUID"
-              aria-label="Account id"
-            />
-            <Button
-              variant="outline"
-              disabled={!accountId.trim() || rebuild.isPending}
-              onClick={() => rebuild.mutate()}
-            >
-              Rebuild
-            </Button>
-          </div>
-        </Card>
-        {voice.isError ? (
-          <Alert variant="warning" className="text-xs">
-            Could not load voice profile. It may need at least 20 outbound messages.
-          </Alert>
-        ) : null}
-        {profile ? (
-          <div className="grid gap-3 md:grid-cols-3">
-            <VoiceCard
-              title="Overall"
-              formality={profile.formality_score}
-              sentenceLen={profile.avg_sentence_len}
-              samples={profile.msg_count_used}
-            />
-            {(profile.register_modes ?? []).map((mode) => (
-              <VoiceCard
-                key={mode.register}
-                title={mode.register}
-                formality={mode.formality_score}
-                sentenceLen={mode.avg_sentence_len}
-                samples={mode.exemplar_message_ids?.length ?? 0}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            {accountId ? "Loading voice profile..." : "No account selected."}
-          </p>
-        )}
-      </div>
-    </Shell>
-  );
-}
-
-function VoiceCard({
-  title,
-  formality,
-  sentenceLen,
-  samples,
-}: {
-  title: string;
-  formality: number;
-  sentenceLen: number;
-  samples: number;
-}) {
-  return (
-    <Card className="space-y-2 p-4">
-      <h3 className="text-sm font-semibold capitalize">{title}</h3>
-      <ProfileLikeRow label="Formality" value={formality.toFixed(2)} />
-      <ProfileLikeRow label="Sentence len" value={sentenceLen.toFixed(1)} />
-      <ProfileLikeRow label="Samples" value={String(samples)} />
-    </Card>
-  );
-}
-
-function ProfileLikeRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-mono text-foreground">{value}</span>
-    </div>
-  );
-}
-
-export function LlmSettingsSection() {
-  const qc = useQueryClient();
-  const config = useQuery({
-    queryKey: ["llm-config"],
-    queryFn: () => apiFetch<{ config: LlmConfig }>("/api/v1/platform/llm/config"),
-  });
-  const status = useQuery({
-    queryKey: ["llm-status"],
-    queryFn: () => apiFetch<{ status: LlmStatus }>("/api/v1/platform/llm/status"),
-  });
-  const [draft, setDraft] = useState<LlmConfig | null>(null);
-  const currentStatus = status.data?.status;
-  const configUnsupported = config.isError && isNotFoundError(config.error);
-
-  useEffect(() => {
-    if (config.data?.config) {
-      setDraft(normalizeLlmConfig(config.data.config));
-      return;
-    }
-    if (configUnsupported && currentStatus) {
-      setDraft(llmConfigFromStatus(currentStatus));
-    }
-  }, [config.data?.config, configUnsupported, currentStatus]);
-
-  const save = useMutation({
-    mutationFn: (body: LlmConfig) =>
-      apiFetch<{ config: LlmConfig }>("/api/v1/platform/llm/config", {
-        method: "POST",
-        body,
-      }),
-    onSuccess: (saved) => {
-      setDraft(saved.config);
-      toast.success("LLM config saved");
-      void qc.invalidateQueries({ queryKey: ["llm-config"] });
-      void qc.invalidateQueries({ queryKey: ["llm-status"] });
-    },
-    onError: (error) =>
-      toast.error(
-        isNotFoundError(error)
-          ? "This daemon does not support saving LLM config yet"
-          : "Failed to save LLM config",
-      ),
-  });
-
-  const isValid =
-    draft !== null &&
-    draft.base_url.trim().length > 0 &&
-    draft.model.trim().length > 0 &&
-    draft.context_window > 0 &&
-    draft.request_timeout_secs > 0;
-
-  return (
-    <Shell title="LLM">
-      <div className="space-y-4">
-        <Card className="p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-sm font-semibold">Thread summaries and draft assist</h2>
-              <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                mxr stores an environment variable name, not the API key. Leave it empty for Ollama
-                or LM Studio.
-              </p>
-            </div>
-            {currentStatus ? (
-              <Badge variant="outline" className="font-mono text-muted-foreground">
-                provider: {currentStatus.provider}
-              </Badge>
-            ) : null}
-          </div>
-        </Card>
-
-        {configUnsupported ? (
-          <Alert variant="warning" className="text-xs">
-            The running daemon exposes LLM status, but not editable LLM config yet. Restart mxr
-            daemon from this build or upgrade it to save changes.
-          </Alert>
-        ) : config.isError ? (
-          <Alert variant="destructive" className="text-xs">
-            Could not load LLM config.
-          </Alert>
-        ) : null}
-
-        {draft ? (
-          <Card className="space-y-4 p-4">
-            <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
-              <div>
-                <Label htmlFor="llm-enabled">Enable LLM features</Label>
-                <p className="mt-1 text-2xs text-muted-foreground">
-                  Summaries and draft assist use this provider after save.
-                </p>
-              </div>
-              <Switch
-                id="llm-enabled"
-                checked={draft.enabled}
-                onCheckedChange={(enabled) => setDraft({ ...draft, enabled })}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-background px-3 py-2">
-              <div>
-                <Label htmlFor="llm-allow-cloud-relationship-data">
-                  Allow relationship data with cloud LLMs
-                </Label>
-                <p className="mt-1 text-2xs text-muted-foreground">
-                  Required before relationship summaries, commitments, or voice-match checks use a
-                  non-local endpoint.
-                </p>
-              </div>
-              <Switch
-                id="llm-allow-cloud-relationship-data"
-                checked={draft.allow_cloud_relationship_data}
-                onCheckedChange={(allow_cloud_relationship_data) =>
-                  setDraft({ ...draft, allow_cloud_relationship_data })
-                }
-              />
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field label="Base URL">
-                <Input
-                  aria-label="Base URL"
-                  value={draft.base_url}
-                  onChange={(event) => setDraft({ ...draft, base_url: event.target.value })}
-                  placeholder="http://localhost:11434/v1"
-                />
-              </Field>
-              <Field label="Model">
-                <Input
-                  aria-label="Model"
-                  value={draft.model}
-                  onChange={(event) => setDraft({ ...draft, model: event.target.value })}
-                  placeholder="qwen2.5:3b-instruct"
-                />
-              </Field>
-              <Field label="API key environment variable">
-                <Input
-                  aria-label="API key environment variable"
-                  value={draft.api_key_env}
-                  onChange={(event) => setDraft({ ...draft, api_key_env: event.target.value })}
-                  placeholder="OPENAI_API_KEY"
-                />
-              </Field>
-              <Field label="Context window">
-                <Input
-                  aria-label="Context window"
-                  type="number"
-                  min={1}
-                  value={draft.context_window}
-                  onChange={(event) =>
-                    setDraft({ ...draft, context_window: Number(event.target.value) })
-                  }
-                />
-              </Field>
-              <Field label="Request timeout seconds">
-                <Input
-                  aria-label="Request timeout"
-                  type="number"
-                  min={1}
-                  value={draft.request_timeout_secs}
-                  onChange={(event) =>
-                    setDraft({ ...draft, request_timeout_secs: Number(event.target.value) })
-                  }
-                />
-              </Field>
-            </div>
-
-            <div className="space-y-3 border-t border-border pt-4">
-              <div>
-                <h3 className="text-sm font-semibold">Feature overrides</h3>
-                <p className="mt-1 text-2xs text-muted-foreground">
-                  Leave fields blank to inherit the base provider. Use this for larger summary
-                  models or warmer draft models without changing every LLM feature.
-                </p>
-              </div>
-              <div className="space-y-2">
-                {llmOverrideFeatures.map((feature) => {
-                  const override = draft.overrides?.[feature.key] ?? null;
-                  return (
-                    <div
-                      key={feature.key}
-                      className="grid gap-2 rounded-lg border border-border bg-background p-3 lg:grid-cols-[180px_120px_1fr_1fr] lg:items-end"
-                    >
-                      <div>
-                        <div className="text-xs font-medium">{feature.label}</div>
-                        <div className="font-mono text-2xs text-muted-foreground">
-                          {feature.key}
-                        </div>
-                      </div>
-                      <Field label="Enabled">
-                        <Select
-                          value={
-                            override?.enabled == null
-                              ? "inherit"
-                              : override.enabled
-                                ? "enabled"
-                                : "disabled"
-                          }
-                          onValueChange={(value) =>
-                            setDraft(
-                              updateLlmOverride(draft, feature.key, {
-                                enabled: value === "inherit" ? null : value === "enabled",
-                              }),
-                            )
-                          }
-                        >
-                          <SelectTrigger
-                            className="h-9 bg-background"
-                            aria-label={`${feature.label} enabled`}
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="inherit">Inherit</SelectItem>
-                            <SelectItem value="enabled">Enabled</SelectItem>
-                            <SelectItem value="disabled">Disabled</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                      <Field label="Model">
-                        <Input
-                          aria-label={`${feature.label} model`}
-                          value={override?.model ?? ""}
-                          onChange={(event) =>
-                            setDraft(
-                              updateLlmOverride(draft, feature.key, {
-                                model: emptyToNull(event.target.value),
-                              }),
-                            )
-                          }
-                          placeholder="inherit"
-                        />
-                      </Field>
-                      <Field label="Base URL">
-                        <Input
-                          aria-label={`${feature.label} base URL`}
-                          value={override?.base_url ?? ""}
-                          onChange={(event) =>
-                            setDraft(
-                              updateLlmOverride(draft, feature.key, {
-                                base_url: emptyToNull(event.target.value),
-                              }),
-                            )
-                          }
-                          placeholder="inherit"
-                        />
-                      </Field>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-              <div className="text-2xs text-muted-foreground">
-                {currentStatus?.api_key_env
-                  ? `API key env ${currentStatus.api_key_env}: ${currentStatus.api_key_present ? "present" : "missing"}`
-                  : "No API key env configured."}
-              </div>
-              <Button
-                onClick={() => draft && save.mutate(draft)}
-                disabled={!isValid || save.isPending || configUnsupported}
-              >
-                {configUnsupported ? "Daemon update required" : "Save LLM config"}
+                  <Icon className="size-3.5" />
+                  {label}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+      {section ? (
+        <Page
+          eyebrow="Settings"
+          title={section.label}
+          description={section.description}
+          width="narrow"
+          tabs={<NarrowSectionPicker current={section.id} />}
+        >
+          {section.render()}
+        </Page>
+      ) : (
+        <Page eyebrow="Settings" title="Not found" width="narrow">
+          <PageEmpty
+            icon={<SearchX className="size-5" />}
+            title={`There is no "${requested}" settings page`}
+            body="It may have moved. Pick a section from the list."
+            action={
+              <Button size="sm" variant="outline" asChild>
+                <Link to="/settings/$section" params={{ section: "theme" }}>
+                  Open appearance settings
+                </Link>
               </Button>
-            </div>
-          </Card>
-        ) : (
-          <p className="text-xs text-muted-foreground">Loading LLM config...</p>
-        )}
-      </div>
-    </Shell>
+            }
+          />
+        </Page>
+      )}
+    </div>
   );
 }
 
-function llmConfigFromStatus(status: LlmStatus): LlmConfig {
-  return {
-    enabled: status.enabled,
-    base_url: status.base_url ?? defaultLlmConfig.base_url,
-    model:
-      status.configured_model.trim() ||
-      (status.model === "noop" ? "" : status.model.trim()) ||
-      defaultLlmConfig.model,
-    api_key_env: status.api_key_env ?? "",
-    context_window:
-      status.context_window > 0 ? status.context_window : defaultLlmConfig.context_window,
-    request_timeout_secs:
-      status.request_timeout_secs > 0
-        ? status.request_timeout_secs
-        : defaultLlmConfig.request_timeout_secs,
-    allow_cloud_relationship_data: defaultLlmConfig.allow_cloud_relationship_data,
-    overrides: {},
-  };
-}
-
-function normalizeLlmConfig(config: LlmConfig): LlmConfig {
-  return { ...config, overrides: config.overrides ?? {} };
-}
-
-function updateLlmOverride(
-  config: LlmConfig,
-  key: LlmOverrideKey,
-  patch: LlmOverrideConfig,
-): LlmConfig {
-  const current = config.overrides?.[key] ?? {};
-  const next = pruneOverride({ ...current, ...patch });
-  return {
-    ...config,
-    overrides: {
-      ...config.overrides,
-      [key]: next,
-    },
-  };
-}
-
-function pruneOverride(override: LlmOverrideConfig): LlmOverrideConfig | null {
-  const next: LlmOverrideConfig = {
-    enabled: override.enabled ?? null,
-    base_url: emptyToNull(override.base_url),
-    model: emptyToNull(override.model),
-    api_key_env: emptyToNull(override.api_key_env),
-    context_window: override.context_window ?? null,
-    request_timeout_secs: override.request_timeout_secs ?? null,
-  };
-  const hasValue = Object.values(next).some((value) => value !== null && value !== undefined);
-  return hasValue ? next : null;
-}
-
-function emptyToNull(value?: string | null): string | null {
-  const trimmed = value?.trim() ?? "";
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function isNotFoundError(error: unknown): boolean {
-  return error instanceof Error && /^404\b/.test(error.message);
-}
-
-function SnippetsSection() {
-  const qc = useQueryClient();
-  const snippets = useQuery({
-    queryKey: ["snippets"],
-    queryFn: () => apiFetch<{ snippets: Snippet[] }>("/api/v1/mail/snippets"),
-  });
-  const [name, setName] = useState("");
-  const [body, setBody] = useState("");
-  const save = useMutation({
-    mutationFn: () =>
-      apiFetch<unknown>("/api/v1/mail/snippets", {
-        method: "POST",
-        body: { name, body, vars: [] },
-      }),
-    onSuccess: () => {
-      toast.success("Snippet saved");
-      setName("");
-      setBody("");
-      void qc.invalidateQueries({ queryKey: ["snippets"] });
-    },
-  });
-  const remove = useMutation({
-    mutationFn: (snippet: string) =>
-      apiFetch<unknown>(`/api/v1/mail/snippets/${encodeURIComponent(snippet)}`, {
-        method: "DELETE",
-      }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["snippets"] }),
-  });
+/** Below md the side nav is hidden; a compact section list takes its place. */
+function NarrowSectionPicker({ current }: { current: string }) {
   return (
-    <Shell title="Snippets">
-      <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
-        <Card className="space-y-3 p-4">
-          <Field label="Name">
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="sig"
-            />
-          </Field>
-          <Field label="Body">
-            <Textarea
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-              className="min-h-32"
-              placeholder="Best,\nYou"
-            />
-          </Field>
-          <Button
-            onClick={() => save.mutate()}
-            disabled={!name.trim() || !body.trim() || save.isPending}
+    <ul aria-label="Settings sections" className="-mx-1 flex gap-1 overflow-x-auto pb-2 md:hidden">
+      {SECTIONS.map(({ id, label }) => (
+        <li key={id}>
+          <Link
+            to="/settings/$section"
+            params={{ section: id }}
+            aria-current={id === current ? "page" : undefined}
+            className={cn(
+              "block whitespace-nowrap rounded-md px-2 py-1 text-xs",
+              id === current ? "bg-primary-muted text-foreground" : "text-muted-foreground",
+            )}
           >
-            <Plus className="size-3" />
-            Save snippet
-          </Button>
-        </Card>
-        <Card className="p-4">
-          <div className="divide-y divide-border">
-            {(snippets.data?.snippets ?? []).map((snippet) => (
-              <div key={snippet.name} className="flex items-start justify-between gap-3 py-3">
-                <div>
-                  <div className="text-xs font-medium">;{snippet.name}</div>
-                  <pre className="mt-1 whitespace-pre-wrap text-2xs text-muted-foreground">
-                    {snippet.body}
-                  </pre>
-                </div>
-                <Button variant="ghost" size="icon" onClick={() => remove.mutate(snippet.name)}>
-                  <Trash2 className="size-3" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-    </Shell>
-  );
-}
-
-function fetchSignatures() {
-  return apiFetch<{ signatures: Signature[] }>("/api/v1/mail/signatures");
-}
-
-function fetchSignatureDefaults() {
-  return apiFetch<{ defaults: SignatureDefault[] }>("/api/v1/mail/signature-defaults");
-}
-
-function saveSignature(name: string, body: string) {
-  return apiFetch<{ signature: Signature }>("/api/v1/mail/signatures", {
-    method: "POST",
-    body: { name, body },
-  });
-}
-
-function deleteSignature(name: string) {
-  return apiFetch<unknown>(`/api/v1/mail/signatures/${encodeURIComponent(name)}`, {
-    method: "DELETE",
-  });
-}
-
-function setSignatureDefault(input: { name: string; kind: "new" | "reply" }) {
-  return apiFetch<unknown>("/api/v1/mail/signatures/default", {
-    method: "POST",
-    body: input,
-  });
-}
-
-function KeybindingsSection() {
-  const hintSections = useActionShortcutSections({
-    path: "/settings/keybindings",
-    activePane: "mailbox",
-    selectionCount: 0,
-    accountCount: 0,
-    hasFocusedThread: false,
-    hasFocusedMessage: false,
-    isFirstAccountOnly: false,
-  });
-  return (
-    <Shell title="Keybindings">
-      <div className="space-y-4">
-        {hintSections.length === 0 ? (
-          <div className="text-xs text-muted-foreground">No keybindings registered.</div>
-        ) : (
-          hintSections.map((section) => (
-            <div key={section.title}>
-              <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {section.title}
-              </h3>
-              <div className="grid gap-2">
-                {section.hints.map((hint) => (
-                  <div
-                    key={`${section.title}-${hint.key}-${hint.label}`}
-                    className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-xs"
-                  >
-                    <span>{hint.label}</span>
-                    <KeyChip>{hint.key}</KeyChip>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </Shell>
-  );
-}
-
-function Shell({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-      <div className="mt-5 max-w-3xl">{children}</div>
-    </div>
-  );
-}
-
-function SelectRow({
-  label,
-  value,
-  values,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  values: string[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-64" aria-label={label}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {values.map((item) => (
-            <SelectItem key={item} value={item}>
-              {item}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
-function Toggle({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <Card className="flex items-center justify-between p-4">
-      <span className="text-sm font-medium">{label}</span>
-      <Switch checked={checked} onCheckedChange={onChange} />
-    </Card>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <Label>{label}</Label>
-      {children}
-    </div>
+            {label}
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }

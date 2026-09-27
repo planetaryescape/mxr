@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { CheckCircle2, Mail, Server, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { Check, CheckCircle2, Mail, Server } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -16,9 +16,13 @@ import {
   upsertAccount,
   type AccountConfig,
 } from "@/features/accounts/api";
+import { describeAuthSession, isTerminalAuthState } from "@/features/accounts/authSession";
+import { Page } from "@/components/Page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { plural } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { useConnectionStore } from "@/state/connectionStore";
 
 type Provider = "gmail" | "outlook" | "imap";
@@ -101,208 +105,209 @@ export function OnboardingRoute() {
   const providerLabel = providerTiles.find((tile) => tile.id === provider)?.label ?? provider;
   // Device flow surfaces a verification_uri; loopback surfaces auth_url.
   const signInUrl = session?.verification_uri ?? session?.auth_url;
+  const authStatus = describeAuthSession(session, providerLabel);
 
   return (
-    <div className="flex min-w-0 flex-1 items-center justify-center overflow-auto bg-background p-6">
-      <div className="w-full max-w-3xl rounded-2xl border border-border bg-surface-elevated p-6 shadow-2xl">
-        <div className="mb-6 flex items-center gap-2 font-mono text-2xs uppercase tracking-wide text-muted-foreground">
-          {[1, 2, 3, 4].map((item) => (
-            <span key={item} className={item <= step ? "text-primary" : undefined}>
-              0{item}
-            </span>
-          ))}
-        </div>
-        {step === 1 ? (
-          <section className="grid gap-6 md:grid-cols-[1fr_260px]">
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight">Bring your mailbox local.</h1>
-              <p className="mt-3 text-sm text-muted-foreground">
-                mxr keeps SQLite as truth, syncs in the daemon, and makes search fast before
-                anything else. Start with your mailbox, or try <code>mxr demo</code> for a
-                two-account inbox with threads, attachments, newsletters, promos, spam, rules, and
-                analytics.
-              </p>
-              <Button className="mt-6" onClick={() => setStep(2)}>
-                Connect first account
-              </Button>
-            </div>
-            <div className="rounded-xl border border-border bg-background p-4">
-              <ShieldCheck className="mb-3 size-6 text-primary" />
-              <div className="text-sm font-medium">A real workflow, not a blank slate</div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                The demo seed is built to exercise search, sender profiles, LLM summaries,
-                unsubscribe, attachments, links, images, repeat contacts, suspicious mail, and
-                prewarmed analytics.
-              </p>
-            </div>
-          </section>
-        ) : null}
-        {step === 2 ? (
-          <section>
-            <h1 className="text-xl font-semibold">Choose provider</h1>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              {providerTiles.map((tile) => (
-                <button
-                  key={tile.id}
-                  className={`rounded-xl border p-4 text-left ${provider === tile.id ? "border-primary bg-primary-muted" : "border-border bg-background"}`}
-                  onClick={() => setProvider(tile.id)}
-                >
-                  <tile.Icon className="mb-3 size-5 text-primary" />
-                  <div className="text-sm font-medium">{tile.label}</div>
-                  <div className="mt-1 text-2xs text-muted-foreground">{tile.description}</div>
-                </button>
-              ))}
-            </div>
-            <div className="mt-5 space-y-2">
-              <Label>Email</Label>
-              <Input
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-              />
-            </div>
-            <Button
-              className="mt-4"
-              disabled={!email.trim()}
-              onClick={() =>
-                provider === "gmail"
-                  ? startAuth.mutate(gmailAccountConfig(email.trim()))
-                  : provider === "outlook"
-                    ? startAuth.mutate(outlookAccountConfig(email.trim()))
-                    : (setImap({
-                        ...imap,
-                        email: email.trim(),
-                        username: email.trim(),
-                        name: email.trim(),
-                      }),
-                      setStep(3))
-              }
-            >
-              Continue
-            </Button>
-          </section>
-        ) : null}
-        {step === 3 && provider !== "imap" ? (
-          <section>
-            <h1 className="text-xl font-semibold">Authorize {providerLabel}</h1>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {session?.user_code
-                ? "Enter the code below on the verification page to authorize mxr."
-                : `We open ${providerLabel} sign-in in a new tab. Approve access there — mxr captures the result automatically.`}
-            </p>
-            <div className="mt-5 rounded-xl border border-border bg-background p-5">
-              {session?.user_code ? (
-                <div className="font-mono text-3xl tracking-widest text-primary">
-                  {session.user_code}
-                </div>
-              ) : null}
-              <div
-                className={`whitespace-pre-wrap text-xs ${
-                  session?.user_code ? "mt-2" : ""
-                } ${session?.error ? "text-destructive" : "text-muted-foreground"}`}
+    <Page
+      eyebrow="Add an account"
+      title={STEP_TITLES[step]}
+      width="narrow"
+      tabs={<StepIndicator step={step} />}
+    >
+      {step === 1 ? (
+        <section>
+          <p className="max-w-[60ch] text-[13px] leading-relaxed text-muted-foreground">
+            mxr keeps your mail in a local SQLite store, syncs it in the background daemon, and
+            searches it without a round trip. Connect a mailbox to start, or run{" "}
+            <code className="font-mono text-xs text-foreground">mxr demo</code> in a terminal for a
+            sample inbox with threads, attachments, newsletters, rules and analytics.
+          </p>
+          <Button className="mt-6" size="sm" onClick={() => setStep(2)}>
+            Connect first account
+          </Button>
+        </section>
+      ) : null}
+      {step === 2 ? (
+        <section>
+          <div role="radiogroup" aria-label="Provider" className="grid gap-2 sm:grid-cols-3">
+            {providerTiles.map((tile) => (
+              <button
+                key={tile.id}
+                type="button"
+                role="radio"
+                aria-checked={provider === tile.id}
+                className={cn(
+                  "rounded-md border p-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                  provider === tile.id
+                    ? "border-primary bg-primary-muted"
+                    : "border-border hover:bg-muted/40",
+                )}
+                onClick={() => setProvider(tile.id)}
               >
-                {session?.error ??
-                  session?.message ??
-                  session?.state ??
-                  "Waiting for authorization"}
+                <tile.Icon className="mb-2 size-4 text-primary" />
+                <div className="text-[13px] font-medium">{tile.label}</div>
+                <div className="mt-0.5 text-2xs text-muted-foreground">{tile.description}</div>
+              </button>
+            ))}
+          </div>
+          <div className="mt-5 max-w-sm space-y-1">
+            <Label htmlFor="onboarding-email" className="text-xs">
+              Email
+            </Label>
+            <Input
+              id="onboarding-email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@example.com"
+              className="h-8 text-[13px]"
+            />
+          </div>
+          <Button
+            className="mt-4"
+            size="sm"
+            disabled={!email.trim() || startAuth.isPending}
+            onClick={() =>
+              provider === "gmail"
+                ? startAuth.mutate(gmailAccountConfig(email.trim()))
+                : provider === "outlook"
+                  ? startAuth.mutate(outlookAccountConfig(email.trim()))
+                  : (setImap({
+                      ...imap,
+                      email: email.trim(),
+                      username: email.trim(),
+                      name: email.trim(),
+                    }),
+                    setStep(3))
+            }
+          >
+            Continue
+          </Button>
+        </section>
+      ) : null}
+      {step === 3 && provider !== "imap" ? (
+        <section>
+          <p className="text-[13px] text-muted-foreground">
+            {session?.user_code
+              ? "Enter this code on the verification page to let mxr read and send your mail."
+              : `Sign in to ${providerLabel} in a new tab and approve access. mxr picks up the result on its own.`}
+          </p>
+          <div className="mt-5 border-y border-border py-5">
+            {session?.user_code ? (
+              <div className="mb-3 font-mono text-3xl tracking-widest text-primary">
+                {session.user_code}
               </div>
-              {signInUrl ? (
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <Button onClick={() => window.open(signInUrl, "_blank", "noopener,noreferrer")}>
-                    Open {providerLabel} sign-in
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      void navigator.clipboard?.writeText(signInUrl);
-                      toast.success("Sign-in link copied");
-                    }}
-                  >
-                    Copy sign-in link
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-            {session && isTerminalAuthState(session.state) && session.state !== "authorized" ? (
-              <p className="mt-3 text-xs text-destructive">
-                {session.state === "failed"
-                  ? `Authorization failed${session.error ? `: ${session.error}` : "."}`
-                  : "Authorization was cancelled."}{" "}
-                Start over to try again.
-              </p>
             ) : null}
-            <div className="mt-4 flex gap-2">
-              <Button
-                disabled={session?.state !== "authorized" || completeAuth.isPending}
-                onClick={() => completeAuth.mutate()}
-              >
-                <CheckCircle2 className="size-3" />
-                Complete
-              </Button>
-              <Button
-                variant="ghost"
-                disabled={cancelAuth.isPending}
-                onClick={() => (sessionId ? cancelAuth.mutate() : setStep(2))}
-              >
-                Cancel
-              </Button>
-            </div>
-          </section>
-        ) : null}
-        {step === 3 && provider === "imap" ? (
-          <section>
-            <h1 className="text-xl font-semibold">IMAP + SMTP</h1>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <Text
-                label="Account name"
-                value={imap.name}
-                onChange={(name) => setImap({ ...imap, name })}
-              />
-              <Text
-                label="Email"
-                value={imap.email}
-                onChange={(nextEmail) => setImap({ ...imap, email: nextEmail })}
-              />
-              <Text
-                label="IMAP host"
-                value={imap.imapHost}
-                onChange={(imapHost) => setImap({ ...imap, imapHost })}
-              />
-              <NumberField
-                label="IMAP port"
-                value={imap.imapPort}
-                onChange={(imapPort) => setImap({ ...imap, imapPort })}
-              />
-              <NumberField
-                label="IMAP max connections"
-                value={imap.imapMaxConnections}
-                onChange={(imapMaxConnections) => setImap({ ...imap, imapMaxConnections })}
-              />
-              <Text
-                label="SMTP host"
-                value={imap.smtpHost}
-                onChange={(smtpHost) => setImap({ ...imap, smtpHost })}
-              />
-              <NumberField
-                label="SMTP port"
-                value={imap.smtpPort}
-                onChange={(smtpPort) => setImap({ ...imap, smtpPort })}
-              />
-              <Text
-                label="Username"
-                value={imap.username}
-                onChange={(username) => setImap({ ...imap, username })}
-              />
-              <Text
-                label="Password"
-                type="password"
-                value={imap.password}
-                onChange={(password) => setImap({ ...imap, password })}
-              />
-            </div>
+            <p
+              role="status"
+              className={cn(
+                "text-[13px]",
+                authStatus.tone === "error"
+                  ? "text-destructive"
+                  : authStatus.tone === "ready"
+                    ? "text-success"
+                    : "text-muted-foreground",
+              )}
+            >
+              {authStatus.text}
+            </p>
+            {signInUrl && session && !isTerminalAuthState(session.state) ? (
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => window.open(signInUrl, "_blank", "noopener,noreferrer")}
+                >
+                  Open {providerLabel} sign-in
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard
+                      ?.writeText(signInUrl)
+                      .then(() => toast.success("Sign-in link copied"))
+                      .catch((error: Error) =>
+                        toast.error("Copy failed", { description: error.message }),
+                      );
+                  }}
+                >
+                  Copy sign-in link
+                </Button>
+              </div>
+            ) : null}
+          </div>
+          <div className="mt-4 flex gap-2">
             <Button
-              className="mt-4"
+              size="sm"
+              disabled={session?.state !== "authorized" || completeAuth.isPending}
+              onClick={() => completeAuth.mutate()}
+            >
+              <CheckCircle2 className="size-3" />
+              Complete
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={cancelAuth.isPending}
+              onClick={() => (sessionId ? cancelAuth.mutate() : setStep(2))}
+            >
+              Cancel
+            </Button>
+          </div>
+        </section>
+      ) : null}
+      {step === 3 && provider === "imap" ? (
+        <section>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Text
+              label="Account name"
+              value={imap.name}
+              onChange={(name) => setImap({ ...imap, name })}
+            />
+            <Text
+              label="Email"
+              value={imap.email}
+              onChange={(nextEmail) => setImap({ ...imap, email: nextEmail })}
+            />
+            <Text
+              label="IMAP host"
+              value={imap.imapHost}
+              onChange={(imapHost) => setImap({ ...imap, imapHost })}
+            />
+            <NumberField
+              label="IMAP port"
+              value={imap.imapPort}
+              onChange={(imapPort) => setImap({ ...imap, imapPort })}
+            />
+            <NumberField
+              label="IMAP max connections"
+              value={imap.imapMaxConnections}
+              onChange={(imapMaxConnections) => setImap({ ...imap, imapMaxConnections })}
+            />
+            <Text
+              label="SMTP host"
+              value={imap.smtpHost}
+              onChange={(smtpHost) => setImap({ ...imap, smtpHost })}
+            />
+            <NumberField
+              label="SMTP port"
+              value={imap.smtpPort}
+              onChange={(smtpPort) => setImap({ ...imap, smtpPort })}
+            />
+            <Text
+              label="Username"
+              value={imap.username}
+              onChange={(username) => setImap({ ...imap, username })}
+            />
+            <Text
+              label="Password"
+              type="password"
+              value={imap.password}
+              onChange={(password) => setImap({ ...imap, password })}
+            />
+          </div>
+          <div className="mt-4 flex gap-2">
+            <Button
+              size="sm"
               disabled={
                 saveImap.isPending ||
                 !imap.email ||
@@ -312,48 +317,116 @@ export function OnboardingRoute() {
               }
               onClick={() => saveImap.mutate()}
             >
-              Test and save
+              {saveImap.isPending ? "Testing connection…" : "Test and save"}
             </Button>
-          </section>
-        ) : null}
-        {step === 4 ? (
-          <section>
-            <h1 className="text-xl font-semibold">Initial sync</h1>
-            <p className="mt-1 text-xs text-muted-foreground">
-              The daemon keeps syncing even if you leave this page.
-            </p>
-            <div className="mt-5 rounded-xl border border-border bg-background p-5">
-              <div className="text-3xl font-semibold">
-                {sync ? `${sync.current}/${sync.total}` : "Ready"}
-              </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full bg-primary"
-                  style={{
-                    width: sync
-                      ? `${Math.round((sync.current / Math.max(1, sync.total)) * 100)}%`
-                      : "100%",
-                  }}
-                />
-              </div>
-            </div>
-            <div className="mt-4 flex gap-2">
-              <Button onClick={() => navigate({ to: "/m/$mailbox", params: { mailbox: "inbox" } })}>
-                Open inbox
-              </Button>
-              <Button variant="ghost" onClick={() => navigate({ to: "/accounts" })}>
-                Manage accounts
-              </Button>
-            </div>
-          </section>
-        ) : null}
-      </div>
-    </div>
+            <Button variant="ghost" size="sm" onClick={() => setStep(2)}>
+              Back
+            </Button>
+          </div>
+        </section>
+      ) : null}
+      {step === 4 ? (
+        <FirstSync
+          onOpenInbox={() => navigate({ to: "/m/$mailbox", params: { mailbox: "inbox" } })}
+          onManage={() => navigate({ to: "/accounts" })}
+          sync={sync}
+        />
+      ) : null}
+    </Page>
   );
 }
 
-function isTerminalAuthState(state: string): boolean {
-  return state === "authorized" || state === "failed" || state === "cancelled";
+const STEP_TITLES = {
+  1: "Bring your mailbox local",
+  2: "Choose a provider",
+  3: "Sign in",
+  4: "First sync",
+} as const;
+
+const STEP_LABELS = ["Welcome", "Provider", "Sign in", "First sync"];
+
+function StepIndicator({ step }: { step: 1 | 2 | 3 | 4 }) {
+  return (
+    <ol aria-label="Setup steps" className="flex flex-wrap gap-x-5 gap-y-1 pb-2.5 pt-1">
+      {STEP_LABELS.map((label, index) => {
+        const number = index + 1;
+        const done = number < step;
+        const current = number === step;
+        return (
+          <li
+            key={label}
+            aria-current={current ? "step" : undefined}
+            className={cn(
+              "flex items-center gap-1.5 font-mono text-2xs",
+              current ? "text-foreground" : done ? "text-primary" : "text-muted-foreground",
+            )}
+          >
+            {done ? <Check className="size-3" /> : <span>{String(number).padStart(2, "0")}</span>}
+            {label}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/**
+ * Sync progress arrives over the event socket. Until the first progress
+ * event the sync has not started, so this never claims "Ready" early.
+ */
+function FirstSync({
+  sync,
+  onOpenInbox,
+  onManage,
+}: {
+  sync: { current: number; total: number } | undefined;
+  onOpenInbox: () => void;
+  onManage: () => void;
+}) {
+  const [started, setStarted] = useState(false);
+  useEffect(() => {
+    if (sync) setStarted(true);
+  }, [sync]);
+  const phase = sync ? "running" : started ? "done" : "waiting";
+  const percent =
+    phase === "done" ? 100 : sync ? Math.round((sync.current / Math.max(1, sync.total)) * 100) : 0;
+  return (
+    <section>
+      <p className="text-[13px] text-muted-foreground">
+        The daemon keeps syncing if you leave this page.
+      </p>
+      <div className="mt-5 border-y border-border py-5" role="status">
+        <div className="text-[15px] font-semibold">
+          {phase === "running" && sync
+            ? `Syncing: ${sync.current.toLocaleString()} of ${plural(sync.total, "message")}`
+            : phase === "done"
+              ? "First sync finished"
+              : "Waiting for the first sync to start…"}
+        </div>
+        <div
+          className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-label="First sync progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={phase === "waiting" ? undefined : percent}
+        >
+          <div
+            className={cn("h-full bg-primary", phase === "waiting" && "w-1/4 animate-pulse")}
+            style={phase === "waiting" ? undefined : { width: `${percent}%` }}
+          />
+        </div>
+      </div>
+      <div className="mt-4 flex gap-2">
+        <Button size="sm" onClick={onOpenInbox}>
+          Open inbox
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onManage}>
+          Manage accounts
+        </Button>
+      </div>
+    </section>
+  );
 }
 
 const providerTiles = [

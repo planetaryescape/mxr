@@ -1,275 +1,400 @@
 import {
   Archive,
   Check,
-  Link as LinkIcon,
-  MailOpen,
-  MessagesSquare,
-  Paperclip,
   ClipboardList,
-  ShieldAlert,
+  Clock,
+  Link2,
+  Mail,
+  MailOpen,
+  Paperclip,
   Star,
   Trash2,
+  type LucideIcon,
 } from "lucide-react";
-import type { MouseEvent, ReactNode } from "react";
+import { memo, type MouseEvent, type ReactNode } from "react";
 
 import type { MessageRowView } from "./types";
-import { useOptimisticMailMutation } from "./useOptimisticMailMutation";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { formatListDate, initials, parseAddress, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+export type RowQuickAction = "archive" | "trash" | "toggleRead" | "toggleStar" | "snooze";
 
 interface MailboxRowProps {
   row: MessageRowView;
+  domId: string;
   selected: boolean;
   focused: boolean;
-  onOpen: () => void;
-  onFocusPane: () => void;
-  onToggleSelection: (shift: boolean) => void;
-  /**
-   * Read-only rows drop the selection checkbox, star toggle, and hover
-   * quick-actions (archive/trash/spam/read). Used for lists whose rows
-   * aren't directly mutable messages (e.g. stale thread aggregates that
-   * carry no message id). Navigation/open still works.
-   */
+  /** The conversation open in the reader. */
+  open: boolean;
+  /** Any row selected: every lead shows its checkbox. */
+  selecting: boolean;
   readOnly?: boolean;
-  /** Optional list-specific trailing control, e.g. "Remove from queue". */
+  onOpen: (row: MessageRowView) => void;
+  onToggleSelection: (row: MessageRowView, shift: boolean) => void;
+  onQuickAction: (row: MessageRowView, action: RowQuickAction) => void;
   trailingAction?: ReactNode;
 }
 
-export function MailboxRow({
+/**
+ * One conversation or message. Layout follows the list's width (a
+ * container query), not the window's: a full-width list reads as one line
+ * per row; the narrow list beside the reader stacks sender, subject and
+ * snippet. Inner buttons are mouse affordances only; the listbox owns
+ * keyboard focus and every action has a key.
+ */
+export const MailboxRow = memo(function MailboxRow({
   row,
+  domId,
   selected,
   focused,
-  onOpen,
-  onFocusPane,
-  onToggleSelection,
+  open,
+  selecting,
   readOnly = false,
+  onOpen,
+  onToggleSelection,
+  onQuickAction,
   trailingAction,
 }: MailboxRowProps) {
-  const star = useOptimisticMailMutation(row.starred ? "unstar" : "star");
-  const read = useOptimisticMailMutation(row.unread ? "read" : "unread");
-  const conversationCount =
+  const count =
     typeof row.message_count === "number" && row.message_count > 1 ? row.message_count : null;
-  const openCommitmentCount =
+  const commitments =
     typeof row.open_commitment_count === "number" && row.open_commitment_count > 0
       ? row.open_commitment_count
       : null;
+  const who = displaySender(row);
+  const userLabels = (row.labels ?? []).filter((label) => label.kind === "user").slice(0, 2);
 
-  function toggleSelection(event: MouseEvent) {
+  const stop = (handler: () => void) => (event: MouseEvent) => {
     event.stopPropagation();
-    onToggleSelection(event.shiftKey);
-  }
+    handler();
+  };
 
   return (
     <div
-      role="article"
-      tabIndex={0}
-      aria-label={`${row.sender} ${row.subject || "(no subject)"} ${conversationCount ? `conversation thread with ${conversationCount} messages` : ""} ${openCommitmentCount ? `${openCommitmentCount} open ${openCommitmentCount === 1 ? "commitment" : "commitments"}` : ""} ${row.has_attachments ? "has attachments" : ""} ${row.snippet}`}
-      onClick={onOpen}
-      onFocus={onFocusPane}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onOpen();
+      id={domId}
+      role="option"
+      aria-selected={selected}
+      aria-label={rowLabel(row, who, count)}
+      onClick={(event) => {
+        if (!readOnly && (event.metaKey || event.ctrlKey)) {
+          onToggleSelection(row, false);
+          return;
         }
+        if (!readOnly && event.shiftKey) {
+          onToggleSelection(row, true);
+          return;
+        }
+        onOpen(row);
       }}
+      data-unread={row.unread ? "true" : undefined}
+      data-focused={focused ? "true" : undefined}
       className={cn(
-        "mailbox-row group relative grid min-w-0 cursor-pointer items-center gap-3 overflow-hidden border-b border-border/70 px-3 transition-colors",
-        readOnly
-          ? "grid-cols-[minmax(148px,220px)_1fr_auto]"
-          : "grid-cols-[28px_28px_minmax(148px,220px)_1fr_auto]",
-        "hover:bg-accent/70 hover:text-accent-foreground",
-        selected && "bg-accent text-accent-foreground hover:bg-accent",
-        focused && "bg-accent/85 text-accent-foreground ring-1 ring-ring/70 hover:bg-accent",
-        row.unread &&
-          "font-semibold text-foreground before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-unread-marker",
+        "mail-row group relative grid cursor-default select-none items-center border-b border-border/60",
+        "grid-cols-[28px_minmax(0,1fr)_auto] gap-x-3 px-3 py-2.5",
+        "@2xl:grid-cols-[28px_minmax(120px,190px)_minmax(0,1fr)_auto]",
+        "[[data-density=compact]_&]:py-1.5 [[data-density=comfortable]_&]:py-3.5",
+        "transition-colors duration-100",
+        selected ? "bg-primary-muted/70" : open ? "bg-accent" : "hover:bg-accent/60",
+        focused && "bg-accent",
       )}
-      style={{ height: "var(--row-height)" }}
     >
-      {readOnly ? null : (
-        <>
-          <button
-            type="button"
-            onClick={toggleSelection}
-            aria-label={selected ? "Deselect message" : "Select message"}
-            className={cn(
-              "grid size-4 place-items-center rounded border border-border text-[10px] text-primary opacity-0 transition-opacity group-hover:opacity-100",
-              selected && "border-primary bg-primary text-primary-foreground opacity-100",
-            )}
+      {focused || open ? (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute inset-y-0 left-0 w-[3px]",
+            focused ? "bg-primary" : "bg-primary/45",
+          )}
+        />
+      ) : null}
+      {row.unread ? (
+        <span
+          aria-hidden
+          className="absolute left-[5px] top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-unread-marker"
+        />
+      ) : null}
+
+      {/* Lead: avatar that becomes a checkbox. */}
+      <div className="row-span-2 self-start pt-0.5 @2xl:row-span-1 @2xl:self-center @2xl:pt-0">
+        {readOnly ? (
+          <Avatar name={who} />
+        ) : (
+          // Mouse-only: rows are listbox options, which can't hold controls;
+          // x selects from the keyboard.
+          <span
+            aria-hidden
+            onClick={stop(() => onToggleSelection(row, false))}
+            className="relative grid size-7 cursor-pointer place-items-center rounded-full"
           >
-            {selected ? <Check className="size-3" /> : null}
-          </button>
-
-          <button
-            type="button"
-            className={cn(
-              "grid size-5 place-items-center rounded text-muted-foreground hover:bg-muted",
-              row.starred && "text-star",
-            )}
-            onClick={(event) => {
-              event.stopPropagation();
-              star.mutate([row.id]);
-            }}
-            aria-label={row.starred ? "Unstar" : "Star"}
-          >
-            <Star className={cn("size-3.5", row.starred && "fill-current")} />
-          </button>
-        </>
-      )}
-
-      <div className="mailbox-row-sender flex min-w-0 items-center gap-1.5 text-[length:var(--mail-row-subject-size)]">
-        <span className="min-w-0 truncate" title={row.sender_detail ?? row.sender}>
-          {row.sender}
-        </span>
-        {conversationCount ? <ConversationBadge count={conversationCount} /> : null}
-      </div>
-
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
-          <h2 className="mailbox-row-subject truncate text-[length:var(--mail-row-subject-size)] leading-5">
-            {row.subject || "(no subject)"}
-          </h2>
-          {row.has_attachments ? (
-            <Paperclip
-              aria-label="Has attachments"
-              className="size-3.5 shrink-0 text-foreground/75"
-              role="img"
+            <span
+              className={cn(
+                "transition-opacity",
+                selected || selecting ? "opacity-0" : "group-hover:opacity-0",
+              )}
             >
-              <title>{row.attachment_filename ?? "Has attachments"}</title>
-            </Paperclip>
-          ) : null}
-          {row.link_density && row.link_density !== "none" ? (
-            <LinkIcon
-              aria-label={
-                row.link_density === "heavy" ? "Link-heavy body" : "Body has external links"
-              }
-              role="img"
-              className={
-                row.link_density === "heavy"
-                  ? "size-3.5 shrink-0 text-amber-500"
-                  : "size-3.5 shrink-0 text-foreground/55"
-              }
+              <Avatar name={who} />
+            </span>
+            <span
+              className={cn(
+                "absolute inset-0 grid place-items-center rounded-full border transition-opacity",
+                selected
+                  ? "border-primary bg-primary text-primary-foreground opacity-100"
+                  : cn(
+                      "border-border-strong bg-background",
+                      selecting ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                    ),
+              )}
             >
-              <title>
-                {row.link_density === "heavy" ? "Many external links" : "Has external links"}
-              </title>
-            </LinkIcon>
-          ) : null}
-          {openCommitmentCount ? <CommitmentBadge count={openCommitmentCount} /> : null}
-          {row.triage_verdict ? (
-            <TriageBadge verdict={row.triage_verdict} reason={row.triage_reason ?? row.triage_line} />
-          ) : null}
-        </div>
-        <div className="mailbox-row-snippet truncate text-[length:var(--mail-row-meta-size)] font-normal leading-5 text-muted-foreground">
-          {row.snippet}
-        </div>
-      </div>
-
-      <div className="flex items-center gap-1 justify-self-end">
-        <div className="mr-1 whitespace-nowrap font-mono text-[length:var(--mail-row-meta-size)] font-normal text-muted-foreground">
-          {row.date_label}
-        </div>
-        {readOnly ? null : (
-          <div className="hidden items-center gap-1 opacity-0 transition-opacity group-hover:flex group-hover:opacity-100">
-            <QuickAction
-              icon={MailOpen}
-              label={row.unread ? "Mark read" : "Mark unread"}
-              onClick={() => read.mutate([row.id])}
-            />
-            <QuickArchive id={row.id} />
-          </div>
+              {selected ? <Check className="size-3.5" strokeWidth={3} /> : null}
+            </span>
+          </span>
         )}
+      </div>
+
+      {/* Sender. Narrow: first line with the date. Wide: its own column. */}
+      <div className="flex min-w-0 items-baseline gap-1.5 @2xl:col-start-2">
+        <span
+          className={cn(
+            "min-w-0 truncate text-[length:var(--mail-row-subject-size)]",
+            row.unread ? "font-semibold text-foreground" : "text-muted-foreground",
+          )}
+          title={row.sender_detail ?? row.sender}
+        >
+          {who}
+        </span>
+        {count ? (
+          <span className="shrink-0 font-mono text-2xs text-muted-foreground" aria-hidden>
+            {count}
+          </span>
+        ) : null}
+      </div>
+
+      {/* Subject and snippet. */}
+      <div
+        className={cn(
+          "col-start-2 col-end-4 min-w-0 @2xl:col-start-3 @2xl:col-end-4 @2xl:row-start-1",
+          "flex flex-col gap-0.5 @2xl:flex-row @2xl:items-baseline @2xl:gap-2",
+        )}
+      >
+        <span className="flex min-w-0 items-center gap-1.5 @2xl:shrink-0 @2xl:max-w-[60%]">
+          <span
+            className={cn(
+              "truncate text-[length:var(--mail-row-subject-size)]",
+              row.unread ? "font-semibold text-foreground" : "text-foreground/90",
+            )}
+          >
+            {row.subject || "(no subject)"}
+          </span>
+          {userLabels.map((label) => (
+            <LabelChip key={label.id} name={label.name} />
+          ))}
+          {row.triage_verdict ? (
+            <TriageChip
+              verdict={row.triage_verdict}
+              reason={row.triage_reason ?? row.triage_line}
+            />
+          ) : null}
+        </span>
+        <span className="truncate text-[length:var(--mail-row-meta-size)] text-muted-foreground [[data-density=compact]_&]:hidden @2xl:[[data-density=compact]_&]:inline">
+          <span className="hidden @2xl:inline" aria-hidden>
+            ·{" "}
+          </span>
+          {row.snippet}
+        </span>
+      </div>
+
+      {/* Meta: icons and date; quick actions replace them on hover. */}
+      <div className="col-start-3 row-start-1 flex items-center justify-end gap-1.5 self-start pt-px @2xl:col-start-4 @2xl:self-center @2xl:pt-0">
+        {/* The hover toolbar covers only this, never a trailing action. */}
+        <span className="relative flex items-center">
+          <span className={cn("flex items-center gap-1.5", !readOnly && "group-hover:invisible")}>
+            {commitments ? (
+              <span
+                title={`${plural(commitments, "open commitment")}`}
+                className="flex items-center gap-0.5 font-mono text-2xs text-warning"
+              >
+                <ClipboardList className="size-3" aria-hidden />
+                {commitments}
+              </span>
+            ) : null}
+            {row.link_density === "heavy" ? (
+              <Link2 className="size-3.5 text-muted-foreground" aria-hidden />
+            ) : null}
+            {row.has_attachments ? (
+              <Paperclip className="size-3.5 text-muted-foreground" aria-hidden />
+            ) : null}
+            {row.starred ? <Star className="size-3.5 fill-star text-star" aria-hidden /> : null}
+            <time
+              dateTime={row.date}
+              title={row.date_full}
+              className={cn(
+                "whitespace-nowrap font-mono text-[length:var(--mail-row-meta-size)] tabular-nums",
+                row.unread ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {formatListDate(row.date) || row.date_label}
+            </time>
+          </span>
+          {readOnly ? null : (
+            <span
+              aria-hidden
+              className="invisible absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-border bg-popover p-0.5 shadow-sm group-hover:visible"
+            >
+              <QuickButton label="Archive (e)" onClick={stop(() => onQuickAction(row, "archive"))}>
+                <Archive className="size-3.5" />
+              </QuickButton>
+              <QuickButton label="Trash (#)" onClick={stop(() => onQuickAction(row, "trash"))}>
+                <Trash2 className="size-3.5" />
+              </QuickButton>
+              <QuickButton
+                label={row.unread ? "Mark read (I)" : "Mark unread (U)"}
+                onClick={stop(() => onQuickAction(row, "toggleRead"))}
+              >
+                {row.unread ? <MailOpen className="size-3.5" /> : <Mail className="size-3.5" />}
+              </QuickButton>
+              <QuickButton label="Snooze (Z)" onClick={stop(() => onQuickAction(row, "snooze"))}>
+                <Clock className="size-3.5" />
+              </QuickButton>
+              <QuickButton
+                label={row.starred ? "Unstar (s)" : "Star (s)"}
+                onClick={stop(() => onQuickAction(row, "toggleStar"))}
+              >
+                <Star className={cn("size-3.5", row.starred && "fill-star text-star")} />
+              </QuickButton>
+            </span>
+          )}
+        </span>
         {trailingAction ? (
-          <div onClick={(event) => event.stopPropagation()}>{trailingAction}</div>
+          <span onClick={(event) => event.stopPropagation()} className="ml-1">
+            {trailingAction}
+          </span>
         ) : null}
       </div>
     </div>
   );
+});
+
+export interface RowAction {
+  label: string;
+  icon: LucideIcon;
+  /** Accessible name for one row, e.g. "Wake Budget review now". */
+  describe: (row: MessageRowView) => string;
+  run: (row: MessageRowView) => void;
 }
 
-function TriageBadge({ verdict, reason }: { verdict: string; reason?: string | null }) {
+/**
+ * A row's own verb, drawn as a button but not one: rows are listbox
+ * options, which can't contain controls. The keyboard runs it with `w`.
+ */
+export function RowActionChip({ action, row }: { action: RowAction; row: MessageRowView }) {
+  const Icon = action.icon;
+  return (
+    <span
+      aria-hidden
+      title={`${action.describe(row)} (w)`}
+      onClick={() => action.run(row)}
+      className="flex h-6 cursor-pointer items-center gap-1 rounded-md px-2 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
+    >
+      <Icon className="size-3" /> {action.label}
+    </span>
+  );
+}
+
+function displaySender(row: MessageRowView): string {
+  const people = (row.participants ?? [])
+    .map((person) => firstName(person.name?.trim() || person.email))
+    .filter(Boolean);
+  if ((row.message_count ?? 1) > 1 && people.length > 1) {
+    return [...new Set(people)].slice(0, 3).join(", ");
+  }
+  const parsed = parseAddress(row.sender);
+  return parsed.name ?? row.sender ?? parsed.email ?? "Unknown sender";
+}
+
+function firstName(value: string): string {
+  if (value.includes("@")) return value.split("@")[0] ?? value;
+  return value.split(/\s+/)[0] ?? value;
+}
+
+function rowLabel(row: MessageRowView, who: string, count: number | null): string {
+  return [
+    row.unread ? "Unread." : null,
+    row.starred ? "Starred." : null,
+    who,
+    row.subject || "(no subject)",
+    count ? `${plural(count, "message")} in conversation` : null,
+    row.has_attachments ? "Has attachments" : null,
+    formatListDate(row.date),
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+const AVATAR_TONES = [
+  "bg-chart-1/20 text-chart-1",
+  "bg-chart-2/20 text-chart-2",
+  "bg-chart-3/20 text-chart-3",
+  "bg-chart-4/20 text-chart-4",
+  "bg-chart-5/20 text-chart-5",
+  "bg-chart-6/20 text-chart-6",
+];
+
+function Avatar({ name }: { name: string }) {
+  const hash = [...name].reduce((acc, char) => (acc * 31 + char.charCodeAt(0)) >>> 0, 7);
+  return (
+    <span
+      className={cn(
+        "grid size-7 place-items-center rounded-full font-mono text-[11px] font-semibold",
+        "[[data-density=compact]_&]:size-6 [[data-density=compact]_&]:text-[10px]",
+        AVATAR_TONES[hash % AVATAR_TONES.length],
+      )}
+    >
+      {initials(name)}
+    </span>
+  );
+}
+
+function LabelChip({ name }: { name: string }) {
+  return (
+    <span className="hidden shrink-0 rounded-sm border border-border px-1 font-mono text-[10px] leading-4 text-muted-foreground @3xl:inline">
+      {name}
+    </span>
+  );
+}
+
+function TriageChip({ verdict, reason }: { verdict: string; reason?: string | null }) {
   const normalized = verdict.toUpperCase();
   return (
-    <Badge
-      variant="outline"
-      aria-label={`Triage verdict ${normalized}${reason ? `: ${reason}` : ""}`}
-      title={reason ?? `Triage verdict ${normalized}`}
+    <span
+      title={reason ?? `Triage: ${normalized}`}
       className={cn(
-        "h-5 shrink-0 rounded px-1.5 font-mono text-[10px]",
-        normalized === "ACTION" && "border-red-500/45 bg-red-500/15 text-red-600 dark:text-red-300",
-        normalized === "FYI" && "border-blue-500/45 bg-blue-500/15 text-blue-600 dark:text-blue-300",
-        normalized === "ROUTINE" &&
-          "border-muted-foreground/35 bg-muted text-muted-foreground",
+        "shrink-0 rounded-sm px-1 font-mono text-[10px] font-semibold leading-4",
+        normalized === "ACTION" && "bg-destructive/15 text-destructive",
+        normalized === "FYI" && "bg-primary-muted text-primary",
+        normalized === "ROUTINE" && "bg-muted text-muted-foreground",
       )}
     >
       {normalized}
-    </Badge>
+    </span>
   );
 }
 
-function CommitmentBadge({ count }: { count: number }) {
-  return (
-    <Badge
-      variant="outline"
-      aria-label={`${count} open ${count === 1 ? "commitment" : "commitments"}`}
-      title={`${count} unresolved relationship ${count === 1 ? "commitment" : "commitments"}`}
-      className="h-5 shrink-0 gap-1 rounded border-amber-500/45 bg-amber-500/15 px-1.5 font-mono text-[10px] text-amber-600 dark:text-amber-300"
-    >
-      <ClipboardList className="size-3" aria-hidden="true" />
-      {count}
-    </Badge>
-  );
-}
-
-function ConversationBadge({ count }: { count: number }) {
-  return (
-    <Badge
-      variant="outline"
-      aria-label={`Conversation thread with ${count} messages`}
-      title={`${count} messages in this conversation`}
-      className="h-5 shrink-0 gap-1 rounded border-primary/45 bg-primary/15 px-1.5 font-mono text-[10px] text-primary"
-    >
-      <MessagesSquare className="size-3" aria-hidden="true" />
-      {count}
-    </Badge>
-  );
-}
-
-function QuickArchive({ id }: { id: string }) {
-  const archive = useOptimisticMailMutation("archive");
-  const trash = useOptimisticMailMutation("trash");
-  const spam = useOptimisticMailMutation("spam");
-  return (
-    <>
-      <QuickAction icon={Archive} label="Archive" onClick={() => archive.mutate([id])} />
-      <QuickAction icon={Trash2} label="Trash" onClick={() => trash.mutate([id])} />
-      <QuickAction icon={ShieldAlert} label="Spam" onClick={() => spam.mutate([id])} />
-    </>
-  );
-}
-
-function QuickAction({
-  icon: Icon,
+function QuickButton({
   label,
   onClick,
+  children,
 }: {
-  icon: typeof Archive;
   label: string;
-  onClick: () => void;
+  onClick: (event: MouseEvent) => void;
+  children: ReactNode;
 }) {
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      className="size-6"
-      aria-label={label}
-      onClick={(event) => {
-        event.stopPropagation();
-        onClick();
-      }}
+    <span
+      title={label}
+      onClick={onClick}
+      className="grid size-7 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
     >
-      <Icon className="size-3" />
-    </Button>
+      {children}
+    </span>
   );
 }

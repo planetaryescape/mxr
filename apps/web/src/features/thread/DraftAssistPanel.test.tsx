@@ -14,6 +14,8 @@ vi.mock("sonner", () => ({
   },
 }));
 
+import { useComposeUi } from "@/features/compose/composeUiStore";
+
 import { DraftAssistPanel } from "./DraftAssistPanel";
 
 function renderWithClient(node: ReactNode) {
@@ -52,5 +54,20 @@ describe("DraftAssistPanel", () => {
 
     await screen.findByLabelText("Draft preview");
     expect(draftAssist).toHaveBeenCalledWith({ threadId: "t1", instruction: "reply" });
+  });
+
+  test("drafts without an instruction and replies with the draft", async () => {
+    draftAssist.mockResolvedValue({ body: "yep, friday works\ns" });
+    renderWithClient(<DraftAssistPanel threadId="t1" replyToMessageId="m9" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /generate/i }));
+    await screen.findByLabelText("Draft preview");
+    expect(draftAssist).toHaveBeenCalledWith({ threadId: "t1", instruction: "" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Reply with this" }));
+    const intent = useComposeUi.getState().intent;
+    expect(intent?.kind).toBe("reply");
+    expect(intent?.messageId).toBe("m9");
+    expect(intent?.prefillBody).toBe("yep, friday works\ns");
   });
 });

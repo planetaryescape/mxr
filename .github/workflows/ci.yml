@@ -298,12 +298,14 @@ jobs:
       - run: npm run lint
       - run: npm run test
 
-  web-e2e-smoke:
-    name: Web E2E Smoke
+  web-e2e:
+    name: Web E2E
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true'
-    timeout-minutes: 25
+    # The suite runs serially against one daemon (~4 min locally, plus
+    # retries on CI), on top of the cargo build.
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: apps/web
@@ -324,7 +326,15 @@ jobs:
         run: |
           cargo build -p mxr
           echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
-      - run: npm run e2e -- e2e/smoke.spec.ts
+      # One worker: every spec shares the FakeProvider daemon's mailbox.
+      - run: npm run e2e -- --workers=1
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-results
+          path: apps/web/test-results
+          retention-days: 7
 
   coverage:
     name: Coverage

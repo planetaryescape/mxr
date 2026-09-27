@@ -246,7 +246,10 @@ impl PlatformModalState {
 /// Which field the Draft Options modal cursor is on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DraftOptionsField {
+    /// What the reply should say (free text; empty lets the daemon answer
+    /// what the message asks).
     #[default]
+    Instruction,
     Register,
     Length,
 }
@@ -263,6 +266,7 @@ pub struct DraftOptionsModalState {
     pub register_idx: usize,
     /// 0=Auto, 1=Short, 2=Medium, 3=Long
     pub length_idx: usize,
+    pub instruction: String,
 }
 
 impl DraftOptionsModalState {
@@ -272,9 +276,10 @@ impl DraftOptionsModalState {
     pub fn open(&mut self, thread_id: ThreadId) {
         self.visible = true;
         self.thread_id = Some(thread_id);
-        self.active = DraftOptionsField::Register;
+        self.active = DraftOptionsField::Instruction;
         self.register_idx = 0;
         self.length_idx = 0;
+        self.instruction.clear();
     }
 
     pub fn close(&mut self) {
@@ -284,14 +289,16 @@ impl DraftOptionsModalState {
 
     pub fn next_field(&mut self) {
         self.active = match self.active {
+            DraftOptionsField::Instruction => DraftOptionsField::Register,
             DraftOptionsField::Register => DraftOptionsField::Length,
-            DraftOptionsField::Length => DraftOptionsField::Register,
+            DraftOptionsField::Length => DraftOptionsField::Instruction,
         };
     }
 
     /// Cycle the active field's selection by `delta` (wraps).
     pub fn cycle(&mut self, delta: isize) {
         let slot = match self.active {
+            DraftOptionsField::Instruction => return,
             DraftOptionsField::Register => &mut self.register_idx,
             DraftOptionsField::Length => &mut self.length_idx,
         };
@@ -692,8 +699,18 @@ impl ReplyQueueModalState {
 /// mutation target after the user has reviewed it.
 #[derive(Debug, Clone)]
 pub enum StoredDraftOperation {
-    Delete { draft: Draft },
-    Push { draft: Draft, provider: String },
+    Delete {
+        draft: Draft,
+    },
+    Push {
+        draft: Draft,
+        provider: String,
+    },
+    /// Stop a scheduled send; the draft itself stays.
+    CancelSchedule {
+        draft: Draft,
+        send_at: chrono::DateTime<chrono::Utc>,
+    },
 }
 
 /// State for the stored-drafts browser modal: locally-saved drafts across all
@@ -705,6 +722,8 @@ pub struct DraftsModalState {
     pub loading: bool,
     pub operation_in_flight: bool,
     pub drafts: Vec<Draft>,
+    /// When each scheduled draft will send (drafts not listed aren't scheduled).
+    pub scheduled: std::collections::HashMap<mxr_core::DraftId, chrono::DateTime<chrono::Utc>>,
     pub selected_index: usize,
     pub error: Option<String>,
     pub confirmation: Option<StoredDraftOperation>,
@@ -768,6 +787,19 @@ impl DraftsModalState {
             return false;
         };
         self.confirmation = Some(StoredDraftOperation::Delete { draft });
+        true
+    }
+
+    /// Preview cancelling the selected draft's scheduled send. False when
+    /// nothing is selected or it isn't scheduled.
+    pub fn preview_cancel_schedule(&mut self) -> bool {
+        let Some(draft) = self.selected().cloned() else {
+            return false;
+        };
+        let Some(send_at) = self.scheduled.get(&draft.id).copied() else {
+            return false;
+        };
+        self.confirmation = Some(StoredDraftOperation::CancelSchedule { draft, send_at });
         true
     }
 

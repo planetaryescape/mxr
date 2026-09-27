@@ -610,11 +610,15 @@ impl App {
         // drawn last so operation outcomes stay visible over any overlay.
         let now = std::time::Instant::now();
         let undo_toast = self.pending_undo_toast(now);
+        let promise_toast = self.pending_promise_toast(now);
         let mut visible_toasts = self.toasts.visible(now);
-        if let Some(undo) = undo_toast.as_ref() {
-            visible_toasts.insert(0, undo);
-            visible_toasts.truncate(crate::app::TOAST_MAX_VISIBLE);
+        for pinned in [undo_toast.as_ref(), promise_toast.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            visible_toasts.insert(0, pinned);
         }
+        visible_toasts.truncate(crate::app::TOAST_MAX_VISIBLE);
         ui::toasts::draw(frame, area, &visible_toasts, now, theme);
     }
 

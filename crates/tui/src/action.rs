@@ -107,6 +107,9 @@ pub enum Action {
     ReplyQueueModalPrev,
     /// Start the normal reply compose flow for the selected queued message.
     ReplyQueueModalReply,
+    /// Focus & reply: reply to each queued message in turn, from the
+    /// selected one; the next reply opens after each send.
+    ReplyQueueModalFocus,
     /// Open the screener queue — senders waiting for a classification.
     OpenScreenerQueue,
     /// Close the screener triage modal (Esc).

@@ -699,6 +699,159 @@ fn reply_queue_enter_starts_reply_compose_for_selected_message() {
     );
 }
 
+fn sent_success(sent_message_id: MessageId) -> MutationEffect {
+    MutationEffect::SentSuccess {
+        status: "Sent!".into(),
+        remind_at: None,
+        sent_message_id: Some(sent_message_id),
+    }
+}
+
+fn expect_reply_compose(app: &App, envelope: &Envelope) {
+    assert_eq!(
+        app.compose.pending_compose,
+        Some(crate::app::ComposeAction::Reply {
+            message_id: envelope.id.clone(),
+            account_id: envelope.account_id.clone(),
+            preloaded: None,
+        })
+    );
+}
+
+#[test]
+fn focus_run_replies_to_each_queued_message_and_advances_only_on_its_own_reply() {
+    let mut app = App::new();
+    let mut messages = make_test_envelopes(3);
+    for (index, message) in messages.iter_mut().enumerate() {
+        message.message_id_header = Some(format!("<queued-{index}@example.com>"));
+    }
+    app.modals.reply_queue.open_loading();
+    app.modals.reply_queue.set_messages(messages.clone());
+    app.modals.reply_queue.select_next();
+
+    let action = app.handle_key(KeyEvent::new(KeyCode::Char('F'), KeyModifiers::SHIFT));
+    assert_eq!(action, Some(Action::ReplyQueueModalFocus));
+    app.apply(action.unwrap());
+    assert!(!app.modals.reply_queue.visible);
+    // Starts at the selected message and wraps round to the one above it.
+    expect_reply_compose(&app, &messages[1]);
+    assert_eq!(app.focus_run.as_ref().unwrap().total, 3);
+    assert!(app
+        .status_message
+        .as_deref()
+        .unwrap()
+        .starts_with("Focus 1 of 3"));
+
+    // An unrelated send never moves the run on.
+    app.compose.pending_compose = None;
+    app.note_focus_send(Some("<something-else@example.com>"));
+    app.apply_mutation_completion(sent_success(MessageId::new()), true);
+    assert_eq!(app.compose.pending_compose, None);
+
+    // The reply to the current message opens the next reply.
+    app.note_focus_send(messages[1].message_id_header.as_deref());
+    let sent = MessageId::new();
+    app.apply_mutation_completion(sent_success(sent.clone()), true);
+    expect_reply_compose(&app, &messages[2]);
+    assert_eq!(app.pending_promise_check, Some(sent));
+
+    app.note_focus_send(messages[2].message_id_header.as_deref());
+    app.apply_mutation_completion(sent_success(MessageId::new()), true);
+    expect_reply_compose(&app, &messages[0]);
+
+    app.compose.pending_compose = None;
+    app.note_focus_send(messages[0].message_id_header.as_deref());
+    app.apply_mutation_completion(sent_success(MessageId::new()), true);
+    assert!(app.focus_run.is_none(), "the run ends after the last reply");
+    assert_eq!(app.compose.pending_compose, None);
+}
+
+fn dated_detection(what: &str) -> mxr_protocol::PromiseDetectionData {
+    let now = chrono::Utc::now().fixed_offset();
+    let due = mxr_core::natural_time::resolve_time(
+        "tomorrow 9am",
+        &now,
+        &mxr_core::natural_time::TimePrefs::default(),
+    )
+    .unwrap();
+    mxr_protocol::PromiseDetectionData {
+        status: mxr_protocol::PromiseDetectionStatusData::Ready,
+        promises: vec![
+            mxr_protocol::DetectedPromiseData {
+                what: what.into(),
+                due_phrase: Some("tomorrow".into()),
+                due: Some(due),
+            },
+            mxr_protocol::DetectedPromiseData {
+                what: "keep you posted".into(),
+                due_phrase: None,
+                due: None,
+            },
+        ],
+        provenance: None,
+        message: None,
+    }
+}
+
+#[test]
+fn a_dated_promise_is_offered_and_y_keeps_it_as_a_reminder() {
+    let mut app = App::new();
+    let sent = MessageId::new();
+    let detection = dated_detection("send the deck");
+    let due_at = detection.promises[0].due.as_ref().unwrap().at;
+    app.offer_promises(sent.clone(), detection);
+    assert_eq!(
+        app.promise_prompts.len(),
+        1,
+        "only dated promises are offered"
+    );
+    let toast = app
+        .pending_promise_toast(std::time::Instant::now())
+        .expect("prompt shows as a toast");
+    assert!(toast
+        .text
+        .starts_with("You promised: send the deck. Remind me "));
+    assert_eq!(toast.action_hint.as_deref(), Some("y remind · n not now"));
+
+    assert_eq!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE)),
+        None
+    );
+    assert!(app.promise_prompts.is_empty());
+    let queued = app.pending_mutation_queue.first().expect("reminder queued");
+    match &queued.request {
+        Request::RecordPromise {
+            message_id,
+            what,
+            due_at: at,
+            dry_run,
+        } => {
+            assert_eq!(message_id, &sent);
+            assert_eq!(what, "send the deck");
+            assert_eq!(at, &due_at);
+            assert!(!dry_run);
+        }
+        other => panic!("expected RecordPromise, got {other:?}"),
+    }
+}
+
+#[test]
+fn n_lets_a_promise_go_and_unanswered_prompts_expire() {
+    let mut app = App::new();
+    app.offer_promises(MessageId::new(), dated_detection("send the deck"));
+    app.offer_promises(MessageId::new(), dated_detection("book the room"));
+    assert_eq!(app.promise_prompts.len(), 2);
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+    assert_eq!(app.promise_prompts.len(), 1);
+    assert!(app.pending_mutation_queue.is_empty(), "n stores nothing");
+
+    let later = std::time::Instant::now() + crate::app::PROMISE_PROMPT_TTL;
+    app.tick_promise_prompts(later);
+    assert!(app.promise_prompts.is_empty());
+    assert!(app.pending_mutation_queue.is_empty());
+}
+
 fn test_draft(subject: &str) -> Draft {
     let now = chrono::Utc::now();
     Draft {

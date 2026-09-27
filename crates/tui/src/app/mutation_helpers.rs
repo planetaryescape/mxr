@@ -290,6 +290,8 @@ impl App {
                 if show_completion_status {
                     self.push_toast(Toast::success(status));
                 }
+                self.pending_promise_check = sent_message_id.clone();
+                self.advance_focus_run_after_send();
                 if let (Some(sent_message_id), Some(remind_at)) = (sent_message_id, remind_at) {
                     self.queue_mutation(
                         Request::SetAutoReminder {

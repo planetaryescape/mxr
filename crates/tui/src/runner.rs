@@ -999,6 +999,36 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if let Some(message_id) = app.pending_promise_check.take() {
+            let socket_path = socket_path.clone();
+            let result_tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call_dedicated(
+                    &socket_path,
+                    Request::DetectPromises {
+                        source: mxr_protocol::PromiseSourceData::SentMessage {
+                            message_id: message_id.clone(),
+                        },
+                        now: None,
+                        // The TUI runs next to the daemon: its zone is ours.
+                        time_zone: None,
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Promises { detection },
+                    }) => Ok(Box::new(detection)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Ok(_) => Err(MxrError::Ipc(
+                        "unexpected response to DetectPromises".into(),
+                    )),
+                    Err(e) => Err(e),
+                };
+                let _ = result_tx.send(AsyncResult::PromisesDetected { message_id, result });
+            });
+        }
+
         if let Some(thread_id) = app.pending_thread_context.take() {
             let socket_path = socket_path.clone();
             let result_tx = result_tx.clone();
@@ -2402,6 +2432,16 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::ThreadContextLoaded { thread_id, result } => {
                             apply_thread_context_loaded(&mut app, &thread_id, result);
                         }
+                        AsyncResult::PromisesDetected { message_id, result } => {
+                            // A promise check never interrupts: failures are
+                            // logged, not shown.
+                            match result {
+                                Ok(detection) => app.offer_promises(message_id, *detection),
+                                Err(error) => {
+                                    tracing::debug!(%error, "promise check after send failed");
+                                }
+                            }
+                        }
                         AsyncResult::ThreadGistLoaded { thread_id, result } => {
                             apply_thread_gist_loaded(&mut app, &thread_id, result);
                         }
@@ -3193,6 +3233,7 @@ pub async fn run() -> anyhow::Result<()> {
                 app.tick_connection_state(now);
                 app.tick_pending_undo(now);
                 app.tick_pending_invite_send(now);
+                app.tick_promise_prompts(now);
             }
         }
 

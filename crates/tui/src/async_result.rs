@@ -203,6 +203,11 @@ pub(crate) enum AsyncResult {
         thread_id: mxr_core::ThreadId,
         result: Result<Box<mxr_protocol::ThreadContextData>, MxrError>,
     },
+    /// Promises found in a message just sent (`DetectPromises`).
+    PromisesDetected {
+        message_id: mxr_core::MessageId,
+        result: Result<Box<mxr_protocol::PromiseDetectionData>, MxrError>,
+    },
     /// The model's gist and ask for a thread (`GetThreadGist`).
     ThreadGistLoaded {
         thread_id: mxr_core::ThreadId,

@@ -415,6 +415,9 @@ impl App {
                 (KeyCode::Down | KeyCode::Char('j'), _) => Some(Action::ReplyQueueModalNext),
                 (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::ReplyQueueModalPrev),
                 (KeyCode::Enter | KeyCode::Char('r'), _) => Some(Action::ReplyQueueModalReply),
+                (KeyCode::Char('F'), modifiers) if plain_or_shift(modifiers) => {
+                    Some(Action::ReplyQueueModalFocus)
+                }
                 _ => None,
             };
         }
@@ -1155,6 +1158,22 @@ impl App {
                     return None;
                 }
                 _ => return None,
+            }
+        }
+
+        // A promise prompt answers to y / n / Esc once no modal or prompt
+        // above it wants the key; every other key works as usual.
+        if !self.promise_prompts.is_empty() {
+            match (key.code, key.modifiers) {
+                (KeyCode::Char('y'), KeyModifiers::NONE) => {
+                    self.answer_promise(true);
+                    return None;
+                }
+                (KeyCode::Char('n'), KeyModifiers::NONE) | (KeyCode::Esc, _) => {
+                    self.answer_promise(false);
+                    return None;
+                }
+                _ => {}
             }
         }
 

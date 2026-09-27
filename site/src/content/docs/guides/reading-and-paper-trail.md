@@ -65,7 +65,8 @@ Paper trail is paper-trail, Screened out is deny), so the Screener's
 A sender you move to Reading or Paper trail keeps their mail in the inbox:
 those places are views over the inbox. Earlier releases dropped the inbox
 label from feed and paper-trail senders as mail arrived, which hid it from
-these places; that no longer happens.
+these places; that no longer happens. Mail those senders sent before this
+release stays archived, and their new mail appears in the place.
 
 ## Pin the exceptions, sweep the rest
 

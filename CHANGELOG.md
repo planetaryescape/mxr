@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.35](https://github.com/planetaryescape/mxr/compare/v0.6.34...v0.6.35) (2026-09-27)
+
+
+### Features
+
+* open a conversation to its context: the ask, your promises, and how you know them ([#238](https://github.com/planetaryescape/mxr/issues/238)) ([e705d44](https://github.com/planetaryescape/mxr/commit/e705d444139658946524ab74551a32c75808580d))
+
 ## [0.6.34](https://github.com/planetaryescape/mxr/compare/v0.6.33...v0.6.34) (2026-09-27)
 
 

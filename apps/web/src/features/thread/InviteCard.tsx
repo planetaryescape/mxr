@@ -1,6 +1,5 @@
 import { Check, MoreHorizontal, X, HelpCircle } from "lucide-react";
 import * as React from "react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -9,22 +8,18 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type {
-  CalendarMetadataView,
-  CalendarPartstatView,
-} from "@/features/mailbox/types";
+import type { CalendarMetadataView, CalendarPartstatView } from "@/features/mailbox/types";
 import { cn } from "@/lib/utils";
 
 import {
-  openInviteReplyComposeSession,
+  openInviteComment,
   useInviteResponse,
   type InviteAction,
-} from "./useInviteResponse";
+} from "@/features/invites/useInviteResponse";
 import { useLocale } from "./useLocale";
 
 interface InviteCardProps {
   messageId: string;
-  threadId: string;
   metadata: CalendarMetadataView;
   className?: string;
 }
@@ -49,15 +44,11 @@ function isCounter(metadata: CalendarMetadataView): boolean {
 }
 
 function hasParseWarning(metadata: CalendarMetadataView): boolean {
-  return (metadata.warnings ?? []).some((w) =>
-    w.toLowerCase().includes("could not be parsed"),
-  );
+  return (metadata.warnings ?? []).some((w) => w.toLowerCase().includes("could not be parsed"));
 }
 
 function actionableWarnings(metadata: CalendarMetadataView): string[] {
-  return (metadata.warnings ?? []).filter(
-    (w) => !w.toLowerCase().includes("could not be parsed"),
-  );
+  return (metadata.warnings ?? []).filter((w) => !w.toLowerCase().includes("could not be parsed"));
 }
 
 /// State-driven calendar-invite card rendered above the message body. Mirrors
@@ -65,67 +56,23 @@ function actionableWarnings(metadata: CalendarMetadataView): string[] {
 /// stay in lockstep — change one, change the other.
 export function InviteCard({
   messageId,
-  threadId,
   metadata,
   className,
 }: InviteCardProps): React.ReactElement {
   const locale = useLocale();
-  const { begin, cancel, pendingAction } = useInviteResponse({
-    messageId,
-    threadId,
-  });
+  const { begin, pendingAction } = useInviteResponse({ messageId });
 
   const cancelled = isCancelled(metadata);
   const publish = isPublish(metadata);
   const counter = isCounter(metadata);
   const parseFailed = hasParseWarning(metadata);
-  const isRequest =
-    !metadata.method ||
-    statusFromMethod(metadata.method) === "REQUEST";
+  const isRequest = !metadata.method || statusFromMethod(metadata.method) === "REQUEST";
   const warnings = actionableWarnings(metadata);
 
-  const handleClick = (action: InviteAction) => {
-    begin(action);
-    const message =
-      action === "accept"
-        ? locale.status.invite_pending_accept
-        : action === "tentative"
-        ? locale.status.invite_pending_tentative
-        : locale.status.invite_pending_decline;
-    toast(message, {
-      id: `invite-${messageId}`,
-      duration: 1100,
-      action: {
-        label: "Undo",
-        onClick: () => {
-          cancel();
-          toast.success(locale.status.invite_cancelled, {
-            id: `invite-${messageId}`,
-            duration: 1500,
-          });
-        },
-      },
-    });
-  };
+  const handleClick = (action: InviteAction) => begin(action);
+  const handleComment = (action: InviteAction) => openInviteComment(messageId, action);
 
-  const handleComment = async (action: InviteAction) => {
-    try {
-      const session = (await openInviteReplyComposeSession(
-        messageId,
-        action,
-      )) as { draftPath?: string; id?: string } | undefined;
-      if (session) {
-        toast.success("Compose draft opened — write your comment then send");
-      }
-    } catch (error) {
-      toast.error("Failed to open comment compose", {
-        description: String(error),
-      });
-    }
-  };
-
-  const viewerPartstat: CalendarPartstatView | null =
-    metadata.viewer_partstat ?? null;
+  const viewerPartstat: CalendarPartstatView | null = metadata.viewer_partstat ?? null;
 
   return (
     <article
@@ -144,17 +91,12 @@ export function InviteCard({
           {locale.invite.card_title}
         </span>
         {metadata.is_update && !cancelled && (
-          <span className="text-xs font-medium text-amber-600">
-            {locale.invite.banner_updated}
-          </span>
+          <span className="text-xs font-medium text-amber-600">{locale.invite.banner_updated}</span>
         )}
       </header>
 
       <h3
-        className={cn(
-          "text-base font-semibold",
-          cancelled && "line-through text-muted-foreground",
-        )}
+        className={cn("text-base font-semibold", cancelled && "line-through text-muted-foreground")}
       >
         {metadata.summary ?? locale.invite.card_title}
       </h3>
@@ -193,40 +135,26 @@ export function InviteCard({
         )}
       </dl>
 
-      {warnings.length > 0 && (
-        <p className="mt-2 text-xs text-amber-700">{warnings.join("; ")}</p>
-      )}
+      {warnings.length > 0 && <p className="mt-2 text-xs text-amber-700">{warnings.join("; ")}</p>}
 
       {cancelled && (
-        <p
-          role="status"
-          aria-live="polite"
-          className="mt-3 text-sm font-semibold text-red-600"
-        >
+        <p role="status" aria-live="polite" className="mt-3 text-sm font-semibold text-red-600">
           {locale.invite.banner_cancelled}
         </p>
       )}
 
       {parseFailed && (
-        <p
-          role="status"
-          aria-live="polite"
-          className="mt-3 text-sm font-semibold text-red-600"
-        >
+        <p role="status" aria-live="polite" className="mt-3 text-sm font-semibold text-red-600">
           {locale.invite.banner_parse_warning}
         </p>
       )}
 
       {counter && (
-        <p className="mt-3 text-sm font-semibold text-amber-700">
-          {locale.invite.banner_counter}
-        </p>
+        <p className="mt-3 text-sm font-semibold text-amber-700">{locale.invite.banner_counter}</p>
       )}
 
       {publish && (
-        <p className="mt-3 text-sm text-muted-foreground">
-          {locale.invite.banner_publish}
-        </p>
+        <p className="mt-3 text-sm text-muted-foreground">{locale.invite.banner_publish}</p>
       )}
 
       {isRequest && !cancelled && !parseFailed && (
@@ -274,17 +202,13 @@ interface ResponseStateRowProps {
   tone: "success" | "warning" | "danger";
 }
 
-function ResponseStateRow({
-  text,
-  hint,
-  tone,
-}: ResponseStateRowProps): React.ReactElement {
+function ResponseStateRow({ text, hint, tone }: ResponseStateRowProps): React.ReactElement {
   const toneClass =
     tone === "success"
       ? "text-emerald-600"
       : tone === "warning"
-      ? "text-amber-600"
-      : "text-red-600";
+        ? "text-amber-600"
+        : "text-red-600";
   return (
     <div role="status" aria-live="polite">
       <p className={cn("text-sm font-semibold", toneClass)}>{text}</p>
@@ -307,11 +231,7 @@ function ActionRow({
   onComment,
 }: ActionRowProps): React.ReactElement {
   return (
-    <div
-      role="group"
-      aria-label="Invite response"
-      className="flex flex-wrap items-center gap-2"
-    >
+    <div role="group" aria-label="Invite response" className="flex flex-wrap items-center gap-2">
       <Button
         variant={pendingAction === "accept" ? "default" : "outline"}
         size="sm"
@@ -326,8 +246,7 @@ function ActionRow({
         onClick={() => onClick("tentative")}
         disabled={pendingAction !== null && pendingAction !== "tentative"}
       >
-        <HelpCircle className="mr-1 h-4 w-4" />{" "}
-        {locale.invite.chip_label_tentative}
+        <HelpCircle className="mr-1 h-4 w-4" /> {locale.invite.chip_label_tentative}
       </Button>
       <Button
         variant={pendingAction === "decline" ? "default" : "outline"}
@@ -355,9 +274,7 @@ function ActionRow({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <span className="ml-auto text-xs text-muted-foreground">
-        {locale.invite.hint_comment}
-      </span>
+      <span className="ml-auto text-xs text-muted-foreground">{locale.invite.hint_comment}</span>
     </div>
   );
 }

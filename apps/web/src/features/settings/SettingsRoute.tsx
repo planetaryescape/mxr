@@ -35,7 +35,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/api/client";
 import { fetchAccounts, setDefaultAccount } from "@/features/accounts/api";
 import { TokenSection } from "@/features/settings/TokenSection";
-import { useActionShortcutSections } from "@/lib/actions";
+import { buildActionContext, shortcutSections } from "@/lib/actions";
 import {
   useUiPrefs,
   type ComposeEditor,
@@ -248,8 +248,7 @@ function SettingsSection({ section }: { section: string }) {
         />
       </Shell>
     );
-  if (section === "compose")
-    return <ComposeSettingsSection />;
+  if (section === "compose") return <ComposeSettingsSection />;
   if (section === "notifications")
     return (
       <Shell title="Notifications">
@@ -1113,40 +1112,48 @@ function setSignatureDefault(input: { name: string; kind: "new" | "reply" }) {
 }
 
 function KeybindingsSection() {
-  const hintSections = useActionShortcutSections({
-    path: "/settings/keybindings",
-    activePane: "mailbox",
-    selectionCount: 0,
-    accountCount: 0,
-    hasFocusedThread: false,
-    hasFocusedMessage: false,
-    isFirstAccountOnly: false,
-  });
+  // Every section, whatever view is active: this page is the reference.
+  const keySections = shortcutSections(
+    buildActionContext({
+      path: "/settings/keybindings",
+      activePane: "mailbox",
+      scopeStack: [],
+      selectionCount: 0,
+      accountCount: 0,
+      openThreadId: null,
+    }),
+  );
   return (
     <Shell title="Keybindings">
-      <div className="space-y-4">
-        {hintSections.length === 0 ? (
-          <div className="text-xs text-muted-foreground">No keybindings registered.</div>
-        ) : (
-          hintSections.map((section) => (
-            <div key={section.title}>
-              <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {section.title}
-              </h3>
-              <div className="grid gap-2">
-                {section.hints.map((hint) => (
-                  <div
-                    key={`${section.title}-${hint.key}-${hint.label}`}
-                    className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-xs"
-                  >
-                    <span>{hint.label}</span>
-                    <KeyChip>{hint.key}</KeyChip>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))
-        )}
+      <p className="mb-4 text-[13px] text-muted-foreground">
+        Keys follow the mxr TUI. Where the web differs, the note says why. Press ? anywhere for the
+        keys that apply to the current view.
+      </p>
+      <div className="space-y-6">
+        {keySections.map((section) => (
+          <section key={section.id}>
+            <h3 className="mb-1.5 border-b border-border pb-1 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+              {section.title}
+            </h3>
+            <ul className="grid gap-x-8 md:grid-cols-2">
+              {section.hints.map((hint) => (
+                <li key={hint.id} className="flex items-start gap-3 py-1 text-[13px]">
+                  <span className="flex w-28 shrink-0 flex-wrap gap-1">
+                    {hint.keys.slice(0, 2).map((key) => (
+                      <KeyChip key={key}>{key}</KeyChip>
+                    ))}
+                  </span>
+                  <span>
+                    {hint.label}
+                    {hint.note ? (
+                      <span className="block text-2xs text-muted-foreground">{hint.note}</span>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
       </div>
     </Shell>
   );

@@ -141,9 +141,7 @@ export function LogsPanel() {
           </Button>
         </div>
       </div>
-      {logs.isError && (
-        <p className="text-2xs text-destructive">{(logs.error as Error).message}</p>
-      )}
+      {logs.isError && <p className="text-2xs text-destructive">{(logs.error as Error).message}</p>}
       {!logs.isError && rows.length === 0 && (
         <div className="rounded-lg bg-muted p-3 text-2xs text-muted-foreground">
           No log lines match the current filters.
@@ -159,9 +157,7 @@ export function LogsPanel() {
                   className="border-b border-border/30 align-top last:border-0 hover:bg-background/50"
                 >
                   <td className="whitespace-nowrap px-2 py-1 text-muted-foreground">
-                    {row.timestamp
-                      ? new Date(row.timestamp).toLocaleString()
-                      : ""}
+                    {row.timestamp ? new Date(row.timestamp).toLocaleString() : ""}
                   </td>
                   <td className="px-2 py-1">
                     {row.level && (

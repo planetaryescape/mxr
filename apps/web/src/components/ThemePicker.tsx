@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { Moon, Palette, Sun } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -51,8 +52,10 @@ export function ThemePicker() {
           ))}
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled className="text-2xs text-muted-foreground">
-          <Palette className="size-3" /> More in /settings/theme
+        <DropdownMenuItem asChild className="text-2xs text-muted-foreground">
+          <Link to="/settings/$section" params={{ section: "theme" }}>
+            <Palette className="size-3" /> Theme and density settings
+          </Link>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

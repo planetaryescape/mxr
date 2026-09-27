@@ -29,9 +29,9 @@ describe("ActionRegistry", () => {
   test("defineAction rejects duplicate ids", () => {
     const reg = new ActionRegistry();
     reg.define(action({ id: "mail.archive", label: "Archive" }));
-    expect(() =>
-      reg.define(action({ id: "mail.archive", label: "Archive again" })),
-    ).toThrow(/duplicate.*id.*mail\.archive/i);
+    expect(() => reg.define(action({ id: "mail.archive", label: "Archive again" }))).toThrow(
+      /duplicate.*id.*mail\.archive/i,
+    );
   });
 
   test("defineAction rejects duplicate shortcuts across actions", () => {
@@ -64,18 +64,14 @@ describe("ActionRegistry", () => {
     const archiveIds = reg.getVisibleActions({ ...baseCtx, path: "/m/archive" }).map((a) => a.id);
     expect(archiveIds).toEqual(["always", "in-archive"]);
 
-    const selectedIds = reg
-      .getVisibleActions({ ...baseCtx, selectionCount: 3 })
-      .map((a) => a.id);
+    const selectedIds = reg.getVisibleActions({ ...baseCtx, selectionCount: 3 }).map((a) => a.id);
     expect(selectedIds).toEqual(["always", "with-selection"]);
   });
 
   test("getShortcutMap omits paletteOnly actions", () => {
     const reg = new ActionRegistry();
     reg.define(action({ id: "go-inbox", shortcut: "g i" }));
-    reg.define(
-      action({ id: "show-help", shortcut: "Shift+Slash", paletteOnly: true }),
-    );
+    reg.define(action({ id: "show-help", shortcut: "Shift+Slash", paletteOnly: true }));
     reg.define(action({ id: "no-shortcut" }));
 
     const map = reg.getShortcutMap();
@@ -125,9 +121,9 @@ describe("ActionRegistry", () => {
   test("defineAction rejects when an alias collides with another action's shortcut", () => {
     const reg = new ActionRegistry();
     reg.define(action({ id: "search", shortcut: "/" }));
-    expect(() =>
-      reg.define(action({ id: "go-inbox", shortcut: "g i", aliases: ["/"] })),
-    ).toThrow(/duplicate.*shortcut.*\//i);
+    expect(() => reg.define(action({ id: "go-inbox", shortcut: "g i", aliases: ["/"] }))).toThrow(
+      /duplicate.*shortcut.*\//i,
+    );
   });
 
   test("getActionForShortcut resolves both primary chord and aliases", () => {

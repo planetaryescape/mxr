@@ -8,9 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { resolveCommitment as resolveCommitmentApi } from "@/features/mailbox/api";
 import { ExpertFinderPanel } from "@/features/mailbox/ExpertFinderPanel";
-import { LabelPicker } from "@/features/mailbox/LabelPicker";
-import { MovePicker } from "@/features/mailbox/MovePicker";
-import { RoutePicker } from "@/features/mailbox/RoutePicker";
 import { AttachmentActions } from "@/features/thread/AttachmentActions";
 import { DraftAssistPanel } from "@/features/thread/DraftAssistPanel";
 import type { AttachmentView } from "@/features/mailbox/types";
@@ -20,22 +17,31 @@ export function RightRail() {
   const rail = useModals((s) => s.rightRail);
   const close = useModals((s) => s.closeRightRail);
 
+  // Escape closes the innermost thing first: the rail, before the key
+  // dispatcher sees it and closes the conversation underneath.
   useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && rail) close();
+    if (!rail) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest('[role="dialog"], input, textarea')) return;
+      event.preventDefault();
+      close();
     }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [rail, close]);
 
   if (!rail) return null;
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-9 items-center justify-between border-b border-border px-3">
-        <div className="text-xs font-medium capitalize">{rail.kind.replace(/-/g, " ")}</div>
-        <Button variant="ghost" size="icon" onClick={close} aria-label="Close panel">
-          <X className="size-3" />
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-border pl-4 pr-2">
+        <h2 className="text-[13px] font-semibold">
+          {RAIL_TITLES[rail.kind] ?? rail.kind.replace(/-/g, " ")}
+        </h2>
+        <Button variant="ghost" size="icon-sm" onClick={close} aria-label="Close panel (Esc)">
+          <X className="size-4" />
         </Button>
       </div>
       <ScrollArea className="flex-1">
@@ -48,34 +54,6 @@ export function RightRail() {
 }
 
 function RailContent({ kind, payload }: { kind: string; payload: unknown }) {
-  if (kind === "label-picker" && isLabelPickerPayload(payload)) {
-    return (
-      <LabelPicker
-        mode={payload.mode}
-        messageIds={payload.messageIds}
-        appliedLabels={payload.appliedLabels}
-        onClose={() => useModals.getState().closeRightRail()}
-      />
-    );
-  }
-  if (kind === "move-picker" && isMovePickerPayload(payload)) {
-    return (
-      <MovePicker
-        messageIds={payload.messageIds}
-        onClose={() => useModals.getState().closeRightRail()}
-      />
-    );
-  }
-  if (kind === "route-picker" && isRoutePickerPayload(payload)) {
-    return (
-      <RoutePicker
-        messageIds={payload.messageIds}
-        fromQueueLabel={payload.fromQueueLabel}
-        archive={payload.archive}
-        onClose={() => useModals.getState().closeRightRail()}
-      />
-    );
-  }
   if (kind === "draft-assist" && isDraftAssistPayload(payload)) {
     return <DraftAssistPanel threadId={payload.threadId} />;
   }
@@ -115,43 +93,25 @@ function RailContent({ kind, payload }: { kind: string; payload: unknown }) {
   if (kind === "expert-finder") {
     return <ExpertFinderPanel />;
   }
-  return <pre className="font-mono text-2xs">{JSON.stringify(payload ?? null, null, 2)}</pre>;
+  return (
+    <p className="py-8 text-center text-[13px] text-muted-foreground">Nothing to show here.</p>
+  );
 }
+
+const RAIL_TITLES: Record<string, string> = {
+  "draft-assist": "Draft a reply",
+  "thread-context": "Context",
+  attachments: "Attachments",
+  "sender-profile": "Sender",
+  commitments: "Commitments",
+  "thread-briefing": "Thread briefing",
+  "recipient-briefing": "Recipient briefing",
+  "expert-finder": "Find an expert",
+  whois: "Who is this?",
+};
 
 function isThreadContext(value: unknown): value is { title?: string; items?: string[] } {
   return typeof value === "object" && value !== null && "items" in value;
-}
-
-interface LabelPickerPayload {
-  mode: "label-add" | "label-remove";
-  messageIds: string[];
-  appliedLabels?: string[];
-}
-
-function isLabelPickerPayload(value: unknown): value is LabelPickerPayload {
-  if (!isRecord(value)) return false;
-  if (value.mode !== "label-add" && value.mode !== "label-remove") return false;
-  return Array.isArray(value.messageIds);
-}
-
-interface MovePickerPayload {
-  messageIds: string[];
-}
-
-function isMovePickerPayload(value: unknown): value is MovePickerPayload {
-  return isRecord(value) && Array.isArray(value.messageIds);
-}
-
-interface RoutePickerPayload {
-  messageIds: string[];
-  fromQueueLabel: string;
-  archive?: boolean;
-}
-
-function isRoutePickerPayload(value: unknown): value is RoutePickerPayload {
-  return (
-    isRecord(value) && Array.isArray(value.messageIds) && typeof value.fromQueueLabel === "string"
-  );
 }
 
 interface DraftAssistPayload {
@@ -555,9 +515,7 @@ function BriefingPanel({ payload }: { payload: unknown }) {
         <Badge variant={briefing.from_cache ? "secondary" : "outline"}>
           {briefing.from_cache ? "Cached" : "Fresh"}
         </Badge>
-        <span className="text-2xs text-muted-foreground">
-          {formatDate(briefing.generated_at)}
-        </span>
+        <span className="text-2xs text-muted-foreground">{formatDate(briefing.generated_at)}</span>
       </div>
       {/* Reader-first: render the markdown body as plain wrapped text rather
           than pulling in a markdown renderer the app doesn't already ship. */}

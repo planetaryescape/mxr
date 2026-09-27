@@ -1,103 +1,139 @@
 /*
- * Hint selectors derived from the action registry. HelpDialog and StatusBar
- * consume these instead of the deleted shortcutHints.ts.
- *
- * Page-internal vim-style keys (j/k Move, x Select, F Fullscreen) are NOT
- * registry actions — they live in lib/pageKeyHints.ts and are merged here.
+ * Help, palette and status-bar views of the registry. Help groups bindings
+ * by where they work, current view first, so what it shows is exactly
+ * what the dispatcher will do.
  */
 
 import { useMemo } from "react";
 
-import { type PageHintSection, pageHintsForRoute } from "@/lib/pageKeyHints";
+import { formatChord } from "@/lib/keys/chord";
 
 import "./catalog";
-import { getRegistry } from "./registry";
-import type { Action, ActionContext, ActionGroup, ShortcutChord } from "./types";
+import { chordsOf, getRegistry, isAvailable, scopesOf } from "./registry";
+import type { Action, ActionContext, ActionGroup, ActionScope } from "./types";
 
 export interface ShortcutHint {
-  key: string;
+  id: string;
+  keys: string[];
   label: string;
+  note?: string;
+  /** Available right now (scope mounted, predicate true). */
+  live: boolean;
 }
 
 export interface ShortcutSection {
+  id: string;
   title: string;
   hints: ShortcutHint[];
 }
 
-const GROUP_TITLE: Record<ActionGroup, string> = {
-  Navigate: "Navigation",
-  Mail: "Mail",
-  Compose: "Compose",
-  Search: "Search",
-  Triage: "Triage",
-  Semantic: "Semantic",
-  Accounts: "Accounts",
-  Settings: "Settings",
-  Diagnostics: "Diagnostics",
-  Rules: "Rules",
-  Analytics: "Analytics",
-  View: "View",
+const SCOPE_TITLE: Record<Exclude<ActionScope, "global">, string> = {
+  list: "Mail list",
+  reader: "Reader",
+  sidebar: "Sidebar",
+  screener: "Screener",
 };
 
-const GROUP_ORDER: ActionGroup[] = [
-  "Navigate",
-  "Mail",
-  "Search",
-  "Compose",
-  "Triage",
-  "Analytics",
-  "Rules",
-  "Accounts",
-  "Semantic",
-  "Diagnostics",
-  "Settings",
-  "View",
-];
+const GLOBAL_GROUP_TITLE: Partial<Record<ActionGroup, string>> = {
+  Navigate: "Go to",
+  Triage: "Go to",
+  Analytics: "Go to",
+  Diagnostics: "Go to",
+  Rules: "Go to",
+  Accounts: "Go to",
+  Search: "Search",
+  Compose: "Everywhere",
+  Mail: "Everywhere",
+  Settings: "Go to",
+};
 
-export function actionShortcutSections(
-  ctx: ActionContext,
-  pageSections: PageHintSection[] = [],
-): ShortcutSection[] {
-  const reg = getRegistry();
-  const visible = reg
-    .getVisibleActions(ctx)
-    .filter((a) => a.shortcut !== undefined);
+function hint(action: Action, ctx: ActionContext): ShortcutHint {
+  return {
+    id: action.id,
+    keys: chordsOf(action).map((chord) => formatChord(chord)),
+    label: action.label,
+    note: action.tuiNote,
+    live: isAvailable(action, ctx),
+  };
+}
 
-  const grouped = new Map<ActionGroup, ShortcutHint[]>();
-  for (const action of visible) {
-    const hint = { key: formatChord(action.shortcut!), label: action.label };
-    const existing = grouped.get(action.group);
-    if (existing) {
-      existing.push(hint);
-    } else {
-      grouped.set(action.group, [hint]);
+/**
+ * Sections for the help dialog: the active view's keys first, then mail
+ * verbs, then global keys, then the other views' keys for discovery.
+ */
+export function shortcutSections(ctx: ActionContext): ShortcutSection[] {
+  const bound = getRegistry()
+    .all()
+    .filter((action) => !action.paletteOnly && chordsOf(action).length > 0);
+
+  const byScope = new Map<ActionScope, Action[]>();
+  const mailVerbs: Action[] = [];
+  for (const action of bound) {
+    const scopes = scopesOf(action);
+    if (scopes.includes("list") && scopes.includes("reader")) {
+      mailVerbs.push(action);
+      continue;
     }
+    for (const scope of scopes) byScope.set(scope, [...(byScope.get(scope) ?? []), action]);
   }
 
   const sections: ShortcutSection[] = [];
-  for (const group of GROUP_ORDER) {
-    const hints = grouped.get(group);
-    if (hints && hints.length > 0) {
-      sections.push({ title: GROUP_TITLE[group], hints });
-    }
+  const paneScopes = (["reader", "list", "sidebar", "screener"] as const).filter((scope) =>
+    byScope.has(scope),
+  );
+  const activePanes = paneScopes.filter((scope) => ctx.scopes.includes(scope));
+  const otherPanes = paneScopes.filter((scope) => !ctx.scopes.includes(scope));
+
+  for (const scope of activePanes) {
+    sections.push({
+      id: scope,
+      title: `${SCOPE_TITLE[scope]} (this view)`,
+      hints: (byScope.get(scope) ?? []).map((action) => hint(action, ctx)),
+    });
   }
-  for (const page of pageSections) {
-    sections.push({ title: page.title, hints: page.hints });
+  if (mailVerbs.length > 0) {
+    sections.push({
+      id: "mail",
+      title: "Mail actions",
+      hints: mailVerbs.map((action) => hint(action, ctx)),
+    });
+  }
+
+  const globalGroups = new Map<string, ShortcutHint[]>();
+  for (const action of byScope.get("global") ?? []) {
+    const title = GLOBAL_GROUP_TITLE[action.group] ?? "Everywhere";
+    globalGroups.set(title, [...(globalGroups.get(title) ?? []), hint(action, ctx)]);
+  }
+  for (const title of ["Everywhere", "Search", "Go to"]) {
+    const hints = globalGroups.get(title);
+    if (hints) sections.push({ id: `global-${title}`, title, hints });
+  }
+
+  for (const scope of otherPanes) {
+    sections.push({
+      id: scope,
+      title: SCOPE_TITLE[scope],
+      hints: (byScope.get(scope) ?? []).map((action) => hint(action, ctx)),
+    });
   }
   return sections;
 }
 
-export function useActionShortcutSections(ctx: ActionContext): ShortcutSection[] {
-  const pageSections = pageHintsForRoute(ctx);
-  return useMemo(
-    () => actionShortcutSections(ctx, pageSections),
-    [ctx, pageSections],
-  );
+export function useShortcutSections(ctx: ActionContext): ShortcutSection[] {
+  return useMemo(() => shortcutSections(ctx), [ctx]);
 }
 
+/** A few live hints for the status bar: the current view's keys first. */
 export function useActionPrimaryHints(ctx: ActionContext, limit = 5): ShortcutHint[] {
-  const sections = useActionShortcutSections(ctx);
-  return useMemo(() => sections[0]?.hints.slice(0, limit) ?? [], [sections, limit]);
+  const sections = useShortcutSections(ctx);
+  return useMemo(
+    () =>
+      sections
+        .flatMap((section) => section.hints)
+        .filter((item) => item.live)
+        .slice(0, limit),
+    [sections, limit],
+  );
 }
 
 export function useVisibleActions(ctx: ActionContext): Action[] {
@@ -109,27 +145,12 @@ export function useActionsByGroup(ctx: ActionContext): Map<ActionGroup, Action[]
   return useMemo(() => {
     const map = new Map<ActionGroup, Action[]>();
     for (const action of visible) {
-      const existing = map.get(action.group);
-      if (existing) {
-        existing.push(action);
-      } else {
-        map.set(action.group, [action]);
-      }
+      if (action.hideInPalette) continue;
+      map.set(action.group, [...(map.get(action.group) ?? []), action]);
     }
     return map;
   }, [visible]);
 }
 
-/** Renders tinykeys grammar back into a human-readable chip label. */
-export function formatChord(chord: ShortcutChord): string {
-  return chord
-    .replace(/Shift\+Slash/g, "?")
-    .replace(/Shift\+Semicolon/g, ":")
-    .replace(/Key([A-Z])/g, (_, letter) => letter.toLowerCase())
-    .replace(/Digit(\d)/g, (_, digit) => digit)
-    .replace(/Slash/g, "/")
-    .replace(/\$mod\+/g, "⌘")
-    .replace(/\$mod/g, "⌘");
-}
-
+export { formatChord };
 export type { Action };

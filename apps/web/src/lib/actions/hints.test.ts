@@ -32,9 +32,7 @@ describe("actionShortcutSections", () => {
   });
 
   test("appends page hints after registry sections", () => {
-    const pageSections = [
-      { title: "Reader shortcuts", hints: [{ key: "j/k", label: "Scroll" }] },
-    ];
+    const pageSections = [{ title: "Reader shortcuts", hints: [{ key: "j/k", label: "Scroll" }] }];
     const sections = actionShortcutSections(baseCtx, pageSections);
     expect(sections.at(-1)?.title).toBe("Reader shortcuts");
   });

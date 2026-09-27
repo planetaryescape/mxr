@@ -23,20 +23,34 @@ export function JobsRoute() {
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
-          {query.isFetching ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RefreshCcw className="mr-2 size-4" />}
+          {query.isFetching ? (
+            <Loader2 className="mr-2 size-4 animate-spin" />
+          ) : (
+            <RefreshCcw className="mr-2 size-4" />
+          )}
           Refresh
         </Button>
       </div>
 
       {query.isError ? (
-        <Card><CardContent className="p-4 text-sm text-destructive">{String(query.error)}</CardContent></Card>
+        <Card>
+          <CardContent className="p-4 text-sm text-destructive">{String(query.error)}</CardContent>
+        </Card>
       ) : null}
 
       <div className="grid gap-3">
-        {(query.data ?? []).map((job) => <JobCard key={job.job_id} job={job} />)}
-        {query.isLoading ? <Card><CardContent className="p-4 text-sm">Loading jobs…</CardContent></Card> : null}
+        {(query.data ?? []).map((job) => (
+          <JobCard key={job.job_id} job={job} />
+        ))}
+        {query.isLoading ? (
+          <Card>
+            <CardContent className="p-4 text-sm">Loading jobs…</CardContent>
+          </Card>
+        ) : null}
         {!query.isLoading && (query.data ?? []).length === 0 ? (
-          <Card><CardContent className="p-4 text-sm text-muted-foreground">No jobs yet.</CardContent></Card>
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">No jobs yet.</CardContent>
+          </Card>
         ) : null}
       </div>
     </div>
@@ -44,20 +58,25 @@ export function JobsRoute() {
 }
 
 function JobCard({ job }: { job: JobData }) {
-  const pct = job.progress.total > 0 ? Math.round((job.progress.completed / job.progress.total) * 100) : 0;
+  const pct =
+    job.progress.total > 0 ? Math.round((job.progress.completed / job.progress.total) * 100) : 0;
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-base">{job.kind}</CardTitle>
-          <Badge variant={job.status === "failed" ? "destructive" : "secondary"}>{job.status}</Badge>
+          <Badge variant={job.status === "failed" ? "destructive" : "secondary"}>
+            {job.status}
+          </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <div className="font-mono text-xs text-muted-foreground">{job.job_id}</div>
         <div>
           <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-            <span>{job.progress.completed}/{job.progress.total}</span>
+            <span>
+              {job.progress.completed}/{job.progress.total}
+            </span>
             <span>{pct}%</span>
           </div>
           <div className="h-2 rounded bg-muted">
@@ -70,7 +89,9 @@ function JobCard({ job }: { job: JobData }) {
           <span>failed: {job.progress.failed}</span>
           <span>undo ids: {job.undo_ids.length}</span>
         </div>
-        {job.undo_ids.length > 0 ? <div className="font-mono text-xs">{job.undo_ids.join(", ")}</div> : null}
+        {job.undo_ids.length > 0 ? (
+          <div className="font-mono text-xs">{job.undo_ids.join(", ")}</div>
+        ) : null}
         {job.error ? <div className="text-destructive">{job.error}</div> : null}
       </CardContent>
     </Card>

@@ -10,7 +10,8 @@ import { useSelection } from "@/state/selectionStore";
 
 const api = vi.hoisted(() => ({
   readAndArchiveMessages: vi.fn<(ids: string[]) => Promise<unknown>>(),
-  unsubscribeFromSender: vi.fn<(input: { messageId: string; archive: boolean }) => Promise<unknown>>(),
+  unsubscribeFromSender:
+    vi.fn<(input: { messageId: string; archive: boolean }) => Promise<unknown>>(),
 }));
 
 const toast = vi.hoisted(() => ({
@@ -97,15 +98,17 @@ describe("mailbox palette actions", () => {
   test("focused thread label action opens the picker with message ids from cached thread data", () => {
     client.setQueryData(["thread", "thread-1"], threadData);
 
-    mailboxActions.find((action) => action.id === "mail.label")?.run({
-      path: "/m/inbox/thread-1",
-      activePane: "reader",
-      selectionCount: 0,
-      accountCount: 1,
-      hasFocusedThread: true,
-      hasFocusedMessage: false,
-      isFirstAccountOnly: true,
-    });
+    mailboxActions
+      .find((action) => action.id === "mail.label")
+      ?.run({
+        path: "/m/inbox/thread-1",
+        activePane: "reader",
+        selectionCount: 0,
+        accountCount: 1,
+        hasFocusedThread: true,
+        hasFocusedMessage: false,
+        isFirstAccountOnly: true,
+      });
 
     expect(useModals.getState().rightRail).toEqual({
       kind: "label-picker",
@@ -121,15 +124,17 @@ describe("mailbox palette actions", () => {
       scope: "/m/inbox",
     });
 
-    mailboxActions.find((action) => action.id === "mail.read-and-archive")?.run({
-      path: "/m/inbox/thread-1",
-      activePane: "reader",
-      selectionCount: 2,
-      accountCount: 1,
-      hasFocusedThread: true,
-      hasFocusedMessage: false,
-      isFirstAccountOnly: true,
-    });
+    mailboxActions
+      .find((action) => action.id === "mail.read-and-archive")
+      ?.run({
+        path: "/m/inbox/thread-1",
+        activePane: "reader",
+        selectionCount: 2,
+        accountCount: 1,
+        hasFocusedThread: true,
+        hasFocusedMessage: false,
+        isFirstAccountOnly: true,
+      });
 
     expect(api.readAndArchiveMessages).toHaveBeenCalledWith(["selected-1", "selected-2"]);
   });

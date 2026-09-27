@@ -322,8 +322,7 @@ function mailAction(value: string): SupportedRuleAction | null {
   if (lower === "trash") return { kind: "trash" };
   if (lower === "spam") return { kind: "spam" };
   if (lower === "star") return { kind: "star" };
-  if (lower === "read" || lower === "mark-read" || lower === "mark_read")
-    return { kind: "read" };
+  if (lower === "read" || lower === "mark-read" || lower === "mark_read") return { kind: "read" };
   if (lower === "unread" || lower === "mark-unread" || lower === "mark_unread")
     return { kind: "unread" };
   if (lower === "read-and-archive" || lower === "read_and_archive")
@@ -343,7 +342,10 @@ function mailAction(value: string): SupportedRuleAction | null {
   return null;
 }
 
-async function runMailActions(actions: SupportedRuleAction[], ids: string[]): Promise<MutationResponse> {
+async function runMailActions(
+  actions: SupportedRuleAction[],
+  ids: string[],
+): Promise<MutationResponse> {
   if (actions.length === 2 && actions[0]?.kind === "read" && actions[1]?.kind === "archive") {
     return readAndArchiveMessages(ids);
   }

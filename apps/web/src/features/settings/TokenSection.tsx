@@ -21,8 +21,7 @@ export function TokenSection() {
           The web app authenticates to the local <code>mxr</code> daemon using a bearer token. Local
           launches normally fetch it through the same-machine handshake and persist it to
           <code>localStorage</code>. If you see <em>no token</em> or 401 errors, paste the token
-          from
-          the active profile's <code>bridge-token</code> file here.
+          from the active profile's <code>bridge-token</code> file here.
         </p>
       </div>
       <div className="space-y-4 p-6">

@@ -1,131 +1,98 @@
-import { Archive, CheckCheck, Clock, Mail, ShieldAlert, Star, Trash2, X } from "lucide-react";
-import { useState } from "react";
-
-import { SnoozeDialog } from "./SnoozeDialog";
-import type { MailAction } from "./useOptimisticMailMutation";
-import { useOptimisticMailMutation } from "./useOptimisticMailMutation";
-import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Archive,
+  Clock,
+  MailCheck,
+  MailOpen,
+  Mail,
+  ShieldAlert,
+  Star,
+  Tag,
+  Trash2,
+  X,
+} from "lucide-react";
+import type { ComponentType } from "react";
+
+import type { MessageRowView } from "./types";
+import { KeyChip } from "@/components/KeyChip";
+import { Button } from "@/components/ui/button";
+import { createMailVerbs } from "@/features/mail-actions/mailVerbs";
+import type { MailTarget } from "@/features/mail-actions/target";
+import { plural } from "@/lib/format";
 import { useSelection } from "@/state/selectionStore";
 
-const actions: Array<{ action: MailAction; label: string; icon: typeof Archive }> = [
-  { action: "archive", label: "Archive", icon: Archive },
-  { action: "trash", label: "Trash", icon: Trash2 },
-  { action: "spam", label: "Spam", icon: ShieldAlert },
-  { action: "star", label: "Star", icon: Star },
-  { action: "read", label: "Read", icon: CheckCheck },
-  { action: "unread", label: "Unread", icon: Mail },
-];
-
-const confirmBeforeBulk = new Set<MailAction>(["archive", "trash", "spam"]);
-
-export function BulkActionBar() {
-  const ids = useSelection((state) => state.ids);
-  const clear = useSelection((state) => state.clear);
-  const [snoozeOpen, setSnoozeOpen] = useState(false);
-  const selected = [...ids];
-  if (selected.length === 0) return null;
-  return (
-    <>
-      <div className="absolute inset-x-4 bottom-4 z-10 flex items-center gap-2 rounded-xl border border-border-strong bg-popover/95 px-3 py-2 shadow-2xl backdrop-blur">
-        <div className="mr-2 font-mono text-2xs text-muted-foreground">
-          {selected.length} selected
-        </div>
-        {actions.map((item) => (
-          <BulkButton
-            key={item.action}
-            action={item.action}
-            label={item.label}
-            icon={item.icon}
-            ids={selected}
-          />
-        ))}
-        <Button variant="secondary" size="sm" onClick={() => setSnoozeOpen(true)}>
-          <Clock className="size-3" />
-          Snooze
-        </Button>
-        <Button variant="ghost" size="sm" className="ml-auto" onClick={clear}>
-          <X className="size-3" />
-          Clear
-        </Button>
-      </div>
-      <SnoozeDialog
-        open={snoozeOpen}
-        messageIds={selected}
-        onOpenChange={setSnoozeOpen}
-        onSnoozed={clear}
-      />
-    </>
-  );
+interface BulkButton {
+  command: string;
+  label: string;
+  keys: string;
+  Icon: ComponentType<{ className?: string }>;
 }
 
-function BulkButton({
-  action,
-  label,
-  icon: Icon,
-  ids,
-}: {
-  action: MailAction;
-  label: string;
-  icon: typeof Archive;
-  ids: string[];
-}) {
-  const mutation = useOptimisticMailMutation(action);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const needsConfirm = confirmBeforeBulk.has(action);
+const BUTTONS: BulkButton[] = [
+  { command: "archive", label: "Archive", keys: "e", Icon: Archive },
+  { command: "readArchive", label: "Read + archive", keys: "m", Icon: MailCheck },
+  { command: "markRead", label: "Read", keys: "I", Icon: MailOpen },
+  { command: "markUnread", label: "Unread", keys: "U", Icon: Mail },
+  { command: "toggleStar", label: "Star", keys: "s", Icon: Star },
+  { command: "label", label: "Label", keys: "l", Icon: Tag },
+  { command: "snooze", label: "Snooze", keys: "Z", Icon: Clock },
+  { command: "spam", label: "Spam", keys: "!", Icon: ShieldAlert },
+  { command: "trash", label: "Trash", keys: "#", Icon: Trash2 },
+];
 
-  function run() {
-    mutation.mutate(ids);
-  }
+/**
+ * Selection bar. Buttons run the same verbs as the keys (and so the same
+ * confirmation and undo), against exactly the selected rows.
+ */
+export function BulkActionBar({
+  rows,
+  getTarget,
+}: {
+  rows: MessageRowView[];
+  getTarget: () => MailTarget | null;
+}) {
+  const ids = useSelection((s) => s.ids);
+  const clear = useSelection((s) => s.clear);
+  const selectMany = useSelection((s) => s.selectMany);
+  if (ids.size === 0) return null;
+  const verbs = createMailVerbs({ getTarget, composeSurface: "overlay" });
+  const selected = rows.filter((row) => ids.has(row.id));
+  const messageCount = selected.reduce((total, row) => total + (row.message_ids?.length ?? 1), 0);
 
   return (
-    <>
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={() => (needsConfirm ? setConfirmOpen(true) : run())}
-        disabled={mutation.isPending}
-      >
-        <Icon className="size-3" />
-        {label}
-      </Button>
-      {needsConfirm ? (
-        <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {label} {ids.length} {ids.length === 1 ? "message" : "messages"}?
-              </DialogTitle>
-              <DialogDescription>
-                This will apply to every selected message. Use Undo from the success toast if you
-                change your mind.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="ghost" onClick={() => setConfirmOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant={action === "trash" || action === "spam" ? "destructive" : "default"}
-                onClick={() => {
-                  setConfirmOpen(false);
-                  run();
-                }}
-              >
-                <Icon className="size-3" />
-                Confirm {label}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+    <div
+      role="toolbar"
+      aria-label="Selected conversations"
+      className="absolute inset-x-3 bottom-3 z-10 flex flex-wrap items-center gap-1 rounded-lg border border-border-strong bg-popover/95 p-1.5 shadow-xl backdrop-blur"
+    >
+      <span className="px-2 text-[13px]">
+        <span className="font-semibold">{plural(selected.length, "conversation")}</span>
+        {messageCount > selected.length ? (
+          <span className="ml-1 text-muted-foreground">({plural(messageCount, "message")})</span>
+        ) : null}
+      </span>
+      {selected.length < rows.length ? (
+        <Button variant="ghost" size="xs" onClick={() => selectMany(rows.map((row) => row.id))}>
+          Select all {rows.length}
+        </Button>
       ) : null}
-    </>
+      <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+      {BUTTONS.map((button) => (
+        <Button
+          key={button.command}
+          variant="ghost"
+          size="sm"
+          className="h-8 gap-1.5 px-2 text-[13px]"
+          title={`${button.label} (${button.keys})`}
+          onClick={() => verbs[button.command]?.()}
+        >
+          <button.Icon className="size-3.5" />
+          <span className="hidden @3xl:inline">{button.label}</span>
+        </Button>
+      ))}
+      <Button variant="ghost" size="sm" className="ml-auto h-8 gap-1.5 px-2" onClick={clear}>
+        <X className="size-3.5" />
+        <KeyChip>Esc</KeyChip>
+      </Button>
+    </div>
   );
 }

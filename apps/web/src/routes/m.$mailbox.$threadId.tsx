@@ -1,7 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { ThreadRoute } from "@/features/thread/ThreadRoute";
+import { ThreadPane } from "@/features/thread/ThreadPane";
 
 export const Route = createFileRoute("/m/$mailbox/$threadId")({
-  component: ThreadRoute,
+  component: OpenThread,
 });
+
+function OpenThread() {
+  const { threadId } = Route.useParams();
+  return <ThreadPane threadId={threadId} />;
+}

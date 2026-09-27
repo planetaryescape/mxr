@@ -30,7 +30,6 @@ beforeEach(() => {
 
 describe("useActionContext", () => {
   test("recomputes when selection size changes", () => {
-
     const { result } = renderHook(() => useActionContext({ accountCount: 1 }));
     expect(result.current.selectionCount).toBe(0);
 

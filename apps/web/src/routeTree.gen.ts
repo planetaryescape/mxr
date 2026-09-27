@@ -10,10 +10,12 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SubscriptionsRouteImport } from './routes/subscriptions'
+import { Route as SnoozedRouteImport } from './routes/snoozed'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as ScreenerRouteImport } from './routes/screener'
 import { Route as RulesRouteImport } from './routes/rules'
 import { Route as ReplyQueueRouteImport } from './routes/reply-queue'
+import { Route as OwedRouteImport } from './routes/owed'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as InvitesRouteImport } from './routes/invites'
@@ -25,9 +27,13 @@ import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as AccountsRouteImport } from './routes/accounts'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SnoozedThreadIdRouteImport } from './routes/snoozed.$threadId'
 import { Route as SettingsSectionRouteImport } from './routes/settings.$section'
 import { Route as SenderAddressRouteImport } from './routes/sender.$address'
+import { Route as SearchThreadIdRouteImport } from './routes/search.$threadId'
 import { Route as RulesIdRouteImport } from './routes/rules.$id'
+import { Route as ReplyQueueThreadIdRouteImport } from './routes/reply-queue.$threadId'
+import { Route as OwedThreadIdRouteImport } from './routes/owed.$threadId'
 import { Route as MMailboxRouteImport } from './routes/m.$mailbox'
 import { Route as ComposeNewRouteImport } from './routes/compose.new'
 import { Route as ComposeDraftIdRouteImport } from './routes/compose.$draftId'
@@ -36,10 +42,17 @@ import { Route as AccountsKeyRouteImport } from './routes/accounts.$key'
 import { Route as MSavedSlugRouteImport } from './routes/m.saved.$slug'
 import { Route as MLabelNameRouteImport } from './routes/m.label.$name'
 import { Route as MMailboxThreadIdRouteImport } from './routes/m.$mailbox.$threadId'
+import { Route as MSavedSlugThreadIdRouteImport } from './routes/m.saved.$slug.$threadId'
+import { Route as MLabelNameThreadIdRouteImport } from './routes/m.label.$name.$threadId'
 
 const SubscriptionsRoute = SubscriptionsRouteImport.update({
   id: '/subscriptions',
   path: '/subscriptions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SnoozedRoute = SnoozedRouteImport.update({
+  id: '/snoozed',
+  path: '/snoozed',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SearchRoute = SearchRouteImport.update({
@@ -60,6 +73,11 @@ const RulesRoute = RulesRouteImport.update({
 const ReplyQueueRoute = ReplyQueueRouteImport.update({
   id: '/reply-queue',
   path: '/reply-queue',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OwedRoute = OwedRouteImport.update({
+  id: '/owed',
+  path: '/owed',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -117,6 +135,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SnoozedThreadIdRoute = SnoozedThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => SnoozedRoute,
+} as any)
 const SettingsSectionRoute = SettingsSectionRouteImport.update({
   id: '/settings/$section',
   path: '/settings/$section',
@@ -127,10 +150,25 @@ const SenderAddressRoute = SenderAddressRouteImport.update({
   path: '/sender/$address',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SearchThreadIdRoute = SearchThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => SearchRoute,
+} as any)
 const RulesIdRoute = RulesIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => RulesRoute,
+} as any)
+const ReplyQueueThreadIdRoute = ReplyQueueThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => ReplyQueueRoute,
+} as any)
+const OwedThreadIdRoute = OwedThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => OwedRoute,
 } as any)
 const MMailboxRoute = MMailboxRouteImport.update({
   id: '/m/$mailbox',
@@ -172,6 +210,16 @@ const MMailboxThreadIdRoute = MMailboxThreadIdRouteImport.update({
   path: '/$threadId',
   getParentRoute: () => MMailboxRoute,
 } as any)
+const MSavedSlugThreadIdRoute = MSavedSlugThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => MSavedSlugRoute,
+} as any)
+const MLabelNameThreadIdRoute = MLabelNameThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => MLabelNameRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -185,22 +233,30 @@ export interface FileRoutesByFullPath {
   '/invites': typeof InvitesRoute
   '/jobs': typeof JobsRoute
   '/onboarding': typeof OnboardingRoute
-  '/reply-queue': typeof ReplyQueueRoute
+  '/owed': typeof OwedRouteWithChildren
+  '/reply-queue': typeof ReplyQueueRouteWithChildren
   '/rules': typeof RulesRouteWithChildren
   '/screener': typeof ScreenerRoute
-  '/search': typeof SearchRoute
+  '/search': typeof SearchRouteWithChildren
+  '/snoozed': typeof SnoozedRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
   '/accounts/$key': typeof AccountsKeyRoute
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
   '/compose/new': typeof ComposeNewRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
+  '/owed/$threadId': typeof OwedThreadIdRoute
+  '/reply-queue/$threadId': typeof ReplyQueueThreadIdRoute
   '/rules/$id': typeof RulesIdRoute
+  '/search/$threadId': typeof SearchThreadIdRoute
   '/sender/$address': typeof SenderAddressRoute
   '/settings/$section': typeof SettingsSectionRoute
+  '/snoozed/$threadId': typeof SnoozedThreadIdRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
-  '/m/label/$name': typeof MLabelNameRoute
-  '/m/saved/$slug': typeof MSavedSlugRoute
+  '/m/label/$name': typeof MLabelNameRouteWithChildren
+  '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
+  '/m/label/$name/$threadId': typeof MLabelNameThreadIdRoute
+  '/m/saved/$slug/$threadId': typeof MSavedSlugThreadIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -214,22 +270,30 @@ export interface FileRoutesByTo {
   '/invites': typeof InvitesRoute
   '/jobs': typeof JobsRoute
   '/onboarding': typeof OnboardingRoute
-  '/reply-queue': typeof ReplyQueueRoute
+  '/owed': typeof OwedRouteWithChildren
+  '/reply-queue': typeof ReplyQueueRouteWithChildren
   '/rules': typeof RulesRouteWithChildren
   '/screener': typeof ScreenerRoute
-  '/search': typeof SearchRoute
+  '/search': typeof SearchRouteWithChildren
+  '/snoozed': typeof SnoozedRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
   '/accounts/$key': typeof AccountsKeyRoute
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
   '/compose/new': typeof ComposeNewRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
+  '/owed/$threadId': typeof OwedThreadIdRoute
+  '/reply-queue/$threadId': typeof ReplyQueueThreadIdRoute
   '/rules/$id': typeof RulesIdRoute
+  '/search/$threadId': typeof SearchThreadIdRoute
   '/sender/$address': typeof SenderAddressRoute
   '/settings/$section': typeof SettingsSectionRoute
+  '/snoozed/$threadId': typeof SnoozedThreadIdRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
-  '/m/label/$name': typeof MLabelNameRoute
-  '/m/saved/$slug': typeof MSavedSlugRoute
+  '/m/label/$name': typeof MLabelNameRouteWithChildren
+  '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
+  '/m/label/$name/$threadId': typeof MLabelNameThreadIdRoute
+  '/m/saved/$slug/$threadId': typeof MSavedSlugThreadIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -244,22 +308,30 @@ export interface FileRoutesById {
   '/invites': typeof InvitesRoute
   '/jobs': typeof JobsRoute
   '/onboarding': typeof OnboardingRoute
-  '/reply-queue': typeof ReplyQueueRoute
+  '/owed': typeof OwedRouteWithChildren
+  '/reply-queue': typeof ReplyQueueRouteWithChildren
   '/rules': typeof RulesRouteWithChildren
   '/screener': typeof ScreenerRoute
-  '/search': typeof SearchRoute
+  '/search': typeof SearchRouteWithChildren
+  '/snoozed': typeof SnoozedRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
   '/accounts/$key': typeof AccountsKeyRoute
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
   '/compose/new': typeof ComposeNewRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
+  '/owed/$threadId': typeof OwedThreadIdRoute
+  '/reply-queue/$threadId': typeof ReplyQueueThreadIdRoute
   '/rules/$id': typeof RulesIdRoute
+  '/search/$threadId': typeof SearchThreadIdRoute
   '/sender/$address': typeof SenderAddressRoute
   '/settings/$section': typeof SettingsSectionRoute
+  '/snoozed/$threadId': typeof SnoozedThreadIdRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
-  '/m/label/$name': typeof MLabelNameRoute
-  '/m/saved/$slug': typeof MSavedSlugRoute
+  '/m/label/$name': typeof MLabelNameRouteWithChildren
+  '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
+  '/m/label/$name/$threadId': typeof MLabelNameThreadIdRoute
+  '/m/saved/$slug/$threadId': typeof MSavedSlugThreadIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -275,22 +347,30 @@ export interface FileRouteTypes {
     | '/invites'
     | '/jobs'
     | '/onboarding'
+    | '/owed'
     | '/reply-queue'
     | '/rules'
     | '/screener'
     | '/search'
+    | '/snoozed'
     | '/subscriptions'
     | '/accounts/$key'
     | '/analytics/$dashboard'
     | '/compose/$draftId'
     | '/compose/new'
     | '/m/$mailbox'
+    | '/owed/$threadId'
+    | '/reply-queue/$threadId'
     | '/rules/$id'
+    | '/search/$threadId'
     | '/sender/$address'
     | '/settings/$section'
+    | '/snoozed/$threadId'
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
+    | '/m/label/$name/$threadId'
+    | '/m/saved/$slug/$threadId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -304,22 +384,30 @@ export interface FileRouteTypes {
     | '/invites'
     | '/jobs'
     | '/onboarding'
+    | '/owed'
     | '/reply-queue'
     | '/rules'
     | '/screener'
     | '/search'
+    | '/snoozed'
     | '/subscriptions'
     | '/accounts/$key'
     | '/analytics/$dashboard'
     | '/compose/$draftId'
     | '/compose/new'
     | '/m/$mailbox'
+    | '/owed/$threadId'
+    | '/reply-queue/$threadId'
     | '/rules/$id'
+    | '/search/$threadId'
     | '/sender/$address'
     | '/settings/$section'
+    | '/snoozed/$threadId'
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
+    | '/m/label/$name/$threadId'
+    | '/m/saved/$slug/$threadId'
   id:
     | '__root__'
     | '/'
@@ -333,22 +421,30 @@ export interface FileRouteTypes {
     | '/invites'
     | '/jobs'
     | '/onboarding'
+    | '/owed'
     | '/reply-queue'
     | '/rules'
     | '/screener'
     | '/search'
+    | '/snoozed'
     | '/subscriptions'
     | '/accounts/$key'
     | '/analytics/$dashboard'
     | '/compose/$draftId'
     | '/compose/new'
     | '/m/$mailbox'
+    | '/owed/$threadId'
+    | '/reply-queue/$threadId'
     | '/rules/$id'
+    | '/search/$threadId'
     | '/sender/$address'
     | '/settings/$section'
+    | '/snoozed/$threadId'
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
+    | '/m/label/$name/$threadId'
+    | '/m/saved/$slug/$threadId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -363,18 +459,20 @@ export interface RootRouteChildren {
   InvitesRoute: typeof InvitesRoute
   JobsRoute: typeof JobsRoute
   OnboardingRoute: typeof OnboardingRoute
-  ReplyQueueRoute: typeof ReplyQueueRoute
+  OwedRoute: typeof OwedRouteWithChildren
+  ReplyQueueRoute: typeof ReplyQueueRouteWithChildren
   RulesRoute: typeof RulesRouteWithChildren
   ScreenerRoute: typeof ScreenerRoute
-  SearchRoute: typeof SearchRoute
+  SearchRoute: typeof SearchRouteWithChildren
+  SnoozedRoute: typeof SnoozedRouteWithChildren
   SubscriptionsRoute: typeof SubscriptionsRoute
   ComposeDraftIdRoute: typeof ComposeDraftIdRoute
   ComposeNewRoute: typeof ComposeNewRoute
   MMailboxRoute: typeof MMailboxRouteWithChildren
   SenderAddressRoute: typeof SenderAddressRoute
   SettingsSectionRoute: typeof SettingsSectionRoute
-  MLabelNameRoute: typeof MLabelNameRoute
-  MSavedSlugRoute: typeof MSavedSlugRoute
+  MLabelNameRoute: typeof MLabelNameRouteWithChildren
+  MSavedSlugRoute: typeof MSavedSlugRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -384,6 +482,13 @@ declare module '@tanstack/react-router' {
       path: '/subscriptions'
       fullPath: '/subscriptions'
       preLoaderRoute: typeof SubscriptionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/snoozed': {
+      id: '/snoozed'
+      path: '/snoozed'
+      fullPath: '/snoozed'
+      preLoaderRoute: typeof SnoozedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/search': {
@@ -412,6 +517,13 @@ declare module '@tanstack/react-router' {
       path: '/reply-queue'
       fullPath: '/reply-queue'
       preLoaderRoute: typeof ReplyQueueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/owed': {
+      id: '/owed'
+      path: '/owed'
+      fullPath: '/owed'
+      preLoaderRoute: typeof OwedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding': {
@@ -491,6 +603,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/snoozed/$threadId': {
+      id: '/snoozed/$threadId'
+      path: '/$threadId'
+      fullPath: '/snoozed/$threadId'
+      preLoaderRoute: typeof SnoozedThreadIdRouteImport
+      parentRoute: typeof SnoozedRoute
+    }
     '/settings/$section': {
       id: '/settings/$section'
       path: '/settings/$section'
@@ -505,12 +624,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SenderAddressRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/search/$threadId': {
+      id: '/search/$threadId'
+      path: '/$threadId'
+      fullPath: '/search/$threadId'
+      preLoaderRoute: typeof SearchThreadIdRouteImport
+      parentRoute: typeof SearchRoute
+    }
     '/rules/$id': {
       id: '/rules/$id'
       path: '/$id'
       fullPath: '/rules/$id'
       preLoaderRoute: typeof RulesIdRouteImport
       parentRoute: typeof RulesRoute
+    }
+    '/reply-queue/$threadId': {
+      id: '/reply-queue/$threadId'
+      path: '/$threadId'
+      fullPath: '/reply-queue/$threadId'
+      preLoaderRoute: typeof ReplyQueueThreadIdRouteImport
+      parentRoute: typeof ReplyQueueRoute
+    }
+    '/owed/$threadId': {
+      id: '/owed/$threadId'
+      path: '/$threadId'
+      fullPath: '/owed/$threadId'
+      preLoaderRoute: typeof OwedThreadIdRouteImport
+      parentRoute: typeof OwedRoute
     }
     '/m/$mailbox': {
       id: '/m/$mailbox'
@@ -568,6 +708,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MMailboxThreadIdRouteImport
       parentRoute: typeof MMailboxRoute
     }
+    '/m/saved/$slug/$threadId': {
+      id: '/m/saved/$slug/$threadId'
+      path: '/$threadId'
+      fullPath: '/m/saved/$slug/$threadId'
+      preLoaderRoute: typeof MSavedSlugThreadIdRouteImport
+      parentRoute: typeof MSavedSlugRoute
+    }
+    '/m/label/$name/$threadId': {
+      id: '/m/label/$name/$threadId'
+      path: '/$threadId'
+      fullPath: '/m/label/$name/$threadId'
+      preLoaderRoute: typeof MLabelNameThreadIdRouteImport
+      parentRoute: typeof MLabelNameRoute
+    }
   }
 }
 
@@ -595,6 +749,28 @@ const AnalyticsRouteWithChildren = AnalyticsRoute._addFileChildren(
   AnalyticsRouteChildren,
 )
 
+interface OwedRouteChildren {
+  OwedThreadIdRoute: typeof OwedThreadIdRoute
+}
+
+const OwedRouteChildren: OwedRouteChildren = {
+  OwedThreadIdRoute: OwedThreadIdRoute,
+}
+
+const OwedRouteWithChildren = OwedRoute._addFileChildren(OwedRouteChildren)
+
+interface ReplyQueueRouteChildren {
+  ReplyQueueThreadIdRoute: typeof ReplyQueueThreadIdRoute
+}
+
+const ReplyQueueRouteChildren: ReplyQueueRouteChildren = {
+  ReplyQueueThreadIdRoute: ReplyQueueThreadIdRoute,
+}
+
+const ReplyQueueRouteWithChildren = ReplyQueueRoute._addFileChildren(
+  ReplyQueueRouteChildren,
+)
+
 interface RulesRouteChildren {
   RulesIdRoute: typeof RulesIdRoute
 }
@@ -604,6 +780,28 @@ const RulesRouteChildren: RulesRouteChildren = {
 }
 
 const RulesRouteWithChildren = RulesRoute._addFileChildren(RulesRouteChildren)
+
+interface SearchRouteChildren {
+  SearchThreadIdRoute: typeof SearchThreadIdRoute
+}
+
+const SearchRouteChildren: SearchRouteChildren = {
+  SearchThreadIdRoute: SearchThreadIdRoute,
+}
+
+const SearchRouteWithChildren =
+  SearchRoute._addFileChildren(SearchRouteChildren)
+
+interface SnoozedRouteChildren {
+  SnoozedThreadIdRoute: typeof SnoozedThreadIdRoute
+}
+
+const SnoozedRouteChildren: SnoozedRouteChildren = {
+  SnoozedThreadIdRoute: SnoozedThreadIdRoute,
+}
+
+const SnoozedRouteWithChildren =
+  SnoozedRoute._addFileChildren(SnoozedRouteChildren)
 
 interface MMailboxRouteChildren {
   MMailboxThreadIdRoute: typeof MMailboxThreadIdRoute
@@ -615,6 +813,30 @@ const MMailboxRouteChildren: MMailboxRouteChildren = {
 
 const MMailboxRouteWithChildren = MMailboxRoute._addFileChildren(
   MMailboxRouteChildren,
+)
+
+interface MLabelNameRouteChildren {
+  MLabelNameThreadIdRoute: typeof MLabelNameThreadIdRoute
+}
+
+const MLabelNameRouteChildren: MLabelNameRouteChildren = {
+  MLabelNameThreadIdRoute: MLabelNameThreadIdRoute,
+}
+
+const MLabelNameRouteWithChildren = MLabelNameRoute._addFileChildren(
+  MLabelNameRouteChildren,
+)
+
+interface MSavedSlugRouteChildren {
+  MSavedSlugThreadIdRoute: typeof MSavedSlugThreadIdRoute
+}
+
+const MSavedSlugRouteChildren: MSavedSlugRouteChildren = {
+  MSavedSlugThreadIdRoute: MSavedSlugThreadIdRoute,
+}
+
+const MSavedSlugRouteWithChildren = MSavedSlugRoute._addFileChildren(
+  MSavedSlugRouteChildren,
 )
 
 const rootRouteChildren: RootRouteChildren = {
@@ -629,18 +851,20 @@ const rootRouteChildren: RootRouteChildren = {
   InvitesRoute: InvitesRoute,
   JobsRoute: JobsRoute,
   OnboardingRoute: OnboardingRoute,
-  ReplyQueueRoute: ReplyQueueRoute,
+  OwedRoute: OwedRouteWithChildren,
+  ReplyQueueRoute: ReplyQueueRouteWithChildren,
   RulesRoute: RulesRouteWithChildren,
   ScreenerRoute: ScreenerRoute,
-  SearchRoute: SearchRoute,
+  SearchRoute: SearchRouteWithChildren,
+  SnoozedRoute: SnoozedRouteWithChildren,
   SubscriptionsRoute: SubscriptionsRoute,
   ComposeDraftIdRoute: ComposeDraftIdRoute,
   ComposeNewRoute: ComposeNewRoute,
   MMailboxRoute: MMailboxRouteWithChildren,
   SenderAddressRoute: SenderAddressRoute,
   SettingsSectionRoute: SettingsSectionRoute,
-  MLabelNameRoute: MLabelNameRoute,
-  MSavedSlugRoute: MSavedSlugRoute,
+  MLabelNameRoute: MLabelNameRouteWithChildren,
+  MSavedSlugRoute: MSavedSlugRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

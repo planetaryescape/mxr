@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect, useMemo } from "react";
-import { toast } from "sonner";
+import { useEffect, useRef } from "react";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HelpDialog } from "@/components/HelpDialog";
@@ -10,26 +9,25 @@ import { RightRail } from "@/components/RightRail";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBar } from "@/components/StatusBar";
 import { Topbar } from "@/components/Topbar";
+import { fetchAccounts } from "@/features/accounts/api";
 import { CommandPaletteMount } from "@/features/command-palette/CommandPalette";
 import { ComposeHost } from "@/features/compose/ComposeHost";
 import { ComposeLauncher } from "@/features/compose/ComposeLauncher";
-import { SearchPalette } from "@/features/search/SearchPalette";
-import { fetchAccounts } from "@/features/accounts/api";
+import { MailDialogs } from "@/features/mail-actions/MailDialogs";
 import { useNewMessageNotifier } from "@/features/notifications/useNewMessageNotifier";
-import { useKeybindings } from "@/hooks/useKeybindings";
-import { buildGlobalKeymap } from "@/lib/keymap";
-import { useMailboxPane } from "@/state/mailboxPaneStore";
+import { SearchPalette } from "@/features/search/SearchPalette";
+import { useKeyDispatcher } from "@/hooks/useKeyDispatcher";
+import { NARROW_SHELL_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
+import { setRuntimeNavigate } from "@/lib/actions";
 import { useModals } from "@/state/modalStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
-const G_A_MIGRATION_KEY = "mxr.shortcut.ga-migration-shown.v1";
-
 export function AppShell() {
   const sidebarCollapsed = useUiPrefs((s) => s.sidebarCollapsed);
+  const narrow = useMediaQuery(NARROW_SHELL_QUERY);
   const rightRail = useModals((s) => s.rightRail);
   const helpOpen = useModals((s) => s.helpOpen);
   const setHelpOpen = useModals((s) => s.setHelpOpen);
-  const activePane = useMailboxPane((s) => s.activePane);
   const navigate = useNavigate();
   const path = useRouterState({ select: (state) => state.location.pathname });
   useNewMessageNotifier();
@@ -39,30 +37,20 @@ export function AppShell() {
     retry: false,
     staleTime: 60_000,
   });
-  const keymap = useMemo(
-    () => buildGlobalKeymap({ navigate: (to) => navigate({ to }) }),
-    [navigate],
-  );
-  useKeybindings(keymap, { disabled: path.startsWith("/compose") });
 
-  // Auto-close right rail on full route change to avoid stale context
   useEffect(() => {
-    return () => useModals.getState().closeRightRail();
-  }, []);
+    setRuntimeNavigate({ navigate: (to) => void navigate({ to }) });
+  }, [navigate]);
+  useKeyDispatcher();
 
-  // One-time migration notice: `g a` used to open Analytics in some surfaces;
-  // it now consistently opens All Mail (matches Gmail + the global keymap).
-  // Analytics moved to `g y`. Suppressed after first display.
+  // A rail shows context for what was on screen; leaving that page (not
+  // just opening another thread in the same lens) closes it.
+  const railSection = path.split("/").slice(0, 3).join("/");
+  const lastSection = useRef(railSection);
   useEffect(() => {
-    if (path !== "/m/archive") return;
-    if (typeof window === "undefined") return;
-    if (window.localStorage.getItem(G_A_MIGRATION_KEY)) return;
-    toast.info("`g a` now opens All Mail. Analytics moved to `g y`. Press ? for the full list.", {
-      duration: 8000,
-      onDismiss: () => window.localStorage.setItem(G_A_MIGRATION_KEY, "1"),
-      onAutoClose: () => window.localStorage.setItem(G_A_MIGRATION_KEY, "1"),
-    });
-  }, [path]);
+    if (lastSection.current !== railSection) useModals.getState().closeRightRail();
+    lastSection.current = railSection;
+  }, [railSection]);
 
   useEffect(() => {
     if (path !== "/onboarding" && accounts.data?.accounts.length === 0) {
@@ -70,37 +58,46 @@ export function AppShell() {
     }
   }, [accounts.data?.accounts.length, navigate, path]);
 
+  const collapsed = sidebarCollapsed || narrow;
+
   return (
     <div
       className="app-shell"
       data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
       data-rightrail-open={rightRail ? "true" : "false"}
     >
-      <div className="app-shell-sidebar">
-        <Sidebar />
-      </div>
-      <div className="app-shell-topbar">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-primary focus:px-3 focus:py-1.5 focus:text-primary-foreground"
+      >
+        Skip to content
+      </a>
+      <aside className="app-shell-sidebar" aria-label="Mailboxes">
+        <Sidebar collapsed={collapsed} />
+      </aside>
+      <header className="app-shell-topbar">
         <Topbar />
-      </div>
-      <div className="app-shell-main">
+      </header>
+      <main id="main" className="app-shell-main">
         <OfflineBanner />
-        <ErrorBoundary>
+        <ErrorBoundary resetKey={path}>
           <Outlet />
         </ErrorBoundary>
-      </div>
+      </main>
       {rightRail ? (
-        <div className="app-shell-rightrail">
+        <aside className="app-shell-rightrail" aria-label="Context">
           <RightRail />
-        </div>
+        </aside>
       ) : null}
-      <div className="app-shell-statusbar">
+      <footer className="app-shell-statusbar">
         <StatusBar />
-      </div>
+      </footer>
       <CommandPaletteMount />
       <ComposeLauncher />
       <ComposeHost />
       <SearchPalette />
-      <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} path={path} activePane={activePane} />
+      <MailDialogs />
+      <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
   );
 }

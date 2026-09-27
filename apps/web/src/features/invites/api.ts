@@ -13,7 +13,5 @@ export interface CalendarInviteData {
 }
 
 export function fetchInvites() {
-  return apiFetch<{ invites: CalendarInviteData[] }>(
-    "/api/v1/mail/invites?limit=200",
-  );
+  return apiFetch<{ invites: CalendarInviteData[] }>("/api/v1/mail/invites?limit=200");
 }

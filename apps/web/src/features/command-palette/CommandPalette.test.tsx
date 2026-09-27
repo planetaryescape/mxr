@@ -85,7 +85,10 @@ function renderWithQueryClient(children: ReactNode) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   setActiveQueryClient(queryClient);
-  return { queryClient, ...render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>) };
+  return {
+    queryClient,
+    ...render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>),
+  };
 }
 
 describe("CommandPaletteMount", () => {

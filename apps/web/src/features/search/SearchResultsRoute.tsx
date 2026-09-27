@@ -1,27 +1,22 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { BookmarkPlus, HelpCircle, RefreshCw, Search, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Bookmark, BookmarkPlus, HelpCircle, Search, SearchX, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
   createSavedSearch,
-  deleteSavedSearch,
   fetchSavedSearches,
   fetchSearch,
   fetchSearchGroups,
   searchGroupsKey,
   searchKey,
-  updateSavedSearch,
-  type SavedSearch,
   type SearchGroupBy,
   type SearchMode,
   type SearchSort,
 } from "./api";
-import { MailboxList } from "@/features/mailbox/MailboxList";
-import type { MessageGroupView } from "@/features/mailbox/types";
-import { EmptyState } from "@/components/EmptyState";
-import { Badge } from "@/components/ui/badge";
+import { SavedSearchManager } from "./SavedSearchManager";
+import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,7 +27,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
@@ -41,77 +35,70 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { fetchAccounts } from "@/features/accounts/api";
+import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
+import { ListWithReader } from "@/features/mailbox/ListWithReader";
+import { Centered } from "@/features/mailbox/MailViewParts";
+import type { MessageGroupView } from "@/features/mailbox/types";
+import { plural } from "@/lib/format";
 import { runReplaceableQuery } from "@/lib/requestCoordinator";
 import { parseSearchTokens, removeSearchToken, searchSyntaxRows } from "@/lib/searchSyntax";
+import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const SEARCH_PAGE_LIMIT = 100;
+type Scope = "threads" | "messages" | "attachments" | "triage";
+type Verdict = "ACTION" | "FYI" | "ROUTINE";
+const SEARCH_LENS = { kind: "search" } as const;
 
+/**
+ * Search results behave like a mailbox: same rows, keys and actions, and
+ * a result opens beside the list at /search/<thread>?<query>, so Escape
+ * comes back to the same results.
+ */
 export function SearchResultsRoute() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const search = useSearch({ from: "/search" });
+  const accountScope = useUiPrefs((s) => s.accountScope);
+  const setActivePane = useMailboxPane((s) => s.setActivePane);
   const q = search.q ?? "";
   const mode = search.mode ?? "lexical";
   const sort = search.sort ?? "relevance";
-  const scope =
-    (search.scope as "threads" | "messages" | "attachments" | "triage" | undefined) ??
-    "threads";
-  const verdict = search.verdict as "ACTION" | "FYI" | "ROUTINE" | undefined;
+  const scope: Scope = (search.scope as Scope | undefined) ?? "threads";
+  const verdict = search.verdict as Verdict | undefined;
   const groupBy = (search.groupBy as SearchGroupBy | undefined) ?? "from";
+  const account = search.account ?? accountScope ?? undefined;
+  const [draft, setDraft] = useState(q);
   const [saveOpen, setSaveOpen] = useState(false);
-  const [saveName, setSaveName] = useState("");
-  const [draftQ, setDraftQ] = useState(q);
+  const [manageOpen, setManageOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  const setActivePane = useMailboxPane((state) => state.setActivePane);
 
+  useEffect(() => setDraft(q), [q]);
+  // Arriving with no query puts the cursor in the box.
+  useEffect(() => {
+    if (!q) inputRef.current?.focus();
+  }, [q]);
+
+  const request = { q, mode, sort, scope, account, limit: SEARCH_PAGE_LIMIT, verdict };
   const results = useInfiniteQuery({
-    queryKey: searchKey({
-      q,
-      mode,
-      sort,
-      scope,
-      account: search.account,
-      limit: SEARCH_PAGE_LIMIT,
-      verdict,
-    }),
+    queryKey: searchKey(request),
     queryFn: ({ signal, pageParam }) =>
-      runReplaceableQuery("search-results", signal, (combinedSignal) =>
-        fetchSearch(
-          {
-            q,
-            mode,
-            sort,
-            scope,
-            account: search.account,
-            limit: SEARCH_PAGE_LIMIT,
-            offset: pageParam,
-            verdict,
-          },
-          { signal: combinedSignal },
-        ),
+      runReplaceableQuery("search-results", signal, (combined) =>
+        fetchSearch({ ...request, offset: pageParam }, { signal: combined }),
       ),
     initialPageParam: 0,
     getNextPageParam: (page) => (page.has_more ? (page.next_offset ?? undefined) : undefined),
     enabled: q.trim().length > 0,
   });
-  const groupedResults = useQuery({
-    queryKey: searchGroupsKey({
-      q,
-      mode,
-      sort,
-      scope,
-      account: search.account,
-      limit: 50,
-      groupBy,
-    }),
+  const facets = useQuery({
+    queryKey: searchGroupsKey({ q, mode, sort, scope, account, limit: 12, groupBy }),
     queryFn: ({ signal }) =>
-      runReplaceableQuery("search-groups", signal, (combinedSignal) =>
+      runReplaceableQuery("search-groups", signal, (combined) =>
         fetchSearchGroups(
-          { q, mode, sort, scope, account: search.account, limit: 50, groupBy },
-          { signal: combinedSignal },
+          { q, mode, sort, scope, account, limit: 12, groupBy },
+          { signal: combined },
         ),
       ),
     enabled: q.trim().length > 0,
@@ -121,503 +108,505 @@ export function SearchResultsRoute() {
     queryFn: fetchSavedSearches,
     staleTime: 60_000,
   });
-  const saveSearch = useMutation({
+  const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts, staleTime: 60_000 });
+
+  const update = useCallback(
+    (
+      next: Partial<{
+        q: string;
+        mode: SearchMode;
+        sort: SearchSort;
+        scope: Scope;
+        verdict: Verdict | null;
+        groupBy: SearchGroupBy;
+        account: string | null;
+      }>,
+    ) => {
+      void navigate({
+        to: "/search",
+        search: {
+          q: next.q ?? q,
+          mode: next.mode ?? mode,
+          sort: next.sort ?? sort,
+          scope: next.scope ?? scope,
+          verdict: next.verdict === null ? undefined : (next.verdict ?? verdict),
+          groupBy: next.groupBy ?? groupBy,
+          account: next.account === null ? undefined : (next.account ?? search.account),
+        },
+      });
+    },
+    [groupBy, mode, navigate, q, scope, search.account, sort, verdict],
+  );
+
+  const merged = useMemo(
+    () => mergeGroups((results.data?.pages ?? []).flatMap((page) => page.groups)),
+    [results.data],
+  );
+  const groups = useProjectedGroups(merged, SEARCH_LENS);
+  const loaded = groups.reduce((sum, group) => sum + group.rows.length, 0);
+  const total = results.data?.pages[0]?.total ?? loaded;
+  const llmCalls = results.data?.pages[0]?.llm_calls;
+
+  const save = useMutation({
     mutationFn: createSavedSearch,
-    onSuccess: () => {
-      toast.success("Saved search created");
+    onSuccess: (_, input) => {
+      toast.success(`Saved “${input.name}”`, {
+        description: "It's in the sidebar under Saved searches.",
+      });
       setSaveOpen(false);
-      setSaveName("");
       void qc.invalidateQueries({ queryKey: ["saved-searches"] });
       void qc.invalidateQueries({ queryKey: ["shell"] });
     },
-    onError: (error) => toast.error("Save search failed", { description: error.message }),
+    onError: (error) => toast.error("Couldn't save the search", { description: error.message }),
   });
 
-  function updateSearch(next: {
-    q?: string;
-    mode?: SearchMode;
-    sort?: SearchSort;
-    scope?: "threads" | "messages" | "attachments" | "triage";
-    verdict?: "ACTION" | "FYI" | "ROUTINE" | null;
-    groupBy?: SearchGroupBy;
-  }) {
-    void navigate({
-      to: "/search",
-      search: {
-        q: next.q ?? q,
-        mode: next.mode ?? mode,
-        sort: next.sort ?? sort,
-        scope: next.scope ?? scope,
-        verdict: next.verdict === null ? undefined : (next.verdict ?? verdict),
-        groupBy: next.groupBy ?? groupBy,
-        account: search.account,
-      },
-    });
-  }
-
   const tokens = parseSearchTokens(q);
-  const pages = results.data?.pages;
-  const groups = useMemo(
-    () => mergeSearchGroups((pages ?? []).flatMap((page) => page.groups)),
-    [pages],
-  );
-  const loadedCount = groups.reduce((sum, group) => sum + group.rows.length, 0);
-  const resultCount = pages?.[0]?.total ?? loadedCount;
-  const llmCalls = pages?.[0]?.llm_calls;
-  const hasMore = results.hasNextPage;
+  const realAccounts = (accounts.data?.accounts ?? []).filter((row) => row.enabled !== false);
 
-  useEffect(() => {
-    if (!hasMore || results.isFetchingNextPage) return;
-    const node = loadMoreRef.current;
-    if (!node || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        void results.fetchNextPage();
-      }
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [hasMore, results]);
-
-  useEffect(() => {
-    setDraftQ(q);
-  }, [q]);
-
-  // `/` refocuses the query input from anywhere on this page (capture
-  // phase + stopImmediatePropagation so the global search-palette
-  // shortcut doesn't also fire). Typing `/` inside a field is left alone.
-  useEffect(() => {
-    function focusOnSlash(event: KeyboardEvent) {
-      if (event.key !== "/" || event.defaultPrevented) return;
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
-      ) {
-        return;
-      }
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }
-    window.addEventListener("keydown", focusOnSlash, true);
-    return () => window.removeEventListener("keydown", focusOnSlash, true);
-  }, []);
-
-  return (
-    <div className="flex min-w-0 flex-1 flex-col bg-background">
-      <header className="border-b border-border px-6 py-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[280px] flex-1">
-            <Label htmlFor="search-page-input">Search query</Label>
-            <form
-              className="mt-1 flex gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                updateSearch({ q: draftQ });
-                inputRef.current?.blur();
-                // Hand keyboard control to the results list so j/k/o
-                // work immediately, without a click.
+  const toolbar = (
+    <div className="pt-0.5">
+      <form
+        className="flex items-center gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          update({ q: draft.trim() });
+          inputRef.current?.blur();
+          setActivePane("mailbox");
+        }}
+      >
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={inputRef}
+            aria-label="Search query"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.currentTarget.blur();
                 setActivePane("mailbox");
-              }}
-            >
-              <Input
-                ref={inputRef}
-                id="search-page-input"
-                name="q"
-                value={draftQ}
-                onChange={(event) => setDraftQ(event.target.value)}
-                placeholder="from:alice has:attachment"
-                className="h-9 bg-input text-sm"
-              />
-              <Button type="submit">
-                <Search className="size-3" />
-                Search
-              </Button>
-            </form>
-          </div>
-          <div>
-            <Label>Mode</Label>
-            <ToggleGroup
-              className="mt-1"
-              type="single"
-              value={mode}
-              onValueChange={(value) => {
-                if (value) updateSearch({ mode: value as SearchMode });
-              }}
-              aria-label="Search mode"
-            >
-              <ToggleGroupItem value="lexical" size="sm">
-                Lexical
-              </ToggleGroupItem>
-              <ToggleGroupItem value="semantic" size="sm">
-                Semantic
-              </ToggleGroupItem>
-              <ToggleGroupItem value="hybrid" size="sm">
-                Hybrid
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </div>
-          <div className="w-32">
-            <Label>Sort</Label>
-            <Select
-              value={sort}
-              onValueChange={(value) => updateSearch({ sort: value as SearchSort })}
-            >
-              <SelectTrigger className="mt-1 h-9" aria-label="Search sort">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="relevance">Relevance</SelectItem>
-                <SelectItem value="newest">Newest</SelectItem>
-                <SelectItem value="oldest">Oldest</SelectItem>
-                {scope === "triage" ? <SelectItem value="verdict">Verdict</SelectItem> : null}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="w-36">
-            <Label>Scope</Label>
-            <Select
-              value={scope}
-              onValueChange={(value) =>
-                updateSearch({
-                  scope: value as "threads" | "messages" | "attachments" | "triage",
-                  sort: value === "triage" ? "verdict" : sort === "verdict" ? "relevance" : sort,
-                })
               }
-            >
-              <SelectTrigger className="mt-1 h-9" aria-label="Search scope">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="threads">Threads</SelectItem>
-                <SelectItem value="messages">Messages</SelectItem>
-                <SelectItem value="attachments">Attachments</SelectItem>
-                <SelectItem value="triage">Triage</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {scope === "triage" ? (
-            <div className="w-36">
-              <Label>Verdict</Label>
-              <Select
-                value={verdict ?? "ALL"}
-                onValueChange={(value) =>
-                  updateSearch({
-                    verdict:
-                      value === "ALL" ? null : (value as "ACTION" | "FYI" | "ROUTINE"),
-                  })
-                }
-              >
-                <SelectTrigger className="mt-1 h-9" aria-label="Triage verdict filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All</SelectItem>
-                  <SelectItem value="ACTION">ACTION</SelectItem>
-                  <SelectItem value="FYI">FYI</SelectItem>
-                  <SelectItem value="ROUTINE">ROUTINE</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
-          <div className="w-36">
-            <Label>Group by</Label>
-            <Select
-              value={groupBy}
-              onValueChange={(value) => updateSearch({ groupBy: value as SearchGroupBy })}
-            >
-              <SelectTrigger className="mt-1 h-9" aria-label="Search group by">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="from">Sender</SelectItem>
-                <SelectItem value="list">List</SelectItem>
-                <SelectItem value="category">Category</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <Button variant="outline" onClick={() => setSaveOpen(true)} disabled={!q.trim()}>
-            <BookmarkPlus className="size-3" />
-            Save
-          </Button>
-          <SyntaxHelp />
+            }}
+            placeholder="from:ada has:attachment invoice"
+            className="h-10 pl-9 text-[14px]"
+          />
         </div>
-        {tokens.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {tokens.map((token) => (
-              <Badge
-                key={token.raw}
-                asChild
-                variant="outline"
-                className="py-1 text-foreground hover:bg-muted"
-              >
-                <button
-                  type="button"
-                  onClick={() => updateSearch({ q: removeSearchToken(q, token) })}
-                >
-                  {token.label}
-                  <X className="size-3 text-muted-foreground" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        ) : null}
-      </header>
-
-      {!q.trim() ? (
-        <EmptyState
-          icon={Search}
-          title="Search local mail"
-          description="Use Gmail-style operators or plain text. Exact lexical search stays the default path."
-        />
-      ) : results.isLoading ? (
-        <div className="space-y-2 p-4">
-          {Array.from({ length: 10 }, (_, index) => (
-            <div key={index} className="h-14 animate-pulse rounded-md bg-muted" />
+        <SyntaxHelp />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10"
+          disabled={!q.trim()}
+          onClick={() => setSaveOpen(true)}
+        >
+          <BookmarkPlus className="size-4" /> <span className="hidden @lg:inline">Save</span>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-10"
+          aria-label="Manage saved searches"
+          onClick={() => setManageOpen(true)}
+        >
+          <Bookmark className="size-4" />
+        </Button>
+      </form>
+      {tokens.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {tokens.map((token) => (
+            <button
+              key={token.raw}
+              type="button"
+              onClick={() => update({ q: removeSearchToken(q, token) })}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[11.5px]",
+                token.kind === "operator"
+                  ? "border-primary/40 bg-primary-muted/50 text-foreground"
+                  : "border-border text-muted-foreground",
+              )}
+              aria-label={`Remove ${token.label}`}
+            >
+              {token.label}
+              <X className="size-3 opacity-60" />
+            </button>
           ))}
         </div>
-      ) : results.isError ? (
-        <EmptyState
-          icon={RefreshCw}
-          title="Search failed"
-          description={results.error.message}
-          action={<Button onClick={() => results.refetch()}>Retry</Button>}
+      ) : null}
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        <Segmented
+          label="Search mode"
+          value={mode}
+          options={[
+            ["lexical", "Exact"],
+            ["hybrid", "Hybrid"],
+            ["semantic", "Meaning"],
+          ]}
+          onChange={(value) => update({ mode: value as SearchMode })}
         />
-      ) : groups.length === 0 ? (
-        <EmptyState
-          icon={Search}
-          title="No matches"
-          description="Try a broader query or switch search mode."
+        <CompactSelect
+          label="Show"
+          value={scope}
+          onChange={(value) =>
+            update({
+              scope: value as Scope,
+              sort: value === "triage" ? "verdict" : sort === "verdict" ? "relevance" : sort,
+            })
+          }
+          options={[
+            ["threads", "Conversations"],
+            ["messages", "Messages"],
+            ["attachments", "Attachments"],
+            ["triage", "Triage"],
+          ]}
         />
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex items-center justify-between px-4 py-2 text-2xs text-muted-foreground">
-            <span>
-              {loadedCount} of {resultCount} results · {mode} · {sort}
-              {scope === "triage" && typeof llmCalls === "number"
-                ? ` · ${llmCalls} LLM calls`
-                : ""}
-            </span>
-            <span>{savedSearches.data?.searches.length ?? 0} saved searches</span>
-          </div>
-          <div className="border-y border-border bg-surface px-4 py-3">
-            <div className="mb-2 flex items-center justify-between text-2xs uppercase tracking-wide text-muted-foreground">
-              <span>Grouped by {groupBy}</span>
-              <span>{groupedResults.data?.total ?? resultCount} messages</span>
-            </div>
-            {groupedResults.isError ? (
-              <p className="text-sm text-destructive">
-                Grouped view failed: {groupedResults.error.message}
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="text-2xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="py-1 pr-3 font-medium">Group</th>
-                      <th className="py-1 pr-3 text-right font-medium">Count</th>
-                      <th className="py-1 pr-3 text-right font-medium">Unread</th>
-                      <th className="py-1 pr-3 font-medium">Oldest</th>
-                      <th className="py-1 pr-3 font-medium">Newest</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(groupedResults.data?.groups ?? []).slice(0, 12).map((row) => (
-                      <tr key={row.key} className="border-t border-border/60">
-                        <td className="max-w-[24rem] truncate py-1.5 pr-3">{row.label}</td>
-                        <td className="py-1.5 pr-3 text-right tabular-nums">{row.count}</td>
-                        <td className="py-1.5 pr-3 text-right tabular-nums">{row.unread}</td>
-                        <td className="py-1.5 pr-3 text-muted-foreground">
-                          {formatGroupDate(row.oldest)}
-                        </td>
-                        <td className="py-1.5 pr-3 text-muted-foreground">
-                          {formatGroupDate(row.newest)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-          {/* Reuse the canonical mailbox list so search results match the
-              inbox exactly — same rows, selection, bulk actions, quick
-              actions, and keyboard navigation. */}
-          <MailboxList groups={groups} mailboxPath="/search" />
-          <div ref={loadMoreRef} className="flex justify-center border-t border-border p-3">
-            {hasMore ? (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={results.isFetchingNextPage}
-                onClick={() => results.fetchNextPage()}
-              >
-                {results.isFetchingNextPage ? "Loading…" : "Load more"}
-              </Button>
-            ) : (
-              <span className="text-2xs text-muted-foreground">End of results</span>
-            )}
-          </div>
+        <CompactSelect
+          label="Sort"
+          value={sort}
+          onChange={(value) => update({ sort: value as SearchSort })}
+          options={[
+            ["relevance", "Best match"],
+            ["newest", "Newest"],
+            ["oldest", "Oldest"],
+            ...(scope === "triage" ? ([["verdict", "Verdict"]] as [string, string][]) : []),
+          ]}
+        />
+        {scope === "triage" ? (
+          <CompactSelect
+            label="Verdict"
+            value={verdict ?? "ALL"}
+            onChange={(value) => update({ verdict: value === "ALL" ? null : (value as Verdict) })}
+            options={[
+              ["ALL", "Any"],
+              ["ACTION", "Action"],
+              ["FYI", "FYI"],
+              ["ROUTINE", "Routine"],
+            ]}
+          />
+        ) : null}
+        {realAccounts.length > 1 ? (
+          <CompactSelect
+            label="Account"
+            value={account ?? "ALL"}
+            onChange={(value) => update({ account: value === "ALL" ? null : value })}
+            options={[
+              ["ALL", "All accounts"],
+              ...realAccounts.map(
+                (row) => [row.account_id, row.email || row.name] as [string, string],
+              ),
+            ]}
+          />
+        ) : null}
+      </div>
+      {q && (facets.data?.groups.length ?? 0) > 1 ? (
+        <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5">
+          <CompactSelect
+            label="Narrow by"
+            value={groupBy}
+            onChange={(value) => update({ groupBy: value as SearchGroupBy })}
+            options={[
+              ["from", "Sender"],
+              ["list", "List"],
+              ["category", "Category"],
+            ]}
+          />
+          {(facets.data?.groups ?? []).slice(0, 10).map((row) => (
+            <button
+              key={row.key}
+              type="button"
+              title={`${row.label}: ${plural(row.count, "message")}, ${row.unread} unread`}
+              onClick={() =>
+                update({
+                  q: `${q} ${facetOperator(groupBy)}:${quoteIfNeeded(facetValue(row.key, row.label))}`.trim(),
+                })
+              }
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-[12px] hover:border-primary/60 hover:bg-accent"
+            >
+              <span className="max-w-[16ch] truncate">{shortFacet(row.label)}</span>
+              <span className="font-mono text-2xs text-muted-foreground">{row.count}</span>
+            </button>
+          ))}
         </div>
-      )}
+      ) : null}
+    </div>
+  );
 
-      <SavedSearchManager
-        searches={savedSearches.data?.searches ?? []}
-        onChange={() => {
-          void qc.invalidateQueries({ queryKey: ["saved-searches"] });
-          void qc.invalidateQueries({ queryKey: ["shell"] });
-        }}
+  return (
+    <>
+      <ListWithReader
+        basePath="/search"
+        preserveSearch
+        title="Search"
+        meta={
+          q && results.isSuccess
+            ? `${plural(total, "result")}${scope === "triage" && typeof llmCalls === "number" ? ` · ${plural(llmCalls, "LLM call")}` : ""}`
+            : null
+        }
+        toolbar={toolbar}
+        groups={groups}
+        scopeKey={`search|${q}|${mode}|${scope}|${account ?? "all"}`}
+        status={
+          q.trim()
+            ? results
+            : { isLoading: false, isError: false, error: null, refetch: () => undefined }
+        }
+        hasMore={results.hasNextPage}
+        loadingMore={results.isFetchingNextPage}
+        onLoadMore={() => void results.fetchNextPage()}
+        empty={
+          q.trim() ? (
+            <NoResults q={q} mode={mode} onTryHybrid={() => update({ mode: "hybrid" })} />
+          ) : (
+            <SearchStart
+              saved={savedSearches.data?.searches ?? []}
+              onRun={(query) => update({ q: query })}
+            />
+          )
+        }
       />
 
       <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Save search</DialogTitle>
+        <SaveSearchDialog
+          q={q}
+          pending={save.isPending}
+          onCancel={() => setSaveOpen(false)}
+          onSave={(name) => save.mutate({ name, query: q, mode })}
+        />
+      </Dialog>
+      <Dialog open={manageOpen} onOpenChange={setManageOpen}>
+        <DialogContent className="max-w-xl gap-0 p-0">
+          <DialogHeader className="border-b border-border px-4 py-3">
+            <DialogTitle>Saved searches</DialogTitle>
             <DialogDescription>
-              Saved searches become reusable lenses in the sidebar when the daemon shell exposes
-              them.
+              Pinned ones lead the sidebar; g 1 to g 9 jump to them.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="saved-search-name">Name</Label>
-            <Input
-              id="saved-search-name"
-              value={saveName}
-              onChange={(event) => setSaveName(event.target.value)}
-              placeholder="Invoices from Alice"
+          <div className="max-h-[60vh] overflow-auto">
+            <SavedSearchManager
+              searches={savedSearches.data?.searches ?? []}
+              onChange={() => {
+                void qc.invalidateQueries({ queryKey: ["saved-searches"] });
+                void qc.invalidateQueries({ queryKey: ["shell"] });
+              }}
+              onRun={(saved) => {
+                setManageOpen(false);
+                update({
+                  q: saved.query,
+                  mode: (saved.search_mode as SearchMode | undefined) ?? mode,
+                });
+              }}
             />
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setSaveOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={!saveName.trim() || saveSearch.isPending}
-              onClick={() => saveSearch.mutate({ name: saveName.trim(), query: q, mode })}
-            >
-              Save
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+function SaveSearchDialog({
+  q,
+  pending,
+  onCancel,
+  onSave,
+}: {
+  q: string;
+  pending: boolean;
+  onCancel: () => void;
+  onSave: (name: string) => void;
+}) {
+  const [name, setName] = useState("");
+  return (
+    <DialogContent className="max-w-md">
+      <DialogHeader>
+        <DialogTitle>Save this search</DialogTitle>
+        <DialogDescription className="font-mono text-2xs">{q}</DialogDescription>
+      </DialogHeader>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (name.trim()) onSave(name.trim());
+        }}
+      >
+        <Input
+          autoFocus
+          aria-label="Name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Invoices to file"
+        />
+        <DialogFooter className="mt-4">
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={!name.trim() || pending}>
+            Save search
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  );
+}
+
+function SearchStart({
+  saved,
+  onRun,
+}: {
+  saved: { id: string; name: string; query: string }[];
+  onRun: (q: string) => void;
+}) {
+  return (
+    <div className="flex-1 overflow-auto px-6 py-8">
+      <div className="mx-auto max-w-xl">
+        <h2 className="text-[15px] font-semibold">Search everything you have, offline</h2>
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          Exact search is the default. Hybrid adds meaning-based matches when semantic search is on.
+        </p>
+        {saved.length > 0 ? (
+          <>
+            <h3 className="mb-1 mt-6 font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint">
+              Saved
+            </h3>
+            <ul className="divide-y divide-border/70 rounded-md border border-border">
+              {saved.slice(0, 9).map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => onRun(item.query)}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent"
+                  >
+                    <span className="flex-1 truncate text-[13px]">{item.name}</span>
+                    <span className="truncate font-mono text-2xs text-muted-foreground">
+                      {item.query}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
+        <h3 className="mb-1 mt-6 font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint">
+          Operators
+        </h3>
+        <dl className="grid grid-cols-[minmax(0,auto)_1fr] gap-x-4 gap-y-1 text-[13px]">
+          {searchSyntaxRows.map(([operator, description]) => (
+            <div key={operator} className="contents">
+              <dt>
+                <button
+                  type="button"
+                  onClick={() => onRun(operator)}
+                  className="font-mono text-[12px] text-primary hover:underline"
+                >
+                  {operator}
+                </button>
+              </dt>
+              <dd className="text-muted-foreground">{description}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
     </div>
   );
 }
 
-function formatGroupDate(timestamp?: number | null) {
-  if (!timestamp) return "—";
-  return new Date(timestamp * 1000).toLocaleDateString();
+function NoResults({
+  q,
+  mode,
+  onTryHybrid,
+}: {
+  q: string;
+  mode: SearchMode;
+  onTryHybrid: () => void;
+}) {
+  const hasOperators = /\w+:/.test(q);
+  return (
+    <Centered
+      icon={<SearchX className="size-6" />}
+      title="No matches"
+      body={
+        hasOperators
+          ? "Check the operators: from: and to: match addresses and names; is:unread and has:attachment need nothing after them."
+          : mode === "lexical"
+            ? "Exact search matches the words you typed. Hybrid also finds messages that mean the same thing."
+            : "Nothing close enough. Try fewer or different words."
+      }
+      action={
+        mode === "lexical" && !hasOperators ? (
+          <Button variant="outline" size="sm" onClick={onTryHybrid}>
+            Try hybrid search
+          </Button>
+        ) : undefined
+      }
+    />
+  );
 }
 
-function mergeSearchGroups(groups: MessageGroupView[]): MessageGroupView[] {
-  const merged = new Map<string, MessageGroupView>();
-  for (const group of groups) {
-    const existing = merged.get(group.id);
-    if (existing) {
-      existing.rows.push(...group.rows);
-    } else {
-      merged.set(group.id, { ...group, rows: [...group.rows] });
-    }
-  }
-  return Array.from(merged.values());
-}
-
-
-function SavedSearchManager({
-  searches,
+function Segmented({
+  label,
+  value,
+  options,
   onChange,
 }: {
-  searches: SavedSearch[];
-  onChange: () => void;
+  label: string;
+  value: string;
+  options: [string, string][];
+  onChange: (value: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const update = useMutation({
-    mutationFn: ({
-      name,
-      patch,
-    }: {
-      name: string;
-      patch: Parameters<typeof updateSavedSearch>[1];
-    }) => updateSavedSearch(name, patch),
-    onSuccess: () => {
-      onChange();
-      toast.success("Saved search updated");
-    },
-    onError: (error: Error) =>
-      toast.error("Update saved search failed", { description: error.message }),
-  });
-  const remove = useMutation({
-    mutationFn: (name: string) => deleteSavedSearch(name),
-    onSuccess: () => {
-      onChange();
-      toast.success("Saved search deleted");
-    },
-    onError: (error: Error) =>
-      toast.error("Delete saved search failed", { description: error.message }),
-  });
-
-  if (searches.length === 0) return null;
-
   return (
-    <details
-      open={open}
-      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
-      className="border-t border-border bg-surface px-6 py-3"
+    <div
+      role="radiogroup"
+      aria-label={label}
+      className="flex rounded-md border border-border p-0.5"
     >
-      <summary className="cursor-pointer text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Manage saved searches ({searches.length})
-      </summary>
-      <ul className="mt-3 space-y-2">
-        {searches.map((s) => (
-          <li
-            key={s.id}
-            className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs"
-          >
-            {s.icon ? (
-              <span
-                aria-label="Color tag"
-                className="size-3 rounded-full"
-                style={{ background: s.icon }}
-              />
-            ) : null}
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-medium">{s.name}</div>
-              <div className="truncate font-mono text-2xs text-muted-foreground">{s.query}</div>
-            </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={update.isPending}
-              onClick={() => {
-                const isPinned = (s.position ?? 0) < 0;
-                update.mutate({ name: s.name, patch: { position: isPinned ? 0 : -1 } });
-              }}
-            >
-              {(s.position ?? 0) < 0 ? "Unpin" : "Pin"}
-            </Button>
-            <input
-              type="color"
-              aria-label={`Color for ${s.name}`}
-              defaultValue={s.icon ?? "#888888"}
-              onBlur={(e) => update.mutate({ name: s.name, patch: { icon: e.target.value } })}
-              className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent"
-            />
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={remove.isPending}
-              onClick={() => {
-                if (confirm(`Delete saved search "${s.name}"?`)) remove.mutate(s.name);
-              }}
-            >
-              Delete
-            </Button>
-          </li>
+      {options.map(([id, text]) => (
+        <button
+          key={id}
+          type="button"
+          role="radio"
+          aria-checked={value === id}
+          onClick={() => onChange(id)}
+          className={cn(
+            "rounded px-2 py-0.5 text-[12.5px]",
+            value === id
+              ? "bg-accent font-medium text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CompactSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: [string, string][];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger
+        aria-label={label}
+        className="h-7 w-auto shrink-0 gap-1.5 border-border px-2 text-[12.5px]"
+      >
+        <span className="text-muted-foreground">{label}:</span>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map(([id, text]) => (
+          <SelectItem key={id} value={id}>
+            {text}
+          </SelectItem>
         ))}
-      </ul>
-    </details>
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -625,21 +614,65 @@ function SyntaxHelp() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Search syntax">
-          <HelpCircle className="size-3" />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-10"
+          aria-label="Search operators"
+        >
+          <HelpCircle className="size-4" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
-        <div className="mb-2 text-xs font-semibold">Search operators</div>
+        <div className="mb-2 text-[13px] font-semibold">Operators</div>
         <div className="grid gap-1">
           {searchSyntaxRows.map(([operator, description]) => (
-            <div key={operator} className="flex items-center justify-between gap-3 text-2xs">
-              <code className="rounded bg-muted px-1.5 py-0.5">{operator}</code>
+            <div key={operator} className="flex items-center justify-between gap-3 text-[12px]">
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono">{operator}</code>
               <span className="text-muted-foreground">{description}</span>
             </div>
           ))}
         </div>
+        <p className="mt-3 text-2xs text-muted-foreground">
+          Press <KeyChip>/</KeyChip> anywhere for quick search.
+        </p>
       </PopoverContent>
     </Popover>
   );
+}
+
+function facetOperator(groupBy: SearchGroupBy): string {
+  return groupBy === "from" ? "from" : groupBy === "list" ? "list" : "category";
+}
+
+/** Sender facets arrive as "Name <email>"; filter on the address. */
+function facetValue(key: string, label: string): string {
+  const email = label.match(/<([^>]+)>/)?.[1];
+  return email ?? key;
+}
+
+function shortFacet(label: string): string {
+  return label.replace(/\s*<[^>]+>/, "").trim() || label;
+}
+
+function quoteIfNeeded(value: string): string {
+  return /\s/.test(value) ? `"${value}"` : value;
+}
+
+function mergeGroups(groups: MessageGroupView[]): MessageGroupView[] {
+  const merged = new Map<string, MessageGroupView>();
+  const seen = new Set<string>();
+  for (const group of groups) {
+    const rows = group.rows.filter((row) => {
+      const key = `${row.kind}:${row.kind === "thread" ? row.thread_id : row.id}:${row.attachment_id ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const existing = merged.get(group.id);
+    if (existing) existing.rows.push(...rows);
+    else merged.set(group.id, { ...group, rows: [...rows] });
+  }
+  return [...merged.values()];
 }

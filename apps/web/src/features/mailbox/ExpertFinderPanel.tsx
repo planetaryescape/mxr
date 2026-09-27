@@ -65,10 +65,7 @@ export function ExpertFinderPanel() {
       ) : (
         <div className="space-y-2">
           {experts.map((expert) => (
-            <div
-              key={expert.email}
-              className="rounded-md border border-border bg-muted/30 p-3"
-            >
+            <div key={expert.email} className="rounded-md border border-border bg-muted/30 p-3">
               <div className="text-xs font-medium">{expert.display_name || expert.email}</div>
               <div className="break-all font-mono text-2xs text-muted-foreground">
                 {expert.email}

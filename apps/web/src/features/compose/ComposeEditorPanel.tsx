@@ -284,7 +284,9 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
       <ComposeActionBar
         onSend={controller.requestSend}
         onSendLater={controller.requestSendLater}
-        onSendAndArchive={controller.intent.messageId ? controller.requestSendAndArchive : undefined}
+        onSendAndArchive={
+          controller.intent.messageId ? controller.requestSendAndArchive : undefined
+        }
         onSendAndRemind={controller.requestSendAndRemind}
         onSendAndRemindCustom={() => controller.setRemindDialogOpen(true)}
         onAttach={controller.handleAttachShortcut}

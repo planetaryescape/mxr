@@ -75,9 +75,7 @@ function DeliveryCard({
             <span className="text-2xs text-muted-foreground">· {delivery.carrier}</span>
           )}
         </div>
-        {itemText && (
-          <div className="mt-1 truncate text-sm text-muted-foreground">{itemText}</div>
-        )}
+        {itemText && <div className="mt-1 truncate text-sm text-muted-foreground">{itemText}</div>}
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
           <span>{etaText(delivery)}</span>
           {delivery.order_number && <span>Order {delivery.order_number}</span>}

@@ -22,10 +22,6 @@ export function withFocusedThread(): ActionPredicate {
   return (ctx) => ctx.hasFocusedThread;
 }
 
-export function withFocusedMessage(): ActionPredicate {
-  return (ctx) => ctx.hasFocusedMessage;
-}
-
 /**
  * Mirrors the TUI screener constraint at `crates/tui/src/app/mailbox_actions.rs:394`:
  * "Screener: open an inbox first so we know which account."

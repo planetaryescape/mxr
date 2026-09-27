@@ -13,12 +13,7 @@ import { getActiveQueryClient } from "@/lib/queryClient";
 import type { Action } from "@/lib/actions/types";
 import { useModals } from "@/state/modalStore";
 
-import {
-  backfillSemantic,
-  reindexSemantic,
-  semanticSnapshot,
-  setSemanticEnabled,
-} from "./api";
+import { backfillSemantic, reindexSemantic, semanticSnapshot, setSemanticEnabled } from "./api";
 
 function semanticEnabledFromCache(): boolean {
   const client = getActiveQueryClient();
@@ -101,4 +96,3 @@ export const diagnosticsActions: Action[] = [
     },
   },
 ];
-

@@ -100,10 +100,7 @@ export function intentFromComposeLocation(
 }
 
 /** Intent for reply/reply-all/forward on a thread's primary message. */
-export function replyIntent(
-  messageId: string,
-  mode: "single" | "all" | "forward",
-): ComposeIntent {
+export function replyIntent(messageId: string, mode: "single" | "all" | "forward"): ComposeIntent {
   const kind: ComposeKind = mode === "forward" ? "forward" : mode === "all" ? "reply_all" : "reply";
   const title =
     kind === "forward" ? "Forward message" : kind === "reply_all" ? "Reply all" : "Reply";

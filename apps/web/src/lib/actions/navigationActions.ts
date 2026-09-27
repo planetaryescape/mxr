@@ -1,23 +1,43 @@
 /*
- * Global navigation + system actions shared by the command palette and the
- * shortcut map.
+ * Global navigation and shell actions. Chords follow the TUI's live key
+ * handler (crates/tui/src/input.rs): `g` + letter for views, digits for the
+ * TUI's tabs. Web-only destinations use letters the TUI leaves free, and
+ * every deliberate difference carries a `tuiNote` that help displays.
  */
 
 import {
+  Activity,
   Archive,
   BarChart3,
+  CalendarDays,
+  Clock,
   FileText,
+  Hourglass,
   Inbox,
+  ListTodo,
   Mail,
+  MailX,
+  Package,
+  Reply,
   Search,
   Send,
   Settings as SettingsIcon,
   Shield,
+  ShieldAlert,
   Star,
+  Stethoscope,
+  Tag,
+  Trash2,
+  Undo2,
+  Users,
+  Workflow,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { newMessageIntent, useComposeUi } from "@/features/compose/composeUiStore";
+import { performUndo } from "@/features/mail-actions/mailMutations";
 import { useModals } from "@/state/modalStore";
+import { useUndo } from "@/state/undoStore";
 
 import { getRuntimeNavigate } from "./runtime";
 import type { Action } from "./types";
@@ -26,31 +46,51 @@ function go(to: string): () => void {
   return () => getRuntimeNavigate().navigate(to);
 }
 
+function undoLast(): void {
+  const undo = useUndo.getState();
+  // A pending undo-send window is the most recent reversible action.
+  if (undo.pendingSendCancel) {
+    undo.pendingSendCancel();
+    return;
+  }
+  useModals.getState().setCommandPaletteOpen(false);
+  if (undo.lastUndo) {
+    void undo.lastUndo();
+    return;
+  }
+  if (undo.lastMutationId) {
+    void performUndo(undo.lastMutationId);
+    return;
+  }
+  toast.info("Nothing to undo");
+}
+
 export const navigationActions: Action[] = [
   {
     id: "shell.command-palette",
     label: "Command palette",
-    description: "Open the command palette",
+    description: "Run any action by name",
     group: "Navigate",
-    shortcut: "$mod+KeyK",
+    shortcut: "Mod+k",
+    aliases: [":", "Ctrl+p"],
+    hideInPalette: true,
     run: () => useModals.getState().setCommandPaletteOpen(true),
   },
   {
     id: "shell.search-palette",
-    label: "Search",
-    description: "Open the search palette",
+    label: "Search mail",
+    description: "Search the whole local archive",
     group: "Search",
     icon: Search,
     shortcut: "/",
-    aliases: ["Slash", "2", "Digit2"],
     run: () => useModals.getState().setSearchPaletteOpen(true),
   },
   {
     id: "shell.help",
-    label: "Help",
-    description: "Show the keyboard reference",
+    label: "Keyboard help",
+    description: "Every shortcut for the current view",
     group: "Navigate",
-    shortcut: "Shift+Slash",
+    shortcut: "?",
     run: () => {
       const modals = useModals.getState();
       modals.setHelpOpen(!modals.helpOpen);
@@ -62,16 +102,29 @@ export const navigationActions: Action[] = [
     description: "Start a new message",
     group: "Compose",
     icon: Mail,
-    shortcut: "KeyC",
+    shortcut: "c",
     run: () => useComposeUi.getState().openCompose(newMessageIntent(), "overlay"),
   },
+  {
+    id: "mail.undo",
+    label: "Undo last action",
+    description: "Reverse the last archive, trash, label or send (about 60 seconds)",
+    group: "Mail",
+    icon: Undo2,
+    shortcut: "u",
+    aliases: ["z"],
+    tuiNote: "z also undoes, for Gmail muscle memory",
+    run: undoLast,
+  },
+
+  // Views. g + letter, as in the TUI.
   {
     id: "nav.inbox",
     label: "Go to Inbox",
     group: "Navigate",
     icon: Inbox,
     shortcut: "g i",
-    aliases: ["1", "Digit1"],
+    aliases: ["g 0"],
     run: go("/m/inbox"),
   },
   {
@@ -83,20 +136,21 @@ export const navigationActions: Action[] = [
     run: go("/m/starred"),
   },
   {
+    id: "nav.sent",
+    label: "Go to Sent",
+    group: "Navigate",
+    icon: Send,
+    shortcut: "g t",
+    run: go("/m/sent"),
+  },
+  {
     id: "nav.drafts",
     label: "Go to Drafts",
     group: "Navigate",
     icon: FileText,
     shortcut: "g d",
+    aliases: ["g E"],
     run: go("/drafts"),
-  },
-  {
-    id: "nav.sent",
-    label: "Go to Sent",
-    group: "Navigate",
-    icon: Send,
-    paletteOnly: true,
-    run: go("/m/sent"),
   },
   {
     id: "nav.archive",
@@ -107,101 +161,189 @@ export const navigationActions: Action[] = [
     run: go("/m/archive"),
   },
   {
-    id: "nav.trash",
-    label: "Go to Trash",
+    id: "nav.labels",
+    label: "Go to label",
+    description: "Jump to any label or saved search",
     group: "Navigate",
-    shortcut: "g t",
-    run: go("/m/trash"),
-  },
-  {
-    id: "nav.snoozed",
-    label: "Go to Snoozed",
-    group: "Navigate",
-    shortcut: "g n",
-    run: go("/m/snoozed"),
-  },
-  {
-    id: "nav.reply-queue",
-    label: "Go to Reply queue",
-    group: "Navigate",
+    icon: Tag,
     shortcut: "g l",
-    run: go("/reply-queue"),
-  },
-  {
-    id: "nav.subscriptions",
-    label: "Go to Subscriptions",
-    group: "Navigate",
-    shortcut: "g u",
-    run: go("/subscriptions"),
-  },
-  {
-    id: "nav.rules",
-    label: "Go to Rules",
-    group: "Navigate",
-    shortcut: "g r",
-    run: go("/rules"),
+    run: () => useModals.getState().openCommandPaletteAt("lens"),
   },
   {
     id: "nav.analytics",
     label: "Analytics",
     group: "Analytics",
     icon: BarChart3,
-    shortcut: "g y",
-    aliases: ["3", "Digit3"],
+    shortcut: "g A",
     run: go("/analytics"),
   },
   {
-    id: "nav.rules-numeric",
-    label: "Rules (numeric)",
-    group: "Navigate",
-    aliases: ["4", "Digit4"],
-    paletteOnly: true,
-    run: go("/rules"),
-  },
-  {
-    id: "nav.screener",
-    label: "Screener",
-    group: "Triage",
-    icon: Shield,
-    aliases: ["5", "Digit5"],
-    run: go("/screener"),
-  },
-  {
-    id: "nav.subscriptions-numeric",
-    label: "Subscriptions (numeric)",
-    group: "Navigate",
-    aliases: ["6", "Digit6"],
-    paletteOnly: true,
-    run: go("/subscriptions"),
-  },
-  {
-    id: "nav.reply-queue-numeric",
-    label: "Reply queue (numeric)",
-    group: "Navigate",
-    aliases: ["7", "Digit7"],
-    paletteOnly: true,
-    run: go("/reply-queue"),
-  },
-  {
-    id: "nav.accounts",
-    label: "Accounts",
-    group: "Accounts",
-    aliases: ["8", "Digit8"],
-    run: go("/accounts"),
-  },
-  {
-    id: "nav.diagnostics",
-    label: "Diagnostics",
+    id: "nav.activity",
+    label: "Activity log",
     group: "Diagnostics",
-    aliases: ["9", "Digit9"],
-    run: go("/diagnostics"),
+    icon: Activity,
+    shortcut: "g y",
+    run: go("/activity"),
+  },
+  {
+    id: "nav.logs",
+    label: "Daemon logs",
+    group: "Diagnostics",
+    icon: Stethoscope,
+    shortcut: "g L",
+    run: go("/diagnostics?panel=logs"),
   },
   {
     id: "nav.settings",
     label: "Settings",
     group: "Settings",
     icon: SettingsIcon,
-    aliases: ["0", "Digit0"],
+    shortcut: "g c",
+    aliases: ["0"],
+    tuiNote: "The TUI opens config.toml in $EDITOR; the web opens Settings",
     run: go("/settings/theme"),
+  },
+  // Web-only views, on letters the TUI does not use.
+  {
+    id: "nav.snoozed",
+    label: "Go to Snoozed",
+    group: "Navigate",
+    icon: Clock,
+    shortcut: "g n",
+    run: go("/m/snoozed"),
+    tuiNote: "Web only",
+  },
+  {
+    id: "nav.trash",
+    label: "Go to Trash",
+    group: "Navigate",
+    icon: Trash2,
+    shortcut: "g #",
+    run: go("/m/trash"),
+    tuiNote: "Web only",
+  },
+  {
+    id: "nav.spam",
+    label: "Go to Spam",
+    group: "Navigate",
+    icon: ShieldAlert,
+    shortcut: "g !",
+    run: go("/m/spam"),
+    tuiNote: "Web only",
+  },
+  {
+    id: "nav.reply-queue",
+    label: "Reply queue",
+    group: "Triage",
+    icon: Reply,
+    shortcut: "g q",
+    run: go("/reply-queue"),
+    tuiNote: "Palette only in the TUI",
+  },
+  {
+    id: "nav.owed",
+    label: "Owed replies",
+    group: "Triage",
+    icon: Hourglass,
+    shortcut: "g o",
+    run: go("/owed"),
+    tuiNote: "Sidebar lens in the TUI",
+  },
+  {
+    id: "nav.invites",
+    label: "Calendar invites",
+    group: "Triage",
+    icon: CalendarDays,
+    shortcut: "g v",
+    aliases: ["9"],
+    run: go("/invites"),
+    tuiNote: "Sidebar lens in the TUI",
+  },
+  {
+    id: "nav.subscriptions",
+    label: "Subscriptions",
+    group: "Triage",
+    icon: MailX,
+    shortcut: "g u",
+    run: go("/subscriptions"),
+    tuiNote: "Sidebar lens in the TUI",
+  },
+  {
+    id: "nav.screener",
+    label: "Screener",
+    group: "Triage",
+    icon: Shield,
+    shortcut: "g S",
+    aliases: ["8"],
+    run: go("/screener"),
+    tuiNote: "Palette only in the TUI",
+  },
+  {
+    id: "nav.jobs",
+    label: "Background jobs",
+    group: "Diagnostics",
+    icon: ListTodo,
+    paletteOnly: true,
+    run: go("/jobs"),
+  },
+
+  // Tabs. 1 to 7 match the TUI's tab bar.
+  {
+    id: "nav.tab-mail",
+    label: "Mail",
+    group: "Navigate",
+    icon: Inbox,
+    shortcut: "1",
+    hideInPalette: true,
+    run: go("/m/inbox"),
+  },
+  {
+    id: "nav.search-page",
+    label: "Search page",
+    group: "Search",
+    icon: Search,
+    shortcut: "2",
+    run: go("/search"),
+  },
+  {
+    id: "nav.rules",
+    label: "Rules",
+    group: "Rules",
+    icon: Workflow,
+    shortcut: "3",
+    aliases: ["g r"],
+    run: go("/rules"),
+  },
+  {
+    id: "nav.accounts",
+    label: "Accounts",
+    group: "Accounts",
+    icon: Users,
+    shortcut: "4",
+    run: go("/accounts"),
+  },
+  {
+    id: "nav.diagnostics",
+    label: "Diagnostics",
+    group: "Diagnostics",
+    icon: Stethoscope,
+    shortcut: "5",
+    run: go("/diagnostics"),
+  },
+  {
+    id: "nav.tab-analytics",
+    label: "Analytics (tab)",
+    group: "Analytics",
+    shortcut: "6",
+    hideInPalette: true,
+    run: go("/analytics"),
+  },
+  {
+    id: "nav.deliveries",
+    label: "Deliveries",
+    group: "Triage",
+    icon: Package,
+    shortcut: "7",
+    run: go("/deliveries"),
   },
 ];

@@ -31,9 +31,7 @@ function wrap(node: React.ReactNode) {
   return <QueryClientProvider client={client}>{node}</QueryClientProvider>;
 }
 
-function baseCalendar(
-  overrides: Partial<CalendarMetadataView> = {},
-): CalendarMetadataView {
+function baseCalendar(overrides: Partial<CalendarMetadataView> = {}): CalendarMetadataView {
   return {
     method: "REQUEST",
     summary: "Demo Meeting",
@@ -84,15 +82,7 @@ afterEach(() => {
 
 describe("InviteCard", () => {
   it("renders all three action buttons when the viewer has not responded", () => {
-    render(
-      wrap(
-        <InviteCard
-          messageId="m1"
-          threadId="t1"
-          metadata={baseCalendar()}
-        />,
-      ),
-    );
+    render(wrap(<InviteCard messageId="m1" threadId="t1" metadata={baseCalendar()} />));
     expect(screen.getByRole("region", { name: /calendar invite/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /accept/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /maybe/i })).toBeInTheDocument();
@@ -116,11 +106,7 @@ describe("InviteCard", () => {
   it("shows the cancelled banner and hides actions on CANCEL method", () => {
     render(
       wrap(
-        <InviteCard
-          messageId="m1"
-          threadId="t1"
-          metadata={baseCalendar({ method: "CANCEL" })}
-        />,
+        <InviteCard messageId="m1" threadId="t1" metadata={baseCalendar({ method: "CANCEL" })} />,
       ),
     );
     expect(screen.getByText(/event canceled by organizer/i)).toBeInTheDocument();
@@ -130,26 +116,14 @@ describe("InviteCard", () => {
   it("shows the updated banner when is_update is true", () => {
     render(
       wrap(
-        <InviteCard
-          messageId="m1"
-          threadId="t1"
-          metadata={baseCalendar({ is_update: true })}
-        />,
+        <InviteCard messageId="m1" threadId="t1" metadata={baseCalendar({ is_update: true })} />,
       ),
     );
     expect(screen.getByText(/updated invite/i)).toBeInTheDocument();
   });
 
   it("clicking Accept does not fire the network call immediately (1s undo window)", () => {
-    render(
-      wrap(
-        <InviteCard
-          messageId="m1"
-          threadId="t1"
-          metadata={baseCalendar()}
-        />,
-      ),
-    );
+    render(wrap(<InviteCard messageId="m1" threadId="t1" metadata={baseCalendar()} />));
     apiFetchMock.mockClear();
 
     fireEvent.click(screen.getByRole("button", { name: /accept/i }));
@@ -157,9 +131,7 @@ describe("InviteCard", () => {
     // The hold-and-send pattern guarantees no network call fires within the
     // 1s window. Don't advance timers — component unmount clears the timer.
     expect(
-      apiFetchMock.mock.calls.filter(([url]) =>
-        String(url).includes("/actions/invite/reply"),
-      ),
+      apiFetchMock.mock.calls.filter(([url]) => String(url).includes("/actions/invite/reply")),
     ).toHaveLength(0);
   });
 });

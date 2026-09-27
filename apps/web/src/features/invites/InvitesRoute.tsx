@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, Check, HelpCircle, MoreHorizontal, RefreshCw, X } from "lucide-react";
-import { toast } from "sonner";
 
 import { fetchInvites, type CalendarInviteData } from "./api";
 import { EmptyState } from "@/components/EmptyState";
@@ -13,10 +12,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { CalendarMetadataView, CalendarPartstatView } from "@/features/mailbox/types";
 import {
-  openInviteReplyComposeSession,
+  openInviteComment,
   useInviteResponse,
   type InviteAction,
-} from "@/features/thread/useInviteResponse";
+} from "@/features/invites/useInviteResponse";
 
 const PARTSTAT_LABELS: Record<CalendarPartstatView, string> = {
   accepted: "Accepted",
@@ -48,9 +47,7 @@ function isRequest(metadata: CalendarMetadataView): boolean {
 
 function whenText(metadata: CalendarMetadataView): string {
   if (!metadata.starts_at) return "";
-  return metadata.ends_at
-    ? `${metadata.starts_at} – ${metadata.ends_at}`
-    : metadata.starts_at;
+  return metadata.ends_at ? `${metadata.starts_at} – ${metadata.ends_at}` : metadata.starts_at;
 }
 
 function organizerText(metadata: CalendarMetadataView): string {
@@ -61,10 +58,7 @@ function organizerText(metadata: CalendarMetadataView): string {
 
 function InviteRow({ invite }: { invite: CalendarInviteData }) {
   const { metadata, message_id } = invite;
-  const { begin, cancel, pendingAction } = useInviteResponse({
-    messageId: message_id,
-    invalidateKeys: [["invites"]],
-  });
+  const { begin, pendingAction } = useInviteResponse({ messageId: message_id });
 
   const cancelled = isCancelled(metadata);
   const viewerPartstat: CalendarPartstatView | null = metadata.viewer_partstat ?? null;
@@ -75,36 +69,8 @@ function InviteRow({ invite }: { invite: CalendarInviteData }) {
       viewerPartstat === "needs_action" ||
       viewerPartstat === "delegated");
 
-  const handleClick = (action: InviteAction) => {
-    begin(action);
-    toast(
-      action === "accept"
-        ? "Accepting invite…"
-        : action === "tentative"
-          ? "Responding tentative…"
-          : "Declining invite…",
-      {
-        id: `invite-${message_id}`,
-        duration: 1100,
-        action: {
-          label: "Undo",
-          onClick: () => {
-            cancel();
-            toast.success("Cancelled", { id: `invite-${message_id}`, duration: 1500 });
-          },
-        },
-      },
-    );
-  };
-
-  const handleComment = async (action: InviteAction) => {
-    try {
-      await openInviteReplyComposeSession(message_id, action);
-      toast.success("Compose draft opened — write your comment then send");
-    } catch (error) {
-      toast.error("Failed to open comment compose", { description: String(error) });
-    }
-  };
+  const handleClick = (action: InviteAction) => begin(action);
+  const handleComment = (action: InviteAction) => openInviteComment(message_id, action);
 
   return (
     <div className="flex items-start gap-4 border-b border-border px-6 py-4">
@@ -124,19 +90,29 @@ function InviteRow({ invite }: { invite: CalendarInviteData }) {
             </span>
           )}
           <span
-            className={cancelled ? "truncate font-medium line-through text-muted-foreground" : "truncate font-medium"}
+            className={
+              cancelled
+                ? "truncate font-medium line-through text-muted-foreground"
+                : "truncate font-medium"
+            }
           >
             {metadata.summary || "(no title)"}
           </span>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
-          {whenText(metadata) && <span className={cancelled ? "line-through" : ""}>{whenText(metadata)}</span>}
+          {whenText(metadata) && (
+            <span className={cancelled ? "line-through" : ""}>{whenText(metadata)}</span>
+          )}
           {metadata.location && <span>· {metadata.location}</span>}
           {organizerText(metadata) && <span>· {organizerText(metadata)}</span>}
         </div>
 
         {showActions ? (
-          <div className="mt-2 flex flex-wrap items-center gap-2" role="group" aria-label="Invite response">
+          <div
+            className="mt-2 flex flex-wrap items-center gap-2"
+            role="group"
+            aria-label="Invite response"
+          >
             <Button
               variant={pendingAction === "accept" ? "default" : "outline"}
               size="sm"
@@ -205,8 +181,8 @@ export function InvitesRoute() {
         </div>
         <h1 className="text-xl font-semibold tracking-tight">Calendar invites</h1>
         <p className="mt-1 text-2xs text-muted-foreground">
-          Every calendar invite detected in your mail, across accounts. Respond inline — RSVPs
-          send after a short undo window.
+          Every calendar invite detected in your mail, across accounts. Respond inline — RSVPs send
+          after a short undo window.
         </p>
       </header>
 

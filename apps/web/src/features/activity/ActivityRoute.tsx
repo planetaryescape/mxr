@@ -243,11 +243,7 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
             <div className="mb-2 flex items-center justify-between rounded border border-border bg-muted/30 px-3 py-2">
               <span className="text-sm">{selectedIds.size} selected</span>
               <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setSelectedIds(new Set())}
-                >
+                <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
                   Clear
                 </Button>
                 <Button
@@ -270,7 +266,9 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
           )}
 
           {list.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-          {list.error && <p className="text-sm text-destructive">{(list.error as Error).message}</p>}
+          {list.error && (
+            <p className="text-sm text-destructive">{(list.error as Error).message}</p>
+          )}
           {!list.isLoading && entries.length === 0 && (
             <p className="text-sm text-muted-foreground">
               No activity in this window. Try a wider time range, or wait — mxr starts recording as
@@ -286,9 +284,7 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
                     <th className="w-10 px-2 py-1.5 text-left">
                       <input
                         type="checkbox"
-                        checked={
-                          entries.length > 0 && selectedIds.size === entries.length
-                        }
+                        checked={entries.length > 0 && selectedIds.size === entries.length}
                         onChange={(e) => {
                           if (e.target.checked) {
                             setSelectedIds(new Set(entries.map((entry) => entry.id)));
@@ -333,7 +329,7 @@ export function ActivityBrowser({ embedded = false }: ActivityBrowserProps) {
                       <td className="px-2 py-1.5 font-mono text-xs">
                         {entry.target_kind && entry.target_id
                           ? `${entry.target_kind}:${entry.target_id.slice(0, 12)}`
-                          : entry.target_kind ?? "—"}
+                          : (entry.target_kind ?? "—")}
                       </td>
                       <td className="px-2 py-1.5 text-xs">{entry.tier}</td>
                       <td className="max-w-[400px] truncate px-2 py-1.5 font-mono text-xs">
@@ -376,6 +372,8 @@ function SourceBadge({ source }: { source: ClientKind }) {
     daemon: "bg-muted text-muted-foreground",
   }[source];
   return (
-    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${color}`}>{source}</span>
+    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${color}`}>
+      {source}
+    </span>
   );
 }

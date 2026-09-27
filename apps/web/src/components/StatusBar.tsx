@@ -1,124 +1,79 @@
-import { useMemo } from "react";
+import { RefreshCw } from "lucide-react";
 
-import { useRouterState } from "@tanstack/react-router";
-
+import { ConnectionPill } from "@/components/ConnectionPill";
 import { KeyChip } from "@/components/KeyChip";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  type ActionContext,
-  type ShortcutSection,
-  useActionPrimaryHints,
-  useActionShortcutSections,
-} from "@/lib/actions";
+import { syncNow } from "@/features/mailbox/actions";
+import { useActionContext, useActionPrimaryHints } from "@/lib/actions";
+import { plural } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { useConnectionStore } from "@/state/connectionStore";
 import { useKeyScope } from "@/state/keyScopeStore";
-import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
 
 export function StatusBar() {
   const sync = useConnectionStore((s) => s.syncProgress);
   const reindex = useConnectionStore((s) => s.semanticReindexProgress);
-  const state = useConnectionStore((s) => s.state);
   const pendingPrefix = useKeyScope((s) => s.pendingPrefix);
-  const path = useRouterState({ select: (routerState) => routerState.location.pathname });
-  const activePane = useMailboxPane((s) => s.activePane);
-  const helpOpen = useModals((s) => s.helpOpen);
   const setHelpOpen = useModals((s) => s.setHelpOpen);
-
-  const ctx = useMemo<ActionContext>(
-    () => ({
-      path,
-      activePane,
-      selectionCount: 0,
-      accountCount: 0,
-      hasFocusedThread: /^\/m\/[^/]+\/[^/]+/.test(path),
-      hasFocusedMessage: /^\/m\/[^/]+\/[^/]+\/[^/]+/.test(path),
-      isFirstAccountOnly: false,
-    }),
-    [path, activePane],
-  );
-  const primaryHints = useActionPrimaryHints(ctx);
-  const sections = useActionShortcutSections(ctx);
+  const ctx = useActionContext();
+  const hints = useActionPrimaryHints(ctx, 5);
 
   return (
     <>
-      <ShortcutHelpPanel open={helpOpen} sections={sections} onOpenChange={setHelpOpen} />
-      <span>mxr</span>
-      <span>·</span>
-      <span>
-        bridge: <span className="text-foreground">{state}</span>
+      <ConnectionPill />
+      <span aria-hidden className="text-faint">
+        │
       </span>
       {sync ? (
-        <>
-          <span>·</span>
+        <span className="inline-flex items-center gap-1.5" role="status">
+          <RefreshCw className="size-3 animate-spin text-primary" />
           <span>
-            sync {sync.current}/{sync.total}
+            syncing {sync.total > 0 ? `${sync.current}/${plural(sync.total, "message")}` : "…"}
           </span>
-        </>
-      ) : null}
+          <span aria-hidden className="h-1 w-16 overflow-hidden rounded-full bg-muted">
+            <span
+              className="block h-full bg-primary transition-[width]"
+              style={{
+                width: `${sync.total > 0 ? Math.min(100, (sync.current / sync.total) * 100) : 5}%`,
+              }}
+            />
+          </span>
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void syncNow()}
+          className="inline-flex items-center gap-1 rounded px-1 hover:bg-muted hover:text-foreground"
+          aria-label="Sync now"
+        >
+          <RefreshCw className="size-3" />
+          sync
+        </button>
+      )}
       {reindex ? (
-        <>
-          <span>·</span>
-          <span>semantic {Math.round((reindex.current / Math.max(1, reindex.total)) * 100)}%</span>
-        </>
+        <span>semantic {Math.round((reindex.current / Math.max(1, reindex.total)) * 100)}%</span>
       ) : null}
-      <span className="ml-auto flex items-center gap-2">
+      <span className="ml-auto flex min-w-0 items-center gap-3 overflow-hidden">
         {pendingPrefix ? (
-          <span aria-live="polite" className="inline-flex items-center gap-1">
-            <KeyChip>{pendingPrefix}</KeyChip>
-            <span>…</span>
+          <span aria-live="polite" className="inline-flex items-center gap-1 text-foreground">
+            <KeyChip className="border-primary/60 text-primary">{pendingPrefix}</KeyChip>…
           </span>
         ) : null}
-        {primaryHints.map((hint) => (
-          <span
-            key={`${hint.key}-${hint.label}`}
-            className="hidden items-center gap-1 md:inline-flex"
-          >
-            <KeyChip>{hint.key}</KeyChip>
-            <span>{hint.label}</span>
+        {hints.map((hint) => (
+          <span key={hint.id} className={cn("hidden shrink-0 items-center gap-1 lg:inline-flex")}>
+            <KeyChip>{hint.keys[0]}</KeyChip>
+            <span>{hint.label.toLowerCase()}</span>
           </span>
         ))}
+        <button
+          type="button"
+          onClick={() => setHelpOpen(true)}
+          className="inline-flex shrink-0 items-center gap-1 rounded px-1 hover:bg-muted hover:text-foreground"
+        >
+          <KeyChip>?</KeyChip>
+          <span>all keys</span>
+        </button>
       </span>
     </>
-  );
-}
-
-function ShortcutHelpPanel({
-  open,
-  sections,
-  onOpenChange,
-}: {
-  open: boolean;
-  sections: ShortcutSection[];
-  onOpenChange: (open: boolean) => void;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(520px,calc(100vw-2rem))]">
-        <DialogHeader>
-          <DialogTitle>Keyboard shortcuts</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {sections.map((section) => (
-            <section key={section.title}>
-              <h3 className="mb-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {section.title}
-              </h3>
-              <div className="grid gap-1">
-                {section.hints.map((hint) => (
-                  <div
-                    key={`${section.title}-${hint.key}-${hint.label}`}
-                    className="flex items-center justify-between gap-3 text-xs"
-                  >
-                    <span className="text-muted-foreground">{hint.label}</span>
-                    <KeyChip>{hint.key}</KeyChip>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }

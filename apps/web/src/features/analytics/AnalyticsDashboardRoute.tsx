@@ -4,6 +4,7 @@ import { BarChart3, RefreshCw, ShieldAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
+import { getRuntimeNavigate } from "@/lib/actions/runtime";
 
 import {
   fetchContactAsymmetry,
@@ -273,8 +274,13 @@ function StaleDashboard() {
               rows: (stale.data?.rows ?? []).filter((row) => row.thread_id).map(staleRowView),
             },
           ]}
-          mailboxPath="/analytics/stale"
+          scopeKey="analytics-stale"
+          label="Stale threads"
           readOnly
+          onOpenRow={(row) => openStaleThread(row.thread_id)}
+          empty={
+            <p className="p-6 text-[13px] text-muted-foreground">Nothing stale in this window.</p>
+          }
         />
       </div>
     </Panel>
@@ -851,4 +857,9 @@ function wrappedSuperlativeRows(summary?: WrappedSummary) {
     });
   }
   return rows;
+}
+
+/** Stale threads span mailboxes; All Mail is the lens that holds them all. */
+function openStaleThread(threadId: string) {
+  getRuntimeNavigate().navigate(`/m/archive/${encodeURIComponent(threadId)}`);
 }

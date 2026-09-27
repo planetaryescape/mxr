@@ -9,15 +9,9 @@ const NOW = new Date(2026, 5, 11, 15, 0, 0);
 
 describe("parseSendLater", () => {
   test("relative minutes and hours", () => {
-    expect(parseSendLater("in 20 minutes", NOW)?.at.getTime()).toBe(
-      NOW.getTime() + 20 * 60_000,
-    );
-    expect(parseSendLater("in 2 hours", NOW)?.at.getTime()).toBe(
-      NOW.getTime() + 2 * 3_600_000,
-    );
-    expect(parseSendLater("in 3 days", NOW)?.at.getTime()).toBe(
-      NOW.getTime() + 3 * 86_400_000,
-    );
+    expect(parseSendLater("in 20 minutes", NOW)?.at.getTime()).toBe(NOW.getTime() + 20 * 60_000);
+    expect(parseSendLater("in 2 hours", NOW)?.at.getTime()).toBe(NOW.getTime() + 2 * 3_600_000);
+    expect(parseSendLater("in 3 days", NOW)?.at.getTime()).toBe(NOW.getTime() + 3 * 86_400_000);
   });
 
   test("tomorrow defaults to 9am", () => {

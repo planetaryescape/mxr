@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.33](https://github.com/planetaryescape/mxr/compare/v0.6.32...v0.6.33) (2026-09-27)
+
+
+### Features
+
+* rebuild the web app to TUI parity and write AI drafts in your own voice ([#233](https://github.com/planetaryescape/mxr/issues/233)) ([faa154d](https://github.com/planetaryescape/mxr/commit/faa154d7c2be588165e370c2cbbdbfe0b5d48131))
+
 ## [0.6.32](https://github.com/planetaryescape/mxr/compare/v0.6.31...v0.6.32) (2026-09-24)
 
 

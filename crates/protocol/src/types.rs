@@ -4,9 +4,11 @@ use serde::{Deserialize, Serialize};
 
 mod desk;
 mod platform;
+mod promises;
 mod thread_context;
 pub use desk::*;
 pub use platform::*;
+pub use promises::*;
 pub use thread_context::*;
 
 /// IPC items are grouped conceptually, even though the wire format stays flat.
@@ -1548,6 +1550,32 @@ pub enum Request {
     RestoreDeskThreads {
         thread_ids: Vec<ThreadId>,
     },
+
+    // ----- Promises on send -----
+    /// Find promises the sender makes in a draft or a sent message, with
+    /// each due phrase resolved in `time_zone`. Read-only and capped by a
+    /// short budget, so a send never waits on it. Returns
+    /// `ResponseData::Promises`; an unavailable or slow model is a status.
+    DetectPromises {
+        source: PromiseSourceData,
+        /// Anchor for relative due phrases; defaults to the daemon's clock.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        now: Option<chrono::DateTime<chrono::Utc>>,
+        /// IANA zone to resolve due phrases in; defaults to the daemon's.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        time_zone: Option<String>,
+    },
+    /// Keep a promise from a message you sent as an open commitment due at
+    /// `due_at`, so it comes back when due. Idempotent per message and
+    /// promise: recording it again moves the date. `dry_run` returns what
+    /// would be stored without writing. Returns `ResponseData::RecordedPromise`.
+    RecordPromise {
+        message_id: MessageId,
+        what: String,
+        due_at: chrono::DateTime<chrono::Utc>,
+        #[serde(default)]
+        dry_run: bool,
+    },
 }
 
 impl Request {
@@ -1670,6 +1698,8 @@ impl Request {
             | Self::GetThreadBriefing { .. }
             | Self::GetThreadContext { .. }
             | Self::GetThreadGist { .. }
+            | Self::DetectPromises { .. }
+            | Self::RecordPromise { .. }
             | Self::GetRecipientBriefing { .. }
             | Self::SuggestCollaborators { .. }
             | Self::FindExpert { .. }
@@ -2608,6 +2638,16 @@ pub enum ResponseData {
     DeskThreadsRestored {
         restored: u64,
     },
+    /// Returned by `Request::DetectPromises`.
+    Promises {
+        detection: PromiseDetectionData,
+    },
+    /// Returned by `Request::RecordPromise`. With `dry_run` the commitment
+    /// is what would be stored and its `id` is empty.
+    RecordedPromise {
+        commitment: CommitmentData,
+        dry_run: bool,
+    },
 }
 
 impl ResponseData {
@@ -2707,6 +2747,8 @@ impl ResponseData {
             | Self::ThreadBriefing { .. }
             | Self::ThreadContext { .. }
             | Self::ThreadGist { .. }
+            | Self::Promises { .. }
+            | Self::RecordedPromise { .. }
             | Self::RecipientBriefing { .. }
             | Self::SuggestedCollaborators { .. }
             | Self::ExpertSuggestions { .. }

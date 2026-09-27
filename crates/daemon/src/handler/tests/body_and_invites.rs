@@ -1104,6 +1104,56 @@ async fn dispatch_cancel_auto_reminder_prevents_firing() {
 }
 
 #[tokio::test]
+async fn due_reminder_is_cancelled_when_the_thread_got_a_reply_the_headers_missed() {
+    // "Remind me if nobody replies": a reply to an earlier message in the
+    // thread (no In-Reply-To pointing at the sent one) still counts.
+    let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+    let state = Arc::new(state);
+    let id = sync_and_get_first_id(&state).await;
+    let mut sent = state.store.get_envelope(&id).await.unwrap().unwrap();
+    sent.id = mxr_core::MessageId::new();
+    sent.provider_id = "sent-remind".into();
+    sent.thread_id = mxr_core::ThreadId::new();
+    sent.from = mxr_core::types::Address {
+        name: None,
+        email: "user@example.com".into(),
+    };
+    sent.date = chrono::Utc::now() - chrono::Duration::days(3);
+    state.store.upsert_envelope(&sent).await.unwrap();
+    state
+        .store
+        .set_auto_reminder(
+            &sent.id,
+            &sent.account_id,
+            chrono::Utc::now() - chrono::Duration::hours(1),
+            sent.date,
+        )
+        .await
+        .unwrap();
+
+    let mut reply = sent.clone();
+    reply.id = mxr_core::MessageId::new();
+    reply.provider_id = "reply-remind".into();
+    reply.from.email = "maya@example.com".into();
+    reply.in_reply_to = None;
+    reply.date = sent.date + chrono::Duration::days(1);
+    state.store.upsert_envelope(&reply).await.unwrap();
+
+    let fired = crate::loops::process_due_reminders(&state, chrono::Utc::now())
+        .await
+        .unwrap();
+    assert_eq!(fired, 0, "a replied thread never nudges");
+    let stored = state
+        .store
+        .get_auto_reminder(&sent.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(stored.cancelled_at.is_some());
+    assert!(stored.triggered_at.is_none());
+}
+
+#[tokio::test]
 async fn dispatch_schedule_send_persists_and_loop_flushes_when_due() {
     // End-to-end: schedule an existing draft for a past send_at,
     // run one tick of the loop, expect the send pipeline to fire

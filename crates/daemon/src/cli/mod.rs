@@ -579,7 +579,7 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
-    /// List or resolve relationship commitments.
+    /// List, find, keep or resolve commitments: promises made in mail.
     Commitments {
         #[command(subcommand)]
         action: Option<CommitmentsAction>,
@@ -2048,6 +2048,30 @@ pub enum DeskAction {
 pub enum CommitmentsAction {
     /// Mark a commitment resolved by id.
     Resolve { id: String },
+    /// Keep a promise from a message you sent, due at a time, so it comes
+    /// back when due. Adding it again moves the date.
+    Add {
+        /// The sent message the promise is in.
+        message_id: String,
+        /// What you promised, such as "send the deck".
+        #[arg(long)]
+        what: String,
+        /// When it is due: "fri", "tomorrow 9am", "in 3d" or RFC3339.
+        #[arg(long)]
+        due: String,
+        /// Show what would be kept without storing it.
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Find promises you made in a message you sent, with their due times.
+    Detect {
+        /// The sent message to read.
+        message_id: String,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]

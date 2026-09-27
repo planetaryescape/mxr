@@ -399,6 +399,7 @@ Work on every page except while typing in a field or compose.
 | `5` | Diagnostics |  |
 | `6` | Analytics (tab) |  |
 | `7` | Deliveries |  |
+| `g F` | Focus & reply | F in the TUI's reply queue |
 
 ### Mail actions
 
@@ -511,6 +512,20 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `p` | Send to paper trail |  |
 | `j`, `ArrowDown` | Next sender |  |
 | `k`, `ArrowUp` | Previous sender |  |
+
+### Focus & reply
+
+One conversation at a time. In the reply, ⌘Enter sends and moves on; Tab out of the reply (or Esc in the rich-text editor) to use these keys.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `⌘ENTER / Ctrl+ENTER` | Send and next |  |
+| `s` | Skip for now | Goes to the end of the queue |
+| `Z` | Snooze… |  |
+| `w` | Send, remind me if nobody replies… |  |
+| `d` | Draft in your voice |  |
+| `r` | Back to the reply |  |
+| `Esc` | Leave focus mode |  |
 
 <!-- web-keys:end -->
 

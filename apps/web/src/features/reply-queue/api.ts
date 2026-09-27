@@ -3,6 +3,7 @@ import { apiFetch } from "@/api/client";
 export interface ReplyQueueMessage {
   id: string;
   thread_id: string;
+  account_id?: string;
   subject: string;
   snippet: string;
   date: string;

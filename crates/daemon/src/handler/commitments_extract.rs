@@ -21,7 +21,7 @@ use serde::Deserialize;
 /// Cheap prefilter — strict word-boundary forms of "I'll", "I will",
 /// "I can", "I'll send", "I'll follow up", "I'll get back". Matches
 /// against reader-cleaned text so quoted material does not trigger.
-static COMMITMENT_PREFILTER: Lazy<Regex> = Lazy::new(|| {
+pub(super) static COMMITMENT_PREFILTER: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?i)\b(I['\u{2019}]ll|I\s+will|I\s+can|I['\u{2019}]ll\s+send|I['\u{2019}]ll\s+follow\s+up|I['\u{2019}]ll\s+get\s+back)\b",
     )

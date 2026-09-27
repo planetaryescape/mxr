@@ -604,3 +604,193 @@ async fn thread_reader_resolves_labels_from_the_threads_own_account() {
         Some(thread_account_id)
     );
 }
+
+#[tokio::test]
+async fn compose_promises_send_the_session_draft_and_the_browser_zone() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account = sample_account(&AccountId::new());
+    let seen = Arc::new(Mutex::new(Vec::<Request>::new()));
+    let seen_for_ipc = seen.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::ListAccounts => ok(ResponseData::Accounts {
+                accounts: vec![account.clone()],
+            }),
+            Request::DetectPromises { .. } => {
+                seen_for_ipc.lock().unwrap().push(request);
+                ok(ResponseData::Promises {
+                    detection: mxr_protocol::PromiseDetectionData {
+                        status: mxr_protocol::PromiseDetectionStatusData::Ready,
+                        promises: Vec::new(),
+                        provenance: None,
+                        message: None,
+                    },
+                })
+            }
+            _ => None,
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket_path).await;
+    let client = reqwest::Client::new();
+    let (draft_path, account_id) = prepared_session(
+        &client,
+        addr,
+        serde_json::json!({ "kind": "new" }),
+        "alice@example.com",
+    )
+    .await;
+
+    let json: serde_json::Value = client
+        .post(format!(
+            "http://{addr}/api/v1/mail/compose/session/promises"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({
+            "draft_path": draft_path,
+            "account_id": account_id,
+            "time_zone": "Europe/London",
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(json["kind"], "Promises");
+    assert_eq!(json["detection"]["status"], "ready");
+
+    let seen = seen.lock().unwrap();
+    let Request::DetectPromises {
+        source: mxr_protocol::PromiseSourceData::Draft { draft },
+        time_zone,
+        ..
+    } = &seen[0]
+    else {
+        panic!("expected a draft source, got {:?}", seen[0]);
+    };
+    assert_eq!(time_zone.as_deref(), Some("Europe/London"));
+    assert_eq!(draft.to[0].email, "alice@example.com");
+    assert!(draft.content.analysis_text().contains("Body text"));
+}
+
+#[tokio::test]
+async fn record_promise_forwards_the_chosen_instant_and_dry_run() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let seen = Arc::new(Mutex::new(Vec::<Request>::new()));
+    let seen_for_ipc = seen.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::RecordPromise { .. } => {
+                seen_for_ipc.lock().unwrap().push(request);
+                Some(Response::error("stop here"))
+            }
+            _ => None,
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket_path).await;
+    let message_id = MessageId::new();
+
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/api/v1/mail/commitments"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({
+            "message_id": message_id.to_string(),
+            "what": "send the deck",
+            "due_at": "2026-10-02T08:00:00Z",
+            "dry_run": true,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(!response.status().is_success(), "daemon errors surface");
+
+    let seen = seen.lock().unwrap();
+    let Request::RecordPromise {
+        message_id: forwarded,
+        what,
+        due_at,
+        dry_run,
+    } = &seen[0]
+    else {
+        panic!("expected RecordPromise");
+    };
+    assert_eq!(forwarded, &message_id);
+    assert_eq!(what, "send the deck");
+    assert_eq!(*due_at, Utc.with_ymd_and_hms(2026, 10, 2, 8, 0, 0).unwrap());
+    assert!(*dry_run);
+}
+
+#[tokio::test]
+async fn a_sent_message_reports_success_even_when_session_cleanup_fails() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account = sample_account(&AccountId::new());
+    let sent_message_id = MessageId::new();
+    let receipt_id = sent_message_id.clone();
+    let session_path = Arc::new(Mutex::new(None::<PathBuf>));
+    let session_for_ipc = session_path.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::ListAccounts => ok(ResponseData::Accounts {
+                accounts: vec![account.clone()],
+            }),
+            Request::SendDraft { .. } => {
+                // After the send, the session file can't be removed: it has
+                // become a non-empty directory.
+                let path = session_for_ipc.lock().unwrap().clone().unwrap();
+                std::fs::remove_file(&path).unwrap();
+                std::fs::create_dir_all(path.join("blocker")).unwrap();
+                ok(ResponseData::SendReceipt {
+                    local_message_id: receipt_id.clone(),
+                    provider_message_id: None,
+                    rfc2822_message_id: "<sent-cleanup@example.com>".into(),
+                })
+            }
+            _ => None,
+        },
+        None,
+    )
+    .await;
+    let addr = serve(socket_path).await;
+    let client = reqwest::Client::new();
+    let (draft_path, account_id) = prepared_session(
+        &client,
+        addr,
+        serde_json::json!({ "kind": "new" }),
+        "alice@example.com",
+    )
+    .await;
+    *session_path.lock().unwrap() = Some(PathBuf::from(&draft_path));
+
+    let response = client
+        .post(format!("http://{addr}/api/v1/mail/compose/session/send"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "draft_path": draft_path, "account_id": account_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::OK,
+        "a sent message is never reported as failed"
+    );
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["message_id"], sent_message_id.to_string());
+    let warnings = json["cleanup_warnings"].as_array().unwrap();
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0]
+        .as_str()
+        .unwrap()
+        .starts_with("Couldn't remove the session file"));
+    std::fs::remove_dir_all(&draft_path).unwrap();
+}

@@ -57,6 +57,9 @@ export function laneLens(lane: DeskLaneKind): LensIdentity {
   return lane === "waiting" ? { kind: "desk-waiting" } : { kind: "desk" };
 }
 
+/** Focus mode on the owed lane, returning to the desk on Esc. */
+export const FOCUS_OWED_HREF = `/focus?lane=owed&from=${encodeURIComponent("/desk")}`;
+
 export interface DeskGroups {
   groups: MessageGroupView[];
   index: DeskRowIndex;
@@ -96,6 +99,14 @@ export function deskGroups(
       more:
         !only && total > shown.length
           ? { label: `Show all ${total}`, href: `/desk?lane=${lane}` }
+          : undefined,
+      action:
+        lane === "owed"
+          ? {
+              label: `Reply to ${total === 1 ? "them" : `all ${total}`} in focus mode`,
+              href: FOCUS_OWED_HREF,
+              keys: "g F",
+            }
           : undefined,
     });
   }

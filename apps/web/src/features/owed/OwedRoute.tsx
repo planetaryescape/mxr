@@ -2,18 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Hourglass } from "lucide-react";
 
 import { fetchOwedReplies, type OwedReplyRow } from "./api";
+import { waitingLine } from "./waitingLine";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
 import { Centered } from "@/features/mailbox/MailViewParts";
 import type { MessageRowView } from "@/features/mailbox/types";
 import { plural } from "@/lib/format";
 import { useUiPrefs } from "@/state/uiPrefsStore";
-
-function waitingLine(row: OwedReplyRow): string {
-  const waited = `Waiting ${plural(Math.round(row.waiting_days), "day")}`;
-  if (!row.expected_days) return waited;
-  return `${waited}; you usually reply within ${plural(Math.round(row.expected_days), "day")}`;
-}
 
 function toRow(row: OwedReplyRow): MessageRowView {
   return {

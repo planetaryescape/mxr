@@ -442,7 +442,7 @@ fn parse_gist(
 }
 
 /// The JSON object inside a completion that may carry prose or code fences.
-fn json_object(content: &str) -> &str {
+pub(super) fn json_object(content: &str) -> &str {
     let trimmed = content.trim();
     match (trimmed.find('{'), trimmed.rfind('}')) {
         (Some(start), Some(end)) if end > start => &trimmed[start..=end],
@@ -452,7 +452,7 @@ fn json_object(content: &str) -> &str {
 
 /// One line of display text: no control characters, markdown marks or em
 /// dashes, whitespace collapsed, cut at a word boundary within `max_chars`.
-fn plain_text(value: &str, max_chars: usize) -> String {
+pub(super) fn plain_text(value: &str, max_chars: usize) -> String {
     let cleaned: String = value
         .replace(" — ", ", ")
         .replace('—', ", ")
@@ -473,7 +473,7 @@ fn plain_text(value: &str, max_chars: usize) -> String {
     format!("{}…", cut.trim_end_matches([',', ';', ':', ' ']))
 }
 
-fn collapse_whitespace(value: &str) -> String {
+pub(super) fn collapse_whitespace(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
@@ -500,18 +500,17 @@ fn verify_quote(
     msg_id: &str,
     texts: &[(MessageId, &str)],
 ) -> Option<VerifiedQuoteData> {
-    let wanted: Vec<char> = collapse_whitespace(quote)
-        .trim_matches(['"', '\u{201C}', '\u{201D}'])
-        .chars()
-        .map(fold_quotes)
-        .collect();
+    let wanted = normalize(
+        collapse_whitespace(quote).trim_matches(['"', '\u{201C}', '\u{201D}']),
+        fold_quotes,
+    );
     if wanted.len() < QUOTE_MIN_CHARS || wanted.len() > QUOTE_MAX_CHARS {
         return None;
     }
     let cited = texts.iter().filter(|(id, _)| id.as_str() == msg_id);
     let others = texts.iter().rev().filter(|(id, _)| id.as_str() != msg_id);
     cited.chain(others).find_map(|(id, text)| {
-        let span = find_normalized(text, &wanted)?;
+        let span = find_normalized(text, &wanted, fold_quotes)?;
         Some(VerifiedQuoteData {
             message_id: id.clone(),
             text: text[span].to_string(),
@@ -519,9 +518,31 @@ fn verify_quote(
     })
 }
 
+/// `phrase` as it is written in `text`, matching the way quotes are checked
+/// but also ignoring letter case: the original slice, or `None` when the
+/// text doesn't say it. Model output is only shown when it passes this.
+pub(super) fn find_phrase_ignoring_case<'a>(text: &'a str, phrase: &str) -> Option<&'a str> {
+    let fold = |c: char| fold_quotes(c.to_lowercase().next().unwrap_or(c));
+    let wanted = normalize(&collapse_whitespace(phrase), fold);
+    if wanted.is_empty() {
+        return None;
+    }
+    find_normalized(text, &wanted, fold).map(|span| &text[span])
+}
+
+/// `phrase` (already whitespace-collapsed) as the chars `find_normalized`
+/// compares against.
+fn normalize(phrase: &str, fold: impl Fn(char) -> char) -> Vec<char> {
+    phrase.chars().map(fold).collect()
+}
+
 /// Byte range in `text` whose whitespace-collapsed, quote-folded form equals
 /// `wanted` (already collapsed and folded).
-fn find_normalized(text: &str, wanted: &[char]) -> Option<std::ops::Range<usize>> {
+fn find_normalized(
+    text: &str,
+    wanted: &[char],
+    fold: impl Fn(char) -> char,
+) -> Option<std::ops::Range<usize>> {
     // Each normalized char with the byte range of the original it stands for.
     let mut normalized: Vec<(char, usize, usize)> = Vec::new();
     for (index, c) in text.char_indices() {
@@ -532,7 +553,7 @@ fn find_normalized(text: &str, wanted: &[char]) -> Option<std::ops::Range<usize>
                 _ => normalized.push((' ', index, end)),
             }
         } else {
-            normalized.push((fold_quotes(c), index, end));
+            normalized.push((fold(c), index, end));
         }
     }
     let start = normalized

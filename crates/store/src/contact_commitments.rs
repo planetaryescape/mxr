@@ -211,6 +211,38 @@ impl super::Store {
         rows.into_iter().map(row_to_commitment).collect()
     }
 
+    /// Keep a promise the user accepted from a message they sent. Unlike
+    /// `upsert_contact_commitment`, recording the same promise again moves
+    /// its due date and reopens it: the user's latest answer wins. Returns
+    /// the stored row's id, which is the existing one on a repeat.
+    pub async fn record_own_promise(
+        &self,
+        record: &ContactCommitmentRecord,
+    ) -> Result<String, sqlx::Error> {
+        sqlx::query_scalar(
+            r#"INSERT INTO contact_commitments
+               (id, account_id, email, thread_id, direction, status, who_owes, what,
+                by_when, evidence_msg_id, extracted_at, resolved_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+               ON CONFLICT(account_id, email, thread_id, direction, what, evidence_msg_id)
+               DO UPDATE SET by_when = excluded.by_when, status = 'open', resolved_at = NULL
+               RETURNING id"#,
+        )
+        .bind(&record.id)
+        .bind(record.account_id.as_str())
+        .bind(&record.email)
+        .bind(record.thread_id.as_str())
+        .bind(record.direction.as_str())
+        .bind(CommitmentStatus::Open.as_str())
+        .bind(&record.who_owes)
+        .bind(&record.what)
+        .bind(record.by_when.map(|value| value.timestamp()))
+        .bind(record.evidence_msg_id.as_str())
+        .bind(record.extracted_at.timestamp())
+        .fetch_one(self.writer())
+        .await
+    }
+
     pub async fn resolve_contact_commitment(&self, id: &str) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(
             "UPDATE contact_commitments SET status = 'resolved', resolved_at = ? WHERE id = ?",

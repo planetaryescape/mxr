@@ -97,6 +97,7 @@ impl App {
                 status: "Sent!".into(),
                 remind_at,
                 sent_message_id: None,
+                draft_path: Some(pending.draft_path.clone()),
             },
             "Sending...".into(),
         );

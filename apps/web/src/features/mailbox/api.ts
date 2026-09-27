@@ -1,4 +1,5 @@
 import { apiFetch } from "@/api/client";
+import type { components } from "@/api/generated";
 
 import type { MailboxResponse, MutationResponse, ShellResponse, ThreadResponse } from "./types";
 
@@ -87,15 +88,21 @@ export function fetchSenderProfile(input: { accountId: string; email: string }):
   return apiFetch<unknown>(`/api/v1/mail/sender?${query.toString()}`);
 }
 
+/** The bridge passes the daemon's `CommitmentList` answer through. */
+export type CommitmentList = Extract<
+  components["schemas"]["ResponseData"],
+  { kind: "CommitmentList" }
+>;
+
 export function listCommitments(input: {
   accountId: string;
   email?: string;
   status?: "open" | "resolved" | "expired";
-}): Promise<unknown> {
+}): Promise<CommitmentList> {
   const query = new URLSearchParams({ account_id: input.accountId });
   if (input.email) query.set("email", input.email);
   if (input.status) query.set("status", input.status);
-  return apiFetch<unknown>(`/api/v1/mail/commitments?${query.toString()}`);
+  return apiFetch<CommitmentList>(`/api/v1/mail/commitments?${query.toString()}`);
 }
 
 export function resolveCommitment(commitmentId: string): Promise<unknown> {

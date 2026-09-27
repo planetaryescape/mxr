@@ -32,6 +32,7 @@ const SCOPE_TITLE: Record<Exclude<ActionScope, "global">, string> = {
   reader: "Reader",
   sidebar: "Sidebar",
   screener: "Screener",
+  focus: "Focus & reply",
 };
 
 const GLOBAL_GROUP_TITLE: Partial<Record<ActionGroup, string>> = {
@@ -78,7 +79,7 @@ export function shortcutSections(ctx: ActionContext): ShortcutSection[] {
   }
 
   const sections: ShortcutSection[] = [];
-  const paneScopes = (["reader", "list", "sidebar", "screener"] as const).filter((scope) =>
+  const paneScopes = (["reader", "list", "sidebar", "screener", "focus"] as const).filter((scope) =>
     byScope.has(scope),
   );
   const activePanes = paneScopes.filter((scope) => ctx.scopes.includes(scope));

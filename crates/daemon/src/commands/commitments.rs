@@ -22,6 +22,18 @@ pub async fn run(
                 Response::Error { message, .. } => anyhow::bail!(message),
             }
         }
+        Some(CommitmentsAction::Add {
+            message_id,
+            what,
+            due,
+            dry_run,
+            format,
+        }) => {
+            super::promises::add(&mut client, &message_id, what, &due, dry_run, format).await?;
+        }
+        Some(CommitmentsAction::Detect { message_id, format }) => {
+            super::promises::detect(&mut client, &message_id, format).await?;
+        }
         None => {
             let account_id = resolve_account(&mut client, account.as_deref()).await?;
             let resp = client

@@ -8,6 +8,7 @@ mod compose_actions;
 mod compose_helpers;
 mod diagnostics_actions;
 mod draw;
+mod focus_run;
 mod input;
 mod mailbox_actions;
 mod mailbox_helpers;
@@ -18,6 +19,7 @@ mod mutation_helpers;
 pub mod mutation_snapshot;
 mod pending_optimistic;
 mod platform_actions;
+mod promises;
 mod recorder;
 mod rule_actions;
 mod runtime_helpers;
@@ -51,12 +53,16 @@ use throbber_widgets_tui::ThrobberState;
 use tui_textarea::TextArea;
 
 pub(in crate::app) use crate::ui::label_picker::LabelPickerMode;
+pub use focus_run::FocusRun;
 pub(crate) use mailbox_helpers::auto_summary_eligible;
 pub use mutation_snapshot::{
     MutationId, MutationIdGenerator, MutationSnapshot, MutationSnapshotStore, QueuedMutation,
     TRANSIENT_MUTATION_MAX_RETRIES,
 };
 pub use pending_optimistic::PendingOptimisticState;
+pub use promises::PromisePrompt;
+#[cfg(test)]
+pub(crate) use promises::{PROMISE_ANSWER_GUARD, PROMISE_PROMPT_TTL};
 use state::PendingPreviewRead;
 pub use state::*;
 
@@ -106,6 +112,10 @@ pub enum MutationEffect {
         status: String,
         remind_at: Option<chrono::DateTime<chrono::Utc>>,
         sent_message_id: Option<MessageId>,
+        /// The compose file the message was written in, so a focus run
+        /// moves on only for its own reply (a source without a Message-ID
+        /// header gives nothing else to match on).
+        draft_path: Option<std::path::PathBuf>,
     },
 }
 
@@ -317,6 +327,14 @@ pub struct App {
     /// goes out). `tick_pending_invite_send` promotes it into the mutation
     /// queue once `dispatch_at` arrives.
     pub pending_invite_send: Option<PendingInviteSend>,
+    /// Focus & reply over the reply-later queue: the next reply opens after
+    /// each send (see `focus_run`).
+    pub focus_run: Option<FocusRun>,
+    /// Sent message the runtime should check for promises
+    /// (`DetectPromises`); set on every successful send.
+    pub pending_promise_check: Option<MessageId>,
+    /// Promises from recent sends, offered one at a time (`y` / `n`).
+    pub promise_prompts: VecDeque<PromisePrompt>,
     /// Default destination for the "save attachment as..." modal,
     /// mirrored from `config.general.download_dir`. Falls back to
     /// `dirs::download_dir()` when no config is available.
@@ -426,6 +444,9 @@ impl App {
             pending_screener_decisions: Vec::new(),
             pending_undo: None,
             pending_invite_send: None,
+            focus_run: None,
+            pending_promise_check: None,
+            promise_prompts: VecDeque::new(),
             download_dir: dirs::download_dir().unwrap_or_else(|| {
                 dirs::home_dir()
                     .unwrap_or_else(|| std::path::PathBuf::from("."))

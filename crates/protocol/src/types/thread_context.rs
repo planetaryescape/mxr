@@ -155,4 +155,6 @@ pub enum AiSourceData {
     /// reply times). Only sent to a cloud model with
     /// `llm.allow_cloud_relationship_data`.
     RelationshipHistory,
+    /// The message you are sending (promise detection).
+    YourMessage,
 }

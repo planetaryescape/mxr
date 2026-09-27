@@ -664,6 +664,7 @@ pub fn map_request(
         | Request::GetThreadBriefing { .. }
         | Request::GetThreadContext { .. }
         | Request::GetThreadGist { .. }
+        | Request::DetectPromises { .. }
         | Request::GetRecipientBriefing { .. }
         | Request::SendTimeRecommendation { .. }
         | Request::ArchiveAsk { .. }
@@ -748,6 +749,7 @@ pub fn map_request(
             );
         }
         Request::ResolveCommitment { .. }
+        | Request::RecordPromise { .. }
         | Request::WatchCadence { .. }
         | Request::UnwatchCadence { .. } => {
             skip_activity!(

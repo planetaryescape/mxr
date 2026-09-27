@@ -37,7 +37,7 @@ export type ShortcutChord = string;
  * pushes its scope (`useShortcutScope`) and registers a controller
  * (`useScopeController`) that implements the action's `command`.
  */
-export type ActionScope = "global" | "sidebar" | "list" | "reader" | "screener";
+export type ActionScope = "global" | "sidebar" | "list" | "reader" | "screener" | "focus";
 
 export interface ActionContext {
   path: string;

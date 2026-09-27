@@ -184,8 +184,9 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
             receipt
                 .as_ref()
                 .map(|info| info.local_message_id.to_string()),
-            options.format,
+            options.format.clone(),
         )?;
+        report_promises_after_send(&mut client, receipt.as_ref(), options.format).await;
     } else {
         expect_ack(
             client
@@ -656,8 +657,9 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
             receipt
                 .as_ref()
                 .map(|info| info.local_message_id.to_string()),
-            format,
+            format.clone(),
         )?;
+        report_promises_after_send(client, receipt.as_ref(), format).await;
     } else {
         expect_ack(
             client
@@ -1199,7 +1201,21 @@ pub async fn send_draft(
     if let Some(info) = receipt.as_ref() {
         println!("Local message id: {}", info.local_message_id);
     }
+    report_promises_after_send(&mut client, receipt.as_ref(), format).await;
     Ok(())
+}
+
+/// Say what the sent message promised, read back from the stored Sent copy.
+/// An older daemon that returns no receipt gets no note.
+async fn report_promises_after_send(
+    client: &mut IpcClient,
+    receipt: Option<&SendReceiptInfo>,
+    format: Option<OutputFormat>,
+) {
+    let Some(receipt) = receipt else {
+        return;
+    };
+    crate::commands::promises::report_after_send(client, &receipt.local_message_id, format).await;
 }
 
 /// Build the safety-check context for a CLI `--check` invocation. Pulls

@@ -1775,9 +1775,9 @@ async fn warm_default_wrapped(state: &Arc<AppState>) {
     }
 }
 
-/// Process all auto-reminders due by `now`: mark each as triggered,
-/// emit a `ReminderTriggered` event so clients can refresh views.
-/// Returns the number of reminders that fired.
+/// Process all auto-reminders due by `now`: cancel the ones whose thread
+/// got a reply, mark the rest triggered and emit a `ReminderTriggered`
+/// event so clients can refresh views. Returns the number that fired.
 ///
 /// Factored out of `auto_reminders_loop` so it can be exercised
 /// directly in tests with a virtual `now` — no clock plumbing needed
@@ -1786,6 +1786,10 @@ pub async fn process_due_reminders(
     state: &AppState,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<u32, String> {
+    // "If nobody replies": a reply the header match missed still counts.
+    if let Err(e) = state.store.cancel_due_reminders_with_replies(now).await {
+        tracing::warn!("auto-reminder reply check failed: {e}");
+    }
     let due = state
         .store
         .get_due_auto_reminders(now)

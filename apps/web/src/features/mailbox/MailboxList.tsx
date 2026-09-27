@@ -24,6 +24,7 @@ import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useSelection } from "@/state/selectionStore";
+import { KeyChip } from "@/components/KeyChip";
 import { cn } from "@/lib/utils";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -166,16 +167,27 @@ export function MailboxList({
     if (row) setFocusedId(rowKey(row));
   }, [activeThreadId, focusedThreadId, rows]);
 
-  const virtualizer = useVirtualizer({
-    count: flat.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: (index) =>
-      flat[index]?.kind === "header" ? (airyHeaders ? 40 : 30) : ROW_ESTIMATE[density],
-    overscan: 12,
-    getItemKey: (index) => {
+  // Stable per list: the virtualizer recomputes every item's position
+  // whenever `getItemKey` changes identity. An inline function did that on
+  // every scroll frame, 5,000 keys at a time on a long list.
+  const getItemKey = useCallback(
+    (index: number) => {
       const item = flat[index];
       return item ? (item.kind === "header" ? item.id : rowKey(item.row)) : index;
     },
+    [flat],
+  );
+  const estimateSize = useCallback(
+    (index: number) =>
+      flat[index]?.kind === "header" ? (airyHeaders ? 40 : 30) : ROW_ESTIMATE[density],
+    [airyHeaders, density, flat],
+  );
+  const virtualizer = useVirtualizer({
+    count: flat.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize,
+    overscan: 12,
+    getItemKey,
   });
   const virtualItems = virtualizer.getVirtualItems();
 
@@ -543,6 +555,7 @@ export function MailboxList({
 function GroupHeader({ group, airy }: { group: MessageGroupView; airy: boolean }) {
   const navigate = useNavigate();
   const more = group.more;
+  const action = group.action;
   return (
     <div
       role="presentation"
@@ -555,13 +568,28 @@ function GroupHeader({ group, airy }: { group: MessageGroupView; airy: boolean }
       {typeof group.count === "number" ? (
         <span className="font-semibold tabular-nums text-primary">{group.count}</span>
       ) : null}
+      {action ? (
+        // Mouse-only like `more`; its key (shown) works from anywhere.
+        <span
+          aria-hidden
+          data-testid={`group-action-${group.id}`}
+          onClick={() => void navigate({ href: action.href })}
+          className="ml-auto inline-flex cursor-pointer items-center gap-1.5 normal-case tracking-normal text-primary hover:underline"
+        >
+          {action.label}
+          {action.keys ? <KeyChip className="h-4 px-1">{action.keys}</KeyChip> : null}
+        </span>
+      ) : null}
       {more ? (
         // Mouse-only, like the row chips: the listbox cannot hold links. The
         // same lane is reachable from the page header and the sidebar.
         <span
           aria-hidden
           onClick={() => void navigate({ href: more.href })}
-          className="ml-auto cursor-pointer normal-case tracking-normal hover:text-foreground"
+          className={cn(
+            "cursor-pointer normal-case tracking-normal hover:text-foreground",
+            !action && "ml-auto",
+          )}
         >
           {more.label}
         </span>

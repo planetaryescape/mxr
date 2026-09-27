@@ -78,7 +78,8 @@ use utoipa::{
         platform_voice_rebuild, mail_mutation_jobs, mail_owed, mail_desk, mail_desk_dismiss, mail_desk_restore, mail_whois,
         mail_send_time, mail_archive_ask, saved_searches_unread_counts,
         analytics_cadence_drift, cadence_watch_list, cadence_watch, cadence_unwatch,
-        mail_time_resolve, mail_thread_context, mail_thread_gist
+        mail_time_resolve, mail_thread_context, mail_thread_gist,
+        compose_session_promises, mail_commitments_record
     ),
     components(schemas(
         Request,
@@ -238,6 +239,38 @@ endpoint!(post mail_archive_ask "/api/v1/mail/archive-ask", "Ask the archive a q
 )]
 #[allow(dead_code)]
 fn mail_time_resolve() {}
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/compose/session/promises",
+    summary = "Find promises in an outgoing compose session",
+    request_body = crate::promise_routes::DetectComposePromisesRequest,
+    responses(
+        (
+            status = 200,
+            description = "The `Promises` variant. A missing, blocked or slow model is a status, never an error",
+            body = ResponseData
+        ),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn compose_session_promises() {}
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/commitments",
+    summary = "Keep a promise from a sent message as a dated commitment",
+    request_body = crate::promise_routes::RecordPromiseRequest,
+    responses(
+        (
+            status = 200,
+            description = "The `RecordedPromise` variant; with `dry_run` nothing is stored and the id is empty",
+            body = ResponseData
+        ),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_commitments_record() {}
 endpoint!(get mail_thread_context "/api/v1/mail/threads/{thread_id}/context", "Store facts for the reader's context block");
 endpoint!(get mail_thread_gist "/api/v1/mail/threads/{thread_id}/context/gist", "Model-written gist and ask for a conversation, cached per newest message");
 

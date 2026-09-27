@@ -37,6 +37,7 @@ mod mailbox;
 mod mutations;
 mod notifications;
 mod platform;
+mod promises;
 mod relationship_profile;
 pub(crate) mod reply_later;
 mod rules;
@@ -383,6 +384,7 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::GetRecipientBriefing { .. }
         | Request::GetThreadBriefing { .. }
         | Request::GetThreadGist { .. }
+        | Request::DetectPromises { .. }
         | Request::HumanizerRewrite { .. }
         | Request::HumanizerScore { .. }
         | Request::SuggestCollaborators { .. }
@@ -1181,6 +1183,17 @@ async fn dispatch(
         Request::GetThreadGist { thread_id, refresh } => {
             thread_gist::get_thread_gist(state, thread_id, *refresh).await
         }
+        Request::DetectPromises {
+            source,
+            now,
+            time_zone,
+        } => promises::detect_promises(state, source, *now, time_zone.as_deref()).await,
+        Request::RecordPromise {
+            message_id,
+            what,
+            due_at,
+            dry_run,
+        } => promises::record_promise(state, message_id, what, *due_at, *dry_run).await,
         Request::GetRecipientBriefing {
             account_id,
             email,
@@ -1645,7 +1658,12 @@ async fn request_account_scope(
         | Request::PrepareForward { message_id }
         | Request::RespondInvite { message_id, .. }
         | Request::PrepareInviteResponse { message_id, .. }
-        | Request::MarkInviteAnswered { message_id, .. } => {
+        | Request::MarkInviteAnswered { message_id, .. }
+        | Request::DetectPromises {
+            source: PromiseSourceData::SentMessage { message_id },
+            ..
+        }
+        | Request::RecordPromise { message_id, .. } => {
             envelope_account_scope(state, std::slice::from_ref(message_id)).await
         }
         Request::ListEnvelopesByIds { message_ids } | Request::ListBodies { message_ids } => {
@@ -1916,6 +1934,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetThreadBriefing { .. }
         | Request::GetThreadContext { .. }
         | Request::GetThreadGist { .. }
+        | Request::DetectPromises { .. }
         | Request::GetRecipientBriefing { .. }
         | Request::SuggestCollaborators { .. }
         | Request::FindExpert { .. }
@@ -2028,6 +2047,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ClearSignatureDefault { .. }
         | Request::RebuildRelationshipProfile { .. }
         | Request::ResolveCommitment { .. }
+        | Request::RecordPromise { .. }
         | Request::RebuildUserVoice { .. }
         | Request::SetScreenerDecision { .. }
         | Request::ClearScreenerDecision { .. }
@@ -2229,6 +2249,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetThreadBriefing { .. } => "get_thread_briefing",
         Request::GetThreadContext { .. } => "get_thread_context",
         Request::GetThreadGist { .. } => "get_thread_gist",
+        Request::DetectPromises { .. } => "detect_promises",
+        Request::RecordPromise { .. } => "record_promise",
         Request::GetRecipientBriefing { .. } => "get_recipient_briefing",
         Request::SuggestCollaborators { .. } => "suggest_collaborators",
         Request::FindExpert { .. } => "find_expert",
@@ -2342,6 +2364,10 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::CheckDraftSafety { draft, .. }
         | Request::ExtractDraftCommitments { draft }
         | Request::SuggestCollaborators { draft, .. } => Some(&draft.account_id),
+        Request::DetectPromises {
+            source: PromiseSourceData::Draft { draft },
+            ..
+        } => Some(&draft.account_id),
         Request::SendStoredDraft { .. } | Request::DeleteDraft { .. } => None,
         Request::ArchiveAsk { filters, .. } => filters.account_id.as_ref(),
         _ => None,

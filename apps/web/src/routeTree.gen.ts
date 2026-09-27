@@ -19,6 +19,7 @@ import { Route as OwedRouteImport } from './routes/owed'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as InvitesRouteImport } from './routes/invites'
+import { Route as FocusRouteImport } from './routes/focus'
 import { Route as DraftsRouteImport } from './routes/drafts'
 import { Route as DiagnosticsRouteImport } from './routes/diagnostics'
 import { Route as DevRouteImport } from './routes/dev'
@@ -95,6 +96,11 @@ const JobsRoute = JobsRouteImport.update({
 const InvitesRoute = InvitesRouteImport.update({
   id: '/invites',
   path: '/invites',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FocusRoute = FocusRouteImport.update({
+  id: '/focus',
+  path: '/focus',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DraftsRoute = DraftsRouteImport.update({
@@ -243,6 +249,7 @@ export interface FileRoutesByFullPath {
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
   '/drafts': typeof DraftsRoute
+  '/focus': typeof FocusRoute
   '/invites': typeof InvitesRoute
   '/jobs': typeof JobsRoute
   '/onboarding': typeof OnboardingRoute
@@ -282,6 +289,7 @@ export interface FileRoutesByTo {
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
   '/drafts': typeof DraftsRoute
+  '/focus': typeof FocusRoute
   '/invites': typeof InvitesRoute
   '/jobs': typeof JobsRoute
   '/onboarding': typeof OnboardingRoute
@@ -322,6 +330,7 @@ export interface FileRoutesById {
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
   '/drafts': typeof DraftsRoute
+  '/focus': typeof FocusRoute
   '/invites': typeof InvitesRoute
   '/jobs': typeof JobsRoute
   '/onboarding': typeof OnboardingRoute
@@ -363,6 +372,7 @@ export interface FileRouteTypes {
     | '/dev'
     | '/diagnostics'
     | '/drafts'
+    | '/focus'
     | '/invites'
     | '/jobs'
     | '/onboarding'
@@ -402,6 +412,7 @@ export interface FileRouteTypes {
     | '/dev'
     | '/diagnostics'
     | '/drafts'
+    | '/focus'
     | '/invites'
     | '/jobs'
     | '/onboarding'
@@ -441,6 +452,7 @@ export interface FileRouteTypes {
     | '/dev'
     | '/diagnostics'
     | '/drafts'
+    | '/focus'
     | '/invites'
     | '/jobs'
     | '/onboarding'
@@ -481,6 +493,7 @@ export interface RootRouteChildren {
   DevRoute: typeof DevRoute
   DiagnosticsRoute: typeof DiagnosticsRoute
   DraftsRoute: typeof DraftsRoute
+  FocusRoute: typeof FocusRoute
   InvitesRoute: typeof InvitesRoute
   JobsRoute: typeof JobsRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -570,6 +583,13 @@ declare module '@tanstack/react-router' {
       path: '/invites'
       fullPath: '/invites'
       preLoaderRoute: typeof InvitesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/focus': {
+      id: '/focus'
+      path: '/focus'
+      fullPath: '/focus'
+      preLoaderRoute: typeof FocusRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/drafts': {
@@ -898,6 +918,7 @@ const rootRouteChildren: RootRouteChildren = {
   DevRoute: DevRoute,
   DiagnosticsRoute: DiagnosticsRoute,
   DraftsRoute: DraftsRoute,
+  FocusRoute: FocusRoute,
   InvitesRoute: InvitesRoute,
   JobsRoute: JobsRoute,
   OnboardingRoute: OnboardingRoute,

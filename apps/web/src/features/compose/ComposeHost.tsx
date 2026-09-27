@@ -10,7 +10,7 @@
 
 import { useRouterState } from "@tanstack/react-router";
 import { Maximize2, Minimize2, PictureInPicture2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,30 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     onDiscarded: closeThisSession,
     onClose: closeThisSession,
   });
+
+  // Commands for a page that hosts this session inline (focus mode). The
+  // latest controller is read at call time.
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+  // Registered once the session has loaded, so "the reply is ready" and
+  // "its commands exist" are the same fact for a host page.
+  const sessionReady = !controller.sessionLoading && controller.draft !== null;
+  useEffect(() => {
+    if (!sessionReady) return;
+    const commands = {
+      intentKey: intent.key,
+      send: () => controllerRef.current.requestSend(),
+      sendAndRemind: () => controllerRef.current.setRemindDialogOpen(true),
+      draftForMe: () => {
+        controllerRef.current.setAssistOpen(true);
+        controllerRef.current.generateDraft();
+      },
+    };
+    useComposeUi.getState().setCommands(commands);
+    return () => {
+      if (useComposeUi.getState().commands === commands) useComposeUi.getState().setCommands(null);
+    };
+  }, [intent.key, sessionReady]);
 
   // The inline slot lives at the bottom of the thread reader; re-resolve
   // it whenever the route changes.

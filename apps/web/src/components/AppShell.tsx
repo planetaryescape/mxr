@@ -15,6 +15,7 @@ import { NARROW_SHELL_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { setRuntimeNavigate } from "@/lib/actions";
 import { useComposeUi } from "@/features/compose/composeUiStore";
 import { useMailDialogs } from "@/features/mail-actions/mailDialogStore";
+import { usePromiseOffers } from "@/features/promises/promiseOffers";
 import { useModals } from "@/state/modalStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -32,6 +33,7 @@ const ComposeLauncher = lazyNamed(
   "ComposeLauncher",
 );
 const MailDialogs = lazyNamed(() => import("@/features/mail-actions/MailDialogs"), "MailDialogs");
+const PromiseTray = lazyNamed(() => import("@/features/promises/PromiseTray"), "PromiseTray");
 const SearchPalette = lazyNamed(loadSearchPalette, "SearchPalette");
 
 /**
@@ -92,7 +94,11 @@ export function AppShell() {
   });
 
   useEffect(() => {
-    setRuntimeNavigate({ navigate: (to) => void navigate({ to }) });
+    // A target with a query string ("/focus?from=...") goes by href, which
+    // the router parses; `to` is a path only.
+    setRuntimeNavigate({
+      navigate: (to) => void navigate(to.includes("?") ? { href: to } : { to }),
+    });
   }, [navigate]);
   useKeyDispatcher();
 
@@ -117,12 +123,14 @@ export function AppShell() {
   const launcherOpen = useModals((s) => s.composeLauncherOpen);
   const composing = useComposeUi((s) => s.intent !== null);
   const mailDialog = useMailDialogs((s) => s.dialog !== null);
+  const promiseOffered = usePromiseOffers((s) => s.offers.length > 0);
   const mountPalette = useOnceTrue(paletteOpen);
   const mountSearch = useOnceTrue(searchOpen);
   const mountLauncher = useOnceTrue(launcherOpen);
   const mountCompose = useOnceTrue(composing);
   const mountDialogs = useOnceTrue(mailDialog);
   const mountHelp = useOnceTrue(helpOpen);
+  const mountPromises = useOnceTrue(promiseOffered);
 
   return (
     <div
@@ -165,6 +173,7 @@ export function AppShell() {
         {mountSearch ? <SearchPalette /> : null}
         {mountDialogs ? <MailDialogs /> : null}
         {mountHelp ? <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} /> : null}
+        {mountPromises ? <PromiseTray /> : null}
       </Suspense>
     </div>
   );

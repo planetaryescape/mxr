@@ -11,6 +11,8 @@ import { useRef, useState, type Dispatch, type MutableRefObject, type SetStateAc
 import { toast } from "sonner";
 
 import { archiveMessages } from "@/features/mailbox/api";
+import { detectComposePromises } from "@/features/promises/api";
+import { offerPromises } from "@/features/promises/promiseOffers";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useUndo } from "@/state/undoStore";
 import {
@@ -23,6 +25,7 @@ import {
   type ComposeSession,
   type DraftSafetyReport,
 } from "../api";
+import { showSendCountdown } from "../SendCountdown";
 import { forgetActiveDraft } from "./activeDrafts";
 import {
   draftFingerprint,
@@ -32,6 +35,7 @@ import {
   type ComposeDraftState,
   type ComposeIntent,
 } from "./composeDraft";
+import { emitSendEvent } from "./sendEvents";
 
 export interface ComposeSessionOptions {
   /** Called after a successful send instead of the default
@@ -336,32 +340,55 @@ export function useComposeSend({
     archiveAfterSendRef.current = false;
     const remind = remindAfterSendRef.current;
     remindAfterSendRef.current = null;
+    // One id per dispatched send, so a promise answered in its undo window
+    // is kept for this message and dropped if this send is undone.
+    const sendEvent = { intentKey: intent.key, sendId: `${intent.key}@${Date.now()}` };
 
+    // Only the send itself can fail a send. Everything after it (reminder,
+    // archive, closing the composer) reports its own trouble: letting it
+    // reach the failure path would put a sent reply back and invite a
+    // second send.
+    const afterSend = async (response: Awaited<ReturnType<typeof sendComposeSession>>) => {
+      markSessionFinished();
+      forgetActiveDraft(intent.key);
+      emitSendEvent({
+        kind: "sent",
+        ...sendEvent,
+        sentMessageId: response.message_id ?? undefined,
+      });
+      toast.success("Message sent");
+      if (remind) await setReminderAfterSend(response.message_id ?? undefined, remind);
+      if (archiveSourceId) {
+        try {
+          await archiveMessages([archiveSourceId]);
+          void queryClient.invalidateQueries({ queryKey: ["mailbox"] });
+          void queryClient.invalidateQueries({ queryKey: ["thread"] });
+          toast.success("Conversation archived");
+        } catch (error) {
+          toast.error("Archive after send failed", { description: errorMessage(error) });
+        }
+      }
+      if (options.onSent) {
+        options.onSent();
+      } else {
+        await navigate({ to: "/m/$mailbox", params: { mailbox: "sent" } });
+      }
+    };
     const fire = () => {
       sendSession
         .mutateAsync({ draftPath, accountId, overrideToken })
-        .then(async (response) => {
-          markSessionFinished();
-          forgetActiveDraft(intent.key);
-          toast.success("Message sent");
-          if (remind) await setReminderAfterSend(response.message_id ?? undefined, remind);
-          if (archiveSourceId) {
-            try {
-              await archiveMessages([archiveSourceId]);
-              void queryClient.invalidateQueries({ queryKey: ["mailbox"] });
-              void queryClient.invalidateQueries({ queryKey: ["thread"] });
-              toast.success("Conversation archived");
-            } catch (error) {
-              toast.error("Archive after send failed", { description: errorMessage(error) });
-            }
-          }
-          if (options.onSent) {
-            options.onSent();
-          } else {
-            await navigate({ to: "/m/$mailbox", params: { mailbox: "sent" } });
-          }
-        })
-        .catch((err: Error) => toast.error("Send failed", { description: err.message }))
+        .then(
+          (response) =>
+            afterSend(response).catch((error: unknown) =>
+              toast.error("Sent, but something after the send failed", {
+                description: errorMessage(error),
+              }),
+            ),
+          (err: Error) => {
+            emitSendEvent({ kind: "failed", ...sendEvent });
+            toast.error("Send failed", { description: err.message });
+          },
+        )
         .finally(() => {
           setPendingSends((count) => Math.max(0, count - 1));
           releaseSendLock();
@@ -369,6 +396,12 @@ export function useComposeSend({
     };
 
     setPendingSends((count) => count + 1);
+    emitSendEvent({ kind: "queued", ...sendEvent });
+    // Checked once the send is committed, so it has the undo window to
+    // answer and a cancelled confirm dialog never asks a model. Never awaited.
+    void detectComposePromises(draftPath, accountId)
+      .then((detection) => offerPromises(sendEvent.sendId, detection))
+      .catch(() => undefined);
     if (windowSeconds === 0) {
       fire();
       return;
@@ -387,17 +420,20 @@ export function useComposeSend({
       for (const pending of pendingCancelsRef.current) pending();
       useUndo.getState().clearPendingSendCancel(cancel);
       releaseSendLock();
+      emitSendEvent({ kind: "cancelled", ...sendEvent });
       toast.info("Send cancelled");
     };
-    const toastId = toast(`Sending in ${windowSeconds}s`, {
-      duration: windowSeconds * 1000,
-      description: sendSummary(current),
-      action: { label: "Undo", onClick: cancel },
+    const toastId = showSendCountdown({
+      seconds: windowSeconds,
+      summary: sendSummary(current),
+      onUndo: cancel,
     });
     const timer = window.setTimeout(() => {
       if (cancelled) return;
       pendingCancelsRef.current.delete(cancelThis);
       useUndo.getState().clearPendingSendCancel(cancel);
+      // Hovering pauses a toast's own clock; the send doesn't wait for it.
+      toast.dismiss(toastId);
       fire();
     }, windowSeconds * 1000);
     pendingCancelsRef.current.add(cancelThis);

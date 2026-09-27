@@ -1,5 +1,5 @@
 import { markdown } from "@codemirror/lang-markdown";
-import { EditorState } from "@codemirror/state";
+import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { getCM, Vim, vim } from "@replit/codemirror-vim";
 import { basicSetup } from "codemirror";
@@ -83,6 +83,18 @@ export function CodeMirrorComposeEditor({
       state: EditorState.create({
         doc: initialValueRef.current,
         extensions: [
+          // Ahead of vim, which takes Ctrl-Enter in insert mode: off macOS
+          // (Mod is Ctrl) the send key must still send.
+          Prec.highest(
+            EditorView.domEventHandlers({
+              keydown: (event) => {
+                if (!isSendChord(event)) return false;
+                event.preventDefault();
+                callbacksRef.current.onSend();
+                return true;
+              },
+            }),
+          ),
           basicSetup,
           markdown(),
           vim(),
@@ -92,13 +104,6 @@ export function CodeMirrorComposeEditor({
               key: "Mod-s",
               run: () => {
                 callbacksRef.current.onSave();
-                return true;
-              },
-            },
-            {
-              key: "Mod-Enter",
-              run: () => {
-                callbacksRef.current.onSend();
                 return true;
               },
             },
@@ -153,5 +158,13 @@ export function CodeMirrorComposeEditor({
         <span className="normal-case tracking-normal">:w save · :q close · :wq both</span>
       </div>
     </div>
+  );
+}
+
+/** ⌘Enter or Ctrl+Enter alone: send. With Shift it is send and archive,
+ * which the compose surface handles. */
+function isSendChord(event: KeyboardEvent): boolean {
+  return (
+    event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey
   );
 }

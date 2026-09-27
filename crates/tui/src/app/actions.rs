@@ -173,6 +173,7 @@ impl App {
             | Action::ReplyQueueModalNext
             | Action::ReplyQueueModalPrev
             | Action::ReplyQueueModalReply
+            | Action::ReplyQueueModalFocus
             | Action::OpenActivityScreen
             | Action::CloseActivityModal
             | Action::ActivityModalNext

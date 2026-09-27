@@ -848,6 +848,7 @@ pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
         context_window: capabilities.context_window,
         supports_streaming: capabilities.supports_streaming,
         request_timeout_secs: config.request_timeout_secs,
+        allow_cloud_relationship_data: config.allow_cloud_relationship_data,
     };
     Ok(ResponseData::LlmStatus { snapshot })
 }

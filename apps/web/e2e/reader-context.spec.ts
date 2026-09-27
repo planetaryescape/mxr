@@ -48,6 +48,9 @@ async function stubModel(page: Page, newestId: () => string, delayMs: number): P
   );
   await page.route("**/api/v1/mail/threads/*/context/gist**", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, delayMs));
+    // The gist is asked for alongside the thread; answer once the thread
+    // read has told us the newest message's id.
+    await expect.poll(newestId).not.toBe("");
     const threadId = new URL(route.request().url()).pathname.split("/").at(-3);
     await route.fulfill({
       json: {
@@ -109,7 +112,7 @@ test("the ask lands without moving the messages and is marked in the message", a
   const after = await first.boundingBox();
   expect(after?.y).toBe(before?.y);
 
-  await expect(page.getByTestId("thread-ask")).toContainText("Asks you confirm who owns");
+  await expect(page.getByTestId("thread-ask")).toContainText("Asks you to confirm who owns");
   await expect(page.getByTestId("thread-gist-source")).toHaveText(
     "Local model stub-7b · from this thread",
   );
@@ -188,4 +191,14 @@ test("the privacy line names what was blocked and from whom", async ({ page }) =
   await expect(line).toContainText("Blocked 1 tracker from Mailchimp.");
   await expect.poll(() => imageHits.length).toBeGreaterThan(0);
   expect(trackerHits).toEqual([]);
+});
+
+test("a stalled model status never holds back the mail", async ({ page }) => {
+  // The status request never answers; the reader must not wait for it.
+  await page.route("**/api/v1/platform/llm/status", () => new Promise<void>(() => {}));
+  await openFirstConversation(page);
+  await expect(page.getByTestId("thread-context-facts")).toBeVisible();
+  await expect(page.getByTestId("reply-field")).toBeVisible();
+  // With no answer yet, no gist slot is reserved.
+  await expect(page.getByTestId("thread-gist")).toHaveCount(0);
 });

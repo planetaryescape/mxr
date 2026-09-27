@@ -52,7 +52,11 @@ pub fn context_rows(
         }
         match &gist.ask {
             Some(ask) => {
-                push("Asks you", ContextRowKind::Ask, ask.summary.clone());
+                push(
+                    "Asks you",
+                    ContextRowKind::Ask,
+                    format!("to {}", ask.summary),
+                );
                 if let Some(quote) = &ask.quote {
                     push("", ContextRowKind::Quote, format!("\"{}\"", quote.text));
                 }
@@ -62,7 +66,6 @@ pub fn context_rows(
     }
 
     if let Some(context) = context {
-        let their_name = context.counterparty.as_ref().map(first_name);
         if let Some(person) = &context.counterparty {
             push("With", ContextRowKind::Fact, relationship(person, now));
         }
@@ -73,12 +76,11 @@ pub fn context_rows(
                 format!("a reply since {}", day_label(owed.since, now)),
             );
         }
-        for (index, commitment) in context.commitments.iter().enumerate() {
+        for (index, promise) in context.promises.iter().enumerate() {
+            let commitment = &promise.commitment;
             let who = match commitment.direction {
                 CommitmentDirectionData::Yours => "You".to_string(),
-                CommitmentDirectionData::Theirs => their_name
-                    .clone()
-                    .unwrap_or_else(|| commitment.who_owes.clone()),
+                CommitmentDirectionData::Theirs => first_word(&promise.owner),
             };
             let due = commitment
                 .by_when
@@ -173,9 +175,15 @@ fn first_name(person: &ThreadCounterpartyData) -> String {
     person
         .display_name
         .as_deref()
-        .and_then(|name| name.split_whitespace().next())
-        .unwrap_or(&person.email)
-        .to_string()
+        .map_or_else(|| person.email.clone(), first_word)
+}
+
+/// "Maya" from "Maya Ortiz"; an address stays whole.
+fn first_word(name: &str) -> String {
+    if name.contains('@') {
+        return name.to_string();
+    }
+    name.split_whitespace().next().unwrap_or(name).to_string()
 }
 
 fn plural(count: u32, noun: &str) -> String {
@@ -218,7 +226,8 @@ mod tests {
     use super::*;
     use mxr_core::id::{AccountId, MessageId, ThreadId};
     use mxr_protocol::{
-        CommitmentData, CommitmentStatusData, OwedReplyHereData, ThreadAskData, VerifiedQuoteData,
+        CommitmentData, CommitmentStatusData, OwedReplyHereData, ThreadAskData, ThreadPromiseData,
+        VerifiedQuoteData,
     };
 
     fn facts() -> ThreadContextData {
@@ -243,19 +252,30 @@ mod tests {
                 message_id: MessageId::new(),
                 since: Utc::now(),
             }),
-            commitments: vec![CommitmentData {
-                id: "c1".into(),
-                account_id,
-                email: "maya@example.com".into(),
-                thread_id,
-                direction: CommitmentDirectionData::Theirs,
-                status: CommitmentStatusData::Open,
-                who_owes: "maya".into(),
-                what: "share the dashboard".into(),
-                by_when: None,
-                evidence_msg_id: MessageId::new(),
-                extracted_at: Utc::now(),
-            }],
+            // A group thread: Maya is the main counterparty, but the two
+            // promises are Alice's and Bob's.
+            promises: [
+                ("Alice Park", "alice@example.com", "share the dashboard"),
+                ("bob@example.com", "bob@example.com", "send the logs"),
+            ]
+            .into_iter()
+            .map(|(owner, email, what)| ThreadPromiseData {
+                owner: owner.into(),
+                commitment: CommitmentData {
+                    id: what.into(),
+                    account_id: account_id.clone(),
+                    email: email.into(),
+                    thread_id: thread_id.clone(),
+                    direction: CommitmentDirectionData::Theirs,
+                    status: CommitmentStatusData::Open,
+                    who_owes: email.into(),
+                    what: what.into(),
+                    by_when: None,
+                    evidence_msg_id: MessageId::new(),
+                    extracted_at: Utc::now(),
+                },
+            })
+            .collect(),
         }
     }
 
@@ -296,7 +316,8 @@ mod tests {
             vec![
                 "With|Maya (maya@example.com): 41 emails · you usually reply within 4h · your first conversation",
                 "You owe|a reply since today",
-                "Promises|Maya promised: share the dashboard",
+                "Promises|Alice promised: share the dashboard",
+                "|bob@example.com promised: send the logs",
             ]
         );
     }
@@ -310,7 +331,7 @@ mod tests {
         );
         let texts = texts(&rows);
         assert_eq!(texts[0], "Gist|Canary stays at 5%.");
-        assert_eq!(texts[1], "Asks you|confirm the owner");
+        assert_eq!(texts[1], "Asks you|to confirm the owner");
         assert_eq!(texts[2], "|\"Who owns it?\"");
         assert_eq!(
             texts.last().map(String::as_str).unwrap_or_default(),

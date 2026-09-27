@@ -80,6 +80,10 @@ struct CachedGist {
     gist: String,
     ask: Option<ThreadAskData>,
     provenance: AiProvenanceData,
+    /// Some message had no synced body, so its snippet stood in. Such a gist
+    /// is regenerated once the bodies arrive.
+    #[serde(default)]
+    from_snippet: bool,
 }
 
 /// The gist shares the briefings cache table; the prefix keeps its rows
@@ -118,7 +122,9 @@ pub(super) async fn get_thread_gist(
             .filter(|row| row.content_hash == content_hash)
         {
             if let Ok(payload) = serde_json::from_str::<CachedGist>(&cached.body_markdown) {
-                return Ok(ready(thread_id, payload, cached.generated_at, true));
+                if !payload.from_snippet || !any_body_synced(state, &envelopes).await {
+                    return Ok(ready(thread_id, payload, cached.generated_at, true));
+                }
             }
         }
     }
@@ -169,7 +175,19 @@ pub(super) async fn get_thread_gist(
             ))
         }
     };
-    let Some(parsed) = parse_gist(&response.content, &texts) else {
+    // Quotes are checked against each message's stored plain text first,
+    // then against the text the prompt carried.
+    let candidates: Vec<(MessageId, &str)> = texts
+        .iter()
+        .flat_map(|text| {
+            text.plain
+                .as_deref()
+                .into_iter()
+                .chain(std::iter::once(text.prompt.as_str()))
+                .map(|candidate| (text.id.clone(), candidate))
+        })
+        .collect();
+    let Some(parsed) = parse_gist(&response.content, &candidates) else {
         tracing::warn!(%thread_id, "thread gist: model answer was not usable");
         return Ok(unavailable(
             thread_id,
@@ -190,6 +208,7 @@ pub(super) async fn get_thread_gist(
             locality,
             sources,
         },
+        from_snippet: texts.iter().any(|text| text.from_snippet),
     };
     let generated_at = chrono::Utc::now();
     state
@@ -258,16 +277,37 @@ fn gist_content_hash(envelopes: &[Envelope], share_history: bool, model: &str) -
     base16ct::lower::encode_string(&hash.finalize())
 }
 
-/// Readable text for the newest messages that fit the prompt budget, oldest
-/// first: the plain part when there is one, else the HTML reduced to text,
-/// capped per message. The same text the quote is verified against. Older
+/// Whether any message in the thread now has a synced body.
+async fn any_body_synced(state: &AppState, envelopes: &[Envelope]) -> bool {
+    for envelope in envelopes {
+        if matches!(state.store.get_body(&envelope.id).await, Ok(Some(_))) {
+            return true;
+        }
+    }
+    false
+}
+
+/// One message as the gist reads it.
+struct MessageText {
+    id: MessageId,
+    /// What the prompt carries: the plain part when there is one, else the
+    /// HTML reduced to text, capped per message.
+    prompt: String,
+    /// The plain part as stored, which the readers show; quotes are looked
+    /// up here first so the returned span is literally in the body.
+    plain: Option<String>,
+    /// No body was synced yet, so the prompt used the snippet.
+    from_snippet: bool,
+}
+
+/// The newest messages that fit the prompt budget, oldest first. Older
 /// messages past the budget are never read.
-async fn message_texts(state: &AppState, envelopes: &[Envelope]) -> Vec<(MessageId, String)> {
+async fn message_texts(state: &AppState, envelopes: &[Envelope]) -> Vec<MessageText> {
     let mut out = Vec::new();
     let mut used = 0usize;
     for envelope in envelopes.iter().rev() {
         let body = state.store.get_body(&envelope.id).await.ok().flatten();
-        let mut text = match body {
+        let (mut prompt, plain, from_snippet) = match body {
             Some(body) if body.text_plain.is_some() || body.text_html.is_some() => {
                 let cleaned = clean(
                     body.text_plain.as_deref(),
@@ -275,20 +315,26 @@ async fn message_texts(state: &AppState, envelopes: &[Envelope]) -> Vec<(Message
                     &ReaderConfig::default(),
                 )
                 .content;
-                if cleaned.trim().is_empty() {
-                    body.text_plain.unwrap_or_default()
+                let prompt = if cleaned.trim().is_empty() {
+                    body.text_plain.clone().unwrap_or_default()
                 } else {
                     cleaned
-                }
+                };
+                (prompt, body.text_plain, false)
             }
-            _ => envelope.snippet.clone(),
+            _ => (envelope.snippet.clone(), None, true),
         };
-        mxr_core::text::truncate_to_char_boundary(&mut text, MESSAGE_MAX_CHARS);
-        if used + text.len() > TRANSCRIPT_MAX_CHARS && !out.is_empty() {
+        mxr_core::text::truncate_to_char_boundary(&mut prompt, MESSAGE_MAX_CHARS);
+        if used + prompt.len() > TRANSCRIPT_MAX_CHARS && !out.is_empty() {
             break;
         }
-        used += text.len();
-        out.push((envelope.id.clone(), text));
+        used += prompt.len();
+        out.push(MessageText {
+            id: envelope.id.clone(),
+            prompt,
+            plain,
+            from_snippet,
+        });
     }
     out.reverse();
     out
@@ -297,7 +343,7 @@ async fn message_texts(state: &AppState, envelopes: &[Envelope]) -> Vec<(Message
 fn build_user_prompt(
     owned: &BTreeSet<String>,
     envelopes: &[Envelope],
-    texts: &[(MessageId, String)],
+    texts: &[MessageText],
     history: Option<&str>,
 ) -> String {
     let mut prompt = String::from("Account owner addresses:\n");
@@ -308,8 +354,10 @@ fn build_user_prompt(
         prompt.push_str(&format!("- {email}\n"));
     }
 
-    let bodies: HashMap<&MessageId, &str> =
-        texts.iter().map(|(id, text)| (id, text.as_str())).collect();
+    let bodies: HashMap<&MessageId, &str> = texts
+        .iter()
+        .map(|text| (&text.id, text.prompt.as_str()))
+        .collect();
     let blocks: Vec<String> = envelopes
         .iter()
         .filter_map(|envelope| {
@@ -370,7 +418,7 @@ fn history_line(facts: &ThreadContextData) -> Option<String> {
 /// the wrong id, in another message of the thread).
 fn parse_gist(
     content: &str,
-    texts: &[(MessageId, String)],
+    texts: &[(MessageId, &str)],
 ) -> Option<(String, Option<ThreadAskData>)> {
     let raw: RawGist = serde_json::from_str(json_object(content)).ok()?;
     let gist = plain_text(&raw.gist, GIST_MAX_CHARS);
@@ -437,13 +485,17 @@ fn fold_quotes(c: char) -> char {
     }
 }
 
-/// The quote as it appears in the message (whitespace collapsed), or `None`
-/// when it is too short, too long, or not in the thread. A paraphrase never
-/// matches: only whitespace and quote-mark style may differ.
+/// The quote exactly as it appears in a message's text, or `None` when it is
+/// too short, too long, or not in the thread. Matching ignores how
+/// whitespace is laid out and curly versus straight quote marks; the span
+/// returned is the original slice of the text, so it is literally a
+/// substring of it. A paraphrase never matches. `texts` holds each
+/// message's candidate texts (stored plain part first); the cited message is
+/// tried before the others, newest first.
 fn verify_quote(
     quote: &str,
     msg_id: &str,
-    texts: &[(MessageId, String)],
+    texts: &[(MessageId, &str)],
 ) -> Option<VerifiedQuoteData> {
     let wanted: Vec<char> = collapse_whitespace(quote)
         .trim_matches(['"', '\u{201C}', '\u{201D}'])
@@ -456,16 +508,36 @@ fn verify_quote(
     let cited = texts.iter().filter(|(id, _)| id.as_str() == msg_id);
     let others = texts.iter().rev().filter(|(id, _)| id.as_str() != msg_id);
     cited.chain(others).find_map(|(id, text)| {
-        let original: Vec<char> = collapse_whitespace(text).chars().collect();
-        let folded: Vec<char> = original.iter().copied().map(fold_quotes).collect();
-        let start = folded
-            .windows(wanted.len())
-            .position(|window| window == wanted.as_slice())?;
+        let span = find_normalized(text, &wanted)?;
         Some(VerifiedQuoteData {
             message_id: id.clone(),
-            text: original[start..start + wanted.len()].iter().collect(),
+            text: text[span].to_string(),
         })
     })
+}
+
+/// Byte range in `text` whose whitespace-collapsed, quote-folded form equals
+/// `wanted` (already collapsed and folded).
+fn find_normalized(text: &str, wanted: &[char]) -> Option<std::ops::Range<usize>> {
+    // Each normalized char with the byte range of the original it stands for.
+    let mut normalized: Vec<(char, usize, usize)> = Vec::new();
+    for (index, c) in text.char_indices() {
+        let end = index + c.len_utf8();
+        if c.is_whitespace() {
+            match normalized.last_mut() {
+                Some((' ', _, last_end)) => *last_end = end,
+                _ => normalized.push((' ', index, end)),
+            }
+        } else {
+            normalized.push((fold_quotes(c), index, end));
+        }
+    }
+    let start = normalized
+        .windows(wanted.len())
+        .position(|window| window.iter().map(|(c, _, _)| *c).eq(wanted.iter().copied()))?;
+    let first = normalized[start];
+    let last = normalized[start + wanted.len() - 1];
+    Some(first.1..last.2)
 }
 
 #[cfg(test)]
@@ -523,9 +595,9 @@ mod tests {
         }
     }
 
-    fn texts(body: &str) -> (MessageId, Vec<(MessageId, String)>) {
+    fn texts(body: &str) -> (MessageId, Vec<(MessageId, &str)>) {
         let id = MessageId::new();
-        (id.clone(), vec![(id, body.to_string())])
+        (id.clone(), vec![(id, body)])
     }
 
     #[test]
@@ -535,12 +607,18 @@ mod tests {
         );
         let quote = verify_quote(ASK_SENTENCE, &id.as_str(), &texts).expect("exact quote verifies");
         assert_eq!(quote.message_id, id);
-        assert_eq!(quote.text, ASK_SENTENCE);
+        // The original slice, line breaks and all: literally in the body.
+        assert_eq!(
+            quote.text,
+            "Can you confirm who owns the\nrollout check before Monday?"
+        );
+        assert!(texts[0].1.contains(&quote.text));
     }
 
     #[test]
     fn quote_verification_rejects_a_paraphrase() {
-        let (id, texts) = texts(&format!("Hi,\n{ASK_SENTENCE}\nMaya"));
+        let body = format!("Hi,\n{ASK_SENTENCE}\nMaya");
+        let (id, texts) = texts(&body);
         for paraphrase in [
             "Could you confirm who owns the rollout check before Monday?",
             "Can you confirm who owns the rollout check by Monday?",
@@ -566,12 +644,10 @@ mod tests {
     fn quote_verification_finds_a_quote_cited_under_the_wrong_message() {
         let first = MessageId::new();
         let second = MessageId::new();
+        let hello = format!("Hello. {ASK_SENTENCE}");
         let texts = vec![
-            (
-                first.clone(),
-                "Earlier note with nothing to ask.".to_string(),
-            ),
-            (second.clone(), format!("Hello. {ASK_SENTENCE}")),
+            (first.clone(), "Earlier note with nothing to ask."),
+            (second.clone(), hello.as_str()),
         ];
         let quote = verify_quote(ASK_SENTENCE, &first.as_str(), &texts).unwrap();
         assert_eq!(quote.message_id, second);
@@ -753,6 +829,51 @@ mod tests {
             vec![AiSourceData::ThisThread, AiSourceData::RelationshipHistory]
         );
         assert!(llm.prompts.lock().unwrap()[1].contains("History with maya@example.com"));
+    }
+
+    #[tokio::test]
+    async fn a_gist_written_from_snippets_is_redone_once_bodies_sync() {
+        let state = AppState::in_memory().await.unwrap();
+        let thread_id = ThreadId::new();
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(state.default_account_id())
+            .thread_id(thread_id.clone())
+            .provider_id("snippet-1")
+            .sender_address("Maya Ortiz", "maya@example.com")
+            .snippet("Can you confirm who owns it?")
+            .build();
+        state
+            .store
+            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        let llm = ScriptedLlm::new(answer_for(&envelope.id));
+        state.llm.replace(llm.clone());
+
+        gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        let again = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        assert!(again.from_cache, "no body yet: the snippet gist stands");
+        assert_eq!(llm.calls.load(Ordering::SeqCst), 1);
+
+        state
+            .store
+            .insert_body(&MessageBody {
+                message_id: envelope.id.clone(),
+                text_plain: Some(format!("Hi Maya here.\n{ASK_SENTENCE}")),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+                metadata: MessageMetadata::default(),
+            })
+            .await
+            .unwrap();
+        let fresh = gist(get_thread_gist(&state, &thread_id, false).await.unwrap());
+        assert!(!fresh.from_cache, "the body arrived: regenerate");
+        assert_eq!(llm.calls.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            fresh.ask.and_then(|ask| ask.quote).map(|quote| quote.text),
+            Some(ASK_SENTENCE.to_string())
+        );
     }
 
     #[tokio::test]

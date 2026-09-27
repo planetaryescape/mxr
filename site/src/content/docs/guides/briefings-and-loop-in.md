@@ -39,7 +39,7 @@ mxr briefing context THREAD_ID --format json    # {context, gist}
 
 ```text
 Gist      The canary stays at 5% until the dashboard is quiet.
-Asks you  confirm who owns the rollout check
+Asks you  to confirm who owns the rollout check
           "Can you confirm who owns the rollout check before Monday?"
 With      Maya (maya@example.com): 41 emails · you usually reply within 4h · last spoke 12 Sep
 You owe   a reply since Thu

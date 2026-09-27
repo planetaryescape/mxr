@@ -14,7 +14,7 @@ export type ThreadCounterparty = Schemas["ThreadCounterpartyData"];
 export type ThreadGist = Schemas["ThreadGistData"];
 export type ThreadAsk = Schemas["ThreadAskData"];
 export type AiProvenance = Schemas["AiProvenanceData"];
-export type Commitment = Schemas["CommitmentData"];
+export type ThreadPromise = Schemas["ThreadPromiseData"];
 
 type ContextResponse = Extract<Schemas["ResponseData"], { kind: "ThreadContext" }>;
 type GistResponse = Extract<Schemas["ResponseData"], { kind: "ThreadGist" }>;
@@ -24,7 +24,12 @@ type GistResponse = Extract<Schemas["ResponseData"], { kind: "ThreadGist" }>;
  * reply, a mutation) refreshes its context too.
  */
 export const threadContextKey = (threadId: string) => ["thread", threadId, "context"] as const;
-export const threadGistKey = (threadId: string) => ["thread", threadId, "gist"] as const;
+export const threadGistKey = (threadId: string, policy: string) =>
+  ["thread", threadId, "gist", policy] as const;
+
+/** Every cached gist, for invalidation when LLM settings change. */
+export const isGistQuery = (query: { queryKey: readonly unknown[] }) =>
+  query.queryKey[0] === "thread" && query.queryKey[2] === "gist";
 
 /**
  * Query options shared by the pane (which waits for it) and the reader. No
@@ -44,9 +49,9 @@ export function threadContextQuery(threadId: string) {
 }
 
 /** The gist: cached by the daemon per newest message, so no retries here. */
-export function threadGistQuery(threadId: string) {
+export function threadGistQuery(threadId: string, policy: string) {
   return {
-    queryKey: threadGistKey(threadId),
+    queryKey: threadGistKey(threadId, policy),
     queryFn: () => fetchThreadGist(threadId),
     staleTime: 5 * 60_000,
     retry: false,

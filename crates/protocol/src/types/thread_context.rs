@@ -24,7 +24,18 @@ pub struct ThreadContextData {
     pub owed_reply: Option<OwedReplyHereData>,
     /// Open promises recorded against this thread, both directions.
     #[serde(default)]
-    pub commitments: Vec<CommitmentData>,
+    pub promises: Vec<ThreadPromiseData>,
+}
+
+/// An open promise in the thread and who made it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadPromiseData {
+    /// Who owes it, as the thread knows them: "you" for your own promises,
+    /// else the owner's display name from the thread's messages, falling back
+    /// to their address. In a group thread each promise keeps its own owner.
+    pub owner: String,
+    pub commitment: CommitmentData,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

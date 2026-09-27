@@ -6,7 +6,7 @@
 
 import { plural, startOfDay } from "@/lib/format";
 
-import type { AiProvenance, Commitment, ThreadContext, ThreadCounterparty } from "./api";
+import type { AiProvenance, ThreadContext, ThreadCounterparty } from "./api";
 
 /** "Maya" from "Maya Ortiz"; the address when there is no name. */
 export function firstName(person: Pick<ThreadCounterparty, "display_name" | "email">): string {
@@ -82,12 +82,14 @@ export interface PromiseView {
   text: string;
 }
 
-/** "You promised: send the runbook link, due Fri" / "Maya promised: …". */
+/**
+ * "You promised: send the runbook link, due Fri" / "Alice promised: …".
+ * Each promise names its own owner (the daemon resolves it from the
+ * thread), so in a group thread Alice's promise never reads as Bob's.
+ */
 export function promiseViews(context: ThreadContext, now = new Date()): PromiseView[] {
-  const theirName = context.counterparty ? firstName(context.counterparty) : null;
-  return (context.commitments ?? []).map((commitment: Commitment) => {
-    const who =
-      commitment.direction === "yours" ? "You" : (theirName ?? capitalize(commitment.who_owes));
+  return (context.promises ?? []).map(({ owner, commitment }) => {
+    const who = commitment.direction === "yours" ? "You" : ownerLabel(owner);
     const due = commitment.by_when ? `, due ${dayLabel(commitment.by_when, now)}` : "";
     return { id: commitment.id, text: `${who} promised: ${commitment.what}${due}` };
   });
@@ -108,6 +110,9 @@ export function provenanceLabel(provenance: AiProvenance, personName: string | n
   return `${place} ${provenance.model} · ${source}`;
 }
 
-function capitalize(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+/** "Alice" from "Alice Park"; an address stays whole. */
+function ownerLabel(owner: string): string {
+  if (owner.includes("@")) return owner;
+  const first = owner.trim().split(/\s+/)[0] ?? owner;
+  return first.charAt(0).toUpperCase() + first.slice(1);
 }

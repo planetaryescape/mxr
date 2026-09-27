@@ -9,6 +9,7 @@ import { Centered, ListSkeleton } from "./MailViewParts";
 import { useMailboxQuery, useShellQuery } from "./useMailboxQuery";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useLlmStatus } from "@/features/llm/useLlmStatus";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { formatRelative, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,9 @@ const PAGE_MAILBOXES: Record<string, string> = {
 
 /** A mailbox lens (system mailbox, label or saved search) with its reader. */
 export function MailView({ route }: { route: LensRoute }) {
+  // Warm the model status while the list shows, so an opened thread already
+  // knows whether to reserve its gist slot. The reader never waits for it.
+  useLlmStatus();
   const shell = useShellQuery();
   const lenses = useMemo(() => lensesFromShell(shell.data), [shell.data]);
 

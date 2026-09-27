@@ -18,7 +18,7 @@ const FACTS: ThreadContext = {
     their_reply_samples: 0,
     bulk_sender: false,
   },
-  commitments: [],
+  promises: [],
 };
 
 const READY: ThreadGist = {
@@ -74,7 +74,7 @@ describe("ContextBlock", () => {
     expect(slot).toHaveAttribute("data-state", "ready");
     expect(slot.className).toMatch(/(^| )h-\[9rem\] .*@xl:h-\[7\.5rem\]/);
     expect(screen.getByTestId("thread-ask")).toHaveTextContent(
-      "Asks you confirm who owns the rollout check",
+      "Asks you to confirm who owns the rollout check",
     );
     expect(screen.getByTestId("thread-gist-source")).toHaveTextContent(
       "Local model qwen2.5 · from this thread",

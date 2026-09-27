@@ -1524,7 +1524,7 @@ async fn opened_thread_shows_its_context_above_the_messages() {
                 bulk_sender: false,
             }),
             owed_reply: None,
-            commitments: vec![],
+            promises: vec![],
         })),
     );
     crate::daemon_events::apply_thread_gist_loaded(

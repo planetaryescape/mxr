@@ -46,56 +46,79 @@ impl super::Store {
     }
 
     /// How much you and `email` have written to each other in `account_id`.
-    /// Inbound counts their messages (by From); outbound counts yours with
-    /// them on To, Cc or Bcc.
+    /// Inbound counts their messages (by From, matching any of
+    /// `from_variants`, the address as it is spelled in their mail, so the
+    /// `from_email` index applies). Outbound counts come from the `contacts`
+    /// aggregate when it has the address, so no recipient lists are walked;
+    /// the latest outbound message elsewhere is found newest first and stops
+    /// at the first match.
     pub async fn counterparty_exchange(
         &self,
         account_id: &AccountId,
         email: &str,
+        from_variants: &[String],
         exclude_thread: &ThreadId,
     ) -> Result<CounterpartyExchange, sqlx::Error> {
         let started_at = Instant::now();
         let email = email.trim().to_ascii_lowercase();
+        let mut variants: Vec<&str> = from_variants.iter().map(String::as_str).collect();
+        variants.push(&email);
+        variants.sort_unstable();
+        variants.dedup();
+        let variants = serde_json::to_string(&variants).unwrap_or_else(|_| "[]".into());
+
         let inbound = sqlx::query(
             r#"SELECT COUNT(*) AS total,
                       MAX(CASE WHEN thread_id != ?3 THEN date END) AS last_elsewhere,
                       MAX(list_id IS NOT NULL) AS list_sender
-               FROM messages
-               WHERE account_id = ?1
-                 AND direction = 'inbound'
-                 AND LOWER(from_email) = ?2"#,
+               FROM messages INDEXED BY idx_messages_from
+               WHERE from_email IN (SELECT value FROM json_each(?2))
+                 AND account_id = ?1
+                 AND direction = 'inbound'"#,
         )
         .bind(account_id.as_str())
-        .bind(&email)
+        .bind(&variants)
         .bind(exclude_thread.as_str())
         .fetch_one(self.reader())
         .await?;
-        let outbound = sqlx::query(
-            r#"SELECT COUNT(*) AS total,
-                      MAX(CASE WHEN thread_id != ?3 THEN date END) AS last_elsewhere
-               FROM messages m
-               WHERE m.account_id = ?1
-                 AND m.direction = 'outbound'
-                 AND EXISTS (
-                     SELECT 1 FROM json_each(m.to_addrs)
-                     WHERE LOWER(json_extract(value, '$.email')) = ?2
-                     UNION ALL
-                     SELECT 1 FROM json_each(m.cc_addrs)
-                     WHERE LOWER(json_extract(value, '$.email')) = ?2
-                     UNION ALL
-                     SELECT 1 FROM json_each(m.bcc_addrs)
-                     WHERE LOWER(json_extract(value, '$.email')) = ?2
-                 )"#,
+
+        let aggregate: Option<i64> = sqlx::query_scalar(
+            "SELECT total_outbound FROM contacts WHERE account_id = ? AND email = ?",
         )
         .bind(account_id.as_str())
         .bind(&email)
-        .bind(exclude_thread.as_str())
-        .fetch_one(self.reader())
+        .fetch_optional(self.reader())
         .await?;
-        trace_query("thread_context.exchange", started_at, 2);
+        let (from_you, last_out) = match aggregate {
+            Some(0) => (0, None),
+            Some(total) => (
+                u32::try_from(total).unwrap_or(u32::MAX),
+                self.latest_outbound_elsewhere(account_id, &email, exclude_thread)
+                    .await?,
+            ),
+            // Not aggregated yet (a brand-new address): count it live.
+            None => {
+                let sql = format!(
+                    "SELECT COUNT(*) AS total,
+                            MAX(CASE WHEN thread_id != ?3 THEN date END) AS last_elsewhere
+                     FROM messages m
+                     WHERE m.account_id = ?1 AND m.direction = 'outbound' AND {SENT_TO}"
+                );
+                let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                    .bind(account_id.as_str())
+                    .bind(&email)
+                    .bind(exclude_thread.as_str())
+                    .fetch_one(self.reader())
+                    .await?;
+                (
+                    count(&row)?,
+                    row.try_get::<Option<i64>, _>("last_elsewhere")?,
+                )
+            }
+        };
+        trace_query("thread_context.exchange", started_at, 3);
 
         let last_in: Option<i64> = inbound.try_get("last_elsewhere")?;
-        let last_out: Option<i64> = outbound.try_get("last_elsewhere")?;
         let last_elsewhere_at = last_in
             .into_iter()
             .chain(last_out)
@@ -104,7 +127,7 @@ impl super::Store {
             .transpose()?;
         Ok(CounterpartyExchange {
             from_them: count(&inbound)?,
-            from_you: count(&outbound)?,
+            from_you,
             last_elsewhere_at,
             list_sender: inbound
                 .try_get::<Option<i64>, _>("list_sender")?
@@ -112,7 +135,80 @@ impl super::Store {
                 > 0,
         })
     }
+
+    /// How many reply pairs there are with `email` in `direction`, and the
+    /// median latency, without loading them: the reader only needs the
+    /// middle value.
+    pub async fn reply_latency_median(
+        &self,
+        account_id: &AccountId,
+        direction: mxr_core::types::ResponseTimeDirection,
+        email: &str,
+    ) -> Result<(u32, Option<u32>), sqlx::Error> {
+        let started_at = Instant::now();
+        let email = email.trim().to_ascii_lowercase();
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM reply_pairs INDEXED BY idx_reply_pairs_party
+             WHERE counterparty_email = ?1 AND account_id = ?2 AND direction = ?3",
+        )
+        .bind(&email)
+        .bind(account_id.as_str())
+        .bind(direction.as_db_str())
+        .fetch_one(self.reader())
+        .await?;
+        let median: Option<i64> = if count == 0 {
+            None
+        } else {
+            sqlx::query_scalar(
+                "SELECT latency_seconds FROM reply_pairs INDEXED BY idx_reply_pairs_party
+                 WHERE counterparty_email = ?1 AND account_id = ?2 AND direction = ?3
+                 ORDER BY latency_seconds
+                 LIMIT 1 OFFSET ?4",
+            )
+            .bind(&email)
+            .bind(account_id.as_str())
+            .bind(direction.as_db_str())
+            .bind(count / 2)
+            .fetch_optional(self.reader())
+            .await?
+        };
+        trace_query("thread_context.reply_median", started_at, 2);
+        Ok((
+            u32::try_from(count).unwrap_or(u32::MAX),
+            median.map(|seconds| u32::try_from(seconds.max(0)).unwrap_or(u32::MAX)),
+        ))
+    }
+
+    async fn latest_outbound_elsewhere(
+        &self,
+        account_id: &AccountId,
+        email: &str,
+        exclude_thread: &ThreadId,
+    ) -> Result<Option<i64>, sqlx::Error> {
+        let sql = format!(
+            "SELECT m.date FROM messages m
+             WHERE m.account_id = ?1 AND m.direction = 'outbound' AND m.thread_id != ?3
+               AND {SENT_TO}
+             ORDER BY m.date DESC
+             LIMIT 1"
+        );
+        sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(account_id.as_str())
+            .bind(email)
+            .bind(exclude_thread.as_str())
+            .fetch_optional(self.reader())
+            .await
+    }
 }
+
+/// `m` was sent to `?2` (lowercased) on To, Cc or Bcc.
+const SENT_TO: &str = "EXISTS (
+    SELECT 1 FROM json_each(m.to_addrs) WHERE LOWER(json_extract(value, '$.email')) = ?2
+    UNION ALL
+    SELECT 1 FROM json_each(m.cc_addrs) WHERE LOWER(json_extract(value, '$.email')) = ?2
+    UNION ALL
+    SELECT 1 FROM json_each(m.bcc_addrs) WHERE LOWER(json_extract(value, '$.email')) = ?2
+)";
 
 fn count(row: &sqlx::sqlite::SqliteRow) -> Result<u32, sqlx::Error> {
     let total: i64 = row.try_get("total")?;
@@ -148,7 +244,7 @@ mod tests {
         to: &str,
         days_ago: i64,
         direction: MessageDirection,
-    ) {
+    ) -> mxr_core::id::MessageId {
         let mut envelope = TestEnvelopeBuilder::new()
             .account_id(account_id.clone())
             .build();
@@ -161,6 +257,7 @@ mod tests {
             .upsert_envelope_with_direction(&envelope, direction)
             .await
             .unwrap();
+        envelope.id
     }
 
     #[tokio::test]
@@ -201,7 +298,12 @@ mod tests {
         .await;
 
         let exchange = store
-            .counterparty_exchange(&account_id, "MAYA@example.com", &here)
+            .counterparty_exchange(
+                &account_id,
+                "MAYA@example.com",
+                &["Maya@Example.com".to_string()],
+                &here,
+            )
             .await
             .unwrap();
         assert_eq!(exchange.from_them, 2);
@@ -235,11 +337,125 @@ mod tests {
         )
         .await;
         let exchange = store
-            .counterparty_exchange(&account_id, "new@example.com", &here)
+            .counterparty_exchange(&account_id, "new@example.com", &[], &here)
             .await
             .unwrap();
         assert_eq!(exchange.from_them, 1);
         assert_eq!(exchange.from_you, 0);
         assert_eq!(exchange.last_elsewhere_at, None);
+    }
+
+    #[tokio::test]
+    async fn aggregated_contacts_give_the_same_counts_and_medians_skip_the_rows() {
+        let (store, account_id) = store_with_account().await;
+        let here = ThreadId::new();
+        let earlier = ThreadId::new();
+        use MessageDirection::{Inbound, Outbound};
+        put(
+            &store,
+            &account_id,
+            &earlier,
+            "maya@example.com",
+            "me@example.com",
+            30,
+            Inbound,
+        )
+        .await;
+        put(
+            &store,
+            &account_id,
+            &earlier,
+            "me@example.com",
+            "maya@example.com",
+            29,
+            Outbound,
+        )
+        .await;
+        put(
+            &store,
+            &account_id,
+            &here,
+            "me@example.com",
+            "maya@example.com",
+            2,
+            Outbound,
+        )
+        .await;
+        put(
+            &store,
+            &account_id,
+            &here,
+            "maya@example.com",
+            "me@example.com",
+            1,
+            Inbound,
+        )
+        .await;
+        store.refresh_contacts().await.unwrap();
+
+        let exchange = store
+            .counterparty_exchange(&account_id, "maya@example.com", &[], &here)
+            .await
+            .unwrap();
+        assert_eq!((exchange.from_them, exchange.from_you), (2, 2));
+        let days_ago = (chrono::Utc::now() - exchange.last_elsewhere_at.unwrap()).num_days();
+        assert_eq!(days_ago, 29, "the newest outbound outside this thread");
+
+        let (count, median) = store
+            .reply_latency_median(
+                &account_id,
+                mxr_core::types::ResponseTimeDirection::IReplied,
+                "maya@example.com",
+            )
+            .await
+            .unwrap();
+        assert_eq!((count, median), (0, None));
+
+        // Three replies of 10s, 30s and 20s: the middle one is 20s.
+        for latency in [10_i64, 30, 20] {
+            let parent = put(
+                &store,
+                &account_id,
+                &here,
+                "maya@example.com",
+                "me@example.com",
+                5,
+                Inbound,
+            )
+            .await;
+            let reply = put(
+                &store,
+                &account_id,
+                &here,
+                "me@example.com",
+                "maya@example.com",
+                4,
+                Outbound,
+            )
+            .await;
+            sqlx::query(
+                "INSERT INTO reply_pairs (reply_message_id, parent_message_id, account_id,
+                     counterparty_email, direction, parent_received_at, replied_at,
+                     latency_seconds, created_at)
+                 VALUES (?, ?, ?, 'maya@example.com', 'i_replied', 0, ?, ?, 0)",
+            )
+            .bind(reply.as_str())
+            .bind(parent.as_str())
+            .bind(account_id.as_str())
+            .bind(latency)
+            .bind(latency)
+            .execute(store.writer())
+            .await
+            .unwrap();
+        }
+        let (count, median) = store
+            .reply_latency_median(
+                &account_id,
+                mxr_core::types::ResponseTimeDirection::IReplied,
+                "MAYA@example.com",
+            )
+            .await
+            .unwrap();
+        assert_eq!((count, median), (3, Some(20)));
     }
 }

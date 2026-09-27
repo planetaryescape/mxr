@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { Field } from "./settingsParts";
 import { apiFetch } from "@/api/client";
+import { isGistQuery } from "@/features/thread/context/api";
 import { PageSkeleton } from "@/components/PageParts";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -118,6 +119,8 @@ export function LlmSettingsSection() {
       toast.success("LLM config saved");
       void qc.invalidateQueries({ queryKey: ["llm-config"] });
       void qc.invalidateQueries({ queryKey: ["llm-status"] });
+      // Gists written under the old model or privacy setting are stale.
+      void qc.invalidateQueries({ predicate: isGistQuery });
     },
     onError: (error) =>
       toast.error(

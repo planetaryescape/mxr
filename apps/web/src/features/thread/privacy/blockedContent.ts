@@ -6,13 +6,15 @@
  */
 
 import { plural } from "@/lib/format";
-import { isTrackerImage } from "@/lib/sanitizeHtml";
+import { isRemoteSrc, isTrackerImage, remoteHost } from "@/lib/sanitizeHtml";
 
 export interface BlockedContent {
   trackers: number;
   remoteImages: number;
-  /** Who serves the blocked content, trackers' vendors first, deduplicated. */
-  sources: string[];
+  /** Who serves the trackers, deduplicated. */
+  trackerSources: string[];
+  /** Who serves the remote images, deduplicated. */
+  imageSources: string[];
 }
 
 // Hostname suffix to the company behind it. Unknown hosts fall back to
@@ -63,34 +65,28 @@ export function sourceName(hostname: string): string {
   return labels.slice(-keep).join(".");
 }
 
-function hostOf(src: string): string | null {
-  try {
-    const url = new URL(src);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.hostname : null;
-  } catch {
-    return null;
-  }
-}
-
 export function analyzeBlockedContent(html: string): BlockedContent {
-  const empty: BlockedContent = { trackers: 0, remoteImages: 0, sources: [] };
-  if (typeof DOMParser === "undefined") return empty;
+  const content: BlockedContent = {
+    trackers: 0,
+    remoteImages: 0,
+    trackerSources: [],
+    imageSources: [],
+  };
+  if (typeof DOMParser === "undefined") return content;
   const doc = new DOMParser().parseFromString(html, "text/html");
-  const trackerSources: string[] = [];
-  const imageSources: string[] = [];
-  let trackers = 0;
-  let remoteImages = 0;
   for (const image of Array.from(doc.querySelectorAll("img[src]"))) {
-    const host = hostOf(image.getAttribute("src") ?? "");
+    const src = image.getAttribute("src") ?? "";
+    const host = remoteHost(src);
+    const source = host ? sourceName(host) : null;
     if (isTrackerImage(image)) {
-      trackers += 1;
-      if (host) trackerSources.push(sourceName(host));
-    } else if (host) {
-      remoteImages += 1;
-      imageSources.push(sourceName(host));
+      content.trackers += 1;
+      if (source && !content.trackerSources.includes(source)) content.trackerSources.push(source);
+    } else if (isRemoteSrc(src)) {
+      content.remoteImages += 1;
+      if (source && !content.imageSources.includes(source)) content.imageSources.push(source);
     }
   }
-  return { trackers, remoteImages, sources: [...new Set([...trackerSources, ...imageSources])] };
+  return content;
 }
 
 /** "Mailchimp", "Mailchimp and Substack", "Mailchimp, Substack and 2 more". */
@@ -110,6 +106,10 @@ export function blockedSentence(content: BlockedContent, imagesAllowed: boolean)
     images > 0 ? plural(images, "remote image") : null,
   ].filter((part): part is string => part !== null);
   if (parts.length === 0) return null;
-  const from = content.sources.length > 0 ? ` from ${listSources(content.sources)}` : "";
+  // Name only who serves what is still blocked.
+  const sources = [
+    ...new Set([...content.trackerSources, ...(images > 0 ? content.imageSources : [])]),
+  ];
+  const from = sources.length > 0 ? ` from ${listSources(sources)}` : "";
   return `Blocked ${parts.join(" and ")}${from}.`;
 }

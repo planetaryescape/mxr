@@ -21,7 +21,7 @@ async fn context_and_gist_routes_forward_to_the_daemon() {
                         account_id: AccountId::new(),
                         counterparty: None,
                         owed_reply: None,
-                        commitments: vec![],
+                        promises: vec![],
                     },
                 },
                 Request::GetThreadGist { thread_id, .. } => ResponseData::ThreadGist {

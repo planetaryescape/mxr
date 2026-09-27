@@ -76,7 +76,7 @@ mod tests {
                 bulk_sender: false,
             }),
             owed_reply: None,
-            commitments: vec![],
+            promises: vec![],
         };
         let lines = context_lines(Some(&context), None, &Theme::default(), Utc::now());
         let text: Vec<String> = lines

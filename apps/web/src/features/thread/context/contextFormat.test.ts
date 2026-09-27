@@ -33,7 +33,7 @@ function context(overrides: Partial<ThreadContext> = {}): ThreadContext {
     thread_id: "t1",
     account_id: "a1",
     counterparty: person(),
-    commitments: [],
+    promises: [],
     ...overrides,
   };
 }
@@ -69,41 +69,46 @@ describe("context copy", () => {
     expect(shortDuration(3 * 86_400)).toBe("3d");
   });
 
-  it("names promises both ways and the owed reply", () => {
+  it("names promises both ways, each by its own owner, and the owed reply", () => {
+    const commitment = (id: string, direction: "yours" | "theirs", who: string, what: string) => ({
+      id,
+      account_id: "a1",
+      email: who.includes("@") ? who : "maya@example.com",
+      thread_id: "t1",
+      direction,
+      status: "open" as const,
+      who_owes: who,
+      what,
+      evidence_msg_id: "m1",
+      extracted_at: NOW.toISOString(),
+    });
+    // A group thread: Maya is the main counterparty, but the promises are
+    // Alice's and Bob's.
     const facts = context({
       owed_reply: { message_id: "m1", since: new Date(2026, 8, 26, 8).toISOString() },
-      commitments: [
+      promises: [
         {
-          id: "c1",
-          account_id: "a1",
-          email: "maya@example.com",
-          thread_id: "t1",
-          direction: "yours",
-          status: "open",
-          who_owes: "you",
-          what: "send the runbook link",
-          by_when: new Date(2026, 8, 27, 17).toISOString(),
-          evidence_msg_id: "m1",
-          extracted_at: NOW.toISOString(),
+          owner: "you",
+          commitment: {
+            ...commitment("c1", "yours", "me@example.com", "send the runbook link"),
+            by_when: new Date(2026, 8, 27, 17).toISOString(),
+          },
         },
         {
-          id: "c2",
-          account_id: "a1",
-          email: "maya@example.com",
-          thread_id: "t1",
-          direction: "theirs",
-          status: "open",
-          who_owes: "maya",
-          what: "share the dashboard",
-          evidence_msg_id: "m1",
-          extracted_at: NOW.toISOString(),
+          owner: "Alice Park",
+          commitment: commitment("c2", "theirs", "alice@example.com", "share the dashboard"),
+        },
+        {
+          owner: "bob@example.com",
+          commitment: commitment("c3", "theirs", "bob@example.com", "send the logs"),
         },
       ],
     });
     expect(owedReplyLabel(facts, NOW)).toBe("you owe a reply since yesterday");
     expect(promiseViews(facts, NOW).map((view) => view.text)).toEqual([
       "You promised: send the runbook link, due today",
-      "Maya promised: share the dashboard",
+      "Alice promised: share the dashboard",
+      "bob@example.com promised: send the logs",
     ]);
   });
 

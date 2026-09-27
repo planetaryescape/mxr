@@ -7,6 +7,8 @@ export interface LlmStatus {
   provider: string;
   model: string;
   configured_model?: string | null;
+  base_url?: string | null;
+  allow_cloud_relationship_data?: boolean;
 }
 
 export function fetchLlmStatus(): Promise<{ status: LlmStatus }> {
@@ -25,4 +27,19 @@ export function useLlmStatus() {
     staleTime: 5 * 60_000,
   });
   return { ...query, enabled: query.data?.status.enabled === true };
+}
+
+/**
+ * What decides which model writes model text and what it may read. Cached
+ * model output (the thread gist) is keyed on it, so a settings change never
+ * shows an answer written under the old policy.
+ */
+export function llmPolicyKey(status: LlmStatus | undefined): string {
+  if (!status?.enabled) return "off";
+  return [
+    status.provider,
+    status.model,
+    status.base_url ?? "",
+    status.allow_cloud_relationship_data ? "share" : "private",
+  ].join("|");
 }

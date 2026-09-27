@@ -90,12 +90,12 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
   );
   // Tracking pixels are stripped; other remote images wait for consent.
   await expect(body.getByAltText("tracking pixel")).toHaveCount(0);
-  const newsletter = body.getByAltText("newsletter image");
-  await expect(newsletter).not.toHaveAttribute("src", /.+/);
-  await expect(newsletter).toHaveAttribute(
-    "data-original-src",
-    "https://cdn.example.com/newsletter.png",
-  );
+  // A blocked image is a small inline note, not an empty box its size.
+  await expect(body.getByAltText("newsletter image")).toHaveCount(0);
+  const note = body.locator(".mxr-image-blocked");
+  await expect(note).toHaveText("Image blocked");
+  await expect(note).toHaveAttribute("title", "newsletter image");
+  expect((await note.boundingBox())?.height ?? 0).toBeLessThan(30);
   await expect(reader.getByTestId("privacy-line")).toContainText(
     "Blocked 1 tracker and 1 remote image from Customer.io and example.com.",
   );
@@ -104,12 +104,17 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
     reader.locator("iframe[sandbox]").first().contentFrame().getByAltText("newsletter image"),
   ).toHaveAttribute("src", "https://cdn.example.com/newsletter.png");
 
-  const heights = await page.getByTestId("thread-scroll").evaluate((scrollNode) => {
-    const frameNode = scrollNode.querySelector("iframe");
-    if (!frameNode) throw new Error("message iframe not found");
-    return frameNode.getBoundingClientRect().height;
-  });
-  expect(heights).toBeGreaterThan(150);
+  // The frame sizes to its content, not to a fixed default.
+  await expect
+    .poll(() =>
+      page.getByTestId("thread-scroll").evaluate((scrollNode) => {
+        const frameNode = scrollNode.querySelector("iframe");
+        const doc = frameNode?.contentDocument?.documentElement;
+        if (!frameNode || !doc) throw new Error("message iframe not found");
+        return Math.abs(frameNode.getBoundingClientRect().height - doc.scrollHeight);
+      }),
+    )
+    .toBeLessThan(2);
 
   await expect(reader.getByRole("button", { name: /^to Planetary Escape/ })).toBeVisible();
   // The toolbar keeps the frequent verbs; the rest are in More.

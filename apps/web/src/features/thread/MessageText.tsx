@@ -132,7 +132,7 @@ function Paragraphs({ text, highlight }: { text: string; highlight?: string }) {
           <Linkified text={tidy.slice(0, range.start)} />
           <mark
             data-ask-quote=""
-            className="rounded-[2px] border-b border-warning/80 bg-warning/15 px-0.5 text-foreground [box-decoration-break:clone]"
+            className="rounded-[2px] border-b border-[var(--ask-mark-rule)] bg-[var(--ask-mark)] px-0.5 text-foreground [box-decoration-break:clone]"
           >
             <Linkified text={tidy.slice(range.start, range.end)} />
           </mark>

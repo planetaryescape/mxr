@@ -98,6 +98,10 @@ pub struct LlmStatusSnapshot {
     pub context_window: u32,
     pub supports_streaming: bool,
     pub request_timeout_secs: u64,
+    /// Whether history with a person may go to a cloud model. Clients key
+    /// cached model output on it.
+    #[serde(default)]
+    pub allow_cloud_relationship_data: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

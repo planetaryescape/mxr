@@ -202,7 +202,8 @@ A conversation opens with its context before the messages:
   4h · last spoke 12 Sep", or "your first conversation".
 - **Whether you owe a reply**, and since when. Newsletters never count.
 - **Open promises** in this conversation, yours and theirs, with due dates.
-  The check mark marks one done.
+  Each promise names its own owner, so in a group thread Alice's promise
+  never reads as Bob's. The check mark marks one done.
 
 With no model configured you get the facts only, and nothing asks you to set
 one up. The same context is in the TUI and in `mxr briefing context`

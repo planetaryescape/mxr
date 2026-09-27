@@ -6,7 +6,7 @@ import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
 import { createMailVerbs } from "@/features/mail-actions/mailVerbs";
-import { useLlmStatus } from "@/features/llm/useLlmStatus";
+import { llmPolicyKey, useLlmStatus } from "@/features/llm/useLlmStatus";
 import { useProjectedMessages } from "@/features/mail-actions/pendingMailOps";
 import { targetFromThread } from "@/features/mail-actions/target";
 import { resolveCommitment } from "@/features/mailbox/api";
@@ -127,7 +127,8 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
   const threadId = data.thread.id;
   const queryClient = useQueryClient();
   const context = useQuery(threadContextQuery(threadId));
-  const gist = useQuery({ ...threadGistQuery(threadId), enabled: llm.enabled });
+  const policy = llmPolicyKey(llm.data?.status);
+  const gist = useQuery({ ...threadGistQuery(threadId, policy), enabled: llm.enabled });
   const resolve = useMutation({
     mutationFn: resolveCommitment,
     onSuccess: () => {
@@ -367,7 +368,7 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
               error: gist.error?.message ?? null,
               retry: () =>
                 void queryClient.fetchQuery({
-                  queryKey: threadGistKey(threadId),
+                  queryKey: threadGistKey(threadId, policy),
                   queryFn: () => fetchThreadGist(threadId, true),
                   staleTime: 0,
                 }),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sanitizeHtml } from "./sanitizeHtml";
+import { remoteHost, sanitizeHtml } from "./sanitizeHtml";
 
 describe("sanitizeHtml", () => {
   it("strips inline <script> tags", () => {
@@ -86,5 +86,36 @@ describe("sanitizeHtml", () => {
     const clean = sanitizeHtml(dirty, { allowRemoteImages: true });
 
     expect(clean).not.toMatch(/mailtrack/);
+  });
+
+  it("blocks protocol-relative and relative image sources, not inline ones", () => {
+    const dirty =
+      `<img src="//tracker.example/open.png" width="600">` +
+      `<img src="images/logo.png" width="600">` +
+      `<img src="cid:logo">` +
+      `<img src="data:image/png;base64,AAAA">`;
+    const clean = sanitizeHtml(dirty, { allowRemoteImages: false });
+
+    expect(clean).not.toMatch(/tracker\.example|logo\.png/);
+    expect(clean.match(/class="mxr-image-blocked"/g)).toHaveLength(2);
+    expect(clean).toMatch(/src="cid:logo"/);
+    expect(clean).toMatch(/src="data:image\/png/);
+  });
+
+  it("drops srcset, background attributes and style url() so nothing else loads", () => {
+    const dirty =
+      `<img src="data:image/png;base64,AAAA" srcset="https://cdn.example/a.png 2x, //cdn.example/b.png 3x">` +
+      `<table background="https://cdn.example/bg.png"><tr><td style="background-image:url(//cdn.example/c.png);color:red">x</td></tr></table>` +
+      `<div style="background: url('https://cdn.example/d.png')">y</div>`;
+    const clean = sanitizeHtml(dirty, { allowRemoteImages: false });
+
+    expect(clean).not.toMatch(/cdn\.example/);
+    expect(clean).toMatch(/color: red/);
+  });
+
+  it("names the host of a protocol-relative source", () => {
+    expect(remoteHost("//tracker.example/open.png")).toBe("tracker.example");
+    expect(remoteHost("images/logo.png")).toBeNull();
+    expect(remoteHost("cid:logo")).toBeNull();
   });
 });

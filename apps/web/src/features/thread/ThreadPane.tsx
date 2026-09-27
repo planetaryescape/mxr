@@ -3,7 +3,7 @@ import { RefreshCw } from "lucide-react";
 import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
-import { useLlmStatus } from "@/features/llm/useLlmStatus";
+import { llmPolicyKey, useLlmStatus } from "@/features/llm/useLlmStatus";
 import { fetchThread } from "@/features/mailbox/api";
 import { Centered } from "@/features/mailbox/MailViewParts";
 import { useOpenThread } from "@/state/openThreadStore";
@@ -18,25 +18,27 @@ export function ThreadPane({ threadId }: { threadId: string }) {
     queryKey: ["thread", threadId],
     queryFn: () => fetchThread(threadId),
   });
-  // Loaded alongside the thread, and waited for, so the context block and
-  // its reserved gist slot are in place before the first message paints:
-  // nothing below them moves afterwards. Both are local reads; a failed
-  // context read just leaves the block out.
+  // Loaded alongside the thread, and waited for, so the context block is in
+  // place before the first message paints. It's a local read like the
+  // thread; a failed read just leaves the block out. The model status is
+  // never waited for: reading must not depend on it (see MailView, which
+  // warms it before a thread opens, so the gist slot is usually decided).
   const context = useQuery(threadContextQuery(threadId));
   const llm = useLlmStatus();
+  const policy = llmPolicyKey(llm.data?.status);
   // Ask for the gist as soon as the thread is known, not after the reader
   // mounts: the model is the slow part.
   const queryClient = useQueryClient();
   useEffect(() => {
-    if (llm.enabled) void queryClient.prefetchQuery(threadGistQuery(threadId));
-  }, [llm.enabled, queryClient, threadId]);
+    if (llm.enabled) void queryClient.prefetchQuery(threadGistQuery(threadId, policy));
+  }, [llm.enabled, policy, queryClient, threadId]);
   const setOpenThread = useOpenThread((s) => s.setThreadId);
   useEffect(() => {
     setOpenThread(threadId);
     return () => setOpenThread(null);
   }, [setOpenThread, threadId]);
 
-  if (query.isLoading || context.isLoading || llm.isLoading) return <ReaderSkeleton />;
+  if (query.isLoading || context.isLoading) return <ReaderSkeleton />;
   if (query.isError) {
     return (
       <div className="flex min-w-0 flex-1 flex-col">

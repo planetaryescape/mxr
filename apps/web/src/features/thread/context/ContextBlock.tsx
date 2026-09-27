@@ -180,7 +180,7 @@ function GistSlot({
             >
               {data.ask ? (
                 <>
-                  <span className="font-medium text-warning">Asks you</span>{" "}
+                  <span className="font-medium text-warning">Asks you to</span>{" "}
                   <span className="text-foreground">{data.ask.summary}</span>
                   {data.ask.quote ? (
                     <>

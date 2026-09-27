@@ -7,7 +7,10 @@ use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::{Envelope, MessageDirection, ResponseTimeDirection, UnsubscribeMethod};
-use mxr_protocol::{OwedReplyHereData, ResponseData, ThreadContextData, ThreadCounterpartyData};
+use mxr_protocol::{
+    CommitmentData, CommitmentDirectionData, OwedReplyHereData, ResponseData, ThreadContextData,
+    ThreadCounterpartyData, ThreadPromiseData,
+};
 use std::collections::{BTreeSet, HashMap};
 
 pub(super) async fn get_thread_context(state: &AppState, thread_id: &ThreadId) -> HandlerResult {
@@ -88,15 +91,23 @@ pub(super) async fn build_thread_context(
     let counterparty = match counterparty_address {
         Some(address) if !address.email.trim().is_empty() => {
             let email = address.email.trim().to_ascii_lowercase();
+            // The address as their mail spells it, so the store can use its
+            // from-address index.
+            let variants: Vec<String> = envelopes
+                .iter()
+                .map(|envelope| &envelope.from.email)
+                .filter(|from| from.trim().eq_ignore_ascii_case(&email))
+                .map(|from| from.trim().to_string())
+                .collect();
             let median = |direction| {
                 state
                     .store
-                    .list_response_time(Some(&account_id), direction, Some(&email), None)
+                    .reply_latency_median(&account_id, direction, &email)
             };
-            let (exchange, yours, theirs) = tokio::try_join!(
+            let (exchange, (your_samples, your_p50), (their_samples, their_p50)) = tokio::try_join!(
                 state
                     .store
-                    .counterparty_exchange(&account_id, &email, thread_id),
+                    .counterparty_exchange(&account_id, &email, &variants, thread_id),
                 median(ResponseTimeDirection::IReplied),
                 median(ResponseTimeDirection::TheyReplied),
             )?;
@@ -113,11 +124,10 @@ pub(super) async fn build_thread_context(
                     .filter(|name| !name.is_empty()),
                 messages_from_them: exchange.from_them,
                 messages_from_you: exchange.from_you,
-                your_reply_p50_seconds: (yours.sample_count > 0).then_some(yours.clock_p50_seconds),
-                your_reply_samples: yours.sample_count,
-                their_reply_p50_seconds: (theirs.sample_count > 0)
-                    .then_some(theirs.clock_p50_seconds),
-                their_reply_samples: theirs.sample_count,
+                your_reply_p50_seconds: your_p50,
+                your_reply_samples: your_samples,
+                their_reply_p50_seconds: their_p50,
+                their_reply_samples: their_samples,
                 last_contact_elsewhere_at: exchange.last_elsewhere_at,
                 bulk_sender,
             })
@@ -141,8 +151,55 @@ pub(super) async fn build_thread_context(
         account_id,
         counterparty,
         owed_reply,
-        commitments: commitments.into_iter().map(commitment_data).collect(),
+        promises: commitments
+            .into_iter()
+            .map(|record| {
+                let commitment = commitment_data(record);
+                ThreadPromiseData {
+                    owner: promise_owner(&commitment, envelopes, owned),
+                    commitment,
+                }
+            })
+            .collect(),
     })
+}
+
+/// Who made a promise, named the way the thread names them. Theirs are owned
+/// by `who_owes` (an address, or a name the extractor wrote), not by the
+/// thread's main counterparty: in a group thread each keeps its own owner.
+fn promise_owner(
+    commitment: &CommitmentData,
+    envelopes: &[Envelope],
+    owned: &BTreeSet<String>,
+) -> String {
+    let who = commitment.who_owes.trim();
+    let is_address = who.contains('@');
+    if commitment.direction == CommitmentDirectionData::Yours
+        || (is_address && owned.contains(&who.to_ascii_lowercase()))
+    {
+        return "you".into();
+    }
+    if !who.is_empty() && !is_address {
+        return who.to_string();
+    }
+    let email = if is_address {
+        who
+    } else {
+        commitment.email.as_str()
+    };
+    envelopes
+        .iter()
+        .flat_map(|envelope| {
+            std::iter::once(&envelope.from)
+                .chain(&envelope.to)
+                .chain(&envelope.cc)
+        })
+        .find(|address| address.email.eq_ignore_ascii_case(email))
+        .and_then(|address| address.name.as_deref())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or(email)
+        .to_string()
 }
 
 #[cfg(test)]
@@ -272,9 +329,82 @@ mod tests {
             facts.owed_reply.map(|owed| owed.message_id),
             Some(newest.id.clone())
         );
-        let mut whats: Vec<_> = facts.commitments.iter().map(|c| c.what.as_str()).collect();
+        let mut whats: Vec<_> = facts
+            .promises
+            .iter()
+            .map(|promise| promise.commitment.what.as_str())
+            .collect();
         whats.sort_unstable();
         assert_eq!(whats, vec!["send the runbook link", "share the dashboard"]);
+    }
+
+    #[tokio::test]
+    async fn each_promise_in_a_group_thread_keeps_its_own_owner() {
+        let state = AppState::in_memory().await.unwrap();
+        let account_id = state.default_account_id();
+        let here = ThreadId::new();
+        use MessageDirection::Inbound;
+        put(
+            &state,
+            &account_id,
+            &here,
+            ("Alice Park", "alice@example.com"),
+            "me@example.com",
+            3,
+            Inbound,
+        )
+        .await;
+        let newest = put(
+            &state,
+            &account_id,
+            &here,
+            ("Bob Stone", "bob@example.com"),
+            "me@example.com",
+            1,
+            Inbound,
+        )
+        .await;
+        for (id, who, email) in [
+            ("a", "alice@example.com", "alice@example.com"),
+            ("b", "bob@example.com", "bob@example.com"),
+            ("c", "Carol", "carol@example.com"),
+        ] {
+            state
+                .store
+                .upsert_contact_commitment(&ContactCommitmentRecord {
+                    id: id.into(),
+                    account_id: account_id.clone(),
+                    email: email.into(),
+                    thread_id: here.clone(),
+                    direction: CommitmentDirection::Theirs,
+                    status: CommitmentStatus::Open,
+                    who_owes: who.into(),
+                    what: format!("task {id}"),
+                    by_when: None,
+                    evidence_msg_id: newest.id.clone(),
+                    extracted_at: at(0),
+                    resolved_at: None,
+                })
+                .await
+                .unwrap();
+        }
+
+        let facts = context(get_thread_context(&state, &here).await.unwrap());
+        assert_eq!(facts.counterparty.unwrap().email, "bob@example.com");
+        let mut owners: Vec<_> = facts
+            .promises
+            .iter()
+            .map(|promise| (promise.commitment.what.clone(), promise.owner.clone()))
+            .collect();
+        owners.sort();
+        assert_eq!(
+            owners,
+            vec![
+                ("task a".to_string(), "Alice Park".to_string()),
+                ("task b".to_string(), "Bob Stone".to_string()),
+                ("task c".to_string(), "Carol".to_string()),
+            ]
+        );
     }
 
     #[tokio::test]

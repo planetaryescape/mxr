@@ -9,30 +9,44 @@ const NEWSLETTER = `
   <img src="https://acme.list-manage.com/track/open.php?u=1" width="1" height="1">
   <img src="https://mailtrack.io/trace/mail/abc.png">
   <img src="cid:logo">
+  <img src="//pixel.example.net/open" width="1" height="1">
+  <img src="//images.example.org/banner.png" width="600">
 `;
 
 describe("blocked content", () => {
   it("counts trackers apart from remote images and names who serves them", () => {
     expect(analyzeBlockedContent(NEWSLETTER)).toEqual({
-      trackers: 2,
-      remoteImages: 2,
-      sources: ["Mailchimp", "Mailtrack", "Substack"],
+      trackers: 3,
+      remoteImages: 3,
+      trackerSources: ["Mailchimp", "Mailtrack", "example.net"],
+      imageSources: ["Mailchimp", "Substack", "example.org"],
     });
   });
 
   it("writes one factual sentence with correct plurals", () => {
     const content = analyzeBlockedContent(NEWSLETTER);
     expect(blockedSentence(content, false)).toBe(
-      "Blocked 2 trackers and 2 remote images from Mailchimp, Mailtrack and 1 more.",
+      "Blocked 3 trackers and 3 remote images from Mailchimp, Mailtrack and 3 more.",
     );
-    // Allowing images still leaves the trackers blocked.
+    // Allowing images leaves the trackers blocked, and names only their sources.
     expect(blockedSentence(content, true)).toBe(
-      "Blocked 2 trackers from Mailchimp, Mailtrack and 1 more.",
+      "Blocked 3 trackers from Mailchimp, Mailtrack and 1 more.",
     );
-    expect(blockedSentence({ trackers: 0, remoteImages: 1, sources: ["mxr.local"] }, false)).toBe(
-      "Blocked 1 remote image from mxr.local.",
-    );
-    expect(blockedSentence({ trackers: 0, remoteImages: 3, sources: [] }, true)).toBeNull();
+    const imagesOnly = {
+      trackers: 0,
+      remoteImages: 1,
+      trackerSources: [],
+      imageSources: ["mxr.local"],
+    };
+    expect(blockedSentence(imagesOnly, false)).toBe("Blocked 1 remote image from mxr.local.");
+    expect(blockedSentence(imagesOnly, true)).toBeNull();
+    const mixed = {
+      trackers: 1,
+      remoteImages: 2,
+      trackerSources: ["Mailtrack"],
+      imageSources: ["Substack"],
+    };
+    expect(blockedSentence(mixed, true)).toBe("Blocked 1 tracker from Mailtrack.");
   });
 
   it("falls back to the registrable domain for unknown hosts", () => {

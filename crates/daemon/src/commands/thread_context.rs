@@ -90,7 +90,7 @@ mod tests {
                 bulk_sender: false,
             }),
             owed_reply: None,
-            commitments: vec![],
+            promises: vec![],
         }
     }
 
@@ -120,9 +120,45 @@ mod tests {
         assert_eq!(
             render(&context, Some(&gist), Utc::now()),
             "Gist      Canary stays at 5%.\n\
-             Asks you  confirm who owns the rollout check\n          \"Can you confirm who owns it?\"\n\
+             Asks you  to confirm who owns the rollout check\n          \"Can you confirm who owns it?\"\n\
              With      Maya (maya@example.com): 41 emails · you usually reply within 4h · your first conversation\n\
              AI        local model qwen2.5:7b · from this thread only\n"
         );
+    }
+
+    #[test]
+    fn group_thread_promises_keep_their_own_owners() {
+        let mut context = facts();
+        let promise = |owner: &str, email: &str, what: &str| mxr_protocol::ThreadPromiseData {
+            owner: owner.into(),
+            commitment: mxr_protocol::CommitmentData {
+                id: what.into(),
+                account_id: context.account_id.clone(),
+                email: email.into(),
+                thread_id: context.thread_id.clone(),
+                direction: mxr_protocol::CommitmentDirectionData::Theirs,
+                status: mxr_protocol::CommitmentStatusData::Open,
+                who_owes: email.into(),
+                what: what.into(),
+                by_when: None,
+                evidence_msg_id: MessageId::new(),
+                extracted_at: Utc::now(),
+            },
+        };
+        let promises = vec![
+            promise("Alice Park", "alice@example.com", "share the dashboard"),
+            promise("Bob Stone", "bob@example.com", "send the logs"),
+        ];
+        context.promises = promises;
+        let text = render(&context, None, Utc::now());
+        assert!(
+            text.contains("Promises  Alice promised: share the dashboard\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains("          Bob promised: send the logs\n"),
+            "{text}"
+        );
+        assert!(!text.contains("Maya promised"), "{text}");
     }
 }

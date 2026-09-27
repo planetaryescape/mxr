@@ -200,6 +200,7 @@ expression: summary
     "ThreadGistData",
     "ThreadGistStatusData",
     "ThreadId",
+    "ThreadPromiseData",
     "ThreadSummaryData",
     "TimeChoice",
     "TimeResolution",

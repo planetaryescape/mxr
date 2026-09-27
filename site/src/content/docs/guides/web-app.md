@@ -267,7 +267,9 @@ The reply queue (`b` adds to it) is one of the sidebar's places. The other
 queues the TUI shows as lenses live under **More**: owed replies (every
 conversation where someone is waiting on you, archived or not, most overdue
 first), invites and subscriptions. On the reply queue each row has a
-**Done** button that takes it out of the queue.
+**Done** button that takes it out of the queue. `g F` opens [Focus & reply](/guides/focus-and-reply/),
+which works through owed replies and the reply queue one conversation at a
+time.
 
 **Snoozed** lists snoozed mail soonest to wake first, one row per
 conversation. **Wake now** wakes every snoozed message in
@@ -297,7 +299,9 @@ conversation drafts a forwarding note. Refine works on what's in the editor.
 
 Drafts save as you type and when you close the composer. Sending asks for
 confirmation with the recipients, the From address and the pre-send safety
-check, and you get a few seconds to undo. **More send options** has send
+check, and you get a few seconds to undo: the toast counts them down. When
+the message promises something with a date, mxr offers to remind you then
+([promises on send](/guides/focus-and-reply/#promises-on-send)). **More send options** has send
 later, send and archive, and send with a reminder if nobody replies.
 Scheduled messages appear at the top of **Drafts** with a **Cancel send**
 button.

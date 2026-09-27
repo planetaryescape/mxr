@@ -36,6 +36,9 @@ time string, and press `Enter` to send and set the reminder in one
 flow. Use `Ctrl-p → Cancel Reminder` from the focused sent message to
 cancel a pending reminder.
 
+A reply cancels the reminder: one that answers the sent message, or any
+message from someone else in the same conversation after it was sent.
+
 When the time elapses, mxr marks the sent message for reply-later,
 refreshes `is:reply-later` search state, and emits a
 `ReminderTriggered` event so connected clients can surface the

@@ -160,8 +160,13 @@ Two cross-view interactions:
 - Unsubscribe confirmation
 - Analytics filter modal
 - Reply-later queue browser — list of flagged messages and due reminders,
-  opened with `Ctrl-p → Reply Queue`; cancel a pending reminder from the
-  focused sent message with `Ctrl-p → Cancel Reminder`
+  opened with `Ctrl-p → Reply Queue`. `F` there replies to each queued
+  message in turn, from the selected one: sending one reply opens the next
+  ([Focus & reply](/guides/focus-and-reply/)). Cancel a pending reminder
+  from the focused sent message with `Ctrl-p → Cancel Reminder`
+- Promise prompt: after a send whose message promises something with a
+  date, a toast asks "Remind me …?"; `y` keeps it as a reminder, `n` or
+  `Esc` lets it go
 - Snippets browser — read-only list with body preview; CRUD flows
   through `mxr snippets`
 - Sender profile — volume, cadence, open commitments, and other recent

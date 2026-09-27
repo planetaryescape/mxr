@@ -274,6 +274,7 @@ Same flags as `reply` (including `--draft`).
 ```
 mxr drafts                # list (default)
 mxr drafts list
+mxr drafts scheduled      # Pending scheduled sends, soonest first (--format json before the subcommand)
 mxr drafts recover        # Show orphaned 'sending' drafts (auto-reset after 1h)
 mxr drafts resume <id>    # Force-reset orphaned draft to 'draft'
 mxr drafts edit <id>      # Edit a markdown draft in $EDITOR
@@ -298,7 +299,8 @@ local draft is unchanged. CLI, TUI, web, and MCP share this lifecycle.
 ```
 
 ### `mxr unsend <DRAFT_ID>`
-Cancel a scheduled send. Draft itself is preserved.
+Cancel a scheduled send. Draft itself is preserved. `mxr drafts scheduled`
+lists what is still waiting to go out.
 
 ---
 

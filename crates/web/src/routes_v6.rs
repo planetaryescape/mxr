@@ -1145,6 +1145,36 @@ async fn schedule_send(
     passthrough(response)
 }
 
+#[derive(Debug, Deserialize)]
+struct ScheduledSendsQuery {
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default, alias = "account_id")]
+    account: Option<String>,
+}
+
+/// Drafts waiting to be sent later, soonest first. `?account=` scopes the
+/// list to one account; without it every account's scheduled sends are
+/// listed, like the drafts list.
+async fn list_scheduled_sends(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ScheduledSendsQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = query.account.as_deref().map(parse_account_id).transpose()?;
+    match dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::ListScheduledSends { account_id },
+    )
+    .await?
+    {
+        ResponseData::ScheduledSends { sends } => Ok(Json(json!({ "sends": sends }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
 async fn cancel_scheduled_send(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1994,12 +2024,26 @@ async fn send_stored_draft(
         &headers,
         auth.token.as_deref(),
         Request::SendStoredDraft {
-            draft_id: id,
+            draft_id: id.clone(),
             override_safety_token: None,
         },
     )
     .await?;
-    passthrough(response)
+    // Keep the raw receipt for existing readers, and add the same
+    // `draft_id` / `message_id` pair `compose/session/send` returns so a
+    // client can chain `POST /mail/reminders` off either send path.
+    let message_id = match &response {
+        ResponseData::SendReceipt {
+            local_message_id, ..
+        } => Some(local_message_id.clone()),
+        _ => None,
+    };
+    let Json(mut body) = passthrough(response)?;
+    if let Some(object) = body.as_object_mut() {
+        object.insert("draft_id".into(), json!(id));
+        object.insert("message_id".into(), json!(message_id));
+    }
+    Ok(Json(body))
 }
 
 /// Upsert-by-id: editing an existing stored draft (loaded via `GetDraft`)
@@ -2736,7 +2780,10 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/reminders", post(set_auto_reminder))
         .route("/reminders/{message_id}", delete(cancel_auto_reminder))
         // send-later (scheduled drafts)
-        .route("/scheduled-sends", post(schedule_send))
+        .route(
+            "/scheduled-sends",
+            get(list_scheduled_sends).post(schedule_send),
+        )
         .route("/scheduled-sends/{draft_id}", delete(cancel_scheduled_send))
         // snippets
         .route("/snippets", get(list_snippets).post(set_snippet))

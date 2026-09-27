@@ -725,6 +725,90 @@ fn filter_drafts_by_account(drafts: Vec<Draft>, account_id: Option<&AccountId>) 
         .collect()
 }
 
+/// CLI surface for `mxr drafts scheduled`: what is going out later.
+/// Account scoping happens in the daemon so JSON consumers see exactly
+/// the rows the flusher will pick up.
+pub async fn drafts_scheduled(
+    account: Option<String>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let sends = match client
+        .request(Request::ListScheduledSends { account_id })
+        .await?
+    {
+        Response::Ok {
+            data: ResponseData::ScheduledSends { sends },
+        } => sends,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    };
+    match resolve_format(format) {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&sends)?),
+        OutputFormat::Jsonl => println!("{}", jsonl(&sends)?),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record([
+                "draft_id",
+                "account_id",
+                "send_at",
+                "subject",
+                "to",
+                "last_attempt_outcome",
+            ])?;
+            for send in &sends {
+                writer.write_record(vec![
+                    send.draft_id.as_str(),
+                    send.account_id.as_str(),
+                    send.send_at.to_rfc3339(),
+                    send.subject.clone(),
+                    format_recipient_emails(&send.to),
+                    send.last_attempt_outcome.clone().unwrap_or_default(),
+                ])?;
+            }
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => {
+            for send in &sends {
+                println!("{}", send.draft_id);
+            }
+        }
+        OutputFormat::Table => {
+            if sends.is_empty() {
+                println!("No scheduled sends");
+            } else {
+                for send in &sends {
+                    let when = send
+                        .send_at
+                        .with_timezone(&chrono::Local)
+                        .format("%a %b %e %H:%M");
+                    let retry = send
+                        .last_attempt_outcome
+                        .as_deref()
+                        .map(|outcome| format!(" (previous attempt: {outcome})"))
+                        .unwrap_or_default();
+                    println!(
+                        "  {} — {when} — {} → {}{retry}",
+                        send.draft_id,
+                        send.subject,
+                        format_recipient_emails(&send.to)
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn format_recipient_emails(addresses: &[Address]) -> String {
+    addresses
+        .iter()
+        .map(|address| address.email.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// CLI surface for `mxr drafts recover`. Surfaces drafts the daemon
 /// believes are orphaned mid-send (status `'sending'` with stale
 /// activity) so the user can decide between resume and discard.

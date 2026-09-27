@@ -192,6 +192,18 @@ pub(super) struct ComposeSessionSendRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub(super) struct ComposeSessionScheduleRequest {
+    pub(super) draft_path: String,
+    pub(super) account_id: String,
+    /// The stored draft this session was restored from, if any. With it the
+    /// schedule updates that draft in place; without it a new local draft is
+    /// stored.
+    #[serde(default)]
+    pub(super) draft_id: Option<String>,
+    pub(super) send_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Deserialize)]
 pub(super) struct ComposeSessionAttachmentRequest {
     pub(super) draft_path: String,
     pub(super) filename: String,

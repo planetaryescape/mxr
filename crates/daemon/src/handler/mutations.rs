@@ -2731,6 +2731,30 @@ pub(super) async fn cancel_scheduled_send(
     Ok(ResponseData::Ack)
 }
 
+pub(super) async fn list_scheduled_sends(
+    state: &AppState,
+    account_id: Option<&mxr_core::AccountId>,
+) -> HandlerResult {
+    let sends = state
+        .store
+        .list_pending_scheduled_sends(account_id)
+        .await?
+        .into_iter()
+        .map(|send| mxr_protocol::ScheduledSendData {
+            draft_id: send.draft_id,
+            account_id: send.account_id,
+            send_at: send.send_at,
+            subject: send.subject,
+            to: send.to,
+            cc: send.cc,
+            bcc: send.bcc,
+            last_attempt_at: send.last_attempt_at,
+            last_attempt_outcome: send.last_attempt_outcome,
+        })
+        .collect();
+    Ok(ResponseData::ScheduledSends { sends })
+}
+
 pub(crate) async fn send_stored_draft(
     state: &AppState,
     draft_id: &mxr_core::DraftId,

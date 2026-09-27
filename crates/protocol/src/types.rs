@@ -966,6 +966,12 @@ pub enum Request {
     CancelScheduledSend {
         draft_id: DraftId,
     },
+    /// List drafts scheduled to send later that have not fired yet,
+    /// soonest first. `account_id: None` lists every account.
+    ListScheduledSends {
+        #[serde(default)]
+        account_id: Option<AccountId>,
+    },
     /// List all snippets, alphabetically by name.
     ListSnippets,
     /// Create or update a snippet by name.
@@ -1524,6 +1530,7 @@ impl Request {
             | Self::CancelAutoReminder { .. }
             | Self::ScheduleSend { .. }
             | Self::CancelScheduledSend { .. }
+            | Self::ListScheduledSends { .. }
             | Self::ListSnippets
             | Self::SetSnippet { .. }
             | Self::DeleteSnippet { .. }
@@ -2087,6 +2094,10 @@ pub enum ResponseData {
     Snippets {
         snippets: Vec<SnippetData>,
     },
+    /// Returned by `Request::ListScheduledSends`.
+    ScheduledSends {
+        sends: Vec<ScheduledSendData>,
+    },
     SnippetData {
         snippet: SnippetData,
     },
@@ -2493,6 +2504,7 @@ impl ResponseData {
             | Self::SnoozedMessages { .. }
             | Self::ReplyQueue { .. }
             | Self::Snippets { .. }
+            | Self::ScheduledSends { .. }
             | Self::SnippetData { .. }
             | Self::Deliveries { .. }
             | Self::Delivery { .. }
@@ -2924,6 +2936,30 @@ pub struct DoctorFinding {
     /// no automated remediation is available.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub remediation: Vec<String>,
+}
+
+/// One draft waiting to be sent later.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ScheduledSendData {
+    pub draft_id: DraftId,
+    pub account_id: AccountId,
+    pub send_at: chrono::DateTime<chrono::Utc>,
+    pub subject: String,
+    #[serde(default)]
+    pub to: Vec<Address>,
+    #[serde(default)]
+    pub cc: Vec<Address>,
+    #[serde(default)]
+    pub bcc: Vec<Address>,
+    /// When this draft last fired, if it fired before and was then
+    /// rescheduled (for example after a failed or blocked send).
+    #[serde(default)]
+    pub last_attempt_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Outcome of that firing: `sent`, `blocked`, `failed` or
+    /// `interrupted`. The error text itself is not persisted.
+    #[serde(default)]
+    pub last_attempt_outcome: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

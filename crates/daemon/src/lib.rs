@@ -951,6 +951,9 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 None | Some(crate::cli::DraftsAction::List) => {
                     commands::mutations::drafts(account, format).await?;
                 }
+                Some(crate::cli::DraftsAction::Scheduled) => {
+                    commands::mutations::drafts_scheduled(account, format).await?;
+                }
                 Some(crate::cli::DraftsAction::Recover) => {
                     commands::mutations::drafts_recover(account, format).await?;
                 }

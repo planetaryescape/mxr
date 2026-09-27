@@ -78,6 +78,7 @@ pub use owed_replies::OwedReplyRow;
 pub use pool::Store;
 pub use relationship_watchlist::{CadenceDriftRow, RelationshipWatchEntry};
 pub use rules::{row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecordInput};
+pub use scheduled_sends::PendingScheduledSend;
 pub use screener::{ScreenerDecision, ScreenerDisposition, ScreenerQueueEntry};
 pub use semantic::SemanticIndexRow;
 pub use send_time::{SendTimeBucket, SendTimeConfidence, SendTimeRecommendation};

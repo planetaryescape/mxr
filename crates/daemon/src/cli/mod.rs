@@ -1235,8 +1235,9 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
-    /// Manage drafts: list (default), recover orphaned in-flight sends,
-    /// resume one for retry, edit, delete, or sync drafts with a provider.
+    /// Manage drafts: list (default), show scheduled sends, recover orphaned
+    /// in-flight sends, resume one for retry, edit, delete, or sync drafts
+    /// with a provider.
     Drafts {
         #[command(subcommand)]
         action: Option<DraftsAction>,
@@ -1793,6 +1794,10 @@ pub enum DemoAction {
 pub enum DraftsAction {
     /// Show all drafts (default if no subcommand)
     List,
+    /// Show drafts scheduled to send later that have not gone out yet,
+    /// soonest first. Schedule with `mxr send <draft-id> --at <TIME>`;
+    /// cancel with `mxr unsend <draft-id>`.
+    Scheduled,
     /// Show drafts that look orphaned mid-send (status `'sending'`,
     /// stale heartbeat). The startup loop already auto-resets these
     /// after 1h; this surfaces them earlier so you can act now.

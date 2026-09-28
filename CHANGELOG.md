@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.39](https://github.com/planetaryescape/mxr/compare/v0.6.38...v0.6.39) (2026-09-28)
+
+
+### Features
+
+* make mxr feel good: low tide, an optional sound palette, key hints, touch swipe and a typography pass ([#247](https://github.com/planetaryescape/mxr/issues/247)) ([4018a78](https://github.com/planetaryescape/mxr/commit/4018a78011dc6ebf98e1b6940fe1e1f397897c01))
+
 ## [0.6.38](https://github.com/planetaryescape/mxr/compare/v0.6.37...v0.6.38) (2026-09-27)
 
 

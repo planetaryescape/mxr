@@ -83,15 +83,15 @@ The inventory of persistent controls and the reason for each is in
 ## Scores
 
 Scored on 2026-09-28 on `feat/delight` (rung 6, on top of v0.6.38's
-places), from the Playwright suite against the FakeProvider daemon (119
-tests; 118 passed in one full run under a machine load of 110 to 330, and
-the one failure, `places.spec` "Paper trail: pin one, sweep…", passed on a
-rerun: its sweep job outlasted a 5 s toast wait) and screenshots at 1440 and
-390 px in the dark and light themes. A score of 2 needs a journey in the
-suite; 3 is reserved for what a keyboard user would notice and prefer.
+places), from the Playwright suite against the FakeProvider daemon (131
+tests) and screenshots at 1440 and 390 px in the dark and light themes. The
+final full run passed all 131 under a machine load of 110 to 336 (an
+earlier run's one failure, `verbs.spec` picking a conversation row for
+snooze, is fixed the way `snooze.spec` does it). A score of 2 needs a journey in the suite; 3 is reserved for what a keyboard
+user would notice and prefer.
 
-**Pass bar: not met.** Every criterion is at 2 or better, but A8, A9, A10,
-B1 and B3 are at 2 where the bar asks for 3. Each has a concrete follow-up in
+**Pass bar: met.** Every criterion is at 2 or better, and all of section A
+and B1 to B3 are at 3. What is left at 2 is in
 [docs/issues/experience-rubric-gaps.md](issues/experience-rubric-gaps.md).
 
 | # | Score | Evidence |
@@ -103,13 +103,13 @@ B1 and B3 are at 2 where the bar asks for 3. Each has a concrete follow-up in
 | A5 | 3 | `natural-time.spec` "fri 3" offers 15:00 and 03:00 and stores what the preview showed; `snooze.spec`; `desk.spec` done waiting; `focus.spec` send and remind. |
 | A6 | 3 | `focus.spec` "g F works through the queue: send and next, skip, snooze, then a calm finish", plus undo inside the countdown and a phone layout. |
 | A7 | 3 | `reader-context.spec`: facts as the thread opens, the ask lands without moving the messages and is marked in the body. |
-| A8 | 2 | `focus.spec` "a dated promise in a reply is offered with its time and kept as a reminder". Promises made *to* you are only covered by `contextFormat.test.ts`, not a journey. |
-| A9 | 2 | The reply toolbar is gone and reply sits at the end of the thread (`reader-context.spec` "r opens the reply at the end of the thread"); the sidebar holds places. There is no inventory of persistent controls with a stated reason for each. |
-| A10 | 2 | Desk rows say "22h · usually 47m" (screenshots; `deskCopy.test.ts`), but no journey asserts the age and cadence text. |
-| B1 | 2 | Keydown to paint p95 on the desk: j 16.1, k 16.4, e 15.7 ms; inbox: j 15.8, k 16.1, e 15.6 ms (`speed.spec`, budget 50). 5,000 rows: 20,435 list coverage blocks per scroll step (`large-list.spec`, gate 60,000). The 300 ms no-spinner and 400 ms minimum-skeleton rule is not implemented. |
+| A8 | 3 | Both ways, each with its own owner: `focus.spec` "a dated promise in a reply is offered with its time and kept as a reminder" (yours, on send) and `reader-context.spec` "promises both ways show on the person's context, each with its own owner" (yours and theirs in the context block). |
+| A9 | 3 | Every persistent control is listed with its reason in [web-app-controls.md](web-app-controls.md); `controls.spec` fails if a surface gains or loses one. The list's Refresh button couldn't justify itself and is gone. Reply sits at the end of the thread (`reader-context.spec` "r opens the reply at the end of the thread"). |
+| A10 | 3 | `desk-time.spec`: an owed row reads "2d · usually 4h" in the theme's warning colour when late, and a Waiting row reads its age ("5d") in the muted colour. |
+| B1 | 3 | Keydown to paint p95 on the desk: j 16.1, k 16.7, e 18.9 ms; inbox: j 17.0, k 16.9, e 16.9 ms (`speed.spec`, budget 50). 5,000 rows: 20,572 list coverage blocks per scroll step (`large-list.spec`, gate 60,000). `loading-states.spec`: a 100 ms list or thread load shows no skeleton, a 600 ms one shows it for at least 400 ms (`useDelayedPending`, `useDelayedPending.test.ts`). A held `e` archives one conversation (`delight.spec` "holding e archives exactly one conversation", `dispatcher.test.ts`). |
 | B2 | 3 | Motion tokens only (no ad hoc `duration-*` or `ease-in` in `src`); `natural-time.spec` reduced and full motion, rows never animate the cursor; `delight.spec` "with reduced motion the low tide is a still frame". |
-| B3 | 2 | Undo for archive, trash, snooze, labels, move, sweep, send (`mutations.spec`, `triage.spec`, `labels.spec`, `snooze.spec`, `places.spec`, `focus.spec`). There is still no table in the code mapping every verb to its trigger, rule, feedback and undo. |
-| B4 | 2 | `delight.spec` "clearing the desk by keyboard earns low tide once, not on a revisit" (motion under 2 s, then still); sound is off by default, previews in the browser, plays on archive and never on `j` ("sound: off by default…"); send plays once (`feedback.test.ts`). Not yet heard by a person on real speakers. |
+| B3 | 3 | `features/mail-actions/verbFeedback.ts` gives every verb its trigger, optimistic feedback, toast words, sound and undo path; toasts and sounds read from it, and `verbFeedback.test.ts` fails if a state-changing action has no entry. `verbs.spec` runs archive, read and archive, trash, spam, star, unread and snooze, checks each toast's words against the table and undoes each with `u`; reply later undoes from its toast. Labels, move, done waiting, sweep and move sender have undo journeys in `labels.spec`, `desk.spec` and `places.spec`. |
+| B4 | 2 | `delight.spec` "clearing the desk by keyboard earns low tide once, not on a revisit" (motion under 2 s, then still); sound is off by default, previews in the browser, plays on archive and never on `j`; send plays once (`feedback.test.ts`). Not yet heard by a person on real speakers. |
 | B5 | 3 | `natural-time.spec`: highlighted phrase, resolved time before commit, choices for "fri 3", and the daemon stores the previewed instant. |
 | B6 | 2 | Shortcuts in tooltips, menus, the palette and `?` (`keyboard-help.spec`); `delight.spec` "three pointer archives earn one key hint, and it never comes back". Sidebar and palette clicks don't count toward hints. |
 | B7 | 2 | Global `tabular-nums` on times, keys, mono counts and status; `text-wrap: balance` on headings and `pretty` on prose; one icon family (phosphor removed, oxlint blocks other icon packages); no em dashes in UI copy (grep); quieter focus composer; reading measure 55 to 90 characters (`reading.spec`). Relative dates were not audited screen by screen. |

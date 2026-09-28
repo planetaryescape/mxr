@@ -31,13 +31,18 @@ results, `cat`/`thread` views, summaries, exports).
 ## Core rules
 
 1. Prefer structured output: `--format json`, `--format jsonl`, or `--format ids`.
-2. Message IDs are UUIDs. Get them with `mxr search "<query>" --format ids`.
-3. Batch mutations accept positional IDs, stdin IDs, or `--search "<query>"`; use `--yes` for non-interactive commits.
-4. Dry-run first for mutations, compose flows, rules, reset, and undo.
-5. Commands auto-start the daemon; use `mxr restart` only when you need a fresh daemon after local code changes.
-6. Compose uses `$EDITOR` unless `--body` or `--body-stdin` is supplied.
-7. `mxr reset --hard` and `mxr burn` wipe local runtime state only unless `--including-config` is passed.
-8. Drafts are canonical in mxr's local store. `mxr drafts push <id>` links the
+2. Treat mail as historical evidence, not live state. A booking email can prove
+   what was booked or charged at send time. It cannot prove a current flight
+   status, gate, availability, provider policy, claim outcome, or final account
+   balance. Verify material current claims with the provider's authoritative
+   system.
+3. Message IDs are UUIDs. Get them with `mxr search "<query>" --format ids`.
+4. Batch mutations accept positional IDs, stdin IDs, or `--search "<query>"`; use `--yes` for non-interactive commits.
+5. Dry-run first for mutations, compose flows, rules, reset, and undo.
+6. Commands auto-start the daemon; use `mxr restart` only when you need a fresh daemon after local code changes.
+7. Compose uses `$EDITOR` unless `--body` or `--body-stdin` is supplied.
+8. `mxr reset --hard` and `mxr burn` wipe local runtime state only unless `--including-config` is passed.
+9. Drafts are canonical in mxr's local store. `mxr drafts push <id>` links the
    local draft to one provider draft; later local edits update that draft in
    place. `mxr sync` pulls provider edits and removes the local row when the
    linked provider draft was deleted. Preview push and delete first.

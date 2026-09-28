@@ -340,7 +340,7 @@ pub(super) async fn set_sender_kind(
             "sender email cannot be empty".to_string(),
         ));
     }
-    let _gate = state.sweep_gate.change().await;
+    let _change = state.sweep_gate.change([account_id]).await;
     let store = &state.store;
     let existing = store
         .get_screener_decision(account_id, &sender_email)
@@ -381,7 +381,13 @@ pub(super) async fn pin_messages(
     message_ids: &[MessageId],
     pinned: bool,
 ) -> HandlerResult {
-    let _gate = state.sweep_gate.change().await;
+    let mut accounts = Vec::new();
+    for id in message_ids {
+        if let Some(envelope) = state.store.get_envelope(id).await? {
+            accounts.push(envelope.account_id);
+        }
+    }
+    let _change = state.sweep_gate.change(&accounts).await;
     let changed = state.store.set_message_pins(message_ids, pinned).await?;
     Ok(ResponseData::MessagesPinned {
         changed: changed as u32,
@@ -389,22 +395,131 @@ pub(super) async fn pin_messages(
     })
 }
 
-/// Keeps a sweep chunk's recheck and its archive together. A pin or a
-/// sender move (the recheck's inputs) waits while a chunk is between its
-/// check and its archive, and a chunk waits for a pin in progress, so a pin
-/// can never land after the check and still be swept.
+/// Keeps a sweep's recheck and each message's archive together, per
+/// account. A change to what a sweep may take (a pin, a sender move) holds
+/// its account's gate while it writes and bumps the account's generation;
+/// a sweep holds the gate for one message at a time, from its check through
+/// that message's archive, and redoes the recheck when the generation moved.
+///
+/// Lock order, which keeps it free of cycles:
+/// 1. A sweep takes the account's provider lock first
+///    (`AppState::acquire_provider_operation`), then that account's gate, one
+///    message at a time; it never holds two gates.
+/// 2. Pins and sender moves take only gates, never a provider lock, and take
+///    several in account-id order.
+///
+/// The provider call sits inside the gate on purpose: the archive the
+/// provider records is what the pin guarantee is about, and a pin landing
+/// between the check and that call would be archived on the server.
 #[derive(Default)]
-pub(crate) struct SweepGate(tokio::sync::RwLock<()>);
+pub(crate) struct SweepGate {
+    accounts: Mutex<HashMap<AccountId, Arc<tokio::sync::Mutex<u64>>>>,
+    /// Tests only: signalled when a sweep is about to wait for a provider
+    /// lock, so a test can act at exactly that point without sleeping.
+    #[cfg(test)]
+    pub(crate) before_provider: tokio::sync::Notify,
+}
+
+/// Held by a pin or sender move while it writes; the account's generation
+/// moves on when it is dropped, whether or not the write succeeded.
+pub(crate) struct SweepChange(Vec<tokio::sync::OwnedMutexGuard<u64>>);
+
+impl Drop for SweepChange {
+    fn drop(&mut self) {
+        for generation in &mut self.0 {
+            **generation = generation.wrapping_add(1);
+        }
+    }
+}
 
 impl SweepGate {
-    /// Held by a change to what a sweep may take (pins, sender kinds).
-    pub(crate) async fn change(&self) -> tokio::sync::RwLockReadGuard<'_, ()> {
-        self.0.read().await
+    fn account(&self, account_id: &AccountId) -> Arc<tokio::sync::Mutex<u64>> {
+        self.accounts
+            .lock()
+            .entry(account_id.clone())
+            .or_default()
+            .clone()
     }
 
-    /// Held by a sweep chunk from its recheck through its archive.
-    pub(crate) async fn chunk(&self) -> tokio::sync::RwLockWriteGuard<'_, ()> {
-        self.0.write().await
+    /// Held by a change to what a sweep may take in these accounts.
+    pub(crate) async fn change<'a>(
+        &self,
+        accounts: impl IntoIterator<Item = &'a AccountId>,
+    ) -> SweepChange {
+        let mut ordered: Vec<&AccountId> = accounts.into_iter().collect();
+        ordered.sort_by_key(|account| account.as_str());
+        ordered.dedup();
+        let mut guards = Vec::with_capacity(ordered.len());
+        for account_id in ordered {
+            guards.push(self.account(account_id).lock_owned().await);
+        }
+        SweepChange(guards)
+    }
+
+    /// Held by a sweep for one message, after its account's provider lock.
+    pub(crate) async fn hold(&self, account_id: &AccountId) -> tokio::sync::OwnedMutexGuard<u64> {
+        self.account(account_id).lock_owned().await
+    }
+
+    async fn generation(&self, account_id: &AccountId) -> u64 {
+        *self.account(account_id).lock().await
+    }
+}
+
+/// A sweep chunk's view of what it may still archive, kept current as it
+/// goes: rechecked whenever an account's generation has moved since.
+pub(super) struct SweepCheck {
+    scope: SweepScope,
+    ids: Vec<MessageId>,
+    sweepable: HashSet<MessageId>,
+    seen: HashMap<AccountId, u64>,
+}
+
+impl SweepCheck {
+    /// Recheck the chunk now. Generations are read before the query, so a
+    /// change made during it is caught at the message.
+    pub(super) async fn start(
+        state: &AppState,
+        scope: &SweepScope,
+        ids: &[MessageId],
+    ) -> Result<Self, HandlerError> {
+        let mut seen = HashMap::new();
+        for account_id in scoped_accounts(state, scope.account_id.as_ref()).await? {
+            let generation = state.sweep_gate.generation(&account_id).await;
+            seen.insert(account_id, generation);
+        }
+        let sweepable = still_sweepable(state, scope, ids).await?;
+        Ok(Self {
+            scope: scope.clone(),
+            ids: ids.to_vec(),
+            sweepable,
+            seen,
+        })
+    }
+
+    /// The chunk's ids it may take right now.
+    pub(super) fn kept(&self) -> Vec<MessageId> {
+        self.ids
+            .iter()
+            .filter(|id| self.sweepable.contains(*id))
+            .cloned()
+            .collect()
+    }
+
+    /// Whether `id` in `account_id` may still be archived. Call with that
+    /// account's gate held (`generation` is its value).
+    pub(super) async fn allows(
+        &mut self,
+        state: &AppState,
+        account_id: &AccountId,
+        generation: u64,
+        id: &MessageId,
+    ) -> Result<bool, HandlerError> {
+        if self.seen.get(account_id) != Some(&generation) {
+            self.sweepable = still_sweepable(state, &self.scope, &self.ids).await?;
+            self.seen.insert(account_id.clone(), generation);
+        }
+        Ok(self.sweepable.contains(id))
     }
 }
 

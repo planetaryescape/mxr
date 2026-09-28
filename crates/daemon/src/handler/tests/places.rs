@@ -717,7 +717,7 @@ async fn a_pin_made_while_a_sweep_runs_keeps_its_message() {
         );
     }
     let pinned = ids[1].clone();
-    let pinning = fx.state.sweep_gate.change().await;
+    let pinning = fx.state.sweep_gate.change([&fx.account]).await;
     let started = super::mutations::start_mutation_job(
         fx.state.clone(),
         MutationCommand::Archive {
@@ -925,4 +925,79 @@ async fn a_partly_failed_undo_keeps_what_failed_for_a_retry() {
         })
         .await;
     assert!(again.contains("restored 0, 1 failed"), "{again}");
+}
+
+/// Each account has its own sweep gate, and a sweep only takes it after its
+/// provider lock: a pin in one account completes while another account's
+/// sweep waits behind that account's provider (a long sync, say).
+#[tokio::test]
+async fn a_pin_in_one_account_never_waits_on_another_accounts_sweep() {
+    let fx = Fixture::new().await;
+    let other = mxr_core::Account {
+        id: mxr_core::AccountId::new(),
+        name: "Other".into(),
+        email: "other@example.com".into(),
+        sync_backend: None,
+        send_backend: None,
+        enabled: true,
+    };
+    fx.state.store.insert_account(&other).await.unwrap();
+    fx.inbox_label(&other.id).await;
+    let theirs = fx
+        .inbound(&other.id, ROBOT, "Their receipt", Duration::hours(1), false)
+        .await;
+    let mine = fx
+        .inbound(&fx.account, ROBOT, "My receipt", Duration::hours(2), false)
+        .await;
+
+    // The default account's provider is busy: its sweep can't archive yet.
+    let syncing = fx.state.acquire_provider_operation(&fx.account).await;
+    let started = super::mutations::start_mutation_job(
+        fx.state.clone(),
+        MutationCommand::Archive {
+            message_ids: vec![mine.id.clone()],
+        },
+        None,
+        super::mutations::ChunkGuard::Sweep(paper_trail_scope(&fx)),
+    )
+    .await
+    .unwrap();
+    let ResponseData::JobStarted { job } = started else {
+        panic!("expected a job");
+    };
+    // The sweep has reached its message and waits on the provider.
+    fx.state.sweep_gate.before_provider.notified().await;
+
+    // A pin in the other account goes through at once. The timeout only
+    // turns a hang into a failure; nothing waits on it to pass.
+    let pinned = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        fx.send(Request::PinMessages {
+            message_ids: vec![theirs.id.clone()],
+            pinned: true,
+        }),
+    )
+    .await
+    .expect("a pin in another account must not wait on this sweep");
+    assert!(matches!(
+        pinned,
+        ResponseData::MessagesPinned { changed: 1, .. }
+    ));
+    // So does a sender move there.
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        fx.send(Request::SetSenderKind {
+            account_id: other.id.clone(),
+            sender_email: ROBOT.into(),
+            kind: Some(SenderKindData::Reading),
+        }),
+    )
+    .await
+    .expect("a sender move in another account must not wait on this sweep");
+    assert!(fx.in_inbox(&mine.id).await, "the sweep is still waiting");
+
+    drop(syncing);
+    let job = fx.wait_for_job(&job.job_id).await;
+    assert_eq!(job.status, JobStatusData::Succeeded, "{job:?}");
+    assert!(!fx.in_inbox(&mine.id).await);
 }

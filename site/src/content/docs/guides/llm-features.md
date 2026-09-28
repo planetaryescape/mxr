@@ -64,7 +64,7 @@ base_url = "http://localhost:11434/v1"
 model = "qwen2.5:3b-instruct"
 api_key_env = ""
 
-# Common alternatives — uncomment and adjust:
+# Common alternatives: uncomment and adjust:
 # base_url = "http://localhost:1234/v1"        # LM Studio
 # base_url = "https://api.openai.com/v1"       # OpenAI
 # base_url = "https://api.groq.com/openai/v1"  # Groq
@@ -75,7 +75,7 @@ request_timeout_secs = 120
 
 The API key is read from the env var named in `api_key_env` at runtime
 (empty = no `Authorization` header sent). Keeping the secret out of
-the config file is intentional — the config is checked into dotfiles;
+the config file is intentional: the config is checked into dotfiles;
 the env var lives in your shell init.
 
 Check what the running daemon is using:
@@ -93,12 +93,12 @@ restarting the process.
 
 For Ollama (`ollama pull <model>`):
 
-- **`qwen2.5:3b-instruct`** — ~2GB, very fast on a laptop, good summary
+- **`qwen2.5:3b-instruct`**: ~2GB, very fast on a laptop, good summary
   quality. Default in mxr's example config.
-- **`qwen2.5:7b-instruct`** — ~4.4GB, noticeably better at draft
+- **`qwen2.5:7b-instruct`**: ~4.4GB, noticeably better at draft
   generation for longer threads.
-- **`llama3.2:3b`** — comparable to Qwen 3B, slightly different tone.
-- **`llama3.1:8b`** — larger but stronger. Good if you have the RAM.
+- **`llama3.2:3b`**: comparable to Qwen 3B, slightly different tone.
+- **`llama3.1:8b`**: larger but stronger. Good if you have the RAM.
 
 For LM Studio: any GGUF model loaded via the LM Studio UI works. Use
 the model identifier shown in LM Studio's "Local Server" tab as `model`
@@ -197,22 +197,22 @@ em-dash overuse, sycophantic openers, filler phrases, and rule-of-three
 formatting. Detection does not require an LLM.
 
 You'll get the best results with models that follow instructions well
-and stay close to the source — Qwen 2.5 instruct, Llama 3 instruct,
+and stay close to the source: Qwen 2.5 instruct, Llama 3 instruct,
 and the GPT-5 family all do this reliably.
 
 ## Limits and what's deferred
 
-- **Single-shot completions** — no streaming yet. The features are
+- **Single-shot completions**: no streaming yet. The features are
   short-form (≤2KB outputs); a single round-trip beats streaming for
   this use case.
-- **24KB prompt budget** — long threads truncate oldest-first.
-- **Semantic grounding is opportunistic** — prior sent examples are included
+- **24KB prompt budget**: long threads truncate oldest-first.
+- **Semantic grounding is opportunistic**: prior sent examples are included
   only when semantic search is ready and has indexed matching sent messages.
-- **Summary cache** — unchanged threads reuse the cached summary. The cache
+- **Summary cache**: unchanged threads reuse the cached summary. The cache
   hash includes weak relationship context, so changed relationship summaries
   or style data invalidate stale summaries. Opening a thread returns a valid
   cached summary with the thread payload when one exists.
-- **Humanizer auto-rewrite is not the core contract** — deterministic scoring
+- **Humanizer auto-rewrite is not the core contract**: deterministic scoring
   is available locally; automatic rewrite loops are a separate pipeline layer.
 
 ## Disabling
@@ -227,7 +227,7 @@ When `mxr demo` is active, every LLM-backed feature is answered by an
 in-process **canned provider** instead of the real backend. The provider
 inspects each request's system prompt to classify it (summarize, briefing,
 draft-assist, ask, voice, commitments, decisions, …) and returns a realistic
-template — so recordings of the demo show real-looking output without
+template, so recordings of the demo show real-looking output without
 spending tokens or needing an `OPENAI_API_KEY`.
 
 The swap happens inside `build_llm_provider` based on `MXR_INSTANCE ==
@@ -239,7 +239,7 @@ configured backend.
 ## In real life
 
 - **Catching up after vacation:** `mxr search 'is:unread newer_than:7d'
-  --format ids | xargs -n1 mxr summarize | less` — turn 200 unread
+  --format ids | xargs -n1 mxr summarize | less` turns 200 unread
   threads into 200 short summaries.
 - **Replying to legalese:** `mxr summarize THREAD_ID` first, then
   `mxr draft-assist THREAD_ID "ack the request, ask for a 2-week
@@ -259,17 +259,17 @@ mxr summarize {}`. Group by sender so I can batch responses."
 ```text
 "Draft a polite decline to the latest message from acme@example.com.
 Use `mxr search 'from:acme@example.com' --format ids | head -1` to
-get the thread id, then `mxr draft-assist`. Show me the draft —
+get the thread id, then `mxr draft-assist`. Show me the draft;
 don't send."
 ```
 
 ## See also
 
-- [Pre-send safety](/guides/pre-send-safety/) — the safety pipeline's LLM-backed answer-coverage check
-- [Forgotten work](/guides/forgotten-work/) — LLM-confirmed commitment extraction from drafts
-- [Archive intelligence](/guides/archive-intelligence/) — `mxr ask` and the decision log, citations required
-- [Briefings and loop-in](/guides/briefings-and-loop-in/) — dormant-thread briefings, deterministic expert lookup, and whois
-- [Recipes — talking to your agent](/guides/recipes/#talking-to-your-agent)
+- [Pre-send safety](/guides/pre-send-safety/): the safety pipeline's LLM-backed answer-coverage check
+- [Forgotten work](/guides/forgotten-work/): LLM-confirmed commitment extraction from drafts
+- [Archive intelligence](/guides/archive-intelligence/): `mxr ask` and the decision log, citations required
+- [Briefings and loop-in](/guides/briefings-and-loop-in/): dormant-thread briefings, deterministic expert lookup, and whois
+- [Recipes: talking to your agent](/guides/recipes/#talking-to-your-agent)
 - [For agents](/guides/for-agents/)
-- [Config — `[llm]`](/reference/config/#llm)
-- [CLI — `mxr summarize`](/reference/cli/summarize/), [`mxr draft-assist`](/reference/cli/draft-assist/), and [`mxr llm`](/reference/cli/llm/)
+- [Config: `[llm]`](/reference/config/#llm)
+- [CLI: `mxr summarize`](/reference/cli/summarize/), [`mxr draft-assist`](/reference/cli/draft-assist/), and [`mxr llm`](/reference/cli/llm/)

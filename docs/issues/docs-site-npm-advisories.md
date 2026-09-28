@@ -1,19 +1,36 @@
 # Docs site: npm audit fails on new advisories
 
-**Status:** open · **Found:** 2026-09-27 on PR #233 (also affects `main`)
+**Status:** resolved 2026-09-28 on `docs/site-refresh` · **Found:** 2026-09-27 on PR #233 (also affected `main`)
 
 The `Docs Build` CI job runs `npm audit --audit-level=moderate` in `site/`
-and fails on advisories published after the last green run:
+and failed on advisories published after the last green run, so CI never
+reached `npm run build`. A frontmatter bug in PR #247 got past CI for that
+reason and only the Vercel build caught it.
 
-- `astro` <= 7.2.7 (critical); `site/package.json` pins `7.1.3`. 7.3.5 is
-  within Starlight 0.41.3's `^7.0.2` peer range.
-- `@scalar/api-reference` pulls `@ai-sdk/provider-utils` and `undici` with
-  advisories; 1.72.1 is current (the lockfile has 1.69.2).
-- `devalue`, `js-yaml`, `sharp`, `smol-toml`, `svgo`: fixed by `npm audit fix`.
+## Fix
 
-`npm install` for the upgrade stalled locally (over 20 minutes, twice), so it
-was not landed with #233. Next step: upgrade `astro` to 7.3.5 and
-`@scalar/api-reference` to ^1.72.1, run `npm audit fix`, then build the
-site and click through the API reference page before merging.
+- `astro` 7.1.3 -> 7.3.3 (the critical advisories cover `<= 7.2.7`).
+- `sharp` ^0.35.3 -> 0.35.4 (the libheif advisory covers `< 0.35.4`).
+- `overrides` pins `ai` to 6.0.286 and `@ai-sdk/vue` to 3.0.286. The
+  latest `@scalar/agent-chat` (0.12.37, pulled in by
+  `@scalar/api-reference`) still pins the vulnerable `ai` 6.0.33 and
+  `@ai-sdk/vue` 3.0.33, so upgrading Scalar alone does not clear them. The
+  overrides stay on the same majors.
+- `npm audit fix` for `devalue`, `js-yaml`, `smol-toml` and `svgo`.
 
-`Docs Build` is not a required check.
+Result: `npm ci` then `npm audit` reports 0 vulnerabilities, and
+`npm run build` passes (169 pages). The API route inventory page still
+renders.
+
+## Why the earlier installs stalled
+
+`~/.npmrc` sets `min-release-age=7`. `astro` 7.3.5 was younger than seven
+days, so npm could never resolve it and looped on `astro`/`sharp` instead
+of failing. A pinned version inside the window fails fast with `ETARGET`
+("No matching version found ... with a date before ..."). Pick versions
+older than the quarantine window, which is what the versions above are.
+
+## Follow-up
+
+When the overrides' parent (`@scalar/agent-chat`) ships a fixed `ai`,
+drop the two overrides.

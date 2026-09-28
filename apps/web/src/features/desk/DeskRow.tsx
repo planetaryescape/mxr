@@ -79,6 +79,7 @@ export const DeskRow = memo(function DeskRow({ row, desk, ...state }: DeskRowPro
       <time
         dateTime={desk.since}
         title={age.title}
+        data-late={age.late ? "true" : undefined}
         className={cn(
           "col-start-2 row-start-1 whitespace-nowrap text-right font-mono text-2xs tabular-nums @2xl:col-start-3",
           age.late ? "text-warning" : "text-muted-foreground",

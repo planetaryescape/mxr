@@ -21,6 +21,7 @@ mod context_briefings;
 mod decision_log;
 mod deliveries;
 mod desk;
+mod desk_done;
 mod diagnostics;
 mod draft;
 mod draft_commitments;
@@ -74,6 +75,7 @@ pub use context_briefings::{new_briefing_id, BriefingKind, ContextBriefing};
 pub use decision_log::{decision_id, source_hash as decision_source_hash, DecisionLogEntry};
 pub use deliveries::{Delivery, DeliveryItem, DeliveryListFilter};
 pub use desk::{DeskContact, DeskDismissal, DeskLatestExchange, DeskMessage, DeskReplyLatency};
+pub use desk_done::{DeskDismissalMark, DeskDismissalPrior, DeskDismissalRow};
 pub use diagnostics::StoreRecordCounts;
 pub use draft::SentDraftReceipt;
 pub use draft_commitments::{new_candidate_id, DraftCommitmentCandidate};
@@ -106,7 +108,7 @@ pub(crate) const SQLITE_BIND_CHUNK: usize = 500;
 pub use thread_context::CounterpartyExchange;
 pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
 pub use triage::TriageCacheRecord;
-pub use undo::{UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
+pub use undo::{CommitmentPrior, DeskUndo, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
 pub use user_activity::{
     ActivityCursor, ActivityFilter, ActivityInsert, ActivityPage, ActivityRow, SavedActivityFilter,
     Tier,

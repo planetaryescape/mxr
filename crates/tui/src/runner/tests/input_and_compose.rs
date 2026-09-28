@@ -1656,40 +1656,80 @@ fn requested(app: &App) -> Vec<Request> {
         .collect()
 }
 
-/// `e` on a Waiting row of the desk is "done waiting": it queues the
-/// daemon's dismissal for that thread, not an archive. On other rows it
-/// archives the row's whole thread.
+/// `e` on the desk is Done for the row under the cursor, whatever its
+/// lane: one daemon request naming the row's thread, lane and promise. The
+/// row leaves at once.
 #[test]
-fn e_on_the_desk_is_done_waiting_or_archive_of_that_row() {
-    use mxr_protocol::DeskLaneKind;
+fn e_on_the_desk_is_done_for_that_row() {
+    use mxr_protocol::{DeskDoneItemData, DeskLaneKind};
     let mut app = App::new();
     let mut owed = desk_row(DeskLaneKind::Owed);
     owed.message_ids = vec![mxr_core::MessageId::new(), owed.message_id.clone()];
-    let waiting = desk_row(DeskLaneKind::Waiting);
+    let mut due = desk_row(DeskLaneKind::Due);
+    due.commitment_id = Some("promise-1".into());
     app.apply(Action::OpenDesk);
-    app.set_desk(desk_with(vec![waiting.clone(), owed.clone()]));
+    app.set_desk(desk_with(vec![owed.clone(), due.clone()]));
 
     app.apply(Action::Archive);
     let queued = requested(&app);
     assert!(
         matches!(
             queued.as_slice(),
-            [Request::Mutation { mutation: MutationCommand::Archive { message_ids }, .. }]
-                if message_ids == &owed.message_ids
+            [Request::ResolveDeskItems { items, dry_run: false }]
+                if items == &vec![DeskDoneItemData {
+                    thread_id: owed.thread_id.clone(),
+                    lane: Some(DeskLaneKind::Owed),
+                    commitment_id: None,
+                }]
         ),
         "{queued:?}"
     );
+    assert_eq!(app.mailbox.desk_page.row_count(), 1, "the row left at once");
 
     app.pending_mutation_queue.clear();
-    app.modals.pending_bulk_confirm = None;
-    app.mailbox.selected_index = 1;
     app.apply(Action::Archive);
     let queued = requested(&app);
     assert!(matches!(
         queued.as_slice(),
-        [Request::DismissDeskThreads { thread_ids, dry_run: false }]
-            if thread_ids == &vec![waiting.thread_id.clone()]
+        [Request::ResolveDeskItems { items, .. }]
+            if items[0].thread_id == due.thread_id
+                && items[0].commitment_id.as_deref() == Some("promise-1")
     ));
+    assert_eq!(app.mailbox.desk_page.row_count(), 0);
+}
+
+/// A deliberate `e`, `e` puts away two rows, however quick; the key coming
+/// back up (reported by Windows consoles) does nothing.
+#[test]
+fn each_press_of_e_puts_away_one_row() {
+    use crossterm::event::{KeyEventKind, KeyEventState};
+    use mxr_protocol::DeskLaneKind;
+    let key = |kind| KeyEvent {
+        code: KeyCode::Char('e'),
+        modifiers: KeyModifiers::NONE,
+        kind,
+        state: KeyEventState::NONE,
+    };
+    let mut app = App::new();
+    let rows: Vec<_> = (0..4).map(|_| desk_row(DeskLaneKind::Owed)).collect();
+    app.apply(Action::OpenDesk);
+    app.set_desk(desk_with(rows));
+    for kind in [
+        KeyEventKind::Press,
+        KeyEventKind::Release,
+        KeyEventKind::Press,
+        KeyEventKind::Release,
+    ] {
+        if let Some(action) = app.handle_key(key(kind)) {
+            app.apply(action);
+        }
+    }
+    let dones = requested(&app)
+        .iter()
+        .filter(|request| matches!(request, Request::ResolveDeskItems { .. }))
+        .count();
+    assert_eq!(dones, 2);
+    assert_eq!(app.mailbox.desk_page.row_count(), 2);
 }
 
 /// Trash on a desk row acts on that row's thread, never on mail the

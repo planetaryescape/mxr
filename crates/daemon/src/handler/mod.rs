@@ -19,6 +19,7 @@ mod commitments_extract;
 mod decisions_extract;
 pub(crate) mod deliveries;
 mod desk;
+mod desk_done;
 mod desk_lanes;
 #[path = "diagnostics/mod.rs"]
 pub(crate) mod diagnostics_impl;
@@ -1163,6 +1164,9 @@ async fn dispatch(
         Request::RestoreDeskThreads { thread_ids } => {
             desk::restore_threads(state, thread_ids).await
         }
+        Request::ResolveDeskItems { items, dry_run } => {
+            desk_done::resolve_desk_items(state, items, *dry_run).await
+        }
         Request::ListPlace {
             place,
             account_id,
@@ -1779,19 +1783,30 @@ async fn request_account_scope(
         Request::DraftRefine { draft_id, .. } => draft_account_scope(state, draft_id).await,
         Request::DismissDeskThreads { thread_ids, .. }
         | Request::RestoreDeskThreads { thread_ids } => {
-            let mut accounts = Vec::new();
-            for thread in state
-                .store
-                .get_threads_batch(thread_ids)
-                .await
-                .map_err(|e| e.to_string())?
-            {
-                push_unique_account(&mut accounts, thread.account_id);
-            }
-            Ok(RequestAccountScope::Accounts(accounts))
+            thread_account_scope(state, thread_ids).await
+        }
+        Request::ResolveDeskItems { items, .. } => {
+            let thread_ids: Vec<_> = items.iter().map(|item| item.thread_id.clone()).collect();
+            thread_account_scope(state, &thread_ids).await
         }
         _ => Ok(RequestAccountScope::None),
     }
+}
+
+async fn thread_account_scope(
+    state: &Arc<AppState>,
+    thread_ids: &[mxr_core::id::ThreadId],
+) -> Result<RequestAccountScope, String> {
+    let mut accounts = Vec::new();
+    for thread in state
+        .store
+        .get_threads_batch(thread_ids)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        push_unique_account(&mut accounts, thread.account_id);
+    }
+    Ok(RequestAccountScope::Accounts(accounts))
 }
 
 async fn envelope_account_scope(
@@ -2110,6 +2125,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::SetReplyLater { .. }
         | Request::DismissDeskThreads { .. }
         | Request::RestoreDeskThreads { .. }
+        | Request::ResolveDeskItems { .. }
         | Request::SetSenderKind { .. }
         | Request::PinMessages { .. }
         | Request::SetAutoReminder { .. }
@@ -2321,6 +2337,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetDesk { .. } => "get_desk",
         Request::DismissDeskThreads { .. } => "dismiss_desk_threads",
         Request::RestoreDeskThreads { .. } => "restore_desk_threads",
+        Request::ResolveDeskItems { .. } => "resolve_desk_items",
         Request::ListPlace { .. } => "list_place",
         Request::GetMessageKind { .. } => "get_message_kind",
         Request::SetSenderKind { .. } => "set_sender_kind",

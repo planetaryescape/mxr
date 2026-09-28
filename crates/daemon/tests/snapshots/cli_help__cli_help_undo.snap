@@ -2,7 +2,7 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Undo a recent destructive mutation by its id (~60s window). The mutation id is printed by `archive`, `trash`, `spam`, `mark-read`, and `read-archive`; copy it from there
+Undo a recent destructive mutation by its id (~60s window). The mutation id is printed by `archive`, `trash`, `spam`, `mark-read`, `read-archive` and `desk done`; copy it from there
 
 Usage: mxr undo [OPTIONS] <MUTATION_ID>
 

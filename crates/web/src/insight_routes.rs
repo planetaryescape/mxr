@@ -135,6 +135,33 @@ async fn desk_restore(
 }
 
 #[derive(Debug, Deserialize)]
+struct DeskDoneBody {
+    items: Vec<mxr_protocol::DeskDoneItemData>,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+async fn desk_done(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<DeskDoneBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, None, &state.config.auth_token)?;
+    if body.items.is_empty() {
+        return Err(BridgeError::BadRequest("items must not be empty".into()));
+    }
+    let response = ipc_request(
+        &state.config.socket_path,
+        Request::ResolveDeskItems {
+            items: body.items,
+            dry_run: body.dry_run,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
 struct WhoisQuery {
     query: String,
     #[serde(default, alias = "account_id")]
@@ -334,6 +361,7 @@ pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/desk", get(desk))
         .route("/desk/dismiss", post(desk_dismiss))
         .route("/desk/restore", post(desk_restore))
+        .route("/desk/done", post(desk_done))
         .route("/whois", get(whois))
         .route("/send-time", get(send_time))
         .route("/archive-ask", post(archive_ask))

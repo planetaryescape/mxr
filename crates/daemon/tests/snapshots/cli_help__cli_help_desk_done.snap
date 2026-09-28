@@ -1,0 +1,31 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Done: nothing for you to do here, put it away.
+
+You owe and New from people are archived, marked read and stay off the desk until someone writes in the conversation again. Waiting on is marked read and done waiting. A Due promise is resolved and its conversation marked read. Prints an undo id for `mxr undo`.
+
+Usage: mxr desk done [OPTIONS] <THREAD_IDS>...
+
+Arguments:
+  <THREAD_IDS>...
+          Thread ids, as `mxr desk --format ids` prints them
+
+Options:
+      --lane <LANE>
+          The lane the conversations are in. Default: waiting when you wrote last, otherwise owed
+
+          [possible values: owed, due, waiting, people-new]
+
+      --promise <COMMITMENT_ID>
+          Resolve this promise (a Due row's commitment id). Takes one thread id
+
+      --dry-run
+          Show what Done would change without changing anything
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

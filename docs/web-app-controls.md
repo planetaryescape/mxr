@@ -37,8 +37,12 @@ its own, and Sync now (status bar, palette) covers a manual check.
 ## Desk
 
 The heading's counts are links to each lane in full, and the "Everything
-else" line links to the places. No buttons: the desk is read and acted on
-with the same keys and row buttons as a list.
+else" line links to the places. The heading has no buttons: the desk is read
+and acted on with the same keys as a list.
+
+| Control | Where | Reason |
+|---|---|---|
+| Done (check) | End of every row | Frequency: putting an item away is what the desk is for. Discoverability: it shows that one action (Done, `e`) exists in every lane. It shows on hover and on the cursor's row with a mouse, and always, quietly, on touch. |
 
 ## Reader
 
@@ -60,7 +64,7 @@ not in the toolbar.
 | Control | Reason |
 |---|---|
 | Leave | Shows Esc; the way out of a mode. |
-| Send and next, Skip, Snooze, Send and remind, Draft in your voice | Discoverability: focus mode is a mode with its own keys, each shown on its button. |
+| Send and next, Skip, Done (no reply needed), Snooze, Send and remind, Draft in your voice | Discoverability: focus mode is a mode with its own keys, each shown on its button. |
 
 ## Places
 

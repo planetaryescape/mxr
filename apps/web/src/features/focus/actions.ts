@@ -43,6 +43,9 @@ export const focusActions: Action[] = [
     shortLabel: "Skip",
     tuiNote: "Goes to the end of the queue",
   }),
+  focusKey("focus.done", "done", "Done, no reply needed", "e", {
+    tuiNote: "e on the desk in the TUI",
+  }),
   focusKey("focus.snooze", "snooze", "Snooze…", "Z"),
   focusKey("focus.remind", "remind", "Send, remind me if nobody replies…", "w", {
     shortLabel: "Send, remind",

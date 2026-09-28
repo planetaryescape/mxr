@@ -194,6 +194,7 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
     getTarget: target,
     composeSurface: "inline",
     afterLeave: () => leave(1),
+    intercept: nav?.intercept,
   });
 
   const scrollBy = (amount: number) =>

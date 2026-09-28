@@ -7,12 +7,14 @@ impl App {
         // (a desk row's account and whole thread, a place's one message),
         // never on whatever the mailbox or reader showed last. Verbs that
         // need more than a row ask to open it.
+        // On the desk, archive is Done: put the conversation away (archive
+        // and mark read, done waiting, or keep the promise) until someone
+        // writes in it again.
+        if matches!(action, Action::Archive | Action::MarkReadAndArchive) && self.done_on_desk_row()
+        {
+            return;
+        }
         let row_lens_hint = if self.desk_list_focused() {
-            // Archive on a thread you wrote last is "done waiting": there is
-            // nothing in the inbox for archive to remove.
-            if action == Action::Archive && self.done_waiting_on_selected_desk_row() {
-                return;
-            }
             Some("Open the conversation (Enter) to do that from the desk")
         } else if self.place_list_focused() {
             Some("Open the message (Enter) to do that from here")

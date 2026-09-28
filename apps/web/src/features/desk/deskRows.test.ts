@@ -69,7 +69,7 @@ describe("desk groups", () => {
     expect(groups.find((group) => group.id === "due")?.rows).toHaveLength(1);
   });
 
-  test("a waiting row leaves at once on snooze, and while done-waiting is in flight", () => {
+  test("a waiting row leaves at once on snooze, and while its Done is in flight", () => {
     const withWaiting: Desk = {
       ...desk(),
       waiting: { rows: [row("waiting", "w0")], total: 1 },

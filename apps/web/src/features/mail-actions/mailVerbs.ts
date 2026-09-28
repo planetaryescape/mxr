@@ -35,9 +35,9 @@ export interface MailVerbHooks {
   composeSurface: "inline" | "overlay";
   /**
    * Let a view handle part of a mutation its own way (the desk: archive on
-   * a Waiting row means "done waiting"). Returns what is left for the
-   * normal path (null when the view takes all of it) and the view's own
-   * change, which runs with the rest, after any confirmation.
+   * a desk row is Done). Returns what is left for the normal path (null
+   * when the view takes all of it) and the view's own change, which runs
+   * with the rest, after any confirmation.
    */
   intercept?: (action: MailAction, target: MailTarget) => InterceptedVerb;
 }

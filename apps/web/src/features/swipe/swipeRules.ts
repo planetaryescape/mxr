@@ -92,7 +92,7 @@ export function followDistance(dx: number, map: SwipeMap): number {
 
 export const SWIPE_WORDS: Record<SwipeAction, string> = {
   archive: "Archive",
-  done: "Done waiting",
+  done: "Done",
   trash: "Trash",
   snooze: "Snooze",
   sweep: "Sweep sender",

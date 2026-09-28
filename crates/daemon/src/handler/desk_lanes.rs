@@ -38,6 +38,14 @@ pub(super) fn is_outbound(message: &DeskMessage, is_self: &dyn Fn(&str) -> bool)
         || (message.direction != "inbound" && is_self(&message.from.email))
 }
 
+/// A thread's messages up to a day ahead of `now`, in date order: who wrote
+/// last is judged on these, so a bad future Date header cannot pose as the
+/// newest message. Messages are in date order, so the rest are a suffix.
+pub(super) fn current_messages(thread: &[DeskMessage], now: DateTime<Utc>) -> &[DeskMessage] {
+    let cutoff = now + Duration::days(1);
+    &thread[..thread.partition_point(|m| m.date <= cutoff)]
+}
+
 /// Every Waiting row, from a thread or from a watched contact, stays off
 /// the desk while its conversation is snoozed, trashed, or marked done
 /// waiting with nothing new since.
@@ -75,8 +83,8 @@ pub(super) struct AccountInputs<'a> {
     pub contacts: &'a HashMap<String, DeskContact>,
     /// Keyed by lowercased email.
     pub screener: &'a HashMap<String, ScreenerDisposition>,
-    /// Threads marked "done waiting", through the date of their newest
-    /// message at the time.
+    /// Threads marked done (or "done waiting"), through the messages
+    /// stored at the time. Covers every thread lane; promises stand.
     pub dismissed: &'a HashMap<ThreadId, DeskDismissal>,
     pub is_self: &'a dyn Fn(&str) -> bool,
     pub now: DateTime<Utc>,
@@ -233,12 +241,9 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
         if thread.iter().any(|m| m.snoozed) {
             continue;
         }
-        // A message dated in the future (a bad Date header) must not pose
-        // as the newest and decide the lane: who wrote last is judged on
-        // mail up to a day ahead. Messages are in date order, so those are
-        // a suffix. Verbs still cover the whole thread.
-        let cutoff = inputs.now + Duration::days(1);
-        let current = &thread[..thread.partition_point(|m| m.date <= cutoff)];
+        // The lane is judged on current mail; verbs still cover the whole
+        // thread.
+        let current = current_messages(thread, inputs.now);
         let Some(latest) = current.last() else {
             continue;
         };
@@ -272,6 +277,15 @@ fn thread_row(
     conversation: Conversation<'_>,
     latest: &DeskMessage,
 ) -> Option<DraftRow> {
+    // Done (or done waiting) with nothing stored since: put away, from
+    // every thread lane.
+    if inputs
+        .dismissed
+        .get(&latest.thread_id)
+        .is_some_and(|dismissal| dismissal.covers(conversation.all))
+    {
+        return None;
+    }
     let thread = conversation.current;
     let now = inputs.now;
     let latest_inbound = thread.iter().rev().find(|m| !inputs.is_outbound(m));

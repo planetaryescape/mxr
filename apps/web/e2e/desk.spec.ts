@@ -47,7 +47,7 @@ test("the app opens on the desk: lanes with reasons, and work-only badges", asyn
   await expect(sidebar(page).getByRole("link", { name: "Inbox" })).not.toContainText(/\d/);
 });
 
-test("desk journey: j, archive optimistically, undo, open and come back to the same row", async ({
+test("desk journey: j, Done optimistically, undo, open and come back to the same row", async ({
   page,
 }) => {
   await openApp(page);
@@ -59,22 +59,22 @@ test("desk journey: j, archive optimistically, undo, open and come back to the s
   await page.keyboard.press("j");
   await expectCursorOn(page, second!);
 
-  // Hold the archive so what the user sees is the optimistic removal.
+  // Hold Done so what the user sees is the optimistic removal.
   let release: () => void = () => {};
   const held = new Promise<void>((resolve) => (release = resolve));
-  await page.route("**/api/v1/mail/mutations/archive", async (route) => {
+  await page.route("**/api/v1/mail/desk/done", async (route) => {
     await held;
     await route.continue();
   });
-  const archived = page.waitForResponse("**/api/v1/mail/mutations/archive");
+  const done = page.waitForResponse("**/api/v1/mail/desk/done");
   await page.keyboard.press("e");
   await expect(rowById(page, second!)).toHaveCount(0);
   // The cursor stays in place, so the next row comes up under it.
   await expectCursorOn(page, third!);
   release();
-  expect((await archived).ok()).toBe(true);
-  await page.unroute("**/api/v1/mail/mutations/archive");
-  // The refetched desk agrees: an archived conversation is off the desk.
+  expect((await done).ok()).toBe(true);
+  await page.unroute("**/api/v1/mail/desk/done");
+  // The refetched desk agrees: a conversation put away is off the desk.
   await expect(rowById(page, second!)).toHaveCount(0);
 
   const undone = page.waitForResponse("**/api/v1/mail/mutations/undo");
@@ -117,33 +117,4 @@ test("a person who prefers arrival order can make the inbox their home", async (
   await page.getByRole("option", { name: "Inbox" }).click();
   await openApp(page, "/");
   await expect(page).toHaveURL(/\/m\/inbox$/);
-});
-
-test("e on a Waiting row is done waiting: the row leaves at once and u brings it back", async ({
-  page,
-}) => {
-  await openApp(page, "/desk?lane=waiting");
-  await expect(mailRows(page).first()).toBeVisible();
-  const rowId = await cursorRowId(page);
-
-  let release: () => void = () => {};
-  const held = new Promise<void>((resolve) => (release = resolve));
-  await page.route("**/api/v1/mail/desk/dismiss", async (route) => {
-    await held;
-    await route.continue();
-  });
-  const dismissed = page.waitForResponse("**/api/v1/mail/desk/dismiss");
-  await page.keyboard.press("e");
-  await expect(rowById(page, rowId)).toHaveCount(0);
-  release();
-  expect((await dismissed).ok()).toBe(true);
-  await expect(page.getByText(/^Done waiting on 1 conversation$/)).toBeVisible();
-  // The refetched desk agrees: the thread is off Waiting on.
-  await page.waitForResponse((response) => response.url().includes("/api/v1/mail/desk?"));
-  await expect(rowById(page, rowId)).toHaveCount(0);
-
-  const restored = page.waitForResponse("**/api/v1/mail/desk/restore");
-  await page.keyboard.press("u");
-  expect((await restored).ok()).toBe(true);
-  await expect(rowById(page, rowId)).toBeVisible();
 });

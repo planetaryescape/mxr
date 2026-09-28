@@ -262,6 +262,12 @@ pub fn map_request(
             thread_ids.first().map(|id| id.as_str().clone()),
             Some(serde_json::json!({ "count": thread_ids.len() })),
         ),
+        Request::ResolveDeskItems { items, dry_run } => (
+            "desk.done",
+            Some("thread"),
+            items.first().map(|item| item.thread_id.as_str()),
+            Some(serde_json::json!({ "count": items.len(), "dry_run": dry_run })),
+        ),
 
         // ----- places: Reading and Paper trail -----
         Request::SetSenderKind {

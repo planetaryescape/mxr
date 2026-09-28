@@ -896,6 +896,7 @@ async fn a_partly_failed_undo_keeps_what_failed_for_a_retry() {
             mutation_id: "undo-partial".into(),
             kind: mxr_store::UndoableMutationKind::Archive,
             snapshots: vec![snapshot(&restorable), snapshot(&stuck)],
+            desk: None,
             applied_at: now,
             expires_at: now + 60,
         })

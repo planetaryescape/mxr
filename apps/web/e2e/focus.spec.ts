@@ -200,6 +200,42 @@ test("undo inside the countdown restores the reply and puts the conversation bac
   expect(sends).toBe(0);
 });
 
+test("e is Done, no reply needed: the next one comes up, and undo puts it back in front", async ({
+  page,
+}) => {
+  const three = await queueOfThree(page);
+  await openApp(page, "/focus");
+  const progress = page.getByTestId("focus-progress");
+  await expect(heading(page)).toHaveText(three[0]!.subject);
+  await expect(reply(page).locator(".cm-content")).toBeVisible();
+
+  // Out of the reply, then e.
+  await reply(page).locator(".cm-content").click();
+  await page.keyboard.press("Tab");
+  const done = page.waitForResponse("**/api/v1/mail/desk/done");
+  await page.keyboard.press("e");
+  await expect(heading(page)).toHaveText(three[1]!.subject);
+  await expect(progress).toContainText("2 of 3");
+  const body = (await (await done).json()) as {
+    items: { thread_id: string; lane: string; archived: number }[];
+  };
+  expect(body.items[0]).toMatchObject({ thread_id: three[0]!.thread_id, lane: "owed" });
+
+  const undone = page.waitForResponse("**/api/v1/mail/mutations/undo");
+  await page.getByRole("button", { name: "Undo" }).click();
+  expect((await undone).ok()).toBe(true);
+  await expect(heading(page)).toHaveText(three[0]!.subject);
+  await expect(progress).toContainText("1 of 3");
+
+  // The same, from its button under the reply.
+  await page.getByRole("button", { name: /Done, no reply needed/ }).click();
+  await expect(heading(page)).toHaveText(three[1]!.subject);
+  const second = page.waitForResponse("**/api/v1/mail/mutations/undo");
+  await page.getByRole("button", { name: "Undo" }).click();
+  expect((await second).ok()).toBe(true);
+  await expect(heading(page)).toHaveText(three[0]!.subject);
+});
+
 test("fast back and forth never loses the latest reply text", async ({ page }) => {
   test.setTimeout(60_000);
   const three = await queueOfThree(page);

@@ -90,6 +90,26 @@ pub(super) async fn get_desk(
     Ok(data)
 }
 
+/// Whether an address is this account's own (any of its addresses).
+pub(super) async fn self_matcher(
+    state: &AppState,
+    account_id: &AccountId,
+) -> Result<impl Fn(&str) -> bool, super::HandlerError> {
+    let addresses = state.account_addresses.clone();
+    let account_email = state
+        .store
+        .get_account(account_id)
+        .await?
+        .map(|account| account.email.to_ascii_lowercase());
+    let account_id = account_id.clone();
+    Ok(move |email: &str| {
+        addresses.is_account_address(&account_id, email)
+            || account_email
+                .as_deref()
+                .is_some_and(|own| own.eq_ignore_ascii_case(email))
+    })
+}
+
 struct AccountDesk {
     rows: Vec<DeskRowData>,
     elsewhere: DeskElsewhereData,
@@ -134,17 +154,7 @@ async fn account_desk(
         })
         .collect();
 
-    let addresses = state.account_addresses.clone();
-    let account_email = store
-        .get_account(account_id)
-        .await?
-        .map(|account| account.email.to_ascii_lowercase());
-    let is_self = move |email: &str| {
-        addresses.is_account_address(account_id, email)
-            || account_email
-                .as_deref()
-                .is_some_and(|own| own.eq_ignore_ascii_case(email))
-    };
+    let is_self = self_matcher(state, account_id).await?;
     let dismissed = store.desk_dismissals(account_id).await?;
     let mut lanes = thread_lanes(&AccountInputs {
         account_id,

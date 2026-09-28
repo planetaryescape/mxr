@@ -129,6 +129,9 @@ pub struct FakeProvider {
     /// daemon's provider-failure branches, where the promise is that the local
     /// draft is left exactly as it was.
     server_drafts_fail: AtomicBool,
+    /// When set, label changes (`ModifyLabels`) fail and nothing else does,
+    /// so a two-step mutation (mark read, then archive) fails half way.
+    label_changes_fail: AtomicBool,
     page_size: usize,
 }
 
@@ -217,8 +220,14 @@ impl FakeProvider {
             mutations: Mutex::new(Vec::new()),
             idle_trigger: None,
             server_drafts_fail: AtomicBool::new(false),
+            label_changes_fail: AtomicBool::new(false),
             page_size: SYNC_PAGE_SIZE,
         }
+    }
+
+    /// Make every subsequent label change fail, or succeed again.
+    pub fn fail_label_changes(&self, fail: bool) {
+        self.label_changes_fail.store(fail, Ordering::SeqCst);
     }
 
     /// Make every subsequent server-draft write fail.
@@ -394,6 +403,11 @@ impl MailSyncProvider for FakeProvider {
         _mutation_id: &str,
         mutation: &Mutation,
     ) -> Result<(), MxrError> {
+        if matches!(mutation, Mutation::ModifyLabels { .. })
+            && self.label_changes_fail.load(Ordering::SeqCst)
+        {
+            return Err(MxrError::Provider("fake: label change failed".into()));
+        }
         let recorded = match mutation {
             Mutation::ModifyLabels {
                 provider_message_id,

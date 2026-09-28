@@ -1620,7 +1620,7 @@ pub enum Command {
 
     /// Undo a recent destructive mutation by its id (~60s window).
     /// The mutation id is printed by `archive`, `trash`, `spam`,
-    /// `mark-read`, and `read-archive`; copy it from there.
+    /// `mark-read`, `read-archive` and `desk done`; copy it from there.
     Undo {
         mutation_id: String,
         /// Show which undo would run without mutating state.
@@ -2100,6 +2100,38 @@ pub enum DeskAction {
         #[arg(required = true)]
         thread_ids: Vec<String>,
     },
+    /// Done: nothing for you to do here, put it away.
+    ///
+    /// You owe and New from people are archived, marked read and stay off
+    /// the desk until someone writes in the conversation again. Waiting on
+    /// is marked read and done waiting. A Due promise is resolved and its
+    /// conversation marked read. Prints an undo id for `mxr undo`.
+    Done {
+        /// Thread ids, as `mxr desk --format ids` prints them.
+        #[arg(required = true)]
+        thread_ids: Vec<String>,
+        /// The lane the conversations are in. Default: waiting when you
+        /// wrote last, otherwise owed.
+        #[arg(long, value_enum)]
+        lane: Option<DeskLaneArg>,
+        /// Resolve this promise (a Due row's commitment id). Takes one
+        /// thread id.
+        #[arg(long, value_name = "COMMITMENT_ID")]
+        promise: Option<String>,
+        /// Show what Done would change without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum DeskLaneArg {
+    Owed,
+    Due,
+    Waiting,
+    PeopleNew,
 }
 
 #[derive(Debug, Clone, Subcommand)]

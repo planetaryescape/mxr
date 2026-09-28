@@ -29,6 +29,7 @@ const INVENTORY = {
   focusQueue: [
     "Send and next",
     "Skip",
+    "Done, no reply needed",
     "Snooze",
     "Send, remind if no reply",
     "Draft in your voice",
@@ -90,6 +91,19 @@ test("the desk heading holds links, never buttons", async ({ page }) => {
   expect(await names(page.getByRole("region", { name: "Desk" }).locator("header").first())).toEqual(
     [],
   );
+});
+
+test("every desk row ends in one Done check, and nothing else", async ({ page }) => {
+  await openList(page, "/desk");
+  const rows = mailList(page).getByRole("option");
+  const count = await rows.count();
+  expect(count).toBeGreaterThan(0);
+  // The check is a pointer target beside the key (`e`): rows are listbox
+  // options, so it isn't a button to assistive tech.
+  await expect(mailList(page).getByTestId("desk-done")).toHaveCount(count);
+  for (const row of await rows.all()) {
+    await expect(row.getByTestId("desk-done")).toHaveCount(1);
+  }
 });
 
 test("focus mode and the places keep exactly their inventoried controls", async ({ page }) => {

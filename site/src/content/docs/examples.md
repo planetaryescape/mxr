@@ -23,7 +23,7 @@ Full guide → [Quick Start](/getting-started/quick-start/) · [First Sync](/get
 
 ## Search your mailbox
 
-Search is the primary way you navigate — instant, local, exact.
+Search is the primary way you navigate: instant, local, exact.
 
 ```bash
 mxr search "from:alice@example.com is:unread"
@@ -75,9 +75,13 @@ Full guide → [Compose](/guides/compose/) · [Pre-send Safety](/guides/pre-send
 
 ## Clean up and unsubscribe
 
-Rank newsletters by how little you read them, then leave — preview, then confirm.
+Sweep newsletters and receipts out of the way, or rank them by how little you read them and leave. Preview, then confirm.
 
 ```bash
+mxr paper-trail                                              # receipts and notifications, by sender
+mxr sweep paper-trail --dry-run                              # what a sweep would archive
+mxr sweep paper-trail --yes
+mxr sender kind digest@news.example.com reading              # move a sender for good
 mxr subscriptions --rank --format json                       # who you never open
 mxr unsubscribe newsletter@example.com --dry-run
 mxr unsubscribe newsletter@example.com --yes
@@ -85,21 +89,23 @@ mxr archive --search "from:noreply@example.com older_than:30d" --dry-run
 mxr archive --search "from:noreply@example.com older_than:30d" --yes
 ```
 
-Full guide → [Unsubscribe](/guides/unsubscribe/)
+Full guide → [Clear Reading and Paper trail](/guides/reading-and-paper-trail/) · [Unsubscribe](/guides/unsubscribe/)
 
 ## Never drop a thread
 
 Surface what you owe, what's going cold, and what you promised.
 
 ```bash
-mxr owed --since 7 --format json                 # you owe a reply
+mxr desk                                         # what needs you: owed, due, waiting, new
+mxr desk done THREAD_ID --dry-run                # put one away, previewed first
+mxr owed --since 7 --format json                 # every thread you owe, automated mail included
 mxr stale --mine --older-than-days 7             # cooling on your side
 mxr commitments --status open --format json      # promises made in email
 mxr remind MESSAGE_ID --when "in 5d"             # nudge if no reply
 mxr replies                                      # your reply-later queue
 ```
 
-Full guide → [Forgotten Work](/guides/forgotten-work/) · [Automated Follow-ups](/guides/automated-followups/)
+Full guide → [Clear the desk](/guides/desk/) · [Forgotten Work](/guides/forgotten-work/) · [Automated Follow-ups](/guides/automated-followups/)
 
 ## Labels and saved searches
 
@@ -108,8 +114,8 @@ Saved searches are programmable lenses; labels are queues.
 ```bash
 mxr labels create FollowUp --color "#ff6600"
 mxr label FollowUp --search "from:recruiter@example.com"
-mxr saved add owe-replies "is:unread label:inbox older_than:3d"
-mxr saved run owe-replies
+mxr saved add stale-unread "is:unread label:inbox older_than:3d"
+mxr saved run stale-unread
 mxr move Done --search "label:inbox from:billing@example.com"
 ```
 
@@ -120,6 +126,7 @@ Full guide → [Labels and Saved Searches](/guides/labels-and-saved-searches/)
 Send later, set send-and-remind, and unsend within the window.
 
 ```bash
+mxr time "tomorrow 9am"                          # see when a phrase resolves
 mxr send DRAFT_ID --at "tomorrow 9am"
 mxr reply MESSAGE_ID --body "On it." --yes --remind-after "in 5d"
 mxr unsend DRAFT_ID
@@ -129,7 +136,7 @@ Full guide → [Timing and Cadence](/guides/timing-and-cadence/) · [Automated F
 
 ## Understand your mail
 
-Analytics over the local corpus — no dashboard, no upload.
+Analytics over the local corpus: no dashboard, no upload.
 
 ```bash
 mxr response-time --since-days 90                          # how fast you reply
@@ -161,7 +168,7 @@ Full guide → [LLM Features](/guides/llm-features/) · [Briefings and Loop-in](
 Most reads emit JSON, and the core mail mutations accept IDs from stdin. It's a Unix citizen.
 
 ```bash
-# archive everything from a sender — reviewed first
+# archive everything from a sender, reviewed first
 mxr search "from:no-reply@example.com older_than:30d" --format ids | xargs -I{} mxr archive {} --dry-run
 
 # export a thread as markdown for your notes (or an agent)

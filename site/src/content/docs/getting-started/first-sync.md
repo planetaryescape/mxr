@@ -13,7 +13,7 @@ mxr
 
 ## Trigger sync
 
-`mxr sync` hands the work to the daemon and returns as soon as the sync has started, so you can start using mxr while the backfill runs — just leave the daemon running.
+`mxr sync` hands the work to the daemon and returns as soon as the sync has started, so you can start using mxr while the backfill runs. Leave the daemon running.
 
 ```bash
 mxr sync                                  # trigger and return
@@ -22,7 +22,7 @@ mxr sync --status                         # check progress at any time
 mxr status --watch                        # live daemon status
 ```
 
-`--wait` prints a progress line on stderr as the count moves (`personal: 3,000/50,000 — Stored 3000 messages`) and exits non-zero if the sync it started failed. Its `--wait-timeout-secs` (default 60) bounds only the wait — a first backfill usually needs more than a minute, and the sync keeps running either way.
+`--wait` prints a progress line on stderr as the count moves (`personal: 3,000/50,000 — Stored 3000 messages`) and exits non-zero if the sync it started failed. Its `--wait-timeout-secs` (default 60) bounds only the wait: a first backfill usually needs more than a minute, and the sync keeps running either way.
 
 <details>
 <summary>For developers: run the daemon in the foreground</summary>
@@ -37,7 +37,7 @@ mxr daemon --foreground
 mxr status
 ```
 
-In normal use you don't need this — `mxr`, `mxr sync`, and friends auto-start a background daemon if one isn't already running.
+In normal use you don't need this: `mxr`, `mxr sync`, and friends auto-start a background daemon if one isn't already running.
 
 </details>
 
@@ -68,11 +68,12 @@ mxr doctor --semantic-status
 
 ## What to expect in the TUI
 
-- Left sidebar: system labels, user labels, saved searches
+- Left sidebar: lenses (Desk, Reading, Paper trail and the queues), system labels, user labels, saved searches
 - Center list: threads by default
 - Right pane: preview or thread view
 - First-run walkthrough after account setup, plus `o` from Help to reopen it later
-- `1`-`5`: switch Mailbox, Search, Rules, Accounts, Diagnostics
+- `1`-`7`: switch Mailbox, Search, Rules, Accounts, Diagnostics, Analytics, Deliveries
+- `gh`: the [desk](/guides/desk/), what needs you; `gr` and `gp`: [Reading and Paper trail](/guides/reading-and-paper-trail/)
 - `Ctrl-p`: command palette
 - `?`: full help modal
 - `/`: full-index Search

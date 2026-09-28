@@ -5,7 +5,12 @@ description: How to navigate, triage, and work through mail in the mxr TUI.
 
 ## Mailbox model
 
-The mailbox screen is the default TUI workspace:
+The mailbox screen is the default TUI workspace. It lists mail in arrival
+order. To start from what needs you instead, open the
+[desk](/guides/desk/) lens (`gh`); [Work through your day](/guides/your-day/)
+covers that path.
+
+The mailbox screen has three panes:
 
 - Left: sidebar
 - Center: mail list
@@ -35,8 +40,8 @@ A thread row shows:
 - Link marker (`🔗`) when the body contains external links. A muted glyph
   means "has some links"; a brighter/accent-coloured glyph means "link-heavy"
   (newsletter-shaped). Trackers / unsubscribe URLs / list-management hostnames
-  are filtered out, so the marker reflects useful links — calendar invites,
-  shared docs, receipts, video calls — rather than every embedded image
+  are filtered out, so the marker reflects useful links (calendar invites,
+  shared docs, receipts, video calls) rather than every embedded image
   tracker. Filter for these in search with `has:link`, `has:link-heavy`, or
   `has:link-none`.
 - Thread count with distinct styling when the conversation has multiple messages
@@ -171,7 +176,7 @@ The help modal is context-aware. The command palette exposes mailbox, search, ru
   Inbox, scan with `j/k`, `e` to archive, `b` to bookmark for reply
   later, `Z` to snooze. You'll be at inbox-zero before your coffee.
 - **Backlog cleanup on a slow Friday:** `mxr stale --mine
-  --older-than-days 30 --format ids | xargs -n1 mxr cat | $PAGER` —
+  --older-than-days 30 --format ids | xargs -n1 mxr cat | $PAGER`:
   scan everything you've been ignoring, then bulk-archive what you
   decide to drop.
 - **Pin an Owed lens to your sidebar:** `mxr saved add owed
@@ -192,7 +197,7 @@ show me the noisiest 5. Use `mxr search 'is:unread' --format json | jq`."
 ```text
 "Help me hit inbox zero. For each unread, suggest archive / reply
 later / snooze and explain why. Read with `mxr cat --view reader`,
-classify in batches of 10. Don't actually mutate yet — I'll approve
+classify in batches of 10. Don't actually mutate yet; I'll approve
 each batch."
 ```
 
@@ -201,5 +206,5 @@ each batch."
 - [Unsubscribe](/guides/unsubscribe/)
 - [Triage flow](/guides/triage-flow/)
 - [Search workflow](/guides/search/)
-- [Recipes — interactive pickers](/guides/recipes/#with-fzf--interactive-picker)
+- [Recipes: interactive pickers](/guides/recipes/#with-fzf--interactive-picker)
 - [Keybindings reference](/reference/keybindings/)

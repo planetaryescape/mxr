@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.40](https://github.com/planetaryescape/mxr/compare/v0.6.39...v0.6.40) (2026-09-28)
+
+
+### Features
+
+* put a desk item away with Done: archived, read, and gone until someone writes again ([#249](https://github.com/planetaryescape/mxr/issues/249)) ([bf01ab9](https://github.com/planetaryescape/mxr/commit/bf01ab9867161dbe82dcc076478438a9bc405ea3))
+
 ## [0.6.39](https://github.com/planetaryescape/mxr/compare/v0.6.38...v0.6.39) (2026-09-28)
 
 

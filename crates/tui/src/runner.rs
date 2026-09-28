@@ -2069,6 +2069,42 @@ pub async fn run() -> anyhow::Result<()> {
                             | ResponseData::DeskThreadsRestored { .. }
                             | ResponseData::MessagesPinned { .. },
                     }) => Ok(effect),
+                    Ok(Response::Ok {
+                        data:
+                            ResponseData::DeskItemsResolved {
+                                items,
+                                mutation_id,
+                                undo_unavailable,
+                                ..
+                            },
+                    }) => {
+                        let done = items.iter().filter(|item| item.error.is_none()).count();
+                        // Offer `u` only when there is an undo to run.
+                        let effect = if mutation_id.is_some() {
+                            effect
+                        } else if undo_unavailable {
+                            app::MutationEffect::RefreshPlaces(
+                                "Done, but its undo couldn't be saved".into(),
+                            )
+                        } else {
+                            app::MutationEffect::RefreshPlaces("Done".into())
+                        };
+                        if let Some(daemon_mutation_id) = mutation_id {
+                            let _ =
+                                result_tx_inner.send(AsyncResult::UndoCaptured(app::PendingUndo {
+                                    action: app::UndoAction::Mutations(vec![daemon_mutation_id]),
+                                    verb_past: "Done".into(),
+                                    count: done as u32,
+                                    applied_at: std::time::Instant::now(),
+                                }));
+                        }
+                        // A conversation Done could not put away keeps its
+                        // row (the failure refetches the desk); `e` retries.
+                        match items.iter().find_map(|item| item.error.as_deref()) {
+                            None => Ok(effect),
+                            Some(error) => Err(MxrError::Ipc(format!("Not done: {error}"))),
+                        }
+                    }
                     Ok(Response::Error { message, .. }) => {
                         // A partly failed undo keeps what failed under the
                         // same id: `u` again retries just those.

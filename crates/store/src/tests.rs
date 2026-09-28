@@ -3757,11 +3757,13 @@ async fn write_undo_entry_roundtrips_via_read() {
         provider_id: "fake-msg-1".into(),
         prior_flags_bits: MessageFlags::READ.bits(),
         prior_label_provider_ids: vec!["INBOX".into(), "Work".into()],
+        uncertain: false,
     };
     let entry = UndoEntry {
         mutation_id: "01HVTEST0000000000000000".into(),
         kind: UndoableMutationKind::Archive,
         snapshots: vec![snapshot.clone()],
+        desk: None,
         applied_at: 1_700_000_000,
         expires_at: 1_700_000_060,
     };
@@ -3812,6 +3814,7 @@ async fn delete_undo_entry_is_exact_and_idempotent() {
                 mutation_id: id.into(),
                 kind: UndoableMutationKind::Trash,
                 snapshots: Vec::new(),
+                desk: None,
                 applied_at: 1,
                 expires_at: 61,
             })
@@ -3845,6 +3848,7 @@ async fn prune_expired_undo_entries_drops_only_stale_rows() {
             mutation_id: "expired".into(),
             kind: UndoableMutationKind::Spam,
             snapshots: Vec::new(),
+            desk: None,
             applied_at: 100,
             expires_at: 160,
         })
@@ -3855,6 +3859,7 @@ async fn prune_expired_undo_entries_drops_only_stale_rows() {
             mutation_id: "fresh".into(),
             kind: UndoableMutationKind::Spam,
             snapshots: Vec::new(),
+            desk: None,
             applied_at: 200,
             expires_at: 260,
         })

@@ -1,6 +1,6 @@
 ---
 title: The desk
-description: What needs you, not what arrived. Replies you owe, promises coming due, threads waiting on someone and new mail from people, in the CLI, the TUI and the web app.
+description: What needs you, not what arrived. Replies you owe, promises coming due, threads waiting on someone and new mail from people, each with one Done, in the CLI, the TUI and the web app.
 ---
 
 An inbox sorted by arrival answers "what came in?". The desk answers "what
@@ -45,13 +45,37 @@ each placement shows, are in
 [Reading and Paper trail](/guides/reading-and-paper-trail/).
 
 A conversation shows on the desk only while it is in the inbox. Archiving or
-snoozing it takes it off; undo puts it back. A conversation you started has
-nothing in the inbox to archive, so on a **Waiting on** row archive means
-**done waiting**: the thread leaves the lane until a new message arrives in
-it, from them or from you. A promise under **Due** stays
+snoozing it takes it off; undo puts it back. A promise under **Due** stays
 until you mark it done, whatever happens to its conversation. When a
 conversation qualifies for two lanes, it shows once, in the first of: You
 owe, Due, Waiting on, New from people.
+
+## Done: put it away
+
+Every row has one way to say "there is nothing for me to do here": **Done**.
+It is the check at the end of the row, `e` in the web app and the TUI, and
+`mxr desk done` on the command line. The row leaves at once, and what Done
+does depends on the lane:
+
+| Lane | Done |
+|---|---|
+| **You owe**, **New from people** | Archives the conversation, marks it read, and keeps it off the desk. |
+| **Waiting on** | Marks it read and stops waiting. Nothing is archived: a conversation you started has nothing in the inbox to archive. |
+| **Due** | Marks the promise kept and the conversation read, and keeps it off the desk. Nothing is archived: the promise was the work. Other open promises in the same conversation stay under Due. |
+
+"Off the desk" holds for every lane, a watched contact's row included, until
+someone writes in the conversation again: them, or you. Moving it back to the
+inbox by hand does not bring it back; a new message does. A kept promise does
+not return. Done also takes the conversation out of your reply-later queue.
+
+Undo (the toast's **Undo**, `u`, or `mxr undo ID`) puts it back exactly as
+it was: the messages return to the inbox, each one read or unread as it was
+before, the conversation is back on the desk and in reply-later if it was
+there, and a promise is open again.
+
+If a conversation cannot be put away (its account is offline, say), its row
+stays and the rest are still done. Press Done again to retry it; its undo
+still returns each message to how it was before the first try.
 
 "Usually" is the median of your past replies with that person (or theirs to
 you), and needs at least two of them. A row turns a soft yellow only when it
@@ -89,12 +113,30 @@ mxr desk --format json | jq -r '.owed.rows[0].message_id' | xargs mxr cat
 `--limit` sets how many rows each lane returns.
 
 ```bash
-# Done waiting on a thread; preview first when you pass several.
-mxr desk dismiss THREAD_ID --dry-run
-mxr desk dismiss THREAD_ID
-# Changed your mind: it waits again.
-mxr desk restore THREAD_ID
+# Done: preview, then put it away. The lane defaults to Waiting on when
+# you wrote last, otherwise You owe.
+mxr desk done THREAD_ID --dry-run
+mxr desk done THREAD_ID
+# A promise under Due: pass its commitment id.
+mxr desk done THREAD_ID --lane due --promise COMMITMENT_ID
+# Changed your mind: undo with the id Done printed.
+mxr undo MUTATION_ID
 ```
+
+```text
+Done: 1 conversation.
+  0192f0c4-...  owed        archived 2, marked 1 read, off the desk until someone writes
+Undo with: mxr undo 0192f0c5-...
+```
+
+`--format json` returns `mutation_id` and one outcome per conversation:
+`lane`, `archived` and `marked_read` counts, `dismissed`,
+`resolved_commitment_id`, `reply_later_cleared`, and `error` for one that
+could not be put away (the command then exits non-zero). It takes the `thread_id`, `lane` and
+`commitment_id` that `mxr desk --format json` prints for each row.
+
+`mxr desk dismiss THREAD_ID` is the older "done waiting" on its own, without
+marking anything read, and `mxr desk restore THREAD_ID` undoes it.
 
 ## In the web app
 
@@ -104,9 +146,15 @@ Lanes show their first five rows; **Show all** opens the rest.
 
 The keys are the ones every list uses: `j`/`k` move one cursor across all
 the lanes, `Enter` opens the conversation and `Esc` comes back to the same
-row, `e` archives, `Z` snoozes, `#` trashes and `u` undoes. On a row under
-**Waiting on**, `e` (or `w`) is done waiting. On a promise under **Due**, `w`
-marks it done.
+row, `Z` snoozes, `#` trashes and `u` undoes. On the desk, `e` is **Done**,
+in every lane: archive and Done mean the same thing here, so the key you
+already use to put mail away does it. `w`, the list's row key, and `m` do
+the same. Done works on a selection, and from the reader when you opened
+the conversation from the desk. Holding the key down does not put away row
+after row.
+
+With a mouse, the check shows when you point at a row or move the cursor to
+it. On a touch screen it is always there.
 
 `g d` goes to the desk and `g i` to the inbox in arrival order; `g w` opens
 **Waiting on**. To open on the inbox instead, set **Settings, Appearance,
@@ -116,5 +164,7 @@ Home** to Inbox.
 
 **Desk** is the first entry in the sidebar's lens list, and `g h` opens it
 (`g d` stays Drafts in the TUI). `j`/`k` move across the lanes and `Enter`
-opens the conversation beside the desk, and `e` on a row under Waiting on is
-done waiting.
+opens the conversation beside the desk. `e` (or `m`) is **Done** for the
+row under the cursor, from the list or from that conversation opened beside
+it, and `u` undoes it. Holding a key down in the TUI repeats its action, so
+tap `e` once per row.

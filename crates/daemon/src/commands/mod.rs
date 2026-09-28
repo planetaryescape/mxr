@@ -16,6 +16,7 @@ pub mod decisions;
 pub mod deliveries;
 pub mod demo;
 pub mod desk;
+pub mod desk_done;
 pub mod doctor;
 pub mod draft;
 pub mod draft_assist;

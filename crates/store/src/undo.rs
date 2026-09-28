@@ -21,6 +21,9 @@ pub enum UndoableMutationKind {
     ReadAndArchive,
     /// Move and label edits: restoring the prior label set reverses them.
     Labels,
+    /// The desk's Done: labels and read state per message, plus the
+    /// conversations' dismissals and any promise it resolved (`DeskUndo`).
+    DeskDone,
 }
 
 /// Snapshot of a single envelope's state right before a mutation was
@@ -38,6 +41,39 @@ pub struct UndoEntrySnapshot {
     /// this set re-attaches the message to the right local labels and
     /// implies what reverse provider mutation to send.
     pub prior_label_provider_ids: Vec<String>,
+    /// The mutation failed on this message, possibly after the provider
+    /// applied it (the local copy may not show the change). Undo sends the
+    /// reverse to the provider whatever the local diff says.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub uncertain: bool,
+}
+
+/// What the desk's Done changed beyond messages, as it was before.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeskUndo {
+    #[serde(default)]
+    pub dismissals: Vec<crate::DeskDismissalPrior>,
+    #[serde(default)]
+    pub commitments: Vec<CommitmentPrior>,
+    /// Messages whose reply-later flag Done cleared, with when each was set.
+    #[serde(default)]
+    pub reply_later: Vec<(MessageId, chrono::DateTime<chrono::Utc>)>,
+}
+
+impl DeskUndo {
+    pub fn is_empty(&self) -> bool {
+        self.dismissals.is_empty() && self.commitments.is_empty() && self.reply_later.is_empty()
+    }
+}
+
+/// A promise's status before Done resolved it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommitmentPrior {
+    pub account_id: AccountId,
+    pub id: String,
+    pub status: crate::CommitmentStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone)]
@@ -45,6 +81,8 @@ pub struct UndoEntry {
     pub mutation_id: String,
     pub kind: UndoableMutationKind,
     pub snapshots: Vec<UndoEntrySnapshot>,
+    /// Set by the desk's Done; restored along with the snapshots.
+    pub desk: Option<DeskUndo>,
     pub applied_at: i64,
     pub expires_at: i64,
 }
@@ -60,14 +98,16 @@ impl super::Store {
         // clean column value (the round-trip via decode_json would
         // re-quote, but we want a plain TEXT value for grep-friendliness).
         let kind_value = kind_json.trim_matches('"').to_string();
+        let desk_json = entry.desk.as_ref().map(super::encode_json).transpose()?;
         sqlx::query(
             "INSERT OR REPLACE INTO mutation_undo_log
-             (mutation_id, mutation_kind, prior_state_json, applied_at, expires_at)
-             VALUES (?, ?, ?, ?, ?)",
+             (mutation_id, mutation_kind, prior_state_json, desk_state_json, applied_at, expires_at)
+             VALUES (?, ?, ?, ?, ?, ?)",
         )
         .bind(&entry.mutation_id)
         .bind(kind_value)
         .bind(snapshots_json)
+        .bind(desk_json)
         .bind(entry.applied_at)
         .bind(entry.expires_at)
         .execute(self.writer())
@@ -83,7 +123,8 @@ impl super::Store {
         mutation_id: &str,
     ) -> Result<Option<UndoEntry>, sqlx::Error> {
         let row = sqlx::query(
-            "SELECT mutation_id, mutation_kind, prior_state_json, applied_at, expires_at
+            "SELECT mutation_id, mutation_kind, prior_state_json, desk_state_json,
+                    applied_at, expires_at
              FROM mutation_undo_log
              WHERE mutation_id = ?",
         )
@@ -98,10 +139,15 @@ impl super::Store {
             super::decode_json(&format!("\"{}\"", kind_value.replace('"', "")))?;
         let snapshots_json: String = row.try_get("prior_state_json")?;
         let snapshots: Vec<UndoEntrySnapshot> = super::decode_json(&snapshots_json)?;
+        let desk = row
+            .try_get::<Option<String>, _>("desk_state_json")?
+            .map(|json| super::decode_json::<DeskUndo>(&json))
+            .transpose()?;
         Ok(Some(UndoEntry {
             mutation_id: row.try_get("mutation_id")?,
             kind,
             snapshots,
+            desk,
             applied_at: row.try_get("applied_at")?,
             expires_at: row.try_get("expires_at")?,
         }))

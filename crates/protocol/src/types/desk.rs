@@ -102,3 +102,45 @@ pub struct DeskThreadRefData {
     pub account_id: AccountId,
     pub thread_id: ThreadId,
 }
+
+/// One desk item to mark done: "nothing for me to do here, put it away".
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeskDoneItemData {
+    pub thread_id: ThreadId,
+    /// The lane the row is in. Omitted: `waiting` when you wrote last,
+    /// otherwise `owed`, by the desk's own rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane: Option<DeskLaneKind>,
+    /// A promise under Due: Done resolves it. Required for `due`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commitment_id: Option<String>,
+}
+
+/// What Done did to one item, or with `dry_run` would do.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeskDoneOutcomeData {
+    pub thread_id: ThreadId,
+    /// Absent when the conversation was not found.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<AccountId>,
+    pub lane: DeskLaneKind,
+    /// Messages taken out of the inbox (You owe and New from people only).
+    pub archived: u32,
+    /// Messages marked read.
+    pub marked_read: u32,
+    /// Kept off the desk until someone writes in the conversation again.
+    pub dismissed: bool,
+    /// Messages taken out of the reply-later queue.
+    #[serde(default)]
+    pub reply_later_cleared: u32,
+    /// The promise resolved (Due only). Other open promises on the
+    /// conversation still show under Due.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_commitment_id: Option<String>,
+    /// Why this item was not done. Other items still are; running Done
+    /// again retries it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}

@@ -404,25 +404,44 @@ impl App {
             .unwrap_or_default()
     }
 
-    /// `e` on a desk row under Waiting on: done waiting, until a new message
-    /// arrives in the thread. Returns false for other rows, which archive.
-    pub(super) fn done_waiting_on_selected_desk_row(&mut self) -> bool {
+    /// `e` on the desk is Done: nothing for me to do here, put it away. It
+    /// acts on the row under the cursor, from the list or from the reader
+    /// showing that row's conversation. The row leaves at once; `u` undoes
+    /// it. Returns false when the desk has no row in context, so the verb
+    /// runs as usual.
+    pub(super) fn done_on_desk_row(&mut self) -> bool {
+        if self.screen != Screen::Mailbox || self.mailbox.mailbox_view != MailboxView::Desk {
+            return false;
+        }
         let Some(row) = self.selected_desk_row() else {
             return false;
         };
-        if row.lane != mxr_protocol::DeskLaneKind::Waiting {
+        let in_context = self.mailbox.active_pane == ActivePane::MailList
+            || self
+                .mailbox
+                .viewing_envelope
+                .as_ref()
+                .is_some_and(|envelope| envelope.thread_id == row.thread_id);
+        if !in_context {
             return false;
         }
-        let thread_id = row.thread_id.clone();
+        let item = mxr_protocol::DeskDoneItemData {
+            thread_id: row.thread_id.clone(),
+            lane: Some(row.lane),
+            commitment_id: row.commitment_id.clone(),
+        };
+        self.mailbox.desk_page.remove_thread(&item.thread_id);
+        self.mailbox.selected_index = self
+            .mailbox
+            .selected_index
+            .min(self.mailbox.desk_page.row_count().saturating_sub(1));
         self.queue_mutation(
-            Request::DismissDeskThreads {
-                thread_ids: vec![thread_id.clone()],
+            Request::ResolveDeskItems {
+                items: vec![item],
                 dry_run: false,
             },
-            MutationEffect::StatusOnly(format!(
-                "Done waiting. Undo with: mxr desk restore {thread_id}"
-            )),
-            "Marking done...".into(),
+            MutationEffect::RefreshPlaces("Done. Press u to undo".into()),
+            "Putting it away...".into(),
         );
         true
     }

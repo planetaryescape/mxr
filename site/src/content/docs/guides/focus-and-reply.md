@@ -36,6 +36,7 @@ of "That's everyone".
 |-----|--------------|
 | `⌘Enter` / `Ctrl+Enter` | Send the reply and move to the next conversation |
 | `s` | Skip it for now: it moves to the end of the queue |
+| `e` | Done, no reply needed: put it away and move on (see [Done](/guides/desk/#done-put-it-away)) |
 | `Z` | Snooze it, with a time in words ("tomorrow 9am", "fri 3") |
 | `w` | Send, and remind you if nobody replies by a time you type |
 | `d` | Draft the reply in your voice (needs a language model) |
@@ -48,7 +49,11 @@ with vim keys, `Esc` belongs to vim). The same actions are buttons under the
 reply.
 
 The header shows where you are ("2 of 5") and a thin bar fills as you go. A
-reply counts as done once its send countdown starts. Nothing is drafted for
+reply counts as done once its send countdown starts. **Done, no reply
+needed** counts too: the conversation is archived, marked read, taken out of
+your reply-later queue and stays off the desk until someone writes in it
+again. Undo from its toast (or `u`
+outside the reply) brings it back to the front of the queue. Nothing is drafted for
 you unless you ask with `d` or **Draft for me**.
 
 When the queue is empty, focus mode says so and names the next thing you

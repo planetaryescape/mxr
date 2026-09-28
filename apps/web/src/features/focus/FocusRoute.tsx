@@ -1,7 +1,8 @@
 /*
  * Focus & reply: everyone you owe a reply, one conversation at a time. The
  * conversation and what it asks of you on the left, your reply on the
- * right; send and the next one is up, skip it for later, or snooze it.
+ * right; send and the next one is up, skip it for later, snooze it, or
+ * mark it done when no reply is needed.
  * Progress is a count and a thin bar; the end says what's next.
  */
 
@@ -12,6 +13,7 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { KeyChip } from "@/components/KeyChip";
 import { useComposeUi } from "@/features/compose/composeUiStore";
+import { markDeskDone } from "@/features/desk/deskDone";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { targetFromThread } from "@/features/mail-actions/target";
 import type { ThreadResponse } from "@/features/mailbox/types";
@@ -66,6 +68,20 @@ export function FocusRoute({ from, lane }: { from?: string; lane?: "owed" }) {
     if (replyOpen && !replyCommands()) return;
     focus.skip();
   };
+  // Done, no reply needed: put it away (archive, mark read, off the desk
+  // until someone writes again) and move on. Undo, or a Done that fails,
+  // puts it back in front.
+  const done = () => {
+    if (!current || (replyOpen && !replyCommands())) return;
+    const threadId = current.threadId;
+    focus.markHandled(threadId);
+    void markDeskDone(
+      [{ thread_id: threadId, ...(current.source === "owed" ? { lane: "owed" as const } : {}) }],
+      { onUndone: () => focus.restore(threadId) },
+    ).then((ok) => {
+      if (!ok) focus.restore(threadId);
+    });
+  };
   useEffect(() => {
     const dropRepeats = (event: KeyboardEvent) => {
       if (!event.repeat || ownsKeyboard(event.target)) return;
@@ -78,6 +94,7 @@ export function FocusRoute({ from, lane }: { from?: string; lane?: "owed" }) {
   useScopeController("focus", {
     send: () => replyCommands()?.send(),
     skip,
+    done,
     snooze,
     remind: () => replyCommands()?.sendAndRemind(),
     draft: () => replyCommands()?.draftForMe(),
@@ -259,11 +276,12 @@ function FocusKeys({
   run,
 }: {
   disabled: boolean;
-  run: (command: "send" | "skip" | "snooze" | "remind" | "draft") => void;
+  run: (command: "send" | "skip" | "done" | "snooze" | "remind" | "draft") => void;
 }) {
   const keys = [
     ["send", "⌘↵", "Send and next"],
     ["skip", "s", "Skip"],
+    ["done", "e", "Done, no reply needed"],
     ["snooze", "Z", "Snooze"],
     ["remind", "w", "Send, remind if no reply"],
     ["draft", "d", "Draft in your voice"],

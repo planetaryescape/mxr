@@ -19,7 +19,7 @@ export type OtherVerb =
   | "send"
   | "unsubscribe"
   | "sweep"
-  | "done-waiting"
+  | "desk-done"
   | "pin"
   | "move-sender";
 
@@ -208,14 +208,14 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     undo: "daemon-job",
     confirm: "Always: it previews the daemon's dry run.",
   },
-  "done-waiting": {
-    // `e` on a Waiting row means done waiting: there's nothing to archive.
-    actions: ["list.row-action", "mail.archive"],
-    alsoFrom: `the Done chip on a Waiting row, ${SWIPE} (right)`,
-    optimistic: "The row leaves Waiting on at once.",
-    pastTense: "Done waiting on",
-    sound: null,
-    undo: "reverse-request",
+  "desk-done": {
+    // On the desk, archive is Done in every lane (see features/desk/deskDone).
+    actions: ["list.row-action", "mail.archive", "mail.read-archive", "focus.done"],
+    alsoFrom: `the check on every desk row, ${SWIPE} (short right)`,
+    optimistic: "The row leaves the desk at once; focus mode moves to the next conversation.",
+    pastTense: "Done",
+    sound: "archived",
+    undo: "daemon-mutation",
   },
   pin: {
     actions: ["place.pin"],

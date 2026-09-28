@@ -190,6 +190,8 @@ export function useFocusSession(lane?: "owed") {
     revisit: () => dispatch({ kind: "revisit" }),
     skip: () => dispatch({ kind: "skip" }),
     markHandled: (threadId: string) => dispatch({ kind: "handled", threadId }),
+    /** Back in front: its Done was undone or failed. */
+    restore: (threadId: string) => dispatch({ kind: "restore", threadId }),
     reopenReply: () => {
       if (current) useComposeUi.getState().openCompose(focusReplyIntent(current), "inline");
     },

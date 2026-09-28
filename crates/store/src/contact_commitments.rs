@@ -253,6 +253,57 @@ impl super::Store {
         .await?;
         Ok(result.rows_affected() > 0)
     }
+
+    pub async fn get_contact_commitment(
+        &self,
+        id: &str,
+    ) -> Result<Option<ContactCommitmentRecord>, sqlx::Error> {
+        let row = sqlx::query(
+            r#"SELECT id, account_id, email, thread_id, direction, status, who_owes, what,
+                      by_when, evidence_msg_id, extracted_at, resolved_at
+               FROM contact_commitments WHERE id = ?"#,
+        )
+        .bind(id)
+        .fetch_optional(self.reader())
+        .await?;
+        row.map(row_to_commitment).transpose()
+    }
+
+    /// Resolve a commitment only if it belongs to `account_id`.
+    pub async fn resolve_account_commitment(
+        &self,
+        account_id: &AccountId,
+        id: &str,
+    ) -> Result<bool, sqlx::Error> {
+        self.set_contact_commitment_status(
+            account_id,
+            id,
+            CommitmentStatus::Resolved,
+            Some(Utc::now()),
+        )
+        .await
+    }
+
+    /// Set a commitment's status in one account; for undo, back as it was.
+    pub async fn set_contact_commitment_status(
+        &self,
+        account_id: &AccountId,
+        id: &str,
+        status: CommitmentStatus,
+        resolved_at: Option<DateTime<Utc>>,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            "UPDATE contact_commitments SET status = ?, resolved_at = ?
+             WHERE id = ? AND account_id = ?",
+        )
+        .bind(status.as_str())
+        .bind(resolved_at.map(|at| at.timestamp()))
+        .bind(id)
+        .bind(account_id.as_str())
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
 }
 
 fn row_to_commitment(row: sqlx::sqlite::SqliteRow) -> Result<ContactCommitmentRecord, sqlx::Error> {

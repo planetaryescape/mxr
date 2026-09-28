@@ -50,7 +50,7 @@ export function toMessageRow(row: DeskRow): MessageRowView {
  * the desk, as they leave the inbox. A promise stays until it is resolved,
  * whatever happens to its thread, so due rows only leave for trash and spam.
  * Waiting rows follow the daemon: snooze, trash and spam set them aside,
- * and archive never reaches them (the desk turns it into done waiting).
+ * and archive never reaches any desk row (the desk turns it into Done).
  */
 export function laneLens(lane: DeskLaneKind): LensIdentity {
   if (lane === "due") return { kind: "other" };
@@ -63,6 +63,8 @@ export const FOCUS_OWED_HREF = `/focus?lane=owed&from=${encodeURIComponent("/des
 export interface DeskGroups {
   groups: MessageGroupView[];
   index: DeskRowIndex;
+  /** The same rows by conversation, for verbs that start from a thread. */
+  byThread: Map<string, DeskRow>;
 }
 
 /**
@@ -74,11 +76,12 @@ export function deskGroups(
   desk: Desk | undefined,
   ops: readonly PendingMailOp[],
   only?: DeskLaneKind,
-  /** Conversations leaving optimistically ("done waiting" in flight). */
+  /** Conversations leaving optimistically (Done in flight). */
   hidden: ReadonlySet<string> = new Set(),
 ): DeskGroups {
   const index: DeskRowIndex = new Map();
-  if (!desk) return { groups: [], index };
+  const byThread = new Map<string, DeskRow>();
+  if (!desk) return { groups: [], index, byThread };
   const groups: MessageGroupView[] = [];
   for (const lane of DESK_LANES) {
     if (only && lane !== only) continue;
@@ -90,7 +93,10 @@ export function deskGroups(
     const total = Math.max(0, data.total - (rows.length - visible.length));
     if (visible.length === 0) continue;
     const shown = only ? visible : visible.slice(0, DESK_LANE_CAP);
-    for (const row of data.rows) index.set(row.message_id, row);
+    for (const row of data.rows) {
+      index.set(row.message_id, row);
+      byThread.set(row.thread_id, row);
+    }
     groups.push({
       id: lane,
       label: LANE_TITLES[lane],
@@ -110,7 +116,7 @@ export function deskGroups(
           : undefined,
     });
   }
-  return { groups, index };
+  return { groups, index, byThread };
 }
 
 /**

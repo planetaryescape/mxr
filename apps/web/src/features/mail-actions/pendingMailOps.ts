@@ -64,7 +64,7 @@ export type LensIdentity =
   | { kind: "desk" }
   /**
    * The desk's Waiting on: a thread you started has nothing in the inbox, so
-   * only snooze (and trash, spam) set it aside; archive is done waiting.
+   * only snooze (and trash, spam) set it aside; archive is Done.
    */
   | { kind: "desk-waiting" }
   | { kind: "other" };

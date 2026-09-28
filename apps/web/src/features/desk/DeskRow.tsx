@@ -1,4 +1,4 @@
-import { Star } from "lucide-react";
+import { Check, Star } from "lucide-react";
 import { memo } from "react";
 
 import type { DeskRow as DeskRowData } from "./api";
@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 type DeskRowProps = RowRenderState & {
   row: MessageRowView;
   desk: DeskRowData;
+  /** Done: put the conversation away. Must be stable, the row is memoized. */
+  onDone: (row: MessageRowView) => void;
 };
 
 /**
@@ -17,8 +19,12 @@ type DeskRowProps = RowRenderState & {
  * as three columns; the narrow list beside the reader stacks the reason
  * under the person. No hover or focus transitions: the cursor moves on
  * every j and k, and movement there should be instant.
+ *
+ * Every row ends in a check, Done. With a mouse it shows on hover and on
+ * the cursor's row; on touch it is always there, quiet. Its slot is always
+ * reserved, so nothing shifts when it appears.
  */
-export const DeskRow = memo(function DeskRow({ row, desk, ...state }: DeskRowProps) {
+export const DeskRow = memo(function DeskRow({ row, desk, onDone, ...state }: DeskRowProps) {
   const who = rowPerson(desk);
   const age = rowAge(desk);
   const subject = desk.subject.trim();
@@ -41,7 +47,7 @@ export const DeskRow = memo(function DeskRow({ row, desk, ...state }: DeskRowPro
       data-lane={desk.lane}
       onClick={() => state.onOpen(row)}
       className={cn(
-        "desk-row relative mx-2 grid cursor-default select-none rounded-md px-3 py-2",
+        "desk-row group/desk relative mx-2 grid cursor-default select-none rounded-md px-3 py-2",
         "grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5",
         "@2xl:grid-cols-[minmax(7rem,11rem)_minmax(0,1fr)_auto] @2xl:items-baseline",
         state.selected
@@ -76,21 +82,49 @@ export const DeskRow = memo(function DeskRow({ row, desk, ...state }: DeskRowPro
         {subject ? <span aria-hidden> · </span> : null}
         <span>{desk.reason}</span>
       </span>
-      <time
-        dateTime={desk.since}
-        title={age.title}
-        data-late={age.late ? "true" : undefined}
-        className={cn(
-          "col-start-2 row-start-1 whitespace-nowrap text-right font-mono text-2xs tabular-nums @2xl:col-start-3",
-          age.late ? "text-warning" : "text-muted-foreground",
-        )}
-      >
-        {row.starred ? (
-          <Star aria-hidden className="mr-1.5 inline size-3 -translate-y-px fill-star text-star" />
-        ) : null}
-        {age.label}
-        {age.usual ? <span className="text-muted-foreground"> · {age.usual}</span> : null}
-      </time>
+      <span className="col-start-2 row-start-1 flex items-center justify-end gap-1.5 @2xl:col-start-3">
+        <time
+          dateTime={desk.since}
+          title={age.title}
+          data-late={age.late ? "true" : undefined}
+          className={cn(
+            "whitespace-nowrap text-right font-mono text-2xs tabular-nums",
+            age.late ? "text-warning" : "text-muted-foreground",
+          )}
+        >
+          {row.starred ? (
+            <Star
+              aria-hidden
+              className="mr-1.5 inline size-3 -translate-y-px fill-star text-star"
+            />
+          ) : null}
+          {age.label}
+          {age.usual ? <span className="text-muted-foreground"> · {age.usual}</span> : null}
+        </time>
+        {/* A span, not a button: rows are listbox options, which can't
+            contain controls. The keyboard's Done is `e`. */}
+        <span
+          aria-hidden
+          data-testid="desk-done"
+          title="Done, put it away (e)"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDone(row);
+          }}
+          className={cn(
+            "relative -my-1 grid size-6 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground",
+            "hover:bg-primary-muted hover:text-primary",
+            // On touch: a bigger target than it looks, so a tap on the
+            // check never opens the row instead.
+            "pointer-coarse:size-8 pointer-coarse:opacity-60 pointer-coarse:after:absolute pointer-coarse:after:-inset-1.5",
+            state.focused || state.selected
+              ? "pointer-fine:opacity-100"
+              : "pointer-fine:opacity-0 pointer-fine:group-hover/desk:opacity-100",
+          )}
+        >
+          <Check className="size-3.5" strokeWidth={2.25} />
+        </span>
+      </span>
     </div>
   );
 });

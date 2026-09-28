@@ -145,8 +145,9 @@ export function ListWithReader({
       open,
       close,
       queueLabel: listProps.queueLabel,
+      intercept: listProps.interceptVerb,
     }),
-    [close, visibleGroups, listProps.queueLabel, open],
+    [close, visibleGroups, listProps.queueLabel, listProps.interceptVerb, open],
   );
 
   return (

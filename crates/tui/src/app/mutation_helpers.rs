@@ -590,6 +590,8 @@ impl App {
         self.mailbox.pending_all_envelopes_refresh = true;
         self.diagnostics.pending_status_refresh = true;
         self.mailbox.pending_subscriptions_refresh = true;
+        // A desk row taken off at once (Done) comes back.
+        self.mailbox.pending_desk_refresh = true;
         if let Some(label_id) = self
             .mailbox
             .pending_active_label

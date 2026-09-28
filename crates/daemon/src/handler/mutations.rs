@@ -26,7 +26,7 @@ use std::time::Duration;
 /// How long after the mutation the user can undo it. Matches the plan
 /// (~60s) and pairs with `tick_connection_state`-style UI affordances on
 /// the TUI side.
-const UNDO_WINDOW_SECS: i64 = 60;
+pub(super) const UNDO_WINDOW_SECS: i64 = 60;
 const MUTATION_JOB_CHUNK_SIZE: usize = 100;
 const MAX_RETAINED_JOBS: usize = 100;
 #[cfg(not(test))]
@@ -541,29 +541,17 @@ async fn mutation_checked(
     state: &AppState,
     cmd: &MutationCommand,
     client_correlation_id: Option<&str>,
-    mut check: Option<&mut super::places::SweepCheck>,
+    check: Option<&mut super::places::SweepCheck>,
 ) -> Result<(ResponseData, u32), HandlerError> {
-    let mut left_out = 0u32;
     let message_ids = mutation_message_ids(cmd);
     let undoable_kind = undoable_kind(cmd);
     // One id per MutationCommand batch — drives both the dedup log
     // (retry safety) and the undo log (user-undo). Generated up-front
     // so dedup applies even to non-undoable commands.
     let mutation_id = uuid::Uuid::now_v7().to_string();
-    let mut grouped: HashMap<mxr_core::AccountId, Vec<Envelope>> = HashMap::new();
-    for message_id in message_ids {
-        let envelope = state
-            .store
-            .get_envelope(message_id)
-            .await?
-            .ok_or_else(|| format!("Message not found: {message_id}"))?;
-        grouped
-            .entry(envelope.account_id.clone())
-            .or_default()
-            .push(envelope);
-    }
 
     if matches!(cmd, MutationCommand::Route { dry_run: true, .. }) {
+        let grouped = envelopes_by_account(state, message_ids).await?;
         let mut accounts = Vec::new();
         for (account_id, envelopes) in grouped {
             let account_name = state
@@ -602,13 +590,113 @@ async fn mutation_checked(
         return Ok((response, 0));
     }
 
+    let BatchOutcome {
+        accounts,
+        changed: mut succeeded_snapshots,
+        failed: failed_snapshots,
+        left_out,
+    } = apply_mutation_batch(state, cmd, &mutation_id, check).await?;
+    let succeeded = accounts.iter().map(|account| account.succeeded).sum();
+    let skipped = accounts.iter().map(|account| account.skipped).sum();
+    let failed = accounts.iter().map(|account| account.failed).sum();
+
+    // Persist an undo entry for undoable kinds whenever a message may have
+    // changed: those that succeeded, and the one that failed part way (a
+    // retry is a new mutation with its own snapshot, so this entry is the
+    // only record of the original). The mutation_id is the same one used
+    // for dedup above; undo + dedup share a key by design.
+    succeeded_snapshots.extend(failed_snapshots);
+    let (mutation_id, undo_unavailable) = match (undoable_kind, succeeded_snapshots.is_empty()) {
+        (Some(kind), false) => {
+            let now = chrono::Utc::now().timestamp();
+            let entry = UndoEntry {
+                mutation_id: mutation_id.clone(),
+                kind,
+                snapshots: succeeded_snapshots,
+                desk: None,
+                applied_at: now,
+                expires_at: now + UNDO_WINDOW_SECS,
+            };
+            if let Err(error) = state.store.write_undo_entry(&entry).await {
+                // Non-fatal: the mutation already succeeded. The user
+                // loses the undo affordance, but flag it so clients can
+                // say so rather than silently dropping undo.
+                tracing::warn!(%error, "failed to write undo entry");
+                (None, true)
+            } else {
+                (Some(mutation_id), false)
+            }
+        }
+        _ => (None, false),
+    };
+
+    let result = MutationResultData {
+        requested: message_ids.len() as u32,
+        succeeded,
+        skipped,
+        failed,
+        accounts,
+        mutation_id,
+        undo_unavailable,
+    };
+
+    emit_mutation_reconciliation_failed_if_needed(state, client_correlation_id, &result);
+
+    Ok((ResponseData::MutationResult { result }, left_out))
+}
+
+async fn envelopes_by_account(
+    state: &AppState,
+    message_ids: &[mxr_core::MessageId],
+) -> Result<HashMap<mxr_core::AccountId, Vec<Envelope>>, HandlerError> {
+    let mut grouped: HashMap<mxr_core::AccountId, Vec<Envelope>> = HashMap::new();
+    for message_id in message_ids {
+        let envelope = state
+            .store
+            .get_envelope(message_id)
+            .await?
+            .ok_or_else(|| format!("Message not found: {message_id}"))?;
+        grouped
+            .entry(envelope.account_id.clone())
+            .or_default()
+            .push(envelope);
+    }
+    Ok(grouped)
+}
+
+/// What `apply_mutation_batch` did, with each message's state from before
+/// it for undo (undoable kinds only).
+pub(super) struct BatchOutcome {
+    /// Per account, sorted by name.
+    pub accounts: Vec<AccountMutationResultData>,
+    pub changed: Vec<UndoEntrySnapshot>,
+    /// Messages whose mutation failed, possibly after part of it applied
+    /// (ReadAndArchive marks read before it archives). Undo restores them
+    /// too: restoring an unchanged message is a no-op.
+    pub failed: Vec<UndoEntrySnapshot>,
+    /// Left out by a sweep's check (not failures).
+    pub left_out: u32,
+}
+
+/// Apply `cmd` message by message under `mutation_id`, account by account,
+/// stopping an account at its first failure, and holding each message to a
+/// sweep's `check` when there is one.
+pub(super) async fn apply_mutation_batch(
+    state: &AppState,
+    cmd: &MutationCommand,
+    mutation_id: &str,
+    mut check: Option<&mut super::places::SweepCheck>,
+) -> Result<BatchOutcome, HandlerError> {
+    let undoable = undoable_kind(cmd).is_some();
+    let mut left_out = 0u32;
     // Snapshot the prior state of every envelope so that undoable
     // mutations can be reversed. Captured before `apply_mutation_to_envelope`
     // touches the store.
     let mut succeeded_snapshots: Vec<UndoEntrySnapshot> = Vec::new();
+    let mut failed_snapshots: Vec<UndoEntrySnapshot> = Vec::new();
 
     let mut accounts = Vec::new();
-    for (account_id, envelopes) in grouped {
+    for (account_id, envelopes) in envelopes_by_account(state, mutation_message_ids(cmd)).await? {
         let account_name = state
             .store
             .get_account(&account_id)
@@ -640,28 +728,19 @@ async fn mutation_checked(
             // Capture the prior state BEFORE the mutation runs so undo
             // can restore exactly what the user had. Cheap clone — flags
             // are u32 and label IDs are short strings.
-            let snapshot = if undoable_kind.is_some() {
-                Some(UndoEntrySnapshot {
-                    message_id: envelope.id.clone(),
-                    account_id: envelope.account_id.clone(),
-                    provider_id: envelope.provider_id.clone(),
-                    prior_flags_bits: envelope.flags.bits(),
-                    prior_label_provider_ids: envelope.label_provider_ids.clone(),
-                })
-            } else {
-                None
-            };
+            let snapshot = undoable.then(|| UndoEntrySnapshot {
+                message_id: envelope.id.clone(),
+                account_id: envelope.account_id.clone(),
+                provider_id: envelope.provider_id.clone(),
+                prior_flags_bits: envelope.flags.bits(),
+                prior_label_provider_ids: envelope.label_provider_ids.clone(),
+                uncertain: false,
+            });
 
             let applied = match check.as_deref_mut() {
                 None => {
-                    apply_mutation_to_envelope(
-                        state,
-                        provider.as_ref(),
-                        &mutation_id,
-                        cmd,
-                        envelope,
-                    )
-                    .await
+                    apply_mutation_to_envelope(state, provider.as_ref(), mutation_id, cmd, envelope)
+                        .await
                 }
                 Some(check) => {
                     // Provider lock, then the account's sweep gate (see
@@ -684,7 +763,7 @@ async fn mutation_checked(
                                 state,
                                 provider.as_ref(),
                                 &provider_guard,
-                                &mutation_id,
+                                mutation_id,
                                 cmd,
                                 envelope,
                             )
@@ -706,6 +785,15 @@ async fn mutation_checked(
                     }
                 }
                 Err(error) => {
+                    // It may have changed in part (read, then the archive
+                    // failed), or at the provider but not here: its undo
+                    // restores it to this snapshot at the provider too.
+                    if let Some(snapshot) = snapshot {
+                        failed_snapshots.push(UndoEntrySnapshot {
+                            uncertain: true,
+                            ..snapshot
+                        });
+                    }
                     account_result.skipped += (envelopes.len() - index) as u32;
                     account_result.error = Some(error);
                     break;
@@ -722,49 +810,12 @@ async fn mutation_checked(
             .cmp(&right.account_name.to_lowercase())
             .then_with(|| left.account_id.as_str().cmp(&right.account_id.as_str()))
     });
-    let succeeded = accounts.iter().map(|account| account.succeeded).sum();
-    let skipped = accounts.iter().map(|account| account.skipped).sum();
-    let failed = accounts.iter().map(|account| account.failed).sum();
-
-    // Persist an undo entry only for undoable kinds and only if at
-    // least one envelope succeeded. The mutation_id is the same one
-    // used for dedup above; undo + dedup share a key by design.
-    let (mutation_id, undo_unavailable) = match (undoable_kind, succeeded_snapshots.is_empty()) {
-        (Some(kind), false) => {
-            let now = chrono::Utc::now().timestamp();
-            let entry = UndoEntry {
-                mutation_id: mutation_id.clone(),
-                kind,
-                snapshots: succeeded_snapshots,
-                applied_at: now,
-                expires_at: now + UNDO_WINDOW_SECS,
-            };
-            if let Err(error) = state.store.write_undo_entry(&entry).await {
-                // Non-fatal: the mutation already succeeded. The user
-                // loses the undo affordance, but flag it so clients can
-                // say so rather than silently dropping undo.
-                tracing::warn!(%error, "failed to write undo entry");
-                (None, true)
-            } else {
-                (Some(mutation_id), false)
-            }
-        }
-        _ => (None, false),
-    };
-
-    let result = MutationResultData {
-        requested: message_ids.len() as u32,
-        succeeded,
-        skipped,
-        failed,
+    Ok(BatchOutcome {
         accounts,
-        mutation_id,
-        undo_unavailable,
-    };
-
-    emit_mutation_reconciliation_failed_if_needed(state, client_correlation_id, &result);
-
-    Ok((ResponseData::MutationResult { result }, left_out))
+        changed: succeeded_snapshots,
+        failed: failed_snapshots,
+        left_out,
+    })
 }
 
 /// A check a job runs on each chunk just before applying it.
@@ -1247,7 +1298,13 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
             .push(snapshot);
     }
 
+    // The desk's Done also dismissed conversations and resolved promises.
+    // Those are local rows: put them back first, and only once.
     let mut restored = 0u32;
+    if let Some(desk) = entry.desk.as_ref() {
+        super::desk_done::restore_desk_state(state, desk).await?;
+        restored += (desk.dismissals.len() + desk.commitments.len()) as u32;
+    }
     let mut irreversible = 0u32;
     // Failures a retry can fix (a provider or account hiccup), kept so the
     // same id undoes just those next time.
@@ -1299,6 +1356,7 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
         .store
         .write_undo_entry(&UndoEntry {
             snapshots: retryable,
+            desk: None,
             ..entry
         })
         .await?;
@@ -1349,14 +1407,31 @@ async fn restore_snapshot(
         .map(String::as_str)
         .collect();
 
-    let to_add: Vec<String> = prior_labels
+    let mut to_add: Vec<String> = prior_labels
         .difference(&current_labels)
         .map(|s| (*s).to_string())
         .collect();
-    let to_remove: Vec<String> = current_labels
+    let mut to_remove: Vec<String> = current_labels
         .difference(&prior_labels)
         .map(|s| (*s).to_string())
         .collect();
+    // The mutation may have reached the provider without the local copy
+    // showing it: reverse what it could have done there too. Adding a
+    // label a message has, or removing one it lacks, is a no-op.
+    if snapshot.uncertain {
+        let (may_remove, may_add) =
+            uncertain_label_changes(kind, &snapshot.prior_label_provider_ids);
+        for label in may_remove {
+            if !to_add.contains(&label) {
+                to_add.push(label);
+            }
+        }
+        for label in may_add {
+            if !to_remove.contains(&label) {
+                to_remove.push(label);
+            }
+        }
+    }
 
     // Undo runs under a fresh mutation_id (a retry of undo would be a
     // distinct operation in the user's mind). Dedup against the reverse
@@ -1393,16 +1468,18 @@ async fn restore_snapshot(
             .map_err(SnapshotError::Other)?;
     }
 
-    // Read flag: only relevant for SetRead and ReadAndArchive. For the
-    // other kinds (Archive, Trash, Spam) we don't touch the read flag.
+    // Read flag: only relevant for SetRead, ReadAndArchive and the desk's
+    // Done. For the other kinds (Archive, Trash, Spam) we don't touch the read flag.
     if matches!(
         kind,
-        UndoableMutationKind::SetRead | UndoableMutationKind::ReadAndArchive
+        UndoableMutationKind::SetRead
+            | UndoableMutationKind::ReadAndArchive
+            | UndoableMutationKind::DeskDone
     ) {
         let prior_flags = mxr_core::MessageFlags::from_bits_truncate(snapshot.prior_flags_bits);
         let prior_read = prior_flags.contains(mxr_core::MessageFlags::READ);
         let current_read = current.flags.contains(mxr_core::MessageFlags::READ);
-        if prior_read != current_read {
+        if prior_read != current_read || snapshot.uncertain {
             // Suffix dedup key so this co-exists with the ModifyLabels
             // call above when undoing a ReadAndArchive.
             let read_dedup_key = format!("{}#read", snapshot.provider_id);
@@ -1449,6 +1526,40 @@ async fn restore_snapshot(
         .map_err(SnapshotError::Other)?;
 
     Ok(())
+}
+
+/// For a message whose mutation failed, possibly after the provider applied
+/// it: the prior labels the mutation could have removed, and the labels it
+/// could have added that the message didn't have.
+fn uncertain_label_changes(
+    kind: UndoableMutationKind,
+    prior: &[String],
+) -> (Vec<String>, Vec<String>) {
+    let had = |label: &str| prior.iter().any(|l| l == label);
+    let inbox = || {
+        if had("INBOX") {
+            vec!["INBOX".to_string()]
+        } else {
+            Vec::new()
+        }
+    };
+    let added = |label: &str| {
+        if had(label) {
+            Vec::new()
+        } else {
+            vec![label.to_string()]
+        }
+    };
+    match kind {
+        UndoableMutationKind::Archive
+        | UndoableMutationKind::ReadAndArchive
+        | UndoableMutationKind::DeskDone => (inbox(), Vec::new()),
+        UndoableMutationKind::Trash => (inbox(), added("TRASH")),
+        UndoableMutationKind::Spam => (inbox(), added("SPAM")),
+        // A move or label edit may have removed any of them.
+        UndoableMutationKind::Labels => (prior.to_vec(), Vec::new()),
+        UndoableMutationKind::SetRead => (Vec::new(), Vec::new()),
+    }
 }
 
 fn classify_provider_error(error: mxr_core::MxrError) -> SnapshotError {

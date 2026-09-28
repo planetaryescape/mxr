@@ -1670,6 +1670,19 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         preview_token: Option<String>,
     },
+    /// The desk's Done: nothing for me to do here, put it away. You owe and
+    /// New from people rows are archived, marked read and kept off the desk
+    /// until someone writes in the conversation again; Waiting on rows are
+    /// marked read and done waiting; a Due promise is resolved and its
+    /// conversation marked read. `dry_run` returns the same plan per item
+    /// without changing anything. The real run returns one `mutation_id`
+    /// for `UndoMutation`, which puts messages, dismissals and promises
+    /// back as they were. Returns `ResponseData::DeskItemsResolved`.
+    ResolveDeskItems {
+        items: Vec<DeskDoneItemData>,
+        #[serde(default)]
+        dry_run: bool,
+    },
 }
 
 impl Request {
@@ -1780,6 +1793,7 @@ impl Request {
             | Self::GetDesk { .. }
             | Self::DismissDeskThreads { .. }
             | Self::RestoreDeskThreads { .. }
+            | Self::ResolveDeskItems { .. }
             | Self::ListPlace { .. }
             | Self::GetMessageKind { .. }
             | Self::SetSenderKind { .. }
@@ -2790,6 +2804,17 @@ pub enum ResponseData {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         job: Option<JobData>,
     },
+    /// Returned by `Request::ResolveDeskItems`, one outcome per item in
+    /// request order. `mutation_id` undoes the whole run.
+    DeskItemsResolved {
+        items: Vec<DeskDoneOutcomeData>,
+        dry_run: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mutation_id: Option<String>,
+        /// Something changed but its undo could not be saved.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        undo_unavailable: bool,
+    },
 }
 
 impl ResponseData {
@@ -2879,6 +2904,7 @@ impl ResponseData {
             | Self::Desk { .. }
             | Self::DeskThreadsDismissed { .. }
             | Self::DeskThreadsRestored { .. }
+            | Self::DeskItemsResolved { .. }
             | Self::Place { .. }
             | Self::MessageKind { .. }
             | Self::SenderKindSet { .. }

@@ -65,8 +65,8 @@ help modal (`?`).
 | `a` | Reply all |
 | `f` | Forward |
 | `y` | Summarize thread in the background |
-| `e` | Archive |
-| `m` | Mark read + archive |
+| `e` | Archive (on the desk: Done, put it away) |
+| `m` | Mark read + archive (on the desk: Done) |
 | `#` | Trash |
 | `!` | Mark spam |
 | `s` | Star / unstar |
@@ -523,6 +523,7 @@ One conversation at a time. In the reply, ⌘Enter sends and moves on; Tab out o
 |-----|--------|------|
 | `⌘ENTER / Ctrl+ENTER` | Send and next |  |
 | `s` | Skip for now | Goes to the end of the queue |
+| `e` | Done, no reply needed | e on the desk in the TUI |
 | `Z` | Snooze… |  |
 | `w` | Send, remind me if nobody replies… |  |
 | `d` | Draft in your voice |  |

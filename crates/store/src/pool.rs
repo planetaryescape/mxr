@@ -882,6 +882,17 @@ const MIGRATIONS: &[Migration] = &[
         name: "message_pins",
         kind: MigrationKind::Sql(include_str!("../migrations/052_message_pins.sql")),
     },
+    Migration {
+        version: 53,
+        name: "mutation_undo_desk_state",
+        kind: MigrationKind::AddColumn {
+            table: "mutation_undo_log",
+            column: "desk_state_json",
+            // The desk's Done also changes dismissals and promises; undo
+            // puts those back from here (JSON `DeskUndo`, NULL otherwise).
+            sql: "ALTER TABLE mutation_undo_log ADD COLUMN desk_state_json TEXT",
+        },
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

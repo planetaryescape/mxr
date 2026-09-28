@@ -96,7 +96,7 @@ Commands:
   label               Apply a label to a message
   unlabel             Remove a label from a message
   move                Move message to a label/folder
-  undo                Undo a recent destructive mutation by its id (~60s window). The mutation id is printed by `archive`, `trash`, `spam`, `mark-read`, and `read-archive`; copy it from there
+  undo                Undo a recent destructive mutation by its id (~60s window). The mutation id is printed by `archive`, `trash`, `spam`, `mark-read`, `read-archive` and `desk done`; copy it from there
   jobs                List or inspect background jobs (large batch mutations, progress, undo ids)
   snooze              Snooze a message until a specified time
   unsnooze            Unsnooze a message

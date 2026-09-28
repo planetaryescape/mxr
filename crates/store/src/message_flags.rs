@@ -104,6 +104,34 @@ impl super::Store {
         Ok(flagged)
     }
 
+    /// The flagged messages among `message_ids`, with when each was
+    /// flagged, so the flag can be put back exactly (queue order included).
+    pub async fn reply_later_set_at(
+        &self,
+        message_ids: &[MessageId],
+    ) -> Result<Vec<(MessageId, DateTime<Utc>)>, sqlx::Error> {
+        let mut flagged = Vec::new();
+        for chunk in message_ids.chunks(SQLITE_BIND_CHUNK) {
+            let placeholders = vec!["?"; chunk.len()].join(", ");
+            let sql = format!(
+                "SELECT message_id, reply_later_set_at FROM message_flags
+                 WHERE reply_later = 1 AND message_id IN ({placeholders})"
+            );
+            let mut query =
+                sqlx::query_as::<_, (String, Option<i64>)>(sqlx::AssertSqlSafe(sql.as_str()));
+            for message_id in chunk {
+                query = query.bind(message_id.as_str());
+            }
+            for (id, set_at) in query.fetch_all(self.reader()).await? {
+                let set_at = set_at
+                    .and_then(|ts| DateTime::from_timestamp(ts, 0))
+                    .unwrap_or_else(Utc::now);
+                flagged.push((decode_id(&id)?, set_at));
+            }
+        }
+        Ok(flagged)
+    }
+
     /// List message IDs currently flagged for reply-later, ordered by
     /// `set_at` descending (most recently flagged first).
     pub async fn list_reply_later(&self) -> Result<Vec<MessageId>, sqlx::Error> {

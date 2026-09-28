@@ -206,6 +206,15 @@ impl App {
     }
 
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        // A key acts when it goes down. Windows consoles also report the
+        // key coming up; acting on that too would run every key twice.
+        if key.kind == crossterm::event::KeyEventKind::Release {
+            return None;
+        }
+        self.handle_key_press(key)
+    }
+
+    fn handle_key_press(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         #[cfg(debug_assertions)]
         if key.code == KeyCode::Char('d')
             && key.modifiers.contains(KeyModifiers::CONTROL)

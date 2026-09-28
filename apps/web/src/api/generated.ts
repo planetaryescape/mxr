@@ -668,6 +668,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/desk/done": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Done: put desk items away (archive, mark read, keep off the desk; resolve a promise). dry_run previews */
+        post: operations["mail_desk_done"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/desk/restore": {
         parameters: {
             query?: never;
@@ -3550,6 +3567,52 @@ export interface components {
              */
             updated: number;
         };
+        /** @description Body of `POST /api/v1/mail/desk/done`. */
+        DeskDoneBody: {
+            /** @description Preview only; nothing changes. */
+            dry_run?: boolean | null;
+            items: components["schemas"]["DeskDoneItemData"][];
+        };
+        /** @description One desk item to mark done: "nothing for me to do here, put it away". */
+        DeskDoneItemData: {
+            /** @description A promise under Due: Done resolves it. Required for `due`. */
+            commitment_id?: string | null;
+            lane?: null | components["schemas"]["DeskLaneKind"];
+            thread_id: components["schemas"]["ThreadId"];
+        };
+        /** @description What Done did to one item, or with `dry_run` would do. */
+        DeskDoneOutcomeData: {
+            account_id?: null | components["schemas"]["AccountId"];
+            /**
+             * Format: int32
+             * @description Messages taken out of the inbox (You owe and New from people only).
+             */
+            archived: number;
+            /** @description Kept off the desk until someone writes in the conversation again. */
+            dismissed: boolean;
+            /**
+             * @description Why this item was not done. Other items still are; running Done
+             *     again retries it.
+             */
+            error?: string | null;
+            lane: components["schemas"]["DeskLaneKind"];
+            /**
+             * Format: int32
+             * @description Messages marked read.
+             */
+            marked_read: number;
+            /**
+             * Format: int32
+             * @description Messages taken out of the reply-later queue.
+             */
+            reply_later_cleared?: number;
+            /**
+             * @description The promise resolved (Due only). Other open promises on the
+             *     conversation still show under Due.
+             */
+            resolved_commitment_id?: string | null;
+            thread_id: components["schemas"]["ThreadId"];
+        };
         /** @description Counts for everything that is not on the desk, for the one-line summary. */
         DeskElsewhereData: {
             /**
@@ -5748,6 +5811,11 @@ export interface components {
             /** @description From the dry run; required when `dry_run` is false. */
             preview_token?: string | null;
             sender_email?: string | null;
+        } | {
+            /** @enum {string} */
+            cmd: "ResolveDeskItems";
+            dry_run?: boolean;
+            items: components["schemas"]["DeskDoneItemData"][];
         };
         /**
          * @description The daemon's reply to a [`Request`], correlated by [`IpcMessage::id`].
@@ -6438,6 +6506,14 @@ export interface components {
             /** @enum {string} */
             kind: "PlaceSwept";
             preview: components["schemas"]["SweepPreviewData"];
+        } | {
+            dry_run: boolean;
+            items: components["schemas"]["DeskDoneOutcomeData"][];
+            /** @enum {string} */
+            kind: "DeskItemsResolved";
+            mutation_id?: string | null;
+            /** @description Something changed but its undo could not be saved. */
+            undo_unavailable?: boolean;
         };
         /**
          * @description A single bucket of the response-time histogram. `count` rows had a
@@ -8400,6 +8476,44 @@ export interface operations {
         responses: {
             /** @description OK */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_desk_done: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeskDoneBody"];
+            };
+        };
+        responses: {
+            /** @description The `DeskItemsResolved` variant: one outcome per item and the undo id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description No items */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

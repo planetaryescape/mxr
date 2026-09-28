@@ -105,11 +105,28 @@ pub async fn run_action(action: DeskAction) -> anyhow::Result<()> {
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
+        DeskAction::Done {
+            thread_ids,
+            lane,
+            promise,
+            dry_run,
+            format,
+        } => {
+            super::desk_done::run(
+                &mut client,
+                parse_thread_ids(&thread_ids)?,
+                lane,
+                promise,
+                dry_run,
+                resolve_format(format),
+            )
+            .await?;
+        }
     }
     Ok(())
 }
 
-fn parse_thread_ids(raw: &[String]) -> anyhow::Result<Vec<mxr_core::id::ThreadId>> {
+pub(crate) fn parse_thread_ids(raw: &[String]) -> anyhow::Result<Vec<mxr_core::id::ThreadId>> {
     raw.iter()
         .map(|id| {
             id.parse()
@@ -286,7 +303,7 @@ pub(crate) fn plural(n: u32, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
-fn lane_key(lane: DeskLaneKind) -> &'static str {
+pub(crate) fn lane_key(lane: DeskLaneKind) -> &'static str {
     match lane {
         DeskLaneKind::Owed => "owed",
         DeskLaneKind::Due => "due",

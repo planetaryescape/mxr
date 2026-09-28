@@ -244,6 +244,17 @@ impl DeskPageState {
         self.lanes.iter().map(|(_, lane)| lane.rows.len()).sum()
     }
 
+    /// Take a conversation's row off the desk at once (Done); the next
+    /// fetch has the daemon's word on it.
+    pub fn remove_thread(&mut self, thread_id: &mxr_core::ThreadId) {
+        for (_, lane) in &mut self.lanes {
+            let before = lane.rows.len();
+            lane.rows.retain(|row| &row.thread_id != thread_id);
+            let removed = (before - lane.rows.len()) as u32;
+            lane.total = lane.total.saturating_sub(removed);
+        }
+    }
+
     /// The sidebar badge: only work that is yours to do (owed and due).
     pub fn work_count(&self) -> usize {
         use mxr_protocol::DeskLaneKind;

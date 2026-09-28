@@ -6,17 +6,20 @@ use mxr_core::types::{
 };
 use mxr_store::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
 
-const ME: &str = "user@example.com";
+pub(super) const ME: &str = "user@example.com";
 
-struct Fixture {
-    state: Arc<AppState>,
-    account: mxr_core::AccountId,
-    inbox: LabelId,
+pub(super) struct Fixture {
+    pub(super) state: Arc<AppState>,
+    /// The account's provider, for making its mutations fail.
+    pub(super) fake: Arc<mxr_provider_fake::FakeProvider>,
+    pub(super) account: mxr_core::AccountId,
+    pub(super) inbox: LabelId,
 }
 
 impl Fixture {
-    async fn new() -> Self {
-        let state = Arc::new(AppState::in_memory().await.unwrap());
+    pub(super) async fn new() -> Self {
+        let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
         let account = state.default_account_id();
         let inbox = LabelId::from_scoped_provider_id(&account, "fake", "INBOX");
         state
@@ -36,13 +39,14 @@ impl Fixture {
             .unwrap();
         Self {
             state,
+            fake,
             account,
             inbox,
         }
     }
 
     /// Store one message; inbound mail lands in the inbox.
-    async fn message(
+    pub(super) async fn message(
         &self,
         thread: &ThreadId,
         from: &str,
@@ -95,7 +99,7 @@ impl Fixture {
         envelope
     }
 
-    async fn store_envelope(&self, envelope: &Envelope, direction: MessageDirection) {
+    pub(super) async fn store_envelope(&self, envelope: &Envelope, direction: MessageDirection) {
         let store = &self.state.store;
         store
             .upsert_envelope_with_direction(envelope, direction)
@@ -117,7 +121,7 @@ impl Fixture {
             .unwrap();
     }
 
-    async fn promise(&self, thread: &ThreadId, evidence: &MessageId, due_in: Duration) {
+    pub(super) async fn promise(&self, thread: &ThreadId, evidence: &MessageId, due_in: Duration) {
         self.state
             .store
             .upsert_contact_commitment(&ContactCommitmentRecord {
@@ -138,7 +142,7 @@ impl Fixture {
             .unwrap();
     }
 
-    async fn desk(&self, lane_limit: u32) -> ResponseData {
+    pub(super) async fn desk(&self, lane_limit: u32) -> ResponseData {
         let msg = IpcMessage {
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
@@ -154,7 +158,7 @@ impl Fixture {
     }
 }
 
-fn thread_ids(lane: &DeskLaneData) -> Vec<ThreadId> {
+pub(super) fn thread_ids(lane: &DeskLaneData) -> Vec<ThreadId> {
     lane.rows.iter().map(|row| row.thread_id.clone()).collect()
 }
 
@@ -351,7 +355,7 @@ async fn archiving_a_conversation_takes_it_off_the_desk() {
     assert_eq!(owed.total + waiting.total + people_new.total, 0);
 }
 
-async fn request(fx: &Fixture, request: Request) -> ResponseData {
+pub(super) async fn request(fx: &Fixture, request: Request) -> ResponseData {
     let msg = IpcMessage {
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),

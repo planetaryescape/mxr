@@ -10,6 +10,7 @@ import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { MessageContent } from "@/features/thread/MessageCard";
+import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { notePointerUse } from "@/lib/actions/keyHints";
 import { formatLongDate, formatRelative, plural } from "@/lib/format";
@@ -51,6 +52,7 @@ export function ReadingRoute() {
     [issues],
   );
   const senders = place.totalBundles;
+  const phase = useDelayedPending(status.isLoading);
   const lowTide = useLowTide("reading", status.isLoading || status.isError, issues.length > 0);
   return (
     <PlaceLayout basePath="/reading" label="Reading" threadIds={threadIds} wideReader>
@@ -76,8 +78,8 @@ export function ReadingRoute() {
           ) : null
         }
       />
-      {status.isLoading ? (
-        <ListSkeleton />
+      {phase !== "ready" ? (
+        <ListSkeleton quiet={phase === "quiet"} />
       ) : status.isError ? (
         <Centered
           icon={<RefreshCw className="size-6" />}

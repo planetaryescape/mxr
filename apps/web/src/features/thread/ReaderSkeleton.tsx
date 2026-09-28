@@ -1,11 +1,22 @@
 /* Placeholder reader while a conversation loads. */
 
-export function ReaderSkeleton() {
+/** `quiet`: the same frame, empty, for the first 300 ms of a load. */
+export function ReaderSkeleton({ quiet = false }: { quiet?: boolean }) {
+  if (quiet) {
+    return (
+      <div
+        className="flex min-w-0 flex-1 flex-col"
+        aria-busy="true"
+        aria-label="Loading conversation"
+      />
+    );
+  }
   return (
     <div
       className="flex min-w-0 flex-1 flex-col"
       aria-busy="true"
       aria-label="Loading conversation"
+      data-testid="reader-skeleton"
     >
       <div className="border-b border-border px-5 py-4">
         <div className="h-5 w-2/3 animate-pulse rounded bg-muted" />

@@ -6,6 +6,7 @@ import { syncNow } from "./actions";
 import { lensesFromShell, resolveLens, type LensRoute, type MailLens } from "./lenses";
 import { ListWithReader } from "./ListWithReader";
 import { Centered, ListSkeleton } from "./MailViewParts";
+import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useMailboxQuery, useShellQuery } from "./useMailboxQuery";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -29,13 +30,14 @@ const PAGE_MAILBOXES: Record<string, string> = {
 export function MailView({ route }: { route: LensRoute }) {
   const shell = useShellQuery();
   const lenses = useMemo(() => lensesFromShell(shell.data), [shell.data]);
+  const phase = useDelayedPending(shell.isLoading);
 
   if (route.kind === "system" && PAGE_MAILBOXES[route.mailbox]) {
     return <Navigate to={PAGE_MAILBOXES[route.mailbox]!} replace />;
   }
   const lens = resolveLens(route, lenses);
   if (!lens) {
-    if (shell.isLoading) return <ListSkeleton />;
+    if (phase !== "ready") return <ListSkeleton quiet={phase === "quiet"} />;
     return (
       <Centered
         icon={<SearchX className="size-6" />}

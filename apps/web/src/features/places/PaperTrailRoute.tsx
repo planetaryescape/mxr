@@ -21,6 +21,7 @@ import { targetFromRows } from "@/features/mail-actions/target";
 import { SwipeLayer, useRowSwipe, type SwipeLayerHandle } from "@/features/swipe/RowSwipe";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
+import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { notePointerUse } from "@/lib/actions/keyHints";
 import { formatListDate, formatRelative, plural } from "@/lib/format";
@@ -71,6 +72,7 @@ export function PaperTrailRoute() {
   );
   const total = place.totalMessages;
   const senders = place.totalBundles;
+  const phase = useDelayedPending(status.isLoading);
   const lowTide = useLowTide("paper_trail", status.isLoading || status.isError, bundles.length > 0);
   return (
     <PlaceLayout basePath="/paper-trail" label="Paper trail" threadIds={threadIds}>
@@ -101,8 +103,8 @@ export function PaperTrailRoute() {
           ) : null
         }
       />
-      {status.isLoading ? (
-        <ListSkeleton />
+      {phase !== "ready" ? (
+        <ListSkeleton quiet={phase === "quiet"} />
       ) : status.isError ? (
         <Centered
           icon={<RefreshCw className="size-6" />}

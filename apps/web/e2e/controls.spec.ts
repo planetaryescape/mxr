@@ -107,7 +107,9 @@ test("focus mode and the places keep exactly their inventoried controls", async 
     await names(page.getByRole("region", { name: "Reading" }).locator("header").first()),
   ).toEqual(INVENTORY.readingHeader);
   await openApp(page, "/paper-trail");
-  await expect(page.getByRole("heading", { level: 1, name: "Paper trail", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Paper trail", exact: true }),
+  ).toBeVisible();
   expect(
     await names(page.getByRole("region", { name: "Paper trail" }).locator("header").first()),
   ).toEqual(INVENTORY.paperTrailHeader);

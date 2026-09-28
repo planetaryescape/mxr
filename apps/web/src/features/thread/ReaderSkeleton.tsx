@@ -2,22 +2,21 @@
 
 /** `quiet`: the same frame, empty, for the first 300 ms of a load. */
 export function ReaderSkeleton({ quiet = false }: { quiet?: boolean }) {
-  if (quiet) {
-    return (
-      <div
-        className="flex min-w-0 flex-1 flex-col"
-        aria-busy="true"
-        aria-label="Loading conversation"
-      />
-    );
-  }
   return (
     <div
       className="flex min-w-0 flex-1 flex-col"
       aria-busy="true"
       aria-label="Loading conversation"
-      data-testid="reader-skeleton"
+      data-testid={quiet ? undefined : "reader-skeleton"}
     >
+      {quiet ? null : <Placeholder />}
+    </div>
+  );
+}
+
+function Placeholder() {
+  return (
+    <>
       <div className="border-b border-border px-5 py-4">
         <div className="h-5 w-2/3 animate-pulse rounded bg-muted" />
         <div className="mt-2 h-3 w-1/3 animate-pulse rounded bg-muted/70" />
@@ -35,6 +34,6 @@ export function ReaderSkeleton({ quiet = false }: { quiet?: boolean }) {
           </div>
         </div>
       ))}
-    </div>
+    </>
   );
 }

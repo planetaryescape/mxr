@@ -209,6 +209,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     confirm: "Always: it previews the daemon's dry run.",
   },
   "done-waiting": {
+    // `e` on a Waiting row means done waiting: there's nothing to archive.
     actions: ["list.row-action", "mail.archive"],
     alsoFrom: `the Done chip on a Waiting row, ${SWIPE} (right)`,
     optimistic: "The row leaves Waiting on at once.",

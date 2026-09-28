@@ -31,6 +31,9 @@ test("each row verb says what it did in the table's words, and u undoes it", asy
   for (const { verb, keys, leaves } of ROW_VERBS) {
     const entry = VERB_FEEDBACK[verb];
     expect(["daemon-mutation", "wake"]).toContain(entry.undo);
+    // Snooze acts on messages; a conversation row with other messages
+    // stays in the inbox, so it takes a single-message row (as snooze.spec).
+    if (verb === "snooze") await cursorToSingleMessageRow(page);
     const rowId = await cursorRowId(page);
     for (const key of keys) {
       await page.keyboard.press(key);
@@ -58,3 +61,12 @@ test("reply later adds to the queue in the table's words, and the toast undoes i
   await toast.getByRole("button", { name: "Undo" }).click();
   expect((await queued).ok()).toBe(true);
 });
+
+async function cursorToSingleMessageRow(page: Page): Promise<void> {
+  for (let step = 0; step < 15; step += 1) {
+    const name = (await rowById(page, await cursorRowId(page)).getAttribute("aria-label")) ?? "";
+    if (!/messages in conversation/.test(name)) return;
+    await page.keyboard.press("j");
+  }
+  throw new Error("no single-message conversation in the first rows");
+}

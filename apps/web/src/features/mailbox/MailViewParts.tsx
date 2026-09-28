@@ -10,19 +10,14 @@ import type { ReactNode } from "react";
  * `useDelayedPending`), so a fast load never flashes a skeleton.
  */
 export function ListSkeleton({ quiet = false }: { quiet?: boolean }) {
-  if (quiet) {
-    return (
-      <div className="flex-1 overflow-hidden" aria-busy="true" aria-label="Loading conversations" />
-    );
-  }
   return (
     <div
       className="flex-1 overflow-hidden"
       aria-busy="true"
       aria-label="Loading conversations"
-      data-testid="list-skeleton"
+      data-testid={quiet ? undefined : "list-skeleton"}
     >
-      {Array.from({ length: 12 }, (_, index) => (
+      {Array.from({ length: quiet ? 0 : 12 }, (_, index) => (
         <div key={index} className="flex items-center gap-3 border-b border-border/60 px-3 py-3">
           <div className="size-7 shrink-0 animate-pulse rounded-full bg-muted" />
           <div className="grid flex-1 gap-1.5">

@@ -325,7 +325,19 @@ username = "me@example.com"
 auth_required = true              # set to false for relays that pre-authenticate
 use_tls = true
 password_ref = "imap:work"
+sync_since = "2026-08-28"         # optional: fetch only mail on or after this date
 ```
+
+`sync_since` limits what is fetched to mail on or after that date, compared
+with each message's internal date (the IMAP `SINCE` search). Mail from before
+it is never fetched: not on the first sync, not after a mailbox's
+`UIDVALIDITY` changes, and not when an old message is moved or imported into a
+mailbox under a new UID. Nothing already synced is removed as it ages past the
+date. For Gmail over IMAP, the All Mail backfill starts at the first message on
+or after the date. Leave it out to sync the whole mailbox.
+
+The TUI keeps `sync_since` when an account is edited there; set or change it in
+`config.toml`.
 
 ### SMTP send provider
 

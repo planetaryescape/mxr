@@ -743,6 +743,7 @@ async fn add_imap(include_smtp: bool, args: &AddArgs) -> anyhow::Result<()> {
             auth_required: imap_auth_required,
             use_tls: true,
             max_connections: args.imap_max_connections.max(1),
+            sync_since: None,
         }),
         send,
         is_default: false,

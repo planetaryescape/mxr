@@ -36,6 +36,9 @@ pub struct AccountFormState {
     pub imap_host: String,
     pub imap_port: String,
     pub imap_max_connections: String,
+    /// The account's `sync_since`, which the form does not show: kept from
+    /// the account being edited so that saving it does not drop the date.
+    pub imap_sync_since: Option<chrono::NaiveDate>,
     pub imap_username: String,
     pub imap_password_ref: String,
     pub imap_password: String,
@@ -73,6 +76,7 @@ impl Default for AccountFormState {
             imap_host: String::new(),
             imap_port: "993".into(),
             imap_max_connections: "4".into(),
+            imap_sync_since: None,
             imap_username: String::new(),
             imap_password_ref: String::new(),
             imap_password: String::new(),

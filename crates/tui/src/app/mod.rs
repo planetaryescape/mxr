@@ -1138,9 +1138,11 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
                 password_ref,
                 auth_required,
                 max_connections,
+                sync_since,
                 ..
             } => {
                 form.mode = AccountFormMode::ImapSmtp;
+                form.imap_sync_since = sync_since;
                 form.imap_host = host;
                 form.imap_port = port.to_string();
                 form.imap_max_connections = max_connections.to_string();

@@ -900,6 +900,7 @@ impl AppState {
                     auth_required,
                     use_tls,
                     max_connections,
+                    sync_since,
                 }) => {
                     // Degrade, never crash: a bad IMAP config skips just this
                     // account (mirroring Gmail above). Credentials resolve
@@ -916,7 +917,7 @@ impl AppState {
                     ) {
                         Ok(config) => Some(Arc::new(mxr_provider_imap::ImapProvider::new(
                             account_id.clone(),
-                            config,
+                            config.with_sync_since(*sync_since),
                         )) as Arc<dyn MailSyncProvider>),
                         Err(error) => {
                             tracing::warn!(

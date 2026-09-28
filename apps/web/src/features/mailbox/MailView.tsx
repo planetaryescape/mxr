@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { formatRelative, plural } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import { useConnectionStore } from "@/state/connectionStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -83,6 +82,9 @@ function LensView({ lens }: { lens: MailLens }) {
       onLoadMore={() => void mailbox.fetchNextPage()}
       queueLabel={lens.section === "labels" ? lens.labelName : undefined}
       empty={<EmptyLens lens={lens} />}
+      // One persistent control: which grouping is on. The list refreshes
+      // itself from daemon events; Sync now lives in the status bar and the
+      // palette (docs/web-app-controls.md).
       actions={
         <>
           <Tooltip>
@@ -105,24 +107,6 @@ function LensView({ lens }: { lens: MailLens }) {
             <TooltipContent>
               {listMode === "threads" ? "Showing conversations" : "Showing single messages"}
             </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Refresh"
-                onClick={() => void mailbox.refetch()}
-              >
-                <RefreshCw
-                  className={cn(
-                    "size-4",
-                    mailbox.isFetching && !mailbox.isFetchingNextPage && "animate-spin",
-                  )}
-                />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Refresh this list</TooltipContent>
           </Tooltip>
         </>
       }

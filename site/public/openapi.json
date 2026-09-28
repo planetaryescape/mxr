@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.24"
+    "version": "0.6.40"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -251,6 +251,21 @@
         }
       }
     },
+    "/api/v1/mail/archive-ask": {
+      "post": {
+        "tags": [],
+        "summary": "Ask the archive a question with citations",
+        "operationId": "mail_archive_ask",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/attachments/download": {
       "post": {
         "tags": [],
@@ -289,6 +304,36 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "Keep a promise from a sent message as a dated commitment",
+        "operationId": "mail_commitments_record",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordPromiseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `RecordedPromise` variant; with `dry_run` nothing is stored and the id is empty",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -371,6 +416,38 @@
         }
       }
     },
+    "/api/v1/mail/compose/session/promises": {
+      "post": {
+        "tags": [],
+        "summary": "Find promises in an outgoing compose session",
+        "operationId": "compose_session_promises",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetectComposePromisesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `Promises` variant. A missing, blocked or slow model is a status, never an error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/compose/session/refresh": {
       "post": {
         "tags": [],
@@ -424,6 +501,21 @@
         "tags": [],
         "summary": "Save compose session",
         "operationId": "compose_session_save",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/compose/session/schedule": {
+      "post": {
+        "tags": [],
+        "summary": "Store a compose session as a local draft and schedule it",
+        "operationId": "compose_session_schedule",
         "responses": {
           "200": {
             "description": "OK"
@@ -514,6 +606,86 @@
         "tags": [],
         "summary": "Count matching messages",
         "operationId": "mail_count",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/desk": {
+      "get": {
+        "tags": [],
+        "summary": "The desk: owed replies, due promises, waiting threads and new mail from people",
+        "operationId": "mail_desk",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/desk/dismiss": {
+      "post": {
+        "tags": [],
+        "summary": "Done waiting: take threads off the desk's Waiting lane (dry_run previews)",
+        "operationId": "mail_desk_dismiss",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/desk/done": {
+      "post": {
+        "tags": [],
+        "summary": "Done: put desk items away (archive, mark read, keep off the desk; resolve a promise). dry_run previews",
+        "operationId": "mail_desk_done",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeskDoneBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `DeskItemsResolved` variant: one outcome per item and the undo id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No items"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/desk/restore": {
+      "post": {
+        "tags": [],
+        "summary": "Undo done waiting",
+        "operationId": "mail_desk_restore",
         "responses": {
           "200": {
             "description": "OK"
@@ -779,6 +951,38 @@
         }
       }
     },
+    "/api/v1/mail/messages/pin": {
+      "post": {
+        "tags": [],
+        "summary": "Pin or unpin messages so a sweep leaves them where they are",
+        "operationId": "mail_messages_pin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinMessagesBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `MessagesPinned` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/messages/{message_id}/body": {
       "get": {
         "tags": [],
@@ -829,6 +1033,69 @@
         "tags": [],
         "summary": "List HTML-linked image assets",
         "operationId": "mail_message_html_images",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/messages/{message_id}/inline-image": {
+      "get": {
+        "tags": [],
+        "summary": "Bytes of one inline (cid:) image, by its HTML src",
+        "operationId": "mail_message_inline_image",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/messages/{message_id}/kind": {
+      "get": {
+        "tags": [],
+        "summary": "Why a message is where it is: its kind, rule and reason",
+        "operationId": "mail_message_kind",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "Message id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `MessageKind` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/mutation-jobs": {
+      "post": {
+        "tags": [],
+        "summary": "Start a mutation as a background job",
+        "operationId": "mail_mutation_jobs",
         "responses": {
           "200": {
             "description": "OK"
@@ -989,6 +1256,162 @@
         }
       }
     },
+    "/api/v1/mail/owed": {
+      "get": {
+        "tags": [],
+        "summary": "List threads that owe a reply",
+        "operationId": "mail_owed",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/places/{place}": {
+      "get": {
+        "tags": [],
+        "summary": "List a place (Reading or Paper trail) as bundles by sender",
+        "operationId": "mail_place_list",
+        "parameters": [
+          {
+            "name": "place",
+            "in": "path",
+            "description": "`reading` or `paper-trail`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sender",
+            "in": "query",
+            "description": "Only this sender's bundle",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Bundles per page (default 50)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Bundles to skip",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "messages_per_bundle",
+            "in": "query",
+            "description": "Messages listed per bundle (default 20)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "message_offset",
+            "in": "query",
+            "description": "Messages to skip in each bundle, for paging one sender",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `Place` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown place or bad account id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/places/{place}/sweep": {
+      "post": {
+        "tags": [],
+        "summary": "Archive everything unpinned in a place or one sender's bundle (dry_run previews)",
+        "operationId": "mail_place_sweep",
+        "parameters": [
+          {
+            "name": "place",
+            "in": "path",
+            "description": "`reading` or `paper-trail`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SweepPlaceBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `PlaceSwept` variant: the preview, and the archive job unless dry_run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/relationship": {
       "get": {
         "tags": [],
@@ -1080,6 +1503,19 @@
       }
     },
     "/api/v1/mail/scheduled-sends": {
+      "get": {
+        "tags": [],
+        "summary": "List pending scheduled sends",
+        "operationId": "scheduled_sends_list",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
       "post": {
         "tags": [],
         "summary": "Schedule a draft send",
@@ -1195,6 +1631,21 @@
         }
       }
     },
+    "/api/v1/mail/send-time": {
+      "get": {
+        "tags": [],
+        "summary": "Recommend a send time for recipients",
+        "operationId": "mail_send_time",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/sender": {
       "get": {
         "tags": [],
@@ -1203,6 +1654,38 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/senders/kind": {
+      "post": {
+        "tags": [],
+        "summary": "Move a sender to people, Reading, Paper trail or screened out, or back to automatic",
+        "operationId": "mail_sender_kind",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SenderKindBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `SenderKindSet` variant, with the previous kind for undo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -1446,6 +1929,36 @@
         }
       }
     },
+    "/api/v1/mail/threads/{thread_id}/context": {
+      "get": {
+        "tags": [],
+        "summary": "Store facts for the reader's context block",
+        "operationId": "mail_thread_context",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/threads/{thread_id}/context/gist": {
+      "get": {
+        "tags": [],
+        "summary": "Model-written gist and ask for a conversation, cached per newest message",
+        "operationId": "mail_thread_gist",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/threads/{thread_id}/export": {
       "get": {
         "tags": [],
@@ -1466,6 +1979,73 @@
         "tags": [],
         "summary": "Summarize a thread",
         "operationId": "thread_summarize",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/time/resolve": {
+      "get": {
+        "tags": [],
+        "summary": "Resolve a natural-language time phrase",
+        "operationId": "mail_time_resolve",
+        "parameters": [
+          {
+            "name": "input",
+            "in": "query",
+            "description": "The phrase, such as \"fri 3\" or \"in 2d\"",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "now",
+            "in": "query",
+            "description": "RFC3339 anchor for relative phrases; defaults to the daemon's clock",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "time_zone",
+            "in": "query",
+            "description": "IANA zone to resolve in, such as \"Europe/London\"; defaults to the daemon's zone",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `ResolvedTime` variant: exactly one of `resolution` and `error` is set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/whois": {
+      "get": {
+        "tags": [],
+        "summary": "Explain a person or term from local evidence",
+        "operationId": "mail_whois",
         "responses": {
           "200": {
             "description": "OK"
@@ -1554,7 +2134,7 @@
     "/api/v1/platform/accounts/repair": {
       "post": {
         "tags": [],
-        "summary": "Repair account credentials in keychain",
+        "summary": "Repair account credentials in local stores",
         "operationId": "platform_accounts_repair",
         "responses": {
           "200": {
@@ -1674,6 +2254,21 @@
         "tags": [],
         "summary": "Disable account",
         "operationId": "account_disable",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/analytics/cadence-drift": {
+      "get": {
+        "tags": [],
+        "summary": "Watched contacts past their usual cadence",
+        "operationId": "analytics_cadence_drift",
         "responses": {
           "200": {
             "description": "OK"
@@ -1879,6 +2474,49 @@
         }
       }
     },
+    "/api/v1/platform/cadence/unwatch": {
+      "post": {
+        "tags": [],
+        "summary": "Remove a contact from the cadence watchlist",
+        "operationId": "cadence_unwatch",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/cadence/watch": {
+      "get": {
+        "tags": [],
+        "summary": "List the cadence watchlist",
+        "operationId": "cadence_watch_list",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "Add a contact to the cadence watchlist",
+        "operationId": "cadence_watch",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/platform/llm/config": {
       "get": {
         "tags": [],
@@ -1912,6 +2550,34 @@
         "tags": [],
         "summary": "LLM provider status",
         "operationId": "llm_status",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/notifications/chimes": {
+      "get": {
+        "tags": [],
+        "summary": "Get the notification chime setting",
+        "operationId": "notification_chimes_get",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "Change fields of the notification chime setting (the body is a NotificationChimesPatchData)",
+        "operationId": "notification_chimes_update",
         "responses": {
           "200": {
             "description": "OK"
@@ -2092,6 +2758,21 @@
         "tags": [],
         "summary": "Run saved search",
         "operationId": "saved_searches_run",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/saved-searches/unread-counts": {
+      "get": {
+        "tags": [],
+        "summary": "Unread match counts per saved search",
+        "operationId": "saved_searches_unread_counts",
         "responses": {
           "200": {
             "description": "OK"
@@ -2760,6 +3441,10 @@
               "host": {
                 "type": "string"
               },
+              "max_connections": {
+                "type": "integer",
+                "minimum": 0
+              },
               "password": {
                 "type": [
                   "string",
@@ -3140,6 +3825,45 @@
             ]
           }
         }
+      },
+      "AiLocalityData": {
+        "type": "string",
+        "enum": [
+          "local",
+          "cloud"
+        ]
+      },
+      "AiProvenanceData": {
+        "type": "object",
+        "description": "Where model-written text came from, so every client can say so.",
+        "required": [
+          "model",
+          "locality",
+          "sources"
+        ],
+        "properties": {
+          "locality": {
+            "$ref": "#/components/schemas/AiLocalityData"
+          },
+          "model": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AiSourceData"
+            },
+            "description": "What the prompt carried, in order."
+          }
+        }
+      },
+      "AiSourceData": {
+        "type": "string",
+        "enum": [
+          "this_thread",
+          "relationship_history",
+          "your_message"
+        ]
       },
       "ArchiveAnswerData": {
         "type": "object",
@@ -4192,7 +4916,7 @@
               },
               "total": {
                 "type": "integer",
-                "description": "How many messages actually arrived. Equal to `envelopes.len()` for\nan ordinary sync; larger when the batch was capped. Additive with a\nserde default so an older client still decodes the event.",
+                "description": "How many messages actually arrived. Equal to `envelopes.len()` for\nan ordinary sync; larger when the batch was capped. Additive with a\nserde default so an older client still decodes the event.\n\nThe default cuts the other way too: an event from a pre-0.6.25\ndaemon carries no `total` and so decodes as `0`, which is smaller\nthan the `envelopes` it shipped with. Readers must treat\n`envelopes.len()` as the floor (`total.max(envelopes.len())`)\nrather than reporting the zero.",
                 "minimum": 0
               }
             }
@@ -4761,6 +5485,374 @@
           }
         }
       },
+      "DeskDoneBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/desk/done`.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Preview only; nothing changes."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeskDoneItemData"
+            }
+          }
+        }
+      },
+      "DeskDoneItemData": {
+        "type": "object",
+        "description": "One desk item to mark done: \"nothing for me to do here, put it away\".",
+        "required": [
+          "thread_id"
+        ],
+        "properties": {
+          "commitment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A promise under Due: Done resolves it. Required for `due`."
+          },
+          "lane": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeskLaneKind",
+                "description": "The lane the row is in. Omitted: `waiting` when you wrote last,\notherwise `owed`, by the desk's own rule."
+              }
+            ]
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
+      "DeskDoneOutcomeData": {
+        "type": "object",
+        "description": "What Done did to one item, or with `dry_run` would do.",
+        "required": [
+          "thread_id",
+          "lane",
+          "archived",
+          "marked_read",
+          "dismissed"
+        ],
+        "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AccountId",
+                "description": "Absent when the conversation was not found."
+              }
+            ]
+          },
+          "archived": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages taken out of the inbox (You owe and New from people only).",
+            "minimum": 0
+          },
+          "dismissed": {
+            "type": "boolean",
+            "description": "Kept off the desk until someone writes in the conversation again."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why this item was not done. Other items still are; running Done\nagain retries it."
+          },
+          "lane": {
+            "$ref": "#/components/schemas/DeskLaneKind"
+          },
+          "marked_read": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages marked read.",
+            "minimum": 0
+          },
+          "reply_later_cleared": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages taken out of the reply-later queue.",
+            "minimum": 0
+          },
+          "resolved_commitment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The promise resolved (Due only). Other open promises on the\nconversation still show under Due."
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
+      "DeskElsewhereData": {
+        "type": "object",
+        "description": "Counts for everything that is not on the desk, for the one-line summary.",
+        "required": [
+          "reading",
+          "paper_trail",
+          "deliveries",
+          "invites",
+          "screener"
+        ],
+        "properties": {
+          "deliveries": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Deliveries that have not arrived and were not dismissed.",
+            "minimum": 0
+          },
+          "invites": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Upcoming invites you have not answered.",
+            "minimum": 0
+          },
+          "paper_trail": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Inbox mail from automated senders (receipts, notifications) in the\nrecent window.",
+            "minimum": 0
+          },
+          "reading": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Inbox mail from newsletters and lists in the recent window, read or\nnot: never an unread count.",
+            "minimum": 0
+          },
+          "screener": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Senders with recent mail and no screener decision.",
+            "minimum": 0
+          },
+          "screener_account": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AccountId",
+                "description": "The first account (in account order) with senders waiting on a\nscreener decision, so a link from an all-accounts desk opens a queue\nthat has them."
+              }
+            ]
+          }
+        }
+      },
+      "DeskLaneData": {
+        "type": "object",
+        "description": "One lane: the rows returned (capped by the request's `lane_limit`) and\nhow many there are in total.",
+        "required": [
+          "rows",
+          "total"
+        ],
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeskRowData"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "DeskLaneKind": {
+        "type": "string",
+        "description": "Which part of the desk a row belongs to. A thread appears in at most one\nlane; when it qualifies for several, the earlier lane in this order wins.",
+        "enum": [
+          "owed",
+          "due",
+          "waiting",
+          "people_new"
+        ]
+      },
+      "DeskRowData": {
+        "type": "object",
+        "description": "One row on the desk: a thread, who it is with, and why it is here.",
+        "required": [
+          "lane",
+          "account_id",
+          "thread_id",
+          "message_id",
+          "message_ids",
+          "counterparty_email",
+          "subject",
+          "reason",
+          "since",
+          "age_seconds"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "age_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds from `since` to `generated_at`. Negative for a promise that\nis not due yet."
+          },
+          "commitment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Due rows: the promise's id, for resolving it."
+          },
+          "counterparty_email": {
+            "type": "string"
+          },
+          "counterparty_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lane": {
+            "$ref": "#/components/schemas/DeskLaneKind"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId",
+            "description": "The message to open: the latest inbound message for owed and\npeople-new rows, your latest message for waiting rows, the promise's\nevidence message for due rows."
+          },
+          "message_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageId"
+            },
+            "description": "Every message of the thread in this account, so a verb on the row\n(archive, snooze) covers the whole conversation."
+          },
+          "overdue": {
+            "type": "boolean",
+            "description": "True when the row is past the person's usual pace, or past its due date."
+          },
+          "reason": {
+            "type": "string",
+            "description": "A short human reason, e.g. \"replied to your message\"."
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the clock for this row started: their message for owed and\npeople-new, your message for waiting, the due date for due."
+          },
+          "starred": {
+            "type": "boolean",
+            "description": "Any message in the conversation is starred."
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "unread": {
+            "type": "boolean"
+          },
+          "usual_samples": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many past replies `usual_seconds` is based on.",
+            "minimum": 0
+          },
+          "usual_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The usual time for the relevant reply with this person: yours to them\non owed rows, theirs to you on waiting rows. Median of past replies."
+          }
+        }
+      },
+      "DeskThreadRefData": {
+        "type": "object",
+        "description": "A conversation, named with its account.",
+        "required": [
+          "account_id",
+          "thread_id"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
+      "DetectComposePromisesRequest": {
+        "type": "object",
+        "required": [
+          "draft_path",
+          "account_id"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string"
+          },
+          "draft_path": {
+            "type": "string",
+            "description": "The compose session file, as the other compose routes take it."
+          },
+          "time_zone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The browser's IANA zone, so \"by Friday\" resolves where the user is."
+          }
+        }
+      },
+      "DetectedPromiseData": {
+        "type": "object",
+        "required": [
+          "what"
+        ],
+        "properties": {
+          "due": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TimeResolution",
+                "description": "`due_phrase` resolved by the natural-time parser in the caller's\nzone. None when the phrase names no date the parser understands."
+              }
+            ]
+          },
+          "due_phrase": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When it is due, copied from the message (\"by Friday\"). Checked\nagainst the text, so it is never the model's invention."
+          },
+          "what": {
+            "type": "string",
+            "description": "The deliverable as a short clause, such as \"send the deck\"."
+          }
+        }
+      },
       "DoctorDataStats": {
         "type": "object",
         "required": [
@@ -5326,6 +6418,118 @@
               "null"
             ],
             "description": "Optional `text/plain` alternative supplied alongside `body_html`."
+          }
+        }
+      },
+      "DraftEvalCaseData": {
+        "type": "object",
+        "description": "One replayed reply from `mxr draft eval`: the draft the model wrote from\nwhat was known just before the user replied, next to what they sent.\nLocal only; never recorded in the activity log.",
+        "required": [
+          "reply_message_id",
+          "counterparty",
+          "actual",
+          "draft",
+          "actual_words",
+          "draft_words",
+          "greeting_match",
+          "sign_off_match",
+          "invented_numbers",
+          "placeholders"
+        ],
+        "properties": {
+          "actual": {
+            "type": "string"
+          },
+          "actual_words": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "counterparty": {
+            "type": "string"
+          },
+          "draft": {
+            "type": "string"
+          },
+          "draft_words": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "greeting_match": {
+            "type": "boolean",
+            "description": "Both open the same way (or neither greets)."
+          },
+          "invented_numbers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Numbers in the draft that appear nowhere the model could see."
+          },
+          "placeholders": {
+            "type": "integer",
+            "format": "int32",
+            "description": "`[[?: …]]` gaps the model left for the user.",
+            "minimum": 0
+          },
+          "reply_message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "sign_off_match": {
+            "type": "boolean",
+            "description": "Both close the same way (or neither signs off)."
+          }
+        }
+      },
+      "DraftEvalSummaryData": {
+        "type": "object",
+        "required": [
+          "cases",
+          "failed",
+          "median_length_ratio",
+          "greeting_match_rate",
+          "sign_off_match_rate",
+          "invented_number_rate",
+          "model"
+        ],
+        "properties": {
+          "cases": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "greeting_match_rate": {
+            "type": "number",
+            "format": "double"
+          },
+          "invented_number_rate": {
+            "type": "number",
+            "format": "double",
+            "description": "Share of drafts with at least one invented number."
+          },
+          "median_length_ratio": {
+            "type": "number",
+            "format": "double",
+            "description": "Median of draft words / actual words (1.0 is the user's length)."
+          },
+          "model": {
+            "type": "string"
+          },
+          "sign_off_match_rate": {
+            "type": "number",
+            "format": "double"
           }
         }
       },
@@ -6042,6 +7246,16 @@
           }
         }
       },
+      "ImpliedPart": {
+        "type": "string",
+        "description": "A part of the result the user did not type and the parser assumed.",
+        "enum": [
+          "date",
+          "year",
+          "time",
+          "meridiem"
+        ]
+      },
       "IndexFreshness": {
         "type": "string",
         "enum": [
@@ -6209,6 +7423,24 @@
           "running",
           "succeeded",
           "failed"
+        ]
+      },
+      "KindRuleData": {
+        "type": "string",
+        "description": "Which rule decided a message's kind, most decisive first. `Decision`\nmeans the user moved the sender; everything else is automatic.",
+        "enum": [
+          "decision",
+          "delivery",
+          "invite",
+          "automated_address",
+          "automated_domain",
+          "newsletter_address",
+          "newsletter_domain",
+          "list_id",
+          "list_unsubscribe",
+          "no_reply_address",
+          "list_sender",
+          "person"
         ]
       },
       "Label": {
@@ -6604,6 +7836,10 @@
           "request_timeout_secs"
         ],
         "properties": {
+          "allow_cloud_relationship_data": {
+            "type": "boolean",
+            "description": "Whether history with a person may go to a cloud model. Clients key\ncached model output on it."
+          },
           "api_key_env": {
             "type": [
               "string",
@@ -6645,6 +7881,40 @@
             "type": "boolean"
           }
         }
+      },
+      "MailKindData": {
+        "type": "object",
+        "description": "A message's kind with the reason it was given.",
+        "required": [
+          "kind",
+          "rule",
+          "reason",
+          "corrected"
+        ],
+        "properties": {
+          "corrected": {
+            "type": "boolean",
+            "description": "True when the user chose this kind for the sender."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SenderKindData"
+          },
+          "reason": {
+            "type": "string",
+            "description": "A short human reason, e.g. \"automated sender, has List-Unsubscribe\"."
+          },
+          "rule": {
+            "$ref": "#/components/schemas/KindRuleData"
+          }
+        }
+      },
+      "MailPlaceData": {
+        "type": "string",
+        "description": "A place for mail that isn't from people.",
+        "enum": [
+          "reading",
+          "paper_trail"
+        ]
       },
       "MessageBody": {
         "type": "object",
@@ -7126,6 +8396,142 @@
           }
         }
       },
+      "NotificationChimesPatchData": {
+        "type": "object",
+        "description": "Fields of [`NotificationChimesData`] to change; `None` keeps the current value.",
+        "properties": {
+          "archived": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
+              }
+            ],
+            "default": null
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
+              }
+            ],
+            "default": null
+          },
+          "new_mail": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
+              }
+            ],
+            "default": null
+          },
+          "reminder": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
+              }
+            ],
+            "default": null
+          },
+          "sent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
+              }
+            ],
+            "default": null
+          },
+          "snoozed": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
+              }
+            ],
+            "default": null
+          },
+          "spam": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
+              }
+            ],
+            "default": null
+          },
+          "trashed": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
+              }
+            ],
+            "default": null
+          },
+          "unsnoozed": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NotificationChimeSoundData"
+              }
+            ],
+            "default": null
+          },
+          "volume": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "default": null
+          }
+        }
+      },
+      "OwedReplyHereData": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "since"
+        ],
+        "properties": {
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "OwedReplyRowData": {
         "type": "object",
         "required": [
@@ -7175,6 +8581,222 @@
           }
         }
       },
+      "PinMessagesBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/messages/pin`.",
+        "required": [
+          "message_ids",
+          "pinned"
+        ],
+        "properties": {
+          "message_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pinned": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PlaceBundleData": {
+        "type": "object",
+        "description": "One sender's mail in a place.",
+        "required": [
+          "account_id",
+          "sender_email",
+          "kind",
+          "message_count",
+          "unread_count",
+          "pinned_count",
+          "newest_at",
+          "newest_subject",
+          "messages"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MailKindData",
+            "description": "Why this sender's mail is here: the newest message's kind."
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaceMessageData"
+            },
+            "description": "Pinned first, then newest: the page the request's `message_offset`\nand `messages_per_bundle` ask for. `message_count` covers them all."
+          },
+          "newest_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "newest_subject": {
+            "type": "string"
+          },
+          "pinned_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "sender_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unread_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Unread messages in the bundle. Never a badge; shown only as a fact.",
+            "minimum": 0
+          }
+        }
+      },
+      "PlaceMessageData": {
+        "type": "object",
+        "description": "One message inside a bundle.",
+        "required": [
+          "message_id",
+          "thread_id",
+          "subject",
+          "snippet",
+          "date",
+          "unread",
+          "pinned",
+          "starred"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "starred": {
+            "type": "boolean"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "unread": {
+            "type": "boolean",
+            "description": "Shown for reference only: nothing in a place counts as unread."
+          }
+        }
+      },
+      "PromiseDetectionData": {
+        "type": "object",
+        "description": "Returned by `Request::DetectPromises`.",
+        "required": [
+          "status",
+          "promises"
+        ],
+        "properties": {
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why there is no answer, for statuses other than `ready`."
+          },
+          "promises": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DetectedPromiseData"
+            },
+            "description": "Promises the sender makes, in the order they appear."
+          },
+          "provenance": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AiProvenanceData",
+                "description": "Set when a model was asked."
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/PromiseDetectionStatusData"
+          }
+        }
+      },
+      "PromiseDetectionStatusData": {
+        "type": "string",
+        "description": "A detection that can't run is a normal answer: sending never waits on it.",
+        "enum": [
+          "ready",
+          "disabled",
+          "blocked",
+          "failed",
+          "timed_out"
+        ]
+      },
+      "PromiseSourceData": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "An outgoing draft, checked while it sends (the web undo window).",
+            "required": [
+              "draft",
+              "kind"
+            ],
+            "properties": {
+              "draft": {
+                "$ref": "#/components/schemas/Draft"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "draft"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A message you already sent (TUI and CLI check after the send).",
+            "required": [
+              "message_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "sent_message"
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            }
+          }
+        ],
+        "description": "Where `DetectPromises` looks."
+      },
       "RecipientSendTimeRowData": {
         "type": "object",
         "required": [
@@ -7210,6 +8832,33 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "RecordPromiseRequest": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "what",
+          "due_at"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "description": "Return what would be stored without writing it."
+          },
+          "due_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The chosen time, exactly as the time preview returned it."
+          },
+          "message_id": {
+            "type": "string",
+            "description": "The sent message the promise is in."
+          },
+          "what": {
+            "type": "string",
+            "description": "What was promised, such as \"send the deck\"."
           }
         }
       },
@@ -8906,6 +10555,25 @@
           },
           {
             "type": "object",
+            "description": "Change only the given fields of the chime setting, applied to the\ncurrent setting under the daemon's config lock, so concurrent clients\n(the web, `mxr chimes`) never overwrite each other's other fields.",
+            "required": [
+              "patch",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PatchNotificationChimes"
+                ]
+              },
+              "patch": {
+                "$ref": "#/components/schemas/NotificationChimesPatchData"
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "event",
               "cmd"
@@ -10003,6 +11671,31 @@
           },
           {
             "type": "object",
+            "description": "List drafts scheduled to send later that have not fired yet,\nsoonest first. `account_id: None` lists every account.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListScheduledSends"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "List all snippets, alphabetically by name.",
             "required": [
               "cmd"
@@ -10877,6 +12570,13 @@
               "cmd"
             ],
             "properties": {
+              "body": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The text to refine, when the editor has changes the stored draft\ndoesn't yet; the stored body otherwise."
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
@@ -10888,6 +12588,37 @@
               },
               "knobs": {
                 "$ref": "#/components/schemas/DraftRefineKnobsData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Replay the user's most recent replies: draft each one from what was\nknown just before they replied, and compare with what they sent.\nCalls the configured LLM once per case; nothing is saved or sent.",
+            "required": [
+              "limit",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DraftEval"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
               }
             }
           },
@@ -11988,6 +13719,431 @@
                 "type": "string"
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "Resolve a time phrase (\"fri 3\", \"tomorrow 9am\", \"in 2d\") in the\ndaemon's local zone with the user's snooze hours. Read-only; clients\npreview with it and send the chosen instant to the real mutation.",
+            "required": [
+              "input",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ResolveTime"
+                ]
+              },
+              "input": {
+                "type": "string"
+              },
+              "now": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "Anchor for relative phrases. Defaults to the daemon's clock;\nset it for reproducible output."
+              },
+              "time_zone": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "IANA zone to resolve in, such as \"Europe/London\". The web app\nsends the browser's zone because the browser may not be on the\ndaemon's machine; omitted means the daemon's local zone."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "What the store knows about a conversation (relationship with the\nmain counterparty, whether you owe a reply, open promises). No\nmodel; read-only. Returns `ResponseData::ThreadContext`.",
+            "required": [
+              "thread_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetThreadContext"
+                ]
+              },
+              "thread_id": {
+                "$ref": "#/components/schemas/ThreadId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "One-sentence gist and the ask, from the configured model, cached per\nthread and latest message. Read-only. Returns\n`ResponseData::ThreadGist`; an unavailable model is a status, not an\nerror.",
+            "required": [
+              "thread_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetThreadGist"
+                ]
+              },
+              "refresh": {
+                "type": "boolean"
+              },
+              "thread_id": {
+                "$ref": "#/components/schemas/ThreadId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The desk: what needs you rather than what arrived. Replies you owe,\npromises coming due, threads waiting on someone, and new mail from\npeople, each row with a reason; plus counts for everything else.\nPure local store reads, no LLM. `account_id: None` covers every\nenabled account.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetDesk"
+                ]
+              },
+              "lane_limit": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Rows returned per lane; each lane still reports its full total.",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "\"Done waiting\": take threads you wrote last off the desk's Waiting\nlane until a new message arrives in them. `dry_run` returns the same\nselection without writing.",
+            "required": [
+              "thread_ids",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DismissDeskThreads"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "thread_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadId"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Undo `DismissDeskThreads`: the threads wait again.",
+            "required": [
+              "thread_ids",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RestoreDeskThreads"
+                ]
+              },
+              "thread_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadId"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Find promises the sender makes in a draft or a sent message, with\neach due phrase resolved in `time_zone`. Read-only and capped by a\nshort budget, so a send never waits on it. Returns\n`ResponseData::Promises`; an unavailable or slow model is a status.",
+            "required": [
+              "source",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DetectPromises"
+                ]
+              },
+              "now": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "Anchor for relative due phrases; defaults to the daemon's clock."
+              },
+              "source": {
+                "$ref": "#/components/schemas/PromiseSourceData"
+              },
+              "time_zone": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "IANA zone to resolve due phrases in; defaults to the daemon's."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Keep a promise from a message you sent as an open commitment due at\n`due_at`, so it comes back when due. Idempotent per message and\npromise: recording it again moves the date. `dry_run` returns what\nwould be stored without writing. Returns `ResponseData::RecordedPromise`.",
+            "required": [
+              "message_id",
+              "what",
+              "due_at",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RecordPromise"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "due_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "what": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A place (Reading or Paper trail): inbox mail of that kind grouped by\nsender, newest bundle first, each with the reason it is there.\n`account_id: None` covers every enabled account.",
+            "required": [
+              "place",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListPlace"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Bundles per page.",
+                "minimum": 0
+              },
+              "message_offset": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Messages to skip in each bundle, for paging through one\nsender's mail (pinned messages list first).",
+                "minimum": 0
+              },
+              "messages_per_bundle": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Messages listed per bundle; counts always cover the whole bundle.",
+                "minimum": 0
+              },
+              "offset": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "place": {
+                "$ref": "#/components/schemas/MailPlaceData"
+              },
+              "sender_email": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Only this sender's bundle."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Why one message is where it is: its kind, rule and reason.",
+            "required": [
+              "message_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetMessageKind"
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Move a sender to a kind for this and all future mail, or with\n`kind: None` return it to automatic. Stored as the sender's screener\ndecision (People: allow, Reading: feed, Paper trail: paper trail,\nScreened out: deny).",
+            "required": [
+              "account_id",
+              "sender_email",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetSenderKind"
+                ]
+              },
+              "kind": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SenderKindData"
+                  }
+                ]
+              },
+              "sender_email": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Pin or unpin messages: a pinned message stays put when its bundle\nor place is swept. Local to this machine.",
+            "required": [
+              "message_ids",
+              "pinned",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PinMessages"
+                ]
+              },
+              "message_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MessageId"
+                }
+              },
+              "pinned": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Archive every unpinned message in a place, or in one sender's bundle.\n`dry_run` returns what would be archived and a `preview_token`. The\nreal sweep needs that token and archives only what the preview\nlisted that is still in the place and still unpinned, never mail\nthat arrived or moved in since, as an undoable archive job.",
+            "required": [
+              "place",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SweepPlace"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "place": {
+                "$ref": "#/components/schemas/MailPlaceData"
+              },
+              "preview_token": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "From the dry run; required when `dry_run` is false."
+              },
+              "sender_email": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The desk's Done: nothing for me to do here, put it away. You owe and\nNew from people rows are archived, marked read and kept off the desk\nuntil someone writes in the conversation again; Waiting on rows are\nmarked read and done waiting; a Due promise is resolved and its\nconversation marked read. `dry_run` returns the same plan per item\nwithout changing anything. The real run returns one `mutation_id`\nfor `UndoMutation`, which puts messages, dismissals and promises\nback as they were. Returns `ResponseData::DeskItemsResolved`.",
+            "required": [
+              "items",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ResolveDeskItems"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DeskDoneItemData"
+                }
+              }
+            }
           }
         ],
         "description": "Every command a client can ask the daemon to perform.\n\nTagged `cmd` on the wire. One flat enum is the whole client-facing\nsurface: the CLI, TUI, web bridge, and MCP server all speak these same\nrequests, which is what keeps daemon capabilities client-agnostic (see\n[`IpcCategory`] for the conceptual grouping). Mutations are expressed as\nexplicit commands with dry-run/preview options rather than free-form\nstate writes."
@@ -12661,6 +14817,28 @@
           },
           {
             "type": "object",
+            "description": "Returned by `Request::ListScheduledSends`.",
+            "required": [
+              "sends",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ScheduledSends"
+                ]
+              },
+              "sends": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ScheduledSendData"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "snippet",
               "kind"
@@ -13190,6 +15368,31 @@
                     "$ref": "#/components/schemas/VoiceMatchData"
                   }
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "cases",
+              "summary",
+              "kind"
+            ],
+            "properties": {
+              "cases": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DraftEvalCaseData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "DraftEval"
+                ]
+              },
+              "summary": {
+                "$ref": "#/components/schemas/DraftEvalSummaryData"
               }
             }
           },
@@ -14683,6 +16886,453 @@
                 ]
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ResolveTime`. Exactly one of `resolution` and\n`error` is set; a phrase that doesn't resolve is a normal answer,\nnot an IPC failure, so live previews can show why.",
+            "required": [
+              "input",
+              "kind"
+            ],
+            "properties": {
+              "error": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TimeResolveError"
+                  }
+                ]
+              },
+              "input": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ResolvedTime"
+                ]
+              },
+              "resolution": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TimeResolution"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetThreadContext`.",
+            "required": [
+              "context",
+              "kind"
+            ],
+            "properties": {
+              "context": {
+                "$ref": "#/components/schemas/ThreadContextData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ThreadContext"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetThreadGist`.",
+            "required": [
+              "gist",
+              "kind"
+            ],
+            "properties": {
+              "gist": {
+                "$ref": "#/components/schemas/ThreadGistData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ThreadGist"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetDesk`.",
+            "required": [
+              "owed",
+              "due",
+              "waiting",
+              "people_new",
+              "elsewhere",
+              "generated_at",
+              "kind"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "due": {
+                "$ref": "#/components/schemas/DeskLaneData"
+              },
+              "elsewhere": {
+                "$ref": "#/components/schemas/DeskElsewhereData"
+              },
+              "generated_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Desk"
+                ]
+              },
+              "last_from_people_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "The latest message from a person that reached the inbox, for\n\"nothing from people since ...\" lines."
+              },
+              "owed": {
+                "$ref": "#/components/schemas/DeskLaneData"
+              },
+              "people_new": {
+                "$ref": "#/components/schemas/DeskLaneData"
+              },
+              "waiting": {
+                "$ref": "#/components/schemas/DeskLaneData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::DismissDeskThreads`: the threads that were (or,\nwith `dry_run`, would be) taken off Waiting.",
+            "required": [
+              "threads",
+              "dry_run",
+              "kind"
+            ],
+            "properties": {
+              "dry_run": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "DeskThreadsDismissed"
+                ]
+              },
+              "threads": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DeskThreadRefData"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::RestoreDeskThreads`.",
+            "required": [
+              "restored",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "DeskThreadsRestored"
+                ]
+              },
+              "restored": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::DetectPromises`.",
+            "required": [
+              "detection",
+              "kind"
+            ],
+            "properties": {
+              "detection": {
+                "$ref": "#/components/schemas/PromiseDetectionData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Promises"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::RecordPromise`. With `dry_run` the commitment\nis what would be stored and its `id` is empty.",
+            "required": [
+              "commitment",
+              "dry_run",
+              "kind"
+            ],
+            "properties": {
+              "commitment": {
+                "$ref": "#/components/schemas/CommitmentData"
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RecordedPromise"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ListPlace`.",
+            "required": [
+              "place",
+              "bundles",
+              "total_bundles",
+              "total_messages",
+              "generated_at",
+              "kind"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "bundles": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PlaceBundleData"
+                }
+              },
+              "generated_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Place"
+                ]
+              },
+              "place": {
+                "$ref": "#/components/schemas/MailPlaceData"
+              },
+              "total_bundles": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Bundles in the whole place, not just this page.",
+                "minimum": 0
+              },
+              "total_messages": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Messages in the whole place.",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetMessageKind`.",
+            "required": [
+              "account_id",
+              "message_id",
+              "sender_email",
+              "mail_kind",
+              "kind"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "MessageKind"
+                ]
+              },
+              "mail_kind": {
+                "$ref": "#/components/schemas/MailKindData"
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "sender_email": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::SetSenderKind`. `previous` is the kind the user\nhad chosen before (`None`: automatic), for undo.",
+            "required": [
+              "account_id",
+              "sender_email",
+              "kind"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SenderKindSet"
+                ]
+              },
+              "previous": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SenderKindData"
+                  }
+                ]
+              },
+              "sender_email": {
+                "type": "string"
+              },
+              "sender_kind": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SenderKindData"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::PinMessages`: how many messages changed.",
+            "required": [
+              "changed",
+              "pinned",
+              "kind"
+            ],
+            "properties": {
+              "changed": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "MessagesPinned"
+                ]
+              },
+              "pinned": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::SweepPlace`. `job` is the archive job, absent\nfor a dry run or when nothing matched.",
+            "required": [
+              "preview",
+              "dry_run",
+              "kind"
+            ],
+            "properties": {
+              "dry_run": {
+                "type": "boolean"
+              },
+              "job": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/JobData"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "PlaceSwept"
+                ]
+              },
+              "preview": {
+                "$ref": "#/components/schemas/SweepPreviewData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ResolveDeskItems`, one outcome per item in\nrequest order. `mutation_id` undoes the whole run.",
+            "required": [
+              "items",
+              "dry_run",
+              "kind"
+            ],
+            "properties": {
+              "dry_run": {
+                "type": "boolean"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DeskDoneOutcomeData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "DeskItemsResolved"
+                ]
+              },
+              "mutation_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "undo_unavailable": {
+                "type": "boolean",
+                "description": "Something changed but its undo could not be saved."
+              }
+            }
           }
         ]
       },
@@ -14907,6 +17557,64 @@
       "SavedSearchId": {
         "type": "string",
         "format": "uuid"
+      },
+      "ScheduledSendData": {
+        "type": "object",
+        "description": "One draft waiting to be sent later.",
+        "required": [
+          "draft_id",
+          "account_id",
+          "send_at",
+          "subject"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "bcc": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Address"
+            }
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Address"
+            }
+          },
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "last_attempt_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When this draft last fired, if it fired before and was then\nrescheduled (for example after a failed or blocked send)."
+          },
+          "last_attempt_outcome": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Outcome of that firing: `sent`, `blocked`, `failed` or\n`interrupted`. The error text itself is not persisted."
+          },
+          "send_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Address"
+            }
+          }
+        }
       },
       "ScreenerDecisionData": {
         "type": "object",
@@ -15493,6 +18201,43 @@
             "$ref": "#/components/schemas/ThreadId"
           }
         }
+      },
+      "SenderKindBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/senders/kind`.",
+        "required": [
+          "account_id",
+          "sender_email"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string"
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SenderKindData",
+                "description": "`null` or omitted: back to automatic."
+              }
+            ]
+          },
+          "sender_email": {
+            "type": "string"
+          }
+        }
+      },
+      "SenderKindData": {
+        "type": "string",
+        "description": "What kind of sender mail comes from, and so where it lives.",
+        "enum": [
+          "people",
+          "reading",
+          "paper_trail",
+          "screened_out"
+        ]
       },
       "SenderProfileData": {
         "type": "object",
@@ -16082,9 +18827,126 @@
           }
         }
       },
+      "SweepPlaceBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/places/{place}/sweep`.",
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omitted: every account."
+          },
+          "dry_run": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Preview only; nothing is archived."
+          },
+          "preview_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "From the dry run's preview; required unless `dry_run`. The sweep\narchives only what that preview listed."
+          },
+          "sender_email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Only this sender's bundle."
+          }
+        }
+      },
+      "SweepPreviewData": {
+        "type": "object",
+        "description": "What a sweep archives. The dry run and the real sweep build this from\nthe same selection; the real sweep only ever narrows the preview's.",
+        "required": [
+          "place",
+          "count",
+          "pinned_excluded",
+          "senders",
+          "sample_subjects"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages that will be (or were) archived.",
+            "minimum": 0
+          },
+          "pinned_excluded": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Pinned messages left where they are.",
+            "minimum": 0
+          },
+          "place": {
+            "$ref": "#/components/schemas/MailPlaceData"
+          },
+          "preview_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Hands the previewed selection to the real sweep, which archives\nonly those messages. Expires after a few minutes and works once.\nAbsent when nothing would be archived."
+          },
+          "sample_subjects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Up to five subjects, newest first."
+          },
+          "sender_email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "senders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SweepSenderData"
+            },
+            "description": "Largest first."
+          }
+        }
+      },
+      "SweepSenderData": {
+        "type": "object",
+        "description": "One sender a sweep would archive mail from.",
+        "required": [
+          "account_id",
+          "sender_email",
+          "count"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "sender_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "SyncProgressData": {
         "type": "object",
-        "description": "How far the sync pass running for an account has got.\n\n`current` counts messages committed so far in this backfill run, carrying\nacross provider pages. `total` is the denominator when one is known — no\nprovider in the tree reports a batch total, so it is absent today; it\nexists because this maps straight onto `DaemonEvent::OperationProgress`,\nwhose `total` has always been optional for exactly this reason.",
+        "description": "How far the sync pass running for an account has got.\n\n`current` counts messages committed so far in this backfill run, carrying\nacross provider pages. `total` is the denominator when the provider can\nsay how much is left — the fake provider knows its dataset exactly, Gmail\nand IMAP cannot count what remains without paying for it, so it stays\nabsent for them.",
         "required": [
           "current",
           "message"
@@ -16191,6 +19053,29 @@
           }
         }
       },
+      "ThreadAskData": {
+        "type": "object",
+        "required": [
+          "summary"
+        ],
+        "properties": {
+          "quote": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/VerifiedQuoteData",
+                "description": "The sentence that makes the ask, verified by the daemon to appear in\nthat message's text (whitespace-insensitive), so clients can\nhighlight it. Dropped when it can't be found."
+              }
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "description": "The ask in a short plain-text clause, at most 160 characters."
+          }
+        }
+      },
       "ThreadBriefingData": {
         "type": "object",
         "required": [
@@ -16223,9 +19108,216 @@
           }
         }
       },
+      "ThreadContextData": {
+        "type": "object",
+        "description": "Returned by `Request::GetThreadContext`. Computed from the local store\nwith no model involved.",
+        "required": [
+          "thread_id",
+          "account_id"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "counterparty": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadCounterpartyData",
+                "description": "The person this conversation is mainly with: the latest sender who\nisn't you, or the first recipient of your latest message."
+              }
+            ]
+          },
+          "owed_reply": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OwedReplyHereData",
+                "description": "Set when the newest message is from someone else, it isn't bulk\nmail, and you haven't written in the thread since."
+              }
+            ]
+          },
+          "promises": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadPromiseData"
+            },
+            "description": "Open promises recorded against this thread, both directions."
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
+      "ThreadCounterpartyData": {
+        "type": "object",
+        "required": [
+          "email",
+          "messages_from_them",
+          "messages_from_you",
+          "your_reply_samples",
+          "their_reply_samples",
+          "bulk_sender"
+        ],
+        "properties": {
+          "bulk_sender": {
+            "type": "boolean",
+            "description": "Mailing-list or bulk sender; relationship stats mean little here."
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": "string"
+          },
+          "last_contact_elsewhere_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Latest message between you in any other thread. `None` means this is\nyour first conversation."
+          },
+          "messages_from_them": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages they sent you, across every thread.",
+            "minimum": 0
+          },
+          "messages_from_you": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages you sent them (to, cc or bcc), across every thread.",
+            "minimum": 0
+          },
+          "their_reply_p50_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Median time they take to answer you.",
+            "minimum": 0
+          },
+          "their_reply_samples": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "your_reply_p50_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Median time you take to answer them, from past reply pairs.",
+            "minimum": 0
+          },
+          "your_reply_samples": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ThreadGistData": {
+        "type": "object",
+        "description": "Returned by `Request::GetThreadGist`.",
+        "required": [
+          "thread_id",
+          "status",
+          "from_cache"
+        ],
+        "properties": {
+          "ask": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadAskData",
+                "description": "What the conversation asks of you. `None` with `status: ready` means\nthe model found no ask."
+              }
+            ]
+          },
+          "from_cache": {
+            "type": "boolean"
+          },
+          "generated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "gist": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One plain-text sentence, at most 240 characters."
+          },
+          "provenance": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AiProvenanceData"
+              }
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why there is no gist, for `disabled`, `blocked` and `failed`."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ThreadGistStatusData"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
+      "ThreadGistStatusData": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "disabled",
+          "blocked",
+          "failed"
+        ]
+      },
       "ThreadId": {
         "type": "string",
         "format": "uuid"
+      },
+      "ThreadPromiseData": {
+        "type": "object",
+        "description": "An open promise in the thread and who made it.",
+        "required": [
+          "owner",
+          "commitment"
+        ],
+        "properties": {
+          "commitment": {
+            "$ref": "#/components/schemas/CommitmentData"
+          },
+          "owner": {
+            "type": "string",
+            "description": "Who owes it, as the thread knows them: \"you\" for your own promises,\nelse the owner's display name from the thread's messages, falling back\nto their address. In a group thread each promise keeps its own owner."
+          }
+        }
       },
       "ThreadSummaryData": {
         "type": "object",
@@ -16244,6 +19336,160 @@
           },
           "text": {
             "type": "string"
+          }
+        }
+      },
+      "TimeChoice": {
+        "type": "object",
+        "description": "One reading of the phrase.",
+        "required": [
+          "at",
+          "local",
+          "label",
+          "date_label",
+          "time_label",
+          "relative_label",
+          "implied"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The instant to store. Send this back to the mutation unchanged so\nwhat was previewed is what is saved."
+          },
+          "date_label": {
+            "type": "string",
+            "description": "\"Friday 3 October\", with the year only when it isn't this year."
+          },
+          "implied": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImpliedPart"
+            }
+          },
+          "label": {
+            "type": "string",
+            "description": "Short text for a choice chip, such as \"15:00\"."
+          },
+          "local": {
+            "type": "string",
+            "description": "The same instant as RFC3339 in the resolving zone."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when a clock change moved or doubled the requested wall time."
+          },
+          "relative_label": {
+            "type": "string",
+            "description": "\"in 6 days\", \"tomorrow\", \"in 2 hours\"."
+          },
+          "time_label": {
+            "type": "string",
+            "description": "\"15:00\"."
+          }
+        }
+      },
+      "TimeResolution": {
+        "type": "object",
+        "description": "A phrase resolved to at least one instant.",
+        "required": [
+          "input",
+          "at",
+          "description",
+          "spans",
+          "choices"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The default choice's instant."
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeChoice"
+            },
+            "description": "Every reading, default first. More than one means the phrase was\nambiguous."
+          },
+          "description": {
+            "type": "string",
+            "description": "\"Friday 3 October, 15:00\" for the default choice."
+          },
+          "input": {
+            "type": "string"
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeSpan"
+            },
+            "description": "Byte ranges of `input` that were understood."
+          }
+        }
+      },
+      "TimeResolveError": {
+        "type": "object",
+        "description": "Why a phrase didn't resolve, phrased for the user.",
+        "required": [
+          "kind",
+          "message",
+          "understood"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/TimeResolveErrorKind"
+          },
+          "message": {
+            "type": "string",
+            "description": "A calm, specific message with an example that works."
+          },
+          "token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The word that wasn't understood, for `unrecognized` and `conflict`."
+          },
+          "understood": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeSpan"
+            },
+            "description": "Byte ranges understood before the problem."
+          }
+        }
+      },
+      "TimeResolveErrorKind": {
+        "type": "string",
+        "enum": [
+          "empty",
+          "unrecognized",
+          "conflict",
+          "needs_time",
+          "invalid_date",
+          "in_past",
+          "out_of_range"
+        ]
+      },
+      "TimeSpan": {
+        "type": "object",
+        "description": "A byte range of the input the parser understood.",
+        "required": [
+          "start",
+          "end"
+        ],
+        "properties": {
+          "end": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },
@@ -16545,6 +19791,21 @@
           },
           "register": {
             "$ref": "#/components/schemas/VoiceRegisterData"
+          }
+        }
+      },
+      "VerifiedQuoteData": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "text"
+        ],
+        "properties": {
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "text": {
+            "type": "string"
           }
         }
       },

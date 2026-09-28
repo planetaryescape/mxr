@@ -1,172 +1,202 @@
 ---
-title: Reading and Paper trail
-description: Mail that isn't from people gets its own places. Newsletters and lists read as a feed, receipts and notifications bundle by sender, every placement says why, one key moves a sender, and a sweep clears a bundle or a whole place with a preview and undo.
+title: Clear Reading and Paper trail
+description: Read newsletters as a feed, then sweep receipts and notifications away.
 ---
 
-The [desk](/guides/desk/) holds mail from people. Everything else that reaches
-your inbox goes to one of two places, and none of it is counted as work:
+Read what you want from newsletters and notifications, keep the few that
+matter, and archive the rest in one sweep. Mail that is not from a person
+never reaches the [desk](/guides/desk/). It goes to one of two places
+instead:
 
 | Place | What is in it | How it reads |
 |---|---|---|
-| **Reading** | Newsletters and mailing lists. | A feed, newest first, with every issue already open. Nothing is bold and nothing counts as unread. |
+| **Reading** | Newsletters and mailing lists. | A feed, newest first, with every issue open. Nothing is bold and nothing counts as unread. |
 | **Paper trail** | Receipts, notifications, alerts and other automated mail. | One line per sender: how many, the newest subject, how long ago. Open a line to see its messages. |
 
-Deliveries and calendar invites have their own pages (an invite may still
-need an answer), so they stay out of both places. Both places are views over
-the inbox: archiving a message takes it out, and undo puts it back.
+Both places are views over the inbox. Archiving a message takes it out, and
+undo puts it back. Deliveries and calendar invites have their own pages, so
+they are in neither. Neither place carries a count in the sidebar; the
+desk's **Everything else** line says how much arrived this week.
 
-## Why a message is where it is
+## Open a place
 
-Every bundle, every issue and every such message in the reader says why it
-is there, for example "Here because: automated sender, has List-Unsubscribe."
-The rules are fixed and local; no model decides. The first rule that matches
-wins:
+In the web app, pick **Reading** or **Paper trail** in the sidebar, or follow
+the link on the desk. In the TUI they are lenses in the sidebar. From the
+command line:
 
-1. **Your choice.** You moved this sender (see below): "you moved this sender
-   to Reading".
-2. **A delivery update or a calendar invite.**
-3. **A notifying address or domain**: `notifications@`, `alerts@`,
-   `receipts@`, `billing@` and the like, or a host such as
-   `alerts.example.com`. Paper trail, even with list headers (GitHub's
-   notifications carry List-Unsubscribe).
-4. **A newsletter address or domain**: `newsletter@`, `digest@`, or a host
-   such as `news.example.com`. Reading.
-5. **A `List-Id` header**, then **a `List-Unsubscribe` header**. Reading.
-6. **A `no-reply@` address with no list headers.** Transactional mail, so
-   Paper trail. (A `no-reply@` sender that does carry List-Unsubscribe is
-   marketing, so it reads as Reading.)
-7. **A sender known to write to lists.** Reading.
-8. Anything else is a person, and belongs on the desk.
+```bash
+mxr paper-trail --messages 2
+```
 
-The rules look at each message, so a shop that sends both receipts and offers
-can show up in both places, each message with its own reason.
+```text
+Paper trail · 3 messages from 3 senders
 
-## Move a sender, for good
+Uptime Robot                       1  2026-09-28
+  here because: automated sending domain
+    Interview panel for Staff Engineer candidate                      cc2cbc75-87a9-5c63-b941-aa63ec3607fb
 
-Press `K` in Reading or Paper trail (or use **Move sender…** under a message
-in the reader, or the palette's **Move sender to…**) and choose:
+Pager Relay                        1  2026-09-27
+  here because: automated sending domain
+    Launch checklist for Project Aurora                               732401d8-f0db-5459-ae9f-7e611d28226f
 
-| Key | Kind | Where their mail goes |
-|---|---|---|
-| `p` | People | The desk, like anyone you write to. |
-| `r` | Reading | The feed. |
-| `t` | Paper trail | The bundles. |
-| `x` | Screened out | Off the desk and every place. New mail from them is trashed and marked read as it arrives. |
-| `a` | Automatic | The rules above decide again. |
+Build Watch                        1  2026-09-27
+  here because: automated sending domain
+    Pricing page copy review                                          e6de11f8-127a-58f6-8ce6-d828078395bd
+```
 
-The choice is remembered for that sender, so their future mail follows it.
-It moves their mail at once: move a newsletter to People and it leaves
-Reading and appears on the desk. The toast's Undo (or `u`) puts back the kind
-they had before. Choices are stored as the sender's
-[screener decision](/guides/triage-flow/) (People is allow, Reading is feed,
-Paper trail is paper-trail, Screened out is deny), so the Screener's
-**Decisions** tab lists them too.
+`mxr reading` prints the same shape for Reading. `--sender ADDRESS` shows one
+sender's bundle and `--account NAME` one account.
 
-A sender you move to Reading or Paper trail keeps their mail in the inbox:
-those places are views over the inbox. Earlier releases dropped the inbox
-label from feed and paper-trail senders as mail arrived, which hid it from
-these places; that no longer happens. Mail those senders sent before this
-release stays archived, and their new mail appears in the place.
+## Check why a message is here
 
-## Pin the exceptions, sweep the rest
+Every bundle and every issue says why it is there ("here because: has
+List-Unsubscribe"). The rules are fixed and local; no model decides. To ask
+about one message:
+
+```bash
+mxr why cc2cbc75-87a9-5c63-b941-aa63ec3607fb
+```
+
+```text
+uptime@alerts.demo.mxr.local: paper-trail (automated sending domain)
+```
+
+The full list of rules, in the order they apply, is in the
+[placement rules reference](/reference/desk-and-places/#placement-rules).
+
+## Move a sender for good
+
+When a sender is in the wrong place, move them. In the web app use **Move
+sender to...** in Reading or Paper trail, under a message in the reader, or in
+the command palette, and choose:
+
+| Kind | Where their mail goes |
+|---|---|
+| **People** | The desk, like anyone you write to. |
+| **Reading** | The feed. |
+| **Paper trail** | The bundles. |
+| **Screened out** | Nowhere. New mail from them is trashed and marked read as it arrives. |
+| **Automatic** | The rules decide again. |
+
+From the command line:
+
+```bash
+mxr sender kind uptime@alerts.demo.mxr.local reading
+```
+
+```text
+uptime@alerts.demo.mxr.local is now reading (was automatic).
+```
+
+```bash
+mxr why cc2cbc75-87a9-5c63-b941-aa63ec3607fb
+```
+
+```text
+uptime@alerts.demo.mxr.local: reading (you moved this sender to Reading)
+```
+
+`mxr sender kind ADDRESS auto` hands the sender back to the rules.
+
+The move applies to their inbox mail at once and to their mail from then on:
+move a newsletter to People and it leaves Reading and appears on the desk.
+Undo in the web app or TUI puts back the kind they had before. Kinds are
+stored as the sender's [screener decision](/guides/triage-flow/), so the
+Screener's **Decisions** tab lists them too.
+
+Mail that releases before v0.6.38 archived on arrival for feed and
+paper-trail senders stays archived. Their new mail appears in the place.
+
+## Pin what you want to keep
+
+A sweep leaves pinned messages where they are. Pin the few you want to keep
+in view before you sweep: use the pin at the end of a line in the web app, or
+from the command line:
+
+```bash
+mxr pin cc2cbc75-87a9-5c63-b941-aa63ec3607fb
+```
+
+```text
+Pinned 1 message.
+```
+
+Pins are local to this machine. They are not provider stars.
+`mxr unpin MESSAGE_ID` lets the next sweep take the message.
+
+## Sweep the rest
 
 A sweep archives everything unpinned in one sender's bundle, or in the whole
-place. Pin the few messages you want to keep in view first: `p` pins or
-unpins the message under the cursor (or use the pin at the end of its line).
-Pins are local to this machine and are not provider stars.
-
-1. `S` sweeps the bundle under the cursor; `A` (or **Sweep all**) sweeps the
-   whole place. The keys are the same in the web app and the TUI.
-   One sender's sweep confirms with `Enter`. The whole place opens on
-   **Cancel** and its button says how much it takes ("Archive all 143 from
-   35 senders"): press `Tab`, then `Enter`, so a slip from `S` to `A`
-   archives nothing.
-2. The preview comes from the daemon's dry run of the same request: how many
-   messages, from which senders, a few subjects, and how many pinned messages
-   stay. When the sweep reaches past what is on screen, it says so ("Archives
-   143 messages, 20 shown here").
-3. Confirm, and the daemon archives only the messages that preview listed,
-   as a background job. Mail that arrived after the preview is left for next
-   time, and a message pinned or moved away in the meantime stays. A preview
-   works once and expires after a few minutes; if it has expired, nothing is
-   archived and you can preview again.
-4. The toast's Undo (or `u`, for about a minute) puts every swept message
-   back.
-
-## Keys in the web app
-
-| Key | In Reading and Paper trail |
-|---|---|
-| `g r` / `g p` | Go to Reading / Paper trail |
-| `j` / `k` | Next / previous issue or line |
-| `Enter` | Open a bundle, or open the conversation |
-| `p` | Pin or unpin |
-| `S` | Sweep this sender's bundle |
-| `A` | Sweep the whole place |
-| `K` | Move sender to… |
-| `D` | Unsubscribe |
-| `u` | Undo the last change |
-
-Once a conversation is open, the reader's own keys apply (`K` there is the
-previous message).
-
-Before 0.6.41 the web app used `g R` / `g P` to get here and `s` / `S` to
-sweep. `g R` and `g P` still work for one more release. `s` no longer
-sweeps, because it stars everywhere else.
-
-The desk's **Everything else** line links to both places with how much
-arrived this week ("Reading 7 this week", "Paper trail 14 this week").
-Those are not unread counts, and the sidebar shows Reading and Paper trail
-with no count at all.
-
-## In the CLI
+place. Always preview first:
 
 ```bash
-mxr reading                      # bundles, newest first, with the reason for each
-mxr paper-trail --messages 5     # up to five messages listed per sender
-mxr paper-trail --sender receipts@shop.example --format json
+mxr sweep paper-trail --dry-run
 ```
 
-`--format json` returns `bundles` (each with `sender_email`, `kind` with
-`kind`, `rule`, `reason` and `corrected`, `message_count`, `pinned_count`,
-`newest_at` and its `messages`), `total_bundles` and `total_messages`.
-`--format jsonl` prints one bundle per line and `--format ids` prints the
-listed message ids. `--account` limits a place to one account.
+```text
+Would archive 2 messages from Paper trail; 1 pinned message stays.
+  Build Watch                        1
+  Pager Relay                        1
+    Launch checklist for Project Aurora
+    Pricing page copy review
+```
+
+Then sweep:
 
 ```bash
-# Why is this message where it is?
-mxr why MESSAGE_ID
-
-# Move a sender, or hand them back to the rules.
-mxr sender kind digest@news.example.com reading
-mxr sender kind digest@news.example.com auto
-
-# Pin the ones to keep, then preview and sweep.
-mxr pin MESSAGE_ID
-mxr sweep paper-trail --sender receipts@shop.example --dry-run
 mxr sweep paper-trail --yes
-mxr undo MUTATION_ID        # once for each id the sweep printed
-mxr unpin MESSAGE_ID
 ```
 
-`mxr sweep` without `--yes` shows the preview and asks before it archives;
-outside a terminal it refuses and asks for `--yes` or `--dry-run`. The real
-sweep commits its own preview's token, so it archives only what the preview
-listed. JSON output includes the preview, the archive job and its
-`undo_ids`.
+```text
+Archived 2 messages from Paper trail; 1 pinned message stays.
+  Build Watch                        1
+  Pager Relay                        1
+    Launch checklist for Project Aurora
+    Pricing page copy review
+Undo with:
+  mxr undo 01a0e733-cc1f-71c0-b554-c03d6170d24c
+```
 
-## In the TUI
+Add `--sender ADDRESS` to sweep one bundle. Without `--yes` or `--dry-run`,
+`mxr sweep` shows the preview and asks; outside a terminal it refuses.
 
-Reading and Paper trail are lenses in the sidebar (`g r` and `g p` from the
-mail list), bundled by sender, each bundle with its "here because" line and
-no unread counts.
+In the web app, sweep a sender's bundle or the whole place from its
+**Sweep** button or key. The preview comes from the daemon's dry run of the
+same request: how many messages, from which senders, a few subjects, and how
+many pinned messages stay. When the sweep reaches past what is on screen, it
+says so ("Archives 143 messages, 20 shown here"). The TUI shows the same
+preview before it archives.
 
-| Key | Does |
-| --- | --- |
-| `Enter` | Open the message beside the list |
-| `p` | Pin or unpin the message under the cursor |
-| `K` | Move the sender: `p` people, `r` Reading, `t` Paper trail, `x` screened out, `a` automatic |
-| `S` | Preview sweeping this sender's bundle, then `Enter` to archive |
-| `A` | Preview sweeping the whole place (also in the command palette); it opens on Cancel, so press `Tab`, then `Enter` |
-| `e`, `s`, `#` | Archive, star or trash the message under the cursor |
-| `u` | Undo the last sweep, every chunk of it |
+What a sweep archives:
+
+- Only the messages its preview listed. Mail that arrived after the preview
+  is left for next time, and a message pinned or moved away in the meantime
+  stays.
+- Nothing, if the preview has expired (after 10 minutes). Preview again.
+
+## Undo a sweep
+
+Undo puts every swept message back. Use the toast's **Undo** in the web app
+or TUI, or each id the sweep printed:
+
+```bash
+mxr undo 01a0e733-cc1f-71c0-b554-c03d6170d24c
+```
+
+```text
+Undone
+```
+
+A large sweep runs in chunks and prints one undo id per chunk; run
+`mxr undo` for each. The undo window is about a minute.
+
+## Keys
+
+The web keys for these places are in the
+[keybindings reference](/reference/keybindings/#reading-and-paper-trail), and
+the TUI keys in the [TUI reference](/reference/tui/#reading-and-paper-trail).
+Once a conversation is open, the reader's own keys apply.
+
+Next: when the desk is clear, the web app shows
+[low tide](/guides/sound-hints-and-touch/#low-tide). Back to
+[your day in mxr](/guides/your-day/).

@@ -5,23 +5,26 @@ description: Reference for screens, panes, modals, and interaction model in the 
 
 ## Screens
 
-The TUI has six top-level screens:
+The TUI has seven top-level screens, one per digit key:
 
 - Mailbox (`1`)
 - Search (`2`)
 - Rules (`3`)
 - Accounts (`4`)
 - Diagnostics (`5`)
-- Analytics (no digit; open via `Ctrl-p` → "Analytics")
+- Analytics (`6`)
+- Deliveries (`7`)
 
-Open the first five with `1`-`5`. Analytics has no default digit key today — open it from the command palette (`Ctrl-p` then type "Analytics") or rebind the open action in `keys.toml` next to the file printed by `mxr config path` (see [Custom keybindings](/reference/config/#custom-keybindings)).
+The command palette (`Ctrl-p`) opens each by name too. Rebind the keys in
+`keys.toml` next to the file printed by `mxr config path` (see
+[Custom keybindings](/reference/config/#custom-keybindings)).
 
 ## Discoverability
 
 Three places to find a key without memorising:
 
-- **`?`** opens the help modal — context-aware, shows every key bound in the current view.
-- **`Ctrl-p`** opens the command palette — fuzzy-matches every action by name.
+- **`?`** opens the help modal, which shows every key bound in the current view.
+- **`Ctrl-p`** opens the command palette, which fuzzy-matches every action by name.
 - **The hint bar at the bottom** of every screen surfaces the most relevant shortcuts for the current selection.
 
 The keybindings reference page lists every default; the help modal is faster while you're using the TUI.
@@ -41,9 +44,39 @@ Behavior:
 - Focused-thread-message targeting for reply and mutations
 - Explicit right-pane dismissal with `Esc`
 - Bulk selection with confirmation modals
-- Sidebar lenses replace the mail list in place: **Subscriptions**,
-  **Owed replies**, and **Calendar invites** (every detected invite with
-  inline RSVP — see [keybindings](/reference/keybindings/#calendar-invites-lens))
+- Sidebar lenses replace the mail list in place: **Desk**, **Reading**,
+  **Paper trail**, **Subscriptions**, **Owed replies**, and **Calendar
+  invites** (every detected invite with inline RSVP; see
+  [keybindings](/reference/keybindings/#calendar-invites-lens))
+
+## Desk
+
+**Desk** is the first lens in the sidebar, and `gh` opens it (`gd` stays
+Drafts). It shows the same lanes as `mxr desk`
+([Clear the desk](/guides/desk/)). `j`/`k` move across the lanes and `Enter`
+opens the conversation beside the desk. `e` or `m` is **Done** for the row
+under the cursor, from the list or from that conversation, and `u` undoes it.
+A held key repeats in the TUI, so tap `e` once per row. When the desk or the
+owed-replies list clears, the status bar says **Low tide. Nobody's waiting on
+you.**
+
+## Reading and Paper trail
+
+`gr` opens Reading and `gp` opens Paper trail
+([Clear Reading and Paper trail](/guides/reading-and-paper-trail/)). Mail is
+bundled by sender, each bundle with its "here because" line and no unread
+count.
+
+| Key | Does |
+| --- | --- |
+| `Enter` | Open the message beside the list |
+| `p` | Pin or unpin the message under the cursor |
+| `K` | Move the sender: `p` people, `r` Reading, `t` Paper trail, `x` screened out, `a` automatic |
+| `S` | Preview sweeping this sender's bundle; `Enter` or `y` archives, `Esc`, `n` or `q` cancels |
+| `A` | Preview sweeping the whole place (also in the command palette) |
+| `>` / `+` | Load more senders / more of this sender's messages |
+| `e`, `s`, `#` | Archive, star or trash the message under the cursor |
+| `u` | Undo the last sweep, every chunk of it |
 
 ## Thread context
 
@@ -116,19 +149,19 @@ Same surface as the CLI analytics commands (`mxr storage`,
 
 Six views:
 
-- **Storage** — sender / mimetype / label rollups (`m` toggles to
+- **Storage**: sender / mimetype / label rollups (`m` toggles to
   Largest Messages mode; `g` cycles `group_by` while in Breakdown).
-- **Stale Threads** — threads waiting on a reply (`p` toggles
+- **Stale Threads**: threads waiting on a reply (`p` toggles
   perspective, `[`/`]` adjusts `older_than_days`, `{`/`}` adjusts
   `within_days`).
-- **Contacts** — asymmetry vs decay (`m` toggles sub-mode, `R`
+- **Contacts**: asymmetry vs decay (`m` toggles sub-mode, `R`
   refreshes the materialized contacts table).
-- **Response Time** — reply-latency percentiles (`d` toggles
+- **Response Time**: reply-latency percentiles (`d` toggles
   direction).
-- **Subscriptions** — list-sender ROI table (`o` toggles open-rate
+- **Subscriptions**: list-sender ROI table (`o` toggles open-rate
   ranking; `u` opens the unsubscribe-confirm modal for the selected
   row).
-- **Wrapped** — Spotify-style yearly summary as a 7-tile dashboard
+- **Wrapped**: Spotify-style yearly summary as a 7-tile dashboard
   grid (`h`/`j`/`k`/`l` move between tiles, `y`/`Y` step year,
   `t` cycles window kind: YTD → Year → SinceDays).
 
@@ -138,7 +171,7 @@ Two cross-view interactions:
   jump to a Search filter; Stale Threads, Largest Messages, and
   Subscriptions rows open the underlying conversation directly via
   `Request::GetEnvelope` (no search round-trip).
-- `f` opens the **filter modal** — a per-view form with all CLI
+- `f` opens the **filter modal**, a per-view form with all CLI
   flags exposed as editable fields. `Tab`/`Shift-Tab` to navigate,
   `Enter` to apply, `Esc` to cancel.
 
@@ -147,19 +180,19 @@ Two cross-view interactions:
 - Command palette
 - Help modal
 - Label picker
-- Compose confirmation — `[s]` sends, `[a]` schedules send-later,
+- Compose confirmation: `[s]` sends, `[a]` schedules send-later,
   `[n]` sends and sets a follow-up reminder, `[d]` saves a draft,
   `[r]` refines, `[e]` reopens `$EDITOR`, `Esc` discards
 - Bulk confirmation
 - Attachment modal
-- Snooze modal — preset list plus a **Custom…** entry that opens a
+- Snooze modal: preset list plus a **Custom…** entry that opens a
   text prompt with a live preview of the resolved time, using the same
   [time phrases](/reference/time-phrases/) as `mxr snooze --until`.
   Tab switches between readings of an ambiguous phrase such as `fri 3`;
   the send-at and remind prompts work the same way
 - Unsubscribe confirmation
 - Analytics filter modal
-- Reply-later queue browser — list of flagged messages and due reminders,
+- Reply-later queue browser: list of flagged messages and due reminders,
   opened with `Ctrl-p → Reply Queue`. `F` there replies to each queued
   message in turn, from the selected one: sending one reply opens the next
   ([Focus & reply](/guides/focus-and-reply/)). Cancel a pending reminder
@@ -167,17 +200,17 @@ Two cross-view interactions:
 - Promise prompt: after a send whose message promises something with a
   date, a toast asks "Remind me …?"; `y` keeps it as a reminder, `n` or
   `Esc` lets it go
-- Snippets browser — read-only list with body preview; CRUD flows
+- Snippets browser: read-only list with body preview; CRUD flows
   through `mxr snippets`
-- Sender profile — volume, cadence, open commitments, and other recent
+- Sender profile: volume, cadence, open commitments, and other recent
   emails from the focused message's sender, opened with
   `Ctrl-p → Sender View`. Inside the modal, `j` / `k` selects another
   email and `Enter` / `o` opens it.
-- Screener queue — triage list with `a`/`d`/`f`/`p` disposition keys
+- Screener queue: triage list with `a`/`d`/`f`/`p` disposition keys
   (allow / deny / feed / paper-trail) wired to `Request::SetScreenerDecision`
-- Welcome / setup — first-launch modal with `d` (demo), `g` (Gmail),
+- Welcome / setup: first-launch modal with `d` (demo), `g` (Gmail),
   `i` (IMAP) shortcuts; `Enter` opens the new-account form
-- Doctor findings — surfaced inside the Diagnostics Status pane with
+- Doctor findings: surfaced inside the Diagnostics Status pane with
   per-finding glyph (`✗` / `!` / `·`), category, message, and indented
   remediation commands
 

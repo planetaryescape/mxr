@@ -1,171 +1,217 @@
 ---
-title: The desk
-description: What needs you, not what arrived. Replies you owe, promises coming due, threads waiting on someone and new mail from people, each with one Done, in the CLI, the TUI and the web app.
+title: Clear the desk
+description: Work through replies you owe, promises due, and threads waiting on others.
 ---
 
-An inbox sorted by arrival answers "what came in?". The desk answers "what
-needs me?". It has four lanes, and every row says why it is there and how
-long it has been:
+Open the desk, deal with each row, and put away the ones that need nothing
+from you. The desk shows what needs you instead of what arrived, in four
+lanes:
 
-| Lane | What is in it | Its clock |
-|---|---|---|
-| **You owe** | Someone you are in conversation with wrote last and you have not replied. | Since their message, next to how fast you usually reply to them. |
-| **Due** | Promises you made in sent mail that are due within a week, or overdue. | The due day. |
-| **Waiting on** | You wrote last, at least 12 hours ago, and they have not answered. Watched contacts who have gone quiet longer than usual join this lane too. | Since your message, next to how fast they usually reply. |
-| **New from people** | Recent mail (the last 7 days) from a person you have not written to before. | When it arrived. |
+- **You owe**: someone you are in conversation with wrote last.
+- **Due**: a promise you made is coming due.
+- **Waiting on**: you wrote last and they have not answered.
+- **New from people**: a person you have not written to before.
 
-Everything that is not work is summarised in one line of links:
-[**Reading**](/guides/reading-and-paper-trail/) (newsletters and lists that
-arrived this week, read or not), [**Paper trail**](/guides/reading-and-paper-trail/)
-(receipts and notifications that arrived this week), **Deliveries**,
-**Invites** and **Screener** (new senders with no decision yet). None of
-those counts are badges; the only badges count work.
+Every row says why it is there and how long it has been. Newsletters,
+receipts and notifications are not on the desk; they wait in
+[Reading and Paper trail](/guides/reading-and-paper-trail/). The exact lane
+rules are in the [desk reference](/reference/desk-and-places/#lanes).
 
-The desk is built from what mxr already knows locally: who wrote last in each
-conversation, your contacts, screener decisions, past reply times, open
-commitments and cadence watches. It makes no model calls, so it is as fast
-as any other local read.
+## Open the desk
 
-## What counts as a person
-
-A message counts as mail from a person unless the sender looks like one of
-these:
-
-- a list or newsletter (a `List-Id` header, an unsubscribe method, a
-  `newsletter@` style address, or a sender marked as a list), or a sender
-  you moved to Reading;
-- a machine: a `no-reply`, `notifications` or `alerts` style address or
-  sending domain, a delivery update, a calendar invite, or a sender you
-  moved to Paper trail;
-- a sender you screened out, which never shows on the desk.
-
-A sender you mark as a person (`K` in Reading or Paper trail, then `p`)
-counts as one whatever their headers say. The full rules, with the reason
-each placement shows, are in
-[Reading and Paper trail](/guides/reading-and-paper-trail/).
-
-A conversation shows on the desk only while it is in the inbox. Archiving or
-snoozing it takes it off; undo puts it back. A promise under **Due** stays
-until you mark it done, whatever happens to its conversation. When a
-conversation qualifies for two lanes, it shows once, in the first of: You
-owe, Due, Waiting on, New from people.
-
-## Done: put it away
-
-Every row has one way to say "there is nothing for me to do here": **Done**.
-It is the check at the end of the row, `e` in the web app and the TUI, and
-`mxr desk done` on the command line. The row leaves at once, and what Done
-does depends on the lane:
-
-| Lane | Done |
-|---|---|
-| **You owe**, **New from people** | Archives the conversation, marks it read, and keeps it off the desk. |
-| **Waiting on** | Marks it read and stops waiting. Nothing is archived: a conversation you started has nothing in the inbox to archive. |
-| **Due** | Marks the promise kept and the conversation read, and keeps it off the desk. Nothing is archived: the promise was the work. Other open promises in the same conversation stay under Due. |
-
-"Off the desk" holds for every lane, a watched contact's row included, until
-someone writes in the conversation again: them, or you. Moving it back to the
-inbox by hand does not bring it back; a new message does. A kept promise does
-not return. Done also takes the conversation out of your reply-later queue.
-
-Undo (the toast's **Undo**, `u`, or `mxr undo ID`) puts it back exactly as
-it was: the messages return to the inbox, each one read or unread as it was
-before, the conversation is back on the desk and in reply-later if it was
-there, and a promise is open again.
-
-If a conversation cannot be put away (its account is offline, say), its row
-stays and the rest are still done. Press Done again to retry it; its undo
-still returns each message to how it was before the first try.
-
-"Usually" is the median of your past replies with that person (or theirs to
-you), and needs at least two of them. A row turns a soft yellow only when it
-has been longer than that.
-
-## In the CLI
+The web app opens on the desk (`mxr web`). In the TUI, **Desk** is the first
+lens in the sidebar. From the command line:
 
 ```bash
 mxr desk
 ```
 
 ```text
-3 replies owed, waiting on 2 threads, 4 new messages from people.
+14 replies owed, waiting on 4 threads, 7 new messages from people.
 
-You owe 3
-  Maya Ortiz              Launch checklist · replied to your message        2d · usually 4h
-  Theo Nash               Pricing copy · wrote to you                       1d
-  ...
+You owe 14
+  Jon Bell                Research notes: terminal workflows · wrote to you           22h · usually 47m
+  Samir Patel             Contract renewal details · 2 messages since you last wrote  16h · usually 47m
+  Samir Patel             Action required: unusual sign-in attempt · wrote to you     10h · usually 47m
+  and 11 more (--limit to see them)
 
-Everything else: Reading 7 · Paper trail 14 · Deliveries 1 · Screener 2
+Waiting on 4
+  Samir Patel             Launch checklist for Project Aurora · no reply to your la…  1d
+  Ari Stone               Urgent password reset notice · no reply to your last mess…  1d
+  Leo Park                Weekly local-first reading list · no reply to your last m…  19h
+  and 1 more (--limit to see them)
+
+New from people 7
+  Cal Brooks              Contract renewal details · wrote to you                     4h
+  Account Verification    Build failed on release branch · wrote to you               8h
+  Cal Brooks              Spring upgrade offer for your workspace · wrote to you      11h
+  and 4 more (--limit to see them)
+
+Everything else: Reading 6 · Paper trail 3 · Deliveries 2 · Screener 27
 ```
 
-`--format json` returns the whole desk: each lane's `rows` and `total`, the
-`elsewhere` counts, and `generated_at`. `--format jsonl` prints one row per
-line with its `lane`, and `--format ids` prints thread ids. Every row has the
-`thread_id` and `message_id` to open, the counterparty, a `reason`,
-`age_seconds`, and `usual_seconds` when the pace is known.
+That output is from `mxr desk --limit 3` against the demo mailbox. Each row
+shows the counterparty, the subject, the reason, how long it has been, and
+"usually" when mxr knows how fast replies go between you (the median of at
+least two past replies). A row that is past its usual time is flagged
+overdue; the web app colours its age.
+
+The **Everything else** line counts what arrived this week in Reading and
+Paper trail, active deliveries, open invites and new senders in the
+screener. None of those are unread counts.
+
+In the web app, the greeting counts the work ("Saturday morning. 3 replies,
+2 promises.") and each count links to its lane. A lane shows five rows;
+**Show all** opens the rest. `mxr desk --account NAME` limits the CLI to one
+account.
+
+## Deal with a row
+
+Open the conversation, then do what it asks:
+
+- **Reply.** The reply field sits at the bottom of the conversation. To
+  answer everyone you owe in one sitting, use
+  [Focus & reply](/guides/focus-and-reply/).
+- **Snooze.** Snoozing takes the conversation off the desk until it wakes.
+  Type the time in words, such as `fri 3` or `in 2d`
+  ([time phrases](/reference/time-phrases/)).
+- **Keep a promise.** Due rows are promises from mail you sent: ones mxr
+  found, and ones you asked to be reminded about. Do the thing, then use
+  Done. See [promises on send](/guides/focus-and-reply/#keep-the-promises-you-make).
+
+When you reply, the row leaves You owe on its own. When they reply, a
+Waiting on row leaves on its own.
+
+## Put a row away with Done
+
+Use **Done** when a row needs nothing from you: a thank-you, a thread that
+resolved itself, a promise you already kept. What Done does depends on the
+lane:
+
+| Lane | Done |
+|---|---|
+| You owe, New from people | Archives the conversation, marks it read, and keeps it off the desk. |
+| Waiting on | Marks it read and stops waiting. Nothing is archived. |
+| Due | Marks the promise kept and the conversation read. Other promises in the conversation stay. |
+
+Every lane also takes the conversation out of your reply-later queue. It
+stays off the desk until someone writes in it again, you or them.
+
+- **Web app:** the check at the end of the row. On the desk the archive key
+  is Done, in every lane and on a selection, and from the reader when you
+  opened the conversation from the desk. With a mouse the check shows when
+  you point at the row; on a touch screen it is always there, and a short
+  swipe right is Done too.
+- **TUI:** the archive key on a desk row, or in the conversation opened
+  beside the desk.
+- **CLI:** preview first, then put it away:
 
 ```bash
-# Open the most overdue reply you owe.
-mxr desk --format json | jq -r '.owed.rows[0].message_id' | xargs mxr cat
+mxr desk done 080a03cf-08ab-5aca-a5e6-73c9f269800d --dry-run
 ```
 
-`--account` limits the desk to one account (the default covers them all), and
-`--limit` sets how many rows each lane returns.
+```text
+Would put away 1 conversation.
+  080a03cf-08ab-5aca-a5e6-73c9f269800d  owed        archived 5, marked 1 read, off the desk until someone writes
+```
 
 ```bash
-# Done: preview, then put it away. The lane defaults to Waiting on when
-# you wrote last, otherwise You owe.
-mxr desk done THREAD_ID --dry-run
-mxr desk done THREAD_ID
-# A promise under Due: pass its commitment id.
-mxr desk done THREAD_ID --lane due --promise COMMITMENT_ID
-# Changed your mind: undo with the id Done printed.
-mxr undo MUTATION_ID
+mxr desk done 080a03cf-08ab-5aca-a5e6-73c9f269800d
 ```
 
 ```text
 Done: 1 conversation.
-  0192f0c4-...  owed        archived 2, marked 1 read, off the desk until someone writes
-Undo with: mxr undo 0192f0c5-...
+  080a03cf-08ab-5aca-a5e6-73c9f269800d  owed        archived 5, marked 1 read, off the desk until someone writes
+Undo with: mxr undo 01a0e733-f0fb-7510-9fb5-0462837a28ae
 ```
 
-`--format json` returns `mutation_id` and one outcome per conversation:
-`lane`, `archived` and `marked_read` counts, `dismissed`,
-`resolved_commitment_id`, `reply_later_cleared`, and `error` for one that
-could not be put away (the command then exits non-zero). It takes the `thread_id`, `lane` and
-`commitment_id` that `mxr desk --format json` prints for each row.
+The thread id is the row's `thread_id` in `mxr desk --format json`, or a
+line of `mxr desk --format ids`. Without `--lane`, Done picks Waiting on when
+you wrote last and You owe otherwise. For a Due row, pass the promise:
 
-`mxr desk dismiss THREAD_ID` is the older "done waiting" on its own, without
-marking anything read, and `mxr desk restore THREAD_ID` undoes it.
+```bash
+mxr desk done THREAD_ID --promise COMMITMENT_ID --dry-run
+```
 
-## In the web app
+```text
+Would put away 1 conversation.
+  93d1de1e-0556-5bcb-b5d9-9effb317b6b6  due         promise kept, off the desk until someone writes
+```
 
-The web app opens on the desk. The greeting counts the work ("Saturday
-morning. 3 replies, 2 promises.") and each count links to that lane in full.
-Lanes show their first five rows; **Show all** opens the rest.
+Keys for every surface are in the
+[keybindings reference](/reference/keybindings/). Holding a key down in the
+web app does not put away row after row. In the TUI a held key repeats, so
+tap once per row.
 
-The keys are the ones every list uses: `j`/`k` move one cursor across all
-the lanes, `Enter` opens the conversation and `Esc` comes back to the same
-row, `Z` snoozes, `#` trashes and `u` undoes. On the desk, `e` is **Done**,
-in every lane: archive and Done mean the same thing here, so the key you
-already use to put mail away does it. `w`, the list's row key, and `m` do
-the same. Done works on a selection, and from the reader when you opened
-the conversation from the desk. Holding the key down does not put away row
-after row.
+## Undo
 
-With a mouse, the check shows when you point at a row or move the cursor to
-it. On a touch screen it is always there.
+Undo puts everything back as it was: the messages return to the inbox, each
+read or unread as before, the row returns to the desk and to reply-later, and
+a promise is open again. Use the toast's **Undo** in the web app or TUI, or
+the id Done printed:
 
-`g h` goes to the desk, as in the TUI, and `g i` to the inbox in arrival
-order; `g w` opens **Waiting on**. Before 0.6.41 the web app used `g d` for
-the desk; `g d` is Drafts now, in both clients. To open on the inbox
-instead, set **Settings, Appearance, Home** to Inbox.
+```bash
+mxr undo 01a0e733-f0fb-7510-9fb5-0462837a28ae
+```
 
-## In the TUI
+```text
+Undone
+```
 
-**Desk** is the first entry in the sidebar's lens list, and `g h` opens it
-(`g d` is Drafts). `j`/`k` move across the lanes and `Enter`
-opens the conversation beside the desk. `e` (or `m`) is **Done** for the
-row under the cursor, from the list or from that conversation opened beside
-it, and `u` undoes it. Holding a key down in the TUI repeats its action, so
-tap `e` once per row.
+The undo window is about a minute.
+
+If a conversation cannot be put away (its account is offline, say), its row
+stays, the rest are done, and `mxr desk done` exits non-zero. The first
+Done's undo id still restores everything it changed. Run Done again to retry;
+the retry gets its own undo id.
+
+## Stop waiting without marking read
+
+`mxr desk dismiss` takes a Waiting on row off the desk until a new message
+arrives, and changes nothing else:
+
+```bash
+mxr desk dismiss 309ae832-4d84-5d78-a3ef-76a7eda21496 --dry-run
+```
+
+```text
+Would stop waiting on 1 conversation.
+  309ae832-4d84-5d78-a3ef-76a7eda21496
+```
+
+`mxr desk restore THREAD_ID` puts it back in Waiting on.
+
+## Script the desk
+
+`--format json` returns every lane with its rows and totals. Row fields are
+listed in the [desk reference](/reference/desk-and-places/#output).
+
+```bash
+# Subjects of the replies you owe, most overdue first.
+mxr desk --format json | jq -r '.owed.rows[] | .subject'
+
+# Read the most overdue one.
+mxr cat "$(mxr desk --format json | jq -r '.owed.rows[0].message_id')"
+```
+
+## Make the inbox your home instead
+
+In the web app, set **Settings > Appearance > Home** to **Inbox**. The
+arrival-order inbox shows everything, Reading and Paper trail mail included,
+and the desk stays one step away. The TUI opens on the inbox.
+
+## When a conversation is not where you expect
+
+- **Not on the desk at all:** run `mxr why MESSAGE_ID`. A newsletter or
+  notification goes to Reading or Paper trail, and a screened-out sender
+  never shows. To count a sender as a person, move them to People
+  ([move a sender](/guides/reading-and-paper-trail/#move-a-sender-for-good)).
+- **Gone after you archived it:** You owe and New from people show only
+  while the conversation is in the inbox. Undo, or move it back and wait for
+  the next message.
+- **Came back after Done:** someone wrote in the conversation again. Done
+  holds only until the next message.
+- **In You owe instead of New from people:** you have written to them
+  before, or allowed them in the screener.
+
+Next: [answer everyone you owe in one sitting](/guides/focus-and-reply/).

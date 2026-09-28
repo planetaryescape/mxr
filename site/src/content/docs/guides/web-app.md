@@ -158,26 +158,24 @@ Set `MXR_BRIDGE_URL=http://127.0.0.1:9000` to override.
 
 The web app opens on the [desk](/guides/desk/): replies you owe, promises
 coming due, threads waiting on someone and new mail from people, each row
-with the reason it is there and how long it has been next to that person's
-usual pace. Everything else (reading, paper trail, deliveries, invites,
-screener) is one line of links at the bottom, with week counts that are
-never unread counts. [Reading and Paper trail](/guides/reading-and-paper-trail/)
-hold the mail that isn't from people: Reading is a feed with every issue
-already open, Paper trail bundles receipts and notifications by sender, `K`
-moves a sender for good, and `S` or `A` sweeps a bundle or the whole place
-after a preview, with undo. `g h` goes to the desk, `g i`
-to the inbox in arrival order, and **Settings, Appearance, Home** makes the
-inbox the home instead. The arrival-order inbox deliberately shows
-everything, Reading and Paper trail mail included; the separation lives on
-the desk and in the places.
+with the reason it is there. Mail that is not from people goes to
+[Reading and Paper trail](/guides/reading-and-paper-trail/). To answer
+everyone you owe in one sitting, use [Focus & reply](/guides/focus-and-reply/).
+[Work through your day](/guides/your-day/) puts the three in order.
+
+To open on the inbox instead, set **Settings > Appearance > Home** to
+**Inbox**. The arrival-order inbox shows everything, Reading and Paper trail
+mail included; the separation lives on the desk and in the places.
 
 The sidebar holds places rather than folders: Desk, Inbox, Reply queue,
 Waiting on, Snoozed, Reading, Paper trail and, when someone new is waiting
-for a decision, Screener. Folders (Starred, Sent, Drafts, All Mail, Spam, Trash) and the
-rarer lists sit under **More**, and labels under **Labels**; both start
-folded. Only work carries a count: the desk (owed and due), the reply queue
-and the screener. Unread mail still shows as bold rows, but the inbox and
-labels carry no unread badge.
+for a decision, Screener. Folders (Starred, Sent, Drafts, All Mail, Spam,
+Trash) and the rarer lists (Owed replies, Invites, Subscriptions and
+Deliveries) sit under **More**. **Labels**, **Saved searches** and **Tools**
+have their own sections; More, Labels and Tools start folded. Only work
+carries a count: the desk (owed and due), the reply queue and the screener.
+Unread mail still shows as bold rows, but the inbox, labels and saved searches
+carry no unread badge.
 
 ## Reading and triage
 
@@ -306,9 +304,10 @@ conversation drafts a forwarding note. Refine works on what's in the editor.
 
 Drafts save as you type and when you close the composer. Sending asks for
 confirmation with the recipients, the From address and the pre-send safety
-check, and you get a few seconds to undo: the toast counts them down. When
-the message promises something with a date, mxr offers to remind you then
-([promises on send](/guides/focus-and-reply/#promises-on-send)). **More send options** has send
+check, and then waits 10 seconds so you can undo
+([undo a send](/guides/focus-and-reply/#undo-a-send)). When the message
+promises something with a date, mxr offers to remind you then
+([keep the promises you make](/guides/focus-and-reply/#keep-the-promises-you-make)). **More send options** has send
 later, send and archive, and send with a reminder if nobody replies.
 Scheduled messages appear at the top of **Drafts** with a **Cancel send**
 button.
@@ -325,8 +324,7 @@ which behave like a mailbox, with the same keys and actions. Operators such as
 List and Category facets under the query narrow it in one click. **Exact** is the default mode;
 **Hybrid** and **Meaning** add semantic matches when semantic search is on.
 
-**Save** keeps the query as a saved search in the sidebar with its unread
-count, and `g 1` to `g 9` jump to the first nine. The bookmark button renames,
+**Save** keeps the query as a saved search in the sidebar, and `g 1` to `g 9` jump to the first nine. The bookmark button renames,
 re-queries, pins, recolours or deletes them.
 
 ## Wrapped: story mode + copy
@@ -430,4 +428,5 @@ is incomplete by mxr's product rules; see the [why-mxr guide](/guides/why-mxr/).
 - [`mxr web` CLI reference](/reference/cli/web/): every flag and what it does.
 - [Config reference](/reference/config/#bridge): `[bridge]` keys including `auto_local_token` and `port`.
 - [No native desktop app](/guides/no-native-desktop-app/): why the web app is installable without an Electron shell.
-- [Sound, key hints and touch](/guides/sound-hints-and-touch/): low tide, the optional sound palette, key hints and swiping rows.
+- [Sound, key hints and touch](/guides/sound-hints-and-touch/): low tide, the optional sounds, key hints and swiping rows.
+- [Desk and places reference](/reference/desk-and-places/): lanes, Done, placement rules and JSON output.

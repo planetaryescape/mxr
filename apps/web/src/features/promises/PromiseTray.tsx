@@ -20,12 +20,13 @@ export function PromiseTray() {
   const offers = usePromiseOffers((state) => state.offers);
   if (offers.length === 0) return null;
   return (
-    // Bottom-left: over the sidebar's end, clear of the reply's Send button
-    // and of the send countdown in the bottom-right corner.
+    // Bottom-left of the content, just past the sidebar (never over it),
+    // clear of the reply's Send button and of the send countdown in the
+    // bottom-right corner.
     <section
       aria-label="Promises in what you sent"
       data-testid="promise-tray"
-      className="pointer-events-none fixed inset-x-4 top-14 z-40 flex flex-col gap-2 sm:inset-x-auto sm:bottom-11 sm:left-4 sm:top-auto sm:w-[26rem]"
+      className="pointer-events-none fixed inset-x-4 top-14 z-40 flex flex-col gap-2 sm:inset-x-auto sm:bottom-11 sm:left-[calc(var(--shell-sidebar-w)+1rem)] sm:top-auto sm:w-[26rem] [[data-sidebar-collapsed=true]_&]:sm:left-[calc(var(--shell-sidebar-collapsed-w)+1rem)]"
     >
       {offers.map((offer) => (
         <PromiseCard key={offer.id} offer={offer} />

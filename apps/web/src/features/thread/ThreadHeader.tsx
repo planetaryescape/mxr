@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { MessageLabelView, ThreadResponse } from "@/features/mailbox/types";
-import { runCommand } from "@/lib/keys/controllers";
+import { runPointerCommand } from "@/lib/actions/keyHints";
 import { formatChord } from "@/lib/keys/chord";
 import { plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -47,7 +47,7 @@ import type { ReaderView } from "@/state/uiPrefsStore";
 
 import { LabelBadge } from "./LabelBadge";
 
-const run = (command: string) => () => runCommand("reader", command);
+const run = (command: string) => () => runPointerCommand("reader", command);
 
 interface ThreadHeaderProps {
   data: ThreadResponse;
@@ -198,7 +198,7 @@ function ViewSwitch({ view }: { view: ReaderView }) {
           title={option.keys ? `${option.label} (${option.keys})` : option.label}
           // Choosing the current view is a no-op; the key commands toggle.
           onClick={() => {
-            if (view !== option.id) runCommand("reader", option.command);
+            if (view !== option.id) runPointerCommand("reader", option.command);
           }}
           className={cn(
             "rounded px-2 py-0.5 text-[12px]",

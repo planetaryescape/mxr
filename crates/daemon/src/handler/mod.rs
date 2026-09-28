@@ -468,7 +468,7 @@ pub async fn handle_request_with_peer(
             ) {
                 state.activity.record(entry);
             }
-            crate::chimes::play_for_request_response(state, req, &response);
+            crate::chimes::play_for_request_response(state, msg.source, req, &response);
 
             response
         }
@@ -782,6 +782,9 @@ async fn dispatch(
         } => time::resolve(state, input, *now, time_zone.as_deref()),
         Request::UpdateNotificationChimes { config } => {
             notifications::update_notification_chimes(state, config.as_ref().clone()).await
+        }
+        Request::PatchNotificationChimes { patch } => {
+            notifications::patch_notification_chimes(state, patch.as_ref().clone()).await
         }
         Request::PreviewNotificationChime { event } => {
             notifications::preview_notification_chime(state, *event).await
@@ -2091,6 +2094,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::SetPrimaryAccountAddress { .. }
         | Request::UpdateLlmConfig { .. }
         | Request::UpdateNotificationChimes { .. }
+        | Request::PatchNotificationChimes { .. }
         | Request::PreviewNotificationChime { .. }
         | Request::EnableSemantic { .. }
         | Request::InstallSemanticProfile { .. }
@@ -2242,6 +2246,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetNotificationChimes => "get_notification_chimes",
         Request::ResolveTime { .. } => "resolve_time",
         Request::UpdateNotificationChimes { .. } => "update_notification_chimes",
+        Request::PatchNotificationChimes { .. } => "patch_notification_chimes",
         Request::PreviewNotificationChime { .. } => "preview_notification_chime",
         Request::GetSemanticStatus => "get_semantic_status",
         Request::EnableSemantic { .. } => "enable_semantic",

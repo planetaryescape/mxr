@@ -202,6 +202,9 @@ pub struct DeskPageState {
     pub lanes: Vec<(mxr_protocol::DeskLaneKind, mxr_protocol::DeskLaneData)>,
     pub elsewhere: mxr_protocol::DeskElsewhereData,
     pub loaded: bool,
+    /// You cleared it: it had work last time and has none now. The lens
+    /// says so in one calm line instead of the plain empty state.
+    pub low_tide: bool,
 }
 
 impl DeskPageState {
@@ -228,6 +231,7 @@ impl DeskPageState {
             ],
             elsewhere,
             loaded: true,
+            low_tide: false,
         })
     }
 

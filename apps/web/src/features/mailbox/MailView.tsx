@@ -6,12 +6,12 @@ import { syncNow } from "./actions";
 import { lensesFromShell, resolveLens, type LensRoute, type MailLens } from "./lenses";
 import { ListWithReader } from "./ListWithReader";
 import { Centered, ListSkeleton } from "./MailViewParts";
+import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useMailboxQuery, useShellQuery } from "./useMailboxQuery";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { formatRelative, plural } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import { useConnectionStore } from "@/state/connectionStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -29,13 +29,14 @@ const PAGE_MAILBOXES: Record<string, string> = {
 export function MailView({ route }: { route: LensRoute }) {
   const shell = useShellQuery();
   const lenses = useMemo(() => lensesFromShell(shell.data), [shell.data]);
+  const phase = useDelayedPending(shell.isLoading);
 
   if (route.kind === "system" && PAGE_MAILBOXES[route.mailbox]) {
     return <Navigate to={PAGE_MAILBOXES[route.mailbox]!} replace />;
   }
   const lens = resolveLens(route, lenses);
   if (!lens) {
-    if (shell.isLoading) return <ListSkeleton />;
+    if (phase !== "ready") return <ListSkeleton quiet={phase === "quiet"} />;
     return (
       <Centered
         icon={<SearchX className="size-6" />}
@@ -81,6 +82,9 @@ function LensView({ lens }: { lens: MailLens }) {
       onLoadMore={() => void mailbox.fetchNextPage()}
       queueLabel={lens.section === "labels" ? lens.labelName : undefined}
       empty={<EmptyLens lens={lens} />}
+      // One persistent control: which grouping is on. The list refreshes
+      // itself from daemon events; Sync now lives in the status bar and the
+      // palette (docs/web-app-controls.md).
       actions={
         <>
           <Tooltip>
@@ -103,24 +107,6 @@ function LensView({ lens }: { lens: MailLens }) {
             <TooltipContent>
               {listMode === "threads" ? "Showing conversations" : "Showing single messages"}
             </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Refresh"
-                onClick={() => void mailbox.refetch()}
-              >
-                <RefreshCw
-                  className={cn(
-                    "size-4",
-                    mailbox.isFetching && !mailbox.isFetchingNextPage && "animate-spin",
-                  )}
-                />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Refresh this list</TooltipContent>
           </Tooltip>
         </>
       }

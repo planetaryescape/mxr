@@ -3079,6 +3079,10 @@ pub async fn run() -> anyhow::Result<()> {
                             app.status_message = Some(format!("Subscriptions error: {e}"));
                         }
                         AsyncResult::OwedReplies(Ok(rows)) => {
+                            if rows.is_empty() && !app.mailbox.owed_page.entries.is_empty() {
+                                app.status_message =
+                                    Some(crate::app::LOW_TIDE.to_string());
+                            }
                             app.mailbox.owed_page.entries = rows;
                             app.mailbox.selected_index = app
                                 .mailbox

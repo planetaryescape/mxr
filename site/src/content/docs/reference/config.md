@@ -538,6 +538,12 @@ Supported events: `new-mail`, `sent`, `archived`, `trashed`, `spam`,
 Supported sounds: `none`, `bell`, `glass`, `pop`, `sent`, `archive`,
 `thud`, `alert`.
 
+The web app reads and writes the same setting (**Settings > Sound**, or
+`GET`/`POST /api/v1/platform/notifications/chimes` on the bridge) and plays
+`sent`, `archived` and `snoozed` in the browser. For requests that come from
+the web app the daemon plays nothing, so a sound never plays twice. See
+[Sound, key hints and touch](/guides/sound-hints-and-touch/).
+
 ## `llm`
 
 Optional LLM features (thread summarisation, draft assist). Disabled

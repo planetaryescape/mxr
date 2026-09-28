@@ -48,14 +48,25 @@ pub(crate) fn play_for_daemon_event(
 
 pub(crate) fn play_for_request_response(
     state: &AppState,
+    source: ClientKind,
     request: &Request,
     response: &Response,
 ) -> Option<ChimePlayback> {
+    if !plays_request_chimes(source) {
+        return None;
+    }
     let chime_event = event_for_request_response(request, response)?;
     Some(play_configured(
         &state.config_snapshot().notifications.chimes,
         chime_event,
     ))
+}
+
+/// The web plays its own chimes in the browser (where the person is, which
+/// may not be this machine), so the daemon playing too would double every
+/// sound. Daemon events such as new mail still chime for everyone.
+pub(crate) fn plays_request_chimes(source: ClientKind) -> bool {
+    source != ClientKind::Web
 }
 
 pub(crate) fn play_configured(config: &ChimeConfig, event: ChimeEvent) -> ChimePlayback {
@@ -232,6 +243,13 @@ mod tests {
             event_for_request_response(&archive_request, &archive_response),
             Some(ChimeEvent::Archived)
         );
+    }
+
+    #[test]
+    fn web_requests_leave_their_chimes_to_the_browser() {
+        assert!(!plays_request_chimes(ClientKind::Web));
+        assert!(plays_request_chimes(ClientKind::Tui));
+        assert!(plays_request_chimes(ClientKind::Cli));
     }
 
     #[test]

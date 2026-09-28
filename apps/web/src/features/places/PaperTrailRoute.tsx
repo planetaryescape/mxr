@@ -14,9 +14,16 @@ import {
 
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
+import { useLowTide } from "@/features/low-tide/lowTideMemory";
+import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
+import { performMailAction } from "@/features/mail-actions/mailMutations";
+import { targetFromRows } from "@/features/mail-actions/target";
+import { SwipeLayer, useRowSwipe, type SwipeLayerHandle } from "@/features/swipe/RowSwipe";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
+import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
+import { notePointerUse } from "@/lib/actions/keyHints";
 import { formatListDate, formatRelative, plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
 import { cn } from "@/lib/utils";
@@ -27,7 +34,14 @@ import type { PlaceBundle } from "./api";
 import { PlaceHeader, PlaceLayout } from "./PlaceLayout";
 import { bundleKey, bundleSender, paperTrailItems, whyHere, type PlaceItem } from "./placeCopy";
 import { messagesLeft } from "./placePaging";
-import { openMoveSender, openSweep, openUnsubscribe, togglePin } from "./placeVerbs";
+import {
+  openMoveSender,
+  openSweep,
+  openUnsubscribe,
+  placeMessageRow,
+  togglePin,
+} from "./placeVerbs";
+import { SweptClear } from "./SweptClear";
 import { usePlace } from "./usePlace";
 
 /** Messages listed per bundle when it opens, and per "more from" page. */
@@ -58,6 +72,8 @@ export function PaperTrailRoute() {
   );
   const total = place.totalMessages;
   const senders = place.totalBundles;
+  const phase = useDelayedPending(status.isLoading);
+  const lowTide = useLowTide("paper_trail", status.isLoading || status.isError, bundles.length > 0);
   return (
     <PlaceLayout basePath="/paper-trail" label="Paper trail" threadIds={threadIds}>
       <PlaceHeader
@@ -72,22 +88,23 @@ export function PaperTrailRoute() {
             <Button
               variant="outline"
               size="xs"
-              onClick={() =>
+              onClick={() => {
                 openSweep(
                   "paper_trail",
                   place.accountId,
                   undefined,
                   shownUnpinned(bundles, (bundle) => expanded.has(bundleKey(bundle))),
-                )
-              }
+                );
+                notePointerUse("place.sweep-all");
+              }}
             >
               Sweep all <KeyChip className="ml-1 h-4 px-1">S</KeyChip>
             </Button>
           ) : null
         }
       />
-      {status.isLoading ? (
-        <ListSkeleton />
+      {phase !== "ready" ? (
+        <ListSkeleton quiet={phase === "quiet"} />
       ) : status.isError ? (
         <Centered
           icon={<RefreshCw className="size-6" />}
@@ -99,6 +116,8 @@ export function PaperTrailRoute() {
             </Button>
           }
         />
+      ) : bundles.length === 0 && lowTide ? (
+        <SweptClear place="Paper trail" />
       ) : bundles.length === 0 ? (
         <Centered
           icon={<Receipt className="size-6" />}
@@ -138,6 +157,43 @@ function Bundles({
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
   }, [index]);
+
+  // Touch: swipe a sender right to preview sweeping it; swipe one message
+  // to archive, trash (long throw) or snooze it, with the usual undo.
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const swipeLayer = useRef<SwipeLayerHandle>(null);
+  useRowSwipe(
+    listRef,
+    {
+      rowSelector: '[data-testid="place-bundle"], [data-testid="place-message"]',
+      layer: swipeLayer,
+      resolve: (element) => {
+        const item = itemsRef.current[Number(element.dataset.index)];
+        if (!item) return null;
+        if (item.type === "bundle") {
+          return {
+            actions: { right: "sweep" },
+            commit: () => openSweep("paper_trail", account, item.bundle),
+          };
+        }
+        const ids = [item.message.message_id];
+        return {
+          actions: { right: "archive", rightLong: "trash", left: "snooze" },
+          commit: (action) => {
+            if (action === "archive" || action === "trash") void performMailAction(action, ids);
+            else if (action === "snooze") {
+              openMailDialog({
+                kind: "snooze",
+                target: targetFromRows([placeMessageRow(item.bundle, item.message)], "list"),
+              });
+            }
+          },
+        };
+      },
+    },
+    items.length > 0,
+  );
 
   const toggle = useCallback(
     (key: string) => {
@@ -205,7 +261,12 @@ function Bundles({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <ul ref={listRef} aria-label="Senders in Paper trail" className="max-w-[64rem] py-1">
+      <SwipeLayer ref={swipeLayer} />
+      <ul
+        ref={listRef}
+        aria-label="Senders in Paper trail"
+        className="max-w-[64rem] py-1 [touch-action:pan-y_pinch-zoom]"
+      >
         {items.map((item, position) => {
           if (item.type === "bundle") {
             return (
@@ -427,7 +488,10 @@ function BundleActions({
       {unpinned > 0 ? (
         <button
           type="button"
-          onClick={() => openSweep("paper_trail", account, bundle, shown)}
+          onClick={() => {
+            openSweep("paper_trail", account, bundle, shown);
+            notePointerUse("place.sweep-bundle");
+          }}
           className="hover:text-foreground"
         >
           Sweep {plural(unpinned, "message")}

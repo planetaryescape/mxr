@@ -1682,7 +1682,7 @@ pub async fn contacts_refresher_loop(state: Arc<AppState>, mut shutdown_rx: watc
                 continue;
             }
         }
-        match state.store.refresh_contacts().await {
+        match crate::handler::places::refresh_contacts(&state).await {
             Ok(n) => tracing::debug!(rows = n, "contacts refresher updated table"),
             Err(e) => tracing::warn!("Contacts refresh error: {e}"),
         }

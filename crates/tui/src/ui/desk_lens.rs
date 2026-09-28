@@ -48,7 +48,11 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &DeskView<'_>, theme: &crate::t
     } else if view.desk.row_count() == 0 {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            "  Nothing needs you right now.",
+            if view.desk.low_tide {
+                "  Low tide. Nobody's waiting on you."
+            } else {
+                "  Nothing needs you right now."
+            },
             Style::default().fg(theme.text_secondary),
         )));
     }
@@ -273,6 +277,7 @@ mod tests {
                 ..Default::default()
             },
             loaded: true,
+            low_tide: false,
         }
     }
 
@@ -323,6 +328,18 @@ mod tests {
         );
         assert!(rendered.contains("Eve]0;pwned"), "{rendered}");
         assert!(rendered.contains("Invoice[2J now31m"), "{rendered}");
+    }
+
+    #[test]
+    fn a_desk_you_cleared_says_low_tide() {
+        let mut cleared = desk(vec![], vec![]);
+        cleared.low_tide = true;
+        let rendered = render(&cleared);
+        assert!(
+            rendered.contains("Low tide. Nobody's waiting on you."),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("Nothing needs you right now."));
     }
 
     #[test]

@@ -64,7 +64,7 @@ export function ComposeActionBar({
 }: ComposeActionBarProps) {
   return (
     <footer className="shrink-0 border-t border-border bg-card/30">
-      <div className="mx-auto flex h-14 w-full max-w-[860px] items-center gap-2 px-5">
+      <div className="mx-auto flex min-h-14 w-full max-w-[860px] flex-wrap items-center gap-x-2 gap-y-1 px-5 py-2">
         <Button type="button" onClick={onSend} disabled={busy} className="gap-2">
           <Send className="size-4" />
           Send
@@ -88,7 +88,7 @@ export function ComposeActionBar({
           <DropdownMenuContent align="start" className="w-64">
             <DropdownMenuItem onSelect={() => onSendLater()}>
               <Clock className="size-3.5" />
-              Send later...
+              Send later…
               <DropdownMenuShortcut>⇧⌘L</DropdownMenuShortcut>
             </DropdownMenuItem>
             {onSendAndArchive ? (
@@ -106,7 +106,7 @@ export function ComposeActionBar({
               <DropdownMenuSubContent>
                 <RemindPresetItems onSendAndRemind={onSendAndRemind} />
                 <DropdownMenuItem onSelect={() => onSendAndRemindCustom()}>
-                  Custom...
+                  Custom…
                 </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
@@ -151,7 +151,7 @@ export function ComposeActionBar({
             Markdown
           </ToggleGroupItem>
         </ToggleGroup>
-        <div className="ml-auto flex min-w-0 items-center gap-3">
+        <div className="ml-auto flex min-w-0 shrink-0 items-center gap-3">
           <DraftQualityBadges suggestion={suggestion} compact />
           {saveError ? (
             <span role="alert" className="flex min-w-0 items-center gap-1.5">
@@ -170,7 +170,12 @@ export function ComposeActionBar({
               </Button>
             </span>
           ) : (
-            <span className={cn("text-2xs", dirty ? "text-warning" : "text-success")}>
+            <span
+              className={cn(
+                "whitespace-nowrap text-2xs",
+                dirty ? "text-warning" : "text-muted-foreground",
+              )}
+            >
               {saveStatus}
             </span>
           )}

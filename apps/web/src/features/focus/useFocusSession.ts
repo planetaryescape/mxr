@@ -11,6 +11,7 @@ import { useEffect, useReducer, useRef } from "react";
 import { fetchAccounts } from "@/features/accounts/api";
 import { DESK_FULL_LANE_LIMIT, deskKey, fetchDesk, type DeskRow } from "@/features/desk/api";
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
+import type { ComposeIntent } from "@/features/compose/session/composeDraft";
 import { onSendEvent } from "@/features/compose/session/sendEvents";
 import { invalidateMailQueries } from "@/features/mail-actions/mailMutations";
 import { fetchThread } from "@/features/mailbox/api";
@@ -26,8 +27,8 @@ import {
   type FocusItem,
 } from "./focusQueue";
 
-export function focusReplyIntent(item: FocusItem) {
-  return replyIntent(item.messageId, "single");
+export function focusReplyIntent(item: FocusItem): ComposeIntent {
+  return { ...replyIntent(item.messageId, "single"), quiet: true };
 }
 
 /** Account ids a scope covers: that account, or every enabled one. */

@@ -445,6 +445,7 @@ pub struct AppState {
     pub account_addresses: Arc<mxr_core::types::InMemoryAccountAddressLookup>,
     /// Sweep dry runs waiting to be committed, by preview token.
     pub(crate) sweep_previews: crate::handler::places::SweepPreviews,
+    pub(crate) sweep_gate: crate::handler::places::SweepGate,
     runtime: RwLock<ProviderRuntime>,
     provider_operation_locks: ParkingMutex<HashMap<AccountId, Arc<TokioMutex<()>>>>,
     sync_loop_accounts: ParkingMutex<HashSet<AccountId>>,
@@ -734,6 +735,7 @@ impl AppState {
             sync_engine,
             account_addresses,
             sweep_previews: Default::default(),
+            sweep_gate: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
                 providers: provider_setup.providers,
                 send_providers: provider_setup.send_providers,
@@ -1855,6 +1857,7 @@ impl AppState {
             sync_engine,
             account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
             sweep_previews: Default::default(),
+            sweep_gate: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
                 providers,
                 send_providers,
@@ -1926,6 +1929,7 @@ impl AppState {
             sync_engine,
             account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
             sweep_previews: Default::default(),
+            sweep_gate: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
                 providers: HashMap::new(),
                 send_providers: HashMap::new(),
@@ -2023,6 +2027,7 @@ impl AppState {
                 sync_engine,
                 account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
                 sweep_previews: Default::default(),
+                sweep_gate: Default::default(),
                 runtime: RwLock::new(ProviderRuntime {
                     providers,
                     send_providers,

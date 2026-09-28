@@ -5,10 +5,16 @@ vi.mock("@/features/mailbox/api", () => ({
   undoMutation: (id: string) => undoMutation(id),
   unsnoozeMessage: vi.fn<() => Promise<void>>(),
 }));
-vi.mock("./mailQueryInvalidation", () => ({ invalidateMailQueries: vi.fn<() => Promise<void>>(async () => {}) }));
+vi.mock("./mailQueryInvalidation", () => ({
+  invalidateMailQueries: vi.fn<() => Promise<void>>(async () => {}),
+}));
 const toastError = vi.fn<(...args: unknown[]) => void>();
 vi.mock("sonner", () => ({
-  toast: Object.assign(vi.fn<() => void>(), { success: vi.fn<() => void>(), error: (...args: unknown[]) => toastError(...args), dismiss: vi.fn<() => void>() }),
+  toast: Object.assign(vi.fn<() => void>(), {
+    success: vi.fn<() => void>(),
+    error: (...args: unknown[]) => toastError(...args),
+    dismiss: vi.fn<() => void>(),
+  }),
 }));
 
 import { useUndo } from "@/state/undoStore";
@@ -22,7 +28,9 @@ describe("a partly failed undo", () => {
 
   it("offers u and a Retry that undo the same id again", async () => {
     undoMutation.mockRejectedValueOnce(
-      new Error("undo: partly done: restored 3, 1 failed and can be retried with the same undo (x)"),
+      new Error(
+        "undo: partly done: restored 3, 1 failed and can be retried with the same undo (x)",
+      ),
     );
     expect(await performUndo("m-1")).toBe(false);
     expect(toastError).toHaveBeenCalledWith(

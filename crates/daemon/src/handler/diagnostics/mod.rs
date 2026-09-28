@@ -560,7 +560,7 @@ pub(crate) async fn list_contact_decay(
 }
 
 pub(crate) async fn refresh_contacts(state: &AppState) -> HandlerResult {
-    let rows = state.store.refresh_contacts().await?;
+    let rows = crate::handler::places::refresh_contacts(state).await?;
     Ok(ResponseData::RefreshedContacts { rows })
 }
 

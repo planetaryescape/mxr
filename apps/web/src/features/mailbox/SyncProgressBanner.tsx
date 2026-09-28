@@ -1,4 +1,5 @@
 import { Alert } from "@/components/ui/alert";
+import { plural } from "@/lib/format";
 import { useConnectionStore } from "@/state/connectionStore";
 
 export function SyncProgressBanner() {
@@ -10,7 +11,7 @@ export function SyncProgressBanner() {
       data-sync-banner
       className="rounded-none border-x-0 border-t-0 border-primary/30 bg-primary-muted px-4 py-2 text-xs text-foreground"
     >
-      Syncing {sync.current} of {sync.total} messages
+      Syncing {sync.current.toLocaleString()} of {plural(sync.total, "message")}
     </Alert>
   );
 }

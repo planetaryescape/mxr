@@ -70,10 +70,10 @@ beforeEach(() => {
       banner_counter: "Counter-proposal received",
     },
     status: {
-      invite_pending_accept: "Accepting invite — u to undo (1s)",
+      invite_pending_accept: "Accepting invite: u to undo (1s)",
       invite_pending_tentative: "Tentative — u to undo (1s)",
       invite_pending_decline: "Declining — u to undo (1s)",
-      invite_cancelled: "Cancelled — no reply sent",
+      invite_cancelled: "Cancelled, no reply sent",
     },
   });
   vi.useFakeTimers({ shouldAdvanceTime: true });

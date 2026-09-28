@@ -5,6 +5,8 @@ import { getCM, Vim, vim } from "@replit/codemirror-vim";
 import { basicSetup } from "codemirror";
 import { useEffect, useRef, useState } from "react";
 
+import { isComposeChord } from "@/features/compose/session/composeShortcuts";
+
 interface CodeMirrorComposeEditorProps {
   value: string;
   onChange: (value: string) => void;
@@ -15,6 +17,8 @@ interface CodeMirrorComposeEditorProps {
    * a closable surface. */
   onClose?: () => void;
   autoFocus?: boolean;
+  /** Focus mode: a one-word mode indicator instead of the status row. */
+  quiet?: boolean;
 }
 
 const tokenTheme = EditorView.theme({
@@ -54,6 +58,7 @@ export function CodeMirrorComposeEditor({
   onDiscard,
   onClose,
   autoFocus = false,
+  quiet = false,
 }: CodeMirrorComposeEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -88,6 +93,12 @@ export function CodeMirrorComposeEditor({
           Prec.highest(
             EditorView.domEventHandlers({
               keydown: (event) => {
+                // Held send, save and discard chords run once; the keymap
+                // below never sees their repeats.
+                if (event.repeat && isComposeChord(event)) {
+                  event.preventDefault();
+                  return true;
+                }
                 if (!isSendChord(event)) return false;
                 event.preventDefault();
                 callbacksRef.current.onSend();
@@ -148,15 +159,26 @@ export function CodeMirrorComposeEditor({
   }, [value]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="relative flex h-full min-h-0 flex-col">
       <div ref={hostRef} className="min-h-0 flex-1" />
-      <div
-        aria-live="polite"
-        className="flex h-5 shrink-0 items-center justify-between border-t border-border/60 px-3 font-mono text-2xs uppercase tracking-wide text-muted-foreground"
-      >
-        <span data-testid="vim-mode">-- {vimMode} --</span>
-        <span className="normal-case tracking-normal">:w save · :q close · :wq both</span>
-      </div>
+      {quiet ? (
+        // Focus mode: the mode as one small word, nothing else.
+        <span
+          aria-live="polite"
+          data-testid="vim-mode"
+          className="pointer-events-none absolute bottom-1.5 right-3 font-mono text-2xs lowercase text-muted-foreground/80"
+        >
+          {vimMode}
+        </span>
+      ) : (
+        <div
+          aria-live="polite"
+          className="flex h-5 shrink-0 items-center justify-between border-t border-border/60 px-3 font-mono text-2xs uppercase tracking-wide text-muted-foreground"
+        >
+          <span data-testid="vim-mode">-- {vimMode} --</span>
+          <span className="normal-case tracking-normal">:w save · :q close · :wq both</span>
+        </div>
+      )}
     </div>
   );
 }

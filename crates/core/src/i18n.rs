@@ -165,16 +165,16 @@ pub const EN: Locale = Locale {
         hint_comment: "Shift+iA/iM/iD to comment",
 
         banner_cancelled: "Event canceled by organizer",
-        banner_publish: "Informational \u{2014} no reply expected",
+        banner_publish: "Informational, no reply expected",
         banner_parse_warning: "Calendar invite could not be parsed",
         banner_updated: "Updated invite",
         banner_counter: "Counter-proposal received",
     },
     status: StatusStrings {
-        invite_pending_accept: "Accepting invite \u{2014} u to undo (1s)",
-        invite_pending_tentative: "Tentatively accepting invite \u{2014} u to undo (1s)",
-        invite_pending_decline: "Declining invite \u{2014} u to undo (1s)",
-        invite_cancelled: "Cancelled \u{2014} no reply sent",
+        invite_pending_accept: "Accepting invite: u to undo (1s)",
+        invite_pending_tentative: "Tentatively accepting invite: u to undo (1s)",
+        invite_pending_decline: "Declining invite: u to undo (1s)",
+        invite_cancelled: "Cancelled, no reply sent",
     },
 };
 

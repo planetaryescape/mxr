@@ -1,37 +1,27 @@
-/* Past-tense wording for a mail action, used in progress and result toasts. */
+/*
+ * Past-tense wording for a mail action, used in progress and result toasts.
+ * The words come from the verb table; only the ones that name a label are
+ * built here.
+ */
 
 import type { MailAction, MailActionPayload } from "./pendingMailOps";
+import { VERB_FEEDBACK } from "./verbFeedback";
 
 export function verb(action: MailAction, payload?: MailActionPayload): string {
+  const label = payload?.label;
   switch (action) {
-    case "archive":
-      return "Archived";
-    case "trash":
-      return "Moved to Trash";
-    case "spam":
-      return "Marked as spam";
-    case "star":
-      return "Starred";
-    case "unstar":
-      return "Unstarred";
-    case "read":
-      return "Marked read";
-    case "unread":
-      return "Marked unread";
-    case "read-and-archive":
-      return "Read and archived";
     case "move":
-      return payload?.label ? `Moved to ${payload.label}` : "Moved";
+      return label ? `Moved to ${label}` : VERB_FEEDBACK.move.pastTense;
     case "route":
-      return payload?.label ? `Routed to ${payload.label}` : "Routed";
+      return label ? `Routed to ${label}` : VERB_FEEDBACK.route.pastTense;
     case "label-add":
-      return payload?.label ? `Labelled ${payload.label}` : "Labelled";
+      return label ? `Labelled ${label}` : VERB_FEEDBACK["label-add"].pastTense;
     case "label-remove":
-      return payload?.label ? `Removed ${payload.label}` : "Label removed";
+      return label ? `Removed ${label}` : VERB_FEEDBACK["label-remove"].pastTense;
     case "labels":
       return labelChangeVerb(payload);
-    case "snooze":
-      return "Snoozed";
+    default:
+      return VERB_FEEDBACK[action].pastTense;
   }
 }
 

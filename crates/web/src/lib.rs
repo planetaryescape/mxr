@@ -7,6 +7,7 @@
     )
 )]
 
+mod chime_routes;
 mod chrome;
 mod envelope_list;
 mod insight_routes;

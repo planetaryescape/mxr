@@ -12,6 +12,28 @@ import { isMacPlatform, tokenFromEvent, type KeyToken } from "./chord";
 
 export const SEQUENCE_TIMEOUT_MS = 1000;
 
+/**
+ * The only actions a held key repeats: moving and scrolling. Everything
+ * else (archive, trash, send, snooze, star, sweep, done…) runs once per
+ * press, however long the key is held, so a held `e` can't empty a list.
+ */
+export const REPEATABLE_ACTION_IDS: ReadonlySet<string> = new Set([
+  "list.down",
+  "list.up",
+  "list.page-down",
+  "list.page-up",
+  "sidebar.down",
+  "sidebar.up",
+  "place.down",
+  "place.up",
+  "reader.scroll-down",
+  "reader.scroll-up",
+  "reader.page-down",
+  "reader.page-up",
+  "reader.next-message",
+  "reader.prev-message",
+]);
+
 export interface DispatcherOptions {
   registry: ActionRegistry;
   context: () => ActionContext;
@@ -77,6 +99,7 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
           : undefined;
       if (!global || options.isSuspended?.()) return;
       event.preventDefault();
+      if (event.repeat) return;
       clear();
       invokeAction(global.action, options.context());
       return;
@@ -89,6 +112,17 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
     const chord = sequence.join(" ");
     const exact = registry.resolve(chord, scopes);
     const continues = registry.hasContinuation(chord, scopes);
+
+    if (event.repeat) {
+      // A held key: only movement repeats, and a repeat never starts or
+      // extends a chord. Anything the key would do is still claimed, so the
+      // browser doesn't act on it either.
+      if (exact || continues) event.preventDefault();
+      if (exact && !continues && REPEATABLE_ACTION_IDS.has(exact.action.id)) {
+        invokeAction(exact.action, ctx);
+      }
+      return;
+    }
 
     if (exact && !continues) {
       event.preventDefault();

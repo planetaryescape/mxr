@@ -174,8 +174,10 @@ impl Fixture {
         }
     }
 
+    /// Waits for the job to finish. Only a deadline, never an ordering: on a
+    /// loaded CI runner two chunks of 100 took longer than the old 4 s.
     async fn wait_for_job(&self, job_id: &str) -> JobData {
-        for _ in 0..200 {
+        for _ in 0..3000 {
             if let ResponseData::Job { job } = self
                 .send(Request::GetJob {
                     job_id: job_id.to_string(),
@@ -694,6 +696,61 @@ async fn a_sweep_job_leaves_out_messages_pinned_before_their_chunk() {
     }
 }
 
+/// A pin that lands while a sweep job is running, just before a chunk's
+/// recheck, keeps its message. The sweep gate orders them: the test holds
+/// it the way a pin request does, pins, then lets the chunk run.
+#[tokio::test]
+async fn a_pin_made_while_a_sweep_runs_keeps_its_message() {
+    let fx = Fixture::new().await;
+    let mut ids = Vec::new();
+    for index in 0..3 {
+        ids.push(
+            fx.inbound(
+                &fx.account,
+                ROBOT,
+                &format!("Receipt {index}"),
+                Duration::minutes(index),
+                false,
+            )
+            .await
+            .id,
+        );
+    }
+    let pinned = ids[1].clone();
+    let pinning = fx.state.sweep_gate.change([&fx.account]).await;
+    let started = super::mutations::start_mutation_job(
+        fx.state.clone(),
+        MutationCommand::Archive {
+            message_ids: ids.clone(),
+        },
+        None,
+        super::mutations::ChunkGuard::Sweep(paper_trail_scope(&fx)),
+    )
+    .await
+    .unwrap();
+    let ResponseData::JobStarted { job } = started else {
+        panic!("expected a job");
+    };
+    // The job is queued behind the pin: nothing is archived yet.
+    for id in &ids {
+        assert!(fx.in_inbox(id).await);
+    }
+    fx.state
+        .store
+        .set_message_pins(std::slice::from_ref(&pinned), true)
+        .await
+        .unwrap();
+    drop(pinning);
+
+    let job = fx.wait_for_job(&job.job_id).await;
+    assert_eq!(job.status, JobStatusData::Succeeded, "{job:?}");
+    assert_eq!(job.progress.succeeded, 2);
+    assert_eq!(job.progress.skipped, 1);
+    assert!(fx.in_inbox(&pinned).await);
+    assert!(!fx.in_inbox(&ids[0]).await);
+    assert!(!fx.in_inbox(&ids[2]).await);
+}
+
 #[tokio::test]
 async fn a_bundle_pages_through_its_messages() {
     let fx = Fixture::new().await;
@@ -868,4 +925,176 @@ async fn a_partly_failed_undo_keeps_what_failed_for_a_retry() {
         })
         .await;
     assert!(again.contains("restored 0, 1 failed"), "{again}");
+}
+
+/// Each account has its own sweep gate, and a sweep only takes it after its
+/// provider lock: a pin in one account completes while another account's
+/// sweep waits behind that account's provider (a long sync, say).
+#[tokio::test]
+async fn a_pin_in_one_account_never_waits_on_another_accounts_sweep() {
+    let fx = Fixture::new().await;
+    let other = mxr_core::Account {
+        id: mxr_core::AccountId::new(),
+        name: "Other".into(),
+        email: "other@example.com".into(),
+        sync_backend: None,
+        send_backend: None,
+        enabled: true,
+    };
+    fx.state.store.insert_account(&other).await.unwrap();
+    fx.inbox_label(&other.id).await;
+    let theirs = fx
+        .inbound(&other.id, ROBOT, "Their receipt", Duration::hours(1), false)
+        .await;
+    let mine = fx
+        .inbound(&fx.account, ROBOT, "My receipt", Duration::hours(2), false)
+        .await;
+
+    // The default account's provider is busy: its sweep can't archive yet.
+    let syncing = fx.state.acquire_provider_operation(&fx.account).await;
+    let started = super::mutations::start_mutation_job(
+        fx.state.clone(),
+        MutationCommand::Archive {
+            message_ids: vec![mine.id.clone()],
+        },
+        None,
+        super::mutations::ChunkGuard::Sweep(paper_trail_scope(&fx)),
+    )
+    .await
+    .unwrap();
+    let ResponseData::JobStarted { job } = started else {
+        panic!("expected a job");
+    };
+    // The sweep has reached its message and waits on the provider.
+    fx.state.sweep_gate.before_provider.notified().await;
+
+    // A pin in the other account goes through at once. The timeout only
+    // turns a hang into a failure; nothing waits on it to pass.
+    let pinned = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        fx.send(Request::PinMessages {
+            message_ids: vec![theirs.id.clone()],
+            pinned: true,
+        }),
+    )
+    .await
+    .expect("a pin in another account must not wait on this sweep");
+    assert!(matches!(
+        pinned,
+        ResponseData::MessagesPinned { changed: 1, .. }
+    ));
+    // So does a sender move there.
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        fx.send(Request::SetSenderKind {
+            account_id: other.id.clone(),
+            sender_email: ROBOT.into(),
+            kind: Some(SenderKindData::Reading),
+        }),
+    )
+    .await
+    .expect("a sender move in another account must not wait on this sweep");
+    assert!(fx.in_inbox(&mine.id).await, "the sweep is still waiting");
+
+    drop(syncing);
+    let job = fx.wait_for_job(&job.job_id).await;
+    assert_eq!(job.status, JobStatusData::Succeeded, "{job:?}");
+    assert!(!fx.in_inbox(&mine.id).await);
+}
+
+/// A screener Allow for the sender, made while a sweep waits on the
+/// provider, takes its mail out of Paper trail: the sweep sees the change
+/// at the message and leaves it.
+#[tokio::test]
+async fn an_allow_made_during_a_sweep_keeps_the_message() {
+    let fx = Fixture::new().await;
+    let receipt = fx
+        .inbound(&fx.account, ROBOT, "Receipt", Duration::hours(1), false)
+        .await;
+    let syncing = fx.state.acquire_provider_operation(&fx.account).await;
+    let started = super::mutations::start_mutation_job(
+        fx.state.clone(),
+        MutationCommand::Archive {
+            message_ids: vec![receipt.id.clone()],
+        },
+        None,
+        super::mutations::ChunkGuard::Sweep(paper_trail_scope(&fx)),
+    )
+    .await
+    .unwrap();
+    let ResponseData::JobStarted { job } = started else {
+        panic!("expected a job");
+    };
+    // Past the chunk's recheck, waiting on the provider.
+    fx.state.sweep_gate.before_provider.notified().await;
+    fx.send(Request::SetScreenerDecision {
+        account_id: fx.account.clone(),
+        sender_email: ROBOT.into(),
+        disposition: mxr_protocol::ScreenerDispositionData::Allow,
+        route_label: None,
+    })
+    .await;
+    drop(syncing);
+
+    let job = fx.wait_for_job(&job.job_id).await;
+    assert_eq!(job.status, JobStatusData::Succeeded, "{job:?}");
+    assert_eq!(job.progress.succeeded, 0);
+    assert_eq!(job.progress.skipped, 1);
+    assert!(fx.in_inbox(&receipt.id).await, "allowed mid-sweep");
+}
+
+/// Pins across accounts take one account's gate at a time: waiting on a
+/// busy account never holds another account's gate.
+#[tokio::test]
+async fn pins_across_accounts_never_hold_one_gate_while_waiting_for_another() {
+    let fx = Fixture::new().await;
+    let other = mxr_core::Account {
+        id: mxr_core::AccountId::new(),
+        name: "Other".into(),
+        email: "other@example.com".into(),
+        sync_backend: None,
+        send_backend: None,
+        enabled: true,
+    };
+    fx.state.store.insert_account(&other).await.unwrap();
+    fx.inbox_label(&other.id).await;
+    let theirs = fx
+        .inbound(&other.id, ROBOT, "Their receipt", Duration::hours(1), false)
+        .await;
+    let mine = fx
+        .inbound(&fx.account, ROBOT, "My receipt", Duration::hours(2), false)
+        .await;
+
+    for busy in [&fx.account, &other.id] {
+        let idle = if busy == &fx.account {
+            &other.id
+        } else {
+            &fx.account
+        };
+        let holding = fx.state.sweep_gate.change([busy]).await;
+        let state = fx.state.clone();
+        let ids = vec![mine.id.clone(), theirs.id.clone()];
+        let pinning = tokio::spawn(async move {
+            let msg = IpcMessage {
+                id: 1,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::PinMessages {
+                    message_ids: ids,
+                    pinned: true,
+                }),
+            };
+            handle_request(&state, &msg).await
+        });
+        // The idle account's gate stays free while the pin waits on the
+        // busy one. The timeout only turns a hang into a failure.
+        let idle_gate = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            fx.state.sweep_gate.change([idle]),
+        )
+        .await
+        .expect("the idle account's gate must not be held while waiting");
+        drop(idle_gate);
+        drop(holding);
+        pinning.await.unwrap();
+    }
 }

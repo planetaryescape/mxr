@@ -9,6 +9,8 @@ import { Centered } from "@/features/mailbox/MailViewParts";
 import { useOpenThread } from "@/state/openThreadStore";
 
 import { threadContextQuery, threadGistQuery } from "./context/api";
+import { useDelayedPending } from "@/hooks/useDelayedPending";
+
 import { ReaderSkeleton } from "./ReaderSkeleton";
 import { ThreadReader } from "./ThreadReader";
 
@@ -32,6 +34,8 @@ export function ThreadPane({ threadId }: { threadId: string }) {
   useEffect(() => {
     if (llm.enabled) void queryClient.prefetchQuery(threadGistQuery(threadId, policy));
   }, [llm.enabled, policy, queryClient, threadId]);
+  // The thread's error shows at once; only a load waits on the skeleton rule.
+  const phase = useDelayedPending(!query.isError && (query.isLoading || context.isLoading));
   const setOpenThread = useOpenThread((s) => s.setThreadId);
   useEffect(() => {
     setOpenThread(threadId);
@@ -57,7 +61,7 @@ export function ThreadPane({ threadId }: { threadId: string }) {
       </div>
     );
   }
-  if (query.isLoading || context.isLoading) return <ReaderSkeleton />;
+  if (phase !== "ready") return <ReaderSkeleton quiet={phase === "quiet"} />;
   if (!query.data) return null;
   // No placeholder data: while the next thread loads, the previous thread's
   // controller must not stay mounted, or keys would act on the wrong thread.

@@ -10,9 +10,12 @@ import { Topbar } from "@/components/Topbar";
 import { fetchAccounts } from "@/features/accounts/api";
 import { llmStatusQuery } from "@/features/llm/useLlmStatus";
 import { useNewMessageNotifier } from "@/features/notifications/useNewMessageNotifier";
+import { chimeSettingsQuery } from "@/features/sound/api";
+import { installSoundFeedback } from "@/features/sound/feedback";
 import { useKeyDispatcher } from "@/hooks/useKeyDispatcher";
 import { NARROW_SHELL_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { setRuntimeNavigate } from "@/lib/actions";
+import { installKeyHints } from "@/lib/actions/keyHints";
 import { useComposeUi } from "@/features/compose/composeUiStore";
 import { useMailDialogs } from "@/features/mail-actions/mailDialogStore";
 import { usePromiseOffers } from "@/features/promises/promiseOffers";
@@ -76,7 +79,11 @@ export function AppShell() {
   const queryClient = useQueryClient();
   useEffect(() => {
     void queryClient.prefetchQuery(llmStatusQuery);
+    // The sound setting, read by the player from the cache when it plays.
+    void queryClient.prefetchQuery(chimeSettingsQuery);
   }, [queryClient]);
+  useEffect(() => installSoundFeedback(), []);
+  useEffect(() => installKeyHints(), []);
   const sidebarCollapsed = useUiPrefs((s) => s.sidebarCollapsed);
   const narrow = useMediaQuery(NARROW_SHELL_QUERY);
   const rightRail = useModals((s) => s.rightRail);

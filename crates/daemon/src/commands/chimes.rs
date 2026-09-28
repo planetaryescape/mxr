@@ -2,8 +2,8 @@ use crate::cli::{ChimeEventArg, ChimeSoundArg, ChimesAction, OutputFormat};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::{
-    NotificationChimeEventData, NotificationChimeSoundData, NotificationChimesData, Request,
-    Response, ResponseData,
+    NotificationChimeEventData, NotificationChimeSoundData, NotificationChimesData,
+    NotificationChimesPatchData, Request, Response, ResponseData,
 };
 
 pub async fn run(action: Option<ChimesAction>, format: Option<OutputFormat>) -> anyhow::Result<()> {
@@ -17,21 +17,16 @@ pub async fn run(action: Option<ChimesAction>, format: Option<OutputFormat>) -> 
             println!("{}", render_chimes(&config, fmt)?);
         }
         ChimesAction::Enable => {
-            let mut config = fetch_chimes(&mut client).await?;
-            config.enabled = true;
-            let saved = update_chimes(&mut client, config).await?;
+            let saved = patch_chimes(&mut client, enabled_patch(true)).await?;
             println!("{}", render_chimes(&saved, fmt)?);
         }
         ChimesAction::Disable => {
-            let mut config = fetch_chimes(&mut client).await?;
-            config.enabled = false;
-            let saved = update_chimes(&mut client, config).await?;
+            let saved = patch_chimes(&mut client, enabled_patch(false)).await?;
             println!("{}", render_chimes(&saved, fmt)?);
         }
         ChimesAction::Set { event, sound } => {
-            let mut config = fetch_chimes(&mut client).await?;
-            set_event_sound(&mut config, event_arg(event), sound_arg(sound));
-            let saved = update_chimes(&mut client, config).await?;
+            let patch = event_sound_patch(event_arg(event), sound_arg(sound));
+            let saved = patch_chimes(&mut client, patch).await?;
             println!("{}", render_chimes(&saved, fmt)?);
         }
         ChimesAction::Test { event } => {
@@ -67,13 +62,15 @@ async fn fetch_chimes(client: &mut IpcClient) -> anyhow::Result<NotificationChim
     })
 }
 
-async fn update_chimes(
+/// Only the changed field goes to the daemon, which applies it to the
+/// setting as it is then, so another client's change is never undone.
+async fn patch_chimes(
     client: &mut IpcClient,
-    config: NotificationChimesData,
+    patch: NotificationChimesPatchData,
 ) -> anyhow::Result<NotificationChimesData> {
     let response = client
-        .request(Request::UpdateNotificationChimes {
-            config: Box::new(config),
+        .request(Request::PatchNotificationChimes {
+            patch: Box::new(patch),
         })
         .await?;
     crate::commands::expect_response(response, |r| match r {
@@ -131,22 +128,31 @@ fn render_preview(
     })
 }
 
-fn set_event_sound(
-    config: &mut NotificationChimesData,
+fn enabled_patch(enabled: bool) -> NotificationChimesPatchData {
+    NotificationChimesPatchData {
+        enabled: Some(enabled),
+        ..Default::default()
+    }
+}
+
+fn event_sound_patch(
     event: NotificationChimeEventData,
     sound: NotificationChimeSoundData,
-) {
-    match event {
-        NotificationChimeEventData::NewMail => config.new_mail = sound,
-        NotificationChimeEventData::Sent => config.sent = sound,
-        NotificationChimeEventData::Archived => config.archived = sound,
-        NotificationChimeEventData::Trashed => config.trashed = sound,
-        NotificationChimeEventData::Spam => config.spam = sound,
-        NotificationChimeEventData::Snoozed => config.snoozed = sound,
-        NotificationChimeEventData::Unsnoozed => config.unsnoozed = sound,
-        NotificationChimeEventData::Reminder => config.reminder = sound,
-        NotificationChimeEventData::Error => config.error = sound,
-    }
+) -> NotificationChimesPatchData {
+    let mut patch = NotificationChimesPatchData::default();
+    let slot = match event {
+        NotificationChimeEventData::NewMail => &mut patch.new_mail,
+        NotificationChimeEventData::Sent => &mut patch.sent,
+        NotificationChimeEventData::Archived => &mut patch.archived,
+        NotificationChimeEventData::Trashed => &mut patch.trashed,
+        NotificationChimeEventData::Spam => &mut patch.spam,
+        NotificationChimeEventData::Snoozed => &mut patch.snoozed,
+        NotificationChimeEventData::Unsnoozed => &mut patch.unsnoozed,
+        NotificationChimeEventData::Reminder => &mut patch.reminder,
+        NotificationChimeEventData::Error => &mut patch.error,
+    };
+    *slot = Some(sound);
+    patch
 }
 
 fn event_label(event: NotificationChimeEventData) -> &'static str {
@@ -228,17 +234,18 @@ mod tests {
     }
 
     #[test]
-    fn set_event_sound_updates_only_requested_action() {
-        let mut config = NotificationChimesData::default();
-
-        set_event_sound(
-            &mut config,
+    fn set_event_sound_patches_only_requested_action() {
+        let patch = event_sound_patch(
             NotificationChimeEventData::Archived,
             NotificationChimeSoundData::Glass,
         );
 
-        assert_eq!(config.archived, NotificationChimeSoundData::Glass);
-        assert_eq!(config.sent, NotificationChimeSoundData::Sent);
-        assert_eq!(config.new_mail, NotificationChimeSoundData::Bell);
+        assert_eq!(
+            patch,
+            NotificationChimesPatchData {
+                archived: Some(NotificationChimeSoundData::Glass),
+                ..Default::default()
+            }
+        );
     }
 }

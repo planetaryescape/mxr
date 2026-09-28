@@ -20,26 +20,34 @@ function placeAction(
 
 export const placeActions: Action[] = [
   placeAction("place.down", "down", "Next", "j", {
+    shortLabel: "Next",
     group: "Move",
     aliases: ["ArrowDown"],
     hideInPalette: true,
   }),
   placeAction("place.up", "up", "Previous", "k", {
+    shortLabel: "Previous",
     group: "Move",
     aliases: ["ArrowUp"],
     hideInPalette: true,
   }),
   placeAction("place.open", "open", "Open, or expand a bundle", "Enter", {
+    shortLabel: "Open",
     group: "Move",
     aliases: ["o"],
     hideInPalette: true,
   }),
-  placeAction("place.pin", "pin", "Pin or unpin (a sweep leaves pins)", "p", { icon: Pin }),
+  placeAction("place.pin", "pin", "Pin or unpin (a sweep leaves pins)", "p", {
+    shortLabel: "Pin",
+    icon: Pin,
+  }),
   placeAction("place.sweep-bundle", "sweepBundle", "Sweep this sender's bundle…", "s", {
+    shortLabel: "Sweep sender",
     icon: Archive,
     tuiNote: "Previews the daemon's dry run first; undo afterwards",
   }),
   placeAction("place.sweep-all", "sweepAll", "Sweep the whole place…", "S", {
+    shortLabel: "Sweep all",
     icon: Archive,
     tuiNote: "Everything unpinned here; previews first",
   }),

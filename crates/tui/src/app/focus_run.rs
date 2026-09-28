@@ -104,7 +104,7 @@ impl App {
                 let total = run.total;
                 self.focus_run = None;
                 self.push_toast(Toast::success(format!(
-                    "That's everyone in the reply queue ({total} replied)."
+                    "Low tide. That's everyone in the reply queue ({total} replied)."
                 )));
             }
         }

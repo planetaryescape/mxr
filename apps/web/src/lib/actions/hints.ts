@@ -16,6 +16,8 @@ export interface ShortcutHint {
   id: string;
   keys: string[];
   label: string;
+  /** What the status bar shows. */
+  shortLabel: string;
   note?: string;
   /** Available right now (scope mounted, predicate true). */
   live: boolean;
@@ -54,6 +56,7 @@ function hint(action: Action, ctx: ActionContext): ShortcutHint {
     id: action.id,
     keys: chordsOf(action).map((chord) => formatChord(chord)),
     label: action.label,
+    shortLabel: action.shortLabel ?? action.label.replace(/…$/, ""),
     note: action.tuiNote,
     live: isAvailable(action, ctx),
   };

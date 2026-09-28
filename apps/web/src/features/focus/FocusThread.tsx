@@ -23,6 +23,7 @@ import { ContextBlock } from "@/features/thread/context/ContextBlock";
 import { HeadersDialog } from "@/features/thread/HeadersDialog";
 import { MessageCard } from "@/features/thread/MessageCard";
 import { ReaderSkeleton } from "@/features/thread/ReaderSkeleton";
+import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { plural } from "@/lib/format";
 import { useUiPrefs, type ReaderView } from "@/state/uiPrefsStore";
 
@@ -44,6 +45,7 @@ export function FocusThread({ threadId }: { threadId: string }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [remoteAllowed, setRemoteAllowed] = useState(false);
   const [headersFor, setHeadersFor] = useState<string | null>(null);
+  const phase = useDelayedPending(thread.isLoading);
   const resolve = useMutation({
     mutationFn: resolveCommitment,
     onSuccess: () => {
@@ -53,7 +55,7 @@ export function FocusThread({ threadId }: { threadId: string }) {
     onError: (error) => toast.error("Couldn't mark it done", { description: error.message }),
   });
 
-  if (thread.isLoading) return <ReaderSkeleton />;
+  if (phase !== "ready") return <ReaderSkeleton quiet={phase === "quiet"} />;
   if (thread.isError || !thread.data) {
     return (
       <p className="px-5 py-6 text-sm text-muted-foreground">

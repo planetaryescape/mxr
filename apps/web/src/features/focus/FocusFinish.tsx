@@ -1,26 +1,15 @@
 /*
  * The end of a focus session: calm and specific. It names what comes next,
  * the soonest promise you made that is still open, so finishing points
- * somewhere instead of at an empty page. `data-slot="focus-finish-moment"`
- * is where a celebration can go later; nothing celebrates here yet.
+ * somewhere instead of at an empty page. Working through the whole queue
+ * earns the low tide scene in `data-slot="focus-finish-moment"`.
  */
-
-import { useQueries } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { KeyChip } from "@/components/KeyChip";
-import { listCommitments } from "@/features/mailbox/api";
-import type { Commitment } from "@/features/promises/api";
+import { LowTideScene } from "@/features/low-tide/LowTide";
+import { dueDay, useNextPromise } from "@/features/promises/useNextPromise";
 import { plural } from "@/lib/format";
-import { useUiPrefs } from "@/state/uiPrefsStore";
-
-import { useScopeAccountIds } from "./useFocusSession";
-
-/** An open promise of yours with its due instant parsed. */
-interface DuePromise {
-  commitment: Commitment;
-  due: number;
-}
 
 export function FocusFinish({
   replied,
@@ -52,13 +41,18 @@ export function FocusFinish({
         ? `${plural(deferred, "conversation")} skipped.`
         : empty
           ? "Nobody is waiting on a reply from you."
-          : "That's everyone.";
+          : "Low tide. That's everyone.";
+  // Earned only by working through the queue: a session that started empty
+  // has nothing to celebrate.
+  const cleared = more === 0 && deferred === 0 && !empty;
   return (
     <div
       data-testid="focus-finish"
       className="mx-auto flex max-w-[34rem] flex-1 flex-col justify-center px-6 py-16"
     >
-      <div data-slot="focus-finish-moment" />
+      <div data-slot="focus-finish-moment" className="mb-6 empty:hidden">
+        {cleared ? <LowTideScene sound /> : null}
+      </div>
       <h2 className="text-balance text-2xl font-semibold tracking-tight">{title}</h2>
       <p className="mt-2 text-pretty text-[14px] leading-6 text-muted-foreground tabular-nums">
         {replied > 0 ? `${plural(replied, "conversation")} handled. ` : null}
@@ -93,34 +87,4 @@ export function FocusFinish({
       </div>
     </div>
   );
-}
-
-/** The soonest open promise you made that has a date, across the scope. */
-function useNextPromise(): DuePromise | null {
-  const scope = useUiPrefs((s) => s.accountScope);
-  const { ids } = useScopeAccountIds(scope);
-  const lists = useQueries({
-    queries: ids.map((accountId) => ({
-      queryKey: ["commitments", accountId, "open"],
-      queryFn: () => listCommitments({ accountId, status: "open" }),
-    })),
-  });
-  const now = Date.now();
-  const due: DuePromise[] = [];
-  for (const commitment of lists.flatMap((list) => list.data?.commitments ?? [])) {
-    if (commitment.direction !== "yours" || !commitment.by_when) continue;
-    const at = Date.parse(commitment.by_when);
-    if (at >= now) due.push({ commitment, due: at });
-  }
-  return due.toSorted((a, b) => a.due - b.due)[0] ?? null;
-}
-
-/** "Mon" within the week, "Mon 12 Oct" beyond it: the day is what matters. */
-function dueDay(due: number): string {
-  const at = new Date(due);
-  const days = (at.getTime() - Date.now()) / 86_400_000;
-  return at.toLocaleDateString(undefined, {
-    weekday: "short",
-    ...(days > 6 ? { day: "numeric", month: "short" } : {}),
-  });
 }

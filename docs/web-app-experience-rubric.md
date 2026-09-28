@@ -55,6 +55,9 @@ Every row names the convention it breaks and why.
 | A9 | **Chrome earns its place.** Every persistent control is justified by frequency or discoverability. Reply sits where reading ends (the bottom of the thread), not in a toolbar above it. Rare actions live in the command bar. The sidebar holds places, not a list of 20 folders. | Toolbars of icon buttons; a sidebar of every folder and label. | Count persistent controls in the reader against the current app; each one has a stated reason in this doc or the component. |
 | A10 | **Time is shown as it matters.** "Waiting 5 days", "due tomorrow", "Maya usually replies in 2 hours, it has been 2 days". Relative when recent, absolute when it matters, always in the user's zone. | A timestamp column. | Waiting lane shows age and cadence drift from the daemon, not the send time. |
 
+The inventory of persistent controls and the reason for each is in
+[web-app-controls.md](web-app-controls.md).
+
 ## B. The feel
 
 | # | Criterion | How to check |
@@ -76,6 +79,49 @@ Every row names the convention it breaks and why.
 | C1 | **Privacy you can see.** Remote images and trackers are blocked by default, and the reader names what was blocked and from whom. Anything AI-generated says whether a local or cloud model produced it and whether your history was used. | Open a newsletter with a pixel: "Blocked 2 trackers (Mailchimp)." A draft says "Local model, based on 5 of your replies to Maya." |
 | C2 | **AI shows its work.** Routing reasons, briefing sources and draft sources are one step away, and AI is never the only way to do something. | Every AI surface links to its evidence. |
 | C3 | **Never guilt the user.** No red badges for backlog size, no streak loss, no "you have 3,412 unread" nag. Copy is calm and specific. | Copy review against this rule. |
+
+## Scores
+
+Scored on 2026-09-28 on `feat/delight` (rung 6, on top of v0.6.38's
+places), from the Playwright suite against the FakeProvider daemon (131
+tests) and screenshots at 1440 and 390 px in the dark and light themes. The
+final full run passed all 131 under a machine load of 110 to 336 (an
+earlier run's one failure, `verbs.spec` picking a conversation row for
+snooze, is fixed the way `snooze.spec` does it). A score of 2 needs a journey in the suite; 3 is reserved for what a keyboard
+user would notice and prefer.
+
+**Pass bar: met.** Every criterion is at 2 or better, and all of section A
+and B1 to B3 are at 3. What is left at 2 is in
+[docs/issues/experience-rubric-gaps.md](issues/experience-rubric-gaps.md).
+
+| # | Score | Evidence |
+|---|---|---|
+| A1 | 3 | The app opens on the desk with lanes and a reason on every row (`desk.spec` "the app opens on the desk: lanes with reasons, and work-only badges"); the inbox is `g i` away and can be made home ("a person who prefers arrival order…"). |
+| A2 | 3 | The desk badge equals owed plus due and the inbox carries no number (`desk.spec`, same test); Reading has no unread counts (`places.spec` "Reading shows every issue already open, with a reason and no unread counts"). |
+| A3 | 3 | `places.spec`: every Reading issue and Paper trail bundle says why it is there; "moving a sender from Reading to People takes it to the desk, and u brings it back". |
+| A4 | 3 | `places.spec` "Paper trail: pin one, sweep the bundle without it, undo puts the rest back" and "S previews a sweep of the whole place from the daemon's dry run". |
+| A5 | 3 | `natural-time.spec` "fri 3" offers 15:00 and 03:00 and stores what the preview showed; `snooze.spec`; `desk.spec` done waiting; `focus.spec` send and remind. |
+| A6 | 3 | `focus.spec` "g F works through the queue: send and next, skip, snooze, then a calm finish", plus undo inside the countdown and a phone layout. |
+| A7 | 3 | `reader-context.spec`: facts as the thread opens, the ask lands without moving the messages and is marked in the body. |
+| A8 | 3 | Both ways, each with its own owner: `focus.spec` "a dated promise in a reply is offered with its time and kept as a reminder" (yours, on send) and `reader-context.spec` "promises both ways show on the person's context, each with its own owner" (yours and theirs in the context block). |
+| A9 | 3 | Every persistent control is listed with its reason in [web-app-controls.md](web-app-controls.md); `controls.spec` fails if a surface gains or loses one. The list's Refresh button couldn't justify itself and is gone. Reply sits at the end of the thread (`reader-context.spec` "r opens the reply at the end of the thread"). |
+| A10 | 3 | `desk-time.spec`: an owed row reads "2d · usually 4h" in the theme's warning colour when late, and a Waiting row reads its age ("5d") in the muted colour. |
+| B1 | 3 | Keydown to paint p95 on the desk: j 16.1, k 16.7, e 18.9 ms; inbox: j 17.0, k 16.9, e 16.9 ms (`speed.spec`, budget 50). 5,000 rows: 20,572 list coverage blocks per scroll step (`large-list.spec`, gate 60,000). `loading-states.spec`: a 100 ms list or thread load shows no skeleton, a 600 ms one shows it for at least 400 ms (`useDelayedPending`, `useDelayedPending.test.ts`). A held `e` archives one conversation (`delight.spec` "holding e archives exactly one conversation", `dispatcher.test.ts`). |
+| B2 | 3 | Motion tokens only (no ad hoc `duration-*` or `ease-in` in `src`); `natural-time.spec` reduced and full motion, rows never animate the cursor; `delight.spec` "with reduced motion the low tide is a still frame". |
+| B3 | 3 | `features/mail-actions/verbFeedback.ts` gives every verb its trigger, optimistic feedback, toast words, sound and undo path; toasts and sounds read from it, and `verbFeedback.test.ts` fails if a state-changing action has no entry. `verbs.spec` runs archive, read and archive, trash, spam, star, unread and snooze, checks each toast's words against the table and undoes each with `u`; reply later undoes from its toast. Labels, move, done waiting, sweep and move sender have undo journeys in `labels.spec`, `desk.spec` and `places.spec`. |
+| B4 | 2 | `delight.spec` "clearing the desk by keyboard earns low tide once, not on a revisit" (motion under 2 s, then still); sound is off by default, previews in the browser, plays on archive and never on `j`; send plays once (`feedback.test.ts`). Not yet heard by a person on real speakers. |
+| B5 | 3 | `natural-time.spec`: highlighted phrase, resolved time before commit, choices for "fri 3", and the daemon stores the previewed instant. |
+| B6 | 2 | Shortcuts in tooltips, menus, the palette and `?` (`keyboard-help.spec`); `delight.spec` "three pointer archives earn one key hint, and it never comes back". Sidebar and palette clicks don't count toward hints. |
+| B7 | 2 | Global `tabular-nums` on times, keys, mono counts and status; `text-wrap: balance` on headings and `pretty` on prose; one icon family (phosphor removed, oxlint blocks other icon packages); no em dashes in UI copy (grep); quieter focus composer; reading measure 55 to 90 characters (`reading.spec`). Relative dates were not audited screen by screen. |
+| B8 | 2 | `offline-banner.spec`, `ws-reconnect.spec`, `route-error.spec`. |
+| B9 | 2 | Press feedback on buttons for fine pointers (`base.css`), popovers grow from their trigger; `delight.spec` touch: "a swipe right archives the row, colour shows it first, and undo brings it back", "a short drag does nothing". No manual pass on a real phone yet. |
+| C1 | 2 | `reader-context.spec` "the privacy line names what was blocked and from whom"; `reader.spec` blocks remote images until `M`; the blocked-image placeholder is a small labelled chip (screenshot). |
+| C2 | 2 | `reader-context.spec` "with no model there is no AI slot"; the gist's ask is a verified quote from the message. Draft assist's sources were not checked for this score. |
+| C3 | 2 | Copy review: counts are facts ("95 messages"), never nags; empty states are calm ("Low tide. Nobody's waiting on you."); no streaks or points anywhere. |
+
+The parity floor in `docs/web-app-rubric.md` still holds: the suites it cites
+(`triage`, `reading`, `reader`, `search`, `labels`, `snooze`, `responsive`,
+`accessibility`, `keyboard-navigation`, `large-list`) passed in the same run.
 
 ## Evidence
 

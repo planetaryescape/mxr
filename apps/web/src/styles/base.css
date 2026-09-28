@@ -67,6 +67,34 @@
     font-feature-settings: "tnum";
   }
 
+  /*
+   * Typographic defaults, so no view has to remember them: figures that
+   * line up wherever a time, a key or a count is drawn (mono text is where
+   * the app puts its counts), headings that break into even lines, and
+   * prose without a lone word on its last line.
+   */
+  time,
+  kbd,
+  .font-mono,
+  [role="progressbar"],
+  [role="status"] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+
+  p,
+  li,
+  dd,
+  blockquote {
+    text-wrap: pretty;
+  }
+
   /* Mono for IDs, ages, technical strings. Recursive draws its monospace
  * from the MONO axis of the same family, so every mono context sets it. */
   .mono {

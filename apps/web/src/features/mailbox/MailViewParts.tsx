@@ -5,10 +5,19 @@
 
 import type { ReactNode } from "react";
 
-export function ListSkeleton() {
+/**
+ * `quiet`: the first 300 ms of a load show the same frame, empty (see
+ * `useDelayedPending`), so a fast load never flashes a skeleton.
+ */
+export function ListSkeleton({ quiet = false }: { quiet?: boolean }) {
   return (
-    <div className="flex-1 overflow-hidden" aria-busy="true" aria-label="Loading conversations">
-      {Array.from({ length: 12 }, (_, index) => (
+    <div
+      className="flex-1 overflow-hidden"
+      aria-busy="true"
+      aria-label="Loading conversations"
+      data-testid={quiet ? undefined : "list-skeleton"}
+    >
+      {Array.from({ length: quiet ? 0 : 12 }, (_, index) => (
         <div key={index} className="flex items-center gap-3 border-b border-border/60 px-3 py-3">
           <div className="size-7 shrink-0 animate-pulse rounded-full bg-muted" />
           <div className="grid flex-1 gap-1.5">

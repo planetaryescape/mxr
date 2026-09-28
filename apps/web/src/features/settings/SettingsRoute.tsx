@@ -11,6 +11,7 @@ import {
   Palette,
   Pencil,
   SearchX,
+  Volume2,
 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 
@@ -19,6 +20,7 @@ import { ComposeSettingsSection } from "./ComposeSettingsSection";
 import { KeybindingsSection } from "./KeybindingsSection";
 import { LlmSettingsSection } from "./LlmSettingsSection";
 import { NotificationsSection } from "./NotificationsSection";
+import { SoundSection } from "./SoundSection";
 import { ReaderSection } from "./ReaderSection";
 import { SnippetsSection } from "./SnippetsSection";
 import { TokenSection } from "./TokenSection";
@@ -67,6 +69,14 @@ const SECTIONS: SectionDef[] = [
     description: "Browser alerts for new mail.",
     icon: Bell,
     render: () => <NotificationsSection />,
+  },
+  {
+    id: "sound",
+    label: "Sound",
+    description:
+      "Soft tones for send, archive, snooze and a cleared desk. Off unless you turn it on.",
+    icon: Volume2,
+    render: () => <SoundSection />,
   },
   {
     id: "compose",

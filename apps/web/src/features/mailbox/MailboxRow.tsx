@@ -14,6 +14,7 @@ import {
 import { memo, type MouseEvent, type ReactNode } from "react";
 
 import type { MessageRowView } from "./types";
+import { notePointerUse } from "@/lib/actions/keyHints";
 import { formatListDate, initials, parseAddress, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -293,7 +294,10 @@ export function RowActionChip({ action, row }: { action: RowAction; row: Message
     <span
       aria-hidden
       title={`${action.describe(row)} (w)`}
-      onClick={() => action.run(row)}
+      onClick={() => {
+        action.run(row);
+        notePointerUse("list.row-action", action.label);
+      }}
       className="flex h-6 cursor-pointer items-center gap-1 rounded-md px-2 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
     >
       <Icon className="size-3" /> {action.label}

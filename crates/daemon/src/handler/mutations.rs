@@ -530,6 +530,20 @@ pub(super) async fn mutation(
     cmd: &MutationCommand,
     client_correlation_id: Option<&str>,
 ) -> HandlerResult {
+    mutation_checked(state, cmd, client_correlation_id, None)
+        .await
+        .map(|(response, _left_out)| response)
+}
+
+/// `mutation`, holding each message to a sweep's check as it goes. Also
+/// returns how many messages the check left out (not failures).
+async fn mutation_checked(
+    state: &AppState,
+    cmd: &MutationCommand,
+    client_correlation_id: Option<&str>,
+    mut check: Option<&mut super::places::SweepCheck>,
+) -> Result<(ResponseData, u32), HandlerError> {
+    let mut left_out = 0u32;
     let message_ids = mutation_message_ids(cmd);
     let undoable_kind = undoable_kind(cmd);
     // One id per MutationCommand batch — drives both the dedup log
@@ -574,7 +588,7 @@ pub(super) async fn mutation(
                 .cmp(&right.account_name.to_lowercase())
                 .then_with(|| left.account_id.as_str().cmp(&right.account_id.as_str()))
         });
-        return Ok(ResponseData::MutationResult {
+        let response = ResponseData::MutationResult {
             result: MutationResultData {
                 requested: message_ids.len() as u32,
                 succeeded: 0,
@@ -584,7 +598,8 @@ pub(super) async fn mutation(
                 mutation_id: None,
                 undo_unavailable: false,
             },
-        });
+        };
+        return Ok((response, 0));
     }
 
     // Snapshot the prior state of every envelope so that undoable
@@ -637,9 +652,49 @@ pub(super) async fn mutation(
                 None
             };
 
-            match apply_mutation_to_envelope(state, provider.as_ref(), &mutation_id, cmd, envelope)
-                .await
-            {
+            let applied = match check.as_deref_mut() {
+                None => {
+                    apply_mutation_to_envelope(
+                        state,
+                        provider.as_ref(),
+                        &mutation_id,
+                        cmd,
+                        envelope,
+                    )
+                    .await
+                }
+                Some(check) => {
+                    // Provider lock, then the account's sweep gate (see
+                    // `SweepGate` for the order), held through the archive.
+                    #[cfg(test)]
+                    state.sweep_gate.before_provider.notify_one();
+                    let provider_guard =
+                        state.acquire_provider_operation(&envelope.account_id).await;
+                    let generation = state.sweep_gate.hold(&envelope.account_id).await;
+                    match check
+                        .allows(state, &envelope.account_id, *generation, &envelope.id)
+                        .await
+                    {
+                        Ok(false) => {
+                            left_out += 1;
+                            continue;
+                        }
+                        Ok(true) => {
+                            apply_mutation_under_guard(
+                                state,
+                                provider.as_ref(),
+                                &provider_guard,
+                                &mutation_id,
+                                cmd,
+                                envelope,
+                            )
+                            .await
+                        }
+                        Err(error) => Err(error.to_string()),
+                    }
+                }
+            };
+            match applied {
                 Ok(()) => {
                     account_result.succeeded += 1;
                     if let Some(snapshot) = snapshot {
@@ -709,7 +764,7 @@ pub(super) async fn mutation(
 
     emit_mutation_reconciliation_failed_if_needed(state, client_correlation_id, &result);
 
-    Ok(ResponseData::MutationResult { result })
+    Ok((ResponseData::MutationResult { result }, left_out))
 }
 
 /// A check a job runs on each chunk just before applying it.
@@ -817,24 +872,30 @@ async fn run_mutation_job(
     let mut terminal_error: Option<String> = None;
 
     for ids in mutation_message_ids(&cmd).chunks(MUTATION_JOB_CHUNK_SIZE) {
-        let ids = match guard_chunk(&state, &guard, ids).await {
-            Ok((kept, left_out)) => {
-                // Left out on purpose, so not a failure: counted as skipped
-                // without stopping the job.
-                aggregate.skipped += left_out;
-                kept
-            }
+        let (ids, left_out, mut check) = match start_chunk(&state, &guard, ids).await {
+            Ok(started) => started,
             Err(error) => {
                 terminal_error = Some(error);
                 break;
             }
         };
+        // Left out on purpose, so not a failure: counted as skipped without
+        // stopping the job.
+        aggregate.skipped += left_out;
         if ids.is_empty() {
             continue;
         }
         let chunk_cmd = mutation_command_with_ids(&cmd, ids);
-        match mutation(&state, &chunk_cmd, client_correlation_id.as_deref()).await {
-            Ok(ResponseData::MutationResult { result }) => {
+        match mutation_checked(
+            &state,
+            &chunk_cmd,
+            client_correlation_id.as_deref(),
+            check.as_mut(),
+        )
+        .await
+        {
+            Ok((ResponseData::MutationResult { result }, left_out)) => {
+                aggregate.skipped += left_out;
                 if let Some(mutation_id) = result.mutation_id.as_ref() {
                     undo_ids.push(mutation_id.clone());
                 }
@@ -934,28 +995,32 @@ async fn run_mutation_job(
     }
 }
 
-/// The chunk's ids that `guard` lets through, and how many it left out.
-async fn guard_chunk(
+/// The chunk's ids that `guard` lets through now, how many it left out,
+/// and (for a sweep) the check each message is held to as it is archived.
+async fn start_chunk(
     state: &AppState,
     guard: &ChunkGuard,
     ids: &[mxr_core::MessageId],
-) -> Result<(Vec<mxr_core::MessageId>, u32), String> {
+) -> Result<ChunkStart, String> {
     match guard {
-        ChunkGuard::None => Ok((ids.to_vec(), 0)),
+        ChunkGuard::None => Ok((ids.to_vec(), 0, None)),
         ChunkGuard::Sweep(scope) => {
-            let sweepable = super::places::still_sweepable(state, scope, ids)
+            let check = super::places::SweepCheck::start(state, scope, ids)
                 .await
                 .map_err(|e| e.to_string())?;
-            let kept: Vec<_> = ids
-                .iter()
-                .filter(|id| sweepable.contains(*id))
-                .cloned()
-                .collect();
+            let kept = check.kept();
             let left_out = (ids.len() - kept.len()) as u32;
-            Ok((kept, left_out))
+            Ok((kept, left_out, Some(check)))
         }
     }
 }
+
+/// A chunk's ids to archive, how many were left out, and a sweep's check.
+type ChunkStart = (
+    Vec<mxr_core::MessageId>,
+    u32,
+    Option<super::places::SweepCheck>,
+);
 
 const fn job_status_str(status: &JobStatusData) -> &'static str {
     match status {
@@ -1424,6 +1489,19 @@ async fn apply_mutation_to_envelope(
     // Keep the account-scoped provider guard held across the dedup
     // check, provider apply, dedup record, and local reconciliation.
     let provider_guard = state.acquire_provider_operation(&envelope.account_id).await;
+    apply_mutation_under_guard(state, provider, &provider_guard, mutation_id, cmd, envelope).await
+}
+
+/// `apply_mutation_to_envelope` with the account's provider guard already
+/// held by the caller.
+async fn apply_mutation_under_guard(
+    state: &AppState,
+    provider: &dyn mxr_core::MailSyncProvider,
+    provider_guard: &tokio::sync::OwnedMutexGuard<()>,
+    mutation_id: &str,
+    cmd: &MutationCommand,
+    envelope: &Envelope,
+) -> Result<(), String> {
     let message_id = &envelope.id;
     let provider_id = &envelope.provider_id;
     match cmd {
@@ -1431,7 +1509,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
-                &provider_guard,
+                provider_guard,
                 mutation_id,
                 provider_id,
                 mxr_core::Mutation::ModifyLabels {
@@ -1451,7 +1529,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
-                &provider_guard,
+                provider_guard,
                 mutation_id,
                 &format!("{provider_id}#read"),
                 mxr_core::Mutation::SetRead {
@@ -1469,7 +1547,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
-                &provider_guard,
+                provider_guard,
                 mutation_id,
                 &format!("{provider_id}#labels"),
                 mxr_core::Mutation::ModifyLabels {
@@ -1487,7 +1565,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
-                &provider_guard,
+                provider_guard,
                 mutation_id,
                 provider_id,
                 mxr_core::Mutation::Trash {
@@ -1512,7 +1590,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
-                &provider_guard,
+                provider_guard,
                 mutation_id,
                 provider_id,
                 mxr_core::Mutation::ModifyLabels {
@@ -1536,7 +1614,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
-                &provider_guard,
+                provider_guard,
                 mutation_id,
                 provider_id,
                 mxr_core::Mutation::SetStarred {
@@ -1556,7 +1634,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
-                &provider_guard,
+                provider_guard,
                 mutation_id,
                 provider_id,
                 mxr_core::Mutation::SetRead {
@@ -1583,7 +1661,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
-                &provider_guard,
+                provider_guard,
                 mutation_id,
                 provider_id,
                 mxr_core::Mutation::ModifyLabels {
@@ -1608,7 +1686,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
-                &provider_guard,
+                provider_guard,
                 mutation_id,
                 provider_id,
                 mxr_core::Mutation::ModifyLabels {
@@ -1652,7 +1730,7 @@ async fn apply_mutation_to_envelope(
             apply_one_mutation(
                 state,
                 provider,
-                &provider_guard,
+                provider_guard,
                 mutation_id,
                 &format!("{provider_id}#route-labels"),
                 mxr_core::Mutation::ModifyLabels {
@@ -1669,7 +1747,7 @@ async fn apply_mutation_to_envelope(
                 apply_one_mutation(
                     state,
                     provider,
-                    &provider_guard,
+                    provider_guard,
                     mutation_id,
                     &format!("{provider_id}#route-read"),
                     mxr_core::Mutation::SetRead {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 
 import { MailboxList, type MailboxListProps } from "./MailboxList";
 import { Centered, ListSkeleton } from "./MailViewParts";
+import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { ReaderNavContext, type ReaderNav } from "./readerNav";
 import type { MessageGroupView, MessageRowView } from "./types";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ interface ListWithReaderProps extends Pick<
   | "renderRow"
   | "airyHeaders"
   | "interceptVerb"
+  | "swipeActions"
 > {
   /** URL of the list; an open conversation lives at `${basePath}/<thread>`. */
   basePath: string;
@@ -82,6 +84,7 @@ export function ListWithReader({
   const readerLayout = useUiPrefs((s) => s.readerLayout);
   const setActivePane = useMailboxPane((s) => s.setActivePane);
   const threadOpen = Boolean(threadId);
+  const phase = useDelayedPending(status.isLoading);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const filterRef = useRef<HTMLInputElement>(null);
@@ -216,8 +219,8 @@ export function ListWithReader({
               </div>
             ) : null}
           </header>
-          {status.isLoading ? (
-            <ListSkeleton />
+          {phase !== "ready" ? (
+            <ListSkeleton quiet={phase === "quiet"} />
           ) : status.isError ? (
             <Centered
               icon={<RefreshCw className="size-6" />}

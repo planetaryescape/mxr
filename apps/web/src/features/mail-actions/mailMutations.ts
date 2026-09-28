@@ -7,6 +7,7 @@
  */
 
 import { usePendingMailOps, type MailAction, type MailActionPayload } from "./pendingMailOps";
+import { playMailActionSound } from "@/features/sound/feedback";
 import type { MutationResponse } from "@/features/mailbox/types";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 import { useSelection } from "@/state/selectionStore";
@@ -59,6 +60,7 @@ export async function performMailAction(
         : await requestCoordinator.enqueueMutation(() => runAction(action, ids, options));
     assertCompleted(response, ids.length);
     if (claim) claim.settle(announceSuccess(action, ids, response, claim.run, options.payload));
+    if (!options.silent) playMailActionSound(action);
     await invalidateMailQueries().catch(() => undefined);
     return { ok: true, response };
   } catch (caught) {

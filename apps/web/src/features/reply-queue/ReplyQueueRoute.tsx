@@ -3,10 +3,12 @@ import { MessageSquareReply, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { fetchReplyQueue, setReplyLater, type ReplyQueueMessage } from "./api";
+import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { invalidateMailQueries } from "@/features/mail-actions/mailMutations";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
 import { Centered } from "@/features/mailbox/MailViewParts";
+import { SweptClear } from "@/features/places/SweptClear";
 import type { MessageRowView } from "@/features/mailbox/types";
 import { plural } from "@/lib/format";
 
@@ -40,6 +42,12 @@ export function ReplyQueueRoute() {
     rows.length > 0 ? [{ id: "queue", label: "Waiting on your reply", rows }] : [],
     LENS,
   );
+  // Clearing the queue here (Done, archive) earns the small low tide, once.
+  const lowTide = useLowTide(
+    "reply_queue",
+    queue.isLoading || queue.isError,
+    groups.some((group) => group.rows.length > 0),
+  );
   const done = useMutation({
     mutationFn: (messageId: string) => setReplyLater(messageId, false),
     onSuccess: (_, messageId) => {
@@ -69,11 +77,17 @@ export function ReplyQueueRoute() {
         run: (row) => done.mutate(row.id),
       }}
       empty={
-        <Centered
-          icon={<MessageSquareReply className="size-6" />}
-          title="Nothing waiting on a reply"
-          body="Press b on any conversation to add it here."
-        />
+        lowTide ? (
+          <SweptClear place="Reply queue" line="Low tide. Nobody's waiting on a reply.">
+            Press b on any conversation to add it here.
+          </SweptClear>
+        ) : (
+          <Centered
+            icon={<MessageSquareReply className="size-6" />}
+            title="Nothing waiting on a reply"
+            body="Press b on any conversation to add it here."
+          />
+        )
       }
     />
   );

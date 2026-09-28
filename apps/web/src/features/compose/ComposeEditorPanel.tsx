@@ -51,6 +51,10 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
 
   const [dragActive, setDragActive] = useState(false);
   const dragDepth = useRef(0);
+  // Focus mode is about the words: From, To and Subject fold into one line
+  // until asked for, and the editor's status row shrinks to a word.
+  const quiet = controller.intent.quiet === true;
+  const [headersOpen, setHeadersOpen] = useState(false);
 
   const { draft } = controller;
   if (!draft) return null;
@@ -81,115 +85,143 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
     void controller.addFiles(event.dataTransfer.files);
   }
 
+  const folded = quiet && !headersOpen && draft.frontmatter.to.trim() !== "";
+
   return (
     <div
       className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background"
       onKeyDown={controller.handleComposeKeyDown}
     >
-      <ComposeTopBar
-        title={controller.intent.title}
-        busy={controller.busy}
-        canServerSave={controller.canServerSave}
-        onRefresh={controller.handleRefreshClick}
-        onServerSave={controller.handleServerSaveClick}
-        onDiscard={controller.requestDiscard}
-        accounts={controller.runtimeAccounts}
-        accountId={draft.accountId}
-        onAccountChange={controller.updateAccount}
-        addresses={controller.accountAddresses}
-        fromAddress={draft.frontmatter.from}
-        onFromChange={(email) => controller.updateFrontmatter("from", email)}
-      />
-
-      <div className="shrink-0 border-b border-border">
-        <div className="mx-auto w-full max-w-[860px] px-4 py-1.5">
-          {controller.collaboratorSuggestions.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-1.5 px-1 pb-1 text-2xs text-muted-foreground">
-              <span>Maybe cc:</span>
-              {controller.collaboratorSuggestions.map((suggestion) => (
-                <button
-                  key={suggestion.email}
-                  type="button"
-                  className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-2xs text-foreground transition-colors hover:border-primary/50 hover:bg-muted"
-                  title={suggestion.reason}
-                  aria-label={`Add ${suggestion.email} to Cc`}
-                  onClick={() => controller.addCc(suggestion.email)}
-                >
-                  {suggestion.display_name || suggestion.email}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <RecipientField
-            label="To"
-            value={draft.frontmatter.to}
-            inputRef={controller.toInputRef}
-            onChange={(value) => controller.updateFrontmatter("to", value)}
-            onBlur={controller.markRecipientsTouched}
-            trailing={
-              <>
-                {!controller.showCc ? (
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    onClick={controller.revealCc}
-                    title="Add Cc (⇧⌘C)"
-                  >
-                    Cc
-                  </Button>
-                ) : null}
-                {!controller.showBcc ? (
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    onClick={controller.revealBcc}
-                    title="Add Bcc (⇧⌘B)"
-                  >
-                    Bcc
-                  </Button>
-                ) : null}
-              </>
-            }
-          />
-          <Collapsible open={controller.showCc} onOpenChange={controller.setShowCc}>
-            <CollapsibleContent>
-              <RecipientField
-                label="Cc"
-                value={draft.frontmatter.cc}
-                inputRef={controller.ccInputRef}
-                onChange={(value) => controller.updateFrontmatter("cc", value)}
-                onBlur={controller.markRecipientsTouched}
-              />
-            </CollapsibleContent>
-          </Collapsible>
-          <Collapsible open={controller.showBcc} onOpenChange={controller.setShowBcc}>
-            <CollapsibleContent>
-              <RecipientField
-                label="Bcc"
-                value={draft.frontmatter.bcc}
-                inputRef={controller.bccInputRef}
-                onChange={(value) => controller.updateFrontmatter("bcc", value)}
-                onBlur={controller.markRecipientsTouched}
-              />
-            </CollapsibleContent>
-          </Collapsible>
-          <div className="mt-1 grid grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-3 border-t border-border/60 px-1 pt-1.5">
-            <Label
-              htmlFor="compose-subject"
-              className="text-right text-xs font-medium text-muted-foreground"
+      {folded ? (
+        <div className="shrink-0 border-b border-border" data-testid="compose-summary">
+          <div className="mx-auto flex w-full max-w-[860px] items-center gap-2 px-5 py-1.5 text-[12.5px]">
+            <span className="text-muted-foreground">To</span>
+            <span className="min-w-0 truncate text-foreground">{draft.frontmatter.to}</span>
+            <span aria-hidden className="text-muted-foreground">
+              ·
+            </span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">
+              {draft.frontmatter.subject || "(no subject)"}
+            </span>
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => setHeadersOpen(true)}
+              aria-label="Edit From, To and Subject"
             >
-              Subject
-            </Label>
-            <Input
-              id="compose-subject"
-              value={draft.frontmatter.subject}
-              onChange={(event) => controller.updateFrontmatter("subject", event.target.value)}
-              placeholder="Subject"
-              className="h-9 bg-input text-md font-medium"
-            />
+              Edit
+            </Button>
           </div>
         </div>
-      </div>
+      ) : null}
+      {folded ? null : (
+        <>
+          <ComposeTopBar
+            title={controller.intent.title}
+            busy={controller.busy}
+            canServerSave={controller.canServerSave}
+            onRefresh={controller.handleRefreshClick}
+            onServerSave={controller.handleServerSaveClick}
+            onDiscard={controller.requestDiscard}
+            accounts={controller.runtimeAccounts}
+            accountId={draft.accountId}
+            onAccountChange={controller.updateAccount}
+            addresses={controller.accountAddresses}
+            fromAddress={draft.frontmatter.from}
+            onFromChange={(email) => controller.updateFrontmatter("from", email)}
+          />
+
+          <div className="shrink-0 border-b border-border">
+            <div className="mx-auto w-full max-w-[860px] px-4 py-1.5">
+              {controller.collaboratorSuggestions.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-1.5 px-1 pb-1 text-2xs text-muted-foreground">
+                  <span>Maybe cc:</span>
+                  {controller.collaboratorSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion.email}
+                      type="button"
+                      className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-2xs text-foreground transition-colors hover:border-primary/50 hover:bg-muted"
+                      title={suggestion.reason}
+                      aria-label={`Add ${suggestion.email} to Cc`}
+                      onClick={() => controller.addCc(suggestion.email)}
+                    >
+                      {suggestion.display_name || suggestion.email}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <RecipientField
+                label="To"
+                value={draft.frontmatter.to}
+                inputRef={controller.toInputRef}
+                onChange={(value) => controller.updateFrontmatter("to", value)}
+                onBlur={controller.markRecipientsTouched}
+                trailing={
+                  <>
+                    {!controller.showCc ? (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={controller.revealCc}
+                        title="Add Cc (⇧⌘C)"
+                      >
+                        Cc
+                      </Button>
+                    ) : null}
+                    {!controller.showBcc ? (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={controller.revealBcc}
+                        title="Add Bcc (⇧⌘B)"
+                      >
+                        Bcc
+                      </Button>
+                    ) : null}
+                  </>
+                }
+              />
+              <Collapsible open={controller.showCc} onOpenChange={controller.setShowCc}>
+                <CollapsibleContent>
+                  <RecipientField
+                    label="Cc"
+                    value={draft.frontmatter.cc}
+                    inputRef={controller.ccInputRef}
+                    onChange={(value) => controller.updateFrontmatter("cc", value)}
+                    onBlur={controller.markRecipientsTouched}
+                  />
+                </CollapsibleContent>
+              </Collapsible>
+              <Collapsible open={controller.showBcc} onOpenChange={controller.setShowBcc}>
+                <CollapsibleContent>
+                  <RecipientField
+                    label="Bcc"
+                    value={draft.frontmatter.bcc}
+                    inputRef={controller.bccInputRef}
+                    onChange={(value) => controller.updateFrontmatter("bcc", value)}
+                    onBlur={controller.markRecipientsTouched}
+                  />
+                </CollapsibleContent>
+              </Collapsible>
+              <div className="mt-1 grid grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-3 border-t border-border/60 px-1 pt-1.5">
+                <Label
+                  htmlFor="compose-subject"
+                  className="text-right text-xs font-medium text-muted-foreground"
+                >
+                  Subject
+                </Label>
+                <Input
+                  id="compose-subject"
+                  value={draft.frontmatter.subject}
+                  onChange={(event) => controller.updateFrontmatter("subject", event.target.value)}
+                  placeholder="Subject"
+                  className="h-9 bg-input text-md font-medium"
+                />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       <DraftAssist
         open={controller.assistOpen}
@@ -247,6 +279,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
                 onSend={controller.requestSend}
                 onDiscard={controller.requestDiscard}
                 onClose={() => void controller.requestClose()}
+                quiet={quiet}
               />
             )}
           </Suspense>

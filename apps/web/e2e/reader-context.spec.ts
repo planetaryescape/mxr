@@ -202,3 +202,59 @@ test("a stalled model status never holds back the mail", async ({ page }) => {
   // With no answer yet, no gist slot is reserved.
   await expect(page.getByTestId("thread-gist")).toHaveCount(0);
 });
+
+test("promises both ways show on the person's context, each with its own owner", async ({
+  page,
+}) => {
+  // The daemon records promises from sent mail (yours) and from their mail
+  // (theirs); the demo has no model to extract them, so the context answer
+  // carries one of each, owned as the daemon names owners.
+  let counterparty = "";
+  await page.route("**/api/v1/mail/threads/*/context", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    const context = json.context;
+    const person = context.counterparty;
+    counterparty = person?.display_name || person?.email || "Maya Chen";
+    const base = {
+      account_id: context.account_id,
+      thread_id: context.thread_id,
+      status: "open",
+      evidence_msg_id: "e2e-evidence",
+      extracted_at: new Date().toISOString(),
+    };
+    context.promises = [
+      {
+        owner: "you",
+        commitment: {
+          ...base,
+          id: "e2e-yours",
+          email: person?.email ?? "maya@example.com",
+          direction: "yours",
+          who_owes: "alex@demo.mxr.local",
+          what: "send the rollout runbook",
+        },
+      },
+      {
+        owner: counterparty,
+        commitment: {
+          ...base,
+          id: "e2e-theirs",
+          email: person?.email ?? "maya@example.com",
+          direction: "theirs",
+          who_owes: person?.email ?? "maya@example.com",
+          what: "share the canary dashboard",
+        },
+      },
+    ];
+    await route.fulfill({ response, json });
+  });
+  await openFirstConversation(page);
+  const promises = page.getByRole("list", { name: "Open promises" }).getByRole("listitem");
+  await expect(promises).toHaveCount(2);
+  await expect(promises.nth(0)).toContainText("You promised: send the rollout runbook");
+  // Owners read as a first name, or as the address when that's all there is.
+  const owner = counterparty.includes("@") ? counterparty : counterparty.split(/\s/)[0]!;
+  await expect(promises.nth(1)).toContainText(`${owner} promised: share the canary dashboard`);
+  await expect(promises.nth(1)).not.toContainText("You promised");
+});

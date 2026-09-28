@@ -38,6 +38,11 @@ export interface ComposeIntent {
   prefillBody?: string;
   /** Open with "Draft for me" expanded (the reader's "Draft in your voice"). */
   openAssist?: boolean;
+  /**
+   * Quiet chrome (focus mode): From, To and Subject fold into one line and
+   * the editor's status row becomes one word.
+   */
+  quiet?: boolean;
 }
 
 export interface ComposeSaveSnapshot {

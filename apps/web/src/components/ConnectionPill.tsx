@@ -65,7 +65,7 @@ export function ConnectionPill({ compact = false }: ConnectionPillProps) {
             ? errorMessage
             : status === "connected"
               ? "WebSocket attached"
-              : "—"}
+              : "Not connected"}
         {lastErrorAt ? (
           <div className="mt-1 opacity-60">
             last error: {new Date(lastErrorAt).toLocaleTimeString()}

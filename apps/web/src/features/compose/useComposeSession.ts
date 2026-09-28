@@ -175,11 +175,11 @@ export function useComposeSession(
   const collaboratorSuggestions = useCollaboratorSuggestions(draft);
   const { runtimeAccounts, selectedAccount, accountAddresses } = useSenderAccounts(draft);
   const saveStatus = autosave.saving
-    ? "Saving..."
+    ? "Saving…"
     : dirty
       ? "Unsaved changes"
       : lastSavedAt
-        ? `Saved ${formatRelativeAge(lastSavedAt)} ago`
+        ? savedLabel(lastSavedAt)
         : "Not saved yet";
   const visibleIssues = !draft
     ? []
@@ -434,4 +434,10 @@ export function useComposeSession(
 
     ...assist,
   };
+}
+
+/** "Saved just now" for the first minute (never "Saved 0s ago"), then "Saved 4m ago". */
+export function savedLabel(at: Date, now = Date.now()): string {
+  if (now - at.getTime() < 60_000) return "Saved just now";
+  return `Saved ${formatRelativeAge(at)} ago`;
 }

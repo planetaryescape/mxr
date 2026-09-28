@@ -37,14 +37,7 @@ export type ShortcutChord = string;
  * pushes its scope (`useShortcutScope`) and registers a controller
  * (`useScopeController`) that implements the action's `command`.
  */
-export type ActionScope =
-  | "global"
-  | "sidebar"
-  | "list"
-  | "reader"
-  | "screener"
-  | "focus"
-  | "place";
+export type ActionScope = "global" | "sidebar" | "list" | "reader" | "screener" | "focus" | "place";
 
 export interface ActionContext {
   path: string;
@@ -66,6 +59,8 @@ type IconComponent = ComponentType<{ className?: string }>;
 interface ActionBase {
   id: string;
   label: string;
+  /** A few words for the status bar and key hints, when `label` is long. */
+  shortLabel?: string;
   description?: string;
   group: ActionGroup;
   icon?: IconComponent;

@@ -174,8 +174,10 @@ impl Fixture {
         }
     }
 
+    /// Waits for the job to finish. Only a deadline, never an ordering: on a
+    /// loaded CI runner two chunks of 100 took longer than the old 4 s.
     async fn wait_for_job(&self, job_id: &str) -> JobData {
-        for _ in 0..200 {
+        for _ in 0..3000 {
             if let ResponseData::Job { job } = self
                 .send(Request::GetJob {
                     job_id: job_id.to_string(),
@@ -692,6 +694,61 @@ async fn a_sweep_job_leaves_out_messages_pinned_before_their_chunk() {
     for id in &ids {
         assert!(fx.in_inbox(id).await);
     }
+}
+
+/// A pin that lands while a sweep job is running, just before a chunk's
+/// recheck, keeps its message. The sweep gate orders them: the test holds
+/// it the way a pin request does, pins, then lets the chunk run.
+#[tokio::test]
+async fn a_pin_made_while_a_sweep_runs_keeps_its_message() {
+    let fx = Fixture::new().await;
+    let mut ids = Vec::new();
+    for index in 0..3 {
+        ids.push(
+            fx.inbound(
+                &fx.account,
+                ROBOT,
+                &format!("Receipt {index}"),
+                Duration::minutes(index),
+                false,
+            )
+            .await
+            .id,
+        );
+    }
+    let pinned = ids[1].clone();
+    let pinning = fx.state.sweep_gate.change().await;
+    let started = super::mutations::start_mutation_job(
+        fx.state.clone(),
+        MutationCommand::Archive {
+            message_ids: ids.clone(),
+        },
+        None,
+        super::mutations::ChunkGuard::Sweep(paper_trail_scope(&fx)),
+    )
+    .await
+    .unwrap();
+    let ResponseData::JobStarted { job } = started else {
+        panic!("expected a job");
+    };
+    // The job is queued behind the pin: nothing is archived yet.
+    for id in &ids {
+        assert!(fx.in_inbox(id).await);
+    }
+    fx.state
+        .store
+        .set_message_pins(std::slice::from_ref(&pinned), true)
+        .await
+        .unwrap();
+    drop(pinning);
+
+    let job = fx.wait_for_job(&job.job_id).await;
+    assert_eq!(job.status, JobStatusData::Succeeded, "{job:?}");
+    assert_eq!(job.progress.succeeded, 2);
+    assert_eq!(job.progress.skipped, 1);
+    assert!(fx.in_inbox(&pinned).await);
+    assert!(!fx.in_inbox(&ids[0]).await);
+    assert!(!fx.in_inbox(&ids[2]).await);
 }
 
 #[tokio::test]

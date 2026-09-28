@@ -181,17 +181,27 @@ test("sound: off by default, previews in the browser, plays on archive but never
   await expect(page.getByText(/^Undone$/)).toBeVisible();
 });
 
-/** Archive the first row with its hover button, then undo with the toast's button. */
+/**
+ * Archive the first row with its hover button, then undo with the toast's
+ * button. The hover toolbar shows only while the pointer is over its row,
+ * and the list can still be settling from the last undo (rows shift under a
+ * resting pointer), so hover and click are retried together on one row.
+ */
 async function pointerArchiveAndUndo(page: Page): Promise<void> {
-  const row = mailRows(page).first();
-  await row.hover();
-  await row.locator('[title="Archive (e)"]').click();
+  const rowId = (await mailRows(page).first().getAttribute("id"))!;
+  const row = page.locator(`[id="${rowId}"]`);
+  await expect(async () => {
+    await row.hover();
+    await row.locator('[title="Archive (e)"]').click({ timeout: 1000 });
+  }).toPass({ timeout: 10_000 });
+  await expect(row).toHaveCount(0);
   const toast = page
     .locator("[data-sonner-toast]")
     .filter({ hasText: /^Archived/ })
     .last();
   await toast.getByRole("button", { name: "Undo" }).click();
   await expect(page.getByText(/^Undone$/).first()).toBeVisible();
+  await expect(row).toBeVisible();
 }
 
 test("three pointer archives earn one key hint, and it never comes back", async ({ page }) => {

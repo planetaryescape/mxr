@@ -817,6 +817,12 @@ async fn run_mutation_job(
     let mut terminal_error: Option<String> = None;
 
     for ids in mutation_message_ids(&cmd).chunks(MUTATION_JOB_CHUNK_SIZE) {
+        // A sweep holds the gate from its recheck through its archive, so a
+        // pin can't slip in between them (see `SweepGate`).
+        let _gate = match guard {
+            ChunkGuard::Sweep(_) => Some(state.sweep_gate.chunk().await),
+            ChunkGuard::None => None,
+        };
         let ids = match guard_chunk(&state, &guard, ids).await {
             Ok((kept, left_out)) => {
                 // Left out on purpose, so not a failure: counted as skipped

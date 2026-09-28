@@ -340,6 +340,7 @@ pub(super) async fn set_sender_kind(
             "sender email cannot be empty".to_string(),
         ));
     }
+    let _gate = state.sweep_gate.change().await;
     let store = &state.store;
     let existing = store
         .get_screener_decision(account_id, &sender_email)
@@ -380,11 +381,31 @@ pub(super) async fn pin_messages(
     message_ids: &[MessageId],
     pinned: bool,
 ) -> HandlerResult {
+    let _gate = state.sweep_gate.change().await;
     let changed = state.store.set_message_pins(message_ids, pinned).await?;
     Ok(ResponseData::MessagesPinned {
         changed: changed as u32,
         pinned,
     })
+}
+
+/// Keeps a sweep chunk's recheck and its archive together. A pin or a
+/// sender move (the recheck's inputs) waits while a chunk is between its
+/// check and its archive, and a chunk waits for a pin in progress, so a pin
+/// can never land after the check and still be swept.
+#[derive(Default)]
+pub(crate) struct SweepGate(tokio::sync::RwLock<()>);
+
+impl SweepGate {
+    /// Held by a change to what a sweep may take (pins, sender kinds).
+    pub(crate) async fn change(&self) -> tokio::sync::RwLockReadGuard<'_, ()> {
+        self.0.read().await
+    }
+
+    /// Held by a sweep chunk from its recheck through its archive.
+    pub(crate) async fn chunk(&self) -> tokio::sync::RwLockWriteGuard<'_, ()> {
+        self.0.write().await
+    }
 }
 
 /// How long a sweep preview can be committed.

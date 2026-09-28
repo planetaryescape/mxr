@@ -50,8 +50,8 @@ AI        local model qwen2.5:7b · from this thread only
 Rules the gist follows:
 
 - **The quote is checked.** mxr keeps the ask's quote only when it appears
-  in that message's text (line breaks and quote-mark style may differ, the
-  words may not). A paraphrase is dropped and the ask stays without it, so
+  in the thread's text (line breaks and quote-mark style may differ, the
+  words may not), and drops quotes under 8 characters. A paraphrase is dropped and the ask stays without it, so
   clients can highlight the quote without trusting the model.
 - **Plain text within limits.** The gist is one sentence of at most 240
   characters and the ask at most 160, with no markdown.
@@ -66,14 +66,16 @@ Rules the gist follows:
 - **No model is not an error.** Without one, `gist.status` is `disabled` and
   the human output shows the facts only.
 
-In JSON, `context` has `counterparty`, `owed_reply` and `commitments`, and
-`gist` has `status`, `gist`, `ask` (`summary` and an optional verified
-`quote`), and `provenance` (`model`, `locality`, `sources`). The bridge serves
+In JSON, `context` has `counterparty`, `owed_reply` and `promises` (each
+`{owner, commitment}`), and `gist` has `status` (`ready`, `disabled`,
+`blocked` or `failed`), `gist`, `ask` (`summary` and an optional verified
+`quote` of `{message_id, text}`), `provenance` (`model`, `locality`,
+`sources`), `reason`, `generated_at` and `from_cache`. The bridge serves
 the same data at `GET /api/v1/mail/threads/{id}/context` and
 `GET /api/v1/mail/threads/{id}/context/gist`, and MCP clients get it from
 `mxr_thread_context`.
 
-## Thread briefing — `mxr briefing thread`
+## Thread briefing: `mxr briefing thread`
 
 When a thread has been dormant for a month or more, opening it cold is
 expensive. `mxr briefing thread` synthesizes a Markdown recap from the local
@@ -111,7 +113,7 @@ mxr briefing thread THREAD_ID --format json \
   | jq '{thread_id, body_markdown, citations}'
 ```
 
-## Recipient briefing — `mxr briefing recipient`
+## Recipient briefing: `mxr briefing recipient`
 
 Same primitives, different subject. Useful before writing to someone after a long gap.
 
@@ -125,7 +127,7 @@ where `thread_id` is the recipient email. The deterministic baseline includes
 message counts and last inbound/outbound dates when mxr has them; the LLM can
 turn that baseline into prose when enabled.
 
-The TUI compose flow shows a quiet `Last contact 14mo ago. Press B for context.` hint when you're composing to someone past the gap threshold (default 180 days). The hint is never auto-inserted into the draft body — only shown above it.
+The TUI compose flow shows a quiet `Last contact 14mo ago. Press B for context.` hint when you're composing to someone past the gap threshold (default 180 days). The hint is never auto-inserted into the draft body; it is only shown above it.
 
 ### Privacy
 
@@ -134,7 +136,7 @@ personal context. When `llm.allow_cloud_relationship_data = false`, relationship
 synthesis is blocked for non-local LLM endpoints and a deterministic fallback is
 returned instead. Local LLMs see the full profile.
 
-## Maybe include — `mxr suggest-recipients`
+## Maybe include: `mxr suggest-recipients`
 
 Suggests Cc candidates who frequently appear on similar prior threads but are absent from this draft. Suggestions, not actions.
 
@@ -164,13 +166,13 @@ What you get: `{ email, display_name, reason, confidence, evidence }` rows. `evi
 mxr suggest-recipients --draft DRAFT_ID --format json \
   | jq -r '.[] | "\(.email)\t\(.confidence)\t\(.reason)"'
 
-# Then decide manually whether to add — mxr never edits To/Cc for you.
+# Then decide manually whether to add; mxr never edits To/Cc for you.
 mxr drafts edit DRAFT_ID
 ```
 
-## Who's the expert — `mxr expert`
+## Who's the expert: `mxr expert`
 
-For an inbound question you'd otherwise forward, `mxr expert` ranks people in your local corpus who have answered similar questions before — ranked by their *answers*, not their *questions*.
+For an inbound question you'd otherwise forward, `mxr expert` ranks people in your local corpus who have answered similar questions before, ranked by their *answers*, not their *questions*.
 
 ```bash
 # Start from a specific message:
@@ -180,7 +182,7 @@ mxr expert MESSAGE_ID --format json
 mxr expert --query "Who knows about DKIM setup?" --format json
 ```
 
-What you get: `{ email, display_name, score, reason, answered_threads, citations }` rows. Every citation points at an *answer* message — a reply that follows a question, contains explanatory content, and was followed by thanks/confirmation or no further unresolved ask in the same thread.
+What you get: `{ email, display_name, score, reason, answered_threads, citations }` rows. Every citation points at an *answer* message: a reply that follows a question, contains explanatory content, and was followed by thanks/confirmation or no further unresolved ask in the same thread.
 
 ### Ranking shape
 
@@ -200,9 +202,9 @@ Ranking and `reason` text are deterministic today. `mxr expert` does not call th
 mxr expert MESSAGE_ID --include-self --format json
 ```
 
-## Personal knowledge graph — `mxr whois`
+## Personal knowledge graph: `mxr whois`
 
-Lightweight, citation-required explanations for people and free-text terms. Query-time only — there is no persisted entity table in v1, by design.
+Lightweight, citation-required explanations for people and free-text terms. Query-time only: there is no persisted entity table in v1, by design.
 
 ```bash
 mxr whois sam
@@ -223,7 +225,7 @@ When the query is an email, the path uses the sender/relationship profile direct
 mxr whois "Sam" --format json | jq '.candidates'
 ```
 
-What you get: a list of candidate entities with first/last-seen timestamps — pick the one you mean and re-query with the email or a more specific phrase.
+What you get: a list of candidate entities with first/last-seen timestamps. Pick the one you mean and re-query with the email or a more specific phrase.
 
 ## In real life
 
@@ -231,7 +233,7 @@ What you get: a list of candidate entities with first/last-seen timestamps — p
 - **Composing to a contact after a year:** `mxr briefing recipient alice@example.com` before opening the draft; read the deterministic relationship baseline or LLM prose in `.body_markdown`.
 - **Forwarding an inbound question:** `mxr expert MESSAGE_ID --format json | jq '.[0]'`; forward to the top answerer with a one-line context.
 - **Reading a meeting note that mentions "Sam":** `mxr whois Sam --format json | jq '.candidates // .canonical_name'`; disambiguate without leaving the terminal.
-- **Pre-send Cc check:** `mxr suggest-recipients --draft DRAFT_ID --format json` before hitting send on a topic you don't normally own — your normal collaborators may be missing.
+- **Pre-send Cc check:** `mxr suggest-recipients --draft DRAFT_ID --format json` before hitting send on a topic you don't normally own; your normal collaborators may be missing.
 
 ## Agent prompts that work
 
@@ -245,7 +247,7 @@ next step."
 ```text
 "For inbound MESSAGE_ID, run `mxr expert MESSAGE_ID --format json` and
 propose the top expert with a one-sentence forward note grounded in
-their cited answer message. Don't forward — show me first."
+their cited answer message. Don't forward; show me first."
 ```
 
 ```text
@@ -256,8 +258,8 @@ one-line reason. Ask me which to add. Never edit the draft yourself."
 
 ## See also
 
-- [Pre-send safety](/guides/pre-send-safety/) — the gate the suggest-recipients hint appears inside
-- [Archive intelligence](/guides/archive-intelligence/) — same citation discipline for `mxr ask` / `mxr decisions`
-- [LLM features](/guides/llm-features/) — configure the model used for briefings
-- [Sender view](/guides/sender-view/) — the per-contact view that links into recipient briefings
-- [CLI — `mxr briefing`](/reference/cli/briefing/), [`mxr suggest-recipients`](/reference/cli/suggest-recipients/), [`mxr expert`](/reference/cli/expert/), [`mxr whois`](/reference/cli/whois/)
+- [Pre-send safety](/guides/pre-send-safety/): the gate the suggest-recipients hint appears inside
+- [Archive intelligence](/guides/archive-intelligence/): same citation discipline for `mxr ask` / `mxr decisions`
+- [LLM features](/guides/llm-features/): configure the model used for briefings
+- [Sender view](/guides/sender-view/): the per-contact view that links into recipient briefings
+- [CLI: `mxr briefing`](/reference/cli/briefing/), [`mxr suggest-recipients`](/reference/cli/suggest-recipients/), [`mxr expert`](/reference/cli/expert/), [`mxr whois`](/reference/cli/whois/)

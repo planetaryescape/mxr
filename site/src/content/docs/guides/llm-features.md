@@ -15,7 +15,7 @@ guide:
 | `mxr draft-assist` | this page | thread + instruction → draft body in your voice |
 | `mxr draft eval` | [this page](#check-how-close-drafts-get) | replay your recent replies and compare drafts with what you sent |
 | `mxr send --check` answer coverage | [Pre-send safety](/guides/pre-send-safety/#answer-coverage) | extract asks from thread, judge whether the draft addresses each |
-| `mxr send --check` commitment candidates | [Forgotten work](/guides/forgotten-work/#commitments--promises-you-made) | extract "I'll send the deck Friday" promises from drafts |
+| `mxr send --check` commitment candidates | [Forgotten work](/guides/forgotten-work/#commitments-promises-you-made) | extract "I'll send the deck Friday" promises from drafts |
 | `mxr ask` | [Archive intelligence](/guides/archive-intelligence/) | retrieval-grounded answer over local mail, every claim cited |
 | `mxr decisions rebuild` | [Archive intelligence](/guides/archive-intelligence/#the-decision-log--mxr-decisions) | extract explicit decisions from threads |
 | `mxr briefing thread` / `recipient` | [Briefings and loop-in](/guides/briefings-and-loop-in/) | dormant-thread / long-gap recap from the local thread transcript or relationship baseline |

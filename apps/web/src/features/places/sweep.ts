@@ -11,6 +11,7 @@ import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { awaitJob } from "@/features/mail-actions/mailMutationJobs";
 import { invalidateMailQueries } from "@/features/mail-actions/mailQueryInvalidation";
 import { claimUndo, offerUndo, undoAll } from "@/features/mail-actions/mailUndo";
+import { soundFor } from "@/features/mail-actions/verbFeedback";
 import { playSound } from "@/features/sound/player";
 import { plural } from "@/lib/format";
 
@@ -60,7 +61,8 @@ export async function runSweep(
     const left = response.result?.skipped ?? 0;
     const leftNote =
       left > 0 ? `; ${plural(left, "message")} changed since the preview and stayed` : "";
-    if (archived > 0) playSound("archived");
+    const sound = soundFor("sweep");
+    if (archived > 0 && sound) playSound(sound);
     claim.settle(
       offerUndo(
         `Archived ${plural(archived, "message")} from ${where}${leftNote}`,

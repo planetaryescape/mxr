@@ -22,6 +22,7 @@ import { parseAddress, plural } from "@/lib/format";
 import { useModals } from "@/state/modalStore";
 
 import { openMailDialog } from "./mailDialogStore";
+import { VERB_FEEDBACK } from "./verbFeedback";
 import { invalidateMailQueries, performMailAction } from "./mailMutations";
 import type { MailAction } from "./pendingMailOps";
 import { ensureThread, type MailTarget } from "./target";
@@ -158,7 +159,7 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
       setReplyLater(messageId, true)
         .then(() => {
           void invalidateMailQueries();
-          toast.success("Added to your reply queue", {
+          toast.success(VERB_FEEDBACK["reply-later"].pastTense, {
             action: {
               label: "Undo",
               onClick: () =>

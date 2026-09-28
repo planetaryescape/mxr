@@ -12,6 +12,7 @@ import { create } from "zustand";
 import { apiFetch } from "@/api/client";
 import { invalidateMailQueries } from "@/features/mail-actions/mailQueryInvalidation";
 import { claimUndo, offerUndo } from "@/features/mail-actions/mailUndo";
+import { VERB_FEEDBACK } from "@/features/mail-actions/verbFeedback";
 import { plural } from "@/lib/format";
 import { useSelection } from "@/state/selectionStore";
 
@@ -62,7 +63,7 @@ export async function markDoneWaiting(threadIds: string[]): Promise<void> {
     await post("dismiss", ids);
     claim.settle(
       offerUndo(
-        `Done waiting on ${plural(ids.length, "conversation")}`,
+        `${VERB_FEEDBACK["done-waiting"].pastTense} ${plural(ids.length, "conversation")}`,
         `done-waiting-${ids.join(",")}`,
         () => restore(ids),
         claim.run,

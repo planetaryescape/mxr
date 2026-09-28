@@ -6,14 +6,16 @@
 
 import { onSendEvent } from "@/features/compose/session/sendEvents";
 import type { MailAction } from "@/features/mail-actions/pendingMailOps";
+import { soundFor } from "@/features/mail-actions/verbFeedback";
 
-import { installSoundPlayer, playSound, type SoundEvent } from "./player";
+import { installSoundPlayer, playSound } from "./player";
 
 /** Mount once in the shell. Returns a cleanup. */
 export function installSoundFeedback(): () => void {
   const stopPlayer = installSoundPlayer();
   const stopSends = onSendEvent((event) => {
-    if (event.kind === "sent") playSound("sent");
+    const sound = soundFor("send");
+    if (event.kind === "sent" && sound) playSound(sound);
   });
   return () => {
     stopPlayer();
@@ -21,14 +23,8 @@ export function installSoundFeedback(): () => void {
   };
 }
 
-const MAIL_ACTION_SOUNDS: Partial<Record<MailAction, SoundEvent>> = {
-  archive: "archived",
-  "read-and-archive": "archived",
-  snooze: "snoozed",
-};
-
 /** One sound per mail action, however many messages it moved. */
 export function playMailActionSound(action: MailAction): void {
-  const event = MAIL_ACTION_SOUNDS[action];
+  const event = soundFor(action);
   if (event) playSound(event);
 }

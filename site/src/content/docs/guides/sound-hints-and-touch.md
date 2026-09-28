@@ -1,6 +1,6 @@
 ---
 title: Sound, key hints and touch
-description: The small things in the web app, all optional or quiet: low tide when you clear the desk, a soft sound palette, hints that name a key, and swiping rows on a touch screen.
+description: "The small things in the web app, all optional or quiet: low tide when you clear the desk, a soft sound palette, hints that name a key, and swiping rows on a touch screen."
 ---
 
 These are the parts of the web app that make it pleasant rather than just

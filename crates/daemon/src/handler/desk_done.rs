@@ -302,6 +302,7 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
     let mut snapshots: Vec<UndoEntrySnapshot> = Vec::new();
     let mut failed: Vec<UndoEntrySnapshot> = Vec::new();
     let mut account_errors: HashMap<AccountId, String> = HashMap::new();
+    let mut batch_error: Option<String> = None;
     for cmd in [
         (!archive_ids.is_empty()).then_some(MutationCommand::ReadAndArchive {
             message_ids: archive_ids,
@@ -314,7 +315,16 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
     .into_iter()
     .flatten()
     {
-        let batch = apply_mutation_batch(state, &cmd, &mutation_id, None).await?;
+        // A batch that fails outright must not lose the undo of one that
+        // already ran: note the error and carry on to the undo entry.
+        let batch = match apply_mutation_batch(state, &cmd, &mutation_id, None).await {
+            Ok(batch) => batch,
+            Err(error) => {
+                tracing::warn!(%error, "desk done batch failed");
+                batch_error.get_or_insert_with(|| error.to_string());
+                continue;
+            }
+        };
         snapshots.extend(batch.changed);
         failed.extend(batch.failed);
         for AccountMutationResultData {
@@ -338,6 +348,7 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
             .account_id
             .as_ref()
             .and_then(|account| account_errors.get(account))
+            .or(batch_error.as_ref())
             .map_or("not every message could be updated", String::as_str);
         plan.error = Some(format!("{why}; run Done again to retry"));
     }
@@ -457,4 +468,32 @@ pub(super) async fn restore_desk_state(
         super::reply_later::set_reply_later_at(state, message_id, true, *set_at).await?;
     }
     Ok(())
+}
+
+/// `run` over hand-built plans (each conversation's messages, archived or
+/// marked read by its lane), for tests that need a batch to fail.
+#[cfg(test)]
+pub(super) async fn run_messages_for_test(
+    state: &AppState,
+    items: Vec<(ThreadId, AccountId, DeskLaneKind, Vec<MessageId>)>,
+) -> HandlerResult {
+    let plans = items
+        .into_iter()
+        .map(|(thread_id, account_id, lane, messages)| Plan {
+            thread_id,
+            account_id: Some(account_id),
+            lane,
+            archive: if lane_archives(lane) {
+                messages.clone()
+            } else {
+                Vec::new()
+            },
+            unread: messages,
+            mark: None,
+            commitment: None,
+            reply_later: Vec::new(),
+            error: None,
+        })
+        .collect();
+    run(state, plans).await
 }

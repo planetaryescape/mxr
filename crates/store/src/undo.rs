@@ -41,6 +41,11 @@ pub struct UndoEntrySnapshot {
     /// this set re-attaches the message to the right local labels and
     /// implies what reverse provider mutation to send.
     pub prior_label_provider_ids: Vec<String>,
+    /// The mutation failed on this message, possibly after the provider
+    /// applied it (the local copy may not show the change). Undo sends the
+    /// reverse to the provider whatever the local diff says.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub uncertain: bool,
 }
 
 /// What the desk's Done changed beyond messages, as it was before.

@@ -3757,6 +3757,7 @@ async fn write_undo_entry_roundtrips_via_read() {
         provider_id: "fake-msg-1".into(),
         prior_flags_bits: MessageFlags::READ.bits(),
         prior_label_provider_ids: vec!["INBOX".into(), "Work".into()],
+        uncertain: false,
     };
     let entry = UndoEntry {
         mutation_id: "01HVTEST0000000000000000".into(),

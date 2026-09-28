@@ -888,6 +888,7 @@ async fn a_partly_failed_undo_keeps_what_failed_for_a_retry() {
         provider_id: envelope.provider_id.clone(),
         prior_flags_bits: 0,
         prior_label_provider_ids: vec!["INBOX".into()],
+        uncertain: false,
     };
     let now = chrono::Utc::now().timestamp();
     fx.state

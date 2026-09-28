@@ -590,3 +590,83 @@ async fn done_takes_the_conversation_out_of_reply_later_and_undo_puts_it_back() 
         "same place in the queue"
     );
 }
+
+#[tokio::test]
+async fn a_failed_second_batch_keeps_the_undo_of_the_first() {
+    let fx = Fixture::new().await;
+    let (thread, seen, fresh) = owed_thread(&fx).await;
+    // The read batch names a message that is gone by the time it runs.
+    let vanished = (
+        ThreadId::new(),
+        fx.account.clone(),
+        DeskLaneKind::Waiting,
+        vec![MessageId::new()],
+    );
+    let owed = (
+        thread.clone(),
+        fx.account.clone(),
+        DeskLaneKind::Owed,
+        vec![seen.id.clone(), fresh.id.clone()],
+    );
+    let response =
+        crate::handler::desk_done::run_messages_for_test(&fx.state, vec![owed, vanished])
+            .await
+            .expect("the run reports per item, never loses what changed");
+    let ResponseData::DeskItemsResolved {
+        items, mutation_id, ..
+    } = response
+    else {
+        panic!("expected DeskItemsResolved");
+    };
+    assert!(items[0].error.is_none());
+    assert!(items[1].error.is_some());
+    for id in [&seen.id, &fresh.id] {
+        assert!(!in_inbox(&envelope(&fx, id).await));
+    }
+
+    undo(&fx, mutation_id.expect("the archive batch is undoable")).await;
+    assert!(in_inbox(&envelope(&fx, &seen.id).await));
+    let back = envelope(&fx, &fresh.id).await;
+    assert!(in_inbox(&back) && !read(&back));
+}
+
+#[tokio::test]
+async fn undo_of_a_failed_archive_reverses_it_at_the_provider_too() {
+    let fx = Fixture::new().await;
+    let (_, _, fresh) = owed_thread(&fx).await;
+    fx.fake.fail_label_changes(true);
+    let result = match request(
+        &fx,
+        Request::mutation(mxr_protocol::MutationCommand::Archive {
+            message_ids: vec![fresh.id.clone()],
+        }),
+    )
+    .await
+    {
+        ResponseData::MutationResult { result } => result,
+        other => panic!("expected MutationResult, got {other:?}"),
+    };
+    assert_eq!(result.succeeded, 0);
+    // The local copy shows no change, but the provider may have archived it.
+    assert!(in_inbox(&envelope(&fx, &fresh.id).await));
+    fx.fake.fail_label_changes(false);
+    let before = fx.fake.mutations().len();
+
+    undo(
+        &fx,
+        result
+            .mutation_id
+            .expect("an uncertain failure is undoable"),
+    )
+    .await;
+    let sent = fx.fake.mutations()[before..].to_vec();
+    assert!(
+        sent.iter().any(|m| matches!(
+            m,
+            mxr_provider_fake::RecordedMutation::LabelsModified { provider_id, added, .. }
+                if provider_id == &fresh.provider_id && added.iter().any(|l| l == "INBOX")
+        )),
+        "undo put INBOX back at the provider: {sent:?}"
+    );
+    assert!(in_inbox(&envelope(&fx, &fresh.id).await));
+}

@@ -734,6 +734,7 @@ pub(super) async fn apply_mutation_batch(
                 provider_id: envelope.provider_id.clone(),
                 prior_flags_bits: envelope.flags.bits(),
                 prior_label_provider_ids: envelope.label_provider_ids.clone(),
+                uncertain: false,
             });
 
             let applied = match check.as_deref_mut() {
@@ -785,9 +786,13 @@ pub(super) async fn apply_mutation_batch(
                 }
                 Err(error) => {
                     // It may have changed in part (read, then the archive
-                    // failed): its undo restores it to this snapshot.
+                    // failed), or at the provider but not here: its undo
+                    // restores it to this snapshot at the provider too.
                     if let Some(snapshot) = snapshot {
-                        failed_snapshots.push(snapshot);
+                        failed_snapshots.push(UndoEntrySnapshot {
+                            uncertain: true,
+                            ..snapshot
+                        });
                     }
                     account_result.skipped += (envelopes.len() - index) as u32;
                     account_result.error = Some(error);
@@ -1402,14 +1407,31 @@ async fn restore_snapshot(
         .map(String::as_str)
         .collect();
 
-    let to_add: Vec<String> = prior_labels
+    let mut to_add: Vec<String> = prior_labels
         .difference(&current_labels)
         .map(|s| (*s).to_string())
         .collect();
-    let to_remove: Vec<String> = current_labels
+    let mut to_remove: Vec<String> = current_labels
         .difference(&prior_labels)
         .map(|s| (*s).to_string())
         .collect();
+    // The mutation may have reached the provider without the local copy
+    // showing it: reverse what it could have done there too. Adding a
+    // label a message has, or removing one it lacks, is a no-op.
+    if snapshot.uncertain {
+        let (may_remove, may_add) =
+            uncertain_label_changes(kind, &snapshot.prior_label_provider_ids);
+        for label in may_remove {
+            if !to_add.contains(&label) {
+                to_add.push(label);
+            }
+        }
+        for label in may_add {
+            if !to_remove.contains(&label) {
+                to_remove.push(label);
+            }
+        }
+    }
 
     // Undo runs under a fresh mutation_id (a retry of undo would be a
     // distinct operation in the user's mind). Dedup against the reverse
@@ -1457,7 +1479,7 @@ async fn restore_snapshot(
         let prior_flags = mxr_core::MessageFlags::from_bits_truncate(snapshot.prior_flags_bits);
         let prior_read = prior_flags.contains(mxr_core::MessageFlags::READ);
         let current_read = current.flags.contains(mxr_core::MessageFlags::READ);
-        if prior_read != current_read {
+        if prior_read != current_read || snapshot.uncertain {
             // Suffix dedup key so this co-exists with the ModifyLabels
             // call above when undoing a ReadAndArchive.
             let read_dedup_key = format!("{}#read", snapshot.provider_id);
@@ -1504,6 +1526,40 @@ async fn restore_snapshot(
         .map_err(SnapshotError::Other)?;
 
     Ok(())
+}
+
+/// For a message whose mutation failed, possibly after the provider applied
+/// it: the prior labels the mutation could have removed, and the labels it
+/// could have added that the message didn't have.
+fn uncertain_label_changes(
+    kind: UndoableMutationKind,
+    prior: &[String],
+) -> (Vec<String>, Vec<String>) {
+    let had = |label: &str| prior.iter().any(|l| l == label);
+    let inbox = || {
+        if had("INBOX") {
+            vec!["INBOX".to_string()]
+        } else {
+            Vec::new()
+        }
+    };
+    let added = |label: &str| {
+        if had(label) {
+            Vec::new()
+        } else {
+            vec![label.to_string()]
+        }
+    };
+    match kind {
+        UndoableMutationKind::Archive
+        | UndoableMutationKind::ReadAndArchive
+        | UndoableMutationKind::DeskDone => (inbox(), Vec::new()),
+        UndoableMutationKind::Trash => (inbox(), added("TRASH")),
+        UndoableMutationKind::Spam => (inbox(), added("SPAM")),
+        // A move or label edit may have removed any of them.
+        UndoableMutationKind::Labels => (prior.to_vec(), Vec::new()),
+        UndoableMutationKind::SetRead => (Vec::new(), Vec::new()),
+    }
 }
 
 fn classify_provider_error(error: mxr_core::MxrError) -> SnapshotError {

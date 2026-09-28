@@ -1,7 +1,11 @@
 import type { KeyboardEvent } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { handleComposeShortcut, type ComposeShortcutHandlers } from "./composeShortcuts";
+import {
+  handleComposeShortcut,
+  isComposeChord,
+  type ComposeShortcutHandlers,
+} from "./composeShortcuts";
 
 function handlers(): ComposeShortcutHandlers {
   return {
@@ -64,6 +68,51 @@ describe("compose shortcuts", () => {
     const calls = Object.values(bag).filter((value) => typeof value === "function");
     expect(calls.every((fn) => (fn as ReturnType<typeof vi.fn>).mock.calls.length === 0)).toBe(
       true,
+    );
+  });
+
+  it("editor chords keep repeating: held ⌘Z, ⌘⇧Z, ⌘B, ⌘C and ⌘A pass through", () => {
+    const bag = handlers();
+    for (const [key, shiftKey] of [
+      ["z", false],
+      ["z", true],
+      ["b", false],
+      ["i", false],
+      ["c", false],
+      ["a", false],
+      ["ArrowLeft", false],
+    ] as const) {
+      const held = keyEvent({ key, shiftKey, repeat: true });
+      handleComposeShortcut(held.event, bag);
+      expect(held.preventDefault).not.toHaveBeenCalled();
+      expect(isComposeChord({ key, shiftKey, metaKey: true, ctrlKey: false })).toBe(false);
+    }
+  });
+
+  it("names exactly mxr's own chords", () => {
+    const chord = (key: string, shiftKey = false) =>
+      isComposeChord({ key, shiftKey, metaKey: false, ctrlKey: true });
+    expect([chord("Enter"), chord("Enter", true), chord("s"), chord("Backspace")]).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
+    expect([chord("C", true), chord("B", true), chord("L", true), chord(";")]).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
+    expect([chord("z"), chord("Z", true), chord("b"), chord("c"), chord("v")]).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect(isComposeChord({ key: "Enter", shiftKey: false, metaKey: false, ctrlKey: false })).toBe(
+      false,
     );
   });
 });

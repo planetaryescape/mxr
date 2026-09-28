@@ -113,17 +113,38 @@ export function handleComposeShortcut(
   }
 }
 
-/** Keys the compose surface binds under ⌘/Ctrl (with or without Shift). */
-const COMPOSE_KEYS = new Set(["c", "b", "a", "l", "g", "r", "s", ";", "enter", "backspace"]);
+/**
+ * mxr's own compose chords, exactly as `handleComposeShortcut` binds them
+ * ("shift+" when Shift is part of the chord). Nothing else counts: ⌘B, ⌘Z,
+ * ⌘⇧Z, clipboard and selection chords belong to the editor and repeat
+ * natively.
+ */
+const MXR_COMPOSE_CHORDS = new Set([
+  "shift+c",
+  "shift+b",
+  "shift+a",
+  "shift+l",
+  "shift+g",
+  "shift+r",
+  "shift+s",
+  "s",
+  ";",
+  "shift+enter",
+  "enter",
+  "backspace",
+]);
 
 /**
- * A ⌘/Ctrl chord the composer owns. Every compose surface (this handler and
- * both editors) swallows its repeats, so a held chord runs once.
+ * One of mxr's compose chords (send, save, discard, Cc, Bcc…). Every compose
+ * surface (this handler and both editors) swallows only their repeats, so a
+ * held ⌘↵ sends once while a held ⌘Z keeps undoing.
  */
 export function isComposeChord(event: {
   key: string;
   metaKey: boolean;
   ctrlKey: boolean;
+  shiftKey: boolean;
 }): boolean {
-  return (event.metaKey || event.ctrlKey) && COMPOSE_KEYS.has(event.key.toLowerCase());
+  if (!(event.metaKey || event.ctrlKey)) return false;
+  return MXR_COMPOSE_CHORDS.has(`${event.shiftKey ? "shift+" : ""}${event.key.toLowerCase()}`);
 }

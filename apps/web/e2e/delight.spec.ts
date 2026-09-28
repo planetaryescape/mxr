@@ -263,3 +263,18 @@ test.describe("touch", () => {
     await expect(page.getByTestId("swipe-layer")).toHaveCount(0);
   });
 });
+
+test("holding e archives exactly one conversation", async ({ page }) => {
+  await openList(page, "/m/inbox");
+  await page.getByTestId("mailbox-list").focus();
+  const first = await mailRows(page).first().getAttribute("id");
+  const second = await mailRows(page).nth(1).getAttribute("id");
+  // Playwright marks every down of a key that is already down as a repeat.
+  for (let press = 0; press < 8; press += 1) await page.keyboard.down("e");
+  await page.keyboard.up("e");
+  await expect(page.locator(`[id="${first}"]`)).toHaveCount(0);
+  await expect(page.locator(`[id="${second}"]`)).toBeVisible();
+  await expect(page.locator("[data-sonner-toast]").filter({ hasText: /^Archived/ })).toHaveCount(1);
+  await page.keyboard.press("u");
+  await expect(page.locator(`[id="${first}"]`)).toBeVisible();
+});

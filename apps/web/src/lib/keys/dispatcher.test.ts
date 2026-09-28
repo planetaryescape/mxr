@@ -307,4 +307,48 @@ describe("installKeyDispatcher", () => {
     expect(inbox.run).not.toHaveBeenCalled();
     expect(pending.at(-1)).toBeNull();
   });
+
+  test("a held key runs a state-changing action once, not once per repeat", () => {
+    const archive = runAction("mail.archive", "e");
+    const star = runAction("mail.star", "s");
+    registry.defineMany([archive.action, star.action]);
+
+    press({ key: "e" });
+    for (let repeat = 0; repeat < 10; repeat += 1) {
+      expect(press({ key: "e", repeat: true })).toBe(false);
+    }
+    press({ key: "s" });
+    press({ key: "s", repeat: true });
+
+    expect(archive.run).toHaveBeenCalledTimes(1);
+    expect(star.run).toHaveBeenCalledTimes(1);
+  });
+
+  test("holding j or k keeps moving: only movement repeats", () => {
+    const down = runAction("list.down", "j");
+    const up = runAction("list.up", "k");
+    registry.defineMany([down.action, up.action]);
+
+    press({ key: "j" });
+    press({ key: "j", repeat: true });
+    press({ key: "j", repeat: true });
+    press({ key: "k", repeat: true });
+
+    expect(down.run).toHaveBeenCalledTimes(3);
+    expect(up.run).toHaveBeenCalledTimes(1);
+  });
+
+  test("a repeat never starts or completes a chord, and modifier chords don't repeat", () => {
+    const inbox = runAction("inbox", "g i");
+    const palette = runAction("palette", "Mod+k");
+    registry.defineMany([inbox.action, palette.action]);
+
+    press({ key: "g", repeat: true });
+    press({ key: "i" });
+    expect(inbox.run).not.toHaveBeenCalled();
+
+    press({ key: "k", ctrlKey: true });
+    press({ key: "k", ctrlKey: true, repeat: true });
+    expect(palette.run).toHaveBeenCalledTimes(1);
+  });
 });

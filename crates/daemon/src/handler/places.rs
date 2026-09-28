@@ -381,14 +381,22 @@ pub(super) async fn pin_messages(
     message_ids: &[MessageId],
     pinned: bool,
 ) -> HandlerResult {
-    let mut accounts = Vec::new();
+    // One account at a time: its gate is held only while its own pins are
+    // written, never while waiting for another account's.
+    let mut by_account: HashMap<AccountId, Vec<MessageId>> = HashMap::new();
     for id in message_ids {
         if let Some(envelope) = state.store.get_envelope(id).await? {
-            accounts.push(envelope.account_id);
+            by_account
+                .entry(envelope.account_id)
+                .or_default()
+                .push(id.clone());
         }
     }
-    let _change = state.sweep_gate.change(&accounts).await;
-    let changed = state.store.set_message_pins(message_ids, pinned).await?;
+    let mut changed = 0;
+    for (account_id, ids) in by_account {
+        let _change = state.sweep_gate.change([&account_id]).await;
+        changed += state.store.set_message_pins(&ids, pinned).await?;
+    }
     Ok(ResponseData::MessagesPinned {
         changed: changed as u32,
         pinned,
@@ -405,8 +413,10 @@ pub(super) async fn pin_messages(
 /// 1. A sweep takes the account's provider lock first
 ///    (`AppState::acquire_provider_operation`), then that account's gate, one
 ///    message at a time; it never holds two gates.
-/// 2. Pins and sender moves take only gates, never a provider lock, and take
-///    several in account-id order.
+/// 2. Changes (pins, sender moves, screener decisions, the contact refresh
+///    that marks list senders) take only gates, never a provider lock. A pin
+///    takes one account's gate at a time; only the contact refresh, which
+///    rewrites every account at once, holds several, in account-id order.
 ///
 /// The provider call sits inside the gate on purpose: the archive the
 /// provider records is what the pin guarantee is about, and a pin landing
@@ -420,8 +430,10 @@ pub(crate) struct SweepGate {
     pub(crate) before_provider: tokio::sync::Notify,
 }
 
-/// Held by a pin or sender move while it writes; the account's generation
-/// moves on when it is dropped, whether or not the write succeeded.
+/// Held by a change to what a sweep may take while it writes; the
+/// accounts' generations move on when it is dropped, whether or not the
+/// write succeeded. Every writer of pins, screener decisions (sender kinds)
+/// or contacts' list-sender flag goes through `SweepGate::change`.
 pub(crate) struct SweepChange(Vec<tokio::sync::OwnedMutexGuard<u64>>);
 
 impl Drop for SweepChange {
@@ -521,6 +533,20 @@ impl SweepCheck {
         }
         Ok(self.sweepable.contains(id))
     }
+}
+
+/// The contact refresh, which can change who counts as a list sender (and
+/// so what Reading and Paper trail hold) in every account at once.
+pub(crate) async fn refresh_contacts(state: &AppState) -> Result<u32, HandlerError> {
+    let accounts: Vec<AccountId> = state
+        .store
+        .list_accounts()
+        .await?
+        .into_iter()
+        .map(|account| account.id)
+        .collect();
+    let _change = state.sweep_gate.change(&accounts).await;
+    Ok(state.store.refresh_contacts().await?)
 }
 
 /// How long a sweep preview can be committed.

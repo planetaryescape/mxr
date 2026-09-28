@@ -1001,3 +1001,100 @@ async fn a_pin_in_one_account_never_waits_on_another_accounts_sweep() {
     assert_eq!(job.status, JobStatusData::Succeeded, "{job:?}");
     assert!(!fx.in_inbox(&mine.id).await);
 }
+
+/// A screener Allow for the sender, made while a sweep waits on the
+/// provider, takes its mail out of Paper trail: the sweep sees the change
+/// at the message and leaves it.
+#[tokio::test]
+async fn an_allow_made_during_a_sweep_keeps_the_message() {
+    let fx = Fixture::new().await;
+    let receipt = fx
+        .inbound(&fx.account, ROBOT, "Receipt", Duration::hours(1), false)
+        .await;
+    let syncing = fx.state.acquire_provider_operation(&fx.account).await;
+    let started = super::mutations::start_mutation_job(
+        fx.state.clone(),
+        MutationCommand::Archive {
+            message_ids: vec![receipt.id.clone()],
+        },
+        None,
+        super::mutations::ChunkGuard::Sweep(paper_trail_scope(&fx)),
+    )
+    .await
+    .unwrap();
+    let ResponseData::JobStarted { job } = started else {
+        panic!("expected a job");
+    };
+    // Past the chunk's recheck, waiting on the provider.
+    fx.state.sweep_gate.before_provider.notified().await;
+    fx.send(Request::SetScreenerDecision {
+        account_id: fx.account.clone(),
+        sender_email: ROBOT.into(),
+        disposition: mxr_protocol::ScreenerDispositionData::Allow,
+        route_label: None,
+    })
+    .await;
+    drop(syncing);
+
+    let job = fx.wait_for_job(&job.job_id).await;
+    assert_eq!(job.status, JobStatusData::Succeeded, "{job:?}");
+    assert_eq!(job.progress.succeeded, 0);
+    assert_eq!(job.progress.skipped, 1);
+    assert!(fx.in_inbox(&receipt.id).await, "allowed mid-sweep");
+}
+
+/// Pins across accounts take one account's gate at a time: waiting on a
+/// busy account never holds another account's gate.
+#[tokio::test]
+async fn pins_across_accounts_never_hold_one_gate_while_waiting_for_another() {
+    let fx = Fixture::new().await;
+    let other = mxr_core::Account {
+        id: mxr_core::AccountId::new(),
+        name: "Other".into(),
+        email: "other@example.com".into(),
+        sync_backend: None,
+        send_backend: None,
+        enabled: true,
+    };
+    fx.state.store.insert_account(&other).await.unwrap();
+    fx.inbox_label(&other.id).await;
+    let theirs = fx
+        .inbound(&other.id, ROBOT, "Their receipt", Duration::hours(1), false)
+        .await;
+    let mine = fx
+        .inbound(&fx.account, ROBOT, "My receipt", Duration::hours(2), false)
+        .await;
+
+    for busy in [&fx.account, &other.id] {
+        let idle = if busy == &fx.account {
+            &other.id
+        } else {
+            &fx.account
+        };
+        let holding = fx.state.sweep_gate.change([busy]).await;
+        let state = fx.state.clone();
+        let ids = vec![mine.id.clone(), theirs.id.clone()];
+        let pinning = tokio::spawn(async move {
+            let msg = IpcMessage {
+                id: 1,
+                source: ::mxr_protocol::ClientKind::default(),
+                payload: IpcPayload::Request(Request::PinMessages {
+                    message_ids: ids,
+                    pinned: true,
+                }),
+            };
+            handle_request(&state, &msg).await
+        });
+        // The idle account's gate stays free while the pin waits on the
+        // busy one. The timeout only turns a hang into a failure.
+        let idle_gate = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            fx.state.sweep_gate.change([idle]),
+        )
+        .await
+        .expect("the idle account's gate must not be held while waiting");
+        drop(idle_gate);
+        drop(holding);
+        pinning.await.unwrap();
+    }
+}

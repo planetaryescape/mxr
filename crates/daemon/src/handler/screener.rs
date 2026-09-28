@@ -82,6 +82,8 @@ pub(super) async fn set_decision(
         route_label,
         decided_at: Utc::now(),
     };
+    // A decision is a sender's kind: it moves mail in or out of the places.
+    let _change = state.sweep_gate.change([account_id]).await;
     state.store.set_screener_decision(&decision).await?;
     Ok(ResponseData::Ack)
 }
@@ -91,6 +93,7 @@ pub(super) async fn clear_decision(
     account_id: &AccountId,
     sender_email: &str,
 ) -> HandlerResult {
+    let _change = state.sweep_gate.change([account_id]).await;
     state
         .store
         .delete_screener_decision(account_id, sender_email)

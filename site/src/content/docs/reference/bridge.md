@@ -394,7 +394,7 @@ The daemon owns OAuth flows so the renderer never sees a refresh token.
 | `GET` | `/platform/llm/config` | Current `[llm]` config, without secrets |
 | `POST` | `/platform/llm/config` | Update `[llm]` config and reload provider |
 | `GET` | `/platform/notifications/chimes` | The shared chime setting (`NotificationChimes`) |
-| `POST` | `/platform/notifications/chimes` | Replace the chime setting; the body is the whole `NotificationChimesData` |
+| `POST` | `/platform/notifications/chimes` | Change fields of the chime setting: the body is a `NotificationChimesPatchData` (only the fields to change), applied by the daemon to the current setting |
 | `GET` | `/platform/llm/status` | Runtime LLM provider + model status |
 
 ### Semantic

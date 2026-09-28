@@ -5,7 +5,7 @@ import { Bold, Italic, Link2, List, ListOrdered, RemoveFormatting } from "lucide
 import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
-import { isComposeChord } from "@/features/compose/session/composeShortcuts";
+import { composeCommandOf } from "@/features/compose/session/composeShortcuts";
 
 interface TiptapComposeEditorProps {
   value: string;
@@ -35,27 +35,26 @@ export function TiptapComposeEditor({
         "aria-label": "Message body",
       },
       handleKeyDown: (_view, event) => {
-        // Held send, save and discard chords run once.
-        if (event.repeat && isComposeChord(event)) {
+        // mxr's compose chords, from the one table: held ones run once, and
+        // the editor runs the three it owns (the compose surface the rest).
+        const command = composeCommandOf(event);
+        if (!command) return false;
+        if (event.repeat) {
           event.preventDefault();
           return true;
         }
-        if ((event.metaKey || event.ctrlKey) && event.key === "Backspace") {
-          event.preventDefault();
-          onDiscard();
-          return true;
-        }
-        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
-          event.preventDefault();
-          onSave();
-          return true;
-        }
-        if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && !event.shiftKey) {
-          event.preventDefault();
-          onSend();
-          return true;
-        }
-        return false;
+        const run =
+          command === "requestDiscard"
+            ? onDiscard
+            : command === "handleSaveClick"
+              ? onSave
+              : command === "requestSend"
+                ? onSend
+                : null;
+        if (!run) return false;
+        event.preventDefault();
+        run();
+        return true;
       },
     },
     onUpdate: ({ editor: activeEditor }) =>

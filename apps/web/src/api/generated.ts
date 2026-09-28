@@ -2471,7 +2471,7 @@ export interface paths {
         /** Get the notification chime setting */
         get: operations["notification_chimes_get"];
         put?: never;
-        /** Update the notification chime setting (the body is the whole NotificationChimesData) */
+        /** Change fields of the notification chime setting (the body is a NotificationChimesPatchData) */
         post: operations["notification_chimes_update"];
         delete?: never;
         options?: never;
@@ -4413,6 +4413,34 @@ export interface components {
             /** Format: float */
             volume: number;
         };
+        /** @description Fields of [`NotificationChimesData`] to change; `None` keeps the current value. */
+        NotificationChimesPatchData: {
+            /** @default null */
+            archived: null | components["schemas"]["NotificationChimeSoundData"];
+            /** @default null */
+            enabled: boolean | null;
+            /** @default null */
+            error: null | components["schemas"]["NotificationChimeSoundData"];
+            /** @default null */
+            new_mail: null | components["schemas"]["NotificationChimeSoundData"];
+            /** @default null */
+            reminder: null | components["schemas"]["NotificationChimeSoundData"];
+            /** @default null */
+            sent: null | components["schemas"]["NotificationChimeSoundData"];
+            /** @default null */
+            snoozed: null | components["schemas"]["NotificationChimeSoundData"];
+            /** @default null */
+            spam: null | components["schemas"]["NotificationChimeSoundData"];
+            /** @default null */
+            trashed: null | components["schemas"]["NotificationChimeSoundData"];
+            /** @default null */
+            unsnoozed: null | components["schemas"]["NotificationChimeSoundData"];
+            /**
+             * Format: float
+             * @default null
+             */
+            volume: number | null;
+        };
         OwedReplyHereData: {
             message_id: components["schemas"]["MessageId"];
             /** Format: date-time */
@@ -4906,6 +4934,10 @@ export interface components {
             /** @enum {string} */
             cmd: "UpdateNotificationChimes";
             config: components["schemas"]["NotificationChimesData"];
+        } | {
+            /** @enum {string} */
+            cmd: "PatchNotificationChimes";
+            patch: components["schemas"]["NotificationChimesPatchData"];
         } | {
             /** @enum {string} */
             cmd: "PreviewNotificationChime";

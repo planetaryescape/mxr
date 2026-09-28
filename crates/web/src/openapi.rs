@@ -464,7 +464,7 @@ endpoint!(get llm_status "/api/v1/platform/llm/status", "LLM provider status");
 endpoint!(get llm_config_get "/api/v1/platform/llm/config", "Get LLM configuration");
 endpoint!(post llm_config_update "/api/v1/platform/llm/config", "Update LLM configuration");
 endpoint!(get notification_chimes_get "/api/v1/platform/notifications/chimes", "Get the notification chime setting");
-endpoint!(post notification_chimes_update "/api/v1/platform/notifications/chimes", "Update the notification chime setting (the body is the whole NotificationChimesData)");
+endpoint!(post notification_chimes_update "/api/v1/platform/notifications/chimes", "Change fields of the notification chime setting (the body is a NotificationChimesPatchData)");
 endpoint!(get semantic_status "/api/v1/platform/semantic/status", "Semantic index status");
 endpoint!(post semantic_reindex "/api/v1/platform/semantic/reindex", "Reindex semantic search");
 endpoint!(post semantic_enable "/api/v1/platform/semantic/enable", "Enable semantic search");

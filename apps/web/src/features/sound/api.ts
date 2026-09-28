@@ -4,6 +4,12 @@ import type { components } from "@/api/generated";
 /** The daemon's chime setting, shared with the TUI and CLI. */
 export type ChimeSettings = components["schemas"]["NotificationChimesData"];
 export type ChimeSoundName = components["schemas"]["NotificationChimeSoundData"];
+/**
+ * The fields to change; the daemon applies them to the setting as it is
+ * then. Partial: the Rust type is `#[serde(default)]`, so an absent field
+ * means "keep", though the generated schema lists every field.
+ */
+export type ChimesPatch = Partial<components["schemas"]["NotificationChimesPatchData"]>;
 
 interface ChimesResponse {
   kind: "NotificationChimes";
@@ -16,9 +22,9 @@ export async function fetchChimeSettings(): Promise<ChimeSettings> {
   return (await apiFetch<ChimesResponse>(CHIMES_PATH)).config;
 }
 
-/** The daemon takes the whole setting; send it back with the change applied. */
-export async function saveChimeSettings(config: ChimeSettings): Promise<ChimeSettings> {
-  return (await apiFetch<ChimesResponse>(CHIMES_PATH, { method: "POST", body: config })).config;
+/** Change some fields; answers with the whole setting as the daemon now has it. */
+export async function saveChimeSettings(patch: ChimesPatch): Promise<ChimeSettings> {
+  return (await apiFetch<ChimesResponse>(CHIMES_PATH, { method: "POST", body: patch })).config;
 }
 
 /**

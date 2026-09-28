@@ -247,6 +247,24 @@ impl Default for NotificationChimesData {
     }
 }
 
+/// Fields of [`NotificationChimesData`] to change; `None` keeps the current value.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(default)]
+pub struct NotificationChimesPatchData {
+    pub enabled: Option<bool>,
+    pub volume: Option<f32>,
+    pub new_mail: Option<NotificationChimeSoundData>,
+    pub sent: Option<NotificationChimeSoundData>,
+    pub archived: Option<NotificationChimeSoundData>,
+    pub trashed: Option<NotificationChimeSoundData>,
+    pub spam: Option<NotificationChimeSoundData>,
+    pub snoozed: Option<NotificationChimeSoundData>,
+    pub unsnoozed: Option<NotificationChimeSoundData>,
+    pub reminder: Option<NotificationChimeSoundData>,
+    pub error: Option<NotificationChimeSoundData>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -749,6 +767,12 @@ pub enum Request {
     GetNotificationChimes,
     UpdateNotificationChimes {
         config: Box<NotificationChimesData>,
+    },
+    /// Change only the given fields of the chime setting, applied to the
+    /// current setting under the daemon's config lock, so concurrent clients
+    /// (the web, `mxr chimes`) never overwrite each other's other fields.
+    PatchNotificationChimes {
+        patch: Box<NotificationChimesPatchData>,
     },
     PreviewNotificationChime {
         event: NotificationChimeEventData,
@@ -1831,6 +1855,7 @@ impl Request {
             | Self::UpdateLlmConfig { .. }
             | Self::GetNotificationChimes
             | Self::UpdateNotificationChimes { .. }
+            | Self::PatchNotificationChimes { .. }
             | Self::PreviewNotificationChime { .. }
             | Self::GetSemanticStatus
             | Self::EnableSemantic { .. }

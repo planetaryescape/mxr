@@ -147,10 +147,11 @@ test("sound: off by default, previews in the browser, plays on archive but never
   expect(setting.kind).toBe("NotificationChimes");
   expect(setting.config.enabled).toBe(false);
 
-  // Saving is echoed, not written, so the suite's daemon stays silent.
+  // Saving is applied to a copy, not written, so the suite's daemon stays silent.
   let saved = setting.config;
   await page.route("**/api/v1/platform/notifications/chimes", async (route) => {
-    if (route.request().method() === "POST") saved = route.request().postDataJSON();
+    if (route.request().method() === "POST")
+      saved = { ...saved, ...route.request().postDataJSON() };
     await route.fulfill({ json: { kind: "NotificationChimes", config: saved } });
   });
   await stubAudio(page);

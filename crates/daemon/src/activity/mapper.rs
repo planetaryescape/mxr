@@ -738,6 +738,7 @@ pub fn map_request(
         | Request::SetPrimaryAccountAddress { .. }
         | Request::UpdateLlmConfig { .. }
         | Request::UpdateNotificationChimes { .. }
+        | Request::PatchNotificationChimes { .. }
         | Request::PreviewNotificationChime { .. }
         | Request::EnableSemantic { .. }
         | Request::InstallSemanticProfile { .. }

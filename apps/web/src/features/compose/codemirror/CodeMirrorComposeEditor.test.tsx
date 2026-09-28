@@ -35,7 +35,7 @@ describe("CodeMirrorComposeEditor held keys", () => {
       ["z", true],
       ["b", false],
       ["i", false],
-      ["Backspace", true],
+      ["ArrowLeft", true],
     ] as const;
     // fireEvent returns false when a handler prevented the default.
     const press = (key: string, shiftKey: boolean, repeat: boolean) =>

@@ -460,6 +460,12 @@ mod tests {
                 IpcCategory::MxrPlatform,
             ),
             (
+                Request::PatchNotificationChimes {
+                    patch: Box::new(NotificationChimesPatchData::default()),
+                },
+                IpcCategory::MxrPlatform,
+            ),
+            (
                 Request::PreviewNotificationChime {
                     event: NotificationChimeEventData::Archived,
                 },

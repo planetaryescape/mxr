@@ -2,6 +2,8 @@ import type { KeyboardEvent } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  COMPOSE_CHORDS,
+  composeCommandOf,
   handleComposeShortcut,
   isComposeChord,
   type ComposeShortcutHandlers,
@@ -114,5 +116,33 @@ describe("compose shortcuts", () => {
     expect(isComposeChord({ key: "Enter", shiftKey: false, metaKey: false, ctrlKey: false })).toBe(
       false,
     );
+  });
+
+  it("the handler runs exactly the table's chords, each its own command", () => {
+    const mismatches: string[] = [];
+    for (const [chord, command] of Object.entries(COMPOSE_CHORDS)) {
+      const bag = handlers();
+      const shiftKey = chord.startsWith("shift+");
+      const key = chord.replace("shift+", "");
+      handleComposeShortcut(keyEvent({ key, shiftKey }).event, bag);
+      const ran = Object.entries(bag)
+        .filter(
+          ([, fn]) => typeof fn === "function" && vi.isMockFunction(fn) && fn.mock.calls.length > 0,
+        )
+        .map(([name]) => name);
+      if (ran.join() !== command) mismatches.push(`${chord}: ${ran.join() || "nothing"}`);
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it("⌘⇧⌫ is a discard chord everywhere, so its repeats are swallowed too", () => {
+    expect(
+      composeCommandOf({ key: "Backspace", shiftKey: true, metaKey: true, ctrlKey: false }),
+    ).toBe("requestDiscard");
+    const bag = handlers();
+    const held = keyEvent({ key: "Backspace", shiftKey: true, repeat: true });
+    handleComposeShortcut(held.event, bag);
+    expect(held.preventDefault).toHaveBeenCalled();
+    expect(bag.requestDiscard).not.toHaveBeenCalled();
   });
 });

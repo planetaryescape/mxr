@@ -10,6 +10,7 @@ import {
   saveChimeSettings,
   type ChimeSettings,
   type ChimeSoundName,
+  type ChimesPatch,
 } from "@/features/sound/api";
 import { previewSound } from "@/features/sound/player";
 import type { Voice } from "@/features/sound/voices";
@@ -45,27 +46,38 @@ const VOLUME_SAVE_DELAY_MS = 300;
 export function SoundSection() {
   const queryClient = useQueryClient();
   const settings = useQuery(chimeSettingsQuery);
+  // Each change is a patch of the fields it touches, applied by the daemon
+  // to the setting as it is then. The screen shows every change at once;
+  // an answer only lands if no newer change has been made since, so a slow
+  // reply can never put an older value back.
+  const latestChange = useRef(0);
   const save = useMutation({
-    mutationFn: saveChimeSettings,
-    // One save at a time, in order: a late answer can't undo a newer change.
+    mutationFn: ({ patch }: { patch: ChimesPatch; change: number }) => saveChimeSettings(patch),
     scope: { id: "notification-chimes" },
-    onMutate: (next) => {
-      const previous = queryClient.getQueryData<ChimeSettings>(chimeSettingsQuery.queryKey);
-      queryClient.setQueryData(chimeSettingsQuery.queryKey, next);
-      return { previous };
+    onSuccess: (saved, { change }) => {
+      if (change === latestChange.current) {
+        queryClient.setQueryData(chimeSettingsQuery.queryKey, saved);
+      }
     },
-    onError: (error, _next, context) => {
-      queryClient.setQueryData(chimeSettingsQuery.queryKey, context?.previous);
+    onError: (error, { change }) => {
       toast.error("Couldn't save the sound setting", { description: error.message });
+      // Show what the daemon has now, unless a newer change will say so.
+      if (change === latestChange.current) {
+        void queryClient.invalidateQueries({ queryKey: chimeSettingsQuery.queryKey });
+      }
     },
-    onSuccess: (saved) => queryClient.setQueryData(chimeSettingsQuery.queryKey, saved),
   });
+  const update = (patch: ChimesPatch) => {
+    latestChange.current += 1;
+    queryClient.setQueryData<ChimeSettings>(chimeSettingsQuery.queryKey, (current) =>
+      current ? { ...current, ...definedFields(patch) } : current,
+    );
+    save.mutate({ patch, change: latestChange.current });
+  };
 
   const config = settings.data;
   const [volume, setVolume] = useState<number | null>(null);
   const volumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** A slider value not saved yet; any save carries it along. */
-  const pendingVolume = useRef<number | null>(null);
   useEffect(
     () => () => {
       if (volumeTimer.current) clearTimeout(volumeTimer.current);
@@ -87,23 +99,14 @@ export function SoundSection() {
     );
   }
 
-  // The daemon takes the whole setting, so every save starts from the latest
-  // one (the cache holds each change as it is made), never from this render's.
-  const update = (patch: Partial<ChimeSettings>) => {
-    if (volumeTimer.current) clearTimeout(volumeTimer.current);
-    volumeTimer.current = null;
-    const latest = queryClient.getQueryData<ChimeSettings>(chimeSettingsQuery.queryKey) ?? config;
-    const unsaved = pendingVolume.current;
-    pendingVolume.current = null;
-    setVolume(null);
-    save.mutate({ ...latest, ...(unsaved === null ? {} : { volume: unsaved }), ...patch });
-  };
   const shownVolume = volume ?? config.volume;
   const onVolume = (next: number) => {
     setVolume(next);
-    pendingVolume.current = next;
     if (volumeTimer.current) clearTimeout(volumeTimer.current);
-    volumeTimer.current = setTimeout(() => update({}), VOLUME_SAVE_DELAY_MS);
+    volumeTimer.current = setTimeout(() => {
+      update({ volume: next });
+      setVolume(null);
+    }, VOLUME_SAVE_DELAY_MS);
   };
   const preview = (voice: Voice) => previewSound(voice, shownVolume);
 
@@ -139,7 +142,7 @@ export function SoundSection() {
             <div className="flex items-center gap-2">
               <Select
                 value={sound}
-                onValueChange={(next) => update({ [event.key]: next as ChimeSoundName })}
+                onValueChange={(next) => update(soundPatch(event.key, next as ChimeSoundName))}
               >
                 <SelectTrigger className="h-8 w-32 text-xs" aria-label={`${event.label} sound`}>
                   <SelectValue />
@@ -177,4 +180,17 @@ export function SoundSection() {
       </SettingRow>
     </div>
   );
+}
+
+/** The patch's set fields only, so an absent field never blanks the cache. */
+function definedFields(patch: ChimesPatch): Partial<ChimeSettings> {
+  return Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined && value !== null),
+  ) as Partial<ChimeSettings>;
+}
+
+function soundPatch(key: (typeof EVENTS)[number]["key"], sound: ChimeSoundName): ChimesPatch {
+  const patch: ChimesPatch = {};
+  patch[key] = sound;
+  return patch;
 }

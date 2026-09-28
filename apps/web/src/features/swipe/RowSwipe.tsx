@@ -220,7 +220,10 @@ export function useRowSwipe(
       active.lastT = event.timeStamp;
       active.dx = dx;
       active.row.style.transform = `translate3d(${followDistance(dx, active.target.actions)}px, 0, 0)`;
-      optionsRef.current.layer.current?.show(active.row, pendingAt(dx, active.target.actions));
+      optionsRef.current.layer.current?.show(
+        active.row,
+        pendingAt(dx, active.velocity, active.target.actions),
+      );
     };
 
     const finish = (event: PointerEvent, cancelled: boolean) => {

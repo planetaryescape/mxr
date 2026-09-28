@@ -14,19 +14,19 @@ describe("swipe rules", () => {
   });
 
   it("shows nothing before the reveal distance, then the pending action", () => {
-    expect(pendingAt(SWIPE.reveal - 1, MAIL)).toBeNull();
-    expect(pendingAt(SWIPE.reveal, MAIL)).toEqual({
+    expect(pendingAt(SWIPE.reveal - 1, 0, MAIL)).toBeNull();
+    expect(pendingAt(SWIPE.reveal, 0, MAIL)).toEqual({
       action: "archive",
       side: "right",
       armed: false,
     });
-    expect(pendingAt(SWIPE.commit, MAIL)).toEqual({
+    expect(pendingAt(SWIPE.commit, 0, MAIL)).toEqual({
       action: "archive",
       side: "right",
       armed: true,
     });
-    expect(pendingAt(SWIPE.long, MAIL)).toEqual({ action: "trash", side: "right", armed: true });
-    expect(pendingAt(-SWIPE.reveal, MAIL)).toEqual({
+    expect(pendingAt(SWIPE.long, 0, MAIL)).toEqual({ action: "trash", side: "right", armed: true });
+    expect(pendingAt(-SWIPE.reveal, 0, MAIL)).toEqual({
       action: "snooze",
       side: "left",
       armed: false,
@@ -50,7 +50,7 @@ describe("swipe rules", () => {
   });
 
   it("gives a Waiting row done instead of archive, and no trash", () => {
-    expect(pendingAt(SWIPE.long + 50, WAITING)?.action).toBe("done");
+    expect(pendingAt(SWIPE.long + 50, 0, WAITING)?.action).toBe("done");
     expect(releaseAt(SWIPE.long + 50, 0, WAITING)).toBe("done");
     // Past the commit distance the row resists: nothing further waits there.
     expect(followDistance(SWIPE.commit + 100, WAITING)).toBeLessThan(SWIPE.commit + 100);
@@ -74,5 +74,24 @@ describe("swipe rules", () => {
     [-300, -10, "snooze"],
   ] as const)("releases at %i px moving %f px/ms as %s", (dx, velocity, expected) => {
     expect(releaseAt(dx, velocity, MAIL)).toBe(expected);
+  });
+
+  it("always arms exactly what a release at that instant would commit", () => {
+    const mismatches: string[] = [];
+    for (const map of [MAIL, WAITING]) {
+      for (let dx = -320; dx <= 320; dx += 5) {
+        for (const velocity of [-10, -1, -0.5, -0.49, -0.1, 0, 0.1, 0.49, 0.5, 1, 10]) {
+          const pending = pendingAt(dx, velocity, map);
+          const armed = pending?.armed ? pending.action : null;
+          if (armed !== releaseAt(dx, velocity, map)) mismatches.push(`${dx}@${velocity}`);
+        }
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it("a fast throw past the long threshold shows Archive, a slow one Trash", () => {
+    expect(pendingAt(250, 10, MAIL)).toEqual({ action: "archive", side: "right", armed: true });
+    expect(pendingAt(250, 0.1, MAIL)).toEqual({ action: "trash", side: "right", armed: true });
   });
 });

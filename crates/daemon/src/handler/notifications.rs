@@ -1,6 +1,7 @@
 use crate::state::AppState;
 use mxr_protocol::{
-    NotificationChimeEventData, NotificationChimeSoundData, NotificationChimesData, ResponseData,
+    NotificationChimeEventData, NotificationChimeSoundData, NotificationChimesData,
+    NotificationChimesPatchData, ResponseData,
 };
 
 use super::HandlerResult;
@@ -24,6 +25,50 @@ pub(super) async fn update_notification_chimes(
     Ok(ResponseData::NotificationChimes {
         config: chimes_data(saved.notifications.chimes),
     })
+}
+
+/// Apply only the given fields, on top of the setting as it is now, inside
+/// the config lock: two clients changing different fields never lose one.
+pub(super) async fn patch_notification_chimes(
+    state: &AppState,
+    patch: NotificationChimesPatchData,
+) -> HandlerResult {
+    if let Some(volume) = patch.volume {
+        if !volume.is_finite() || !(0.0..=1.0).contains(&volume) {
+            return Err("notifications.chimes.volume must be between 0.0 and 1.0".into());
+        }
+    }
+    let saved = state
+        .mutate_config(|current| apply_patch(&mut current.notifications.chimes, &patch))
+        .await?;
+    Ok(ResponseData::NotificationChimes {
+        config: chimes_data(saved.notifications.chimes),
+    })
+}
+
+fn apply_patch(chimes: &mut mxr_config::ChimeConfig, patch: &NotificationChimesPatchData) {
+    if let Some(enabled) = patch.enabled {
+        chimes.enabled = enabled;
+    }
+    if let Some(volume) = patch.volume {
+        chimes.volume = volume;
+    }
+    let sounds = [
+        (&mut chimes.new_mail, patch.new_mail),
+        (&mut chimes.sent, patch.sent),
+        (&mut chimes.archived, patch.archived),
+        (&mut chimes.trashed, patch.trashed),
+        (&mut chimes.spam, patch.spam),
+        (&mut chimes.snoozed, patch.snoozed),
+        (&mut chimes.unsnoozed, patch.unsnoozed),
+        (&mut chimes.reminder, patch.reminder),
+        (&mut chimes.error, patch.error),
+    ];
+    for (slot, sound) in sounds {
+        if let Some(sound) = sound {
+            *slot = chime_sound(sound);
+        }
+    }
 }
 
 pub(super) async fn preview_notification_chime(
@@ -125,5 +170,29 @@ fn sound_data(sound: mxr_config::ChimeSound) -> NotificationChimeSoundData {
         mxr_config::ChimeSound::Archive => NotificationChimeSoundData::Archive,
         mxr_config::ChimeSound::Thud => NotificationChimeSoundData::Thud,
         mxr_config::ChimeSound::Alert => NotificationChimeSoundData::Alert,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_patch_changes_only_its_fields() {
+        let mut chimes = mxr_config::ChimeConfig::default();
+        let before = chimes.clone();
+        apply_patch(
+            &mut chimes,
+            &NotificationChimesPatchData {
+                enabled: Some(true),
+                snoozed: Some(NotificationChimeSoundData::Glass),
+                ..Default::default()
+            },
+        );
+        assert!(chimes.enabled);
+        assert_eq!(chimes.snoozed, mxr_config::ChimeSound::Glass);
+        assert_eq!(chimes.volume, before.volume);
+        assert_eq!(chimes.sent, before.sent);
+        assert_eq!(chimes.archived, before.archived);
     }
 }

@@ -47,17 +47,18 @@ export interface Pending {
   armed: boolean;
 }
 
-/** What the row shows under it at `dx`, or null before the reveal distance. */
-export function pendingAt(dx: number, map: SwipeMap): Pending | null {
-  if (dx >= SWIPE.long && map.rightLong) {
-    return { action: map.rightLong, side: "right", armed: true };
-  }
-  if (dx >= SWIPE.reveal && map.right) {
-    return { action: map.right, side: "right", armed: dx >= SWIPE.commit };
-  }
-  if (dx <= -SWIPE.reveal && map.left) {
-    return { action: map.left, side: "left", armed: -dx >= SWIPE.commit };
-  }
+/**
+ * What the row shows under it at `dx`, moving at `velocity` px/ms. Armed is
+ * exactly what letting go now would commit (see `releaseAt`), so a fast
+ * throw past the long threshold shows Archive, and Trash only appears once
+ * the finger slows there. Before a release would commit anything, the short
+ * action shows unarmed from the reveal distance.
+ */
+export function pendingAt(dx: number, velocity: number, map: SwipeMap): Pending | null {
+  const commit = releaseAt(dx, velocity, map);
+  if (commit) return { action: commit, side: dx > 0 ? "right" : "left", armed: true };
+  if (dx >= SWIPE.reveal && map.right) return { action: map.right, side: "right", armed: false };
+  if (dx <= -SWIPE.reveal && map.left) return { action: map.left, side: "left", armed: false };
   return null;
 }
 

@@ -416,6 +416,30 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Triage".into(),
         },
         PaletteCommand {
+            label: "Owed Replies".into(),
+            shortcut: String::new(),
+            action: Action::OpenOwedReplies,
+            category: "Triage".into(),
+        },
+        PaletteCommand {
+            label: "Calendar Invites".into(),
+            shortcut: String::new(),
+            action: Action::OpenCalendarInvites,
+            category: "Triage".into(),
+        },
+        PaletteCommand {
+            label: "Subscriptions".into(),
+            shortcut: String::new(),
+            action: Action::OpenSubscriptions,
+            category: "Triage".into(),
+        },
+        PaletteCommand {
+            label: "Analytics".into(),
+            shortcut: String::new(),
+            action: Action::OpenAnalyticsScreen,
+            category: "Analytics".into(),
+        },
+        PaletteCommand {
             label: "Sender View".into(),
             shortcut: String::new(),
             action: Action::OpenSenderView,

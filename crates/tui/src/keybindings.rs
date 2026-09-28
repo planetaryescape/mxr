@@ -188,6 +188,14 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "go_label" => Some(Action::GoToLabel),
         "edit_config" => Some(Action::EditConfig),
         "open_logs" => Some(Action::OpenLogs),
+        "open_analytics" => Some(Action::OpenAnalyticsScreen),
+        "open_reply_queue" => Some(Action::OpenReplyQueue),
+        "open_owed_replies" => Some(Action::OpenOwedReplies),
+        "open_calendar_invites" => Some(Action::OpenCalendarInvites),
+        "open_subscriptions" => Some(Action::OpenSubscriptions),
+        "open_screener" => Some(Action::OpenScreenerQueue),
+        "sender_profile" => Some(Action::OpenSenderView),
+        "back" => Some(Action::Back),
         "open_tab_1" => Some(Action::OpenTab1),
         "open_tab_2" => Some(Action::OpenTab2),
         "open_tab_3" => Some(Action::OpenTab3),
@@ -239,7 +247,7 @@ pub(crate) fn primary_mail_list_key_display(action: &Action) -> Option<String> {
 /// [`primary_mail_list_key_display`] so the command palette can show the
 /// key that actually fires in the focused view.
 pub(crate) fn primary_key_display(context: ViewContext, action: &Action) -> Option<String> {
-    let cfg = default_keybindings();
+    let cfg = shown_keybindings();
     let map = match context {
         ViewContext::MailList => &cfg.mail_list,
         ViewContext::MessageView => &cfg.message_view,
@@ -267,7 +275,7 @@ pub fn display_bindings_for_actions(
     context: ViewContext,
     actions: &[&str],
 ) -> Vec<(String, String)> {
-    let config = default_keybindings();
+    let config = shown_keybindings();
     let map = match context {
         ViewContext::MailList => &config.mail_list,
         ViewContext::MessageView => &config.message_view,
@@ -291,7 +299,7 @@ pub fn display_bindings_for_actions(
 }
 
 pub fn all_bindings_for_context(context: ViewContext) -> Vec<(String, String)> {
-    let config = default_keybindings();
+    let config = shown_keybindings();
     let map = match context {
         ViewContext::MailList => &config.mail_list,
         ViewContext::MessageView => &config.message_view,
@@ -363,6 +371,13 @@ fn action_display_name(action: &str) -> String {
         "show_onboarding" => "Start Here".into(),
         "quit_view" => "Quit".into(),
         "clear_selection" => "Clear Sel".into(),
+        "back" => "Back".into(),
+        "sender_profile" => "Sender".into(),
+        "open_analytics" => "Analytics".into(),
+        "open_reply_queue" => "Reply Queue".into(),
+        "open_owed_replies" => "Owed Replies".into(),
+        "open_calendar_invites" => "Invites".into(),
+        "open_screener" => "Screener".into(),
         #[cfg(debug_assertions)]
         "dump_action_trace" => "Dump Trace".into(),
         _ => action
@@ -438,7 +453,7 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("Ctrl-u", "page_up"),
     ("H", "visible_top"),
     ("M", "visible_middle"),
-    ("L", "visible_bottom"),
+    ("L", "open_links"),
     ("zz", "center_current"),
     ("/", "search_all_mail"),
     ("Ctrl-f", "mailbox_filter"),
@@ -448,7 +463,7 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("o", "open"),
     ("q", "quit_view"),
     ("?", "help"),
-    ("Escape", "clear_selection"),
+    ("Escape", "back"),
     // Email actions (Gmail-native A005)
     ("c", "compose"),
     ("r", "reply"),
@@ -476,6 +491,7 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("R", "toggle_reader_mode"),
     ("S", "toggle_signature"),
     ("E", "export_thread"),
+    ("p", "sender_profile"),
     ("V", "visual_line_mode"),
     ("Ctrl-p", "command_palette"),
     ("Tab", "switch_panes"),
@@ -497,11 +513,13 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("gl", "go_label"),
     ("gc", "edit_config"),
     ("gL", "open_logs"),
-    ("gA", "draft_assist"),
-    ("gD", "draft_new_for_sender"),
-    ("gC", "open_commitments"),
-    ("gV", "open_voice_profile"),
+    ("gA", "open_analytics"),
     ("gE", "open_stored_drafts"),
+    ("gq", "open_reply_queue"),
+    ("go", "open_owed_replies"),
+    ("gv", "open_calendar_invites"),
+    ("gu", "open_subscriptions"),
+    ("gS", "open_screener"),
 ];
 
 // Message view defaults
@@ -532,6 +550,7 @@ const MV_DEFAULTS: &[(&str, &str)] = &[
     ("I", "mark_read"),
     ("U", "mark_unread"),
     ("D", "unsubscribe"),
+    ("p", "sender_profile"),
     ("S", "toggle_signature"),
     ("1", "open_tab_1"),
     ("2", "open_tab_2"),
@@ -540,16 +559,15 @@ const MV_DEFAULTS: &[(&str, &str)] = &[
     ("5", "open_tab_5"),
     ("gc", "edit_config"),
     ("gL", "open_logs"),
-    ("gA", "draft_assist"),
-    ("gD", "draft_new_for_sender"),
-    ("gC", "open_commitments"),
-    ("gV", "open_voice_profile"),
+    ("gA", "open_analytics"),
 ];
 
 // Thread view defaults
 const TV_DEFAULTS: &[(&str, &str)] = &[
-    ("j", "next_message"),
-    ("k", "prev_message"),
+    ("j", "scroll_down"),
+    ("k", "scroll_up"),
+    ("J", "next_message"),
+    ("K", "prev_message"),
     ("F", "toggle_fullscreen"),
     ("r", "reply"),
     ("a", "reply_all"),
@@ -573,6 +591,7 @@ const TV_DEFAULTS: &[(&str, &str)] = &[
     ("I", "mark_read"),
     ("U", "mark_unread"),
     ("D", "unsubscribe"),
+    ("p", "sender_profile"),
     ("S", "toggle_signature"),
     ("1", "open_tab_1"),
     ("2", "open_tab_2"),
@@ -581,11 +600,17 @@ const TV_DEFAULTS: &[(&str, &str)] = &[
     ("5", "open_tab_5"),
     ("gc", "edit_config"),
     ("gL", "open_logs"),
-    ("gA", "draft_assist"),
-    ("gD", "draft_new_for_sender"),
-    ("gC", "open_commitments"),
-    ("gV", "open_voice_profile"),
+    ("gA", "open_analytics"),
 ];
+
+/// The default tables, built once. Help, the hint bar and every palette
+/// command read them, so rebuilding per lookup parsed every key string
+/// over a hundred times each time the palette was created.
+fn shown_keybindings() -> &'static KeybindingConfig {
+    static SHOWN: std::sync::LazyLock<KeybindingConfig> =
+        std::sync::LazyLock::new(default_keybindings);
+    &SHOWN
+}
 
 pub fn default_keybindings() -> KeybindingConfig {
     let mut mail_list = HashMap::new();
@@ -688,10 +713,7 @@ mod tests {
         assert!(actions.contains(&"unsubscribe"));
         assert!(actions.contains(&"snooze"));
         assert!(actions.contains(&"visual_line_mode"));
-        assert!(actions.contains(&"draft_assist"));
-        assert!(actions.contains(&"draft_new_for_sender"));
-        assert!(actions.contains(&"open_commitments"));
-        assert!(actions.contains(&"open_voice_profile"));
+        assert!(actions.contains(&"sender_profile"));
     }
 
     #[test]
@@ -766,14 +788,15 @@ mod tests {
             primary_key_display(ViewContext::ThreadView, &Action::Compose),
             None
         );
-        // Open Links exists only in message/thread views.
+        // The HTML toggle exists only in message/thread views; H in the
+        // list is the viewport top.
         assert_eq!(
-            primary_key_display(ViewContext::MailList, &Action::OpenLinks),
+            primary_key_display(ViewContext::MailList, &Action::ToggleHtmlView),
             None
         );
         assert_eq!(
-            primary_key_display(ViewContext::ThreadView, &Action::OpenLinks),
-            Some("L".to_string())
+            primary_key_display(ViewContext::ThreadView, &Action::ToggleHtmlView),
+            Some("H".to_string())
         );
     }
 

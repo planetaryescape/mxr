@@ -14,6 +14,8 @@ export interface Binding {
   chord: ShortcutChord;
   scope: ActionScope;
   action: Action;
+  /** Bound from `retiredAliases`: works, but is not advertised. */
+  retired: boolean;
 }
 
 export class ActionRegistry {
@@ -27,8 +29,9 @@ export class ActionRegistry {
       throw new Error(`ActionRegistry: duplicate id "${action.id}"`);
     }
     if (!action.paletteOnly) {
+      const retired = new Set(action.retiredAliases ?? []);
       for (const scope of scopesOf(action)) {
-        for (const chord of chordsOf(action)) {
+        for (const chord of [...chordsOf(action), ...retired]) {
           const key = `${scope}|${normalize(chord)}`;
           const owner = this.#bindings.get(key);
           if (owner) {
@@ -37,7 +40,12 @@ export class ActionRegistry {
             );
           }
           this.#assertNoPrefixClash(scope, chord, action.id);
-          this.#bindings.set(key, { chord: normalize(chord), scope, action });
+          this.#bindings.set(key, {
+            chord: normalize(chord),
+            scope,
+            action,
+            retired: retired.has(chord),
+          });
         }
       }
     }

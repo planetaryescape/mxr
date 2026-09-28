@@ -206,7 +206,7 @@ criterion scores 2 or better and every criterion in sections 1 and 2 scores 3.
 | 2.1 | 0 | 3 | `reader.spec` "a long thread folds read messages, expands on o/X". |
 | 2.2 | 0 | 3 | Quotes and signatures fold in plain, reader and HTML views; inline replies below a quote stay (`reading.spec` plain and HTML folding, `htmlQuote.test.ts`, `textSegments.test.ts`). |
 | 2.3 | 1 | 3 | Sandboxed iframe with no scripts; remote images blocked until `M`, with a per-sender allow list (`reader.spec`, `html-rendering.spec`). |
-| 2.4 | 1 | 3 | Formatted, Reader and Plain, with `R` and `H` toggling back to plain as in the TUI, and raw headers on `g h` (`reading.spec` "R and H toggle…"). |
+| 2.4 | 1 | 3 | Formatted, Reader and Plain, with `R` and `H` toggling back to plain as in the TUI, and raw headers on `g H` (`reading.spec` "R and H toggle…"). |
 | 2.5 | 1 | 3 | `L` lists links, Enter opens, `y` copies (`reading.spec`); attachments open and download (`html-rendering.spec`); `cid:` images inline, a missing part shows its alt text. |
 | 2.6 | 1 | 3 | Reader text holds a 55 to 90 character measure at 1920 px (`reading.spec`); one date formatter, `plural()` everywhere. |
 | 3.1 | 1 | 2 | One compose surface; `c` focuses To, `r` starts in the body (`compose-send.spec`). |

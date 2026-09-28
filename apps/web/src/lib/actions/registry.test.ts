@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { setController } from "@/lib/keys/controllers";
 
-import { ActionRegistry, invokeAction, isAvailable } from "./registry";
+import { ActionRegistry, chordsOf, invokeAction, isAvailable } from "./registry";
 import type { Action, ActionContext, ActionScope } from "./types";
 
 function ctx(scopes: ActionScope[], overrides: Partial<ActionContext> = {}): ActionContext {
@@ -196,5 +196,20 @@ describe("getVisibleActions", () => {
     const screener = run({ id: "screener.approve", scopes: ["screener"] });
     expect(isAvailable(screener, ctx(["global"]))).toBe(false);
     expect(isAvailable(screener, ctx(["screener", "global"]))).toBe(true);
+  });
+});
+
+describe("retired aliases", () => {
+  test("still dispatch, and clash like any chord, but are not advertised", () => {
+    const registry = new ActionRegistry();
+    const reading = run({ id: "nav.reading", shortcut: "g r", retiredAliases: ["g R"] });
+    registry.define(reading);
+    expect(registry.resolve("g R", ["global"])?.action.id).toBe("nav.reading");
+    expect(registry.resolve("g R", ["global"])?.retired).toBe(true);
+    expect(registry.resolve("g r", ["global"])?.retired).toBe(false);
+    expect(chordsOf(reading)).toEqual(["g r"]);
+    expect(() => registry.define(run({ id: "nav.rules", shortcut: "g R" }))).toThrow(
+      /duplicate shortcut/,
+    );
   });
 });

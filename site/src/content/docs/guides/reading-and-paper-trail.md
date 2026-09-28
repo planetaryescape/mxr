@@ -75,8 +75,8 @@ place. Pin the few messages you want to keep in view first: `p` pins or
 unpins the message under the cursor (or use the pin at the end of its line).
 Pins are local to this machine and are not provider stars.
 
-1. `s` sweeps the bundle under the cursor; `S` (or **Sweep all**) sweeps the
-   whole place.
+1. `S` sweeps the bundle under the cursor; `A` (or **Sweep all**) sweeps the
+   whole place. The keys are the same in the web app and the TUI.
 2. The preview comes from the daemon's dry run of the same request: how many
    messages, from which senders, a few subjects, and how many pinned messages
    stay. When the sweep reaches past what is on screen, it says so ("Archives
@@ -93,18 +93,22 @@ Pins are local to this machine and are not provider stars.
 
 | Key | In Reading and Paper trail |
 |---|---|
-| `g R` / `g P` | Go to Reading / Paper trail |
+| `g r` / `g p` | Go to Reading / Paper trail |
 | `j` / `k` | Next / previous issue or line |
 | `Enter` | Open a bundle, or open the conversation |
 | `p` | Pin or unpin |
-| `s` | Sweep this sender's bundle |
-| `S` | Sweep the whole place |
+| `S` | Sweep this sender's bundle |
+| `A` | Sweep the whole place |
 | `K` | Move sender to… |
 | `D` | Unsubscribe |
 | `u` | Undo the last change |
 
 Once a conversation is open, the reader's own keys apply (`K` there is the
 previous message).
+
+Before 0.6.41 the web app used `g R` / `g P` to get here and `s` / `S` to
+sweep. `g R` and `g P` still work for one more release. `s` no longer
+sweeps, because it stars everywhere else.
 
 The desk's **Everything else** line links to both places with how much
 arrived this week ("Reading 7 this week", "Paper trail 14 this week").

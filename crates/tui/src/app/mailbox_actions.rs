@@ -34,6 +34,13 @@ impl App {
                 self.auto_preview();
             }
             Action::JumpTop => {
+                // In the reader `g g` is the top of the message, as `G` is its end.
+                if self.screen == Screen::Mailbox
+                    && self.mailbox.active_pane == ActivePane::MessageView
+                {
+                    self.mailbox.message_scroll_offset = 0;
+                    return;
+                }
                 if self.screen == Screen::Search {
                     self.search.page.selected_index = 0;
                     self.sync_search_cursor_after_move();

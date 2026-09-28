@@ -69,10 +69,7 @@ export const mailVerbActions: Action[] = [
   verb("mail.export", "exportThread", "Export as Markdown", "E", { icon: Download }),
   verb("mail.briefing", "briefing", "Thread briefing", "B", { icon: FileText }),
   verb("mail.whois", "whois", "Who is this sender?", "W", { icon: UserSearch }),
-  verb("mail.sender-profile", "senderProfile", "Sender profile", "p", {
-    icon: UserRound,
-    tuiNote: "Palette only in the TUI",
-  }),
+  verb("mail.sender-profile", "senderProfile", "Sender profile", "p", { icon: UserRound }),
   verb("mail.links", "links", "Links in this message", "L", { icon: LinkIcon }),
   verb("mail.attachments", "attachments", "Attachments", "A", { icon: Paperclip }),
   verb("invite.accept", "inviteAccept", "Accept invite", "i a", {

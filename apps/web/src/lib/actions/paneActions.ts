@@ -145,7 +145,7 @@ export const readerActions: Action[] = [
     "o",
     "Read",
     {
-      tuiNote: "Web only; the TUI shows every message",
+      tuiNote: "The TUI shows every message, and its o opens the original, like O",
     },
   ),
   key("reader", "reader.expand-all", "expandAll", "Expand or collapse all", "X", "Read", {
@@ -203,7 +203,7 @@ export const readerActions: Action[] = [
   key("reader", "reader.quotes", "toggleQuotes", "Show or hide quoted text", "Q", "View", {
     tuiNote: "Web only",
   }),
-  key("reader", "reader.headers", "headers", "Raw headers", "g h", "View", {
+  key("reader", "reader.headers", "headers", "Raw headers", "g H", "View", {
     tuiNote: "CLI `mxr cat --view headers`; not in the TUI",
     hideInPalette: false,
   }),

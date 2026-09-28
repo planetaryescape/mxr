@@ -97,7 +97,7 @@ test("moving a sender from Reading to People takes it to the desk, and u brings 
     expect(lane).toBeTruthy();
     // In-app navigation keeps the undo slot (a reload would drop it).
     await page.keyboard.press("g");
-    await page.keyboard.press("d");
+    await page.keyboard.press("h");
     await expect(page).toHaveURL(/\/desk$/);
     const row = mailList(page).locator(`[title='${bundle!.sender_email}']`).first();
     if (!(await row.isVisible()))
@@ -108,7 +108,7 @@ test("moving a sender from Reading to People takes it to the desk, and u brings 
     await page.keyboard.press("u");
     await expect(page.getByText(/is automatic again/).first()).toBeVisible();
     await page.keyboard.press("g");
-    await page.keyboard.press("R");
+    await page.keyboard.press("r");
     await expect(page).toHaveURL(/\/reading$/);
     await expect(issue.first()).toBeVisible();
   } finally {
@@ -140,8 +140,8 @@ test("Paper trail: pin one, sweep the bundle without it, undo puts the rest back
     await messages.first().getByRole("button", { name: "Pin" }).click();
     await expect(messages.first()).toHaveAttribute("data-pinned", "true");
 
-    // s sweeps the bundle under the cursor: the preview leaves the pin out.
-    await page.keyboard.press("s");
+    // S sweeps the bundle under the cursor: the preview leaves the pin out.
+    await page.keyboard.press("S");
     const dialog = page.getByTestId("sweep-dialog");
     await expect(dialog).toContainText(`Archive ${total - 1} message`);
     await expect(dialog).toContainText("1 pinned message stays");
@@ -183,7 +183,7 @@ test("Paper trail: pin one, sweep the bundle without it, undo puts the rest back
   }
 });
 
-test("S previews a sweep of the whole place from the daemon's dry run", async ({ page }) => {
+test("A previews a sweep of the whole place from the daemon's dry run", async ({ page }) => {
   const preview = await bridge<{ preview: { count: number } }>(
     page,
     "/api/v1/mail/places/paper-trail/sweep",
@@ -191,7 +191,7 @@ test("S previews a sweep of the whole place from the daemon's dry run", async ({
   );
   await openApp(page, "/paper-trail");
   await expect(page.getByTestId("place-bundle").first()).toBeVisible();
-  await page.keyboard.press("S");
+  await page.keyboard.press("A");
   const dialog = page.getByTestId("sweep-dialog");
   await expect(dialog).toContainText(`Archive ${preview.preview.count} message`);
   await expect(dialog.getByRole("list", { name: "Senders" })).toBeVisible();

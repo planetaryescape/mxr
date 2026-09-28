@@ -201,6 +201,10 @@ impl App {
             (KeyCode::Char('W'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenWhoisOnFocusedSender)
             }
+            // Same keys as the web app. Reading and Paper trail take `p`
+            // for pin before these mail keys are consulted.
+            (KeyCode::Char('p'), KeyModifiers::NONE) => Some(Action::OpenSenderView),
+            (KeyCode::Char('y'), KeyModifiers::NONE) => Some(Action::SummarizeCurrentThread),
             _ => None,
         }
     }

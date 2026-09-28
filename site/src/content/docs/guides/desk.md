@@ -156,14 +156,15 @@ after row.
 With a mouse, the check shows when you point at a row or move the cursor to
 it. On a touch screen it is always there.
 
-`g d` goes to the desk and `g i` to the inbox in arrival order; `g w` opens
-**Waiting on**. To open on the inbox instead, set **Settings, Appearance,
-Home** to Inbox.
+`g h` goes to the desk, as in the TUI, and `g i` to the inbox in arrival
+order; `g w` opens **Waiting on**. Before 0.6.41 the web app used `g d` for
+the desk; `g d` is Drafts now, in both clients. To open on the inbox
+instead, set **Settings, Appearance, Home** to Inbox.
 
 ## In the TUI
 
 **Desk** is the first entry in the sidebar's lens list, and `g h` opens it
-(`g d` stays Drafts in the TUI). `j`/`k` move across the lanes and `Enter`
+(`g d` is Drafts). `j`/`k` move across the lanes and `Enter`
 opens the conversation beside the desk. `e` (or `m`) is **Done** for the
 row under the cursor, from the list or from that conversation opened beside
 it, and `u` undoes it. Holding a key down in the TUI repeats its action, so

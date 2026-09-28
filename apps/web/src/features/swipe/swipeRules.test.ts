@@ -56,4 +56,23 @@ describe("swipe rules", () => {
     expect(followDistance(SWIPE.commit + 100, WAITING)).toBeLessThan(SWIPE.commit + 100);
     expect(followDistance(SWIPE.commit + 100, MAIL)).toBe(SWIPE.commit + 100);
   });
+
+  it.each([
+    // [dx, velocity px/ms, expected]
+    [189, 0, "archive"],
+    [190, 0, "trash"],
+    [300, 0, "trash"],
+    [190, 0.49, "trash"],
+    [190, 0.5, "archive"],
+    [190, 10, "archive"],
+    [300, 10, "archive"],
+    [300, -10, "archive"],
+    [89, 0, null],
+    [89, 10, "archive"],
+    [29, 10, null],
+    [-90, 0, "snooze"],
+    [-300, -10, "snooze"],
+  ] as const)("releases at %i px moving %f px/ms as %s", (dx, velocity, expected) => {
+    expect(releaseAt(dx, velocity, MAIL)).toBe(expected);
+  });
 });

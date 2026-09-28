@@ -63,10 +63,13 @@ export function pendingAt(dx: number, map: SwipeMap): Pending | null {
 
 /**
  * The action a release commits. `velocity` is px/ms along x at release.
- * A flick can commit a short action early, never the long one.
+ * The long (destructive) action needs a slow, deliberate release past its
+ * threshold; any release moving at flick speed resolves to the short
+ * action or nothing, however far it went.
  */
 export function releaseAt(dx: number, velocity: number, map: SwipeMap): SwipeAction | null {
-  if (dx >= SWIPE.long && map.rightLong) return map.rightLong;
+  const flicking = Math.abs(velocity) >= SWIPE.flickVelocity;
+  if (dx >= SWIPE.long && map.rightLong && !flicking) return map.rightLong;
   const flickRight = velocity >= SWIPE.flickVelocity && dx >= SWIPE.flickDistance;
   if (map.right && (dx >= SWIPE.commit || flickRight)) return map.right;
   const flickLeft = velocity <= -SWIPE.flickVelocity && dx <= -SWIPE.flickDistance;

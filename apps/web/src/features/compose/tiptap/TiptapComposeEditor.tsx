@@ -34,6 +34,15 @@ export function TiptapComposeEditor({
         "aria-label": "Message body",
       },
       handleKeyDown: (_view, event) => {
+        // Held send, save and discard chords run once.
+        if (
+          event.repeat &&
+          (event.metaKey || event.ctrlKey) &&
+          ["Backspace", "Enter", "s", "S"].includes(event.key)
+        ) {
+          event.preventDefault();
+          return true;
+        }
         if ((event.metaKey || event.ctrlKey) && event.key === "Backspace") {
           event.preventDefault();
           onDiscard();

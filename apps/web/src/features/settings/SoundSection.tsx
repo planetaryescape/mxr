@@ -47,6 +47,8 @@ export function SoundSection() {
   const settings = useQuery(chimeSettingsQuery);
   const save = useMutation({
     mutationFn: saveChimeSettings,
+    // One save at a time, in order: a late answer can't undo a newer change.
+    scope: { id: "notification-chimes" },
     onMutate: (next) => {
       const previous = queryClient.getQueryData<ChimeSettings>(chimeSettingsQuery.queryKey);
       queryClient.setQueryData(chimeSettingsQuery.queryKey, next);
@@ -62,6 +64,8 @@ export function SoundSection() {
   const config = settings.data;
   const [volume, setVolume] = useState<number | null>(null);
   const volumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** A slider value not saved yet; any save carries it along. */
+  const pendingVolume = useRef<number | null>(null);
   useEffect(
     () => () => {
       if (volumeTimer.current) clearTimeout(volumeTimer.current);
@@ -83,15 +87,23 @@ export function SoundSection() {
     );
   }
 
-  const update = (patch: Partial<ChimeSettings>) => save.mutate({ ...config, ...patch });
+  // The daemon takes the whole setting, so every save starts from the latest
+  // one (the cache holds each change as it is made), never from this render's.
+  const update = (patch: Partial<ChimeSettings>) => {
+    if (volumeTimer.current) clearTimeout(volumeTimer.current);
+    volumeTimer.current = null;
+    const latest = queryClient.getQueryData<ChimeSettings>(chimeSettingsQuery.queryKey) ?? config;
+    const unsaved = pendingVolume.current;
+    pendingVolume.current = null;
+    setVolume(null);
+    save.mutate({ ...latest, ...(unsaved === null ? {} : { volume: unsaved }), ...patch });
+  };
   const shownVolume = volume ?? config.volume;
   const onVolume = (next: number) => {
     setVolume(next);
+    pendingVolume.current = next;
     if (volumeTimer.current) clearTimeout(volumeTimer.current);
-    volumeTimer.current = setTimeout(() => {
-      update({ volume: next });
-      setVolume(null);
-    }, VOLUME_SAVE_DELAY_MS);
+    volumeTimer.current = setTimeout(() => update({}), VOLUME_SAVE_DELAY_MS);
   };
   const preview = (voice: Voice) => previewSound(voice, shownVolume);
 

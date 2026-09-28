@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from "react";
 
-export type TidePlace = "desk" | "reading" | "paper_trail";
+export type TidePlace = "desk" | "reply_queue" | "reading" | "paper_trail";
 
 /** What the place shows right now. */
 export type TideState = "loading" | "work" | "clear";

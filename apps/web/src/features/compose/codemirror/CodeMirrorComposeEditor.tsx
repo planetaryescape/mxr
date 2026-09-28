@@ -91,6 +91,12 @@ export function CodeMirrorComposeEditor({
           Prec.highest(
             EditorView.domEventHandlers({
               keydown: (event) => {
+                // Held send, save and discard chords run once; the keymap
+                // below never sees their repeats.
+                if (event.repeat && isComposeChord(event)) {
+                  event.preventDefault();
+                  return true;
+                }
                 if (!isSendChord(event)) return false;
                 event.preventDefault();
                 callbacksRef.current.onSend();
@@ -181,4 +187,9 @@ function isSendChord(event: KeyboardEvent): boolean {
   return (
     event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey
   );
+}
+
+/** ⌘/Ctrl with Enter, s or Backspace: send, save and discard. */
+function isComposeChord(event: KeyboardEvent): boolean {
+  return (event.metaKey || event.ctrlKey) && ["Enter", "Backspace", "s", "S"].includes(event.key);
 }

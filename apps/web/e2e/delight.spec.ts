@@ -278,3 +278,33 @@ test("holding e archives exactly one conversation", async ({ page }) => {
   await page.keyboard.press("u");
   await expect(page.locator(`[id="${first}"]`)).toBeVisible();
 });
+
+test("clearing the reply queue with Done earns the small low tide once", async ({ page }) => {
+  let queued = true;
+  const message = {
+    id: "e2e-reply-later",
+    thread_id: "e2e-reply-later-thread",
+    subject: "Notes on the pricing page",
+    snippet: "Could you look before Friday?",
+    date: new Date().toISOString(),
+    from: { name: "Maya Chen", email: "maya@example.com" },
+  };
+  await page.route("**/api/v1/mail/reply-later", (route) =>
+    route.fulfill({ json: { kind: "ReplyQueue", messages: queued ? [message] : [] } }),
+  );
+  await page.route("**/api/v1/mail/reply-later/*", async (route) => {
+    queued = (route.request().postDataJSON() as { flag: boolean }).flag;
+    await route.fulfill({ json: { kind: "Ack" } });
+  });
+  await openList(page, "/reply-queue");
+  await expect(mailRows(page)).toHaveCount(1);
+  await page.getByTestId("mailbox-list").focus();
+  await page.keyboard.press("w");
+  const moment = page.getByTestId("low-tide");
+  await expect(moment).toBeVisible();
+  await expect(moment).toContainText("Low tide. Nobody's waiting on a reply.");
+
+  await page.reload();
+  await expect(page.getByText("Nothing waiting on a reply")).toBeVisible();
+  await expect(page.getByTestId("low-tide")).toHaveCount(0);
+});

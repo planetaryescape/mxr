@@ -247,6 +247,18 @@
   --tide-edge: color-mix(in oklch, var(--primary) 55%, var(--background));
 }
 
+/*
+ * A horizon, not a box: the scene feathers into the page at the left, the
+ * right and the top (the sea just fades out), and its sand is the page.
+ */
+svg.low-tide {
+  mask-image:
+    linear-gradient(to right, transparent, #000 18%, #000 82%, transparent),
+    linear-gradient(to bottom, transparent, #000 45%);
+  mask-composite: intersect;
+  -webkit-mask-composite: source-in;
+}
+
 .low-tide .tide-wet {
   opacity: 0.55;
 }

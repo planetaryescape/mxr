@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { QueryClient } from "@tanstack/react-query";
+
 import { emitSendEvent } from "@/features/compose/session/sendEvents";
+import { setActiveQueryClient } from "@/lib/queryClient";
 
 const playSound = vi.fn<(event: string) => boolean>(() => true);
 vi.mock("./player", () => ({
@@ -37,5 +40,22 @@ describe("sound feedback", () => {
       "archived",
       "snoozed",
     ]);
+  });
+
+  it("rereads the shared setting when the page comes back into view", () => {
+    const client = new QueryClient();
+    const prefetch = vi.spyOn(client, "prefetchQuery").mockResolvedValue(undefined);
+    setActiveQueryClient(client);
+    const stop = installSoundFeedback();
+    window.dispatchEvent(new Event("focus"));
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(prefetch).toHaveBeenCalledTimes(2);
+    expect(prefetch.mock.calls[0]?.[0]).toMatchObject({
+      queryKey: ["notification-chimes"],
+      staleTime: 0,
+    });
+    stop();
+    window.dispatchEvent(new Event("focus"));
+    expect(prefetch).toHaveBeenCalledTimes(2);
   });
 });

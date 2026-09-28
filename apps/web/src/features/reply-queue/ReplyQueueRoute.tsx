@@ -3,12 +3,12 @@ import { MessageSquareReply, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { fetchReplyQueue, setReplyLater, type ReplyQueueMessage } from "./api";
-import { LowTide } from "@/features/low-tide/LowTide";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { invalidateMailQueries } from "@/features/mail-actions/mailMutations";
 import { useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
 import { Centered } from "@/features/mailbox/MailViewParts";
+import { SweptClear } from "@/features/places/SweptClear";
 import type { MessageRowView } from "@/features/mailbox/types";
 import { plural } from "@/lib/format";
 
@@ -78,11 +78,9 @@ export function ReplyQueueRoute() {
       }}
       empty={
         lowTide ? (
-          <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
-            <LowTide size="small" line="Low tide. Nobody's waiting on a reply." className="w-full">
-              Press b on any conversation to add it here.
-            </LowTide>
-          </div>
+          <SweptClear place="Reply queue" line="Low tide. Nobody's waiting on a reply.">
+            Press b on any conversation to add it here.
+          </SweptClear>
         ) : (
           <Centered
             icon={<MessageSquareReply className="size-6" />}

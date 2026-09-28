@@ -5,6 +5,7 @@ import { Bold, Italic, Link2, List, ListOrdered, RemoveFormatting } from "lucide
 import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
+import { isComposeChord } from "@/features/compose/session/composeShortcuts";
 
 interface TiptapComposeEditorProps {
   value: string;
@@ -35,11 +36,7 @@ export function TiptapComposeEditor({
       },
       handleKeyDown: (_view, event) => {
         // Held send, save and discard chords run once.
-        if (
-          event.repeat &&
-          (event.metaKey || event.ctrlKey) &&
-          ["Backspace", "Enter", "s", "S"].includes(event.key)
-        ) {
+        if (event.repeat && isComposeChord(event)) {
           event.preventDefault();
           return true;
         }

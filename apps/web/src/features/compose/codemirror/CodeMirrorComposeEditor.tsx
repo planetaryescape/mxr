@@ -5,6 +5,8 @@ import { getCM, Vim, vim } from "@replit/codemirror-vim";
 import { basicSetup } from "codemirror";
 import { useEffect, useRef, useState } from "react";
 
+import { isComposeChord } from "@/features/compose/session/composeShortcuts";
+
 interface CodeMirrorComposeEditorProps {
   value: string;
   onChange: (value: string) => void;
@@ -187,9 +189,4 @@ function isSendChord(event: KeyboardEvent): boolean {
   return (
     event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey
   );
-}
-
-/** ⌘/Ctrl with Enter, s or Backspace: send, save and discard. */
-function isComposeChord(event: KeyboardEvent): boolean {
-  return (event.metaKey || event.ctrlKey) && ["Enter", "Backspace", "s", "S"].includes(event.key);
 }

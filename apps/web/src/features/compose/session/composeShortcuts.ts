@@ -33,7 +33,7 @@ export function handleComposeShortcut(
   if (event.repeat) {
     // A held chord runs once: a held ⌘↵ must not queue sends behind the lock,
     // nor a held ⌘⌫ reopen the discard prompt.
-    if (isComposeChordRepeat(event, key)) {
+    if (isComposeChord(event)) {
       event.preventDefault();
       event.stopPropagation();
     }
@@ -116,6 +116,14 @@ export function handleComposeShortcut(
 /** Keys the compose surface binds under ⌘/Ctrl (with or without Shift). */
 const COMPOSE_KEYS = new Set(["c", "b", "a", "l", "g", "r", "s", ";", "enter", "backspace"]);
 
-function isComposeChordRepeat(event: KeyboardEvent<HTMLDivElement>, key: string): boolean {
-  return (event.metaKey || event.ctrlKey) && COMPOSE_KEYS.has(key);
+/**
+ * A ⌘/Ctrl chord the composer owns. Every compose surface (this handler and
+ * both editors) swallows its repeats, so a held chord runs once.
+ */
+export function isComposeChord(event: {
+  key: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+}): boolean {
+  return (event.metaKey || event.ctrlKey) && COMPOSE_KEYS.has(event.key.toLowerCase());
 }

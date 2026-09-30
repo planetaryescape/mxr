@@ -11,8 +11,6 @@ use mxr_core::id::ThreadId;
 use mxr_store::{DeskMessage, DeskReminder, DeskReplyLater};
 use std::collections::HashMap;
 
-use super::desk_lanes::is_outbound;
-
 /// Where a set time leaves a conversation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Timer {
@@ -61,30 +59,31 @@ impl DeskTimers {
     }
 
     /// "Bring it back if nobody replies" on a conversation you wrote last.
-    /// The reminder on your latest message that has one decides, so a
-    /// follow-up sent with its own time replaces an earlier return. A
-    /// reminder counts only while nobody else has written since its
-    /// message: an answer settles it even before the reminder loop
-    /// cancels it.
+    /// The reminder on your most recently stored message that has one
+    /// decides, so a follow-up sent with its own time replaces an earlier
+    /// return. A reminder counts only while nothing that `answers` was
+    /// stored after its message: storage order, not the Date header, so a
+    /// reply with a skewed clock still counts, and an answer settles it
+    /// even before the reminder loop cancels it.
     pub(super) fn waiting(
         &self,
         thread: &[DeskMessage],
-        is_self: &dyn Fn(&str) -> bool,
+        answers: &dyn Fn(&DeskMessage) -> bool,
         now: DateTime<Utc>,
     ) -> Option<Timer> {
         let reminders = self.reminders.get(&thread.first()?.thread_id)?;
-        let (position, reminder) = reminders
+        let (sent_seq, reminder) = reminders
             .iter()
             .filter_map(|reminder| {
                 thread
                     .iter()
-                    .position(|message| message.id == reminder.sent_message_id)
-                    .map(|position| (position, reminder))
+                    .find(|message| message.id == reminder.sent_message_id)
+                    .map(|sent| (sent.seq, reminder))
             })
-            .max_by_key(|(position, reminder)| (*position, reminder.remind_at))?;
-        if thread[position + 1..]
+            .max_by_key(|(seq, reminder)| (*seq, reminder.remind_at))?;
+        if thread
             .iter()
-            .any(|message| !is_outbound(message, is_self))
+            .any(|message| message.seq > sent_seq && answers(message))
         {
             return None;
         }
@@ -131,8 +130,9 @@ mod tests {
             .with_timezone(&Utc)
     }
 
-    fn is_self(email: &str) -> bool {
-        email.eq_ignore_ascii_case(ME)
+    /// Anyone but you, in these tests.
+    fn answers(message: &DeskMessage) -> bool {
+        !message.from.email.eq_ignore_ascii_case(ME)
     }
 
     fn message(thread: &ThreadId, from: &str, hours_ago: i64) -> DeskMessage {
@@ -196,17 +196,17 @@ mod tests {
         let waiting = vec![message(&thread, "maya@example.com", 40), sent.clone()];
 
         assert_eq!(
-            timers.waiting(&waiting, &is_self, now()),
+            timers.waiting(&waiting, &answers, now()),
             Some(Timer::Pending)
         );
         assert_eq!(
-            timers.waiting(&waiting, &is_self, due),
+            timers.waiting(&waiting, &answers, due),
             Some(Timer::Back(due))
         );
 
         let mut answered = waiting.clone();
         answered.push(message(&thread, "maya@example.com", 1));
-        assert_eq!(timers.waiting(&answered, &is_self, due), None);
+        assert_eq!(timers.waiting(&answered, &answers, due), None);
     }
 
     #[test]
@@ -220,7 +220,7 @@ mod tests {
 
         let only_fired = DeskTimers::new(Vec::new(), vec![fired.clone()]);
         assert_eq!(
-            only_fired.waiting(&conversation, &is_self, now()),
+            only_fired.waiting(&conversation, &answers, now()),
             Some(Timer::Back(fired_at))
         );
 
@@ -232,7 +232,7 @@ mod tests {
             ],
         );
         assert_eq!(
-            again.waiting(&conversation, &is_self, now()),
+            again.waiting(&conversation, &answers, now()),
             Some(Timer::Pending)
         );
     }

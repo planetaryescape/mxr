@@ -1775,19 +1775,32 @@ async fn warm_default_wrapped(state: &Arc<AppState>) {
     }
 }
 
-/// Process all auto-reminders due by `now`: cancel the ones whose thread
-/// got a reply, mark the rest triggered and emit a `ReminderTriggered`
-/// event so clients can refresh views. Returns the number that fired.
+/// One wake pass over the times users set, at `now`:
 ///
-/// Factored out of `auto_reminders_loop` so it can be exercised
-/// directly in tests with a virtual `now` — no clock plumbing needed
-/// in the test harness.
-pub async fn process_due_reminders(
+/// 1. Cancel due "bring it back if nobody replies" reminders that a person
+///    answered (storage order, shared classifier: an auto-responder is not
+///    an answer).
+/// 2. Fire the rest: each is marked fired and its message queued in one
+///    conditional write, so it fires once and never at a deadline it was
+///    moved away from.
+/// 3. Claim timed reply laters whose time came.
+///
+/// Then announce once per conversation (`ReminderTriggered`, else
+/// `ReplyLaterReturned`), however many messages or timers in it came due in
+/// this pass. Returns how many conversations it announced.
+///
+/// A crash between a claim's commit and its event loses only the event: the
+/// desk and queue already show the return (they read the clock and the
+/// stored time), and clients refetch everything when they reconnect to the
+/// restarted daemon (epoch invalidation). The claim is never repeated.
+///
+/// Factored out of `auto_reminders_loop` so tests can run it with a moved
+/// clock.
+pub async fn process_due_timers(
     state: &AppState,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<u32, String> {
-    // "If nobody replies": a reply the header match missed still counts.
-    if let Err(e) = state.store.cancel_due_reminders_with_replies(now).await {
+    if let Err(e) = crate::handler::deferral::settle_answered_reminders(state, now).await {
         tracing::warn!("auto-reminder reply check failed: {e}");
     }
     let due = state
@@ -1795,11 +1808,9 @@ pub async fn process_due_reminders(
         .get_due_auto_reminders(now)
         .await
         .map_err(|e| e.to_string())?;
-    let mut count = 0;
+    let mut fired = Vec::new();
     for reminder in due {
-        let id = reminder.sent_message_id.clone();
-        // Marking it fired and queueing the message is one transaction that
-        // only the first caller wins, so a reminder fires exactly once.
+        let id = reminder.sent_message_id;
         match state.store.trigger_auto_reminder(&id, now).await {
             Ok(true) => {}
             Ok(false) => continue,
@@ -1808,42 +1819,53 @@ pub async fn process_due_reminders(
                 continue;
             }
         }
-        count += 1;
         if let Err(e) =
             crate::handler::reply_later::refresh_reply_later_search_marker(state, &id, true).await
         {
-            tracing::warn!(
-                message_id = %id.as_str(),
-                "auto-reminder reply-later marker failed: {e}"
-            );
+            tracing::warn!(message_id = %id.as_str(), "auto-reminder reply-later marker failed: {e}");
         }
-        crate::chimes::emit_daemon_event(
-            state,
-            DaemonEvent::ReminderTriggered {
-                sent_message_id: id,
-            },
-        );
+        fired.push(id);
     }
-    Ok(count)
-}
-
-/// Announce every timed reply later whose time has come: one
-/// `ReplyLaterReturned` per return, ever. The conversation is back on the
-/// desk and in the queue from its time whether or not this has run; this
-/// only tells clients (and rings), so a restart announces what it missed
-/// once and never twice. Returns how many it announced.
-pub async fn process_due_reply_later(
-    state: &AppState,
-    now: chrono::DateTime<chrono::Utc>,
-) -> Result<u32, String> {
     let returned = state
         .store
         .claim_returned_reply_later(now)
         .await
         .map_err(|e| e.to_string())?;
-    let count = returned.len() as u32;
-    for message_id in returned {
-        crate::chimes::emit_daemon_event(state, DaemonEvent::ReplyLaterReturned { message_id });
+
+    let ids: Vec<mxr_core::MessageId> = fired.iter().chain(&returned).cloned().collect();
+    let threads: std::collections::HashMap<mxr_core::MessageId, mxr_core::ThreadId> = state
+        .store
+        .list_envelopes_by_ids(&ids)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|envelope| (envelope.id, envelope.thread_id))
+        .collect();
+    // Keyed by conversation; a message whose row is gone stands for itself.
+    let mut announced: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut first_in_thread = |id: &mxr_core::MessageId| {
+        announced.insert(
+            threads
+                .get(id)
+                .map_or_else(|| id.to_string(), ToString::to_string),
+        )
+    };
+    let mut events = Vec::new();
+    for id in fired {
+        if first_in_thread(&id) {
+            events.push(DaemonEvent::ReminderTriggered {
+                sent_message_id: id,
+            });
+        }
+    }
+    for id in returned {
+        if first_in_thread(&id) {
+            events.push(DaemonEvent::ReplyLaterReturned { message_id: id });
+        }
+    }
+    let count = events.len() as u32;
+    for event in events {
+        crate::chimes::emit_daemon_event(state, event);
     }
     Ok(count)
 }
@@ -2050,16 +2072,10 @@ pub async fn auto_reminders_loop(state: Arc<AppState>, mut shutdown_rx: watch::R
                 continue;
             }
         }
-        let now = chrono::Utc::now();
-        match process_due_reminders(&state, now).await {
+        match process_due_timers(&state, chrono::Utc::now()).await {
             Ok(0) => {}
-            Ok(n) => tracing::debug!(fired = n, "auto-reminders loop fired reminders"),
+            Ok(n) => tracing::debug!(conversations = n, "timers brought conversations back"),
             Err(e) => tracing::warn!("Auto-reminders loop error: {e}"),
-        }
-        match process_due_reply_later(&state, now).await {
-            Ok(0) => {}
-            Ok(n) => tracing::debug!(returned = n, "reply-later returns announced"),
-            Err(e) => tracing::warn!("Reply-later return error: {e}"),
         }
     }
 }

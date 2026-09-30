@@ -123,12 +123,18 @@ same rule Done uses without `--lane`:
 - Reply later moves every reply-later flag in the conversation to the time.
   Waiting clears the conversation's reply-later flags and cancels its other
   pending reminders, so this one time is what brings it back.
-- A reply from anyone else cancels a waiting time, before or at the time.
-  A new message in a reply-later conversation does not bring it back early.
+- Who wrote last, and whether someone replied, go by the order mail was
+  stored, not its Date header, and count only people: an auto-responder or
+  notification neither makes it theirs nor cancels a wait. A person's reply
+  cancels a waiting time, before or at the time. A new message in a
+  reply-later conversation does not bring it back early.
 - A conversation is back as soon as its time passes, whether or not the
-  daemon was running. The daemon announces each return once
-  (`ReplyLaterReturned`, or `ReminderTriggered` for waiting), even across
-  restarts.
+  daemon was running; a wait the daemon fires late (it was off for weeks)
+  still comes back. The daemon announces each return once per
+  conversation (`ReplyLaterReturned`, or `ReminderTriggered` for waiting),
+  even across restarts. Moving a time later always wins over the old one.
+- Undo puts back what it replaced, and takes the reply-queue entry a wait
+  added if it fired in the meantime.
 - `--dry-run` returns the same items without changing anything. The real
   run prints an undo id; undo puts back every flag and reminder it replaced.
   A conversation that cannot be set has an `error` and the command exits

@@ -66,7 +66,7 @@ mod user_voice_profile;
 mod voice_samples;
 mod wrapped;
 
-pub use auto_reminders::{DeskReminder, ReminderState};
+pub use auto_reminders::{DeskReminder, ReminderState, TakenTimers};
 pub use calendar::CalendarInviteRecord;
 pub use contact_commitments::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
 pub use contact_relationship_summary::ContactRelationshipSummaryRecord;

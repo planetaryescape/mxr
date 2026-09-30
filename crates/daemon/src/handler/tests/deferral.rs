@@ -193,13 +193,13 @@ async fn reply_later_at_a_time_leaves_the_desk_and_comes_back_once_across_a_rest
     // over the same store, announces nothing.
     let mut events = fx.state.event_tx.subscribe();
     assert_eq!(
-        crate::loops::process_due_reply_later(&fx.state, after).await,
+        crate::loops::process_due_timers(&fx.state, after).await,
         Ok(1)
     );
     assert_eq!(drain(&mut events), vec![answer.id.clone()]);
     let later = after + Duration::hours(6);
     assert_eq!(
-        crate::loops::process_due_reply_later(&fx.state, later).await,
+        crate::loops::process_due_timers(&fx.state, later).await,
         Ok(0)
     );
     assert!(drain(&mut events).is_empty());
@@ -246,12 +246,12 @@ async fn waiting_with_a_time_leaves_waiting_and_comes_back_once_if_nobody_replie
 
     let mut events = fx.state.event_tx.subscribe();
     assert_eq!(
-        crate::loops::process_due_reminders(&fx.state, after).await,
+        crate::loops::process_due_timers(&fx.state, after).await,
         Ok(1)
     );
     assert_eq!(drain(&mut events), vec![mine.id.clone()]);
     assert_eq!(
-        crate::loops::process_due_reminders(&fx.state, after + Duration::hours(1)).await,
+        crate::loops::process_due_timers(&fx.state, after + Duration::hours(1)).await,
         Ok(0),
         "a restarted loop never fires it again"
     );
@@ -295,7 +295,7 @@ async fn a_reply_cancels_the_wait() {
 
     let after = until + Duration::minutes(1);
     assert_eq!(
-        crate::loops::process_due_reminders(&fx.state, after).await,
+        crate::loops::process_due_timers(&fx.state, after).await,
         Ok(0)
     );
     assert!(!fx.state.store.is_reply_later(&mine.id).await.unwrap());
@@ -343,7 +343,7 @@ async fn done_cancels_a_pending_wait_and_undo_puts_it_back() {
     .await;
     assert!(lanes_at(&fx, Utc::now()).await.iter().all(Vec::is_empty));
     assert_eq!(
-        crate::loops::process_due_reminders(&fx.state, after).await,
+        crate::loops::process_due_timers(&fx.state, after).await,
         Ok(1)
     );
     assert!(fx.state.store.is_reply_later(&mine.id).await.unwrap());
@@ -357,7 +357,7 @@ async fn done_on_a_returned_wait_puts_it_away_and_out_of_the_queue() {
     defer(&fx, std::slice::from_ref(&thread), until, false).await;
     let after = until + Duration::minutes(1);
     assert_eq!(
-        crate::loops::process_due_reminders(&fx.state, after).await,
+        crate::loops::process_due_timers(&fx.state, after).await,
         Ok(1)
     );
     assert_eq!(
@@ -468,4 +468,209 @@ async fn a_time_that_has_passed_is_refused_and_unknown_threads_say_why() {
     );
     assert!(run.items[2].error.as_deref().unwrap().contains("already"));
     assert_eq!(run.items[1].kind, None);
+}
+
+fn done_item(thread: &ThreadId) -> DeskDoneItemData {
+    DeskDoneItemData {
+        thread_id: thread.clone(),
+        lane: None,
+        commitment_id: None,
+    }
+}
+
+async fn undo(fx: &Fixture, mutation_id: String) {
+    assert!(matches!(
+        request(fx, Request::UndoMutation { mutation_id }).await,
+        ResponseData::Ack
+    ));
+}
+
+/// A reminder already due, set straight in the store (`DeferThreads`
+/// refuses past times).
+async fn due_reminder(fx: &Fixture, sent: &Envelope, remind_at: DateTime<Utc>) {
+    fx.state
+        .store
+        .set_auto_reminder(&sent.id, &fx.account, remind_at, sent.date)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn done_takes_a_flag_a_reminder_set_between_its_plan_and_its_run() {
+    let fx = Fixture::new().await;
+    let (thread, _, mine) = waiting(&fx, Duration::days(2)).await;
+    due_reminder(&fx, &mine, Utc::now() - Duration::minutes(1)).await;
+
+    let fire = async {
+        assert_eq!(
+            crate::loops::process_due_timers(&fx.state, Utc::now()).await,
+            Ok(1)
+        );
+    };
+    let ResponseData::DeskItemsResolved {
+        items, mutation_id, ..
+    } = super::super::desk_done::resolve_with_gap_for_test(&fx.state, &[done_item(&thread)], fire)
+        .await
+        .unwrap()
+    else {
+        panic!("expected DeskItemsResolved");
+    };
+    assert_eq!(items[0].reply_later_cleared, 1, "the flag set in the gap");
+    assert!(!fx.state.store.is_reply_later(&mine.id).await.unwrap());
+
+    // Undo puts back what Done took: the fired reminder's flag.
+    undo(&fx, mutation_id.unwrap()).await;
+    assert!(fx.state.store.is_reply_later(&mine.id).await.unwrap());
+}
+
+#[tokio::test]
+async fn undo_after_the_wait_fired_takes_its_flag_too() {
+    let fx = Fixture::new().await;
+    let (thread, _, mine) = waiting(&fx, Duration::days(2)).await;
+    let until = Utc::now() + Duration::days(1);
+    let run = defer(&fx, std::slice::from_ref(&thread), until, false).await;
+    let after = until + Duration::minutes(1);
+    assert_eq!(
+        crate::loops::process_due_timers(&fx.state, after).await,
+        Ok(1)
+    );
+    assert!(fx.state.store.is_reply_later(&mine.id).await.unwrap());
+
+    undo(&fx, run.mutation_id.unwrap()).await;
+    assert!(
+        !fx.state.store.is_reply_later(&mine.id).await.unwrap(),
+        "the flag the reminder set is gone with it"
+    );
+    assert!(fx
+        .state
+        .store
+        .get_auto_reminder(&mine.id)
+        .await
+        .unwrap()
+        .is_none());
+    // An ordinary Waiting row again, not one a time brought back.
+    let [_, _, waiting, _] = lanes_at(&fx, after).await;
+    assert_eq!(threads_of(&waiting), vec![thread]);
+    assert_eq!(waiting[0].back_at, None);
+}
+
+#[tokio::test]
+async fn a_wait_that_fires_weeks_late_still_comes_back() {
+    let fx = Fixture::new().await;
+    // Sent two months ago, due six weeks ago: the daemon was off.
+    let (thread, _, mine) = waiting(&fx, Duration::days(60)).await;
+    due_reminder(&fx, &mine, Utc::now() - Duration::days(42)).await;
+
+    let now = Utc::now();
+    assert_eq!(
+        crate::loops::process_due_timers(&fx.state, now).await,
+        Ok(1)
+    );
+    let [_, _, waiting, _] = lanes_at(&fx, now).await;
+    assert_eq!(threads_of(&waiting), vec![thread]);
+    assert_eq!(waiting[0].reason, "no reply by the time you set");
+}
+
+#[tokio::test]
+async fn storage_order_decides_who_wrote_last_and_whether_they_replied() {
+    let fx = Fixture::new().await;
+    let (thread, _, mine) = waiting(&fx, Duration::days(1)).await;
+    due_reminder(&fx, &mine, Utc::now() - Duration::minutes(1)).await;
+    // Their reply arrives after yours, but its clock says two days ago.
+    fx.message(
+        &thread,
+        "jon@example.com",
+        ME,
+        Duration::days(2),
+        mine.message_id_header.as_deref(),
+    )
+    .await;
+
+    let preview = defer(
+        &fx,
+        std::slice::from_ref(&thread),
+        Utc::now() + Duration::days(1),
+        true,
+    )
+    .await;
+    assert_eq!(preview.items[0].kind, Some(DeferKindData::ReplyLater));
+
+    assert_eq!(
+        crate::loops::process_due_timers(&fx.state, Utc::now()).await,
+        Ok(0),
+        "the reply cancels the wait"
+    );
+    let stored = fx
+        .state
+        .store
+        .get_auto_reminder(&mine.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(stored.cancelled_at.is_some() && stored.triggered_at.is_none());
+}
+
+#[tokio::test]
+async fn an_auto_responder_neither_answers_a_wait_nor_makes_it_theirs() {
+    let fx = Fixture::new().await;
+    let (thread, _, mine) = waiting(&fx, Duration::days(2)).await;
+    fx.message(
+        &thread,
+        "notifications@example.com",
+        ME,
+        Duration::days(1),
+        mine.message_id_header.as_deref(),
+    )
+    .await;
+
+    let until = Utc::now() + Duration::days(1);
+    let run = defer(&fx, std::slice::from_ref(&thread), until, false).await;
+    assert_eq!(run.items[0].kind, Some(DeferKindData::Waiting));
+    assert_eq!(run.items[0].message_id.as_ref(), Some(&mine.id));
+    assert!(lanes_at(&fx, Utc::now()).await.iter().all(Vec::is_empty));
+
+    let after = until + Duration::minutes(1);
+    assert_eq!(
+        crate::loops::process_due_timers(&fx.state, after).await,
+        Ok(1)
+    );
+    let [_, _, waiting, _] = lanes_at(&fx, after).await;
+    assert_eq!(threads_of(&waiting), vec![thread]);
+    assert_eq!(waiting[0].message_id, mine.id);
+    assert_eq!(waiting[0].reason, "no reply by the time you set");
+}
+
+#[tokio::test]
+async fn a_conversation_is_announced_once_however_many_messages_came_back() {
+    let fx = Fixture::new().await;
+    let (thread, answer) = owed(&fx, Duration::hours(3)).await;
+    fx.message(
+        &thread,
+        "maya@example.com",
+        ME,
+        Duration::hours(2),
+        answer.message_id_header.as_deref(),
+    )
+    .await;
+    fx.state
+        .store
+        .set_reply_later(&answer.id, Utc::now())
+        .await
+        .unwrap();
+
+    let until = Utc::now() + Duration::days(1);
+    defer(&fx, std::slice::from_ref(&thread), until, false).await;
+    let after = until + Duration::minutes(1);
+    assert_eq!(
+        fx.state.store.list_reply_later(after).await.unwrap().len(),
+        2,
+        "both messages come back"
+    );
+
+    let mut events = fx.state.event_tx.subscribe();
+    assert_eq!(
+        crate::loops::process_due_timers(&fx.state, after).await,
+        Ok(1)
+    );
+    assert_eq!(drain(&mut events).len(), 1, "one announcement, one chime");
 }

@@ -53,6 +53,10 @@ struct Plan {
     reply_later: Vec<(MessageId, ReplyLaterState)>,
     /// Pending "bring it back if no reply" reminders, as stored: cancelled.
     reminders: Vec<(MessageId, ReminderState)>,
+    /// Every message of the conversation: the run takes the timers off all
+    /// of them as they are then, not as the plan read them, so a reminder
+    /// that fires between plan and run can't outlive Done.
+    thread_messages: Vec<MessageId>,
     error: Option<String>,
 }
 
@@ -68,6 +72,7 @@ impl Plan {
             commitment: None,
             reply_later: Vec::new(),
             reminders: Vec::new(),
+            thread_messages: Vec::new(),
             error: Some(error.into()),
         }
     }
@@ -298,6 +303,7 @@ async fn plan_item(
         commitment,
         reply_later,
         reminders,
+        thread_messages: thread.iter().map(|message| message.id.clone()).collect(),
         error: None,
     }))
 }
@@ -462,18 +468,23 @@ async fn put_away(
         }
     }
     let now = Utc::now();
-    for plan in plans.iter().filter(|plan| plan.error.is_none()) {
-        for (message_id, flag) in &plan.reply_later {
-            // Noted first, so a clear that fails part way is still undone.
+    for plan in plans.iter_mut().filter(|plan| plan.error.is_none()) {
+        // One transaction reads and clears, so the undo holds exactly what
+        // this took, including a flag a reminder set since the plan.
+        let taken = state.store.take_timers(&plan.thread_messages, now).await?;
+        for (message_id, flag) in &taken.reply_later {
             desk.reply_later_priors
                 .push((message_id.clone(), Some(*flag)));
-            super::reply_later::set_reply_later_at(state, message_id, false, now).await?;
         }
-        for (message_id, reminder) in &plan.reminders {
+        for (message_id, reminder) in &taken.reminders {
             desk.reminder_priors
                 .push((message_id.clone(), Some(reminder.clone())));
-            state.store.cancel_auto_reminder(message_id, now).await?;
         }
+        for (message_id, _) in &taken.reply_later {
+            super::reply_later::refresh_reply_later_search_marker(state, message_id, false).await?;
+        }
+        plan.reply_later = taken.reply_later;
+        plan.reminders = taken.reminders;
     }
     Ok(())
 }
@@ -527,8 +538,22 @@ pub(super) async fn run_messages_for_test(
             commitment: None,
             reply_later: Vec::new(),
             reminders: Vec::new(),
+            thread_messages: Vec::new(),
             error: None,
         })
         .collect();
+    run(state, plans).await
+}
+
+/// Done with `between` run after the plan and before the run, for tests of
+/// what happens in that gap (a reminder firing).
+#[cfg(test)]
+pub(super) async fn resolve_with_gap_for_test(
+    state: &AppState,
+    items: &[DeskDoneItemData],
+    between: impl std::future::Future<Output = ()>,
+) -> HandlerResult {
+    let plans = plan(state, items).await?;
+    between.await;
     run(state, plans).await
 }

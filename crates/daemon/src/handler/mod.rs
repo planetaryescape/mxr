@@ -17,7 +17,7 @@ mod briefing;
 mod commitments;
 mod commitments_extract;
 mod decisions_extract;
-mod deferral;
+pub(crate) mod deferral;
 pub(crate) mod deliveries;
 mod desk;
 mod desk_done;

@@ -6,11 +6,12 @@
 //! The lane rules live in `desk_lanes.rs`.
 
 use super::desk_lanes::{
-    apply_pace, clean_subject, dedupe_by_precedence, sort_lane, thread_lanes, thread_starred,
-    waiting_set_aside, AccountInputs, PaceDirection, WaitingAside, DESK_WINDOW_DAYS,
-    DUE_AHEAD_DAYS,
+    apply_pace, clean_subject, dedupe_by_precedence, is_outbound, sender_kind, sort_lane,
+    thread_lanes, thread_starred, waiting_set_aside, AccountInputs, PaceDirection, WaitingAside,
+    DESK_WINDOW_DAYS, DUE_AHEAD_DAYS,
 };
 use super::desk_timers::DeskTimers;
+use super::mail_kind::SenderKind;
 use super::HandlerResult;
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
@@ -19,7 +20,7 @@ use mxr_core::types::{AccountAddressLookup, CalendarPartstat};
 use mxr_protocol::{DeskElsewhereData, DeskLaneData, DeskLaneKind, DeskRowData, ResponseData};
 use mxr_store::{
     CadenceDriftRow, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord,
-    DeliveryListFilter, DeskLatestExchange, DeskMessage, ScreenerDisposition,
+    DeliveryListFilter, DeskContact, DeskLatestExchange, DeskMessage, ScreenerDisposition,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -121,6 +122,65 @@ pub(super) async fn self_matcher(
     })
 }
 
+/// What the store knows about the senders of some desk messages, for the
+/// shared classifier: contacts and screener decisions, keyed by lowercased
+/// email.
+pub(super) struct Senders {
+    pub contacts: HashMap<String, DeskContact>,
+    pub screener: HashMap<String, ScreenerDisposition>,
+}
+
+impl Senders {
+    pub(super) async fn load(
+        state: &AppState,
+        account_id: &AccountId,
+        messages: &[DeskMessage],
+    ) -> Result<Self, super::HandlerError> {
+        let mut emails: Vec<String> = messages
+            .iter()
+            .flat_map(|m| {
+                std::iter::once(m.from.email.to_ascii_lowercase())
+                    .chain(m.to.iter().map(|a| a.email.to_ascii_lowercase()))
+            })
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        emails.sort_unstable();
+        let contacts = state
+            .store
+            .desk_contacts(account_id, &emails)
+            .await?
+            .into_iter()
+            .map(|contact| (contact.email.to_ascii_lowercase(), contact))
+            .collect();
+        let screener = state
+            .store
+            .list_screener_decisions(account_id)
+            .await?
+            .into_iter()
+            .map(|decision| {
+                (
+                    decision.sender_email.to_ascii_lowercase(),
+                    decision.disposition,
+                )
+            })
+            .collect();
+        Ok(Self { contacts, screener })
+    }
+
+    /// A person other than you wrote it (not an auto-responder, list or
+    /// notification): it answers you.
+    pub(super) fn answers(&self, message: &DeskMessage, is_self: &dyn Fn(&str) -> bool) -> bool {
+        let email = message.from.email.to_ascii_lowercase();
+        !is_outbound(message, is_self)
+            && sender_kind(
+                message,
+                self.contacts.get(&email),
+                self.screener.get(&email).copied(),
+            ) == SenderKind::Person
+    }
+}
+
 struct AccountDesk {
     rows: Vec<DeskRowData>,
     elsewhere: DeskElsewhereData,
@@ -155,41 +215,14 @@ async fn account_desk(
     back.sort_by_key(ThreadId::as_str);
     messages.extend(store.desk_messages_in_threads(account_id, &back).await?);
 
-    let mut emails: Vec<String> = messages
-        .iter()
-        .flat_map(|m| {
-            std::iter::once(m.from.email.to_ascii_lowercase())
-                .chain(m.to.iter().map(|a| a.email.to_ascii_lowercase()))
-        })
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
-    emails.sort_unstable();
-    let contacts: HashMap<String, _> = store
-        .desk_contacts(account_id, &emails)
-        .await?
-        .into_iter()
-        .map(|contact| (contact.email.to_ascii_lowercase(), contact))
-        .collect();
-    let screener: HashMap<String, ScreenerDisposition> = store
-        .list_screener_decisions(account_id)
-        .await?
-        .into_iter()
-        .map(|decision| {
-            (
-                decision.sender_email.to_ascii_lowercase(),
-                decision.disposition,
-            )
-        })
-        .collect();
-
+    let senders = Senders::load(state, account_id, &messages).await?;
     let is_self = self_matcher(state, account_id).await?;
     let dismissed = store.desk_dismissals(account_id).await?;
     let mut lanes = thread_lanes(&AccountInputs {
         account_id,
         messages: &messages,
-        contacts: &contacts,
-        screener: &screener,
+        contacts: &senders.contacts,
+        screener: &senders.screener,
         dismissed: &dismissed,
         timers: &timers,
         is_self: &is_self,
@@ -266,7 +299,7 @@ async fn account_desk(
         &WaitingAside {
             dismissed: &dismissed,
             timers: &timers,
-            is_self: &is_self,
+            answers: &|m: &DeskMessage| senders.answers(m, &is_self),
             now,
         },
     );

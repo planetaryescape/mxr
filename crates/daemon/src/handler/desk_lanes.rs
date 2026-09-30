@@ -51,7 +51,8 @@ pub(super) fn current_messages(thread: &[DeskMessage], now: DateTime<Utc>) -> &[
 pub(super) struct WaitingAside<'a> {
     pub dismissed: &'a HashMap<ThreadId, DeskDismissal>,
     pub timers: &'a DeskTimers,
-    pub is_self: &'a dyn Fn(&str) -> bool,
+    /// A message that answers you: a person other than you wrote it.
+    pub answers: &'a dyn Fn(&DeskMessage) -> bool,
     pub now: DateTime<Utc>,
 }
 
@@ -68,7 +69,7 @@ pub(super) fn waiting_set_aside(thread: &[DeskMessage], aside: &WaitingAside<'_>
             .dismissed
             .get(&latest.thread_id)
             .is_some_and(|d| d.covers(thread))
-        || aside.timers.waiting(thread, aside.is_self, aside.now) == Some(Timer::Pending)
+        || aside.timers.waiting(thread, aside.answers, aside.now) == Some(Timer::Pending)
 }
 
 /// A thread you wrote last also leaves Waiting when you archive it, if it
@@ -153,16 +154,13 @@ impl AccountInputs<'_> {
     /// never disagree about a message.
     pub(super) fn sender_kind(&self, message: &DeskMessage) -> SenderKind {
         let email = &message.from.email;
-        mail_kind::classify(&KindSignals {
-            email,
-            has_list_id: message.list_id.is_some(),
-            has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
-            is_delivery: message.is_delivery,
-            is_invite: message.is_invite,
-            list_sender: self.contact(email).is_some_and(|c| c.is_list_sender),
-            decision: self.decision(email),
-        })
-        .kind
+        sender_kind(message, self.contact(email), self.decision(email))
+    }
+
+    /// A person other than you wrote it: an answer. An auto-responder or a
+    /// notification in the thread is not.
+    pub(super) fn answers(&self, message: &DeskMessage) -> bool {
+        !self.is_outbound(message) && self.sender_kind(message) == SenderKind::Person
     }
 
     /// Only copied, not addressed: the reason says so.
@@ -170,6 +168,25 @@ impl AccountInputs<'_> {
         !message.to.iter().any(|a| (self.is_self)(&a.email))
             && message.cc.iter().any(|a| (self.is_self)(&a.email))
     }
+}
+
+/// The shared classifier (`mail_kind`) for one desk message, given what the
+/// store knows about its sender.
+pub(super) fn sender_kind(
+    message: &DeskMessage,
+    contact: Option<&DeskContact>,
+    decision: Option<ScreenerDisposition>,
+) -> SenderKind {
+    mail_kind::classify(&KindSignals {
+        email: &message.from.email,
+        has_list_id: message.list_id.is_some(),
+        has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
+        is_delivery: message.is_delivery,
+        is_invite: message.is_invite,
+        list_sender: contact.is_some_and(|c| c.is_list_sender),
+        decision,
+    })
+    .kind
 }
 
 /// A desk row before the usual pace is known.
@@ -313,18 +330,37 @@ fn thread_row(
     if inputs.is_outbound(latest) {
         return waiting_row(inputs, conversation, latest, latest_inbound.is_some());
     }
+    // An auto-responder or notification after your message answers nothing:
+    // a time you set on the wait still hides it or brings it back.
+    if let Some(sent) = latest_outbound.filter(|_| !inputs.answers(latest)) {
+        let answers = |m: &DeskMessage| inputs.answers(m);
+        if inputs
+            .timers
+            .waiting(conversation.all, &answers, now)
+            .is_some()
+        {
+            return waiting_row(inputs, conversation, sent, latest_inbound.is_some());
+        }
+    }
 
     let inbound = latest_inbound?;
     // You said you'd reply by now: owed, wherever the mail is and whoever
-    // sent it, since you asked for it back.
+    // sent it, since you asked for it back. The newest message from a
+    // person anchors it; any inbound one when no person wrote (a reply
+    // later on a newsletter still comes back).
     if let Some(Timer::Back(back_at)) = inputs.timers.reply_later(&latest.thread_id, now) {
-        if !inbound.trashed {
+        let anchor = thread
+            .iter()
+            .rev()
+            .find(|m| inputs.answers(m))
+            .unwrap_or(inbound);
+        if !anchor.trashed {
             return Some(back_row(
                 inputs,
                 DeskLaneKind::Owed,
                 conversation.all,
-                inbound,
-                &inbound.from,
+                anchor,
+                &anchor.from,
                 "back from reply later",
                 back_at,
             ));
@@ -405,16 +441,17 @@ fn waiting_row(
     let thread = conversation.current;
     let now = inputs.now;
     // Done waiting counts every stored message, future-dated or not.
+    let answers = |m: &DeskMessage| inputs.answers(m);
     let aside = WaitingAside {
         dismissed: inputs.dismissed,
         timers: inputs.timers,
-        is_self: inputs.is_self,
+        answers: &answers,
         now,
     };
     if waiting_set_aside(conversation.all, &aside) {
         return None;
     }
-    let timer = inputs.timers.waiting(conversation.all, inputs.is_self, now);
+    let timer = inputs.timers.waiting(conversation.all, &answers, now);
     let recipient = sent.to.iter().find(|a| !(inputs.is_self)(&a.email))?;
     let email = recipient.email.as_str();
     let contact = inputs.contact(email);

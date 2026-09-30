@@ -3217,8 +3217,11 @@ async fn try_create_reply_pair_links_outbound_reply_to_inbound_parent() {
     assert_eq!(row.3, inbound.id.as_str());
 }
 
+/// A reply header no longer cancels a reminder when it is stored: the store
+/// can't tell an auto-responder from a person. The daemon settles due
+/// reminders with the shared classifier instead.
 #[tokio::test]
-async fn inbound_reply_pair_cancels_pending_auto_reminder_on_sent_parent() {
+async fn an_inbound_reply_pair_leaves_the_reminder_for_the_daemon_to_settle() {
     let store = Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -3284,8 +3287,8 @@ async fn inbound_reply_pair_cancels_pending_auto_reminder_on_sent_parent() {
         .get_auto_reminder(&sent.id)
         .await
         .unwrap()
-        .expect("reminder row remains for analytics");
-    assert_eq!(reminder.cancelled_at, Some(reply_at));
+        .expect("reminder row remains");
+    assert_eq!(reminder.cancelled_at, None);
     assert!(reminder.triggered_at.is_none());
 }
 

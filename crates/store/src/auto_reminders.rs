@@ -37,6 +37,13 @@ impl ReminderState {
     }
 }
 
+/// What `take_timers` took off, each as it was.
+#[derive(Debug, Default)]
+pub struct TakenTimers {
+    pub reply_later: Vec<(MessageId, crate::ReplyLaterState)>,
+    pub reminders: Vec<(MessageId, ReminderState)>,
+}
+
 /// A live (not cancelled) reminder in one account, with its conversation,
 /// for the desk's Waiting on lane.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,8 +148,9 @@ impl super::Store {
 
     /// Fire one reminder: mark it triggered and put its message in the
     /// reply-later queue, in one transaction. Returns false when it had
-    /// already fired or been cancelled, so each reminder fires exactly
-    /// once however often (or concurrently) the loop runs.
+    /// already fired, been cancelled, or been moved to a later time since
+    /// the caller read it, so each reminder fires exactly once, at its
+    /// current time, however often (or concurrently) the loop runs.
     pub async fn trigger_auto_reminder(
         &self,
         sent_message_id: &MessageId,
@@ -153,8 +161,9 @@ impl super::Store {
         let mut tx = self.writer().begin().await?;
         let claimed = sqlx::query(
             r#"UPDATE auto_reminders
-               SET triggered_at = ?
-               WHERE sent_message_id = ?
+               SET triggered_at = ?1
+               WHERE sent_message_id = ?2
+                 AND remind_at <= ?1
                  AND triggered_at IS NULL
                  AND cancelled_at IS NULL"#,
         )
@@ -247,8 +256,10 @@ impl super::Store {
     }
 
     /// Every reminder in the account that was not cancelled, with its
-    /// conversation. Fired ones older than `fired_since` are left out: the
-    /// desk only marks recent returns.
+    /// conversation. Ones that fired before `fired_since` are left out: the
+    /// desk marks recent returns. Judged by when it fired, not when it was
+    /// due, so a reminder that fires late (the daemon was off for weeks)
+    /// still comes back.
     pub async fn desk_reminders(
         &self,
         account_id: &AccountId,
@@ -261,7 +272,7 @@ impl super::Store {
                CROSS JOIN messages m ON m.id = r.sent_message_id
                WHERE r.account_id = ?
                  AND r.cancelled_at IS NULL
-                 AND (r.triggered_at IS NULL OR r.remind_at >= ?)"#,
+                 AND (r.triggered_at IS NULL OR r.triggered_at >= ?)"#,
         )
         .bind(account_id.as_str())
         .bind(fired_since.timestamp())
@@ -324,47 +335,96 @@ impl super::Store {
             .collect()
     }
 
-    /// Cancel every reminder due by `now` whose thread got an answer after
-    /// the send: someone other than the sender wrote in it. Reply headers
-    /// already cancel a reminder when the answer names the sent message
-    /// (`reply_pairs`); a reply to an earlier message in the thread, or one
-    /// whose client dropped the headers, is caught here, just before firing.
-    /// Returns how many were cancelled.
-    pub async fn cancel_due_reminders_with_replies(
+    /// Cancel a reminder that has not fired: someone answered. Returns
+    /// whether it was pending.
+    pub async fn cancel_pending_auto_reminder(
         &self,
-        now: DateTime<Utc>,
-    ) -> Result<u64, sqlx::Error> {
-        let now_ts = now.timestamp();
-        // Dates have second precision, so a reply in the same second as the
-        // send counts (`>=`); the sent message and your own follow-ups are
-        // excluded by id and sender. The unary `+` keeps SQLite on the
-        // thread index: left to itself it walks (account_id, date) over
-        // every later message in the account, ~70ms per reminder on a
-        // 110k-message store against ~0.03ms.
+        sent_message_id: &MessageId,
+        cancelled_at: DateTime<Utc>,
+    ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(
             r#"UPDATE auto_reminders
                SET cancelled_at = ?
-               WHERE triggered_at IS NULL
-                 AND cancelled_at IS NULL
-                 AND remind_at <= ?
-                 AND EXISTS (
-                   SELECT 1
-                   FROM messages sent
-                   JOIN messages reply
-                     ON reply.thread_id = sent.thread_id
-                    AND +reply.account_id = sent.account_id
-                    AND reply.id != sent.id
-                    AND +reply.date >= sent.date
-                   WHERE sent.id = auto_reminders.sent_message_id
-                     AND reply.direction != 'outbound'
-                     AND LOWER(reply.from_email) != LOWER(sent.from_email)
-                 )"#,
+               WHERE sent_message_id = ?
+                 AND triggered_at IS NULL
+                 AND cancelled_at IS NULL"#,
         )
-        .bind(now_ts)
-        .bind(now_ts)
+        .bind(cancelled_at.timestamp())
+        .bind(sent_message_id.as_str())
         .execute(self.writer())
         .await?;
-        Ok(result.rows_affected())
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Take every timer off these messages in one transaction: clear their
+    /// reply-later flags and cancel their pending reminders, returning each
+    /// as it was. A reminder firing concurrently either lands before (and
+    /// its flag is taken here) or finds its reminder cancelled.
+    pub async fn take_timers(
+        &self,
+        message_ids: &[MessageId],
+        now: DateTime<Utc>,
+    ) -> Result<TakenTimers, sqlx::Error> {
+        let mut taken = TakenTimers::default();
+        let now_ts = now.timestamp();
+        let mut tx = self.writer().begin().await?;
+        for chunk in message_ids.chunks(SQLITE_BIND_CHUNK) {
+            let placeholders = vec!["?"; chunk.len()].join(", ");
+            let flags = format!(
+                "UPDATE message_flags
+                 SET reply_later = 0, reply_later_dismissed_at = ?
+                 WHERE reply_later = 1 AND message_id IN ({placeholders})
+                 RETURNING message_id, reply_later_set_at, reply_later_due_at,
+                           reply_later_returned_at"
+            );
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(flags.as_str())).bind(now_ts);
+            for id in chunk {
+                query = query.bind(id.as_str());
+            }
+            for row in query.fetch_all(&mut *tx).await? {
+                let id: String = row.try_get("message_id")?;
+                let set_at: Option<i64> = row.try_get("reply_later_set_at")?;
+                taken.reply_later.push((
+                    decode_id(&id)?,
+                    crate::ReplyLaterState {
+                        set_at: set_at
+                            .and_then(|ts| DateTime::from_timestamp(ts, 0))
+                            .unwrap_or(now),
+                        due_at: decode_optional_timestamp(row.try_get("reply_later_due_at")?)?,
+                        returned_at: decode_optional_timestamp(
+                            row.try_get("reply_later_returned_at")?,
+                        )?,
+                    },
+                ));
+            }
+            let reminders = format!(
+                "UPDATE auto_reminders
+                 SET cancelled_at = ?
+                 WHERE triggered_at IS NULL AND cancelled_at IS NULL
+                   AND sent_message_id IN ({placeholders})
+                 RETURNING sent_message_id, account_id, remind_at, set_at"
+            );
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(reminders.as_str())).bind(now_ts);
+            for id in chunk {
+                query = query.bind(id.as_str());
+            }
+            for row in query.fetch_all(&mut *tx).await? {
+                let id: String = row.try_get("sent_message_id")?;
+                let account_id: String = row.try_get("account_id")?;
+                taken.reminders.push((
+                    decode_id(&id)?,
+                    ReminderState {
+                        account_id: decode_id(&account_id)?,
+                        remind_at: decode_timestamp(row.try_get("remind_at")?)?,
+                        set_at: decode_timestamp(row.try_get("set_at")?)?,
+                        triggered_at: None,
+                        cancelled_at: None,
+                    },
+                ));
+            }
+        }
+        tx.commit().await?;
+        Ok(taken)
     }
 
     /// All reminders for a given message — useful for the UI / debug.
@@ -557,80 +617,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn due_reminders_cancel_only_when_someone_else_wrote_after_the_send() {
-        let store = Store::in_memory().await.unwrap();
-        let (account_id, sent) = seed(&store).await;
-        let due = sent.date + Duration::days(3);
-        store
-            .set_auto_reminder(&sent.id, &account_id, due, sent.date)
-            .await
-            .unwrap();
-        let later = due + Duration::hours(1);
-
-        let add = |id: &str, from: mxr_core::types::Address, date| {
-            let mut env = TestEnvelopeBuilder::new()
-                .account_id(account_id.clone())
-                .build();
-            env.id = MessageId::new();
-            env.provider_id = id.into();
-            env.thread_id = sent.thread_id.clone();
-            env.from = from;
-            env.date = date;
-            env
-        };
-        let maya = mxr_core::types::Address {
-            name: None,
-            email: "maya@example.com".into(),
-        };
-        store
-            .upsert_envelope(&add(
-                "own",
-                sent.from.clone(),
-                sent.date + Duration::hours(1),
-            ))
-            .await
-            .unwrap();
-        store
-            .upsert_envelope(&add("before", maya.clone(), sent.date - Duration::hours(1)))
-            .await
-            .unwrap();
-        assert_eq!(
-            store
-                .cancel_due_reminders_with_replies(later)
-                .await
-                .unwrap(),
-            0,
-            "your own follow-up and mail from before the send are not replies"
-        );
-
-        // A headerless reply in the same second as the send still counts.
-        store
-            .upsert_envelope(&add("reply", maya, sent.date))
-            .await
-            .unwrap();
-        assert_eq!(
-            store
-                .cancel_due_reminders_with_replies(due - Duration::hours(1))
-                .await
-                .unwrap(),
-            0,
-            "a reminder that isn't due yet is left for reply_pairs or later"
-        );
-        assert_eq!(
-            store
-                .cancel_due_reminders_with_replies(later)
-                .await
-                .unwrap(),
-            1
-        );
-        assert!(store
-            .get_due_auto_reminders(later)
-            .await
-            .unwrap()
-            .is_empty());
-    }
-
-    #[tokio::test]
     async fn get_due_orders_by_remind_at_ascending() {
         let store = Store::in_memory().await.unwrap();
         let account = test_account();
@@ -764,5 +750,67 @@ mod tests {
 
         store.restore_auto_reminder(&env.id, None).await.unwrap();
         assert!(store.get_auto_reminder(&env.id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn a_reminder_moved_later_after_it_was_read_does_not_fire_at_the_old_time() {
+        let store = Store::in_memory().await.unwrap();
+        let (account_id, env) = seed(&store).await;
+        store
+            .set_auto_reminder(&env.id, &account_id, anchor(), anchor() - Duration::days(1))
+            .await
+            .unwrap();
+        // The loop read it as due...
+        assert_eq!(
+            store.get_due_auto_reminders(anchor()).await.unwrap().len(),
+            1
+        );
+        // ...then the user moved it to next week before the claim.
+        let later = anchor() + Duration::days(7);
+        store
+            .set_auto_reminder(&env.id, &account_id, later, anchor())
+            .await
+            .unwrap();
+
+        assert!(!store
+            .trigger_auto_reminder(&env.id, anchor())
+            .await
+            .unwrap());
+        assert!(!store.is_reply_later(&env.id).await.unwrap());
+        assert!(store.trigger_auto_reminder(&env.id, later).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn take_timers_clears_flags_and_cancels_pending_reminders_returning_each() {
+        let store = Store::in_memory().await.unwrap();
+        let (account_id, env) = seed(&store).await;
+        let ids = std::slice::from_ref(&env.id);
+        store
+            .set_auto_reminder(&env.id, &account_id, anchor(), anchor() - Duration::days(1))
+            .await
+            .unwrap();
+        store
+            .defer_reply_later(&env.id, anchor(), anchor() + Duration::days(2))
+            .await
+            .unwrap();
+
+        let taken = store.take_timers(ids, anchor()).await.unwrap();
+        assert_eq!(taken.reply_later.len(), 1);
+        assert_eq!(
+            taken.reply_later[0].1.due_at,
+            Some(anchor() + Duration::days(2))
+        );
+        assert_eq!(taken.reminders.len(), 1);
+        assert!(!store.is_reply_later(&env.id).await.unwrap());
+        assert!(!store
+            .trigger_auto_reminder(&env.id, anchor())
+            .await
+            .unwrap());
+        assert!(store
+            .take_timers(ids, anchor())
+            .await
+            .unwrap()
+            .reply_later
+            .is_empty());
     }
 }

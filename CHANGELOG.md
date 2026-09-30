@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.41](https://github.com/planetaryescape/mxr/compare/v0.6.40...v0.6.41) (2026-09-30)
+
+
+### Bug Fixes
+
+* give the web app and the TUI the same keys ([#252](https://github.com/planetaryescape/mxr/issues/252)) ([873f0ab](https://github.com/planetaryescape/mxr/commit/873f0ab9ed9eb2206686e2d41bc4892dbbfe94e4))
+
+
+### Documentation
+
+* refresh the docs site for the desk, focus, places and Done, and make CI build it again ([#254](https://github.com/planetaryescape/mxr/issues/254)) ([231713c](https://github.com/planetaryescape/mxr/commit/231713c788a942d6d23d56566d3edd7beeb0a9e3))
+
 ## [0.6.40](https://github.com/planetaryescape/mxr/compare/v0.6.39...v0.6.40) (2026-09-28)
 
 

@@ -893,6 +893,11 @@ const MIGRATIONS: &[Migration] = &[
             sql: "ALTER TABLE mutation_undo_log ADD COLUMN desk_state_json TEXT",
         },
     },
+    Migration {
+        version: 54,
+        name: "owed_replies_index",
+        kind: MigrationKind::Sql(include_str!("../migrations/054_owed_replies_index.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

@@ -4,6 +4,8 @@
  * leaf module so those components don't import back into ComposeRoute.
  */
 
+import type { DraftProvenance } from "./draftProvenanceFormat";
+
 export type VoiceRegister = "casual" | "neutral" | "formal";
 export type DraftLengthHint = "short" | "medium" | "long";
 
@@ -30,6 +32,8 @@ export interface DraftSuggestionResponse {
   inferred_length?: DraftLengthHint | null;
   /** Human-readable note, e.g. "Matched to alice@x (casual, short)". */
   context_note?: string | null;
+  /** Which model wrote it, whether your history was used, and its sources. */
+  provenance?: DraftProvenance | null;
 }
 
 export interface DraftRefineKnobs {

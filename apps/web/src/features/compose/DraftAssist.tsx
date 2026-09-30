@@ -5,6 +5,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DraftProvenanceLine } from "./DraftProvenanceLine";
 import { DraftQualityBadges } from "./DraftQualityBadges";
 import { ToneControls } from "./ToneControls";
 import type {
@@ -83,6 +84,7 @@ export function DraftAssist({
             <ChevronDown className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-fast group-data-[state=open]:rotate-180" />
           </button>
         </CollapsibleTrigger>
+        <DraftProvenanceLine provenance={suggestion?.provenance} className="pb-2.5" />
         <CollapsibleContent>
           <div className="space-y-3 pb-3">
             <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">

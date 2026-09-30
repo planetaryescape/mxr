@@ -357,6 +357,7 @@ export interface DraftAssistResponse {
   inferred_register?: "casual" | "neutral" | "formal" | null;
   inferred_length?: "short" | "medium" | "long" | null;
   context_note?: string | null;
+  provenance?: components["schemas"]["DraftProvenanceData"] | null;
 }
 
 export function draftAssistThread(input: {

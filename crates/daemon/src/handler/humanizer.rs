@@ -1,8 +1,10 @@
+use super::draft_provenance::DraftPolicy;
 use super::HandlerResult;
 use crate::state::AppState;
 use mxr_humanizer::{score, HumanizerOpts};
 use mxr_llm::{
-    wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError, LlmFeature, UNTRUSTED_MAIL_GUARD,
+    wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError, LlmFeature, PinnedLlm,
+    UNTRUSTED_MAIL_GUARD,
 };
 use mxr_protocol::{HumanizerHitData, HumanizerReportSummaryData, ResponseData};
 use mxr_reader::{clean, ReaderConfig};
@@ -18,26 +20,28 @@ pub(super) async fn rewrite_text(
     text: &str,
     max_iterations: Option<u8>,
 ) -> HandlerResult {
-    let (text, report, iterations) = rewrite_to_threshold(state, text.to_string(), max_iterations)
-        .await
-        .map_err(|error| error.clone())?;
+    let policy = DraftPolicy::pin(state, LlmFeature::HumanizeRewrite);
+    let (text, report, iterations) = rewrite_to_threshold_with_context(
+        state,
+        &policy.llm,
+        text.to_string(),
+        max_iterations,
+        None,
+    )
+    .await?;
     Ok(ResponseData::HumanizedText {
         text,
         report,
         iterations,
+        rewrite: (iterations > 0).then(|| policy.rewrite_provenance(false)),
     })
 }
 
-pub(crate) async fn rewrite_to_threshold(
-    state: &AppState,
-    text: String,
-    max_iterations: Option<u8>,
-) -> Result<(String, HumanizerReportSummaryData, u8), String> {
-    rewrite_to_threshold_with_context(state, text, max_iterations, None).await
-}
-
+/// Rewrite through `llm`, the provider the caller pinned, so what it
+/// discloses names the model that actually rewrote.
 pub(crate) async fn rewrite_to_threshold_with_context(
     state: &AppState,
+    llm: &PinnedLlm,
     text: String,
     max_iterations: Option<u8>,
     voice_context: Option<&str>,
@@ -67,9 +71,7 @@ pub(crate) async fn rewrite_to_threshold_with_context(
 
     for _ in 0..max_iterations {
         let prompt = rewrite_prompt(&current_text, &current_report, voice_context);
-        let response = match state
-            .llm
-            .for_feature(LlmFeature::HumanizeRewrite)
+        let response = match llm
             .complete(CompletionRequest {
                 messages: vec![ChatMessage::user(prompt)],
                 max_tokens: Some(600),

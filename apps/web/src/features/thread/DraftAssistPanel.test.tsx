@@ -45,6 +45,36 @@ describe("DraftAssistPanel", () => {
     ).toBeInTheDocument();
   });
 
+  test("says which model wrote the draft and what it used", async () => {
+    draftAssist.mockResolvedValue({
+      body: "Sure, Friday works.",
+      provenance: {
+        model: "gemma4",
+        locality: "local",
+        history_used: true,
+        voice_examples: [
+          {
+            message_id: "m1",
+            thread_id: "t0",
+            date: "2026-09-12T10:00:00Z",
+            from_me: true,
+            person: "alice@example.com",
+            person_name: "Alice Park",
+          },
+        ],
+        conversation: [],
+      },
+    });
+    renderWithClient(<DraftAssistPanel threadId="t1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /generate/i }));
+
+    expect(await screen.findByTestId("draft-provenance-line")).toHaveTextContent(
+      "Local model gemma4 · used 1 of your emails to Alice · history used",
+    );
+    expect(screen.getByRole("button", { name: "Sources (1)" })).toBeInTheDocument();
+  });
+
   test("drafts with auto tone (no override) by default", async () => {
     draftAssist.mockResolvedValue({ body: "ok" });
     renderWithClient(<DraftAssistPanel threadId="t1" />);

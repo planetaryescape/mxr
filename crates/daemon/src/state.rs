@@ -350,18 +350,16 @@ fn relationship_data_block_reason(
 
 /// Whether mail beyond the conversation at hand (the user's other emails,
 /// relationship summaries, habits measured from their sent mail) may go to
-/// the model serving `feature`: always for a local endpoint, otherwise only
-/// with `llm.allow_cloud_relationship_data`. The same rule that blocks the
-/// relationship features outright, applied to what a draft prompt carries.
+/// `llm`, the provider pinned for this request: always for a local endpoint,
+/// otherwise only with `llm.allow_cloud_relationship_data`. The same rule
+/// that blocks the relationship features outright, applied to what a draft
+/// prompt carries. Decided from the pinned provider, not the config, so the
+/// decision, the call and the disclosure all describe one endpoint.
 pub(crate) fn relationship_data_allowed(
     config: &mxr_config::LlmConfig,
-    feature: mxr_llm::LlmFeature,
+    llm: &mxr_llm::PinnedLlm,
 ) -> bool {
-    if config.allow_cloud_relationship_data {
-        return true;
-    }
-    let effective = effective_llm_config_for(config, feature);
-    !effective.enabled || is_local_llm_url(&effective.base_url)
+    config.allow_cloud_relationship_data || llm_endpoint_is_local(llm.base_url())
 }
 
 /// Whether a provider's endpoint is on this machine, for what model-written
@@ -369,19 +367,6 @@ pub(crate) fn relationship_data_allowed(
 /// tests) means nothing leaves the machine.
 pub(crate) fn llm_endpoint_is_local(base_url: Option<&str>) -> bool {
     mxr_config::is_demo_instance() || base_url.is_none_or(is_local_llm_url)
-}
-
-fn effective_llm_config_for(
-    config: &mxr_config::LlmConfig,
-    feature: mxr_llm::LlmFeature,
-) -> mxr_config::EffectiveLlmConfig {
-    llm_override_entries(&config.overrides)
-        .into_iter()
-        .find(|(entry, _)| *entry == feature)
-        .map_or_else(
-            || base_llm_config(config),
-            |(_, override_config)| config.effective_override(override_config),
-        )
 }
 
 fn is_local_llm_url(base_url: &str) -> bool {

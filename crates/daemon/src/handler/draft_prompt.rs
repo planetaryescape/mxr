@@ -15,7 +15,7 @@
 
 use mxr_humanizer::writing_constraints;
 use mxr_llm::{wrap_untrusted_mail, UNTRUSTED_MAIL_BEGIN, UNTRUSTED_MAIL_END};
-use mxr_protocol::VoiceRegisterData;
+use mxr_protocol::{DraftSourceData, VoiceRegisterData};
 
 /// The user, as the model should write.
 #[derive(Debug, Clone, Default)]
@@ -45,6 +45,8 @@ pub(crate) struct Turn {
     pub when: String,
     pub text: String,
     pub target: bool,
+    /// The message this turn is, for the draft's provenance.
+    pub source: DraftSourceData,
 }
 
 /// A real email the user wrote, with the message it answered when known.
@@ -53,6 +55,8 @@ pub(crate) struct VoiceExample {
     pub to: String,
     pub their_message: Option<String>,
     pub my_email: String,
+    /// The user's email this example is, for the draft's provenance.
+    pub source: DraftSourceData,
 }
 
 #[derive(Debug, Clone)]
@@ -84,9 +88,12 @@ pub(crate) struct PromptInput<'a> {
 pub(crate) struct Prompt {
     pub system: String,
     pub user: String,
-    /// How many examples and turns fit, for logs and the activity context.
+    /// How many examples fit: always the first ones.
     pub examples_used: usize,
-    pub turns_used: usize,
+    /// Which turns fit, as indexes into the input turns, oldest first.
+    pub turns_kept: Vec<usize>,
+    /// The relationship summary fit and was sent.
+    pub background_used: bool,
 }
 
 const EXAMPLE_MY_MAX: usize = 900;
@@ -153,7 +160,7 @@ pub(crate) fn build(input: &PromptInput<'_>) -> Prompt {
     } else {
         remaining * 6 / 10
     };
-    let (conversation, turns_used) = render_conversation(
+    let (conversation, turns_kept) = render_conversation(
         input.turns,
         conversation_budget.saturating_sub(wrap_overhead + 40),
     );
@@ -179,6 +186,7 @@ pub(crate) fn build(input: &PromptInput<'_>) -> Prompt {
         }
         _ => String::new(),
     };
+    let background_used = !background_block.is_empty();
 
     let (examples, examples_used) =
         render_examples(input.examples, remaining.saturating_sub(wrap_overhead + 60));
@@ -205,7 +213,8 @@ pub(crate) fn build(input: &PromptInput<'_>) -> Prompt {
         system,
         user,
         examples_used,
-        turns_used,
+        turns_kept,
+        background_used,
     }
 }
 
@@ -247,9 +256,9 @@ for the specifics."
     )
 }
 
-fn render_conversation(turns: &[Turn], budget: usize) -> (String, usize) {
+fn render_conversation(turns: &[Turn], budget: usize) -> (String, Vec<usize>) {
     if turns.is_empty() || budget == 0 {
-        return (String::new(), 0);
+        return (String::new(), Vec::new());
     }
     let rendered: Vec<String> = turns.iter().map(render_turn).collect();
     // Keep the target, then add turns newest-first while they fit.
@@ -280,8 +289,8 @@ fn render_conversation(turns: &[Turn], budget: usize) -> (String, usize) {
             out.push_str(text);
         }
     }
-    let count = keep.iter().filter(|kept| **kept).count();
-    (out.trim_end().to_string(), count)
+    let kept = (0..turns.len()).filter(|index| keep[*index]).collect();
+    (out.trim_end().to_string(), kept)
 }
 
 fn render_turn(turn: &Turn) -> String {
@@ -356,6 +365,17 @@ mod tests {
         }
     }
 
+    fn source(from_me: bool) -> DraftSourceData {
+        DraftSourceData {
+            message_id: mxr_core::MessageId::new(),
+            thread_id: mxr_core::ThreadId::new(),
+            date: chrono::Utc::now(),
+            from_me,
+            person: "alice@x.com".into(),
+            person_name: Some("Alice".into()),
+        }
+    }
+
     fn turn(from_me: bool, text: &str, target: bool) -> Turn {
         Turn {
             from_me,
@@ -367,6 +387,7 @@ mod tests {
             when: "Mon 21 Sep 2026, 10:02".into(),
             text: text.into(),
             target,
+            source: source(from_me),
         }
     }
 
@@ -426,6 +447,7 @@ mod tests {
             to: "Alice <alice@x.com>".into(),
             their_message: Some("Lunch Friday?".into()),
             my_email: "yes! 1pm?\ns".into(),
+            source: source(true),
         }];
         let habits = ["Usually starts straight in, with no greeting.".to_string()];
         let turns = [turn(false, "Friday?", true)];
@@ -454,7 +476,18 @@ mod tests {
         assert!(prompt.user.contains("turn 18"));
         assert!(!prompt.user.contains("turn 0 "));
         assert!(prompt.user.contains("earlier message(s) left out"));
-        assert!(prompt.turns_used < 20);
+        // What the provenance cites is exactly what was rendered.
+        assert!(prompt.turns_kept.contains(&19) && prompt.turns_kept.contains(&18));
+        assert!(!prompt.turns_kept.contains(&0));
+        assert!(prompt.turns_kept.windows(2).all(|pair| pair[0] < pair[1]));
+        for index in 0..turns.len() {
+            let head = format!("turn {index} ");
+            assert_eq!(
+                prompt.user.contains(&head),
+                prompt.turns_kept.contains(&index),
+                "{head}"
+            );
+        }
     }
 
     #[test]

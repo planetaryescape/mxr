@@ -14,8 +14,17 @@ import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { ReaderSkeleton } from "./ReaderSkeleton";
 import { ThreadReader } from "./ThreadReader";
 
-/** The reader pane for one conversation, opened from a list (see MailView). */
-export function ThreadPane({ threadId }: { threadId: string }) {
+/**
+ * The reader pane for one conversation, opened from a list (see MailView).
+ * `focusMessageId` opens on that message instead of the newest unread one.
+ */
+export function ThreadPane({
+  threadId,
+  focusMessageId,
+}: {
+  threadId: string;
+  focusMessageId?: string;
+}) {
   const query = useQuery({
     queryKey: ["thread", threadId],
     queryFn: () => fetchThread(threadId),
@@ -65,6 +74,13 @@ export function ThreadPane({ threadId }: { threadId: string }) {
   if (!query.data) return null;
   // No placeholder data: while the next thread loads, the previous thread's
   // controller must not stay mounted, or keys would act on the wrong thread.
-  // Key by thread so per-thread state (expanded, remote images) resets.
-  return <ThreadReader key={query.data.thread.id} data={query.data} />;
+  // Key by thread so per-thread state (expanded, remote images) resets, and
+  // by the asked-for message so opening another one lands on it.
+  return (
+    <ThreadReader
+      key={`${query.data.thread.id}:${focusMessageId ?? ""}`}
+      data={query.data}
+      focusMessageId={focusMessageId}
+    />
+  );
 }

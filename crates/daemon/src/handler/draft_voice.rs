@@ -10,6 +10,7 @@ use crate::state::AppState;
 use chrono::{DateTime, Local, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::Envelope;
+use mxr_protocol::DraftSourceData;
 use mxr_relationship::{analyse_habits, clean_for_voice};
 use std::collections::BTreeSet;
 
@@ -154,8 +155,10 @@ pub(crate) async fn conversation(
                 raw.trim().to_string()
             };
         }
+        let from_me = is_mine(envelope, owned);
+        let other = counterparty_of(envelope, owned);
         turns.push(Turn {
-            from_me: is_mine(envelope, owned),
+            from_me,
             who: match envelope
                 .from
                 .name
@@ -168,6 +171,17 @@ pub(crate) async fn conversation(
             when: when(envelope.date),
             text,
             target: target == Some(&envelope.id),
+            source: DraftSourceData {
+                message_id: envelope.id.clone(),
+                thread_id: envelope.thread_id.clone(),
+                date: envelope.date,
+                from_me,
+                person: other
+                    .as_ref()
+                    .map(|person| person.email.clone())
+                    .unwrap_or_default(),
+                person_name: other.and_then(|person| person.name),
+            },
         });
     }
     turns
@@ -194,6 +208,7 @@ pub(crate) async fn voice_material(
                     to: String,
                     theirs: Option<String>,
                     mine_raw: &str,
+                    source: DraftSourceData,
                     for_habits: bool| {
         let mine = clean_for_voice(mine_raw);
         let words = mine.split_whitespace().count();
@@ -214,6 +229,7 @@ pub(crate) async fn voice_material(
                     .map(|text| clean_for_voice(&text))
                     .filter(|text| !text.is_empty()),
                 my_email: mine,
+                source,
             });
         }
     };
@@ -239,6 +255,7 @@ pub(crate) async fn voice_material(
                 person.label(),
                 Some(pair.parent_body.clone()),
                 &pair.reply_body,
+                reply_source(pair, person.name.clone()),
                 true,
             );
         }
@@ -259,6 +276,14 @@ pub(crate) async fn voice_material(
                 person.label(),
                 None,
                 &message.body,
+                DraftSourceData {
+                    message_id: message.message_id.clone(),
+                    thread_id: message.thread_id.clone(),
+                    date: message.date,
+                    from_me: true,
+                    person: person.email.clone(),
+                    person_name: person.name.clone(),
+                },
                 true,
             );
         }
@@ -286,6 +311,7 @@ pub(crate) async fn voice_material(
                 to,
                 Some(pair.parent_body.clone()),
                 &pair.reply_body,
+                reply_source(pair, pair.parent_from_name.clone()),
                 true,
             );
         }
@@ -306,5 +332,17 @@ pub(crate) async fn voice_material(
         habits: described,
         median_words: (habits.samples >= 3).then_some(habits.median_words),
         samples: habits.samples,
+    }
+}
+
+/// A reply the user sent, as a draft source.
+fn reply_source(pair: &mxr_store::MyReplySample, person_name: Option<String>) -> DraftSourceData {
+    DraftSourceData {
+        message_id: pair.reply_message_id.clone(),
+        thread_id: pair.thread_id.clone(),
+        date: pair.replied_at,
+        from_me: true,
+        person: pair.counterparty_email.to_ascii_lowercase(),
+        person_name,
     }
 }

@@ -4,14 +4,16 @@
 //! `DraftSuggestion` (humanizer pass, voice-match score, inferred fields).
 //! The prompt itself is built by `draft_prompt` from `draft_voice`.
 
+use super::draft_provenance::DraftPolicy;
 use super::{relationship_profile, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId};
 use mxr_core::types::Envelope;
 use mxr_humanizer::{score as humanizer_score, HumanizerOpts};
+use mxr_llm::LlmFeature;
 use mxr_protocol::{
-    ContactStyleData, DraftLengthHintData, HumanizerReportSummaryData, ResponseData,
-    VoiceMatchConfidenceData, VoiceMatchData, VoiceRegisterData,
+    ContactStyleData, DraftLengthHintData, DraftProvenanceData, HumanizerReportSummaryData,
+    ResponseData, VoiceMatchConfidenceData, VoiceMatchData, VoiceRegisterData,
 };
 use mxr_relationship::stylometry::StylometryMetrics;
 use mxr_relationship::{compute_metrics, infer_register, score_voice_match, VoiceMatchConfidence};
@@ -264,22 +266,37 @@ pub(crate) fn length_label(length: DraftLengthHintData) -> &'static str {
 }
 
 /// Run the humanizer pass, score voice match, and package the response with
-/// the inferred tone/length and context note.
+/// the inferred tone/length, context note and provenance. `voice_context`
+/// (habits and past emails) reaches the rewrite model only when its own
+/// pinned endpoint may see the user's history.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn finish_draft_suggestion(
     state: &AppState,
     body: String,
-    model: String,
+    mut provenance: DraftProvenanceData,
     baseline: Option<(StylometryMetrics, u32)>,
-    voice_context: Option<&str>,
+    voice_context: &str,
     inferred_register: VoiceRegisterData,
     inferred_length: DraftLengthHintData,
     context_note: Option<String>,
 ) -> HandlerResult {
     let (body, humanizer, rewrite_iterations) = if state.config_snapshot().humanizer.apply_to_drafts
     {
-        super::humanizer::rewrite_to_threshold_with_context(state, body, None, voice_context)
-            .await?
+        let rewrite = DraftPolicy::pin(state, LlmFeature::HumanizeRewrite);
+        let voice_context = Some(voice_context)
+            .filter(|context| rewrite.share_history && !context.trim().is_empty());
+        let rewritten = super::humanizer::rewrite_to_threshold_with_context(
+            state,
+            &rewrite.llm,
+            body,
+            None,
+            voice_context,
+        )
+        .await?;
+        if rewritten.2 > 0 {
+            provenance.rewrite = Some(rewrite.rewrite_provenance(voice_context.is_some()));
+        }
+        rewritten
     } else {
         let humanizer = report_summary(humanizer_score(&body, &HumanizerOpts::default()));
         (body, humanizer, 0)
@@ -298,13 +315,14 @@ pub(crate) async fn finish_draft_suggestion(
     });
     Ok(ResponseData::DraftSuggestion {
         body,
-        model,
+        model: provenance.model.clone(),
         voice_match,
         humanizer: Some(humanizer),
         rewrite_iterations,
         inferred_register: Some(inferred_register),
         inferred_length: Some(inferred_length),
         context_note,
+        provenance: Some(provenance),
     })
 }
 

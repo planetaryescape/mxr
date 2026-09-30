@@ -30,6 +30,7 @@ mod draft_context;
 mod draft_eval;
 mod draft_output;
 mod draft_prompt;
+mod draft_provenance;
 mod draft_refine;
 mod draft_voice;
 mod error;

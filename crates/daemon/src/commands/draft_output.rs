@@ -4,8 +4,8 @@
 
 use crate::cli::{DraftLengthArg, VoiceRegisterArg};
 use mxr_protocol::{
-    DraftLengthHintData, HumanizerReportSummaryData, ResponseData, VoiceMatchData,
-    VoiceRegisterData,
+    DraftLengthHintData, DraftProvenanceData, HumanizerReportSummaryData, ResponseData,
+    VoiceMatchData, VoiceRegisterData,
 };
 use serde_json::{json, Value};
 
@@ -18,6 +18,7 @@ pub(crate) struct DraftSuggestionView {
     pub inferred_register: Option<VoiceRegisterData>,
     pub inferred_length: Option<DraftLengthHintData>,
     pub context_note: Option<String>,
+    pub provenance: Option<DraftProvenanceData>,
 }
 
 impl DraftSuggestionView {
@@ -32,6 +33,7 @@ impl DraftSuggestionView {
                 inferred_register,
                 inferred_length,
                 context_note,
+                provenance,
             } => Some(Self {
                 body,
                 model,
@@ -41,6 +43,7 @@ impl DraftSuggestionView {
                 inferred_register,
                 inferred_length,
                 context_note,
+                provenance,
             }),
             _ => None,
         }
@@ -58,13 +61,22 @@ pub(crate) fn draft_suggestion_json(view: &DraftSuggestionView) -> Value {
         "inferred_register": view.inferred_register,
         "inferred_length": view.inferred_length,
         "context_note": view.context_note,
+        "provenance": view.provenance,
     })
 }
 
 /// Human-readable side notes (stderr) for table output — includes the
 /// inferred-tone "Matched to …" note so the CLI is at parity with the GUI.
 pub(crate) fn eprint_draft_notes(view: &DraftSuggestionView) {
-    eprintln!("\n[via {} — review before sending]", view.model);
+    match &view.provenance {
+        Some(provenance) => {
+            eprintln!("\n[{} · review before sending]", provenance.summary_line());
+            for line in provenance.source_lines() {
+                eprintln!("{line}");
+            }
+        }
+        None => eprintln!("\n[via {} · review before sending]", view.model),
+    }
     if let Some(note) = &view.context_note {
         eprintln!("{note}");
     }
@@ -116,6 +128,7 @@ mod tests {
             inferred_register: Some(VoiceRegisterData::Formal),
             inferred_length: Some(DraftLengthHintData::Short),
             context_note: Some("Matched to a@b (formal, short)".to_string()),
+            provenance: None,
         };
         let value = draft_suggestion_json(&view);
         assert_eq!(value["inferred_register"], json!("formal"));

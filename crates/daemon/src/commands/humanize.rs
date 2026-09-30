@@ -42,6 +42,7 @@ fn print_response(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                     text,
                     report,
                     iterations,
+                    rewrite,
                 },
         } => match fmt {
             OutputFormat::Json => println!(
@@ -50,6 +51,7 @@ fn print_response(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                     "text": text,
                     "report": report,
                     "iterations": iterations,
+                    "rewrite": rewrite,
                 }))?
             ),
             OutputFormat::Jsonl => println!(
@@ -58,11 +60,18 @@ fn print_response(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                     "text": text,
                     "report": report,
                     "iterations": iterations,
+                    "rewrite": rewrite,
                 }))?
             ),
             _ => {
                 println!("{text}");
                 eprintln!("humanizer: {}/100, rewritten {}x", report.score, iterations);
+                if let Some(rewrite) = rewrite {
+                    eprintln!(
+                        "rewritten by {}",
+                        mxr_protocol::model_label(rewrite.locality, &rewrite.model)
+                    );
+                }
             }
         },
         Response::Error { message, .. } => anyhow::bail!(message),

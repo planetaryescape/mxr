@@ -7,8 +7,8 @@ description: How to navigate, triage, and work through mail in the mxr TUI.
 
 The mailbox screen is the default TUI workspace. It lists mail in arrival
 order. To start from what needs you instead, open the
-[desk](/guides/desk/) lens (`gh`); [Work through your day](/guides/your-day/)
-covers that path.
+[desk](/guides/desk/) lens ([key](/reference/keybindings/#go-to));
+[Work through your day](/guides/your-day/) covers that path.
 
 The mailbox screen has three panes:
 

@@ -120,8 +120,9 @@ How mxr finds a promise:
 - With no model, a blocked one, or one that takes more than eight seconds,
   there is no offer and the send is unaffected.
 
-In the TUI, the promise appears as a prompt after the send: press `y` to be
-reminded, `n` or `Esc` to let it go. It disappears after 30 seconds.
+In the TUI, the promise appears as a yes/no prompt after the send ("Remind
+me ...?"). Answer yes to be reminded, or no or `Esc` to let it go. It
+disappears after 30 seconds.
 
 ### From the command line
 
@@ -173,7 +174,8 @@ same second. For the command line (`mxr send --remind-after`,
 
 ## In the TUI
 
-Open the reply queue (`Ctrl-p`, then **Reply Queue**) and press `F`. The TUI
+Open the reply queue, then start **Focus & reply** from it (both keys are in
+the [keybindings reference](/reference/keybindings/#go-to)). The TUI
 run differs from the web app's:
 
 - It works through the reply-later queue only, not the You owe lane.

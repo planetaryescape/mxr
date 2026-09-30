@@ -167,6 +167,11 @@ many pinned messages stay. When the sweep reaches past what is on screen, it
 says so ("Archives 143 messages, 20 shown here"). The TUI shows the same
 preview before it archives.
 
+A sweep of one sender's bundle confirms with `Enter`. A sweep of the whole
+place opens on **Cancel**, and its button says how much it takes ("Archive
+all 143 from 35 senders"): press `Tab`, then `Enter`. That way a slip
+between the two sweep keys archives nothing.
+
 What a sweep archives:
 
 - Only the messages its preview listed. Mail that arrived after the preview
@@ -192,10 +197,13 @@ A large sweep runs in chunks and prints one undo id per chunk; run
 
 ## Keys
 
-The web keys for these places are in the
-[keybindings reference](/reference/keybindings/#reading-and-paper-trail), and
-the TUI keys in the [TUI reference](/reference/tui/#reading-and-paper-trail).
-Once a conversation is open, the reader's own keys apply.
+The keys for these places are the same in the web app and the TUI. They are
+in the keybindings reference, for the
+[web app](/reference/keybindings/#reading-and-paper-trail-1) and the
+[TUI](/reference/keybindings/#reading-and-paper-trail). Once a conversation
+is open, the reader's own keys apply. Before 0.6.41 the web app used other
+keys to open these places and to sweep; the reference's 0.6.41 note lists
+them.
 
 Next: when the desk is clear, the web app shows
 [low tide](/guides/sound-hints-and-touch/#low-tide). Back to

@@ -181,30 +181,30 @@ carry no unread badge.
 
 The web app works like the TUI: a list of conversations, a reader beside it,
 and the same keys. Press `?` anywhere for the keys that apply to the view
-you are in; the [keybindings reference](/reference/keybindings/#web-app) lists
-them all.
+you are in. This section names actions; the
+[keybindings reference](/reference/keybindings/#web-app) gives the key for
+each.
 
 - **Conversations or messages.** The list groups mail into conversations by
   default. An action on a conversation covers every message in it, as in the
   TUI's thread mode. The button in the list header switches to single
   messages.
-- **Open and move.** `j`/`k` move, `Enter` opens the conversation beside the
-  list, `n`/`N` step to the next or previous one without acting, and `]`
-  archives and opens the next. `Esc` closes the reader and puts you back on
-  the same row of the list you came from, including search results.
-- **Act.** `e` archive, `m` mark read and archive, `#` trash, `!` spam, `s`
-  star, `I`/`U` read or unread, `l` labels, `v` move, `Z` snooze, `D`
-  unsubscribe, `b` reply later. Snooze and send later take a time in words
-  ("fri 3", "in 2d") and show the exact time before you commit; see
-  [time phrases](/reference/time-phrases/). Changes show at once. `u` (or `z`) undoes
-  the last archive, trash, spam, read change, snooze, move or label change
-  for about a minute. Star has no undo; press `s` again.
-- **Select.** `x` selects and moves down, `V` starts a range, `* a` selects
-  all, and `* r`, `* u`, `* s` select read, unread or starred mail. Trashing
-  or marking several conversations as spam, or changing more than 20
-  messages, asks first and lists what will change. Very large batches run in
-  the background with a progress toast.
-- **Filter.** `g f` filters the loaded list by sender, subject or snippet.
+- **Open and move.** Move through the list, open a conversation beside it,
+  step to the next or previous conversation without acting, or archive and
+  open the next in one step. Closing the reader puts you back on the same row
+  of the list you came from, including search results.
+- **Act.** Archive, mark read and archive, trash, spam, star, mark read or
+  unread, label, move, snooze, unsubscribe and reply later. Snooze and send
+  later take a time in words ("fri 3", "in 2d") and show the exact time
+  before you commit; see [time phrases](/reference/time-phrases/). Changes
+  show at once. Undo reverses the last archive, trash, spam, read change,
+  snooze, move or label change for about a minute. Star has no undo; star
+  again to remove it.
+- **Select.** Select rows one at a time, a range, everything, or all read,
+  unread or starred mail. Trashing or marking several conversations as spam,
+  or changing more than 20 messages, asks first and lists what will change.
+  Very large batches run in the background with a progress toast.
+- **Filter.** Filter the loaded list by sender, subject or snippet;
   `⌘Enter` in the filter searches all mail instead.
 
 ### The reader
@@ -233,27 +233,27 @@ one up. The same context is in the TUI and in `mxr briefing context`
 ([briefings](/guides/briefings-and-loop-in/#thread-context-mxr-briefing-context)).
 
 Older messages you have read fold to one line, so a long conversation opens
-on the newest or first unread message. `J`/`K` move between messages, `o`
-opens or folds one, `X` opens them all. Quoted history and signatures fold
-behind a control that says how much is hidden; `Q` and `S` show them.
+on the newest or first unread message. You can move between messages, open
+or fold one, or open them all. Quoted history and signatures fold behind a
+control that says how much is hidden.
 
-`H`, `R` and the view switch choose between the formatted HTML, a cleaned
-reading view, and plain text; as in the TUI, pressing `H` or `R` again goes
-back to plain text.
+The view switch, and a key for each view, choose between the formatted
+HTML, a cleaned reading view, and plain text; as in the TUI, pressing the
+HTML or reader key again goes back to plain text.
 
 Tracking pixels are always removed, and remote images stay blocked until you
-press `M`, choose **Show images**, or choose **Always for** a sender, so a
+choose **Show images** (or press its key), or choose **Always for** a sender, so a
 sender cannot tell when you read their mail. A quiet line under the message
 header says what was blocked and who serves it: "Blocked 2 trackers and 5
 remote images from Mailchimp." Images embedded in the message itself always
 show.
 
-`L` lists every link in the message to open or copy, `g H` shows the raw
-headers, `O` opens the original in a new tab, and `E` saves the conversation
-as Markdown. `y` summarizes the conversation.
+From **More** or the palette you can list every link in the message to open
+or copy, show the raw headers, open the original in a new tab, save the
+conversation as Markdown, and summarize it.
 
-The reply field sits where reading ends, after the last message. Click it or
-press `r` to open the reply in place; `a` replies to all and `f` forwards. The
+The reply field sits where reading ends, after the last message. Click it, or
+use the reply, reply-all or forward key, to open the reply in place. The
 toolbar above the conversation keeps only close, previous and next, archive,
 snooze and the view switch. Everything else is in **More**, with its key, and
 in the command palette.
@@ -268,31 +268,31 @@ draft above the quoted message. [How drafts are written](/guides/llm-features/).
 
 ### Triage queues
 
-The reply queue (`b` adds to it) is one of the sidebar's places. The other
+The reply queue (reply later adds to it) is one of the sidebar's places. The other
 queues the TUI shows as lenses live under **More**: owed replies (every
 conversation where someone is waiting on you, archived or not, most overdue
 first), invites and subscriptions. On the reply queue each row has a
-**Done** button that takes it out of the queue. `g F` opens [Focus & reply](/guides/focus-and-reply/),
+**Done** button that takes it out of the queue. [Focus & reply](/guides/focus-and-reply/)
 which works through owed replies and the reply queue one conversation at a
 time.
 
 **Snoozed** lists snoozed mail soonest to wake first, one row per
 conversation. **Wake now** wakes every snoozed message in
-that conversation. On both lists, `w` runs the row's button for the row under
-the cursor.
+that conversation. On both lists, the row-action key runs the row's button
+for the row under the cursor.
 
 ## Command palette
 
 `⌘K` (`Ctrl+K` off macOS, or `:`) runs any action by name. With a
-conversation open or rows selected, the mail actions for it come first. `g l`
-opens the palette as a jumper to any mailbox, label or saved search. You can
-type straight after `⌘K`, `/` or `g l`: keys pressed before the palette or
-quick search has focus land in its field.
+conversation open or rows selected, the mail actions for it come first.
+**Go to label** opens the palette as a jumper to any mailbox, label or saved
+search. You can type straight after opening the palette or quick search:
+keys pressed before it has focus land in its field.
 
 ## Compose
 
-Compose opens in place: `c` for a new message, `r`, `a` and `f` to reply,
-reply all or forward. A reply opens under the conversation; you can pop it
+Compose opens in place, for a new message, a reply, reply all or a forward.
+A reply opens under the conversation; you can pop it
 out or go fullscreen. New messages start in the To field and replies in the
 body. The editor is Markdown with vim keys by default; **Settings →
 Compose** switches to rich text.
@@ -324,7 +324,8 @@ which behave like a mailbox, with the same keys and actions. Operators such as
 List and Category facets under the query narrow it in one click. **Exact** is the default mode;
 **Hybrid** and **Meaning** add semantic matches when semantic search is on.
 
-**Save** keeps the query as a saved search in the sidebar, and `g 1` to `g 9` jump to the first nine. The bookmark button renames,
+**Save** keeps the query as a saved search in the sidebar, and the first
+nine each have a go-to key. The bookmark button renames,
 re-queries, pins, recolours or deletes them.
 
 ## Wrapped: story mode + copy
@@ -358,8 +359,9 @@ to re-save.
 
 The **Screener** page has a **Queue** tab of first-time senders and a
 **Decisions** tab where you can **Clear** an earlier call. Each sender row has
-**Allow**, **Deny**, **Feed** and **Paper trail**; `j`/`k` move and `a`, `d`,
-`f`, `p` decide for the highlighted sender. With more than one account, a
+**Allow**, **Deny**, **Feed** and **Paper trail**, each with a key that
+decides for the highlighted sender
+([screener keys](/reference/keybindings/#screener)). With more than one account, a
 picker in the header chooses which account's queue you are screening.
 
 ## Sender standalone route

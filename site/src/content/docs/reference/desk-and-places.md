@@ -151,6 +151,8 @@ v0.6.38 archived on arrival for feed and paper-trail senders stays archived.
   message pinned or moved away since, stays.
 - A token works once, for the sweep it came from, and expires after 10
   minutes. An expired token archives nothing.
+- In the web app and TUI, a whole-place sweep confirm opens on **Cancel**;
+  one sender's sweep confirms directly.
 - `--dry-run` and `--yes` cannot be combined. Without either, `mxr sweep`
   asks on a terminal and refuses elsewhere.
 - Pins are local to this machine. They are not provider stars.

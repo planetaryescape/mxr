@@ -51,32 +51,28 @@ Behavior:
 
 ## Desk
 
-**Desk** is the first lens in the sidebar, and `gh` opens it (`gd` stays
-Drafts). It shows the same lanes as `mxr desk`
-([Clear the desk](/guides/desk/)). `j`/`k` move across the lanes and `Enter`
-opens the conversation beside the desk. `e` or `m` is **Done** for the row
-under the cursor, from the list or from that conversation, and `u` undoes it.
-A held key repeats in the TUI, so tap `e` once per row. When the desk or the
-owed-replies list clears, the status bar says **Low tide. Nobody's waiting on
-you.**
+**Desk** is the first lens in the sidebar, and **Go to the Desk** opens it.
+It shows the same lanes as `mxr desk` ([Clear the desk](/guides/desk/)).
+Move across the lanes and open a conversation beside the desk as in any
+list. The archive and mark-read-and-archive keys are **Done** for the row
+under the cursor, from the list or from that conversation, and undo reverses
+it. A held key repeats in the TUI, so press Done once per row. When the desk
+or the owed-replies list clears, the status bar says **Low tide. Nobody's
+waiting on you.** The keys are in the
+[keybindings reference](/reference/keybindings/#go-to).
 
 ## Reading and Paper trail
 
-`gr` opens Reading and `gp` opens Paper trail
+Reading and Paper trail are sidebar lenses
 ([Clear Reading and Paper trail](/guides/reading-and-paper-trail/)). Mail is
 bundled by sender, each bundle with its "here because" line and no unread
-count.
-
-| Key | Does |
-| --- | --- |
-| `Enter` | Open the message beside the list |
-| `p` | Pin or unpin the message under the cursor |
-| `K` | Move the sender: `p` people, `r` Reading, `t` Paper trail, `x` screened out, `a` automatic |
-| `S` | Preview sweeping this sender's bundle; `Enter` or `y` archives, `Esc`, `n` or `q` cancels |
-| `A` | Preview sweeping the whole place (also in the command palette) |
-| `>` / `+` | Load more senders / more of this sender's messages |
-| `e`, `s`, `#` | Archive, star or trash the message under the cursor |
-| `u` | Undo the last sweep, every chunk of it |
+count. From a bundle you can pin a message, move the sender to another
+place, sweep the sender's bundle or the whole place, and load more senders
+or more of one sender's messages. Every sweep shows its preview first; the
+whole-place sweep opens on **Cancel**, so confirming it takes a deliberate
+extra step. Undo reverses every chunk of the last sweep. Mail keys (archive,
+star, trash) act on the message under the cursor. The keys are in the
+[keybindings reference](/reference/keybindings/#reading-and-paper-trail).
 
 ## Thread context
 
@@ -193,7 +189,7 @@ Two cross-view interactions:
 - Unsubscribe confirmation
 - Analytics filter modal
 - Reply-later queue browser: list of flagged messages and due reminders,
-  opened with `Ctrl-p → Reply Queue`. `F` there replies to each queued
+  opened with **Reply queue** (`gq`) or `Ctrl-p → Reply Queue`. `F` there replies to each queued
   message in turn, from the selected one: sending one reply opens the next
   ([Focus & reply](/guides/focus-and-reply/)). Cancel a pending reminder
   from the focused sent message with `Ctrl-p → Cancel Reminder`

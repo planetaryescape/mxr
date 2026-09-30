@@ -73,7 +73,7 @@ mxr doctor --semantic-status
 - Right pane: preview or thread view
 - First-run walkthrough after account setup, plus `o` from Help to reopen it later
 - `1`-`7`: switch Mailbox, Search, Rules, Accounts, Diagnostics, Analytics, Deliveries
-- `gh`: the [desk](/guides/desk/), what needs you; `gr` and `gp`: [Reading and Paper trail](/guides/reading-and-paper-trail/)
+- `g` then a letter: go to a place, such as the [desk](/guides/desk/) or [Reading and Paper trail](/guides/reading-and-paper-trail/); the [keybindings reference](/reference/keybindings/#go-to) lists them
 - `Ctrl-p`: command palette
 - `?`: full help modal
 - `/`: full-index Search

@@ -120,8 +120,8 @@ mxr web
 
 The web app opens on the [desk](/guides/desk/): replies you owe, promises
 coming due, threads waiting on someone and new mail from people. In the TUI,
-`gh` opens the same desk. [Work through your day](/guides/your-day/) walks
-through it.
+the same desk is the first lens in the sidebar.
+[Work through your day](/guides/your-day/) walks through it.
 
 ## 6. Or do it from the CLI
 

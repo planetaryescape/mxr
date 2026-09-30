@@ -62,7 +62,7 @@ export const mailVerbActions: Action[] = [
   verb("mail.move", "move", "Move to label…", "v", { icon: ArrowRightCircle }),
   verb("mail.snooze", "snooze", "Snooze…", "Z", { icon: Clock }),
   verb("mail.unsubscribe", "unsubscribe", "Unsubscribe…", "D", { icon: MailX }),
-  verb("mail.reply-later", "replyLater", "Reply later", "b", { icon: CornerDownRight }),
+  verb("mail.reply-later", "replyLater", "Reply later…", "b", { icon: CornerDownRight }),
   verb("mail.reply", "reply", "Reply", "r", { icon: Reply, group: "Compose" }),
   verb("mail.reply-all", "replyAll", "Reply all", "a", { icon: ReplyAll, group: "Compose" }),
   verb("mail.forward", "forward", "Forward", "f", { icon: Forward, group: "Compose" }),

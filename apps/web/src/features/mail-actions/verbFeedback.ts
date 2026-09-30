@@ -16,6 +16,7 @@ import type { MailAction } from "./pendingMailOps";
 /** Verbs that aren't a `MailAction` (they have their own request). */
 export type OtherVerb =
   | "reply-later"
+  | "reply-later-at"
   | "send"
   | "unsubscribe"
   | "sweep"
@@ -177,10 +178,20 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
   },
   "reply-later": {
     actions: ["mail.reply-later"],
+    alsoFrom: "Enter with no time in its dialog",
     optimistic: "Nothing moves; the conversation joins the reply queue.",
     pastTense: "Added to your reply queue",
     sound: null,
     undo: "reverse-request",
+  },
+  "reply-later-at": {
+    actions: ["mail.reply-later"],
+    alsoFrom: 'a time typed in its dialog ("tue 9", "in 3d")',
+    optimistic:
+      "The conversation leaves the desk and the reply queue until then; on Waiting on it comes back only if nobody replied.",
+    pastTense: "Reply later: back",
+    sound: null,
+    undo: "daemon-mutation",
   },
   send: {
     actions: ["focus.send", "focus.remind"],

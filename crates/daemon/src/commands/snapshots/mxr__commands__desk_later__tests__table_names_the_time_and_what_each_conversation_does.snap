@@ -1,0 +1,9 @@
+---
+source: crates/daemon/src/commands/desk_later.rs
+expression: out
+---
+Set 2 conversations for Tuesday 6 October, 09:00 (in 6 days).
+  00000000-0000-0000-0000-000000000000  reply later: back in You owe and the reply queue then
+  00000000-0000-0000-0000-000000000000  waiting: back then if nobody has replied
+  00000000-0000-0000-0000-000000000000  not set: conversation not found
+Undo with: mxr undo m-1

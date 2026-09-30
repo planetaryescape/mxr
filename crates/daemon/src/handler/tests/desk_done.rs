@@ -580,12 +580,12 @@ async fn done_takes_the_conversation_out_of_reply_later_and_undo_puts_it_back() 
     let restored = fx
         .state
         .store
-        .reply_later_set_at(std::slice::from_ref(&fresh.id))
+        .reply_later_states(std::slice::from_ref(&fresh.id))
         .await
         .unwrap();
     assert_eq!(restored.len(), 1);
     assert_eq!(
-        restored[0].1.timestamp(),
+        restored[&fresh.id].set_at.timestamp(),
         flagged_at.timestamp(),
         "same place in the queue"
     );

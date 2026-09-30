@@ -115,6 +115,7 @@ mod tests {
                     unread: true,
                     starred: false,
                     commitment_id: None,
+                    back_at: None,
                 }],
                 total: 1,
             },

@@ -268,6 +268,20 @@ pub fn map_request(
             items.first().map(|item| item.thread_id.as_str()),
             Some(serde_json::json!({ "count": items.len(), "dry_run": dry_run })),
         ),
+        Request::DeferThreads {
+            thread_ids,
+            until,
+            dry_run,
+        } => (
+            "desk.later",
+            Some("thread"),
+            thread_ids.first().map(|id| id.as_str().clone()),
+            Some(serde_json::json!({
+                "count": thread_ids.len(),
+                "when": until.timestamp_millis(),
+                "dry_run": dry_run,
+            })),
+        ),
 
         // ----- places: Reading and Paper trail -----
         Request::SetSenderKind {

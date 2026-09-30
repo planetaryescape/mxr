@@ -386,7 +386,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Calendar".into(),
         },
         PaletteCommand {
-            label: "Bookmark for Reply Later".into(),
+            label: "Reply Later (at a time)".into(),
             shortcut: "b".into(),
             action: Action::FlagReplyLater,
             category: "Triage".into(),

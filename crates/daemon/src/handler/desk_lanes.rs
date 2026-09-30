@@ -30,6 +30,7 @@ const OVERDUE_FLOOR_SECONDS: i64 = 60 * 60;
 /// Pace assumed for ordering when a person has no reply history.
 const DEFAULT_PACE_SECONDS: i64 = 24 * 60 * 60;
 
+use super::desk_timers::{DeskTimers, Timer};
 use super::mail_kind::{self, KindSignals};
 use super::mail_kind::{looks_automated, SenderKind};
 
@@ -46,16 +47,28 @@ pub(super) fn current_messages(thread: &[DeskMessage], now: DateTime<Utc>) -> &[
     &thread[..thread.partition_point(|m| m.date <= cutoff)]
 }
 
+/// What sets a Waiting row aside besides the thread itself.
+pub(super) struct WaitingAside<'a> {
+    pub dismissed: &'a HashMap<ThreadId, DeskDismissal>,
+    pub timers: &'a DeskTimers,
+    pub is_self: &'a dyn Fn(&str) -> bool,
+    pub now: DateTime<Utc>,
+}
+
 /// Every Waiting row, from a thread or from a watched contact, stays off
-/// the desk while its conversation is snoozed, trashed, or marked done
-/// waiting with nothing new since.
-pub(super) fn waiting_set_aside(thread: &[DeskMessage], dismissal: Option<&DeskDismissal>) -> bool {
+/// the desk while its conversation is snoozed, trashed, marked done
+/// waiting with nothing new since, or waiting on a time you set.
+pub(super) fn waiting_set_aside(thread: &[DeskMessage], aside: &WaitingAside<'_>) -> bool {
     let Some(latest) = thread.last() else {
         return true;
     };
     thread.iter().any(|m| m.snoozed)
         || latest.trashed
-        || dismissal.is_some_and(|d| d.covers(thread))
+        || aside
+            .dismissed
+            .get(&latest.thread_id)
+            .is_some_and(|d| d.covers(thread))
+        || aside.timers.waiting(thread, aside.is_self, aside.now) == Some(Timer::Pending)
 }
 
 /// A thread you wrote last also leaves Waiting when you archive it, if it
@@ -86,6 +99,8 @@ pub(super) struct AccountInputs<'a> {
     /// Threads marked done (or "done waiting"), through the messages
     /// stored at the time. Covers every thread lane; promises stand.
     pub dismissed: &'a HashMap<ThreadId, DeskDismissal>,
+    /// Times you set: reply later, and "bring it back if nobody replies".
+    pub timers: &'a DeskTimers,
     pub is_self: &'a dyn Fn(&str) -> bool,
     pub now: DateTime<Utc>,
 }
@@ -237,8 +252,11 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
             }
         }
 
-        // A snoozed conversation is out of sight until it wakes.
-        if thread.iter().any(|m| m.snoozed) {
+        // A snoozed conversation is out of sight until it wakes, and one
+        // set to reply later until its time comes.
+        if thread.iter().any(|m| m.snoozed)
+            || inputs.timers.reply_later(&thread[0].thread_id, inputs.now) == Some(Timer::Pending)
+        {
             continue;
         }
         // The lane is judged on current mail; verbs still cover the whole
@@ -297,6 +315,21 @@ fn thread_row(
     }
 
     let inbound = latest_inbound?;
+    // You said you'd reply by now: owed, wherever the mail is and whoever
+    // sent it, since you asked for it back.
+    if let Some(Timer::Back(back_at)) = inputs.timers.reply_later(&latest.thread_id, now) {
+        if !inbound.trashed {
+            return Some(back_row(
+                inputs,
+                DeskLaneKind::Owed,
+                conversation.all,
+                inbound,
+                &inbound.from,
+                "back from reply later",
+                back_at,
+            ));
+        }
+    }
     if inbound.trashed || !in_inbox || inputs.sender_kind(inbound) != SenderKind::Person {
         return None;
     }
@@ -371,20 +404,41 @@ fn waiting_row(
 ) -> Option<DraftRow> {
     let thread = conversation.current;
     let now = inputs.now;
-    if sent.date > now - Duration::hours(WAITING_MIN_HOURS)
-        || sent.date < now - Duration::days(DESK_WINDOW_DAYS)
-        // Done waiting counts every stored message, future-dated or not.
-        || waiting_set_aside(conversation.all, inputs.dismissed.get(&sent.thread_id))
-        || waiting_archived(thread, inputs.is_self)
-    {
+    // Done waiting counts every stored message, future-dated or not.
+    let aside = WaitingAside {
+        dismissed: inputs.dismissed,
+        timers: inputs.timers,
+        is_self: inputs.is_self,
+        now,
+    };
+    if waiting_set_aside(conversation.all, &aside) {
         return None;
     }
+    let timer = inputs.timers.waiting(conversation.all, inputs.is_self, now);
     let recipient = sent.to.iter().find(|a| !(inputs.is_self)(&a.email))?;
     let email = recipient.email.as_str();
     let contact = inputs.contact(email);
     if looks_automated(email)
         || contact.is_some_and(|c| c.is_list_sender)
         || inputs.decision(email) == Some(ScreenerDisposition::Deny)
+    {
+        return None;
+    }
+    // Nobody replied by the time you set: back, however old or archived.
+    if let Some(Timer::Back(back_at)) = timer {
+        return Some(back_row(
+            inputs,
+            DeskLaneKind::Waiting,
+            conversation.all,
+            sent,
+            recipient,
+            "no reply by the time you set",
+            back_at,
+        ));
+    }
+    if sent.date > now - Duration::hours(WAITING_MIN_HOURS)
+        || sent.date < now - Duration::days(DESK_WINDOW_DAYS)
+        || waiting_archived(thread, inputs.is_self)
     {
         return None;
     }
@@ -452,7 +506,40 @@ fn base_row(
         unread,
         starred: thread_starred(thread),
         commitment_id: None,
+        back_at: None,
     }
+}
+
+/// A row a time you set brought back. It is due by definition, so it is
+/// overdue and takes no pace (the usual pace would second-guess it).
+fn back_row(
+    inputs: &AccountInputs<'_>,
+    lane: DeskLaneKind,
+    thread: &[DeskMessage],
+    open: &DeskMessage,
+    counterparty: &mxr_core::types::Address,
+    reason: &str,
+    back_at: DateTime<Utc>,
+) -> DraftRow {
+    let name = counterparty.name.clone().or_else(|| {
+        inputs
+            .contact(&counterparty.email)
+            .and_then(|c| c.display_name.clone())
+    });
+    let mut row = base_row(
+        inputs,
+        lane,
+        thread,
+        open,
+        &counterparty.email,
+        name,
+        reason.to_string(),
+        open.date,
+        lane == DeskLaneKind::Owed && !open.flags.contains(mxr_core::MessageFlags::READ),
+    );
+    row.overdue = true;
+    row.back_at = Some(back_at);
+    DraftRow { row, pace: None }
 }
 
 /// Attach a person's usual pace and decide whether the row is past it.
@@ -588,6 +675,7 @@ mod tests {
             .collect();
         let screener = HashMap::new();
         let dismissed = HashMap::new();
+        let timers = DeskTimers::default();
         let is_self = |email: &str| email.eq_ignore_ascii_case(ME);
         thread_lanes(&AccountInputs {
             account_id: &account,
@@ -595,6 +683,7 @@ mod tests {
             contacts: &contacts,
             screener: &screener,
             dismissed: &dismissed,
+            timers: &timers,
             is_self: &is_self,
             now: now(),
         })

@@ -2129,6 +2129,27 @@ pub enum DeskAction {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Reply later, or wait for a reply, until a time.
+    ///
+    /// When they wrote last: reply later. The conversation leaves the desk
+    /// and the reply queue and comes back to both at the time. When you
+    /// wrote last: it leaves Waiting on and comes back at the time if
+    /// nobody has replied, joining the reply queue. Prints an undo id for
+    /// `mxr undo`.
+    Later {
+        /// Thread ids, as `mxr desk --format ids` prints them.
+        #[arg(required = true)]
+        thread_ids: Vec<String>,
+        /// When it comes back, in local time: `tue 9`, `tomorrow`,
+        /// `in 3d`, `next week`, or RFC3339. Preview with `mxr time`.
+        #[arg(long)]
+        at: String,
+        /// Show what would be set without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

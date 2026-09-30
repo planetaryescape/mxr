@@ -175,7 +175,7 @@ fn row_line(
     // row is here better than the lane's reason.
     let ask = gist
         .and_then(|gist| gist.ask.as_deref())
-        .filter(|_| kind.shows_ask());
+        .filter(|_| row.shows_ask());
     let reason = match ask {
         Some(ask) => format!("asks: {}", one_line(ask)),
         None => one_line(&row.reason),
@@ -288,6 +288,7 @@ mod tests {
             unread: true,
             starred: false,
             commitment_id: None,
+            back_at: None,
         }
     }
 

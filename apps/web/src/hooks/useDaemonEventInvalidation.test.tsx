@@ -88,6 +88,15 @@ describe("useDaemonEventInvalidation", () => {
     expect(toastMock.error).not.toHaveBeenCalled();
   });
 
+  test("ReplyLaterReturned refreshes the reply queue and the mail views", () => {
+    const { emit, invalidatedKeys } = setup();
+    emit({ type: "ReplyLaterReturned", message_id: "msg-1" });
+
+    const keys = invalidatedKeys();
+    expect(keys).toContain(JSON.stringify(["reply-queue"]));
+    expect(keys).toContain(JSON.stringify(["mailbox"]));
+  });
+
   test("MutationReconciliationFailed rolls back the affected surfaces and warns", () => {
     const { emit, invalidatedKeys } = setup();
     emit({

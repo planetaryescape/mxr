@@ -5,6 +5,7 @@ import { ConfirmDialog } from "./dialogs/ConfirmDialog";
 import { LabelsDialog } from "./dialogs/LabelsDialog";
 import { LinksDialog } from "./dialogs/LinksDialog";
 import { MoveDialog } from "./dialogs/MoveDialog";
+import { ReplyLaterDialog } from "./dialogs/ReplyLaterDialog";
 import { SnoozeDialog } from "./dialogs/SnoozeDialog";
 import { UnsubscribeDialog } from "./dialogs/UnsubscribeDialog";
 import { useMailDialogs } from "./mailDialogStore";
@@ -24,6 +25,15 @@ export function MailDialogs() {
           subject={describeTarget(dialog.target)}
           onOpenChange={(open) => !open && close()}
           onSnoozed={dialog.onDone}
+        />
+      );
+    case "reply-later":
+      return (
+        <ReplyLaterDialog
+          target={dialog.target}
+          subject={describeTarget(dialog.target)}
+          waiting={dialog.waiting}
+          onClose={close}
         />
       );
     case "labels":

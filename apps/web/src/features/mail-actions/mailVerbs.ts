@@ -15,15 +15,14 @@ import {
 } from "@/features/invites/inviteResponse";
 import { openInviteComment } from "@/features/invites/useInviteResponse";
 import { fetchSenderProfile, getThreadBriefing } from "@/features/mailbox/api";
-import { setReplyLater } from "@/features/reply-queue/api";
+import { deskLaneOf } from "@/features/desk/deskLater";
 import { apiFetch } from "@/api/client";
 import type { ScopeController } from "@/lib/keys/controllers";
 import { parseAddress, plural } from "@/lib/format";
 import { useModals } from "@/state/modalStore";
 
 import { openMailDialog } from "./mailDialogStore";
-import { VERB_FEEDBACK } from "./verbFeedback";
-import { invalidateMailQueries, performMailAction } from "./mailMutations";
+import { performMailAction } from "./mailMutations";
 import type { MailAction } from "./pendingMailOps";
 import { ensureThread, type MailTarget } from "./target";
 
@@ -154,20 +153,12 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
     },
     replyLater: () => {
       const target = single(hooks.getTarget(), "Reply later");
-      if (!target?.primary) return;
-      const messageId = target.primary.id;
-      setReplyLater(messageId, true)
-        .then(() => {
-          void invalidateMailQueries();
-          toast.success(VERB_FEEDBACK["reply-later"].pastTense, {
-            action: {
-              label: "Undo",
-              onClick: () =>
-                void setReplyLater(messageId, false).then(() => invalidateMailQueries()),
-            },
-          });
-        })
-        .catch((error: Error) => toast.error("Reply later failed", { description: error.message }));
+      if (!target?.primary || !target.threadId) return;
+      openMailDialog({
+        kind: "reply-later",
+        target,
+        waiting: deskLaneOf(target.threadId) === "waiting",
+      });
     },
     reply: openReply("single"),
     replyAll: openReply("all"),

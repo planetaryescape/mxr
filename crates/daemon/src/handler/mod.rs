@@ -17,10 +17,12 @@ mod briefing;
 mod commitments;
 mod commitments_extract;
 mod decisions_extract;
+mod deferral;
 pub(crate) mod deliveries;
 mod desk;
 mod desk_done;
 mod desk_lanes;
+mod desk_timers;
 #[path = "diagnostics/mod.rs"]
 pub(crate) mod diagnostics_impl;
 mod draft_compose;
@@ -1168,6 +1170,11 @@ async fn dispatch(
         Request::ResolveDeskItems { items, dry_run } => {
             desk_done::resolve_desk_items(state, items, *dry_run).await
         }
+        Request::DeferThreads {
+            thread_ids,
+            until,
+            dry_run,
+        } => deferral::defer_threads(state, thread_ids, *until, *dry_run).await,
         Request::ListPlace {
             place,
             account_id,
@@ -1787,9 +1794,8 @@ async fn request_account_scope(
         | Request::CancelScheduledSend { draft_id } => draft_account_scope(state, draft_id).await,
         Request::DraftRefine { draft_id, .. } => draft_account_scope(state, draft_id).await,
         Request::DismissDeskThreads { thread_ids, .. }
-        | Request::RestoreDeskThreads { thread_ids } => {
-            thread_account_scope(state, thread_ids).await
-        }
+        | Request::RestoreDeskThreads { thread_ids }
+        | Request::DeferThreads { thread_ids, .. } => thread_account_scope(state, thread_ids).await,
         Request::ResolveDeskItems { items, .. } => {
             let thread_ids: Vec<_> = items.iter().map(|item| item.thread_id.clone()).collect();
             thread_account_scope(state, &thread_ids).await
@@ -2132,6 +2138,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::DismissDeskThreads { .. }
         | Request::RestoreDeskThreads { .. }
         | Request::ResolveDeskItems { .. }
+        | Request::DeferThreads { .. }
         | Request::SetSenderKind { .. }
         | Request::PinMessages { .. }
         | Request::SetAutoReminder { .. }
@@ -2344,6 +2351,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::DismissDeskThreads { .. } => "dismiss_desk_threads",
         Request::RestoreDeskThreads { .. } => "restore_desk_threads",
         Request::ResolveDeskItems { .. } => "resolve_desk_items",
+        Request::DeferThreads { .. } => "defer_threads",
         Request::ListPlace { .. } => "list_place",
         Request::GetMessageKind { .. } => "get_message_kind",
         Request::SetSenderKind { .. } => "set_sender_kind",

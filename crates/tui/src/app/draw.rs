@@ -530,6 +530,8 @@ impl App {
             theme,
         );
 
+        ui::reply_later_prompt::draw(frame, area, self.modals.reply_later_prompt.as_ref(), theme);
+
         // Send confirmation overlay
         let time_preview = self.compose.pending_time.lines();
         ui::send_confirm_modal::draw(

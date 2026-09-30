@@ -17,6 +17,7 @@ impl App {
         self.modals.snooze_panel.visible = false;
         self.modals.snooze_panel.custom_input = None;
         self.modals.snooze_panel.custom_error = None;
+        self.modals.reply_later_prompt = None;
         self.modals.saved_search_form = None;
         self.modals.analytics_filter = None;
         self.modals.draft_options.close();

@@ -422,27 +422,17 @@ impl App {
                 self.apply(Action::SelectSavedSearch(search.query, search.search_mode));
             }
             Action::FlagReplyLater => {
-                let Some(env) = self.context_envelope() else {
+                // `b` asks when; Enter in the prompt comes back here.
+                if self.modals.reply_later_prompt.is_some() {
+                    self.confirm_reply_later_prompt();
+                    return;
+                }
+                let Some((thread_id, message_id, waiting)) = self.reply_later_target() else {
                     self.status_message = Some("No message selected".into());
                     return;
                 };
-                let id = env.id.clone();
-                let effect = MutationEffect::ReplyLater {
-                    message_id: id.clone(),
-                    flag: true,
-                    status: "Marked for reply later".into(),
-                };
-                let snapshot = self.snapshot_for_effect(&effect);
-                self.apply_local_mutation_effect(&effect);
-                let mutation_id = self.queue_mutation(
-                    Request::SetReplyLater {
-                        message_id: id,
-                        flag: true,
-                    },
-                    effect,
-                    "Marking for reply later...".into(),
-                );
-                self.mutation_snapshots.insert(mutation_id, snapshot);
+                self.modals.reply_later_prompt =
+                    Some(ReplyLaterPromptState::new(thread_id, message_id, waiting));
             }
             Action::CancelAutoReminder => {
                 let Some(env) = self.context_envelope() else {

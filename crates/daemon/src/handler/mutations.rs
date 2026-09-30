@@ -1303,7 +1303,10 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
     let mut restored = 0u32;
     if let Some(desk) = entry.desk.as_ref() {
         super::desk_done::restore_desk_state(state, desk).await?;
-        restored += (desk.dismissals.len() + desk.commitments.len()) as u32;
+        restored += (desk.dismissals.len()
+            + desk.commitments.len()
+            + desk.reply_later_priors.len()
+            + desk.reminder_priors.len()) as u32;
     }
     let mut irreversible = 0u32;
     // Failures a retry can fix (a provider or account hiccup), kept so the
@@ -1558,7 +1561,8 @@ fn uncertain_label_changes(
         UndoableMutationKind::Spam => (inbox(), added("SPAM")),
         // A move or label edit may have removed any of them.
         UndoableMutationKind::Labels => (prior.to_vec(), Vec::new()),
-        UndoableMutationKind::SetRead => (Vec::new(), Vec::new()),
+        // A deferral changes no message, so it has no snapshots to reverse.
+        UndoableMutationKind::SetRead | UndoableMutationKind::Deferral => (Vec::new(), Vec::new()),
     }
 }
 

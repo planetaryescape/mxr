@@ -331,7 +331,7 @@ impl InputHandler {
             }
             (KeyState::Normal, KeyCode::Esc, _) => Some(Action::Back),
             (KeyState::Normal, KeyCode::Char('q'), _) => Some(Action::QuitView),
-            // Reply-later quick-mark: `b` for "bookmark for reply later".
+            // Reply later: `b` asks when (Enter with no time: the queue now).
             // Local-only intent — never roundtrips to the provider.
             (KeyState::Normal, KeyCode::Char('b'), KeyModifiers::NONE) => {
                 Some(Action::FlagReplyLater)

@@ -10,9 +10,42 @@
 //! distinct from "deleted" so analytics can answer "how often did the
 //! user actually need this nudge?" later.
 
+use crate::SQLITE_BIND_CHUNK;
 use crate::{decode_id, decode_optional_timestamp, decode_timestamp, trace_query};
 use chrono::{DateTime, Utc};
-use mxr_core::id::{AccountId, MessageId};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
+use serde::{Deserialize, Serialize};
+use sqlx::Row;
+use std::collections::HashMap;
+
+/// A reminder row as stored, for putting it back exactly (undo).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReminderState {
+    pub account_id: AccountId,
+    pub remind_at: DateTime<Utc>,
+    pub set_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub triggered_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancelled_at: Option<DateTime<Utc>>,
+}
+
+impl ReminderState {
+    /// Neither fired nor cancelled.
+    pub fn is_pending(&self) -> bool {
+        self.triggered_at.is_none() && self.cancelled_at.is_none()
+    }
+}
+
+/// A live (not cancelled) reminder in one account, with its conversation,
+/// for the desk's Waiting on lane.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeskReminder {
+    pub thread_id: ThreadId,
+    pub sent_message_id: MessageId,
+    pub remind_at: DateTime<Utc>,
+    pub triggered: bool,
+}
 
 /// A reminder row from the `auto_reminders` table.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,6 +137,150 @@ impl super::Store {
         .execute(self.writer())
         .await?;
         Ok(())
+    }
+
+    /// Fire one reminder: mark it triggered and put its message in the
+    /// reply-later queue, in one transaction. Returns false when it had
+    /// already fired or been cancelled, so each reminder fires exactly
+    /// once however often (or concurrently) the loop runs.
+    pub async fn trigger_auto_reminder(
+        &self,
+        sent_message_id: &MessageId,
+        now: DateTime<Utc>,
+    ) -> Result<bool, sqlx::Error> {
+        let mid = sent_message_id.as_str();
+        let now_ts = now.timestamp();
+        let mut tx = self.writer().begin().await?;
+        let claimed = sqlx::query(
+            r#"UPDATE auto_reminders
+               SET triggered_at = ?
+               WHERE sent_message_id = ?
+                 AND triggered_at IS NULL
+                 AND cancelled_at IS NULL"#,
+        )
+        .bind(now_ts)
+        .bind(&mid)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected()
+            == 1;
+        if claimed {
+            let queued = crate::ReplyLaterState {
+                set_at: now,
+                due_at: None,
+                returned_at: None,
+            };
+            crate::message_flags::upsert_reply_later(&mut *tx, sent_message_id, &queued).await?;
+        }
+        tx.commit().await?;
+        Ok(claimed)
+    }
+
+    /// The reminders on `message_ids`, as stored.
+    pub async fn auto_reminder_states(
+        &self,
+        message_ids: &[MessageId],
+    ) -> Result<HashMap<MessageId, ReminderState>, sqlx::Error> {
+        let mut states = HashMap::new();
+        for chunk in message_ids.chunks(SQLITE_BIND_CHUNK) {
+            let placeholders = vec!["?"; chunk.len()].join(", ");
+            let sql = format!(
+                "SELECT sent_message_id, account_id, remind_at, set_at, triggered_at, cancelled_at
+                 FROM auto_reminders
+                 WHERE sent_message_id IN ({placeholders})"
+            );
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
+            for message_id in chunk {
+                query = query.bind(message_id.as_str());
+            }
+            for row in query.fetch_all(self.reader()).await? {
+                let id: String = row.try_get("sent_message_id")?;
+                let account_id: String = row.try_get("account_id")?;
+                states.insert(
+                    decode_id(&id)?,
+                    ReminderState {
+                        account_id: decode_id(&account_id)?,
+                        remind_at: decode_timestamp(row.try_get("remind_at")?)?,
+                        set_at: decode_timestamp(row.try_get("set_at")?)?,
+                        triggered_at: decode_optional_timestamp(row.try_get("triggered_at")?)?,
+                        cancelled_at: decode_optional_timestamp(row.try_get("cancelled_at")?)?,
+                    },
+                );
+            }
+        }
+        Ok(states)
+    }
+
+    /// Put a message's reminder back as it was: `None` removes the row.
+    pub async fn restore_auto_reminder(
+        &self,
+        sent_message_id: &MessageId,
+        prior: Option<&ReminderState>,
+    ) -> Result<(), sqlx::Error> {
+        let Some(prior) = prior else {
+            sqlx::query("DELETE FROM auto_reminders WHERE sent_message_id = ?")
+                .bind(sent_message_id.as_str())
+                .execute(self.writer())
+                .await?;
+            return Ok(());
+        };
+        sqlx::query(
+            r#"INSERT INTO auto_reminders
+                   (sent_message_id, account_id, remind_at, set_at, triggered_at, cancelled_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(sent_message_id) DO UPDATE SET
+                   account_id = excluded.account_id,
+                   remind_at = excluded.remind_at,
+                   set_at = excluded.set_at,
+                   triggered_at = excluded.triggered_at,
+                   cancelled_at = excluded.cancelled_at"#,
+        )
+        .bind(sent_message_id.as_str())
+        .bind(prior.account_id.as_str())
+        .bind(prior.remind_at.timestamp())
+        .bind(prior.set_at.timestamp())
+        .bind(prior.triggered_at.map(|at| at.timestamp()))
+        .bind(prior.cancelled_at.map(|at| at.timestamp()))
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
+    /// Every reminder in the account that was not cancelled, with its
+    /// conversation. Fired ones older than `fired_since` are left out: the
+    /// desk only marks recent returns.
+    pub async fn desk_reminders(
+        &self,
+        account_id: &AccountId,
+        fired_since: DateTime<Utc>,
+    ) -> Result<Vec<DeskReminder>, sqlx::Error> {
+        let started_at = std::time::Instant::now();
+        let rows = sqlx::query(
+            r#"SELECT m.thread_id, r.sent_message_id, r.remind_at, r.triggered_at
+               FROM auto_reminders r
+               CROSS JOIN messages m ON m.id = r.sent_message_id
+               WHERE r.account_id = ?
+                 AND r.cancelled_at IS NULL
+                 AND (r.triggered_at IS NULL OR r.remind_at >= ?)"#,
+        )
+        .bind(account_id.as_str())
+        .bind(fired_since.timestamp())
+        .fetch_all(self.reader())
+        .await?;
+        trace_query("auto_reminders.desk", started_at, rows.len());
+        rows.into_iter()
+            .map(|row| {
+                let thread_id: String = row.try_get("thread_id")?;
+                let sent: String = row.try_get("sent_message_id")?;
+                let triggered_at: Option<i64> = row.try_get("triggered_at")?;
+                Ok(DeskReminder {
+                    thread_id: decode_id(&thread_id)?,
+                    sent_message_id: decode_id(&sent)?,
+                    remind_at: decode_timestamp(row.try_get("remind_at")?)?,
+                    triggered: triggered_at.is_some(),
+                })
+            })
+            .collect()
     }
 
     /// Reminders due to fire by `now`: pending (not triggered, not
@@ -509,5 +686,83 @@ mod tests {
             vec![envs[1].id.clone(), envs[0].id.clone(), envs[2].id.clone()],
             "oldest-due fires first"
         );
+    }
+
+    #[tokio::test]
+    async fn a_reminder_fires_once_and_queues_its_message() {
+        let store = Store::in_memory().await.unwrap();
+        let (account_id, env) = seed(&store).await;
+        store
+            .set_auto_reminder(&env.id, &account_id, anchor(), anchor() - Duration::days(1))
+            .await
+            .unwrap();
+
+        assert!(store
+            .trigger_auto_reminder(&env.id, anchor())
+            .await
+            .unwrap());
+        assert!(
+            !store
+                .trigger_auto_reminder(&env.id, anchor() + Duration::minutes(1))
+                .await
+                .unwrap(),
+            "a fired reminder never fires again"
+        );
+        assert!(store.is_reply_later(&env.id).await.unwrap());
+        let row = store.get_auto_reminder(&env.id).await.unwrap().unwrap();
+        assert_eq!(row.triggered_at, Some(anchor()));
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_reminder_does_not_fire() {
+        let store = Store::in_memory().await.unwrap();
+        let (account_id, env) = seed(&store).await;
+        store
+            .set_auto_reminder(&env.id, &account_id, anchor(), anchor() - Duration::days(1))
+            .await
+            .unwrap();
+        store.cancel_auto_reminder(&env.id, anchor()).await.unwrap();
+
+        assert!(!store
+            .trigger_auto_reminder(&env.id, anchor())
+            .await
+            .unwrap());
+        assert!(!store.is_reply_later(&env.id).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn restore_puts_a_reminder_back_or_removes_it() {
+        let store = Store::in_memory().await.unwrap();
+        let (account_id, env) = seed(&store).await;
+        let ids = std::slice::from_ref(&env.id);
+        assert!(store.auto_reminder_states(ids).await.unwrap().is_empty());
+
+        store
+            .set_auto_reminder(&env.id, &account_id, anchor(), anchor() - Duration::days(1))
+            .await
+            .unwrap();
+        let prior = store
+            .auto_reminder_states(ids)
+            .await
+            .unwrap()
+            .remove(&env.id);
+        assert!(prior.as_ref().is_some_and(super::ReminderState::is_pending));
+
+        store.cancel_auto_reminder(&env.id, anchor()).await.unwrap();
+        store
+            .restore_auto_reminder(&env.id, prior.as_ref())
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .auto_reminder_states(ids)
+                .await
+                .unwrap()
+                .remove(&env.id),
+            prior
+        );
+
+        store.restore_auto_reminder(&env.id, None).await.unwrap();
+        assert!(store.get_auto_reminder(&env.id).await.unwrap().is_none());
     }
 }

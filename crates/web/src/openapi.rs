@@ -76,7 +76,7 @@ use utoipa::{
         mail_signature_defaults_list, mail_signature_default_set,
         mail_signature_default_clear, mail_signature_resolve, mail_signatures_delete,
         platform_accounts_authorize, platform_accounts_repair, platform_voice_get,
-        platform_voice_rebuild, mail_mutation_jobs, mail_owed, mail_desk, mail_desk_dismiss, mail_desk_restore, mail_desk_done, mail_whois,
+        platform_voice_rebuild, mail_mutation_jobs, mail_owed, mail_desk, mail_desk_dismiss, mail_desk_restore, mail_desk_done, mail_desk_later, mail_whois,
         mail_send_time, mail_archive_ask, saved_searches_unread_counts,
         analytics_cadence_drift, cadence_watch_list, cadence_watch, cadence_unwatch,
         mail_time_resolve, mail_thread_context, mail_thread_gist, mail_thread_gists,
@@ -93,6 +93,7 @@ use utoipa::{
         SweepPlaceBody,
         PinMessagesBody,
         DeskDoneBody,
+        DeskLaterBody,
         ThreadGistsBody,
         SenderKindBody,
     )),
@@ -241,6 +242,36 @@ struct DeskDoneBody {
 )]
 #[allow(dead_code)]
 fn mail_desk_done() {}
+
+/// Body of `POST /api/v1/mail/desk/later`.
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+struct DeskLaterBody {
+    thread_ids: Vec<String>,
+    /// The instant the client previewed, as RFC3339. Never a phrase: resolve
+    /// it with `/api/v1/mail/time/resolve` and send the chosen `at`.
+    until: String,
+    /// Preview only; nothing changes.
+    dry_run: Option<bool>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/desk/later",
+    summary = "Reply later, or bring back if nobody replies, until a time (by who wrote last). dry_run previews",
+    request_body = DeskLaterBody,
+    responses(
+        (
+            status = 200,
+            description = "The `ThreadsDeferred` variant: one item per conversation and the undo id",
+            body = ResponseData
+        ),
+        (status = 400, description = "No conversations"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_desk_later() {}
 endpoint!(get mail_whois "/api/v1/mail/whois", "Explain a person or term from local evidence");
 endpoint!(get mail_send_time "/api/v1/mail/send-time", "Recommend a send time for recipients");
 endpoint!(post mail_archive_ask "/api/v1/mail/archive-ask", "Ask the archive a question with citations");

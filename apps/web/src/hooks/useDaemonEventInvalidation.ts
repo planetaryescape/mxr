@@ -59,8 +59,10 @@ export function useDaemonEventInvalidation(): void {
             void qc.invalidateQueries({ queryKey: shellKey });
             break;
           case "ReminderTriggered":
-            // An auto-reminder fired; the nudge surfaces in the reply
-            // queue and the mailbox follow-up views.
+          case "ReplyLaterReturned":
+            // A time the user set came: nobody replied, or reply later is
+            // due. The conversation is back on the desk and in the reply
+            // queue.
             void invalidateMailQueries(qc);
             break;
           case "MutationReconciliationFailed":

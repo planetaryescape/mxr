@@ -321,6 +321,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_desk_dismiss", &["desk", "dismiss", "--help"]),
         ("cli_help_desk_restore", &["desk", "restore", "--help"]),
         ("cli_help_desk_done", &["desk", "done", "--help"]),
+        ("cli_help_desk_later", &["desk", "later", "--help"]),
         ("cli_help_reading", &["reading", "--help"]),
         ("cli_help_paper_trail", &["paper-trail", "--help"]),
         ("cli_help_sweep", &["sweep", "--help"]),
@@ -362,7 +363,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_briefing_gists", &["briefing", "gists", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 204);
+    assert_eq!(cases.len(), 205);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

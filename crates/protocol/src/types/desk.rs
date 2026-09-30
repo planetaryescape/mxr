@@ -70,6 +70,19 @@ pub struct DeskRowData {
     /// Due rows: the promise's id, for resolving it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commitment_id: Option<String>,
+    /// The row is back because a time you set came: reply later on You
+    /// owe, "bring it back if no reply" on Waiting on. The time you set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub back_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl DeskRowData {
+    /// Whether a list gist's ask replaces this row's reason: on the lanes
+    /// that show asks, unless a time you set brought the row back, which
+    /// is the reason worth reading.
+    pub const fn shows_ask(&self) -> bool {
+        self.lane.shows_ask() && self.back_at.is_none()
+    }
 }
 
 /// One lane: the rows returned (capped by the request's `lane_limit`) and
@@ -144,12 +157,51 @@ pub struct DeskDoneOutcomeData {
     /// Messages taken out of the reply-later queue.
     #[serde(default)]
     pub reply_later_cleared: u32,
+    /// Pending "bring it back if no reply" reminders cancelled, so the
+    /// conversation doesn't come back on its own.
+    #[serde(default)]
+    pub reminders_cancelled: u32,
     /// The promise resolved (Due only). Other open promises on the
     /// conversation still show under Due.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_commitment_id: Option<String>,
     /// Why this item was not done. Other items still are; running Done
     /// again retries it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// How a conversation is deferred, decided by who wrote last (the desk's
+/// own rule).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DeferKindData {
+    /// They wrote last: reply later. The conversation leaves the desk and
+    /// the reply queue, and comes back to both at the time.
+    ReplyLater,
+    /// You wrote last: bring it back if nobody replies. The conversation
+    /// leaves Waiting on and comes back (and joins the reply queue) at the
+    /// time, unless someone replies first.
+    Waiting,
+}
+
+/// What deferring one conversation did, or with `dry_run` would do.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeferredThreadData {
+    pub thread_id: ThreadId,
+    /// Absent when the conversation was not found.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<AccountId>,
+    /// Absent when the conversation could not be deferred (see `error`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<DeferKindData>,
+    /// The message the time is set on: their latest message for reply
+    /// later, yours for waiting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<MessageId>,
+    /// Why this conversation was not deferred. The others still are.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }

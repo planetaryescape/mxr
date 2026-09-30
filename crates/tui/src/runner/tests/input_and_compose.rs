@@ -407,6 +407,7 @@ fn desk_row(lane: mxr_protocol::DeskLaneKind) -> mxr_protocol::DeskRowData {
         unread: true,
         starred: false,
         commitment_id: None,
+        back_at: None,
     }
 }
 
@@ -511,6 +512,50 @@ fn desk_cursor_crosses_lanes_and_enter_opens_the_selected_row() {
     assert_eq!(app.mailbox.mailbox_view, MailboxView::Desk);
     assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
     assert_eq!(app.mailbox.selected_index, 1, "back on the same row");
+}
+
+/// `b` on a Waiting on row asks when to bring it back if nobody replies:
+/// it needs a time, and sends the row's conversation.
+#[test]
+fn b_on_a_waiting_row_asks_when_to_bring_it_back() {
+    use mxr_protocol::DeskLaneKind;
+    let mut app = App::new();
+    let waiting = desk_row(DeskLaneKind::Waiting);
+    app.apply(Action::OpenDesk);
+    app.set_desk(desk_with(vec![waiting.clone()]));
+
+    let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
+    let b = app.handle_key(key(KeyCode::Char('b'))).expect("b maps");
+    app.apply(b);
+    let prompt = app.modals.reply_later_prompt.as_ref().expect("prompt");
+    assert!(prompt.waiting);
+    assert_eq!(prompt.thread_id, waiting.thread_id);
+
+    // No untimed flag here: it needs a time.
+    let enter = app.handle_key(key(KeyCode::Enter)).expect("Enter maps");
+    app.apply(enter);
+    assert!(app
+        .modals
+        .reply_later_prompt
+        .as_ref()
+        .unwrap()
+        .error
+        .is_some());
+    assert!(app.pending_mutation_queue.is_empty());
+
+    for c in "in 3d".chars() {
+        let _ = app.handle_key(key(KeyCode::Char(c)));
+    }
+    let enter = app.handle_key(key(KeyCode::Enter)).expect("Enter maps");
+    app.apply(enter);
+    assert!(
+        app.mailbox.desk_page.row_count() == 0,
+        "the row leaves the desk at once"
+    );
+    assert!(matches!(
+        &app.pending_mutation_queue[0].request,
+        Request::DeferThreads { thread_ids, .. } if thread_ids == &vec![waiting.thread_id.clone()]
+    ));
 }
 
 /// A background desk fetch must not move the cursor of another list.

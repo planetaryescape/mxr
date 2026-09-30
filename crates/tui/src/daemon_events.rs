@@ -86,7 +86,18 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             if app.modals.reply_queue.visible {
                 app.pending_reply_queue_refresh = true;
             }
+            // Nobody replied by the time set: back on Waiting on.
+            app.mailbox.pending_desk_refresh = true;
             app.status_message = Some("Reminder due; added to reply queue".into());
+        }
+        DaemonEvent::ReplyLaterReturned { message_id } => {
+            app.mailbox.reply_later_message_ids.insert(message_id);
+            if app.modals.reply_queue.visible {
+                app.pending_reply_queue_refresh = true;
+            }
+            app.mailbox.pending_desk_refresh = true;
+            app.status_message =
+                Some("Back from reply later: in You owe and the reply queue".into());
         }
         // Surface long-running operation progress (sync, rebuild
         // analytics, reindex) in the status bar so the user can see

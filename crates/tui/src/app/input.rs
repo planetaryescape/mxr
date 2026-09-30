@@ -916,6 +916,10 @@ impl App {
             };
         }
 
+        if self.modals.reply_later_prompt.is_some() {
+            return self.reply_later_prompt_key(key.code, key.modifiers);
+        }
+
         if self.modals.snooze_panel.visible {
             // Custom-input mode: text-entry takes precedence over list navigation.
             if self.modals.snooze_panel.custom_input.is_some() {

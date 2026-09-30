@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.45](https://github.com/planetaryescape/mxr/compare/v0.6.44...v0.6.45) (2026-09-30)
+
+
+### Features
+
+* keep the web app usable while the daemon is stopped ([#264](https://github.com/planetaryescape/mxr/issues/264)) ([9915e61](https://github.com/planetaryescape/mxr/commit/9915e61881652068ba4b3eb1481b78914c2563fb))
+
 ## [0.6.44](https://github.com/planetaryescape/mxr/compare/v0.6.43...v0.6.44) (2026-09-30)
 
 

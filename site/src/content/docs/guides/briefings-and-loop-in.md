@@ -75,6 +75,26 @@ the same data at `GET /api/v1/mail/threads/{id}/context` and
 `GET /api/v1/mail/threads/{id}/context/gist`, and MCP clients get it from
 `mxr_thread_context`.
 
+### Many conversations at once: `mxr briefing gists`
+
+The one line the desk and inbox rows show, for several conversations.
+Answers from the cache without calling a model; `--generate` queues the
+missing ones from people (in the order given) for a background writer, and
+`mxr events --type gist` prints each as it lands.
+
+```bash
+mxr briefing gists THREAD_ID THREAD_ID --format json
+mxr briefing gists THREAD_ID --generate
+```
+
+JSON has `model` (`available`, `disabled` or `blocked`), `gists` (each with
+`newest_message_id`, the message it answers for), `queued`, `in_flight`, and
+`skipped` with a reason: `not_people`, `not_found`, `recently_failed`,
+`not_generated` or `queue_full`. A gist that goes stale while the model is
+writing (someone replied) is never announced; it is written again. The same
+data is at `POST /api/v1/mail/gists` (`{thread_ids, generate}`, at most 100)
+and in the `mxr_thread_gists` MCP tool.
+
 ## Thread briefing: `mxr briefing thread`
 
 When a thread has been dormant for a month or more, opening it cold is

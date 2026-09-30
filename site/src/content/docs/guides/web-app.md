@@ -220,7 +220,9 @@ A conversation opens with its context before the messages:
   what it read: "Local model qwen2.5 · from this thread". Your history with
   the person only goes to a cloud model when you allow it with
   `llm.allow_cloud_relationship_data`. The gist has a fixed place, so the
-  messages below never move when it arrives.
+  messages below never move when it arrives. It shows only for long
+  conversations (four or more messages, or over 400 words): for a short one
+  the list row already said it, and the ask is still marked in the message.
 - **How you know them.** "You and Maya: 41 emails · you usually reply within
   4h · last spoke 12 Sep", or "your first conversation".
 - **Whether you owe a reply**, and since when. Newsletters never count.

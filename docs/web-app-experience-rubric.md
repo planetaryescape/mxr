@@ -1,4 +1,9 @@
-# Web app experience rubric
+# Web app experience rubric (v2)
+
+**Changelog.** v2 (2026-09-30): adds A11 triage at a glance, A12 one
+vocabulary across clients, section D (budgets measured on a real mailbox)
+and section E (independent grading and a dogfooding log). v1 (2026-09-28):
+sections A to C.
 
 `docs/web-app-rubric.md` is the floor: correctness, parity with the TUI, and
 the triage loop working. It passed in v0.6.33, and the app still felt like
@@ -34,7 +39,9 @@ Same scale as the parity rubric: 0 absent, 1 present but flawed, 2 solid and
 verified in a browser against the FakeProvider daemon, 3 best in class.
 
 **Pass bar:** every criterion at 2 or better. Sections A (the model) and B1 to
-B3 (speed, motion and feedback) must reach 3. A criterion scores 2 only with a
+B3 (speed, motion and feedback) must reach 3. From v2, a 3 in section A also
+needs the dogfooding log (E2), and every score of 2 or more is graded by
+someone who did not build it (E1). A criterion scores 2 only with a
 Playwright journey or a recorded session behind it. Timing criteria need a
 measured number in an e2e test, not an impression.
 
@@ -54,6 +61,8 @@ Every row names the convention it breaks and why.
 | A8 | **Promises are caught both ways.** When you send "I'll get you the deck by Friday", the app offers to remember it before the send finishes. Promises made to you show on that person's context. | Commitments live in your head. | Send a draft containing a dated promise: a reminder is offered with the date filled in, and it shows under Due on Friday. |
 | A9 | **Chrome earns its place.** Every persistent control is justified by frequency or discoverability. Reply sits where reading ends (the bottom of the thread), not in a toolbar above it. Rare actions live in the command bar. The sidebar holds places, not a list of 20 folders. | Toolbars of icon buttons; a sidebar of every folder and label. | Count persistent controls in the reader against the current app; each one has a stated reason in this doc or the component. |
 | A10 | **Time is shown as it matters.** "Waiting 5 days", "due tomorrow", "Maya usually replies in 2 hours, it has been 2 days". Relative when recent, absolute when it matters, always in the user's zone. | A timestamp column. | Waiting lane shows age and cadence drift from the daemon, not the send time. |
+| A11 | **Triage at a glance.** Each conversation from a person says, in its row, what it is about and what (if anything) they want from you, so you can decide what to open without opening it. Lines arrive as they are ready, never slow or shift the list, and say where they came from. Opening a short conversation shows the ask marked in the message, not a repeat of the gist. | A list of subject lines and raw snippets; summaries you only see after opening the email. | Desk and inbox rows show "Asks: …" and the gist as each lands, with no row moving (`row-gists.spec`); the large-list gate and key-to-paint budget hold with gist lines on every row; hover names the model; no model means rows as before. |
+| A12 | **One vocabulary across clients.** The same verb has the same key in the web app and the TUI, so what you learn in one works in the other. | Each client inventing its own keys. | A parity test compares the web action registry with the TUI keymap and fails on a verb bound to different keys (added on the key-alignment branch, `feat/align-keys`). |
 
 The inventory of persistent controls and the reason for each is in
 [web-app-controls.md](web-app-controls.md).
@@ -80,6 +89,27 @@ The inventory of persistent controls and the reason for each is in
 | C2 | **AI shows its work.** Routing reasons, briefing sources and draft sources are one step away, and AI is never the only way to do something. | Every AI surface links to its evidence. |
 | C3 | **Never guilt the user.** No red badges for backlog size, no streak loss, no "you have 3,412 unread" nag. Copy is calm and specific. | Copy review against this rule. |
 
+## D. Real scale
+
+The demo mailbox has about a hundred conversations. These budgets are
+measured read-only against a real, large mailbox (never by writing to it),
+and each measurement is recorded with its date and the mailbox size.
+
+| # | Criterion | Budget | How to check |
+|---|---|---|---|
+| D1 | **Desk compose.** `GetDesk` for all accounts. | < 300 ms warm | `time mxr desk --format json` on the real install, second run. |
+| D2 | **Owed replies.** `ListOwedReplies`. | < 1 s warm | `time mxr owed --format json`, second run. |
+| D3 | **Places.** Reading and Paper trail lists. | < 100 ms warm | `mxr reading` / `mxr paper-trail` timings from the daemon log (`place listed elapsed_ms`). |
+| D4 | **List scroll.** A real inbox scrolled in the web app. | Within the large-list gate (60k list blocks per step) and key-to-paint p95 < 50 ms | Run `large-list.spec`'s measurement against the real bridge, or a recorded session with the same probe. |
+| D5 | **New SQL.** Every query a rung adds. | Recorded, no regression past the budgets above | `sqlite3` read-only (`?mode=ro`) on the real DB: counts and timings only, no content. |
+
+## E. Independent grading
+
+| # | Criterion | How to check |
+|---|---|---|
+| E1 | **Evidence for every score of 2 or more.** Each such score cites a spec, a measurement or a recorded session, and is graded by a reviewer who did not build the work. | Every row in Scores names its evidence and its grader; a builder's own score is a proposal. |
+| E2 | **Dogfooding for 3s in A.** A score of 3 in section A needs a dogfooding log: BK's own week of daily use, with what worked, what didn't, and when he reached for another client. | A dated log in `docs/` covering at least five working days. |
+
 ## Scores
 
 Scored on 2026-09-28 on `feat/delight` (rung 6, on top of v0.6.38's
@@ -90,8 +120,9 @@ earlier run's one failure, `verbs.spec` picking a conversation row for
 snooze, is fixed the way `snooze.spec` does it). A score of 2 needs a journey in the suite; 3 is reserved for what a keyboard
 user would notice and prefer.
 
-**Pass bar: met.** Every criterion is at 2 or better, and all of section A
-and B1 to B3 are at 3. What is left at 2 is in
+**Pass bar (v1): met.** Every criterion is at 2 or better, and all of section A
+and B1 to B3 are at 3. Under v2 it is not met: the new criteria below are
+below 2 in places, and section A's 3s wait on the dogfooding log. What is left at 2 is in
 [docs/issues/experience-rubric-gaps.md](issues/experience-rubric-gaps.md).
 
 | # | Score | Evidence |
@@ -118,6 +149,23 @@ and B1 to B3 are at 3. What is left at 2 is in
 | C1 | 2 | `reader-context.spec` "the privacy line names what was blocked and from whom"; `reader.spec` blocks remote images until `M`; the blocked-image placeholder is a small labelled chip (screenshot). |
 | C2 | 2 | `reader-context.spec` "with no model there is no AI slot"; the gist's ask is a verified quote from the message. Draft assist's sources were not checked for this score. |
 | C3 | 2 | Copy review: counts are facts ("95 messages"), never nags; empty states are calm ("Low tide. Nobody's waiting on you."); no streaks or points anywhere. |
+
+### v2 criteria (proposed 2026-09-30, to be graded independently)
+
+Proposed by the builder of `feat/glance`; under E1 these are proposals until
+an independent reviewer grades them.
+
+| # | Proposed | Evidence |
+|---|---|---|
+| A11 | 2 | `row-gists.spec`: desk rows reserve the gist line, "Asks: …" replaces the reason and the gist lands under it, no row moves (bounding boxes equal), the top visible row is asked for first, hover names "Local model …"; inbox rows swap the snippet for the gist in the same box; with no model, rows are unchanged and the lists stop asking. `large-list.spec` "5000 rows with gist lines stay under the same budget": 20,712 list blocks per step (20,895 without gists, gate 60,000). Key-to-paint p95 with gist lines on every row: desk j/k/e 17.2/17.0/17.1 ms, inbox 17.2/17.6/17.4 ms (budget 50). `reader-context.spec`: a short conversation shows no gist but marks the ask; a long one shows it without moving the messages. Daemon tests cover cache without a model call, order, dedup, bounded writers, the event, people only and the privacy gate. Not 3: no dogfooding log (E2), and a local model fills a screen slowly (gemma4 on Ollama: about 7 to 9 s for the first line, then 2.5 to 3.2 s each, one at a time). |
+| A12 | 1 | Done is the same key on the web desk and in the TUI desk, but the desk itself is reached by different keys in each, and the parity test is not in this tree yet (it lands with `feat/align-keys`). |
+| D1 | 2 | 0.27 s end to end for `mxr desk` on 2026-09-28 (v0.6.36), mailbox of about 110,000 messages. Needs a re-measure on the current release. |
+| D2 | 1 | 1.0 s warm for `mxr owed` on 2026-09-28 (v0.6.36), same mailbox: at the budget, not under it (6.8 s cold). |
+| D3 | 2 | Paper trail 34 ms, Reading 36 ms warm on 2026-09-28 (v0.6.38), same mailbox; the first cold call after a restart took 6 s. |
+| D4 | 0 | Only measured on a synthetic 5,000-row inbox, not on the real one. |
+| D5 | 2 | 2026-09-30, 109,894 messages, read-only: the gist batch's cache lookups for the 40 newest conversations take 0.5 to 2 ms, and for the 40 largest (1,705 messages) 7 to 12 ms; the briefing lookup uses its unique index. `feat/glance` adds no new SQL. Earlier rungs' timings are in the delivery ledger. |
+| E1 | 0 | Every score in this document so far was proposed by the worker who built it. |
+| E2 | 0 | No dogfooding log yet. Until one exists, the 3s in section A above are v1 scores; under v2 they stand at 2. |
 
 The parity floor in `docs/web-app-rubric.md` still holds: the suites it cites
 (`triage`, `reading`, `reader`, `search`, `labels`, `snooze`, `responsive`,

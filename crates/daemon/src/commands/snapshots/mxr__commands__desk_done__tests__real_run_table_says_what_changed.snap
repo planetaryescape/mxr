@@ -1,0 +1,7 @@
+---
+source: crates/daemon/src/commands/desk_done.rs
+expression: out
+---
+Done: 1 conversation.
+  00000000-0000-0000-0000-000000000000  owed        archived 5, marked 1 read, off the desk until someone writes
+Undo with: mxr undo 01a0e733-f0fb-7510-9fb5-0462837a28ae

@@ -112,7 +112,7 @@ mxr desk done 080a03cf-08ab-5aca-a5e6-73c9f269800d --dry-run
 
 ```text
 Would put away 1 conversation.
-  080a03cf-08ab-5aca-a5e6-73c9f269800d  owed        archived 5, marked 1 read, off the desk until someone writes
+  080a03cf-08ab-5aca-a5e6-73c9f269800d  owed        would archive 5, mark 1 read, off the desk until someone writes
 ```
 
 ```bash

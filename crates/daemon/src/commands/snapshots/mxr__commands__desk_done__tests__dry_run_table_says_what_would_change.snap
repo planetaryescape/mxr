@@ -1,0 +1,6 @@
+---
+source: crates/daemon/src/commands/desk_done.rs
+expression: out
+---
+Would put away 1 conversation.
+  00000000-0000-0000-0000-000000000000  owed        would archive 5, mark 1 read, off the desk until someone writes

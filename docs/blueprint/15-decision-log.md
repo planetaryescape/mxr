@@ -631,3 +631,76 @@ It is weighed as evidence, not proof — `--instance` is a marker the daemon par
 **Migration rule**: This decision is not a mandate to extract existing built-in capabilities. Start with new, clearly bounded companions and improve the structured interfaces they require. Move an existing capability only when there is a concrete product or engineering benefit, not for architectural symmetry.
 
 **Trade-offs accepted**: Companion installation and version compatibility are less seamless than an in-process framework. Cross-process calls add modest overhead, and rich UI integration may require additional protocol work. These costs are preferable to a privileged plugin runtime and a second package ecosystem.
+
+## D095: The desk is the web app's home; arrival order is one key away
+
+**Chosen**: The web app opens on the desk: You owe, Due, Waiting on and New from people, each row saying why it's there. Badges count only work: desk (owed plus due), reply queue and screener. Unread counts are gone from the sidebar and labels. The arrival-order inbox stays one key away (`g i`), and a setting makes it home instead.
+
+**Considered**: Keeping the inbox as home with a desk tab; an unread-count badge beside the desk badge.
+
+**Why**: Deferral is daily for most people, and "unread" gets misused as a todo flag (Microsoft Research, CHIIR 2019). The daemon already knows who is owed what, and leading with arrival order hid that. Counts on newsletters and receipts add anxiety without adding work.
+
+**Trade-offs accepted**: A new user sees an unfamiliar home. The inbox setting covers people who prefer arrival order. (v0.6.36; `21-web-experience.md`)
+
+## D096: One natural-time parser; clients store the previewed instant
+
+**Chosen**: `mxr_core::natural_time` is the only phrase-to-time parser. It resolves in local time, or in the browser's IANA zone for web requests. The daemon's `ResolveTime` previews a phrase. Every client sends the chosen resolved instant (RFC3339) to mutations, never the words.
+
+**Considered**: Keeping per-surface parsers; re-parsing the phrase at commit time.
+
+**Why**: Five parsers disagreed, and one resolved "tomorrow 9am" as 09:00 UTC. Re-parsing at commit lets the stored time drift from what the user saw. (v0.6.34)
+
+## D097: Mail kinds are rule-based, explainable, and corrected per sender
+
+**Chosen**: One classifier (`mail_kind::classify`) places mail as People, Reading or Paper trail, and returns the rule that fired as a human reason. A one-key correction is stored per sender as a screener disposition (Allow, Feed, PaperTrail, Deny). Reading and Paper trail are views over the inbox, and sync keeps INBOX for their mail.
+
+**Considered**: LLM classification; per-domain corrections; a separate kinds table.
+
+**Why**: Users turn off categorisation that is opaque, on by default, or can't be fixed (Apple Mail categories, Spark, Notion Mail). Screener dispositions were already durable, per-sender state.
+
+**Trade-offs accepted**: Rules miss edge cases that a model might catch, but every miss is visible and fixable in one key. (v0.6.38)
+
+## D098: Sweeps commit only what their preview listed
+
+**Chosen**: A sweep's dry run returns a single-use, scope-bound preview token. The commit archives preview ids ∩ still in the place ∩ unpinned. Each chunk rechecks pins and place membership under a per-account gate, taken after the provider lock. A whole-place sweep's confirm opens on Cancel.
+
+**Why**: Rerunning the selection at commit time swept mail that a concurrent sender move or a reused rowid had added. The dry-run rule in `AGENTS.md` means what was previewed is what changes. (v0.6.38, v0.6.39, v0.6.41)
+
+## D099: Done means archived, read, and gone until someone writes again
+
+**Chosen**: Desk Done (`e`, the row check, or a short swipe) depends on the lane:
+- You owe and New from people: archive, mark read, and dismiss.
+- Waiting on: mark read and dismiss.
+- Due: resolve the promise and dismiss, unless another promise on the thread is open.
+
+Reply-later is cleared. A dismissal lasts until any new message is stored in the thread (a rowid/count watermark, not a Date header). Undo restores the per-message state exactly.
+
+**Considered**: Permanent dismissal; Date-header watermarks.
+
+**Why**: BK asked to "resolve an item… no action for me… don't bring it up again and mark read". New mail is new information, so it returns. Whether Done should be permanent is an open question for BK. (v0.6.40)
+
+## D100: Summaries belong in the list; the reader keeps the ask and the facts
+
+**Chosen**: People rows in the desk, inbox, labels, reply queue and owed page show a one-line gist and the ask. The reader shows the verified-ask highlight, facts and promises, and shows a gist only for long threads (4 or more messages, or over 400 words). `GetThreadGists` answers from the cache. Missing gists go to a bounded background writer (people only, newest first, de-duplicated, with backoff). A gist is announced only if its thread gained no message while it was written.
+
+**Why**: BK: "what's the use of me seeing the summary when I've already opened the email?" A summary is a triage tool. AI must never block reading or slow the list. (v0.6.42)
+
+## D101: Delight is rare, earned and optional; feel never costs speed
+
+**Chosen**:
+- Low tide appears once per clearing, and is a still frame under reduced motion.
+- Sound is synthesised locally, off by default, and follows the daemon chime setting. It never plays on navigation, in a background tab, or for held keys.
+- Key hints appear after three pointer uses, once per action ever.
+- No points, streaks or scolding copy.
+- Keyboard-repeated actions never animate, and held keys never repeat destructive actions.
+
+**Why**: Delight that is frequent, forced or slow becomes noise (Kowalski, Freiberg; Asana's frequency setting; Superhuman on game design over gamification). Speed is what users pay for. (v0.6.39)
+
+## D102: Experience scores are graded independently and measured at real scale
+
+**Chosen**: The experience rubric (v2) requires:
+- Scores of 2 or more cite evidence checked by a grader who didn't build the work.
+- Section-A scores of 3 need a five-day dogfooding log.
+- Real-scale budgets (desk, owed, places, list scroll, new SQL) are measured read-only on a real, large mailbox and recorded with date and size.
+
+**Why**: The v1 pass was self-graded, missed whole dimensions (triage at a glance, shared keys), and was scored on demo data. The worst bugs, a 120-second `mxr owed` and an 88k-row owed list, showed only on a real 110k-message mailbox. (2026-09-30)

@@ -166,6 +166,26 @@ shipped phases look unfinished.
 - [ ] **Adapter ecosystem expansion**: The adapter kit exists; new community adapters or MSP/reference-adapter work should be validated against real maintainer/user demand before adding maintenance surface.
 - [ ] **Measured polish work**: Performance and error-UX improvements should enter as specific profiles, bugs, or support observations, not generic "make it better" roadmap boxes.
 
+## Web experience: pass rubric v2
+
+The web app was rebuilt around the desk between v0.6.34 and v0.6.42 (see
+[21-web-experience.md](21-web-experience.md)). An independent grade on
+2026-09-30 failed the v2 experience rubric (`docs/web-app-experience-rubric.md`).
+Work this list in order. Each item's scope and its check are in
+[21-web-experience.md](21-web-experience.md#plan-pass-rubric-v2).
+
+- [ ] **AI draft provenance and sources** (C1, C2)
+- [ ] **Timed reply later and waiting-on** (A5)
+- [ ] **`mxr owed` under 1 s on a real mailbox** (D2)
+- [ ] **Real-mailbox scroll and key-to-paint measurement** (D4)
+- [ ] **Speed gate covers `s` and cached-thread open** (B1)
+- [ ] **Real-model gist coverage and ask accuracy** (A11)
+- [ ] **Usable while the daemon is stopped** (B8)
+- [ ] **Undo journey for every verb, including send and unsubscribe** (B3)
+- [ ] **Motion and typography audit** (B2, B7)
+- [ ] **Five-day dogfooding log** (E2): needed before section A can reach 3
+- [ ] **Person-only checks:** sound on real speakers (B4), swipes on a real phone (B9), an independent copy review (C3)
+
 ## Future (post-v1.0)
 
 These are explicitly NOT on the roadmap for v1. They may grow out of the core later:

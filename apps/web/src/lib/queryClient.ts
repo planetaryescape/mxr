@@ -53,6 +53,10 @@ export function createQueryClient(options: QueryClientOptions = {}): QueryClient
       },
       mutations: {
         retry: false,
+        // While the daemon is down React Query counts as offline, and its
+        // default would park mutations and replay them on reconnect: a
+        // hidden queue. Fail at once instead; callers say what can't run.
+        networkMode: "always",
       },
     },
   });

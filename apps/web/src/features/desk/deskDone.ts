@@ -16,6 +16,7 @@ import { invalidateMailQueries } from "@/features/mail-actions/mailQueryInvalida
 import { claimUndo, offerUndo, performUndo } from "@/features/mail-actions/mailUndo";
 import { soundFor, VERB_FEEDBACK } from "@/features/mail-actions/verbFeedback";
 import { playSound } from "@/features/sound/player";
+import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { plural } from "@/lib/format";
 import { useSelection } from "@/state/selectionStore";
 
@@ -68,7 +69,7 @@ export async function markDeskDone(
   options: DeskDoneOptions = {},
 ): Promise<boolean> {
   const unique = [...new Map(items.map((item) => [item.thread_id, item])).values()];
-  if (unique.length === 0) return false;
+  if (unique.length === 0 || refuseWhileDaemonDown("mark it done")) return false;
   const threadIds = unique.map((item) => item.thread_id);
   useDeskDone.getState().hide(threadIds);
   if (useSelection.getState().ids.size > 0) useSelection.getState().clear();

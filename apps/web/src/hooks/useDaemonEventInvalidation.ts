@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { invalidateMailQueries } from "@/features/mail-actions/mailMutations";
 import { shellKey } from "@/features/mailbox/api";
 import { useDaemonEvents } from "@/hooks/useDaemonEvents";
+import { refetchAfterGap } from "@/lib/daemonAvailability";
 import { useConnectionStore, type SyncProgress } from "@/state/connectionStore";
 
 const CLEAR_SYNC_PROGRESS_DELAY_MS = 1_000;
@@ -77,10 +78,11 @@ export function useDaemonEventInvalidation(): void {
             break;
           case "EventsLagged":
             // The daemon dropped events for this client during a burst, so
-            // any cached view could be stale. Invalidate everything and let
-            // React Query refetch what's on screen — correctness over a
-            // targeted diff we can't compute from missed events.
-            void qc.invalidateQueries();
+            // any cached view could be stale. Invalidate everything (bar open
+            // drafts) and let React Query refetch what's on screen:
+            // correctness over a targeted diff we can't compute from missed
+            // events.
+            void refetchAfterGap(qc);
             break;
         }
       },

@@ -17,12 +17,13 @@ import { openInviteComment } from "@/features/invites/useInviteResponse";
 import { fetchSenderProfile, getThreadBriefing } from "@/features/mailbox/api";
 import { deskLaneOf } from "@/features/desk/deskLater";
 import { apiFetch } from "@/api/client";
+import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import type { ScopeController } from "@/lib/keys/controllers";
 import { parseAddress, plural } from "@/lib/format";
 import { useModals } from "@/state/modalStore";
 
 import { openMailDialog } from "./mailDialogStore";
-import { performMailAction } from "./mailMutations";
+import { performMailAction, refuseMailActionWhileDaemonDown } from "./mailMutations";
 import type { MailAction } from "./pendingMailOps";
 import { ensureThread, type MailTarget } from "./target";
 
@@ -68,6 +69,8 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
   const mutate = (action: MailAction) => () => {
     const requested = hooks.getTarget();
     if (!requested || requested.messageIds.length === 0) return;
+    // Before the view's own part (the desk's Done) and before it moves on.
+    if (refuseMailActionWhileDaemonDown(action)) return;
     const { rest: target, commit } = hooks.intercept?.(action, requested) ?? { rest: requested };
     if (!target || target.messageIds.length === 0) {
       commit?.();
@@ -96,7 +99,7 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
 
   const rsvp = (action: InviteAction, withComment: boolean) => () => {
     const target = single(hooks.getTarget(), "RSVP");
-    if (!target?.threadId) return;
+    if (!target?.threadId || refuseWhileDaemonDown("answer the invite")) return;
     void ensureThread(target.threadId).then((thread) => {
       const invite = thread.bodies.findLast((body) => body.metadata?.calendar);
       if (!invite) {
@@ -127,23 +130,24 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
     },
     label: () => {
       const target = hooks.getTarget();
-      if (target) openMailDialog({ kind: "labels", target });
+      if (target && !refuseMailActionWhileDaemonDown("labels"))
+        openMailDialog({ kind: "labels", target });
     },
     move: () => {
       const target = hooks.getTarget();
-      if (target) {
+      if (target && !refuseMailActionWhileDaemonDown("move")) {
         openMailDialog({ kind: "move", target, onDone: () => hooks.afterLeave?.("move") });
       }
     },
     snooze: () => {
       const target = hooks.getTarget();
-      if (target) {
+      if (target && !refuseMailActionWhileDaemonDown("snooze")) {
         openMailDialog({ kind: "snooze", target, onDone: () => hooks.afterLeave?.("snooze") });
       }
     },
     unsubscribe: () => {
       const target = single(hooks.getTarget(), "Unsubscribe");
-      if (target) {
+      if (target && !refuseWhileDaemonDown("unsubscribe")) {
         openMailDialog({
           kind: "unsubscribe",
           target,
@@ -153,7 +157,9 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
     },
     replyLater: () => {
       const target = single(hooks.getTarget(), "Reply later");
-      if (!target?.primary || !target.threadId) return;
+      if (!target?.primary || !target.threadId || refuseWhileDaemonDown("set reply later")) {
+        return;
+      }
       openMailDialog({
         kind: "reply-later",
         target,
@@ -233,7 +239,7 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
     },
     cancelReminder: () => {
       const target = single(hooks.getTarget(), "Cancel reminder");
-      if (!target?.primary) return;
+      if (!target?.primary || refuseWhileDaemonDown("cancel the reminder")) return;
       cancelAutoReminder(target.primary.id)
         .then(() => toast.success("Reminder cancelled"))
         .catch((error: Error) =>

@@ -16,6 +16,8 @@ import {
 } from "react";
 import { toast } from "sonner";
 
+import { DaemonUnavailableError } from "@/api/client";
+import { useDaemonDown } from "@/lib/daemonAvailability";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 import { updateComposeSession } from "../api";
 import { rememberActiveDraft } from "./activeDrafts";
@@ -27,6 +29,8 @@ import {
   errorMessage,
   type ComposeDraftState,
 } from "./composeDraft";
+
+const DAEMON_DOWN_NOTE = "mxr's daemon is stopped. Your text stays here and saves when it's back.";
 
 interface ComposeAutosaveInput {
   intentKey: string;
@@ -98,15 +102,29 @@ export function useComposeAutosave({
     }
   }, [draftRef, intentKey, queryClient, setDirty, setDraft, updateSession]);
 
+  // While the daemon is down nothing can save: say so and keep the text,
+  // which stays dirty, so the debounce below runs again once it's back.
+  const daemonDown = useDaemonDown();
+  useEffect(() => {
+    if (!daemonDown) setSaveError((shown) => (shown === DAEMON_DOWN_NOTE ? null : shown));
+  }, [daemonDown]);
+
   useEffect(() => {
     if (!dirty || !draft) return;
+    if (daemonDown) {
+      setSaveError(DAEMON_DOWN_NOTE);
+      return;
+    }
     const handle = window.setTimeout(() => {
       void saveCurrentDraft().catch((error: Error) => {
+        // The daemon just went away; the note above replaces this once
+        // that's confirmed, and a toast per keystroke pause would nag.
+        if (error instanceof DaemonUnavailableError) return;
         toast.error("Autosave failed", { description: error.message });
       });
     }, 3000);
     return () => window.clearTimeout(handle);
-  }, [dirty, draft, saveCurrentDraft]);
+  }, [daemonDown, dirty, draft, saveCurrentDraft]);
 
   // Flush the autosave debounce the moment the tab is hidden — a closed tab
   // never comes back for the 3s timer.

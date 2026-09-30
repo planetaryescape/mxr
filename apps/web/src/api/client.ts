@@ -45,6 +45,64 @@ export class BridgeRequestError extends Error {
   }
 }
 
+/**
+ * No answer from mxr's daemon: the bridge is down with it, or up but unable
+ * to reach its socket, or a proxy in front of it gave up. The request never
+ * reached the daemon, so nothing it asked for happened.
+ */
+export class DaemonUnavailableError extends Error {
+  constructor(options?: { cause?: unknown }) {
+    super("Couldn't reach mxr's daemon. It may be stopped or restarting.", options);
+    this.name = "DaemonUnavailableError";
+  }
+}
+
+type ReachabilityListener = (reachable: boolean) => void;
+const reachabilityListeners = new Set<ReachabilityListener>();
+
+/**
+ * Hear whether each bridge request reached the daemon. `lib/daemonAvailability`
+ * turns this into the app's one "is the daemon up" state; it lives here as a
+ * listener so the client doesn't import the state it feeds.
+ */
+export function onDaemonReachability(listener: ReachabilityListener): () => void {
+  reachabilityListeners.add(listener);
+  return () => reachabilityListeners.delete(listener);
+}
+
+function reportReachability(reachable: boolean): void {
+  for (const listener of reachabilityListeners) listener(reachable);
+}
+
+async function sendToBridge(path: string, init: RequestInit): Promise<Response> {
+  let res: Response;
+  try {
+    res = await fetch(`${getBridgeBaseUrl()}${path}`, init);
+  } catch (error) {
+    if (init.signal?.aborted) throw error;
+    // fetch only rejects when no response came back at all.
+    reportReachability(false);
+    throw new DaemonUnavailableError({ cause: error });
+  }
+  // A 5xx is judged by its body in `failureFrom`.
+  if (res.status < 500) reportReachability(true);
+  return res;
+}
+
+/**
+ * `connect` is the bridge unable to reach the daemon's socket. An empty 5xx
+ * never comes from the bridge, which always says what failed; it is the dev
+ * proxy (or another in front of the bridge) finding nothing to talk to.
+ */
+async function failureFrom(res: Response): Promise<Error> {
+  const text = await res.text().catch(() => "");
+  const failure = bridgeRequestError(res.status, res.statusText, text);
+  if (res.status < 500) return failure;
+  const unreachable = failure.code === "connect" || text.trim() === "";
+  reportReachability(!unreachable);
+  return unreachable ? new DaemonUnavailableError({ cause: failure }) : failure;
+}
+
 function bridgeRequestError(status: number, statusText: string, body: string): BridgeRequestError {
   const fallback = `${status} ${statusText}${body ? `: ${body}` : ""}`;
   const details = jsonObject(body);
@@ -116,19 +174,16 @@ export async function apiFetch<T>(path: string, opts: RawFetchOpts = {}): Promis
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
     signal: opts.signal,
   };
-  let res = await fetch(`${getBridgeBaseUrl()}${path}`, init);
+  let res = await sendToBridge(path, init);
   if (res.status === 401) {
     const recovered = await tryLocalHandshake();
     if (recovered) {
       headers.set("authorization", `Bearer ${recovered}`);
-      res = await fetch(`${getBridgeBaseUrl()}${path}`, init);
+      res = await sendToBridge(path, init);
     }
   }
   if (res.status === 401) throw new UnauthorizedError();
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw bridgeRequestError(res.status, res.statusText, text);
-  }
+  if (!res.ok) throw await failureFrom(res);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
@@ -142,12 +197,9 @@ export async function apiFetchBlob(
   if (!token) token = await tryLocalHandshake();
   const headers = new Headers();
   if (token) headers.set("authorization", `Bearer ${token}`);
-  const res = await fetch(`${getBridgeBaseUrl()}${path}`, { headers, signal: opts.signal });
+  const res = await sendToBridge(path, { headers, signal: opts.signal });
   if (res.status === 401) throw new UnauthorizedError();
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw bridgeRequestError(res.status, res.statusText, text);
-  }
+  if (!res.ok) throw await failureFrom(res);
   return res.blob();
 }
 

@@ -31,6 +31,13 @@ type StatusListener = (status: ConnectionStatus) => void;
 const HEARTBEAT_MS = 25_000;
 const MIN_BACKOFF_MS = 250;
 const MAX_BACKOFF_MS = 30_000;
+/**
+ * A socket that closes sooner than this counts as a failed attempt. The
+ * bridge accepts the upgrade even when it can't reach the daemon, sends
+ * one error frame and closes; resetting the backoff on open turned that
+ * into a reconnect every 250ms.
+ */
+const STABLE_CONNECTION_MS = 5_000;
 const PATH = "/api/v1/events";
 
 class DaemonEventClient {
@@ -41,6 +48,7 @@ class DaemonEventClient {
   private heartbeatHandle?: ReturnType<typeof setInterval>;
   private retryHandle?: ReturnType<typeof setTimeout>;
   private retryAttempt = 0;
+  private openedAt?: number;
   private wantOpen = false;
   private unsubscribeToken: (() => void) | undefined;
 
@@ -115,7 +123,7 @@ class DaemonEventClient {
   }
 
   private onOpen = (): void => {
-    this.retryAttempt = 0;
+    this.openedAt = Date.now();
     this.setStatus({ state: "connected", lastEventAt: this.status.lastEventAt });
     this.heartbeatHandle = setInterval(() => {
       if (this.socket && this.socket.readyState === WebSocket.OPEN) {
@@ -137,6 +145,15 @@ class DaemonEventClient {
       return;
     }
     if (!parsed || typeof parsed !== "object") return;
+    if (!("type" in parsed) && typeof parsed.error === "string") {
+      // The bridge couldn't reach the daemon; the close follows.
+      this.setStatus({
+        state: "reconnecting",
+        errorMessage: parsed.error,
+        lastErrorAt: Date.now(),
+      });
+      return;
+    }
     if (!("type" in parsed) && typeof parsed.event === "string") parsed.type = parsed.event;
     if (!("type" in parsed)) return;
     this.setStatus({ state: "connected", lastEventAt: Date.now() });
@@ -151,6 +168,10 @@ class DaemonEventClient {
 
   private onClose = (ev: CloseEvent): void => {
     this.clearHeartbeat();
+    if (this.openedAt !== undefined && Date.now() - this.openedAt >= STABLE_CONNECTION_MS) {
+      this.retryAttempt = 0;
+    }
+    this.openedAt = undefined;
     if (ev.code === 4401 || ev.code === 1008) {
       this.setStatus({ state: "unauthorized", errorMessage: ev.reason });
       return;

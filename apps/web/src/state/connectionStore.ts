@@ -24,6 +24,8 @@ export interface ConnectionStoreState {
   protocolCheckedAt?: number;
   protocolCheckError?: string;
   syncProgress?: SyncProgress;
+  /** Set by `lib/daemonAvailability` once a probe finds no daemon. */
+  daemonDown: boolean;
   semanticReindexProgress?: { current: number; total: number };
   setState: (next: Partial<Omit<ConnectionStoreState, keyof Setters>>) => void;
 }
@@ -34,5 +36,6 @@ interface Setters {
 
 export const useConnectionStore = create<ConnectionStoreState>((set) => ({
   state: "offline",
+  daemonDown: false,
   setState: (next) => set(next),
 }));

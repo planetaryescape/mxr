@@ -45,6 +45,15 @@ const toast = vi.hoisted(() => ({
 }));
 vi.mock("sonner", () => ({ toast }));
 
+const daemon = vi.hoisted(() => ({ down: false, refused: [] as string[] }));
+vi.mock("@/lib/daemonAvailability", () => ({
+  isDaemonDown: () => daemon.down,
+  refuseWhileDaemonDown: (what: string) => {
+    if (daemon.down) daemon.refused.push(what);
+    return daemon.down;
+  },
+}));
+
 const INBOX: LensIdentity = { kind: "inbox" };
 const MAILBOX_KEY = ["mailbox", { lens_kind: "inbox", view: "threads" }] as const;
 const SEARCH_KEY = ["search", { q: "invoice" }] as const;
@@ -128,6 +137,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  daemon.down = false;
+  daemon.refused = [];
   unsubscribe();
   qc.clear();
   vi.clearAllMocks();
@@ -267,6 +278,24 @@ describe("performMailAction", () => {
 
     expect(toast.success).not.toHaveBeenCalled();
     expect(refetch).toHaveBeenCalled();
+  });
+
+  test("while the daemon is down nothing moves, nothing is sent, and it says why", async () => {
+    daemon.down = true;
+    const outcome = await performMailAction("archive", ["a-1", "a-2"]);
+    expect(outcome.ok).toBe(false);
+    expect(daemon.refused).toEqual(["archive"]);
+    expect(api.archiveMessages).not.toHaveBeenCalled();
+    expect(usePendingMailOps.getState().ops).toEqual([]);
+    expect(renderedInbox().map((r) => r.id)).toEqual(["a", "b"]);
+    expect(useUndo.getState().lastUndo).toBeNull();
+  });
+
+  test("a silent change (mark read on open) is skipped without a toast", async () => {
+    daemon.down = true;
+    const outcome = await performMailAction("read", ["a-1"], { silent: true });
+    expect(outcome.ok).toBe(false);
+    expect(daemon.refused).toEqual([]);
   });
 
   test("no ids is a no-op", async () => {

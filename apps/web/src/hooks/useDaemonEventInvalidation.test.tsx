@@ -49,8 +49,13 @@ function setup() {
       }
       return [];
     });
-  const invalidatedEverything = () => invalidate.mock.calls.some((call) => call[0] === undefined);
-  return { emit, invalidatedKeys, invalidatedEverything };
+  /** Whether any invalidation call covers `queryKey`. */
+  const invalidates = (queryKey: unknown[], meta?: Record<string, unknown>) =>
+    invalidate.mock.calls.some(
+      ([filters]) =>
+        filters === undefined || filters.predicate?.({ queryKey, meta } as never) === true,
+    );
+  return { emit, invalidatedKeys, invalidates };
 }
 
 describe("useDaemonEventInvalidation", () => {
@@ -113,12 +118,16 @@ describe("useDaemonEventInvalidation", () => {
     expect(toastMock.error).toHaveBeenCalledWith("Action didn't stick: Gmail rejected the archive");
   });
 
-  test("EventsLagged invalidates every query for a full resync", () => {
-    const { emit, invalidatedEverything } = setup();
+  test("EventsLagged invalidates every query but open drafts for a full resync", () => {
+    const { emit, invalidates } = setup();
     emit({ type: "EventsLagged", skipped: 512 });
 
-    // A keyless invalidateQueries() invalidates the whole cache.
-    expect(invalidatedEverything()).toBe(true);
+    for (const key of [["mailbox"], ["thread"], ["settings"], ["desk"], ["gists", "x"]]) {
+      expect(invalidates(key)).toBe(true);
+    }
+    // Refetching an open compose session would put its saved file back
+    // over text typed since.
+    expect(invalidates(["compose-session", "reply:1"], { keepThroughGaps: true })).toBe(false);
     expect(toastMock.error).not.toHaveBeenCalled();
   });
 });

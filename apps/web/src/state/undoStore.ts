@@ -7,6 +7,8 @@
 
 import { create } from "zustand";
 
+import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
+
 type UndoRun = () => Promise<boolean>;
 
 export interface UndoState {
@@ -64,7 +66,9 @@ export function runLatestUndo(): "send" | "mail" | null {
     return "send";
   }
   if (state.lastUndo) {
-    void state.lastUndo();
+    // Checked here, before the undo retires itself, so `u` still works
+    // once the daemon is back.
+    if (!refuseWhileDaemonDown("undo")) void state.lastUndo();
     return "mail";
   }
   return null;

@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { apiFetch, BridgeRequestError } from "./client";
+import {
+  apiFetch,
+  BridgeRequestError,
+  DaemonUnavailableError,
+  onDaemonReachability,
+} from "./client";
 
 vi.mock("@/lib/localHandshake", () => ({
   tryLocalHandshake: vi.fn<() => Promise<string>>(async () => "test-token"),
@@ -82,5 +87,71 @@ describe("apiFetch failure reporting", () => {
 
     expect(error.message).toBe("500 Internal Server Error: upstream exploded");
     expect(error.code).toBeUndefined();
+  });
+});
+
+describe("telling a stopped daemon from a failed request", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function failure(): Promise<unknown> {
+    return apiFetch("/api/v1/mail/desk").catch((thrown: unknown) => thrown);
+  }
+
+  test("no response at all, the bridge unable to reach the socket, or an empty 5xx from a proxy", async () => {
+    const heard: boolean[] = [];
+    const off = onDaemonReachability((reachable) => heard.push(reachable));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    expect(await failure()).toBeInstanceOf(DaemonUnavailableError);
+
+    respond(503, "Service Unavailable", JSON.stringify({ error: "no socket", code: "connect" }));
+    expect(await failure()).toBeInstanceOf(DaemonUnavailableError);
+
+    respond(500, "Internal Server Error", "");
+    const proxied = await failure();
+    expect(proxied).toBeInstanceOf(DaemonUnavailableError);
+    expect((proxied as Error).message).toBe(
+      "Couldn't reach mxr's daemon. It may be stopped or restarting.",
+    );
+    expect(heard).toEqual([false, false, false]);
+    off();
+  });
+
+  test("an answer from the daemon, even a failing one, means it is there", async () => {
+    const heard: boolean[] = [];
+    const off = onDaemonReachability((reachable) => heard.push(reachable));
+    respond(504, "Gateway Timeout", JSON.stringify({ error: "slow", code: "timeout" }));
+    expect(await failure()).toBeInstanceOf(BridgeRequestError);
+    respond(404, "Not Found", JSON.stringify({ error: "no thread", code: "not_found" }));
+    expect(await failure()).toBeInstanceOf(BridgeRequestError);
+    respond(200, "OK", "{}", "application/json");
+    await apiFetch("/api/v1/mail/desk");
+    expect(heard).toEqual([true, true, true]);
+    off();
+  });
+
+  test("an aborted request is the caller's doing, not an outage", async () => {
+    const heard: boolean[] = [];
+    const off = onDaemonReachability((reachable) => heard.push(reachable));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new DOMException("aborted", "AbortError");
+      }),
+    );
+    const controller = new AbortController();
+    controller.abort();
+    const error = await apiFetch("/api/v1/mail/desk", { signal: controller.signal }).catch(
+      (thrown: unknown) => thrown,
+    );
+    expect(error).not.toBeInstanceOf(DaemonUnavailableError);
+    expect(heard).toEqual([]);
+    off();
   });
 });

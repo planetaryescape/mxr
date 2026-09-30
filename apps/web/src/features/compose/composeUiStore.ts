@@ -9,6 +9,7 @@
 
 import { create } from "zustand";
 
+import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import type { ComposeKind, InviteReplyAction } from "./api";
 import type { ComposeIntent } from "./useComposeSession";
 
@@ -38,11 +39,16 @@ export interface ComposeUiState {
   setCommands: (commands: ComposeCommands | null) => void;
 }
 
-export const useComposeUi = create<ComposeUiState>((set) => ({
+export const useComposeUi = create<ComposeUiState>((set, get) => ({
   intent: null,
   surface: "overlay",
   commands: null,
-  openCompose: (intent, surface = "overlay") => set({ intent, surface }),
+  openCompose: (intent, surface = "overlay") => {
+    // A draft is a file the daemon writes; without it the composer could
+    // only spin. One already open stays usable.
+    if (get().intent?.key !== intent.key && refuseWhileDaemonDown("open the composer")) return;
+    set({ intent, surface });
+  },
   setSurface: (surface) => set({ surface }),
   closeCompose: () => set({ intent: null }),
   setCommands: (commands) => set({ commands }),

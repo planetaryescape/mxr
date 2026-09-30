@@ -1542,6 +1542,7 @@ async fn opened_thread_shows_its_context_above_the_messages() {
             reason: None,
             generated_at: None,
             from_cache: true,
+            newest_message_id: None,
         })),
     );
 

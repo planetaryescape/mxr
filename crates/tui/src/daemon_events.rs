@@ -153,8 +153,11 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
         DaemonEvent::ThreadGistReady { gist } => app.row_gists.put(&gist),
         DaemonEvent::NewMessages { envelopes, .. } => {
             // Their conversations changed: the gists no longer hold.
-            app.row_gists
-                .forget(envelopes.iter().map(|envelope| &envelope.thread_id));
+            app.row_gists.new_messages(
+                envelopes
+                    .iter()
+                    .map(|envelope| (&envelope.thread_id, &envelope.id)),
+            );
         }
         DaemonEvent::EventsLagged { skipped } => {
             app.row_gists.lagged();

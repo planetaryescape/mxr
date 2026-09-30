@@ -45,6 +45,11 @@ let noModelUntil = 0;
 /** What the daemon last said about its model; `undefined` until it has. */
 let model: GistModel | undefined;
 const modelListeners = new Set<() => void>();
+/** Each conversation's newest message as the event stream last said. */
+const latestKnown = new Map<string, string>();
+/** Bumped when everything shown was dropped, so lists ask again. */
+let epoch = 0;
+const epochListeners = new Set<() => void>();
 let unsubscribeEvents: (() => void) | undefined;
 
 export function toRowGist(data: ThreadGist): RowGist | null {
@@ -63,6 +68,9 @@ function notify(threadId: string): void {
 
 /** Store a gist from the daemon (a batch answer or an event). */
 export function putGist(data: ThreadGist, now = Date.now()): void {
+  // Written for an older message than one we have seen arrive: stale.
+  const known = latestKnown.get(data.thread_id);
+  if (known !== undefined && data.newest_message_id !== known) return;
   const gist = toRowGist(data);
   if (!gist) return;
   const shown = gists.get(data.thread_id)?.gist;
@@ -83,6 +91,34 @@ export function forgetGists(threadIds: Iterable<string>, askAgain = true): void 
     if (askAgain) requestedAt.delete(threadId);
     if (gists.delete(threadId)) notify(threadId);
   }
+}
+
+/**
+ * Nothing shown can be trusted (missed events, a reconnect): drop every
+ * gist and let the lists on screen ask again.
+ */
+export function invalidateRowGists(): void {
+  requestedAt.clear();
+  latestKnown.clear();
+  const shown = [...gists.keys()];
+  gists.clear();
+  for (const threadId of shown) notify(threadId);
+  epoch += 1;
+  for (const listener of epochListeners) listener();
+}
+
+function subscribeEpoch(listener: () => void): () => void {
+  epochListeners.add(listener);
+  return () => epochListeners.delete(listener);
+}
+
+/** Changes when every gist was dropped; lists re-ask for their rows. */
+export function useGistEpoch(): number {
+  return useSyncExternalStore(
+    subscribeEpoch,
+    () => epoch,
+    () => epoch,
+  );
 }
 
 function setModel(next: GistModel): void {
@@ -138,17 +174,20 @@ function onDaemonEvent(event: DaemonEvent): void {
       if (isGistEvent(event)) putGist(event.gist);
       break;
     case "NewMessages": {
-      const envelopes = (event as { envelopes?: Array<{ thread_id?: unknown }> }).envelopes ?? [];
-      forgetGists(
-        envelopes.flatMap((envelope) =>
-          typeof envelope.thread_id === "string" ? [envelope.thread_id] : [],
-        ),
-      );
+      const envelopes =
+        (event as { envelopes?: Array<{ thread_id?: unknown; id?: unknown }> }).envelopes ?? [];
+      const changed: string[] = [];
+      for (const envelope of envelopes) {
+        if (typeof envelope.thread_id !== "string") continue;
+        changed.push(envelope.thread_id);
+        if (typeof envelope.id === "string") latestKnown.set(envelope.thread_id, envelope.id);
+      }
+      forgetGists(changed);
       break;
     }
     case "EventsLagged":
-      // Missed events may include gists: let the rows ask again.
-      requestedAt.clear();
+      // A missed NewMessages could leave a stale line up.
+      invalidateRowGists();
       break;
   }
 }
@@ -169,7 +208,19 @@ function isGistEvent(event: DaemonEvent): event is { type: string; gist: ThreadG
 }
 
 function listen(): void {
-  unsubscribeEvents ??= daemonEvents.subscribe(onDaemonEvent);
+  if (unsubscribeEvents) return;
+  const offEvents = daemonEvents.subscribe(onDaemonEvent);
+  // Events sent while the stream was down are lost: on reconnecting, what
+  // is shown may be stale.
+  let last = daemonEvents.getStatus().state;
+  const offStatus = daemonEvents.onStatus(({ state }) => {
+    if (state === "connected" && last !== "connected") invalidateRowGists();
+    last = state;
+  });
+  unsubscribeEvents = () => {
+    offEvents();
+    offStatus();
+  };
 }
 
 /**
@@ -232,6 +283,9 @@ export function resetRowGistsForTest(): void {
   noModelUntil = 0;
   model = undefined;
   modelListeners.clear();
+  latestKnown.clear();
+  epoch = 0;
+  epochListeners.clear();
   unsubscribeEvents?.();
   unsubscribeEvents = undefined;
 }

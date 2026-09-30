@@ -15,7 +15,7 @@ import { BulkActionBar } from "./BulkActionBar";
 import { MailboxRow, RowActionChip, type RowAction, type RowQuickAction } from "./MailboxRow";
 import { rowKey } from "./rowKey";
 import type { MessageGroupView, MessageRowView } from "./types";
-import { requestRowGists } from "@/features/gists/rowGists";
+import { requestRowGists, useGistEpoch } from "@/features/gists/rowGists";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
 import { createMailVerbs, type MailVerbHooks } from "@/features/mail-actions/mailVerbs";
@@ -253,6 +253,8 @@ export function MailboxList({
   const visibleStart = virtualizer.range?.startIndex ?? 0;
   const visibleEnd = virtualizer.range?.endIndex ?? -1;
   const overscanStart = virtualItems[0]?.index ?? 0;
+  // Bumped only when every gist was dropped (missed events, a reconnect).
+  const gistEpoch = useGistEpoch();
   useEffect(() => {
     if (!rowGists || visibleEnd < 0) return;
     const handle = window.setTimeout(() => {
@@ -261,7 +263,7 @@ export function MailboxList({
       );
     }, GIST_REQUEST_DELAY_MS);
     return () => window.clearTimeout(handle);
-  }, [flat, overscanStart, rowGists, visibleEnd, visibleStart]);
+  }, [flat, gistEpoch, overscanStart, rowGists, visibleEnd, visibleStart]);
 
   useEffect(() => {
     const last = virtualItems.at(-1);

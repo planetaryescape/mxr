@@ -308,10 +308,11 @@ async fn gists_are_written_in_the_order_asked_newest_request_first_each_once() {
     // The user scrolled: the new rows jump the queue, and asking again for
     // one already queued or being written never adds it twice.
     let second = gists(&fx, &[ids[3].clone(), ids[1].clone(), ids[0].clone()], true).await;
+    assert_eq!(second.queued, vec![ids[3].clone(), ids[1].clone()]);
     assert_eq!(
-        second.queued.len(),
-        3,
-        "queued or in flight, each is reported"
+        second.in_flight,
+        vec![ids[0].clone()],
+        "being written, not queued again"
     );
     let (pending, in_flight, writers) = fx.state.gist_queue.snapshot();
     assert_eq!(pending, vec![ids[3].clone(), ids[1].clone()]);
@@ -602,4 +603,77 @@ async fn ready_events_within(
         }
     }
     out
+}
+
+#[tokio::test]
+async fn a_gist_that_went_stale_during_the_call_is_not_announced_and_is_written_again() {
+    let fx = Fixture::new().await;
+    let (thread, _) = conversation(&fx, MAYA).await;
+    let llm = GatedLlm::new(false, None);
+    fx.state.llm.replace(llm.clone());
+    let mut events = fx.state.event_tx.subscribe();
+
+    gists(&fx, std::slice::from_ref(&thread), true).await;
+    wait_for("the first call", || llm.calls.load(Ordering::SeqCst) == 1).await;
+    // A reply lands while the model is writing.
+    let reply = fx
+        .message(&thread, MAYA, ME, Duration::minutes(-1), None)
+        .await;
+    llm.release(1);
+    wait_for("the second call", || llm.calls.load(Ordering::SeqCst) == 2).await;
+    llm.release(1);
+
+    let ready = ready_events(&mut events, 1).await;
+    assert_eq!(
+        ready[0].newest_message_id.as_ref(),
+        Some(&reply.id),
+        "only the gist for the conversation as it is now is announced"
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    while let Ok(message) = events.try_recv() {
+        assert!(
+            !matches!(
+                message.payload,
+                IpcPayload::Event(DaemonEvent::ThreadGistReady { .. })
+            ),
+            "the stale gist never follows"
+        );
+    }
+    // The cache holds the current gist, not the stale one.
+    let cached = gists(&fx, std::slice::from_ref(&thread), false).await;
+    assert_eq!(cached.gists[0].newest_message_id.as_ref(), Some(&reply.id));
+}
+
+#[tokio::test]
+async fn a_hundred_conversation_request_reports_what_was_queued_and_what_was_not() {
+    let fx = Fixture::new().await;
+    let mut ids = Vec::new();
+    for _ in 0..mxr_protocol::THREAD_GISTS_MAX_BATCH {
+        ids.push(conversation(&fx, MAYA).await.0);
+    }
+    let llm = GatedLlm::new(false, None);
+    fx.state.llm.replace(llm.clone());
+
+    let batch = gists(&fx, &ids, true).await;
+    let full: Vec<ThreadId> = batch
+        .skipped
+        .iter()
+        .filter(|skip| skip.reason == ThreadGistSkipReasonData::QueueFull)
+        .map(|skip| skip.thread_id.clone())
+        .collect();
+    assert_eq!(
+        batch.queued,
+        ids[..64].to_vec(),
+        "first asked, first queued"
+    );
+    assert!(batch.in_flight.is_empty());
+    assert_eq!(
+        full,
+        ids[64..].to_vec(),
+        "the rest are reported as not queued"
+    );
+    wait_for("the writer", || llm.calls.load(Ordering::SeqCst) == 1).await;
+    let (pending, in_flight, _) = fx.state.gist_queue.snapshot();
+    assert_eq!(pending.len() + in_flight.len(), 64);
+    llm.release(64);
 }

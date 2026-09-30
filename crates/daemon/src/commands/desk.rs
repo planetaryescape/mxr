@@ -27,15 +27,15 @@ pub async fn run(
         _ => anyhow::bail!("Unexpected response"),
     };
     let gists = if with_gists {
-        cached_gists(&mut client, &desk).await?
+        Some(cached_gists(&mut client, &desk).await?)
     } else {
-        Gists::new()
+        None
     };
-    print!("{}", render(&desk, resolve_format(format), &gists)?);
+    print!("{}", render(&desk, resolve_format(format), gists.as_ref())?);
     Ok(())
 }
 
-/// Cached gists by conversation; empty when none were asked for.
+/// Cached gists by conversation.
 type Gists = HashMap<ThreadId, ThreadGistData>;
 
 /// The desk's conversations' cached gists: never a model call.
@@ -199,7 +199,9 @@ fn lanes(desk: &ResponseData) -> Vec<(DeskLaneKind, &str, &DeskLaneData)> {
         .collect()
 }
 
-fn render(desk: &ResponseData, fmt: OutputFormat, gists: &Gists) -> anyhow::Result<String> {
+/// `gists` is `Some` with `--gists`: then the shape is the same whatever is
+/// cached (`gists: []`, `gist: null`, empty CSV cells).
+fn render(desk: &ResponseData, fmt: OutputFormat, gists: Option<&Gists>) -> anyhow::Result<String> {
     let rows = || {
         lanes(desk)
             .into_iter()
@@ -209,7 +211,7 @@ fn render(desk: &ResponseData, fmt: OutputFormat, gists: &Gists) -> anyhow::Resu
     match fmt {
         OutputFormat::Json => {
             let mut value = serde_json::to_value(desk)?;
-            if !gists.is_empty() {
+            if let Some(gists) = gists {
                 if let Some(object) = value.as_object_mut() {
                     // In desk order, each conversation once.
                     let mut seen = HashSet::new();
@@ -226,10 +228,11 @@ fn render(desk: &ResponseData, fmt: OutputFormat, gists: &Gists) -> anyhow::Resu
         OutputFormat::Jsonl => {
             for row in rows() {
                 let mut value = serde_json::to_value(row)?;
-                if let (Some(gist), Some(object)) =
-                    (gists.get(&row.thread_id), value.as_object_mut())
-                {
-                    object.insert("gist".into(), serde_json::to_value(gist)?);
+                if let (Some(gists), Some(object)) = (gists, value.as_object_mut()) {
+                    object.insert(
+                        "gist".into(),
+                        serde_json::to_value(gists.get(&row.thread_id))?,
+                    );
                 }
                 out.push_str(&serde_json::to_string(&value)?);
                 out.push('\n');
@@ -244,11 +247,7 @@ fn render(desk: &ResponseData, fmt: OutputFormat, gists: &Gists) -> anyhow::Resu
             out.push_str(
                 "lane,thread_id,message_id,counterparty_email,subject,reason,since,age_seconds,usual_seconds,overdue",
             );
-            out.push_str(if gists.is_empty() {
-                "\n"
-            } else {
-                ",gist,ask\n"
-            });
+            out.push_str(if gists.is_none() { "\n" } else { ",gist,ask\n" });
             for row in rows() {
                 out.push_str(&format!(
                     "{},{},{},{},{},{},{},{},{},{}",
@@ -263,7 +262,7 @@ fn render(desk: &ResponseData, fmt: OutputFormat, gists: &Gists) -> anyhow::Resu
                     row.usual_seconds.map(|s| s.to_string()).unwrap_or_default(),
                     row.overdue,
                 ));
-                if !gists.is_empty() {
+                if let Some(gists) = gists {
                     let gist = gists.get(&row.thread_id);
                     out.push_str(&format!(
                         ",{},{}",
@@ -283,7 +282,7 @@ fn render(desk: &ResponseData, fmt: OutputFormat, gists: &Gists) -> anyhow::Resu
     Ok(out)
 }
 
-fn table(desk: &ResponseData, gists: &Gists) -> String {
+fn table(desk: &ResponseData, gists: Option<&Gists>) -> String {
     let mut out = String::new();
     out.push_str(&summary_line(desk));
     out.push('\n');
@@ -303,7 +302,7 @@ fn table(desk: &ResponseData, gists: &Gists) -> String {
             } else {
                 who.to_string()
             };
-            let gist = gists.get(&row.thread_id);
+            let gist = gists.and_then(|gists| gists.get(&row.thread_id));
             // With a gist, the ask says why the row is here better than the
             // lane's reason does.
             let reason = match gist
@@ -482,7 +481,7 @@ mod tests {
                 vec![row(DeskLaneKind::Due, -2 * 86_400, None)],
             ),
             OutputFormat::Table,
-            &Gists::new(),
+            None,
         )
         .unwrap();
         assert!(text.starts_with("1 reply owed, 1 promise due.\n"), "{text}");
@@ -499,12 +498,7 @@ mod tests {
         let mut hostile = row(DeskLaneKind::Owed, 60, None);
         hostile.subject = "Invoice\u{1b}]0;pwned\u{7}\u{1b}[2J\r\nnow".into();
         hostile.counterparty_name = Some("Eve\u{9b}31m".into());
-        let text = render(
-            &desk(vec![hostile], vec![]),
-            OutputFormat::Table,
-            &Gists::new(),
-        )
-        .unwrap();
+        let text = render(&desk(vec![hostile], vec![]), OutputFormat::Table, None).unwrap();
         assert!(
             !text
                 .chars()
@@ -516,7 +510,7 @@ mod tests {
 
     #[test]
     fn empty_desk_is_calm() {
-        let text = render(&desk(vec![], vec![]), OutputFormat::Table, &Gists::new()).unwrap();
+        let text = render(&desk(vec![], vec![]), OutputFormat::Table, None).unwrap();
         assert!(text.starts_with("Nothing needs you right now."));
     }
 
@@ -525,7 +519,7 @@ mod tests {
         let text = render(
             &desk(vec![row(DeskLaneKind::Owed, 60, None)], vec![]),
             OutputFormat::Jsonl,
-            &Gists::new(),
+            None,
         )
         .unwrap();
         let value: serde_json::Value = serde_json::from_str(text.trim()).unwrap();
@@ -547,10 +541,11 @@ mod tests {
             reason: None,
             generated_at: None,
             from_cache: true,
+            newest_message_id: None,
         };
         let gists = Gists::from([(owed.thread_id.clone(), gist)]);
         let desk = desk(vec![owed], vec![]);
-        let text = render(&desk, OutputFormat::Table, &gists).unwrap();
+        let text = render(&desk, OutputFormat::Table, Some(&gists)).unwrap();
         assert!(
             text.contains("Launch checklist \u{b7} asks: confirm the owner"),
             "{text}"
@@ -561,14 +556,34 @@ mod tests {
             "{text}"
         );
 
-        let jsonl = render(&desk, OutputFormat::Jsonl, &gists).unwrap();
+        let jsonl = render(&desk, OutputFormat::Jsonl, Some(&gists)).unwrap();
         let value: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
         assert_eq!(value["gist"]["ask"]["summary"], "confirm the owner");
-        let json = render(&desk, OutputFormat::Json, &gists).unwrap();
+        let json = render(&desk, OutputFormat::Json, Some(&gists)).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(
             value["gists"][0]["gist"],
             "Canary stays at 5% until the dashboard is quiet."
         );
+    }
+
+    #[test]
+    fn with_gists_the_json_shape_is_the_same_when_nothing_is_cached() {
+        let desk = desk(vec![row(DeskLaneKind::Owed, 60, None)], vec![]);
+        let none = Gists::new();
+        let json: serde_json::Value =
+            serde_json::from_str(&render(&desk, OutputFormat::Json, Some(&none)).unwrap()).unwrap();
+        assert_eq!(json["gists"], serde_json::json!([]));
+        let jsonl = render(&desk, OutputFormat::Jsonl, Some(&none)).unwrap();
+        let row: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
+        assert!(row.as_object().unwrap().contains_key("gist"));
+        assert!(row["gist"].is_null());
+        let csv = render(&desk, OutputFormat::Csv, Some(&none)).unwrap();
+        assert!(csv.lines().next().unwrap().ends_with(",gist,ask"));
+        assert!(csv.lines().nth(1).unwrap().ends_with(",,"));
+        // Without --gists, no gist fields at all.
+        let plain: serde_json::Value =
+            serde_json::from_str(&render(&desk, OutputFormat::Json, None).unwrap()).unwrap();
+        assert!(plain.get("gists").is_none());
     }
 }

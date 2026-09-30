@@ -35,6 +35,7 @@ async fn context_and_gist_routes_forward_to_the_daemon() {
                         reason: Some("No language model is configured.".into()),
                         generated_at: None,
                         from_cache: false,
+                        newest_message_id: None,
                     },
                 },
                 Request::GetThreadGists { thread_ids, .. } => ResponseData::ThreadGists {
@@ -42,6 +43,7 @@ async fn context_and_gist_routes_forward_to_the_daemon() {
                         model: mxr_protocol::GistModelData::Available,
                         gists: vec![],
                         queued: thread_ids,
+                        in_flight: vec![],
                         skipped: vec![],
                     },
                 },

@@ -311,6 +311,7 @@ mod tests {
             reason: Some("timed out".into()),
             generated_at: None,
             from_cache: false,
+            newest_message_id: None,
         }
     }
 

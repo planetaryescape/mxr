@@ -171,6 +171,8 @@ pub(super) struct GistSetup {
     account_id: AccountId,
     pub content_hash: String,
     key: String,
+    /// The conversation's newest message: what the gist answers for.
+    newest: MessageId,
 }
 
 impl GistSetup {
@@ -183,6 +185,7 @@ impl GistSetup {
             policy: policy.clone(),
             account_id: newest.account_id.clone(),
             key: cache_key(thread_id),
+            newest: newest.id.clone(),
         })
     }
 }
@@ -209,7 +212,13 @@ pub(super) async fn cached_gist(
     if !payload.snippet_ids.is_empty() && state.store.any_body_synced(&payload.snippet_ids).await? {
         return Ok(None);
     }
-    Ok(Some(ready(thread_id, payload, cached.generated_at, true)))
+    Ok(Some(ready(
+        thread_id,
+        setup,
+        payload,
+        cached.generated_at,
+        true,
+    )))
 }
 
 /// The gist for a conversation: from the cache unless `refresh`, else
@@ -318,6 +327,13 @@ async fn thread_gist(
             .collect(),
     };
     let generated_at = chrono::Utc::now();
+    // A message arrived while the model was writing: this gist answers for
+    // the conversation as it was. Return it (it says which message it
+    // answers for) but don't cache it over whatever the newer state gets.
+    if newest_message_id(state, thread_id).await?.as_ref() != Some(&setup.newest) {
+        tracing::debug!(%thread_id, "thread gist: a newer message arrived; not cached");
+        return Ok(ready(thread_id, setup, payload, generated_at, false));
+    }
     state
         .store
         .upsert_context_briefing(&ContextBriefing {
@@ -331,11 +347,23 @@ async fn thread_gist(
             generated_at,
         })
         .await?;
-    Ok(ready(thread_id, payload, generated_at, false))
+    Ok(ready(thread_id, setup, payload, generated_at, false))
+}
+
+/// The conversation's newest message now, by the same order the gist uses.
+pub(super) async fn newest_message_id(
+    state: &AppState,
+    thread_id: &ThreadId,
+) -> Result<Option<MessageId>, HandlerError> {
+    Ok(thread_envelopes(state, thread_id)
+        .await?
+        .last()
+        .map(|newest| newest.id.clone()))
 }
 
 fn ready(
     thread_id: &ThreadId,
+    setup: &GistSetup,
     payload: CachedGist,
     generated_at: chrono::DateTime<chrono::Utc>,
     from_cache: bool,
@@ -349,6 +377,7 @@ fn ready(
         reason: None,
         generated_at: Some(generated_at),
         from_cache,
+        newest_message_id: Some(setup.newest.clone()),
     }
 }
 
@@ -362,6 +391,7 @@ fn unavailable(thread_id: &ThreadId, status: ThreadGistStatusData, reason: &str)
         reason: Some(reason.to_string()),
         generated_at: None,
         from_cache: false,
+        newest_message_id: None,
     }
 }
 

@@ -4,6 +4,7 @@ import type { DaemonEvent } from "@/api/events";
 
 const apiFetch = vi.fn<(path: string, opts?: unknown) => Promise<unknown>>();
 let emit: (event: DaemonEvent) => void = () => {};
+let setStatus: (status: { state: string }) => void = () => {};
 vi.mock("@/api/client", () => ({
   apiFetch: (path: string, opts?: unknown) => apiFetch(path, opts),
 }));
@@ -13,6 +14,13 @@ vi.mock("@/lib/ws", () => ({
       emit = handler;
       return () => {
         emit = () => {};
+      };
+    },
+    getStatus: () => ({ state: "connected" }),
+    onStatus: (listener: (status: { state: string }) => void) => {
+      setStatus = listener;
+      return () => {
+        setStatus = () => {};
       };
     },
   },
@@ -104,5 +112,38 @@ describe("row gists", () => {
   test("only ready gists with text become lines", () => {
     expect(toRowGist({ ...gist("a"), status: "failed" })).toBeNull();
     expect(toRowGist({ ...gist("a"), gist: "  " })).toBeNull();
+  });
+
+  test("a gist for an older message than one seen arriving is ignored", async () => {
+    apiFetch.mockResolvedValue(answer([], "available", ["a"]));
+    await requestRowGists(["a"], 1_000);
+    emit({
+      type: "NewMessages",
+      envelopes: [{ thread_id: "a", id: "m2" }],
+    } as unknown as DaemonEvent);
+    const late = { ...gist("a"), newest_message_id: "m1" };
+    emit({ type: "ThreadGistReady", gist: late } as unknown as DaemonEvent);
+    expect(getRowGist("a")).toBeUndefined();
+    emit({
+      type: "ThreadGistReady",
+      gist: { ...gist("a"), newest_message_id: "m2" },
+    } as unknown as DaemonEvent);
+    expect(getRowGist("a")).toBeDefined();
+  });
+
+  test("missed events or a reconnect drop every line and let the rows ask again", async () => {
+    apiFetch.mockResolvedValue(answer([gist("a")]));
+    await requestRowGists(["a"], 1_000);
+    expect(getRowGist("a")).toBeDefined();
+    emit({ type: "EventsLagged", skipped: 3 } as unknown as DaemonEvent);
+    expect(getRowGist("a")).toBeUndefined();
+    await requestRowGists(["a"], 2_000);
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+
+    setStatus({ state: "reconnecting" });
+    setStatus({ state: "connected" });
+    expect(getRowGist("a")).toBeUndefined();
+    await requestRowGists(["a"], 3_000);
+    expect(apiFetch).toHaveBeenCalledTimes(3);
   });
 });

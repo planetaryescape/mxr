@@ -129,6 +129,8 @@ fn table(thread_ids: &[ThreadId], batch: &ThreadGistBatchData) -> String {
             format!("{}{source}", terminal_text(&gist_line(gist)))
         } else if batch.queued.contains(thread_id) {
             "queued for the model".to_string()
+        } else if batch.in_flight.contains(thread_id) {
+            "being written by the model".to_string()
         } else if let Some(skip) = batch.skipped.iter().find(|s| &s.thread_id == thread_id) {
             match skip.reason {
                 ThreadGistSkipReasonData::NotPeople => "not from a person, no gist".to_string(),
@@ -136,6 +138,7 @@ fn table(thread_ids: &[ThreadId], batch: &ThreadGistBatchData) -> String {
                 ThreadGistSkipReasonData::RecentlyFailed => {
                     "the model failed on it recently; tried again later".to_string()
                 }
+                ThreadGistSkipReasonData::QueueFull => "the queue is full; ask again".to_string(),
                 ThreadGistSkipReasonData::NotGenerated => {
                     "no gist yet (--generate queues one)".to_string()
                 }
@@ -172,6 +175,7 @@ mod tests {
             reason: None,
             generated_at: None,
             from_cache: true,
+            newest_message_id: None,
         }
     }
 
@@ -187,6 +191,7 @@ mod tests {
             model: GistModelData::Available,
             gists: vec![gist(&b, true), gist(&a, false)],
             queued: vec![c.clone()],
+            in_flight: vec![],
             skipped: vec![ThreadGistSkipData {
                 thread_id: d.clone(),
                 reason: ThreadGistSkipReasonData::NotPeople,
@@ -211,6 +216,7 @@ mod tests {
             model: GistModelData::Disabled,
             gists: vec![],
             queued: vec![],
+            in_flight: vec![],
             skipped: vec![],
         };
         assert_eq!(

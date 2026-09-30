@@ -5,7 +5,7 @@
 //! rest arrive as `ThreadGistReady` events.
 
 use super::{App, MailboxView};
-use mxr_core::id::ThreadId;
+use mxr_core::id::{MessageId, ThreadId};
 use mxr_core::types::LabelKind;
 use mxr_protocol::{
     GistModelData, ThreadGistBatchData, ThreadGistData, ThreadGistStatusData,
@@ -75,6 +75,9 @@ pub struct RowGistState {
     /// per row only when it is `Available`.
     pub model: Option<GistModelData>,
     requested: HashMap<ThreadId, Instant>,
+    /// Each conversation's newest message as the event stream last said:
+    /// a gist written for an older one is not shown.
+    newest: HashMap<ThreadId, MessageId>,
     off_until: Option<Instant>,
     /// When rows were last gathered, sent or not: an idle list isn't
     /// rebuilt on every pass of the event loop.
@@ -150,22 +153,34 @@ impl RowGistState {
     }
 
     pub fn put(&mut self, data: &ThreadGistData) {
+        let known = self.newest.get(&data.thread_id);
+        if known.is_some() && data.newest_message_id.as_ref() != known {
+            return;
+        }
         if let Some(gist) = RowGist::from_data(data) {
             self.gists.insert(data.thread_id.clone(), gist);
         }
     }
 
-    /// New messages changed these conversations.
-    pub fn forget<'a>(&mut self, ids: impl IntoIterator<Item = &'a ThreadId>) {
-        for id in ids {
-            self.gists.remove(id);
-            self.requested.remove(id);
+    /// New messages changed these conversations: their gists no longer
+    /// hold, and one written for an older message is ignored when it lands.
+    pub fn new_messages<'a>(
+        &mut self,
+        messages: impl IntoIterator<Item = (&'a ThreadId, &'a MessageId)>,
+    ) {
+        for (thread_id, message_id) in messages {
+            self.gists.remove(thread_id);
+            self.requested.remove(thread_id);
+            self.newest.insert(thread_id.clone(), message_id.clone());
         }
     }
 
-    /// Events were missed: rows may be asked about again.
+    /// Events were missed, a new message among them perhaps: nothing shown
+    /// can be trusted. Drop it all; the rows on screen ask again.
     pub fn lagged(&mut self) {
+        self.gists.clear();
         self.requested.clear();
+        self.newest.clear();
     }
 }
 
@@ -229,6 +244,7 @@ mod tests {
             reason: None,
             generated_at: None,
             from_cache: true,
+            newest_message_id: None,
         }
     }
 
@@ -276,6 +292,7 @@ mod tests {
                 model: GistModelData::Disabled,
                 gists: vec![],
                 queued: vec![],
+                in_flight: vec![],
                 skipped: vec![],
             },
             start,
@@ -300,6 +317,41 @@ mod tests {
                 ids[1].clone(),
                 ids[0].clone()
             ]
+        );
+    }
+
+    #[test]
+    fn a_gist_for_an_older_message_is_ignored_and_lag_clears_everything() {
+        let thread = ThreadId::new();
+        let (old, new) = (MessageId::new(), MessageId::new());
+        let mut state = RowGistState::default();
+        state.put(&ready(&thread, None));
+        state.new_messages([(&thread, &new)]);
+        assert!(state.gists.is_empty(), "a new message retires the gist");
+
+        let mut late = ready(&thread, None);
+        late.newest_message_id = Some(old);
+        state.put(&late);
+        assert!(
+            state.gists.is_empty(),
+            "a late gist for the old message is ignored"
+        );
+        let mut current = ready(&thread, None);
+        current.newest_message_id = Some(new);
+        state.put(&current);
+        assert!(state.gists.contains_key(&thread));
+
+        let start = Instant::now();
+        state.take_request([thread.clone()], start);
+        state.lagged();
+        assert!(
+            state.gists.is_empty(),
+            "missed events: nothing shown is trusted"
+        );
+        assert_eq!(
+            state.take_request([thread.clone()], start + Duration::from_secs(1)),
+            Some(vec![thread]),
+            "and the rows ask again"
         );
     }
 }

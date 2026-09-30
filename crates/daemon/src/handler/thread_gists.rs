@@ -17,7 +17,8 @@ use super::diagnostics_impl::emit_operation_event;
 use super::mail_kind::{self, SenderKind};
 use super::places::AccountKinds;
 use super::thread_gist::{
-    cached_gist, load_and_write_gist, thread_envelopes, GistCall, GistPolicy, GistSetup,
+    cached_gist, load_and_write_gist, newest_message_id, thread_envelopes, GistCall, GistPolicy,
+    GistSetup,
 };
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -40,6 +41,17 @@ const PENDING_CAP: usize = 64;
 const FAILED_BACKOFF: Duration = Duration::from_secs(10 * 60);
 /// Upper bound on `llm.gist_concurrency`.
 const MAX_WRITERS: usize = 8;
+/// Most failures remembered for the backoff; the oldest go first.
+const FAILED_CAP: usize = 1024;
+
+/// What happened to one conversation a request asked to queue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Enqueued {
+    Queued,
+    InFlight,
+    /// Past the cap: older requests are ahead of it.
+    Dropped,
+}
 
 /// Conversations waiting for a list gist, and the writers draining them.
 #[derive(Default)]
@@ -60,9 +72,10 @@ struct QueueState {
 
 impl GistQueue {
     /// Put `ids` at the front of the queue, first id first, skipping any
-    /// already being written; drop the oldest requests past the cap.
-    /// Returns how many writers to start so that up to `writers` run.
-    fn enqueue(&self, ids: &[ThreadId], writers: usize) -> usize {
+    /// already being written; drop the oldest requests past the cap. Says
+    /// what happened to each id, and how many writers to start so that up
+    /// to `writers` run.
+    fn enqueue(&self, ids: &[ThreadId], writers: usize) -> (Vec<Enqueued>, usize) {
         let mut state = self.inner.lock();
         let fresh: Vec<ThreadId> = ids
             .iter()
@@ -74,11 +87,34 @@ impl GistQueue {
             state.pending.push_front(id);
         }
         state.pending.truncate(PENDING_CAP);
+        let outcomes = ids
+            .iter()
+            .map(|id| {
+                if state.in_flight.contains(id) {
+                    Enqueued::InFlight
+                } else if state.pending.contains(id) {
+                    Enqueued::Queued
+                } else {
+                    Enqueued::Dropped
+                }
+            })
+            .collect();
         let start = writers
             .saturating_sub(state.writers)
             .min(state.pending.len());
         state.writers += start;
-        start
+        (outcomes, start)
+    }
+
+    /// Put a conversation back at the front for the writer that just took
+    /// it: its result went stale while the model was writing.
+    fn requeue(&self, id: ThreadId) {
+        let mut state = self.inner.lock();
+        state.in_flight.remove(&id);
+        if !state.pending.contains(&id) {
+            state.pending.push_front(id);
+            state.pending.truncate(PENDING_CAP);
+        }
     }
 
     /// The next conversation to write, now marked in flight. `None` retires
@@ -100,16 +136,33 @@ impl GistQueue {
     /// A writer is done with `id`; `failed_at` is the content hash the
     /// model failed on, if it did.
     fn finish(&self, id: &ThreadId, failed_at: Option<String>) {
+        self.finish_at(id, failed_at, Instant::now());
+    }
+
+    fn finish_at(&self, id: &ThreadId, failed_at: Option<String>, now: Instant) {
         let mut state = self.inner.lock();
         state.in_flight.remove(id);
-        match failed_at {
-            Some(hash) => {
-                state.failed.insert(id.clone(), (hash, Instant::now()));
-            }
-            None => {
-                state.failed.remove(id);
-            }
+        let Some(hash) = failed_at else {
+            state.failed.remove(id);
+            return;
+        };
+        // Bounded: expired entries go on every insert, then the oldest
+        // while the map is full.
+        state
+            .failed
+            .retain(|_, (_, at)| now.saturating_duration_since(*at) < FAILED_BACKOFF);
+        while state.failed.len() >= FAILED_CAP && !state.failed.contains_key(id) {
+            let Some(oldest) = state
+                .failed
+                .iter()
+                .min_by_key(|(_, (_, at))| *at)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            state.failed.remove(&oldest);
         }
+        state.failed.insert(id.clone(), (hash, now));
     }
 
     /// Nothing more can be written (no model, privacy block, shutdown).
@@ -132,6 +185,11 @@ impl GistQueue {
             .failed
             .get(id)
             .is_some_and(|(hash, _)| hash == content_hash)
+    }
+
+    #[cfg(test)]
+    fn failed_len(&self) -> usize {
+        self.inner.lock().failed.len()
     }
 
     #[cfg(test)]
@@ -168,6 +226,7 @@ pub(super) async fn get_thread_gists(
         model,
         gists: Vec::new(),
         queued: Vec::new(),
+        in_flight: Vec::new(),
         skipped: Vec::new(),
     };
     // No model: nothing is cached for it and nothing can be written.
@@ -212,9 +271,10 @@ pub(super) async fn get_thread_gists(
 
     if !missing.is_empty() {
         let people = people_threads(state, &missing).await?;
+        let mut wanted = Vec::new();
         for candidate in missing {
             match people.get(&candidate.thread_id) {
-                Some(true) => batch.queued.push(candidate.thread_id),
+                Some(true) => wanted.push(candidate.thread_id),
                 Some(false) => batch.skipped.push(skip(
                     &candidate.thread_id,
                     ThreadGistSkipReasonData::NotPeople,
@@ -230,7 +290,16 @@ pub(super) async fn get_thread_gists(
             .llm
             .gist_concurrency
             .clamp(1, MAX_WRITERS);
-        let start = state.gist_queue.enqueue(&batch.queued, writers);
+        let (outcomes, start) = state.gist_queue.enqueue(&wanted, writers);
+        for (thread_id, outcome) in wanted.into_iter().zip(outcomes) {
+            match outcome {
+                Enqueued::Queued => batch.queued.push(thread_id),
+                Enqueued::InFlight => batch.in_flight.push(thread_id),
+                Enqueued::Dropped => batch
+                    .skipped
+                    .push(skip(&thread_id, ThreadGistSkipReasonData::QueueFull)),
+            }
+        }
         for _ in 0..start {
             let state = state.clone();
             tokio::spawn(async move { run_writer(state).await });
@@ -320,8 +389,18 @@ async fn run_writer(state: Arc<AppState>) {
                 );
                 match gist.status {
                     ThreadGistStatusData::Ready => {
-                        state.gist_queue.finish(&thread_id, None);
-                        announce(&state, gist);
+                        // Announce only a gist for the conversation as it
+                        // is now: a message that landed during the call
+                        // makes it stale, and the conversation goes back
+                        // to the front for another go.
+                        let now = newest_message_id(&state, &thread_id).await.ok().flatten();
+                        if now.is_some() && now == gist.newest_message_id {
+                            state.gist_queue.finish(&thread_id, None);
+                            announce(&state, gist);
+                        } else {
+                            tracing::info!(%thread_id, "list gist went stale; queued again");
+                            state.gist_queue.requeue(thread_id.clone());
+                        }
                     }
                     ThreadGistStatusData::Failed => {
                         state.gist_queue.finish(&thread_id, Some(content_hash));
@@ -353,4 +432,51 @@ async fn write_one(
 
 fn announce(state: &AppState, gist: ThreadGistData) {
     emit_operation_event(state, DaemonEvent::ThreadGistReady { gist });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_backoff_map_is_bounded_and_forgets_expired_failures() {
+        let queue = GistQueue::default();
+        let start = Instant::now();
+        let ids: Vec<ThreadId> = (0..FAILED_CAP + 6).map(|_| ThreadId::new()).collect();
+        for (offset, id) in ids.iter().enumerate() {
+            let at = start + Duration::from_millis(offset as u64);
+            queue.finish_at(id, Some("hash".into()), at);
+        }
+        assert_eq!(queue.failed_len(), FAILED_CAP);
+        assert!(
+            !queue.recently_failed(&ids[0], "hash"),
+            "the oldest went first"
+        );
+        assert!(queue.recently_failed(ids.last().unwrap(), "hash"));
+
+        // Past the backoff, one insert clears everything that expired.
+        let later = start + FAILED_BACKOFF + Duration::from_secs(5);
+        queue.finish_at(&ThreadId::new(), Some("hash".into()), later);
+        assert_eq!(queue.failed_len(), 1);
+    }
+
+    #[test]
+    fn enqueue_says_what_happened_to_each_conversation() {
+        let queue = GistQueue::default();
+        let ids: Vec<ThreadId> = (0..PENDING_CAP + 2).map(|_| ThreadId::new()).collect();
+        let (outcomes, start) = queue.enqueue(&ids, 1);
+        assert_eq!(start, 1);
+        assert_eq!(
+            outcomes[..PENDING_CAP],
+            vec![Enqueued::Queued; PENDING_CAP][..]
+        );
+        assert_eq!(
+            outcomes[PENDING_CAP..],
+            [Enqueued::Dropped, Enqueued::Dropped]
+        );
+        let taken = queue.next().unwrap();
+        assert_eq!(taken, ids[0]);
+        let (again, start) = queue.enqueue(std::slice::from_ref(&taken), 1);
+        assert_eq!((again, start), (vec![Enqueued::InFlight], 0));
+    }
 }

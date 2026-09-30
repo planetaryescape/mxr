@@ -92,6 +92,10 @@ pub struct ThreadGistData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generated_at: Option<chrono::DateTime<chrono::Utc>>,
     pub from_cache: bool,
+    /// The conversation's newest message when the gist was written. A client
+    /// that has seen a newer message in the conversation ignores the gist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub newest_message_id: Option<MessageId>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -122,10 +126,14 @@ pub struct ThreadGistBatchData {
     /// Cached gists that match each conversation's newest message, in
     /// request order. Only `ready` gists are listed.
     pub gists: Vec<ThreadGistData>,
-    /// Conversations queued for a gist (or already being written). Each
-    /// one's gist arrives as a `ThreadGistReady` event.
+    /// Conversations waiting in the queue after this request. Each one's
+    /// gist arrives as a `ThreadGistReady` event.
     #[serde(default)]
     pub queued: Vec<ThreadId>,
+    /// Conversations a writer is on right now; their gists arrive as events
+    /// too.
+    #[serde(default)]
+    pub in_flight: Vec<ThreadId>,
     /// Conversations that have no gist and won't get one from this request.
     #[serde(default)]
     pub skipped: Vec<ThreadGistSkipData>,
@@ -162,6 +170,9 @@ pub enum ThreadGistSkipReasonData {
     RecentlyFailed,
     /// Only asked for cached gists (`generate: false`).
     NotGenerated,
+    /// The queue was full: older requests are ahead of it. Asking again
+    /// once the rows are still on screen queues it.
+    QueueFull,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -7190,13 +7190,18 @@ export interface components {
              */
             gists: components["schemas"]["ThreadGistData"][];
             /**
+             * @description Conversations a writer is on right now; their gists arrive as events
+             *     too.
+             */
+            in_flight?: components["schemas"]["ThreadId"][];
+            /**
              * @description Whether gists can be written at all. Anything but `available` means
              *     lists show their rows as they are, with nothing to wait for.
              */
             model: components["schemas"]["GistModelData"];
             /**
-             * @description Conversations queued for a gist (or already being written). Each
-             *     one's gist arrives as a `ThreadGistReady` event.
+             * @description Conversations waiting in the queue after this request. Each one's
+             *     gist arrives as a `ThreadGistReady` event.
              */
             queued?: components["schemas"]["ThreadId"][];
             /** @description Conversations that have no gist and won't get one from this request. */
@@ -7210,6 +7215,7 @@ export interface components {
             generated_at?: string | null;
             /** @description One plain-text sentence, at most 240 characters. */
             gist?: string | null;
+            newest_message_id?: null | components["schemas"]["MessageId"];
             provenance?: null | components["schemas"]["AiProvenanceData"];
             /** @description Why there is no gist, for `disabled`, `blocked` and `failed`. */
             reason?: string | null;
@@ -7221,7 +7227,7 @@ export interface components {
             thread_id: components["schemas"]["ThreadId"];
         };
         /** @enum {string} */
-        ThreadGistSkipReasonData: "not_people" | "not_found" | "recently_failed" | "not_generated";
+        ThreadGistSkipReasonData: "not_people" | "not_found" | "recently_failed" | "not_generated" | "queue_full";
         /** @enum {string} */
         ThreadGistStatusData: "ready" | "disabled" | "blocked" | "failed";
         /** @description Body of `POST /api/v1/mail/gists`. */

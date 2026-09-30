@@ -124,8 +124,12 @@ describe("row gists", () => {
   });
 
   test("an answer from before an invalidation can't put a line back", async () => {
-    let answerNow: (value: unknown) => void = () => {};
-    apiFetch.mockReturnValueOnce(new Promise((resolve) => (answerNow = resolve)));
+    const held: { resolve?: (value: unknown) => void } = {};
+    apiFetch.mockReturnValueOnce(
+      new Promise((resolve) => {
+        held.resolve = resolve;
+      }),
+    );
     const pending = requestRowGists(["a"], 1_000);
     // A new message lands in the conversation while the request is out.
     emit({
@@ -133,7 +137,7 @@ describe("row gists", () => {
       envelopes: [{ thread_id: "a" }],
       total: 1,
     } as unknown as DaemonEvent);
-    answerNow(answer([gist("a")]));
+    held.resolve?.(answer([gist("a")]));
     await pending;
     expect(getRowGist("a")).toBeUndefined();
     // The row asks again at once, and this answer is kept.
@@ -161,9 +165,16 @@ describe("row gists", () => {
     resetRowGistsForTest();
     apiFetch.mockResolvedValue(answer([], "available"));
     const ids = Array.from({ length: STATE_CAP + 100 }, (_, index) => `r${index}`);
-    for (let start = 0; start < ids.length; start += 100) {
-      await requestRowGists(ids.slice(start, start + 100), 1_000);
-    }
+    // Sequential on purpose: the cap evicts the oldest asked-about rows, so
+    // the batches must land in order.
+    await ids
+      .reduce<Promise<void>>(
+        (chain, _id, index) =>
+          index % 100 === 0
+            ? chain.then(() => requestRowGists(ids.slice(index, index + 100), 1_000))
+            : chain,
+        Promise.resolve(),
+      );
     apiFetch.mockClear();
     // The oldest asked-about rows were forgotten, so they are asked again.
     await requestRowGists(["r0", `r${STATE_CAP + 99}`], 2_000);

@@ -513,6 +513,8 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("gl", "go_label"),
     ("gc", "edit_config"),
     ("gL", "open_logs"),
+    // Draft assist, draft for sender, commitments and voice profile are
+    // palette only: their old gA/gD/gC/gV rows here never dispatched.
     ("gA", "open_analytics"),
     ("gE", "open_stored_drafts"),
     ("gq", "open_reply_queue"),

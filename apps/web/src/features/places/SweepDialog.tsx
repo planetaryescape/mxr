@@ -14,7 +14,7 @@ import {
 import { plural } from "@/lib/format";
 
 import { previewSweep, type SweepScope } from "./api";
-import { bundleSender, sweepNote, sweepTitle } from "./placeCopy";
+import { bundleSender, sweepConfirmLabel, sweepNote, sweepTitle } from "./placeCopy";
 import { runSweep } from "./sweep";
 
 /**
@@ -40,6 +40,9 @@ export function SweepDialog({
   });
   const data = preview.data?.preview;
   const senders = data?.senders ?? [];
+  // `A` sits next to `S`: a slip to the whole place followed by Enter must
+  // not archive it, so that sweep opens on Cancel and takes Tab, Enter.
+  const wholePlace = !scope.senderEmail;
   return (
     <AlertDialog open onOpenChange={(open) => !open && onClose()}>
       <AlertDialogContent data-testid="sweep-dialog">
@@ -99,16 +102,18 @@ export function SweepDialog({
           </div>
         ) : null}
         <AlertDialogFooter>
-          <AlertDialogCancel>{data?.count === 0 ? "Close" : "Cancel"}</AlertDialogCancel>
+          <AlertDialogCancel autoFocus={wholePlace}>
+            {data?.count === 0 ? "Close" : "Cancel"}
+          </AlertDialogCancel>
           {data && data.count > 0 ? (
             <AlertDialogAction
-              autoFocus
+              autoFocus={!wholePlace}
               onClick={() => {
                 onClose();
                 void runSweep(scope, data, senderLabel);
               }}
             >
-              Archive {plural(data.count, "message")}
+              {sweepConfirmLabel(data, wholePlace)}
             </AlertDialogAction>
           ) : null}
         </AlertDialogFooter>

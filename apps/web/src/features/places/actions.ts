@@ -50,7 +50,7 @@ export const placeActions: Action[] = [
   placeAction("place.sweep-all", "sweepAll", "Sweep the whole place…", "A", {
     shortLabel: "Sweep all",
     icon: Archive,
-    tuiNote: "Everything unpinned here; previews first",
+    tuiNote: "Everything unpinned here; previews first and opens on Cancel (Tab, then Enter)",
   }),
   placeAction("place.move-sender", "moveSender", "Move sender to…", "K", {
     icon: Shuffle,

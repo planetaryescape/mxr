@@ -77,6 +77,10 @@ Pins are local to this machine and are not provider stars.
 
 1. `S` sweeps the bundle under the cursor; `A` (or **Sweep all**) sweeps the
    whole place. The keys are the same in the web app and the TUI.
+   One sender's sweep confirms with `Enter`. The whole place opens on
+   **Cancel** and its button says how much it takes ("Archive all 143 from
+   35 senders"): press `Tab`, then `Enter`, so a slip from `S` to `A`
+   archives nothing.
 2. The preview comes from the daemon's dry run of the same request: how many
    messages, from which senders, a few subjects, and how many pinned messages
    stay. When the sweep reaches past what is on screen, it says so ("Archives
@@ -163,6 +167,6 @@ no unread counts.
 | `p` | Pin or unpin the message under the cursor |
 | `K` | Move the sender: `p` people, `r` Reading, `t` Paper trail, `x` screened out, `a` automatic |
 | `S` | Preview sweeping this sender's bundle, then `Enter` to archive |
-| `A` | Preview sweeping the whole place (also in the command palette) |
+| `A` | Preview sweeping the whole place (also in the command palette); it opens on Cancel, so press `Tab`, then `Enter` |
 | `e`, `s`, `#` | Archive, star or trash the message under the cursor |
 | `u` | Undo the last sweep, every chunk of it |

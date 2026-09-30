@@ -462,6 +462,10 @@ pub struct PendingSweepConfirm {
     /// How many of the previewed messages the lens has loaded: a sweep can
     /// reach mail not yet shown, and the preview says so.
     pub shown: u32,
+    /// Enter sweeps only when Sweep has focus. One sender's bundle opens
+    /// on Sweep; the whole place opens on Cancel, so a slip from `S` to
+    /// `A` followed by Enter archives nothing.
+    pub sweep_focused: bool,
 }
 
 /// The "move sender to…" menu for the sender under the cursor.

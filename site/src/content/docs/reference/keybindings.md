@@ -135,6 +135,11 @@ help modal (`?`).
 | `g 1`–`g 9` | Jump to saved-search 1–9 |
 | `g 0` | Return to default inbox (clear saved-search filter) |
 
+Draft assist, a new draft for this sender, commitments and the voice
+profile are in the command palette only (`Ctrl-p`). Help once listed
+`gA`, `gD`, `gC` and `gV` for them, but those chords never ran them;
+`gA` opens Analytics.
+
 ## Message view
 
 | Key | Action |
@@ -218,7 +223,7 @@ cursor.
 | `p` | Pin or unpin the message |
 | `K` | Move the sender to another place |
 | `S` | Sweep this sender's bundle (previews first) |
-| `A` | Sweep the whole place (previews first) |
+| `A` | Sweep the whole place (previews first, opens on Cancel: `Tab`, then `Enter`) |
 | `>` / `+` | More senders / more from this sender |
 
 ## Calendar invites lens
@@ -583,7 +588,7 @@ Bundles of mail that isn't from people. The reader keeps its own keys.
 | `Enter`, `o` | Open, or expand a bundle |  |
 | `p` | Pin or unpin (a sweep leaves pins) |  |
 | `S` | Sweep this sender's bundle… | Previews the daemon's dry run first; undo afterwards |
-| `A` | Sweep the whole place… | Everything unpinned here; previews first |
+| `A` | Sweep the whole place… | Everything unpinned here; previews first and opens on Cancel (Tab, then Enter) |
 | `K` | Move sender to… | In the reader K is the previous message; use the palette or the line under the thread |
 | `D` | Unsubscribe… |  |
 

@@ -1623,6 +1623,7 @@ pub async fn run() -> anyhow::Result<()> {
                         target,
                         preview,
                         shown: 0,
+                        sweep_focused: false,
                     }),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Ok(_) => Err(MxrError::Ipc("unexpected response to SweepPlace".into())),

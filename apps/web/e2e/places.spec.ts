@@ -183,7 +183,7 @@ test("Paper trail: pin one, sweep the bundle without it, undo puts the rest back
   }
 });
 
-test("A previews a sweep of the whole place from the daemon's dry run", async ({ page }) => {
+test("A previews the whole place, and Enter alone never sweeps it", async ({ page }) => {
   const preview = await bridge<{ preview: { count: number } }>(
     page,
     "/api/v1/mail/places/paper-trail/sweep",
@@ -195,7 +195,12 @@ test("A previews a sweep of the whole place from the daemon's dry run", async ({
   const dialog = page.getByTestId("sweep-dialog");
   await expect(dialog).toContainText(`Archive ${preview.preview.count} message`);
   await expect(dialog.getByRole("list", { name: "Senders" })).toBeVisible();
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  // A slip from S to A, then Enter, archives nothing: the whole place
+  // opens on Cancel, and its confirm names the scope.
+  const confirm = dialog.getByRole("button", { name: /^Archive all \d[\d,]* from \d+ senders?$/ });
+  await expect(confirm).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await page.keyboard.press("Enter");
   await expect(dialog).toHaveCount(0);
 
   // The real sweep needs a live preview token: a made-up one archives nothing.
@@ -214,6 +219,30 @@ test("A previews a sweep of the whole place from the daemon's dry run", async ({
     { dry_run: true },
   );
   expect(after.preview.count).toBe(preview.preview.count);
+});
+
+test("A, Tab, Enter sweeps the whole place, and u puts it back", async ({ page }) => {
+  const count = async () =>
+    (
+      await bridge<{ preview: { count: number } }>(page, "/api/v1/mail/places/paper-trail/sweep", {
+        dry_run: true,
+      })
+    ).preview.count;
+  const before = await count();
+  expect(before).toBeGreaterThan(0);
+  await openApp(page, "/paper-trail");
+  await expect(page.getByTestId("place-bundle").first()).toBeVisible();
+  await page.keyboard.press("A");
+  const dialog = page.getByTestId("sweep-dialog");
+  const confirm = dialog.getByRole("button", { name: /^Archive all / });
+  await expect(confirm).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(confirm).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("[data-sonner-toast]").first()).toContainText("Archived");
+  await expect.poll(count, { timeout: 20_000 }).toBe(0);
+  await page.keyboard.press("u");
+  await expect.poll(count, { timeout: 30_000 }).toBe(before);
 });
 
 test("the desk's everything-else links open the places with week counts", async ({ page }) => {

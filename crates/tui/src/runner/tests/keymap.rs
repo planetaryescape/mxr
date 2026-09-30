@@ -13,33 +13,132 @@ use std::collections::BTreeMap;
 /// Mail contexts shared with the web app's shortcut scopes.
 const CONTEXTS: &[&str] = &["list", "reader", "sidebar", "place", "screener"];
 
-/// Keys a pane handles in place (scrolling, moving focus) without
-/// returning an action, so probing cannot see them. Declared here so the
-/// inventory is complete; `inline_keys_really_are_inline` checks each one
-/// is swallowed rather than unbound.
-const INLINE: &[(&str, &str, &str)] = &[
-    ("reader", "j", "scroll_down"),
-    ("reader", "ArrowDown", "scroll_down"),
-    ("reader", "k", "scroll_up"),
-    ("reader", "ArrowUp", "scroll_up"),
-    ("reader", "J", "next_message"),
-    ("reader", "K", "prev_message"),
-    ("reader", "Ctrl+d", "page_down"),
-    ("reader", "Ctrl+u", "page_up"),
-    ("reader", "G", "jump_bottom"),
-    ("reader", "h", "focus_list"),
-    ("reader", "ArrowLeft", "focus_list"),
-    ("list", "h", "focus_sidebar"),
-    ("list", "ArrowLeft", "focus_sidebar"),
-    ("place", "h", "focus_sidebar"),
-    ("place", "ArrowLeft", "focus_sidebar"),
-    ("sidebar", "j", "next_item"),
-    ("sidebar", "ArrowDown", "next_item"),
-    ("sidebar", "k", "prev_item"),
-    ("sidebar", "ArrowUp", "prev_item"),
-    ("sidebar", "[", "collapse_section"),
-    ("sidebar", "]", "expand_section"),
+/// A key a pane handles in place (scrolling, moving focus) without
+/// returning an action, so the dispatcher probe cannot see it.
+struct InlineKey {
+    context: &'static str,
+    key: &'static str,
+    name: &'static str,
+    /// State the key needs to have a visible effect (a thread to move
+    /// through, a scrolled body to scroll back).
+    setup: fn(&mut App),
+    /// The state the key changes.
+    observe: fn(&App) -> String,
+}
+
+fn no_setup(_: &mut App) {}
+
+fn scrolled(app: &mut App) {
+    app.mailbox.message_scroll_offset = 40;
+}
+
+fn two_message_thread(app: &mut App) {
+    app.mailbox.viewed_thread_messages = make_test_envelopes(2);
+}
+
+fn on_second_message(app: &mut App) {
+    two_message_thread(app);
+    app.mailbox.thread_selected_index = 1;
+}
+
+fn on_second_item(app: &mut App) {
+    app.mailbox.sidebar_selected = 1;
+}
+
+fn labels_collapsed(app: &mut App) {
+    app.mailbox.sidebar_system_expanded = false;
+}
+
+fn scroll(app: &App) -> String {
+    app.mailbox.message_scroll_offset.to_string()
+}
+
+fn thread_focus(app: &App) -> String {
+    app.mailbox.thread_selected_index.to_string()
+}
+
+fn pane(app: &App) -> String {
+    format!("{:?}", app.mailbox.active_pane)
+}
+
+fn sidebar_cursor(app: &App) -> String {
+    app.mailbox.sidebar_selected.to_string()
+}
+
+fn sections(app: &App) -> String {
+    format!(
+        "{} {} {}",
+        app.mailbox.sidebar_system_expanded,
+        app.mailbox.sidebar_user_expanded,
+        app.mailbox.sidebar_saved_searches_expanded
+    )
+}
+
+/// Every inline key, each probed through the state it changes
+/// (`inline_keys_change_what_they_say`), so removing a handler fails.
+const INLINE: &[InlineKey] = &[
+    inline("reader", "j", "scroll_down", no_setup, scroll),
+    inline("reader", "ArrowDown", "scroll_down", no_setup, scroll),
+    inline("reader", "k", "scroll_up", scrolled, scroll),
+    inline("reader", "ArrowUp", "scroll_up", scrolled, scroll),
+    inline(
+        "reader",
+        "J",
+        "next_message",
+        two_message_thread,
+        thread_focus,
+    ),
+    inline(
+        "reader",
+        "K",
+        "prev_message",
+        on_second_message,
+        thread_focus,
+    ),
+    inline("reader", "Ctrl+d", "page_down", no_setup, scroll),
+    inline("reader", "Ctrl+u", "page_up", scrolled, scroll),
+    inline("reader", "G", "jump_bottom", no_setup, scroll),
+    inline("reader", "h", "focus_list", no_setup, pane),
+    inline("reader", "ArrowLeft", "focus_list", no_setup, pane),
+    inline("list", "h", "focus_sidebar", no_setup, pane),
+    inline("list", "ArrowLeft", "focus_sidebar", no_setup, pane),
+    inline("place", "h", "focus_sidebar", no_setup, pane),
+    inline("place", "ArrowLeft", "focus_sidebar", no_setup, pane),
+    inline("sidebar", "j", "next_item", no_setup, sidebar_cursor),
+    inline(
+        "sidebar",
+        "ArrowDown",
+        "next_item",
+        no_setup,
+        sidebar_cursor,
+    ),
+    inline("sidebar", "k", "prev_item", on_second_item, sidebar_cursor),
+    inline(
+        "sidebar",
+        "ArrowUp",
+        "prev_item",
+        on_second_item,
+        sidebar_cursor,
+    ),
+    inline("sidebar", "[", "collapse_section", no_setup, sections),
+    inline("sidebar", "]", "expand_section", labels_collapsed, sections),
 ];
+
+const fn inline(
+    context: &'static str,
+    key: &'static str,
+    name: &'static str,
+    setup: fn(&mut App),
+    observe: fn(&App) -> String,
+) -> InlineKey {
+    InlineKey {
+        context,
+        key,
+        name,
+        setup,
+        observe,
+    }
+}
 
 fn app_in(context: &str) -> App {
     let mut app = App::new();
@@ -182,10 +281,8 @@ fn inventory() -> BTreeMap<String, BTreeMap<String, String>> {
         .iter()
         .map(|context| {
             let mut map = dispatched(context);
-            for (inline_context, key, name) in INLINE {
-                if inline_context == context {
-                    map.insert((*key).to_string(), format!("inline:{name}"));
-                }
+            for inline in INLINE.iter().filter(|inline| inline.context == *context) {
+                map.insert(inline.key.to_string(), format!("inline:{}", inline.name));
             }
             ((*context).to_string(), map)
         })
@@ -228,12 +325,24 @@ fn events_for(name: &str) -> Vec<KeyEvent> {
 }
 
 #[test]
-fn inline_keys_really_are_inline() {
-    for (context, key, name) in INLINE {
+fn inline_keys_change_what_they_say() {
+    for inline in INLINE {
+        let mut app = app_in(inline.context);
+        (inline.setup)(&mut app);
+        let before = (inline.observe)(&app);
+        let mut action = None;
+        for key in events_for(inline.key) {
+            action = app.handle_key(key);
+        }
+        let (context, key, name) = (inline.context, inline.key, inline.name);
         assert_eq!(
-            press(context, &events_for(key)),
-            Ok(None),
-            "{key} in {context} is declared inline ({name}) but returns an action or waits"
+            action, None,
+            "{key} in {context} ({name}) returns an action"
+        );
+        assert_ne!(
+            (inline.observe)(&app),
+            before,
+            "{key} in {context} is declared as {name} but changes nothing"
         );
     }
 }
@@ -262,10 +371,10 @@ fn shown_bindings_do_what_help_says() {
                 continue;
             }
             let shown = crate::keybindings::format_keybinding(binding);
-            let inline = INLINE.iter().any(|(inline_context, key, inline_name)| {
-                *inline_context == context
-                    && *inline_name == name
-                    && sequence_of(binding) == events_for(key)
+            let inline = INLINE.iter().any(|inline| {
+                inline.context == context
+                    && inline.name == name
+                    && sequence_of(binding) == events_for(inline.key)
             });
             if inline {
                 continue;

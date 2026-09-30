@@ -190,3 +190,86 @@ test("an event stream that keeps failing backs off and pauses nothing that doesn
   await page.keyboard.press("u");
   await expect(page.getByText(/^Undone$/)).toBeVisible();
 });
+
+async function startNewMessage(page: Page, subject: string): Promise<void> {
+  await openApp(page, "/m/inbox");
+  await expect(mailRows(page).first()).toBeVisible();
+  await page.keyboard.press("c");
+  const composer = page.getByRole("dialog", { name: "New message" });
+  await composer.getByRole("combobox", { name: "To" }).fill("alice@example.com");
+  await composer.getByRole("textbox", { name: "Subject" }).fill(subject);
+  await composer.locator(".cm-content").click();
+  await page.keyboard.press("i");
+  await page.keyboard.type("Only if I press Send again.");
+  await page.keyboard.press("Escape");
+  await expect(composer.getByText(/^Saved/)).toBeVisible({ timeout: 10_000 });
+}
+
+function countSends(page: Page): () => number {
+  let sends = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/mail/compose/session/send")) sends += 1;
+  });
+  return () => sends;
+}
+
+test("confirming the send dialog while the daemon is stopped sends nothing, then or after it returns", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const sends = countSends(page);
+  await startNewMessage(page, `e2e-down-confirm-${Date.now().toString(36)}`);
+  // A failed safety check opens the confirm dialog instead of sending.
+  await page.route("**/api/v1/mail/compose/session/safety-check", (route) =>
+    route.fulfill({ status: 500, json: { error: "checker unavailable", code: "internal" } }),
+  );
+  const composer = page.getByRole("dialog", { name: "New message" });
+  await composer.getByRole("button", { name: /^Send (⌘|Ctrl)/ }).click();
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm.getByText(/Safety check unavailable/)).toBeVisible();
+
+  await stopDaemon();
+  let restarted = false;
+  try {
+    await expect(daemonBanner(page)).toBeVisible({ timeout: 10_000 });
+    await confirm.getByRole("button", { name: /^Send$/ }).click();
+    await expect(page.getByText("Can't send while mxr's daemon is stopped")).toBeVisible();
+    await expect(page.getByText(/^Sending in \d+s/)).toHaveCount(0);
+    await restartDaemon();
+    restarted = true;
+  } finally {
+    if (!restarted) await restartDaemon();
+  }
+  await expect(daemonBanner(page)).toBeHidden({ timeout: RECOVERY_MS });
+  // Past where a 10 s undo window would have fired.
+  await page.waitForTimeout(12_000);
+  expect(sends()).toBe(0);
+});
+
+test("a send whose undo window closes while the daemon is stopped is cancelled, not replayed", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const sends = countSends(page);
+  await startNewMessage(page, `e2e-down-window-${Date.now().toString(36)}`);
+  const composer = page.getByRole("dialog", { name: "New message" });
+  await composer.getByRole("button", { name: /^Send (⌘|Ctrl)/ }).click();
+  await expect(page.getByText(/^Sending in \d+s/)).toBeVisible();
+
+  await stopDaemon();
+  let restarted = false;
+  try {
+    await expect(daemonBanner(page)).toBeVisible({ timeout: 10_000 });
+    // The 10 s window closes while the daemon is still down.
+    await expect(page.getByText("Can't send while mxr's daemon is stopped")).toBeVisible({
+      timeout: 15_000,
+    });
+    await restartDaemon();
+    restarted = true;
+  } finally {
+    if (!restarted) await restartDaemon();
+  }
+  await expect(daemonBanner(page)).toBeHidden({ timeout: RECOVERY_MS });
+  await page.waitForTimeout(3_000);
+  expect(sends()).toBe(0);
+});

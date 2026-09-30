@@ -317,6 +317,8 @@ export function useComposeSend({
         ? (safetyReport?.issues.find((issue) => issue.override_token)?.override_token ?? undefined)
         : undefined;
     if (blocked && !overrideToken) return;
+    // The dialog can outlive the daemon: confirming it is a new send step.
+    if (refuseWhileDaemonDown("send", KEPT_WHILE_DOWN)) return;
     setSendConfirmOpen(false);
     setSafetyReport(null);
     setSafetyCheckError(null);
@@ -334,7 +336,7 @@ export function useComposeSend({
    * would silently drop the send. Cancellable via the toast or global z. */
   function dispatchSend(overrideToken?: string) {
     const current = draftRef.current;
-    if (!current) {
+    if (!current || refuseWhileDaemonDown("send", KEPT_WHILE_DOWN)) {
       releaseSendLock();
       return;
     }
@@ -440,6 +442,14 @@ export function useComposeSend({
       useUndo.getState().clearPendingSendCancel(cancel);
       // Hovering pauses a toast's own clock; the send doesn't wait for it.
       toast.dismiss(toastId);
+      // Down when the window closes: the send is cancelled, not held for
+      // later. Sending after the daemon returns needs a new press.
+      if (refuseWhileDaemonDown("send", KEPT_WHILE_DOWN)) {
+        setPendingSends((count) => Math.max(0, count - 1));
+        releaseSendLock();
+        emitSendEvent({ kind: "cancelled", ...sendEvent });
+        return;
+      }
       fire();
     }, windowSeconds * 1000);
     pendingCancelsRef.current.add(cancelThis);

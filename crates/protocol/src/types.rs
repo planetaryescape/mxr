@@ -3,11 +3,13 @@ use mxr_core::types::*;
 use serde::{Deserialize, Serialize};
 
 mod desk;
+mod draft_provenance;
 mod places;
 mod platform;
 mod promises;
 mod thread_context;
 pub use desk::*;
+pub use draft_provenance::*;
 pub use places::*;
 pub use platform::*;
 pub use promises::*;
@@ -2414,6 +2416,9 @@ pub enum ResponseData {
         text: String,
         report: HumanizerReportSummaryData,
         iterations: u8,
+        /// The model that rewrote the text, when one did.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rewrite: Option<DraftRewriteProvenanceData>,
     },
     ScreenerQueue {
         entries: Vec<ScreenerQueueEntryData>,
@@ -2452,6 +2457,10 @@ pub enum ResponseData {
         inferred_length: Option<DraftLengthHintData>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         context_note: Option<String>,
+        /// What the draft was written from, for the "which model, whose
+        /// history, which emails" line.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provenance: Option<DraftProvenanceData>,
     },
     DraftEval {
         cases: Vec<DraftEvalCaseData>,

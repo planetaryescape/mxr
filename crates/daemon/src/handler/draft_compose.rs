@@ -9,6 +9,7 @@
 //! `draft_output` cleans). Never auto-sends.
 
 use super::draft_prompt::{self, DraftMode, Me, PromptInput};
+use super::draft_provenance::DraftPolicy;
 use super::draft_voice::{self, Counterparty, VoiceMaterial};
 use super::{draft_context, draft_output, relationship_profile, HandlerResult};
 use crate::state::AppState;
@@ -16,7 +17,9 @@ use chrono::{DateTime, Utc};
 use draft_context::DraftContext;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{Address, Envelope};
-use mxr_llm::{guarded_system_prompt, ChatMessage, CompletionRequest, LlmError, LlmFeature};
+use mxr_llm::{
+    guarded_system_prompt, ChatMessage, CompletionRequest, LlmError, LlmFeature, PinnedLlm,
+};
 use mxr_protocol::{DraftLengthHintData, VoiceRegisterData};
 
 /// Longest instruction plus recipient label accepted. The instruction is
@@ -57,9 +60,7 @@ pub(super) async fn draft_compose(
         if envelopes.is_empty() {
             return Err(format!("Thread {thread_id} has no messages to reply to").into());
         }
-        let account = account_id
-            .cloned()
-            .unwrap_or_else(|| envelopes[0].account_id.clone());
+        let account = thread_account(account_id, &envelopes)?;
         let forward_to = to.filter(|address| !is_participant(&envelopes, &address.email));
         return draft_in_thread(state, &account, &request, envelopes, None, forward_to).await;
     }
@@ -69,9 +70,7 @@ pub(super) async fn draft_compose(
     if let Some(message_id) = source_message_id.as_ref() {
         let envelopes = draft_context::resolve_thread_envelopes(state, message_id).await;
         if !envelopes.is_empty() {
-            let account = account_id
-                .cloned()
-                .unwrap_or_else(|| envelopes[0].account_id.clone());
+            let account = thread_account(account_id, &envelopes)?;
             // A recipient outside the conversation means a forward.
             let forward_to = to.filter(|address| !is_participant(&envelopes, &address.email));
             return draft_in_thread(
@@ -106,6 +105,25 @@ pub(crate) struct DraftRequest<'a> {
     pub register: Option<VoiceRegisterData>,
     pub length_hint: Option<DraftLengthHintData>,
     pub before: Option<DateTime<Utc>>,
+}
+
+/// The account a reply drafts as: the conversation's own. A request naming
+/// a different account is refused, or the draft would take its voice and
+/// its cited sources from one account for another account's conversation.
+fn thread_account(
+    requested: Option<&AccountId>,
+    envelopes: &[Envelope],
+) -> Result<AccountId, crate::handler::HandlerError> {
+    let owner = &envelopes[0].account_id;
+    match requested {
+        Some(requested) if requested != owner => {
+            Err(crate::handler::HandlerError::InvalidRequest(format!(
+                "that conversation belongs to account {owner}, not {requested}; \
+                 draft from its own account"
+            )))
+        }
+        _ => Ok(owner.clone()),
+    }
 }
 
 fn is_participant(envelopes: &[Envelope], email: &str) -> bool {
@@ -223,10 +241,8 @@ async fn draft_with(
     )
     .await;
     // The user's other mail only reaches a cloud model with their opt-in.
-    let llm_config = state.config_snapshot().llm;
-    let share = crate::state::relationship_data_allowed(&llm_config, feature);
-    let share_with_rewrite =
-        share && crate::state::relationship_data_allowed(&llm_config, LlmFeature::HumanizeRewrite);
+    let policy = DraftPolicy::pin(state, feature);
+    let share = policy.share_history;
     let background = match contact_emails.first().filter(|_| share) {
         Some(email) => relationship_profile::load_relationship_profile(state, account_id, email)
             .await
@@ -266,29 +282,44 @@ async fn draft_with(
     });
     tracing::debug!(
         examples = prompt.examples_used,
-        turns = prompt.turns_used,
+        turns = prompt.turns_kept.len(),
         voice_samples = material.samples,
         target_words,
         "assembled draft prompt"
     );
-    let voice_context = if share_with_rewrite {
-        voice_context_for_rewrite(&material)
-    } else {
-        String::new()
-    };
-    let body = complete_with_retry(state, feature, &prompt, max_tokens).await?;
-    let body_text = draft_output::clean_draft(&body.0, me.name.as_deref());
+    // Only the examples that fit the prompt shaped the draft; the rewrite
+    // pass sees no others, so the sources stay the whole list.
+    let examples_used = &material.examples[..prompt.examples_used];
+    let voice_context = voice_context_for_rewrite(&material.habits, examples_used);
+    let (body, model) = complete_with_retry(&policy.llm, &prompt, max_tokens).await?;
+    let body_text = draft_output::clean_draft(&body, me.name.as_deref());
     let note = if share {
-        context_note(&context, &material, counterparty.as_ref())
+        context_note(&context, examples_used.len(), counterparty.as_ref())
     } else {
         Some(CLOUD_NOTE.to_string())
     };
+    let history_used =
+        !examples_used.is_empty() || !material.habits.is_empty() || prompt.background_used;
+    let provenance = policy.provenance(
+        &model,
+        history_used,
+        examples_used
+            .iter()
+            .map(|example| example.source.clone())
+            .collect(),
+        prompt
+            .turns_kept
+            .iter()
+            .map(|index| turns[*index].source.clone())
+            .collect(),
+    );
     draft_context::finish_draft_suggestion(
         state,
+        account_id,
         body_text,
-        body.1,
+        provenance,
         context.baseline,
-        Some(voice_context.as_str()),
+        &voice_context,
         context.inferred_register,
         context.inferred_length,
         note,
@@ -329,9 +360,9 @@ fn prompt_budget_chars(context_window: u32, max_tokens: u32) -> usize {
 
 /// The humanizer's rewrite pass must keep the voice, so it sees the same
 /// habits and examples.
-fn voice_context_for_rewrite(material: &VoiceMaterial) -> String {
-    let mut out = material.habits.join("\n");
-    for example in material.examples.iter().take(3) {
+fn voice_context_for_rewrite(habits: &[String], examples: &[draft_prompt::VoiceExample]) -> String {
+    let mut out = habits.join("\n");
+    for example in examples.iter().take(3) {
         out.push_str("\n\nExample of my writing:\n");
         out.push_str(&example.my_email);
     }
@@ -340,10 +371,9 @@ fn voice_context_for_rewrite(material: &VoiceMaterial) -> String {
 
 fn context_note(
     context: &DraftContext,
-    material: &VoiceMaterial,
+    examples: usize,
     counterparty: Option<&Counterparty>,
 ) -> Option<String> {
-    let examples = material.examples.len();
     match (counterparty, examples) {
         (Some(person), n) if n > 0 => Some(format!(
             "Written in your voice from {n} of your emails (to {} first)",
@@ -356,16 +386,13 @@ fn context_note(
 /// Complete, and when the model stops for length, try once more with more
 /// room: a cut-off email is worse than a slow one.
 async fn complete_with_retry(
-    state: &AppState,
-    feature: LlmFeature,
+    llm: &PinnedLlm,
     prompt: &draft_prompt::Prompt,
     max_tokens: u32,
 ) -> Result<(String, String), crate::handler::HandlerError> {
     let mut budget = max_tokens;
     for attempt in 0..2 {
-        let response = match state
-            .llm
-            .for_feature(feature)
+        let response = match llm
             .complete(CompletionRequest {
                 messages: vec![
                     // Mail-derived blocks in the user message are wrapped in
@@ -417,6 +444,17 @@ mod tests {
     #[derive(Default)]
     struct CapturingLlm {
         last_request: Mutex<Option<CompletionRequest>>,
+        /// `None` is an on-machine endpoint.
+        base_url: Option<&'static str>,
+    }
+
+    impl CapturingLlm {
+        fn at(base_url: &'static str) -> Self {
+            Self {
+                base_url: Some(base_url),
+                ..Self::default()
+            }
+        }
     }
 
     #[async_trait::async_trait]
@@ -440,6 +478,27 @@ mod tests {
         fn model_name(&self) -> &str {
             "test-llm"
         }
+
+        fn base_url(&self) -> Option<&str> {
+            self.base_url
+        }
+    }
+
+    fn provenance(response: &ResponseData) -> &mxr_protocol::DraftProvenanceData {
+        match response {
+            ResponseData::DraftSuggestion {
+                provenance: Some(provenance),
+                ..
+            } => provenance,
+            other => panic!("expected a DraftSuggestion with provenance, got {other:?}"),
+        }
+    }
+
+    fn ids(sources: &[mxr_protocol::DraftSourceData]) -> Vec<mxr_core::MessageId> {
+        sources
+            .iter()
+            .map(|source| source.message_id.clone())
+            .collect()
     }
 
     fn body(message_id: mxr_core::MessageId, text: &str) -> MessageBody {
@@ -676,6 +735,389 @@ mod tests {
         .unwrap();
         assert!(matches!(response, ResponseData::DraftSuggestion { .. }));
         assert!(captured_prompt(&llm).contains(inbound_text));
+    }
+
+    /// A provider for one feature: answers each call with the next
+    /// `(reply, answered_as)` (the last repeats), while its configured name
+    /// is "configured-name", and counts its calls.
+    struct ScriptedLlm {
+        replies: Vec<(&'static str, &'static str)>,
+        base_url: Option<&'static str>,
+        calls: Mutex<u32>,
+    }
+
+    impl ScriptedLlm {
+        fn new(
+            reply: &'static str,
+            answered_as: &'static str,
+            base_url: Option<&'static str>,
+        ) -> Self {
+            Self::sequence(vec![(reply, answered_as)], base_url)
+        }
+
+        fn sequence(
+            replies: Vec<(&'static str, &'static str)>,
+            base_url: Option<&'static str>,
+        ) -> Self {
+            Self {
+                replies,
+                base_url,
+                calls: Mutex::new(0),
+            }
+        }
+
+        fn calls(&self) -> u32 {
+            *self.calls.lock().expect("calls lock")
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl LlmProvider for ScriptedLlm {
+        async fn complete(&self, _req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+            let call = {
+                let mut calls = self.calls.lock().expect("calls lock");
+                *calls += 1;
+                *calls as usize - 1
+            };
+            let (reply, answered_as) = self.replies[call.min(self.replies.len() - 1)];
+            Ok(CompletionResponse {
+                content: reply.to_string(),
+                model: answered_as.to_string(),
+                finish_reason: Some("stop".to_string()),
+            })
+        }
+
+        fn capabilities(&self) -> LlmCapabilities {
+            LlmCapabilities {
+                context_window: 8192,
+                supports_streaming: false,
+            }
+        }
+
+        fn model_name(&self) -> &str {
+            "configured-name"
+        }
+
+        fn base_url(&self) -> Option<&str> {
+            self.base_url
+        }
+    }
+
+    /// Scores under the humanizer threshold, so a rewrite pass is due.
+    const MACHINE_MADE: &str = "Additionally, this serves as a testament, not just showcasing our \
+        commitment to innovation, but fostering a vibrant tapestry of ideas.";
+
+    /// Draft a reply from the user's history with a local drafting model and
+    /// `rewriter` serving only the humanizer's rewrite pass.
+    async fn draft_with_rewriter(rewriter: Arc<ScriptedLlm>) -> ResponseData {
+        draft_from_history(rewriter).await.2
+    }
+
+    /// As [`draft_with_rewriter`], keeping the state and account.
+    async fn draft_from_history(
+        rewriter: Arc<ScriptedLlm>,
+    ) -> (AppState, mxr_core::id::AccountId, ResponseData) {
+        let state = AppState::in_memory().await.unwrap();
+        let drafter = Arc::new(ScriptedLlm::new(MACHINE_MADE, "drafter-7b", None));
+        state.llm.replace(drafter);
+        let mut providers: std::collections::HashMap<LlmFeature, Arc<dyn LlmProvider>> =
+            std::collections::HashMap::new();
+        providers.insert(LlmFeature::HumanizeRewrite, rewriter);
+        state
+            .llm
+            .replace_feature_providers(providers, std::collections::HashMap::new());
+        let account_id = state.default_account_id();
+        seed_private_reply(&state, &account_id).await;
+        let (thread_id, _, _) = seed_inbound_thread(&state, &account_id).await;
+        let response = draft_compose(
+            &state,
+            Some(&account_id),
+            None,
+            "",
+            None,
+            Some(thread_id),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        (state, account_id, response)
+    }
+
+    // Credit: the kept rewrite is credited to the model that wrote it, and
+    // a later pass whose answer was dropped is named on its own.
+    #[tokio::test]
+    async fn a_kept_rewrite_is_credited_to_its_writer_and_a_later_dropped_pass_named() {
+        let rewriter = Arc::new(ScriptedLlm::sequence(
+            vec![
+                // Better than the draft (64 to 87), still under the bar.
+                (
+                    "Additionally, this serves as a testament to our work.",
+                    "first-pass",
+                ),
+                // No better: dropped.
+                (MACHINE_MADE, "second-pass"),
+            ],
+            None,
+        ));
+        let state = AppState::in_memory().await.unwrap();
+        let mut config = state.config_snapshot();
+        config.humanizer.score_threshold = 99;
+        config.humanizer.max_rewrite_iterations = 2;
+        state.set_config_for_test(config).await;
+        state
+            .llm
+            .replace(Arc::new(ScriptedLlm::new(MACHINE_MADE, "drafter-7b", None)));
+        let mut providers: std::collections::HashMap<LlmFeature, Arc<dyn LlmProvider>> =
+            std::collections::HashMap::new();
+        providers.insert(LlmFeature::HumanizeRewrite, rewriter.clone());
+        state
+            .llm
+            .replace_feature_providers(providers, std::collections::HashMap::new());
+        let account_id = state.default_account_id();
+        let (thread_id, _, _) = seed_inbound_thread(&state, &account_id).await;
+        let response = draft_compose(
+            &state,
+            Some(&account_id),
+            None,
+            "",
+            None,
+            Some(thread_id),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(rewriter.calls(), 2);
+        let rewrite = provenance(&response).rewrite.clone().expect("disclosed");
+        assert_eq!(
+            rewrite.outcome,
+            mxr_protocol::DraftRewriteOutcomeData::Applied
+        );
+        assert_eq!(rewrite.model, "first-pass");
+        assert_eq!(rewrite.rejected_by.as_deref(), Some("second-pass"));
+        assert!(provenance(&response).summary_line().ends_with(
+            "rewritten by local model first-pass, a later pass by second-pass not used"
+        ));
+    }
+
+    // Privacy: text an earlier draft wrote from history can't be refined by
+    // a cloud model without opt-in; a body the user wrote can.
+    #[tokio::test]
+    async fn a_cloud_refine_of_history_text_is_refused_and_of_my_own_text_allowed() {
+        let local_rewriter = Arc::new(ScriptedLlm::new(MACHINE_MADE, "rewriter", None));
+        let (state, account_id, response) = draft_from_history(local_rewriter).await;
+        assert!(provenance(&response).history_used);
+        let suggestion = match response {
+            ResponseData::DraftSuggestion { body, .. } => body,
+            other => panic!("{other:?}"),
+        };
+        let cloud = Arc::new(ScriptedLlm::new(
+            "Refined.",
+            "cloud-refiner",
+            Some("https://api.example-cloud.com/v1"),
+        ));
+        let mut providers: std::collections::HashMap<LlmFeature, Arc<dyn LlmProvider>> =
+            std::collections::HashMap::new();
+        providers.insert(LlmFeature::DraftRefine, cloud.clone());
+        state
+            .llm
+            .replace_feature_providers(providers, std::collections::HashMap::new());
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id: account_id.clone(),
+            from: None,
+            reply_headers: None,
+            intent: mxr_core::types::DraftIntent::Reply,
+            to: vec![Address {
+                name: None,
+                email: "customer@example.com".into(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "re".into(),
+            content: mxr_core::types::DraftContent::markdown("placeholder"),
+            inline_assets: Vec::new(),
+            attachments: vec![],
+            inline_calendar_reply: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        state.store.insert_draft(&draft).await.unwrap();
+        let knobs = mxr_protocol::DraftRefineKnobsData::default();
+
+        let edited = format!("Hi,\n\n{suggestion}\n\nThanks");
+        let error = crate::handler::draft_refine::draft_refine(
+            &state,
+            &draft.id,
+            knobs.clone(),
+            Some(&edited),
+        )
+        .await
+        .expect_err("history text never goes to the cloud refiner");
+        assert!(
+            matches!(&error, crate::handler::HandlerError::InvalidRequest(text)
+                if text == crate::handler::draft_refine::HISTORY_BODY_REFUSAL),
+            "{error:?}"
+        );
+        assert_eq!(cloud.calls(), 0);
+
+        // Nor through the standalone humanizer's cloud rewrite.
+        let mut providers: std::collections::HashMap<LlmFeature, Arc<dyn LlmProvider>> =
+            std::collections::HashMap::new();
+        providers.insert(LlmFeature::DraftRefine, cloud.clone());
+        providers.insert(LlmFeature::HumanizeRewrite, cloud.clone());
+        state
+            .llm
+            .replace_feature_providers(providers, std::collections::HashMap::new());
+        let error = crate::handler::humanizer::rewrite_text(&state, &edited, None)
+            .await
+            .expect_err("history text never goes to the cloud rewriter");
+        assert!(
+            matches!(&error, crate::handler::HandlerError::InvalidRequest(text)
+                if text == crate::handler::draft_refine::HISTORY_BODY_REFUSAL),
+            "{error:?}"
+        );
+        assert_eq!(cloud.calls(), 0);
+
+        let mine = "Can we move our call to Thursday afternoon instead?";
+        let response =
+            crate::handler::draft_refine::draft_refine(&state, &draft.id, knobs, Some(mine))
+                .await
+                .expect("the user's own words may go");
+        assert_eq!(cloud.calls(), 1);
+        let disclosed = provenance(&response);
+        assert_eq!(disclosed.locality, mxr_protocol::AiLocalityData::Cloud);
+        assert!(!disclosed.history_used);
+
+        // A local humanize of that history text is history text too: its
+        // output is remembered for the same account.
+        let rewritten = "Friday works for me and I will send the notes by noon.";
+        let mut providers: std::collections::HashMap<LlmFeature, Arc<dyn LlmProvider>> =
+            std::collections::HashMap::new();
+        providers.insert(
+            LlmFeature::HumanizeRewrite,
+            Arc::new(ScriptedLlm::new(rewritten, "local-rewriter", None)),
+        );
+        state
+            .llm
+            .replace_feature_providers(providers, std::collections::HashMap::new());
+        crate::handler::humanizer::rewrite_text(&state, &edited, None)
+            .await
+            .expect("a local model may rewrite it");
+        assert_eq!(
+            crate::history_text::source_accounts(&state.store, None, rewritten)
+                .await
+                .unwrap(),
+            vec![account_id]
+        );
+    }
+
+    // Privacy: a draft written from the user's history never goes to a cloud
+    // rewrite model they haven't opted in to; the draft says it was skipped.
+    #[tokio::test]
+    async fn a_history_draft_skips_a_cloud_rewrite_and_says_so() {
+        let rewriter = Arc::new(ScriptedLlm::new(
+            "Friday works.",
+            "cloud-rewriter",
+            Some("https://api.example-cloud.com/v1"),
+        ));
+        let response = draft_with_rewriter(rewriter.clone()).await;
+        assert_eq!(rewriter.calls(), 0, "the cloud rewrite never ran");
+        let disclosed = provenance(&response);
+        assert!(disclosed.history_used);
+        let rewrite = disclosed.rewrite.as_ref().expect("the skip is disclosed");
+        assert_eq!(
+            rewrite.outcome,
+            mxr_protocol::DraftRewriteOutcomeData::Skipped
+        );
+        assert_eq!(rewrite.locality, mxr_protocol::AiLocalityData::Cloud);
+        assert!(disclosed
+            .summary_line()
+            .ends_with("skipped to keep your history local"));
+    }
+
+    // Truthful: the rewrite names the model that answered, and a rewrite
+    // whose text was dropped is still disclosed, as not used.
+    #[tokio::test]
+    async fn a_rewrite_names_who_answered_and_whether_its_text_was_used() {
+        let used = Arc::new(ScriptedLlm::new(
+            "Friday works for me.",
+            "rewriter-actual",
+            None,
+        ));
+        let response = draft_with_rewriter(used.clone()).await;
+        assert!(used.calls() > 0);
+        let rewrite = provenance(&response).rewrite.clone().expect("disclosed");
+        assert_eq!(
+            rewrite.outcome,
+            mxr_protocol::DraftRewriteOutcomeData::Applied
+        );
+        assert_eq!(rewrite.model, "rewriter-actual");
+        assert!(rewrite.history_used, "a local rewrite keeps the voice");
+        match &response {
+            ResponseData::DraftSuggestion { body, .. } => assert_eq!(body, "Friday works for me."),
+            other => panic!("{other:?}"),
+        }
+
+        // No better than the draft: the call happened, its text didn't land.
+        let dropped = Arc::new(ScriptedLlm::new(MACHINE_MADE, "rewriter-actual", None));
+        let response = draft_with_rewriter(dropped.clone()).await;
+        assert!(dropped.calls() > 0);
+        let rewrite = provenance(&response).rewrite.clone().expect("disclosed");
+        assert_eq!(
+            rewrite.outcome,
+            mxr_protocol::DraftRewriteOutcomeData::Rejected
+        );
+        assert_eq!(rewrite.model, "rewriter-actual");
+        assert!(provenance(&response)
+            .summary_line()
+            .ends_with("rewrite attempted by local model rewriter-actual, not used"));
+    }
+
+    // Account scope: a conversation from another account is refused, by
+    // thread or by source message, before any model call, so one account's
+    // voice and sources never dress another account's reply.
+    #[tokio::test]
+    async fn a_conversation_from_another_account_is_refused() {
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+        let mine = state.default_account_id();
+        let other = mxr_core::AccountId::new();
+        state
+            .store
+            .insert_account(&crate::test_fixtures::test_account_with_id(other.clone()))
+            .await
+            .unwrap();
+        let (thread_id, message_id, _) = seed_inbound_thread(&state, &other).await;
+
+        for (source, thread) in [(None, Some(thread_id.clone())), (Some(message_id), None)] {
+            let error = draft_compose(&state, Some(&mine), None, "", source, thread, None, None)
+                .await
+                .expect_err("another account's conversation is refused");
+            assert!(
+                matches!(error, crate::handler::HandlerError::InvalidRequest(ref text)
+                    if text.contains("belongs to account")),
+                "{error:?}"
+            );
+        }
+        assert!(llm.last_request.lock().unwrap().is_none(), "no model call");
+
+        // Its own account drafts it.
+        draft_compose(
+            &state,
+            Some(&other),
+            None,
+            "",
+            None,
+            Some(thread_id),
+            None,
+            None,
+        )
+        .await
+        .expect("the owning account drafts");
     }
 
     // Behavior 4: new message includes the relationship summary even when the
@@ -1006,19 +1448,41 @@ mod tests {
         )
         .await;
 
-        let (thread_id, _, inbound_text) = seed_inbound_thread(&state, &account_id).await;
-        draft_compose(
+        let (thread_id, current_id, inbound_text) = seed_inbound_thread(&state, &account_id).await;
+        let response = draft_compose(
             &state,
             Some(&account_id),
             None,
             "say Friday works",
             None,
-            Some(thread_id),
+            Some(thread_id.clone()),
             None,
             None,
         )
         .await
         .unwrap();
+
+        // The disclosure cites exactly the reply the prompt carried, and the
+        // conversation it read; the unrelated mail is in neither.
+        let provenance = provenance(&response);
+        assert_eq!(provenance.model, "test-llm");
+        assert_eq!(provenance.locality, mxr_protocol::AiLocalityData::Local);
+        assert!(provenance.history_used);
+        assert_eq!(ids(&provenance.voice_examples), vec![answered.id.clone()]);
+        let example = &provenance.voice_examples[0];
+        assert!(example.from_me);
+        assert_eq!(example.person, "customer@example.com");
+        assert_eq!(example.thread_id, answered.thread_id);
+        // The store keeps whole seconds.
+        assert_eq!(example.date.timestamp(), answered.date.timestamp());
+        assert_eq!(ids(&provenance.conversation), vec![current_id]);
+        assert_eq!(provenance.conversation[0].thread_id, thread_id);
+        assert!(!provenance.conversation[0].from_me);
+        assert!(provenance.rewrite.is_none());
+        assert_eq!(
+            provenance.summary_line(),
+            "Local model test-llm · used 1 of your emails to Customer · history used"
+        );
 
         let request = llm.last_request.lock().unwrap().clone().unwrap();
         let system = &request.messages[0].content;
@@ -1052,11 +1516,92 @@ mod tests {
         config.llm.base_url = "https://api.example-cloud.com/v1".into();
         config.llm.allow_cloud_relationship_data = false;
         state.set_config_for_test(config).await;
-        let llm = Arc::new(CapturingLlm::default());
+        let llm = Arc::new(CapturingLlm::at("https://api.example-cloud.com/v1"));
         state.llm.replace(llm.clone());
         let account_id = state.default_account_id();
         seed_contact(&state, &account_id, "customer@example.com", 0.2, 5).await;
 
+        seed_private_reply(&state, &account_id).await;
+
+        let (thread_id, current_id, inbound_text) = seed_inbound_thread(&state, &account_id).await;
+        let response = draft_compose(
+            &state,
+            Some(&account_id),
+            None,
+            "",
+            None,
+            Some(thread_id),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        let prompt = captured_prompt(&llm);
+        assert!(
+            prompt.contains(inbound_text),
+            "the conversation itself still goes"
+        );
+        assert!(!prompt.contains("PRIVATE-OLD-REPLY"), "{prompt}");
+        assert!(
+            !prompt.contains("Customer prefers short pricing updates."),
+            "{prompt}"
+        );
+        // It says so: a cloud model, no history, no voice sources; only the
+        // conversation it did read.
+        let disclosed = provenance(&response);
+        assert_eq!(disclosed.locality, mxr_protocol::AiLocalityData::Cloud);
+        assert!(!disclosed.history_used);
+        assert!(disclosed.voice_examples.is_empty());
+        assert_eq!(ids(&disclosed.conversation), vec![current_id]);
+        assert_eq!(
+            disclosed.summary_line(),
+            "Cloud model test-llm · history not used"
+        );
+        let (_, note) = draft_suggestion(response);
+        assert_eq!(note.as_deref(), Some(CLOUD_NOTE));
+    }
+
+    // Pinning: the config still says the model is on this machine, but the
+    // provider serving the request is a cloud one (a reload landed). What
+    // the prompt carries and what the draft discloses follow the provider
+    // that answered, not the config.
+    #[tokio::test]
+    async fn the_disclosure_follows_the_provider_that_answered_not_the_config() {
+        let state = AppState::in_memory().await.unwrap();
+        let mut config = state.config_snapshot();
+        config.llm.enabled = true;
+        config.llm.base_url = "http://localhost:11434/v1".into();
+        config.llm.allow_cloud_relationship_data = false;
+        state.set_config_for_test(config).await;
+        let llm = Arc::new(CapturingLlm::at("https://api.example-cloud.com/v1"));
+        state.llm.replace(llm.clone());
+        let account_id = state.default_account_id();
+        seed_private_reply(&state, &account_id).await;
+        let (thread_id, _, _) = seed_inbound_thread(&state, &account_id).await;
+
+        let response = draft_compose(
+            &state,
+            Some(&account_id),
+            None,
+            "",
+            None,
+            Some(thread_id),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(!captured_prompt(&llm).contains("PRIVATE-OLD-REPLY"));
+        let disclosed = provenance(&response);
+        assert_eq!(disclosed.locality, mxr_protocol::AiLocalityData::Cloud);
+        assert!(!disclosed.history_used);
+        assert!(disclosed.voice_examples.is_empty());
+    }
+
+    /// An earlier exchange with the customer whose reply must stay private
+    /// from a cloud model without opt-in.
+    async fn seed_private_reply(state: &AppState, account_id: &mxr_core::id::AccountId) {
         let mut asked = TestEnvelopeBuilder::new()
             .account_id(account_id.clone())
             .thread_id(mxr_core::ThreadId::new())
@@ -1102,32 +1647,6 @@ mod tests {
             .try_create_reply_pair(&answered, MessageDirection::Outbound)
             .await
             .unwrap();
-
-        let (thread_id, _, inbound_text) = seed_inbound_thread(&state, &account_id).await;
-        let response = draft_compose(
-            &state,
-            Some(&account_id),
-            None,
-            "",
-            None,
-            Some(thread_id),
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-        let prompt = captured_prompt(&llm);
-        assert!(
-            prompt.contains(inbound_text),
-            "the conversation itself still goes"
-        );
-        assert!(!prompt.contains("PRIVATE-OLD-REPLY"), "{prompt}");
-        assert!(
-            !prompt.contains("Customer prefers short pricing updates."),
-            "{prompt}"
-        );
-        let (_, note) = draft_suggestion(response);
-        assert_eq!(note.as_deref(), Some(CLOUD_NOTE));
     }
 
     // Output: chatter the model adds around the email never reaches compose.

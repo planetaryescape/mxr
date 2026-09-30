@@ -899,6 +899,13 @@ const MIGRATIONS: &[Migration] = &[
         kind: MigrationKind::Sql(include_str!("../migrations/054_owed_replies_index.sql")),
     },
     Migration {
+        version: 55,
+        name: "history_text_fingerprints",
+        kind: MigrationKind::Sql(include_str!(
+            "../migrations/055_history_text_fingerprints.sql"
+        )),
+    },
+    Migration {
         version: 56,
         name: "reply_later_due",
         // Timed reply later. Mirrors migrations/056_reply_later_due.sql.

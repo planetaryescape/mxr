@@ -224,6 +224,15 @@ The parity floor in `docs/web-app-rubric.md` still holds: the suites it cites
 (`triage`, `reading`, `reader`, `search`, `labels`, `snooze`, `responsive`,
 `accessibility`, `keyboard-navigation`, `large-list`) passed in the same run.
 
+### Proposed after plan item 1: draft provenance (2026-09-30)
+
+Proposed by the builder of `feat/provenance`; under E1 the grader decides.
+
+| # | Proposed | Evidence |
+|---|---:|---|
+| C1 | 2 | Every AI draft (`DraftCompose`, `DraftRefine`) carries `provenance`: the model that answered, local or cloud from the provider pinned for that request, and `history_used`, read from what the prompt carried rather than the config. `draft_compose` tests "a cloud model without opt-in never sees my other mail" (cloud, history not used, no voice sources) and "the disclosure follows the provider that answered, not the config" (config says local, the pinned provider is cloud: no history sent, disclosed as cloud). The humanizer's rewrite pass is pinned too and named when it changes the text. Web: `draft-provenance.spec` asserts "Local model stub-7b · used 1 of your emails to Maya · history used" under Draft for me. CLI, TUI and web share one wording (`DraftProvenanceData::summary_line`, `draftProvenanceFormat.test.ts`). Not 3: model output is stubbed in the browser, and no one has used it on real mail yet (E2). |
+| C2 | 2 | Draft sources are one step away: the voice examples that fit the prompt and the conversation turns it kept, each with message and thread id (`reply_uses_my_real_replies_to_this_person_as_examples` asserts the sources equal the reply the prompt carried and the conversation it read; the prompt test asserts cited turns equal rendered turns). CLI prints `mxr cat <id>` per source; the web **Sources** list opens each cited message in the reader, expanded and focused (`draft-provenance.spec`). AI stays optional: drafting is a button, never the only way to write. Not 3: the web opens sources in a new tab rather than a side-by-side preview, and there's no dogfooding log. |
+
 ## Evidence
 
 Triage and deferral:

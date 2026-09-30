@@ -37,10 +37,12 @@ use tokio::time::Instant;
 
 mod background;
 mod demo;
+mod endpoint;
 
 use background::{AttemptLedger, BackgroundBreaker};
 
 pub use demo::DemoLlmProvider;
+pub use endpoint::is_loopback_endpoint;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -550,7 +552,9 @@ pub struct OpenAiCompatibleProvider {
     model: String,
     context_window: u32,
     request_timeout: Duration,
-    client: reqwest::Client,
+    /// Built by [`endpoint::http_client`]: no redirects, and no proxy for
+    /// a loopback endpoint. `Err` when it couldn't be built.
+    client: Result<reqwest::Client, String>,
     /// Set once this endpoint has shown it serves a thinking model that
     /// spends the whole `max_tokens` budget on hidden reasoning, and that
     /// it honours `reasoning_effort: "none"`. Not sent by default because
@@ -560,10 +564,7 @@ pub struct OpenAiCompatibleProvider {
 
 impl OpenAiCompatibleProvider {
     pub fn new(config: OpenAiCompatibleConfig) -> Self {
-        let client = reqwest::Client::builder()
-            .timeout(config.request_timeout)
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        let client = endpoint::http_client(&config.base_url, config.request_timeout);
         Self {
             base_url: config.base_url.trim_end_matches('/').to_string(),
             api_key: config.api_key,
@@ -623,7 +624,11 @@ impl OpenAiCompatibleProvider {
             stream: false,
         };
 
-        let mut request = self.client.post(&url).json(&body);
+        let client = self
+            .client
+            .as_ref()
+            .map_err(|error| LlmError::Other(error.clone()))?;
+        let mut request = client.post(&url).json(&body);
         if let Some(key) = self.api_key.as_deref() {
             request = request.bearer_auth(key);
         }
@@ -639,6 +644,17 @@ impl OpenAiCompatibleProvider {
         })?;
 
         let status = response.status();
+        if status.is_redirection() {
+            let location = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("another address");
+            return Err(LlmError::Other(format!(
+                "the LLM endpoint redirected to {location} ({status}); mxr doesn't follow LLM \
+                 redirects, so the prompt was not resent. Set llm.base_url to the final address"
+            )));
+        }
         if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(LlmError::Unauthorized);
         }
@@ -1363,5 +1379,40 @@ mod tests {
         let out = guarded_system_prompt("You summarize threads.");
         assert!(out.starts_with("You summarize threads."));
         assert!(out.contains(UNTRUSTED_MAIL_GUARD));
+    }
+
+    // Privacy: a redirect would resend the prompt (mail and history) to the
+    // host it names. The client never follows one and says why it stopped.
+    #[tokio::test]
+    async fn a_redirecting_endpoint_never_gets_the_prompt_resent() {
+        use wiremock::matchers::any;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let elsewhere = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(200).set_body_json(ok_completion("leaked")))
+            .mount(&elsewhere)
+            .await;
+        let endpoint = MockServer::start().await;
+        for status in [301, 302, 307, 308] {
+            Mock::given(any())
+                .respond_with(ResponseTemplate::new(status).insert_header(
+                    "location",
+                    format!("{}/v1/chat/completions", elsewhere.uri()).as_str(),
+                ))
+                .up_to_n_times(1)
+                .mount(&endpoint)
+                .await;
+            let error = provider_for(&endpoint)
+                .complete(hello())
+                .await
+                .expect_err("a redirect is an error");
+            assert!(
+                error.to_string().contains("doesn't follow LLM redirects"),
+                "{status}: {error}"
+            );
+        }
+        let resent = elsewhere.received_requests().await.unwrap_or_default();
+        assert!(resent.is_empty(), "nothing reached the redirect target");
     }
 }

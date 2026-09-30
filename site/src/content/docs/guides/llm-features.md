@@ -130,8 +130,8 @@ mxr draft-assist THREAD_ID "..." --format json
 ```
 
 Draft JSON includes the generated body, model id, humanizer score summary,
-voice-match metadata when a relationship profile exists, and rewrite iteration
-count.
+voice-match metadata when a relationship profile exists, rewrite iteration
+count, and `provenance` (see [See where a draft came from](#see-where-a-draft-came-from)).
 
 In the TUI, press `y` or `Ctrl-p` → **Summarize Thread**. The summary runs in
 the background and renders above the message body; opening a long uncached
@@ -183,6 +183,88 @@ compares it with what you actually sent: greeting and sign-off match, length
 ratio, and numbers the draft invented. It calls your LLM once per reply and
 saves nothing. Use `--format json` or `--format jsonl` to keep the results,
 and run it again after changing models to compare.
+
+### See where a draft came from
+
+Every draft says which model wrote it, whether your history was used, and
+which messages it was written from. Run a draft with the default table
+output:
+
+```bash
+mxr draft-assist THREAD_ID "say Friday works" --format table
+```
+
+The notes after the body name each source with the command that opens it:
+
+```text
+Friday works for me. I'll bring the notes.
+
+[Local model gemma4 · used 4 of your emails to Nora · history used · review before sending]
+Your emails it matched the voice of:
+  2026-09-29 · you to Nora  mxr cat b5700241-8d68-562a-92d3-ec69db053cea
+  2026-09-30 · you to Nora  mxr cat 7294ff6c-2134-5909-8ea2-e2a1f0694ca9
+Messages it read from this conversation:
+  2026-09-30 · Theo  mxr cat 81fe7849-7927-5257-918d-5dc693765c9b
+  2026-09-30 · Nora  mxr cat e0c0e763-0faf-5773-98b9-049d0d90d765
+```
+
+Run `mxr cat <message-id>` on any line to read that message. The line is
+read from what the request actually did, not from your config:
+
+- **Local model** or **Cloud model** comes from the endpoint that answered.
+  If a config reload lands mid-request, the draft still describes the model
+  that wrote it.
+- **history used** means your past emails, the habits measured from them,
+  or the relationship summary went into the prompt. **history not used**
+  means none did, for example a cloud model without
+  `llm.allow_cloud_relationship_data`.
+- **Your emails it matched the voice of** lists only the emails that fit
+  in the prompt, not every one mxr considered.
+- **Local** means the endpoint's host is exactly `localhost`, a `127.x.x.x`
+  address or `::1`, with no user name in the URL. Anything else, including
+  `0.0.0.0`, LAN addresses and `localhost.example.com`, counts as cloud.
+  mxr never follows an LLM endpoint's redirect (it reports an error naming
+  the new address instead), and calls a local endpoint directly, ignoring
+  `HTTP_PROXY`, so a local model's prompts stay on your machine.
+- The humanizer's rewrite pass is named by the model that answered it:
+  **rewritten by ...** when its text is what you got, **rewrite attempted
+  by ..., not used** when the model saw the draft but its text was no
+  better, and **rewrite by cloud model ... skipped to keep your history
+  local** when the draft was written from your history and the rewrite
+  model is a cloud one you haven't opted in to. When a kept rewrite was
+  followed by a pass that wasn't used, both models are named.
+- A draft body that contains text an earlier draft wrote from your history
+  won't be refined or humanized by a cloud model you haven't opted in to.
+  mxr says so instead: refine it with a local model, or set
+  `llm.allow_cloud_relationship_data = true`. mxr recognises that text for
+  7 days, across restarts, by storing a hash of each sentence in its local
+  database, never the text itself.
+
+`--format json` carries the same facts under `provenance`:
+
+```json
+"provenance": {
+  "model": "gemma4",
+  "locality": "local",
+  "history_used": true,
+  "voice_examples": [
+    { "message_id": "b5700241-...", "thread_id": "309ae832-...", "date": "2026-09-29T10:54:34Z",
+      "from_me": true, "person": "nora@foundry.example", "person_name": "Nora Kim" }
+  ],
+  "conversation": [ ... ]
+}
+```
+
+`rewrite` is present only when a rewrite pass ran or was skipped, and its
+`outcome` is `applied`, `rejected` or `skipped`. A reply always drafts from
+the conversation's own account: naming another account in the request is
+refused. `mxr draft`
+and `mxr draft refine` print the same notes, and `mxr humanize` names the
+model under `rewrite` when it rewrote your text. In the web app the line
+sits under **Draft for me** and under the **Draft assist** panel. Select
+**Sources** to list the messages; each one opens in a new tab on that
+message, so the draft you're judging stays where it is. The TUI shows the
+same line and source list with the draft.
 
 Relationship and profile context is guarded separately for cloud
 providers. With `llm.allow_cloud_relationship_data = false` (the default)

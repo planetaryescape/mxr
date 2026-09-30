@@ -36,7 +36,8 @@ import { firstName } from "./context/contextFormat";
 import { HeadersDialog } from "./HeadersDialog";
 import { standaloneHtmlDocument } from "./MessageBody";
 import { MessageCard } from "./MessageCard";
-import { initialExpanded, lastExpandedIndex } from "./threadExpansion";
+import { OtherAccountLine } from "./OtherAccountLine";
+import { initialExpanded, initialLanding } from "./threadExpansion";
 import { ThreadHeader } from "./ThreadHeader";
 import { ReplyField } from "./ReplyField";
 import { ThreadSummaryAccordion, ThreadSummaryLoading } from "./ThreadInsights";
@@ -47,7 +48,13 @@ import { useThreadSummary } from "./useThreadSummary";
 const LANDING_MARGIN_PX = 160;
 
 /** One loaded conversation: context, messages, the reply field and reader keys. */
-export function ThreadReader({ data }: { data: ThreadResponse }) {
+export function ThreadReader({
+  data,
+  focusMessageId,
+}: {
+  data: ThreadResponse;
+  focusMessageId?: string;
+}) {
   const nav = useReaderNav();
   const scrollRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef(new Map<string, HTMLElement>());
@@ -68,10 +75,9 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
   const [showSignature, setShowSignature] = useState(false);
   const [remoteAllowed, setRemoteAllowed] = useState(false);
   const [headersFor, setHeadersFor] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(() => initialExpanded(data));
-  const [focusIndex, setFocusIndex] = useState(() =>
-    Math.max(0, lastExpandedIndex(data, initialExpanded(data))),
-  );
+  const [landing] = useState(() => initialLanding(data, focusMessageId));
+  const [expanded, setExpanded] = useState<Set<string>>(landing.expanded);
+  const [focusIndex, setFocusIndex] = useState(landing.focusIndex);
   const { summary, setSummary, summarize } = useThreadSummary(data);
   const llm = useLlmStatus();
 
@@ -79,6 +85,14 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
   const singlePane = useMediaQuery(SINGLE_PANE_QUERY);
   const listHidden = singlePane || readerLayout === "full";
   useShortcutScope("reader", readerFocused);
+
+  // A link to one message (a draft's source) is there to be read: the
+  // reader takes the keys, with that message under the cursor.
+  useEffect(() => {
+    if (landing.cited) setActivePane("reader");
+    // Only when this conversation first opens on the cited message.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // DOM focus follows the pane, so the page scrolls with the keyboard.
   useEffect(() => {
@@ -361,6 +375,7 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
         full={readerLayout === "full"}
         position={position}
       />
+      <OtherAccountLine accountId={data.thread.account_id} />
       <div
         ref={scrollRef}
         tabIndex={-1}

@@ -12,6 +12,8 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DraftProvenanceLine } from "@/features/compose/DraftProvenanceLine";
+import type { DraftProvenance } from "@/features/compose/draftProvenanceFormat";
 import { ToneControls } from "@/features/compose/ToneControls";
 import { replyWithBodyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import type { DraftLengthHint, VoiceRegister } from "@/features/compose/types";
@@ -35,6 +37,7 @@ export function DraftAssistPanel({ threadId, replyToMessageId }: DraftAssistPane
   const [length, setLength] = useState<DraftLengthHint>("medium");
   const [overridden, setOverridden] = useState(false);
   const [contextNote, setContextNote] = useState<string | null>(null);
+  const [provenance, setProvenance] = useState<DraftProvenance | null>(null);
 
   const generate = useMutation({
     mutationFn: () =>
@@ -45,6 +48,7 @@ export function DraftAssistPanel({ threadId, replyToMessageId }: DraftAssistPane
       }),
     onSuccess: (response) => {
       setBody(extractBody(response));
+      setProvenance(response.provenance ?? null);
       if (response.context_note) setContextNote(response.context_note);
       // Reflect the inferred tone in the dials (unless the user overrode it).
       if (!overridden) {
@@ -130,6 +134,7 @@ export function DraftAssistPanel({ threadId, replyToMessageId }: DraftAssistPane
           {body}
         </pre>
       ) : null}
+      {body ? <DraftProvenanceLine provenance={provenance} /> : null}
     </div>
   );
 }

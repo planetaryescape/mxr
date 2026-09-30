@@ -4043,12 +4043,57 @@ export interface components {
         DraftIntent: "new" | "reply" | "reply_all" | "forward";
         /** @enum {string} */
         DraftLengthHintData: "short" | "medium" | "long";
+        /**
+         * @description Where an AI draft came from: the model that actually answered, whether
+         *     the user's other mail reached it, and the messages it read, so clients
+         *     can say so and open each source. Describes the request as it ran (the
+         *     provider pinned for it), not the configuration.
+         */
+        DraftProvenanceData: {
+            /**
+             * @description Messages of the conversation being answered that fit in the prompt,
+             *     oldest first. Empty for a new message or a refine.
+             */
+            conversation?: components["schemas"]["DraftSourceData"][];
+            /**
+             * @description Something from the user's other mail reached the model: their past
+             *     emails, the writing habits drawn from them, or the relationship
+             *     summary. False when the privacy gate kept it back (a cloud model
+             *     without `llm.allow_cloud_relationship_data`) or there was none.
+             */
+            history_used: boolean;
+            locality: components["schemas"]["AiLocalityData"];
+            /** @description The model that wrote the draft, as its endpoint named it. */
+            model: string;
+            rewrite?: null | components["schemas"]["DraftRewriteProvenanceData"];
+            /**
+             * @description The user's own past emails the model was shown to copy their voice,
+             *     in the order the prompt carried them.
+             */
+            voice_examples?: components["schemas"]["DraftSourceData"][];
+        };
         DraftRefineKnobsData: {
             add_context?: string | null;
             less_emoji?: boolean;
             more_formal?: boolean;
             shorter?: boolean;
             warmer?: boolean;
+        };
+        /** @enum {string} */
+        DraftRewriteOutcomeData: "applied" | "rejected" | "skipped";
+        /** @description The model pass that rewrites a draft after it was written. */
+        DraftRewriteProvenanceData: {
+            /** @description The rewrite saw the user's habits and past emails, to keep the voice. */
+            history_used: boolean;
+            locality: components["schemas"]["AiLocalityData"];
+            /** @description The model that answered the rewrite (or would have, when skipped). */
+            model: string;
+            outcome?: components["schemas"]["DraftRewriteOutcomeData"];
+            /**
+             * @description A later pass, after the text that was kept, whose answer was
+             *     dropped: this model saw the draft too.
+             */
+            rejected_by?: string | null;
         };
         DraftSafetyContextData: {
             allow_llm?: boolean;
@@ -4088,6 +4133,18 @@ export interface components {
         DraftSafetySeverity: "info" | "warning" | "blocker";
         /** @enum {string} */
         DraftSafetyVerdict: "safe" | "warn" | "blocked";
+        /** @description One message a draft was written from, in the user's own mailbox. */
+        DraftSourceData: {
+            /** Format: date-time */
+            date: string;
+            /** @description The user sent it. */
+            from_me: boolean;
+            message_id: components["schemas"]["MessageId"];
+            /** @description The other person's address: who the user wrote to, or who wrote it. */
+            person: string;
+            person_name?: string | null;
+            thread_id: components["schemas"]["ThreadId"];
+        };
         EntityCandidateData: {
             display_name?: string | null;
             kind: string;
@@ -6142,6 +6199,7 @@ export interface components {
             /** @enum {string} */
             kind: "HumanizedText";
             report: components["schemas"]["HumanizerReportSummaryData"];
+            rewrite?: null | components["schemas"]["DraftRewriteProvenanceData"];
             text: string;
         } | {
             entries: components["schemas"]["ScreenerQueueEntryData"][];
@@ -6177,6 +6235,7 @@ export interface components {
             /** @enum {string} */
             kind: "DraftSuggestion";
             model: string;
+            provenance?: null | components["schemas"]["DraftProvenanceData"];
             /** Format: int32 */
             rewrite_iterations?: number;
             voice_match?: null | components["schemas"]["VoiceMatchData"];

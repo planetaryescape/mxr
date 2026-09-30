@@ -190,13 +190,17 @@ fn format_platform_response(data: &ResponseData) -> String {
             humanizer,
             rewrite_iterations,
             context_note,
+            provenance,
             ..
         } => {
-            let mut lines = vec![
-                body.trim().to_string(),
-                String::new(),
-                format!("Model: {model}"),
-            ];
+            let mut lines = vec![body.trim().to_string(), String::new()];
+            match provenance {
+                Some(provenance) => {
+                    lines.push(provenance.summary_line());
+                    lines.extend(provenance.source_lines());
+                }
+                None => lines.push(format!("Model: {model}")),
+            }
             if let Some(note) = context_note {
                 lines.push(note.clone());
             }
@@ -274,12 +278,18 @@ fn format_platform_response(data: &ResponseData) -> String {
             text,
             report,
             iterations,
-        } => format!(
-            "{}\n\nHumanizer: {}/100\nRewritten: {}x",
-            text.trim(),
-            report.score,
-            iterations
-        ),
+            rewrite,
+        } => {
+            let by = rewrite
+                .as_ref()
+                .map_or_else(String::new, |rewrite| format!("\n{}", rewrite.label()));
+            format!(
+                "{}\n\nHumanizer: {}/100\nRewritten: {}x{by}",
+                text.trim(),
+                report.score,
+                iterations
+            )
+        }
         ResponseData::Ack => "Done.".into(),
         other => serde_json::to_string_pretty(other).unwrap_or_else(|_| format!("{other:?}")),
     }

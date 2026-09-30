@@ -83,6 +83,8 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
       <section
         ref={ref}
         data-testid="thread-message"
+        data-message-id={message.id}
+        data-focused={focused || undefined}
         data-collapsed="true"
         className={cn(
           "group relative border-b border-border/70 transition-colors",
@@ -127,6 +129,8 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
     <section
       ref={ref}
       data-testid="thread-message"
+      data-message-id={message.id}
+      data-focused={focused || undefined}
       className={cn("relative border-b border-border/70", focused && "bg-accent/20")}
     >
       {focused ? (

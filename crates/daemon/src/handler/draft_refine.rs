@@ -2,6 +2,7 @@
 //! added context, keeping the user's own voice. The model sees who the
 //! user is and real emails they sent this person, like a fresh draft does.
 
+use super::draft_provenance::DraftPolicy;
 use super::draft_voice::{self, Counterparty};
 use super::{draft_context, draft_output, relationship_profile, HandlerResult};
 use crate::state::AppState;
@@ -20,6 +21,12 @@ changes asked for, keep every fact, and keep {name}'s voice as shown in the exam
 emails. Keep any [[?: ...]] placeholders. Return only the revised email body as plain text."
     )
 }
+
+/// Why a cloud model without opt-in won't refine or rewrite a body that
+/// carries text an earlier draft wrote from the user's history.
+pub(crate) const HISTORY_BODY_REFUSAL: &str = "This draft includes text written from your \
+history, and your model is a cloud one; refine it with a local model, or allow cloud history \
+with llm.allow_cloud_relationship_data = true.";
 
 pub(super) async fn draft_refine(
     state: &AppState,
@@ -53,8 +60,21 @@ pub(super) async fn draft_refine(
         name: recipient.name.clone(),
     };
     // The user's other mail only reaches a cloud model with their opt-in.
-    let llm_config = state.config_snapshot().llm;
-    let share = crate::state::relationship_data_allowed(&llm_config, LlmFeature::DraftRefine);
+    let policy = DraftPolicy::pin(state, LlmFeature::DraftRefine);
+    let share = policy.share_history;
+    let text = live_body
+        .filter(|body| !body.trim().is_empty())
+        .unwrap_or_else(|| draft.content.analysis_text());
+    // The body itself may carry an earlier suggestion written from history.
+    let body_from_history =
+        !crate::history_text::source_accounts(&state.store, Some(&draft.account_id), text)
+            .await?
+            .is_empty();
+    if body_from_history && !share {
+        return Err(crate::handler::HandlerError::InvalidRequest(
+            HISTORY_BODY_REFUSAL.to_string(),
+        ));
+    }
     let material = if share {
         draft_voice::voice_material(state, &draft.account_id, Some(&person), None, None).await
     } else {
@@ -69,6 +89,8 @@ pub(super) async fn draft_refine(
     } else {
         None
     };
+
+    let background = background.filter(|text| !text.trim().is_empty());
 
     let mut prompt = String::new();
     if !material.examples.is_empty() {
@@ -90,7 +112,7 @@ pub(super) async fn draft_refine(
         }
         prompt.push('\n');
     }
-    if let Some(text) = background.as_deref().filter(|text| !text.trim().is_empty()) {
+    if let Some(text) = background.as_deref() {
         // Derived from stored mail: delimit it as untrusted content.
         prompt.push_str("[BACKGROUND, for understanding only]\n");
         prompt.push_str(&wrap_untrusted_mail(text));
@@ -134,18 +156,14 @@ pub(super) async fn draft_refine(
     // The draft can be AI-drafted from a poisoned thread, so it is wrapped as
     // untrusted data too; the system prompt names the [DRAFT] block.
     prompt.push_str("\n[DRAFT]\n");
-    let text = live_body
-        .filter(|body| !body.trim().is_empty())
-        .unwrap_or_else(|| draft.content.analysis_text());
     prompt.push_str(&wrap_untrusted_mail(text));
 
     let draft_words = text.split_whitespace().count() as u32;
     let mut max_tokens = (draft_words * 3 + 400).clamp(600, 2_000);
     let mut attempt = 0;
     let response = loop {
-        let response = match state
+        let response = match policy
             .llm
-            .for_feature(LlmFeature::DraftRefine)
             .complete(CompletionRequest {
                 messages: vec![
                     ChatMessage::system(guarded_system_prompt(&system_prompt(&name))),
@@ -176,18 +194,27 @@ pub(super) async fn draft_refine(
         }
         max_tokens = (max_tokens * 2).min(4_000);
     };
-    let voice_context =
-        if crate::state::relationship_data_allowed(&llm_config, LlmFeature::HumanizeRewrite) {
-            material.habits.join("\n")
-        } else {
-            String::new()
-        };
+    let history_used = body_from_history
+        || !material.examples.is_empty()
+        || !material.habits.is_empty()
+        || background.is_some();
+    let provenance = policy.provenance(
+        &response.model,
+        history_used,
+        material
+            .examples
+            .iter()
+            .map(|example| example.source.clone())
+            .collect(),
+        Vec::new(),
+    );
     draft_context::finish_draft_suggestion(
         state,
+        &draft.account_id,
         draft_output::clean_draft(&response.content, me.name.as_deref()),
-        response.model,
+        provenance,
         context.baseline,
-        Some(voice_context.as_str()),
+        &material.habits.join("\n"),
         context.inferred_register,
         context.inferred_length,
         context.context_note,
@@ -278,9 +305,21 @@ mod tests {
         };
         state.store.insert_draft(&draft).await.unwrap();
 
-        draft_refine(&state, &draft.id, DraftRefineKnobsData::default(), None)
+        let response = draft_refine(&state, &draft.id, DraftRefineKnobsData::default(), None)
             .await
             .unwrap();
+        // The relationship summary reached the model, and the draft says so.
+        let mxr_protocol::ResponseData::DraftSuggestion {
+            provenance: Some(provenance),
+            ..
+        } = response
+        else {
+            panic!("expected a DraftSuggestion with provenance");
+        };
+        assert_eq!(provenance.model, "stub");
+        assert_eq!(provenance.locality, mxr_protocol::AiLocalityData::Local);
+        assert!(provenance.history_used);
+        assert!(provenance.conversation.is_empty());
 
         // Find the refine call (its system message carries the guard).
         let calls = cap.calls.lock().unwrap();

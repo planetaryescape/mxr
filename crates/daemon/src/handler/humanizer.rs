@@ -1,10 +1,15 @@
+use super::draft_provenance::DraftPolicy;
 use super::HandlerResult;
 use crate::state::AppState;
 use mxr_humanizer::{score, HumanizerOpts};
 use mxr_llm::{
-    wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError, LlmFeature, UNTRUSTED_MAIL_GUARD,
+    wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError, LlmFeature, PinnedLlm,
+    UNTRUSTED_MAIL_GUARD,
 };
-use mxr_protocol::{HumanizerHitData, HumanizerReportSummaryData, ResponseData};
+use mxr_protocol::{
+    DraftRewriteOutcomeData, DraftRewriteProvenanceData, HumanizerHitData,
+    HumanizerReportSummaryData, ResponseData,
+};
 use mxr_reader::{clean, ReaderConfig};
 
 pub(super) async fn score_text(text: &str) -> HandlerResult {
@@ -18,41 +23,111 @@ pub(super) async fn rewrite_text(
     text: &str,
     max_iterations: Option<u8>,
 ) -> HandlerResult {
-    let (text, report, iterations) = rewrite_to_threshold(state, text.to_string(), max_iterations)
-        .await
-        .map_err(|error| error.clone())?;
+    let policy = DraftPolicy::pin(state, LlmFeature::HumanizeRewrite);
+    // The request names no account, so any account's history counts.
+    let from_history = crate::history_text::source_accounts(&state.store, None, text).await?;
+    if !from_history.is_empty() && !policy.share_history {
+        return Err(super::HandlerError::InvalidRequest(
+            super::draft_refine::HISTORY_BODY_REFUSAL.to_string(),
+        ));
+    }
+    let rewritten = rewrite_to_threshold_with_context(
+        state,
+        &policy.llm,
+        text.to_string(),
+        max_iterations,
+        None,
+    )
+    .await?;
+    // A rewrite of history text is history text too, for whichever
+    // accounts it came from.
+    if rewritten.iterations > 0 {
+        for account in &from_history {
+            crate::history_text::record(&state.store, account, &rewritten.text).await;
+        }
+    }
+    let rewrite = rewritten.provenance(&policy, false);
     Ok(ResponseData::HumanizedText {
-        text,
-        report,
-        iterations,
+        text: rewritten.text,
+        report: rewritten.report,
+        iterations: rewritten.iterations,
+        rewrite,
     })
 }
 
-pub(crate) async fn rewrite_to_threshold(
-    state: &AppState,
-    text: String,
-    max_iterations: Option<u8>,
-) -> Result<(String, HumanizerReportSummaryData, u8), String> {
-    rewrite_to_threshold_with_context(state, text, max_iterations, None).await
+/// What a rewrite pass did.
+pub(crate) struct Rewritten {
+    pub text: String,
+    pub report: HumanizerReportSummaryData,
+    /// Rewrites kept; 0 when the original text came back.
+    pub iterations: u8,
+    /// The model that wrote the text kept (`iterations > 0`).
+    pub kept_by: Option<String>,
+    /// The model whose answer was dropped (no better than what it was
+    /// given, or empty); the loop stops there.
+    pub dropped_by: Option<String>,
 }
 
+impl Rewritten {
+    fn unchanged(text: String, report: HumanizerReportSummaryData) -> Self {
+        Self {
+            text,
+            report,
+            iterations: 0,
+            kept_by: None,
+            dropped_by: None,
+        }
+    }
+
+    /// The disclosure for this pass: applied, credited to the model whose
+    /// text came back, with a later dropped pass named separately; or
+    /// rejected when models saw the text but none of their output was used.
+    /// `None` when no model was called.
+    pub fn provenance(
+        &self,
+        policy: &DraftPolicy,
+        history_used: bool,
+    ) -> Option<DraftRewriteProvenanceData> {
+        if self.iterations > 0 {
+            let kept_by = self.kept_by.as_deref()?;
+            let mut rewrite =
+                policy.rewrite_provenance(kept_by, history_used, DraftRewriteOutcomeData::Applied);
+            rewrite.rejected_by.clone_from(&self.dropped_by);
+            return Some(rewrite);
+        }
+        let model = self.dropped_by.as_deref().or(self.kept_by.as_deref())?;
+        Some(policy.rewrite_provenance(model, history_used, DraftRewriteOutcomeData::Rejected))
+    }
+}
+
+/// Whether a rewrite pass would call the model for `text`: the humanizer
+/// is on, may fix, and the text scores under its threshold.
+pub(crate) fn rewrite_due(state: &AppState, text: &str) -> bool {
+    let config = state.config_snapshot().humanizer;
+    let opts = HumanizerOpts {
+        score_threshold: config.score_threshold,
+    };
+    let cleaned = clean(Some(text), None, &ReaderConfig::default()).content;
+    config.enabled && config.auto_fix && score(&cleaned, &opts).score < config.score_threshold
+}
+
+/// Rewrite through `llm`, the provider the caller pinned, so what it
+/// discloses names the model that actually rewrote.
 pub(crate) async fn rewrite_to_threshold_with_context(
     state: &AppState,
+    llm: &PinnedLlm,
     text: String,
     max_iterations: Option<u8>,
     voice_context: Option<&str>,
-) -> Result<(String, HumanizerReportSummaryData, u8), String> {
+) -> Result<Rewritten, String> {
     let config = state.config_snapshot().humanizer;
     let opts = HumanizerOpts {
         score_threshold: config.score_threshold,
     };
     let cleaned = clean(Some(&text), None, &ReaderConfig::default()).content;
     let initial = score(&cleaned, &opts);
-    if !config.enabled || initial.score >= config.score_threshold {
-        return Ok((text, report_summary(initial), 0));
-    }
-    if !config.auto_fix {
-        return Ok((text, report_summary(initial), 0));
+    if !config.enabled || initial.score >= config.score_threshold || !config.auto_fix {
+        return Ok(Rewritten::unchanged(text, report_summary(initial)));
     }
 
     let max_iterations = max_iterations
@@ -64,12 +139,12 @@ pub(crate) async fn rewrite_to_threshold_with_context(
     let mut current_text = text;
     let mut current_report = initial;
     let mut iterations = 0;
+    let mut kept_by = None;
+    let mut dropped_by = None;
 
     for _ in 0..max_iterations {
         let prompt = rewrite_prompt(&current_text, &current_report, voice_context);
-        let response = match state
-            .llm
-            .for_feature(LlmFeature::HumanizeRewrite)
+        let response = match llm
             .complete(CompletionRequest {
                 messages: vec![ChatMessage::user(prompt)],
                 max_tokens: Some(600),
@@ -81,15 +156,21 @@ pub(crate) async fn rewrite_to_threshold_with_context(
             Err(LlmError::Disabled) => break,
             Err(error) => return Err(format!("LLM error: {error}")),
         };
+        let answered_by = if response.model.trim().is_empty() {
+            llm.model_name().to_string()
+        } else {
+            response.model.clone()
+        };
         let candidate = response.content.trim().to_string();
-        if candidate.is_empty() {
+        let candidate_report = score(
+            &clean(Some(&candidate), None, &ReaderConfig::default()).content,
+            &opts,
+        );
+        if candidate.is_empty() || candidate_report.score <= current_report.score {
+            dropped_by = Some(answered_by);
             break;
         }
-        let candidate_cleaned = clean(Some(&candidate), None, &ReaderConfig::default()).content;
-        let candidate_report = score(&candidate_cleaned, &opts);
-        if candidate_report.score <= current_report.score {
-            break;
-        }
+        kept_by = Some(answered_by);
         current_text = candidate;
         current_report = candidate_report;
         iterations += 1;
@@ -99,9 +180,20 @@ pub(crate) async fn rewrite_to_threshold_with_context(
     }
 
     if iterations > 0 && current_report.score.saturating_sub(original_score) >= 10 {
-        Ok((current_text, report_summary(current_report), iterations))
+        Ok(Rewritten {
+            text: current_text,
+            report: report_summary(current_report),
+            iterations,
+            kept_by,
+            dropped_by,
+        })
     } else {
-        Ok((original_text, report_summary(score(&cleaned, &opts)), 0))
+        // Every candidate came back unused: whoever answered is disclosed
+        // as having seen the text.
+        Ok(Rewritten {
+            dropped_by: dropped_by.or(kept_by),
+            ..Rewritten::unchanged(original_text, report_summary(score(&cleaned, &opts)))
+        })
     }
 }
 

@@ -21,6 +21,8 @@ thiserror = { workspace = true }
 # No runtime/macros — the caller supplies the runtime context.
 tokio = { workspace = true, features = ["time"] }
 tracing = { workspace = true }
+# Parses endpoint URLs to decide what is provably on this machine.
+url = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }

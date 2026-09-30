@@ -1556,3 +1556,48 @@ async fn opened_thread_shows_its_context_above_the_messages() {
         "{output}"
     );
 }
+
+#[test]
+fn draft_assist_says_which_model_wrote_it_and_lists_its_sources() {
+    let source = |from_me: bool| mxr_protocol::DraftSourceData {
+        message_id: MessageId::new(),
+        thread_id: ThreadId::new(),
+        date: chrono::Utc::now(),
+        from_me,
+        person: "maya@example.com".into(),
+        person_name: Some("Maya Chen".into()),
+    };
+    let yours = source(true);
+    let theirs = source(false);
+    let text =
+        super::super::format_platform_response(&mxr_protocol::ResponseData::DraftSuggestion {
+            body: "Friday works.".into(),
+            model: "gemma4".into(),
+            voice_match: None,
+            humanizer: None,
+            rewrite_iterations: 0,
+            inferred_register: None,
+            inferred_length: None,
+            context_note: None,
+            provenance: Some(mxr_protocol::DraftProvenanceData {
+                model: "gemma4".into(),
+                locality: mxr_protocol::AiLocalityData::Local,
+                history_used: true,
+                voice_examples: vec![yours.clone()],
+                conversation: vec![theirs.clone()],
+                rewrite: None,
+            }),
+        });
+    assert!(
+        text.contains("Local model gemma4 · used 1 of your emails to Maya · history used"),
+        "{text}"
+    );
+    assert!(
+        text.contains(&format!("you to Maya  mxr cat {}", yours.message_id)),
+        "{text}"
+    );
+    assert!(
+        text.contains(&format!("Maya  mxr cat {}", theirs.message_id)),
+        "{text}"
+    );
+}

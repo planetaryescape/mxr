@@ -283,6 +283,24 @@ conversation. **Wake now** wakes every snoozed message in
 that conversation. On both lists, the row-action key runs the row's button
 for the row under the cursor.
 
+## When the daemon stops
+
+If the daemon stops or restarts while the web app is open, a banner says
+so within a second or two. Everything already loaded stays on screen: lists,
+the desk and conversations you opened. `j`, `k`, `Enter`, `Esc` and the
+`g` jumps keep working on them. Views you hadn't opened yet wait to load.
+
+Changes don't queue. Archive, trash, labels, snooze, Done, undo, send and
+opening the composer are refused with a toast such as "Can't archive while
+mxr's daemon is stopped", and nothing moves on screen. A reply you were
+writing keeps its text; the composer shows that it isn't saved and saves
+it once the daemon is back.
+
+While it's down the app checks again every few seconds (backing off to
+about every 8 seconds). When the daemon answers, the banner clears, the
+lists refresh and live updates reconnect, with no page reload. Start the
+daemon with `mxr daemon` or `mxr restart`.
+
 ## Command palette
 
 `⌘K` (`Ctrl+K` off macOS, or `:`) runs any action by name. With a

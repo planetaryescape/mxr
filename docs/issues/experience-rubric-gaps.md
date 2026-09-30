@@ -22,7 +22,8 @@ on the user:
 6. **Real-model gists (A11).** Time to useful coverage and ask accuracy on
    representative conversations; browser journeys stub the model today.
 7. **Daemon stopped (B8).** Stop the daemon mid-session and assert cached
-   reading and keys still work, then recover.
+   reading and keys still work, then recover. Built in `feat/offline`
+   (`daemon-stopped.spec`); awaiting a grade.
 8. **Undo matrix (B3).** Cover send and unsubscribe, and document what is
    truly irreversible.
 9. **Motion and typography audit (B2, B7).** Remove `transition-colors` in

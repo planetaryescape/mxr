@@ -167,6 +167,48 @@ an independent reviewer grades them.
 | E1 | 0 | Every score in this document so far was proposed by the worker who built it. |
 | E2 | 0 | No dogfooding log yet. Until one exists, the 3s in section A above are v1 scores; under v2 they stand at 2. |
 
+### Independent grade (2026-09-30)
+
+Graded read-only by Codex (`gpt-6-sol`, which built none of this) at
+`d77374a5` (the glance branch, merged as v0.6.42). It read the source and the
+test assertions rather than test names, and ran nothing, so the builders'
+reported test runs and real-mailbox timings stay unverified by the grader.
+Scores of 2 or more need evidence the grader checked in the repo; evidence
+that is only a test name, a comment or a doc claim caps a score at 1; E2
+caps section A at 2.
+
+**Verdict under v2: fail.** 11 of 31 criteria are below 2, and every A
+criterion is capped at 2 because there is no dogfooding log.
+
+| # | Builder | Grade | Why the grade differs |
+|---|---:|---:|---|
+| A1–A4, A6–A10 | 3 | 2 | E2 cap. Also: A2 has no 30-newsletter fixture, A3 doesn't assert future mail follows a correction, A9's `controls.spec` filters message-card controls before comparing. |
+| A5 | 3 | 1 | Reply later is an untimed flag, so there's no timed, one-key reply later or waiting-on flow. |
+| A11, A12 | 2 | 2 | Supported. Browser gists are stubbed; real-model accuracy and latency are open. |
+| B1 | 3 | 2 | No budget for `s` or cached-thread open; the key probe records the next paint without asserting the intended change. |
+| B2 | 3 | 2 | `transition-colors` in `Sidebar.tsx` and a literal 1500 ms duration in `app.css` break the transform/opacity and token rules. |
+| B3 | 3 | 2 | The per-verb undo journey misses send and unsubscribe. |
+| B4, B6, B9 | 2 | 2 | Supported for what is tested. |
+| B5 | 3 | 2 | The end-to-end journey covers snooze only. |
+| B7 | 2 | 1 | No recorded visual review; `reading.spec` accepts 55–90 characters against the rubric's 60–80. |
+| B8 | 2 | 1 | Nothing asserts cached mail stays usable while the daemon is stopped. |
+| C1, C2 | 2 | 1 | Draft assist shows no local/cloud or history provenance and no draft sources. |
+| C3 | 2 | 1 | No independent copy review. |
+| D1, D3 | 2 | 2 | Accepted as dated, sized records; unverified by the grader. |
+| D2 | 1 | 1 | 1.0 s is at the budget, not under it. |
+| D4 | 0 | 0 | No real-mailbox scroll measurement. |
+| D5 | 2 | 1 | The delivery ledger the timings cite isn't in the repo. |
+| E1 | 0 | 1 | This section is the independent grade. |
+| E2 | 0 | 0 | No log. |
+
+What to do next, ordered by impact, is tracked in
+[docs/issues/experience-rubric-gaps.md](issues/experience-rubric-gaps.md).
+The grader also proposed four criteria for v3: how quickly gists become
+useful on a real mailbox and how accurate their asks are; cross-client
+convergence (a change in CLI, TUI or web shows everywhere without a
+refresh); reminder reliability across restarts, offline periods and clock
+changes; and partial batch recovery.
+
 The parity floor in `docs/web-app-rubric.md` still holds: the suites it cites
 (`triage`, `reading`, `reader`, `search`, `labels`, `snooze`, `responsive`,
 `accessibility`, `keyboard-navigation`, `large-list`) passed in the same run.

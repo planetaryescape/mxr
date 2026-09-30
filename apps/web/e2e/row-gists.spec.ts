@@ -1,6 +1,6 @@
 import { expect, test, type Page, type WebSocketRoute } from "@playwright/test";
 
-import { mailRows, openList } from "./helpers/mail";
+import { mailRows, openList, pressSequence } from "./helpers/mail";
 import { openApp } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -157,7 +157,10 @@ test("with no model, rows look as they always did", async ({ page }) => {
     /replied to your message|wrote to you|messages since you last wrote|copied you/,
   );
 
-  await openList(page, "/m/inbox");
+  // To the inbox inside the app, not a reload: what the app learned about
+  // the model lives in the session, and a reload asks afresh.
+  await pressSequence(page, "g", "i");
+  await expect(page).toHaveURL(/\/m\/inbox/);
   await expect(mailRows(page).first()).toBeVisible();
   await page.waitForTimeout(400);
   await expect(page.getByTestId("row-gist")).toHaveCount(0);

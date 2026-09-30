@@ -227,7 +227,11 @@ test("e is Done, no reply needed: the next one comes up, and undo puts it back i
   await expect(heading(page)).toHaveText(three[0]!.subject);
   await expect(progress).toContainText("1 of 3");
 
-  // The same, from its button under the reply.
+  // The same, from its button under the reply. The pointer is still on the
+  // toast it just used, which keeps toasts (and "Undone") up over the
+  // button: move it off and let them go first.
+  await page.mouse.move(0, 0);
+  await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 15_000 });
   await page.getByRole("button", { name: /Done, no reply needed/ }).click();
   await expect(heading(page)).toHaveText(three[1]!.subject);
   const second = page.waitForResponse("**/api/v1/mail/mutations/undo");

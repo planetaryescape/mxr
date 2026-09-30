@@ -1696,6 +1696,22 @@ pub enum Request {
         #[serde(default)]
         generate: bool,
     },
+    /// Reply later, or wait, until `until`, per conversation by who wrote
+    /// last: when they did, reply later (off the desk and out of the reply
+    /// queue until then, back in both at the time); when you did, bring it
+    /// back if nobody replies (off Waiting on until then; at the time,
+    /// unless someone replied, back on Waiting on and in the reply queue).
+    /// `until` is the instant the client previewed, never a phrase, and
+    /// must be in the future. `dry_run` returns the same plan without
+    /// changing anything. The real run returns one `mutation_id` for
+    /// `UndoMutation`, which puts the flags and reminders back as they
+    /// were. Returns `ResponseData::ThreadsDeferred`.
+    DeferThreads {
+        thread_ids: Vec<ThreadId>,
+        until: chrono::DateTime<chrono::Utc>,
+        #[serde(default)]
+        dry_run: bool,
+    },
 }
 
 impl Request {
@@ -1825,6 +1841,7 @@ impl Request {
             | Self::GetThreadContext { .. }
             | Self::GetThreadGist { .. }
             | Self::GetThreadGists { .. }
+            | Self::DeferThreads { .. }
             | Self::DetectPromises { .. }
             | Self::RecordPromise { .. }
             | Self::GetRecipientBriefing { .. }
@@ -2833,6 +2850,18 @@ pub enum ResponseData {
     ThreadGists {
         batch: ThreadGistBatchData,
     },
+    /// Returned by `Request::DeferThreads`, one item per conversation in
+    /// request order. `mutation_id` undoes the whole run.
+    ThreadsDeferred {
+        items: Vec<DeferredThreadData>,
+        until: chrono::DateTime<chrono::Utc>,
+        dry_run: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mutation_id: Option<String>,
+        /// Something changed but its undo could not be saved.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        undo_unavailable: bool,
+    },
 }
 
 impl ResponseData {
@@ -2939,6 +2968,7 @@ impl ResponseData {
             | Self::ThreadContext { .. }
             | Self::ThreadGist { .. }
             | Self::ThreadGists { .. }
+            | Self::ThreadsDeferred { .. }
             | Self::Promises { .. }
             | Self::RecordedPromise { .. }
             | Self::RecipientBriefing { .. }
@@ -3918,6 +3948,12 @@ pub enum DaemonEvent {
     ThreadGistReady {
         gist: ThreadGistData,
     },
+    /// A timed reply later came back: the message is in the reply queue
+    /// again and its conversation on the desk. Sent once per return, even
+    /// across restarts.
+    ReplyLaterReturned {
+        message_id: MessageId,
+    },
 }
 
 impl DaemonEvent {
@@ -3936,7 +3972,8 @@ impl DaemonEvent {
             | Self::OperationCancelled { .. } => IpcCategory::AdminMaintenance,
             Self::MutationReconciliationFailed { .. }
             | Self::EventsLagged { .. }
-            | Self::ThreadGistReady { .. } => IpcCategory::CoreMail,
+            | Self::ThreadGistReady { .. }
+            | Self::ReplyLaterReturned { .. } => IpcCategory::CoreMail,
         }
     }
 }

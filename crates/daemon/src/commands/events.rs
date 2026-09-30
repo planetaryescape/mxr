@@ -76,6 +76,9 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
             DaemonEvent::ReminderTriggered { sent_message_id } => {
                 format!("reminder reminder_triggered={sent_message_id}")
             }
+            DaemonEvent::ReplyLaterReturned { message_id } => {
+                format!("reminder reply_later_returned={message_id}")
+            }
             DaemonEvent::LabelCountsUpdated { counts } => {
                 format!("sync label_counts_updated={}", counts.len())
             }

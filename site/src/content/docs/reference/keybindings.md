@@ -81,7 +81,7 @@ help modal (`?`).
 | `v` | Move to label |
 | `D` | Unsubscribe |
 | `Z` | Snooze |
-| `b` | Bookmark for reply-later |
+| `b` | Reply later, at a time (Enter with no time: the queue now) |
 | `O` | Open in browser |
 | `R` | Toggle reader mode |
 | `H` | Toggle HTML view |
@@ -467,7 +467,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `v` | Move to label… |  |
 | `Z` | Snooze… |  |
 | `D` | Unsubscribe… |  |
-| `b` | Reply later |  |
+| `b` | Reply later… |  |
 | `r` | Reply |  |
 | `a` | Reply all |  |
 | `f` | Forward |  |

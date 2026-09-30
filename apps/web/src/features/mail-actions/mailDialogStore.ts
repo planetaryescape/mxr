@@ -13,6 +13,12 @@ import type { MailTarget } from "./target";
 
 export type MailDialog =
   | { kind: "snooze"; target: MailTarget; onDone?: () => void }
+  | {
+      /** Reply later at a time (`b`); on Waiting on, back if nobody replies. */
+      kind: "reply-later";
+      target: MailTarget;
+      waiting: boolean;
+    }
   | { kind: "labels"; target: MailTarget }
   | {
       kind: "move";

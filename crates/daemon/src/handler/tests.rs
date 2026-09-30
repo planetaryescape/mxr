@@ -681,6 +681,7 @@ fn rules_form_maps_link_filters_to_link_density() {
 }
 
 mod body_and_invites;
+mod deferral;
 mod desk;
 mod desk_done;
 mod html_drafts;

@@ -4921,6 +4921,73 @@ async fn desk_route_forwards_account_scope_and_lane_limit() {
     assert_eq!(seen.len(), 7);
 }
 
+/// Desk later sends the daemon the instant it was given, untouched, and an
+/// empty list never reaches the daemon.
+#[tokio::test]
+async fn desk_later_route_forwards_the_instant() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Request>::new()));
+    let seen_for_ipc = seen.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| {
+            let data = match &request {
+                Request::DeferThreads { until, dry_run, .. } => ResponseData::ThreadsDeferred {
+                    items: Vec::new(),
+                    until: *until,
+                    dry_run: *dry_run,
+                    mutation_id: None,
+                    undo_unavailable: false,
+                },
+                _ => return Some(Response::error("unexpected")),
+            };
+            seen_for_ipc.lock().unwrap().push(request);
+            Some(Response::Ok { data })
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+    let thread = ThreadId::new();
+    let response = client
+        .post(format!("http://{addr}/api/v1/mail/desk/later"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({
+            "thread_ids": [thread.to_string()],
+            "until": "2026-10-06T08:00:00Z",
+            "dry_run": true,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let empty = client
+        .post(format!("http://{addr}/api/v1/mail/desk/later"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "thread_ids": [], "until": "2026-10-06T08:00:00Z" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(empty.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    assert!(matches!(
+        &seen[0],
+        Request::DeferThreads { thread_ids, until, dry_run: true }
+            if thread_ids == &vec![thread.clone()]
+                && until.to_rfc3339() == "2026-10-06T08:00:00+00:00"
+    ));
+}
+
 /// Bad input on the parity routes is a 400 that never reaches the daemon.
 #[tokio::test]
 async fn parity_routes_reject_bad_input() {

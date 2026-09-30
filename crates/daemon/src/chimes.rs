@@ -89,7 +89,9 @@ pub(crate) fn event_for_daemon_event(event: &DaemonEvent) -> Option<ChimeEvent> 
     match event {
         DaemonEvent::NewMessages { .. } => Some(ChimeEvent::NewMail),
         DaemonEvent::MessageUnsnoozed { .. } => Some(ChimeEvent::Unsnoozed),
-        DaemonEvent::ReminderTriggered { .. } => Some(ChimeEvent::Reminder),
+        DaemonEvent::ReminderTriggered { .. } | DaemonEvent::ReplyLaterReturned { .. } => {
+            Some(ChimeEvent::Reminder)
+        }
         DaemonEvent::SyncError { .. }
         | DaemonEvent::OperationFailed { .. }
         | DaemonEvent::MutationReconciliationFailed { .. } => Some(ChimeEvent::Error),

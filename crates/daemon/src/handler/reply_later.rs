@@ -2,7 +2,8 @@
 //! roundtrip to the provider.
 //!
 //! * `message_flags` (migration 013) — manually-flagged "reply later"
-//!   set; user-driven curation.
+//!   set; user-driven curation. A flag can carry a time (migration 056,
+//!   set through `DeferThreads`): out of the queue until then.
 //! * `auto_reminders` (migration 014) — time-based "remind me if no
 //!   reply in N days"; daemon-driven, fired by a background loop.
 
@@ -43,7 +44,7 @@ pub(crate) async fn set_reply_later_at(
     refresh_reply_later_search_marker(state, message_id, flag).await
 }
 
-async fn refresh_reply_later_search_marker(
+pub(crate) async fn refresh_reply_later_search_marker(
     state: &AppState,
     message_id: &MessageId,
     reply_later: bool,
@@ -76,7 +77,8 @@ async fn refresh_reply_later_search_marker(
 }
 
 pub(super) async fn list_reply_queue(state: &AppState) -> HandlerResult {
-    let ids = state.store.list_reply_later().await?;
+    // A timed reply later joins the queue when its time comes.
+    let ids = state.store.list_reply_later(Utc::now()).await?;
     let messages = state.store.list_envelopes_by_ids(&ids).await?;
     // The store returns IDs in set_at-desc order, but the join may
     // reshuffle envelopes. Re-sort to honor the original ordering so

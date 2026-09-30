@@ -24,6 +24,7 @@ export type DaemonEvent =
     }
   | { type: "MessageUnsnoozed"; event?: "MessageUnsnoozed"; message_id: string }
   | { type: "ReminderTriggered"; event?: "ReminderTriggered"; sent_message_id: string }
+  | { type: "ReplyLaterReturned"; event?: "ReplyLaterReturned"; message_id: string }
   | { type: "LabelCountsUpdated"; event?: "LabelCountsUpdated"; counts: unknown[] }
   | {
       type: "OperationStarted";

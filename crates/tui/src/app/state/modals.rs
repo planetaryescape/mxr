@@ -56,6 +56,35 @@ pub struct SnoozePanelState {
     pub custom_time: crate::ui::time_preview::TimePreview,
 }
 
+/// `b`: reply later at a typed time, previewed live. On a Waiting on row
+/// the time brings the conversation back if nobody has replied. Enter with
+/// nothing typed is the untimed reply later (the reply queue, now).
+#[derive(Debug, Clone)]
+pub struct ReplyLaterPromptState {
+    pub input: String,
+    pub time: crate::ui::time_preview::TimePreview,
+    pub error: Option<String>,
+    pub thread_id: ThreadId,
+    /// The message `b` was pressed on, for the untimed flag.
+    pub message_id: MessageId,
+    /// Pressed on a Waiting on row: the copy says so. The daemon decides
+    /// by who wrote last either way.
+    pub waiting: bool,
+}
+
+impl ReplyLaterPromptState {
+    pub fn new(thread_id: ThreadId, message_id: MessageId, waiting: bool) -> Self {
+        Self {
+            input: String::new(),
+            time: crate::ui::time_preview::TimePreview::default(),
+            error: None,
+            thread_id,
+            message_id,
+            waiting,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct ModalsState {
     pub help_open: bool,
@@ -69,6 +98,7 @@ pub struct ModalsState {
     pub onboarding: FeatureOnboardingState,
     pub label_picker: LabelPicker,
     pub snooze_panel: SnoozePanelState,
+    pub reply_later_prompt: Option<ReplyLaterPromptState>,
     pub snooze_config: mxr_config::SnoozeConfig,
     pub pending_label_action: Option<(LabelPickerMode, String)>,
     pub pending_bulk_confirm: Option<PendingBulkConfirm>,

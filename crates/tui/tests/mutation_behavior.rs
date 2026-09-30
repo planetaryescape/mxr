@@ -23,6 +23,7 @@ use mxr_tui::action::Action;
 use mxr_tui::app::mutation_snapshot::MUTATION_SNAPSHOT_CAPACITY;
 use mxr_tui::app::{App, MutationId};
 use mxr_tui::ui::label_picker::LabelPickerMode;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 fn set_active_inbox_for_tests(app: &mut App) {
     let account_id = app
@@ -324,9 +325,9 @@ fn concurrent_mutations_on_same_message_partial_failure() {
 
 #[test]
 fn flag_reply_later_queues_set_reply_later_request() {
-    // Pressing `b` on a message queues a SetReplyLater request to the
-    // daemon and marks the row locally so the user gets immediate
-    // feedback before daemon reconciliation.
+    // `b` asks when; Enter with no time queues the untimed SetReplyLater
+    // and marks the row locally so the user gets immediate feedback before
+    // daemon reconciliation.
     let mut app = App::new();
     let envelope = unstarred_inbox_envelope();
     let message_id = envelope.id.clone();
@@ -334,6 +335,16 @@ fn flag_reply_later_queues_set_reply_later_request() {
     app.mailbox.selected_index = 0;
 
     app.apply(Action::FlagReplyLater);
+    assert!(
+        app.modals.reply_later_prompt.is_some(),
+        "b opens the time prompt"
+    );
+    assert!(app.pending_mutation_queue.is_empty(), "nothing yet");
+    let enter = app
+        .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .expect("Enter confirms");
+    app.apply(enter);
+    assert!(app.modals.reply_later_prompt.is_none());
 
     assert_eq!(
         app.pending_mutation_queue.len(),
@@ -358,6 +369,71 @@ fn flag_reply_later_queues_set_reply_later_request() {
         app.mail_list_rows()[0].reply_later,
         "mail list row should expose the optimistic reply-later marker"
     );
+}
+
+#[test]
+fn reply_later_at_a_typed_time_sends_the_previewed_instant() {
+    let mut app = App::new();
+    let envelope = unstarred_inbox_envelope();
+    let thread_id = envelope.thread_id.clone();
+    app.mailbox.envelopes.push(envelope);
+    app.mailbox.selected_index = 0;
+
+    app.apply(Action::FlagReplyLater);
+    for c in "in 2d".chars() {
+        assert!(app
+            .handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+            .is_none());
+    }
+    let previewed = app
+        .modals
+        .reply_later_prompt
+        .as_ref()
+        .expect("b opens the prompt")
+        .time
+        .chosen()
+        .expect("in 2d resolves");
+    let enter = app
+        .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .expect("Enter confirms");
+    app.apply(enter);
+
+    assert!(app.modals.reply_later_prompt.is_none());
+    assert_eq!(app.pending_mutation_queue.len(), 1);
+    match &app.pending_mutation_queue[0].request {
+        Request::DeferThreads {
+            thread_ids,
+            until,
+            dry_run,
+        } => {
+            assert_eq!(thread_ids, &vec![thread_id]);
+            assert_eq!(until, &previewed, "what was previewed is what is sent");
+            assert!(!dry_run);
+        }
+        other => panic!("expected DeferThreads, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_phrase_that_does_not_parse_stays_in_the_prompt() {
+    let mut app = App::new();
+    app.mailbox.envelopes.push(unstarred_inbox_envelope());
+    app.mailbox.selected_index = 0;
+    app.apply(Action::FlagReplyLater);
+    for c in "whenever".chars() {
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+    }
+    let enter = app
+        .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .expect("Enter confirms");
+    app.apply(enter);
+    let prompt = app.modals.reply_later_prompt.as_ref().expect("still open");
+    assert!(prompt.error.is_some());
+    assert!(app.pending_mutation_queue.is_empty());
+
+    let esc = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert!(esc.is_none());
+    assert!(app.modals.reply_later_prompt.is_none(), "Esc closes it");
 }
 
 #[test]

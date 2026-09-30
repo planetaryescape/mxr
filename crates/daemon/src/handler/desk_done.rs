@@ -9,7 +9,9 @@
 //!   like the others. Nothing is archived. Other open promises on the
 //!   conversation stay under Due: due rows never read dismissals.
 //!
-//! Every lane also takes the conversation out of the reply-later queue.
+//! Every lane also takes the conversation out of the reply-later queue,
+//! timed or not, and cancels a pending "bring it back if no reply"
+//! reminder, so nothing Done put away comes back on a timer.
 //!
 //! One plan serves the preview and the run, so a dry run lists exactly
 //! what the run changes. Messages go through the shared mutation path; the
@@ -17,11 +19,11 @@
 //! state plus the dismissals and promises as they were.
 
 use super::desk::self_matcher;
-use super::desk_lanes::{current_messages, is_outbound};
+use super::desk_lanes::{current_messages, is_outbound, last_stored};
 use super::mutations::{apply_mutation_batch, UNDO_WINDOW_SECS};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::MessageFlags;
 use mxr_protocol::{
@@ -30,7 +32,7 @@ use mxr_protocol::{
 };
 use mxr_store::{
     CommitmentPrior, CommitmentStatus, ContactCommitmentRecord, DeskDismissalMark, DeskMessage,
-    DeskUndo, UndoEntry, UndoEntrySnapshot, UndoableMutationKind,
+    DeskUndo, ReminderState, ReplyLaterState, UndoEntry, UndoEntrySnapshot, UndoableMutationKind,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -47,8 +49,14 @@ struct Plan {
     mark: Option<DeskDismissalMark>,
     /// The open promise to resolve (Due).
     commitment: Option<ContactCommitmentRecord>,
-    /// Flagged for reply later, with when each was flagged: cleared.
-    reply_later: Vec<(MessageId, DateTime<Utc>)>,
+    /// Flagged for reply later, as stored: cleared.
+    reply_later: Vec<(MessageId, ReplyLaterState)>,
+    /// Pending "bring it back if no reply" reminders, as stored: cancelled.
+    reminders: Vec<(MessageId, ReminderState)>,
+    /// Every message of the conversation: the run takes the timers off all
+    /// of them as they are then, not as the plan read them, so a reminder
+    /// that fires between plan and run can't outlive Done.
+    thread_messages: Vec<MessageId>,
     error: Option<String>,
 }
 
@@ -63,6 +71,8 @@ impl Plan {
             mark: None,
             commitment: None,
             reply_later: Vec::new(),
+            reminders: Vec::new(),
+            thread_messages: Vec::new(),
             error: Some(error.into()),
         }
     }
@@ -91,6 +101,7 @@ impl Plan {
             marked_read: self.unread.len() as u32,
             dismissed: self.mark.is_some(),
             reply_later_cleared: self.reply_later.len() as u32,
+            reminders_cancelled: self.reminders.len() as u32,
             resolved_commitment_id: self.commitment.as_ref().map(|c| c.id.clone()),
             error: self.error.clone(),
         }
@@ -153,12 +164,16 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
         .flatten()
         .map(|message| message.id.clone())
         .collect();
-    let reply_later: HashMap<MessageId, DateTime<Utc>> = state
-        .store
-        .reply_later_set_at(&all_messages)
-        .await?
-        .into_iter()
-        .collect();
+    let flags = Timers {
+        reply_later: state.store.reply_later_states(&all_messages).await?,
+        reminders: state
+            .store
+            .auto_reminder_states(&all_messages)
+            .await?
+            .into_iter()
+            .filter(|(_, reminder)| reminder.is_pending())
+            .collect(),
+    };
 
     let mut plans = Vec::with_capacity(items.len());
     let mut seen: HashSet<&ThreadId> = HashSet::new();
@@ -173,7 +188,7 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
         } else {
             match found {
                 Some((account_id, thread)) => {
-                    plan_item(state, item, account_id, thread, &reply_later).await?
+                    plan_item(state, item, account_id, thread, &flags).await?
                 }
                 None => Err("conversation not found".to_string()),
             }
@@ -192,6 +207,13 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
     Ok(plans)
 }
 
+/// What would bring a conversation back on its own, per message.
+struct Timers {
+    reply_later: HashMap<MessageId, ReplyLaterState>,
+    /// Pending only.
+    reminders: HashMap<MessageId, ReminderState>,
+}
+
 /// One item's plan, or why it cannot be done (the outer error is the
 /// store's).
 async fn plan_item(
@@ -199,7 +221,7 @@ async fn plan_item(
     item: &DeskDoneItemData,
     account_id: &AccountId,
     thread: &[DeskMessage],
-    reply_later: &HashMap<MessageId, DateTime<Utc>>,
+    timers: &Timers,
 ) -> Result<Result<Plan, String>, HandlerError> {
     let lane = match (item.lane, &item.commitment_id) {
         (Some(DeskLaneKind::Due) | None, Some(_)) => DeskLaneKind::Due,
@@ -256,9 +278,19 @@ async fn plan_item(
     let reply_later = thread
         .iter()
         .filter_map(|message| {
-            reply_later
+            timers
+                .reply_later
                 .get(&message.id)
-                .map(|set_at| (message.id.clone(), *set_at))
+                .map(|flag| (message.id.clone(), *flag))
+        })
+        .collect();
+    let reminders = thread
+        .iter()
+        .filter_map(|message| {
+            timers
+                .reminders
+                .get(&message.id)
+                .map(|reminder| (message.id.clone(), reminder.clone()))
         })
         .collect();
     Ok(Ok(Plan {
@@ -270,6 +302,8 @@ async fn plan_item(
         mark,
         commitment,
         reply_later,
+        reminders,
+        thread_messages: thread.iter().map(|message| message.id.clone()).collect(),
         error: None,
     }))
 }
@@ -282,7 +316,7 @@ fn lane_archives(lane: DeskLaneKind) -> bool {
 /// The desk's own rule when the caller names no lane: waiting when you
 /// wrote last, otherwise owed.
 fn inferred_lane(thread: &[DeskMessage], is_self: &dyn Fn(&str) -> bool) -> DeskLaneKind {
-    match current_messages(thread, Utc::now()).last() {
+    match last_stored(current_messages(thread, Utc::now()), |_| true) {
         Some(message) if is_outbound(message, is_self) => DeskLaneKind::Waiting,
         _ => DeskLaneKind::Owed,
     }
@@ -434,12 +468,23 @@ async fn put_away(
         }
     }
     let now = Utc::now();
-    for plan in plans.iter().filter(|plan| plan.error.is_none()) {
-        for (message_id, set_at) in &plan.reply_later {
-            // Noted first, so a clear that fails part way is still undone.
-            desk.reply_later.push((message_id.clone(), *set_at));
-            super::reply_later::set_reply_later_at(state, message_id, false, now).await?;
+    for plan in plans.iter_mut().filter(|plan| plan.error.is_none()) {
+        // One transaction reads and clears, so the undo holds exactly what
+        // this took, including a flag a reminder set since the plan.
+        let taken = state.store.take_timers(&plan.thread_messages, now).await?;
+        for (message_id, flag) in &taken.reply_later {
+            desk.reply_later_priors
+                .push((message_id.clone(), Some(*flag)));
         }
+        for (message_id, reminder) in &taken.reminders {
+            desk.reminder_priors
+                .push((message_id.clone(), Some(reminder.clone())));
+        }
+        for (message_id, _) in &taken.reply_later {
+            super::reply_later::refresh_reply_later_search_marker(state, message_id, false).await?;
+        }
+        plan.reply_later = taken.reply_later;
+        plan.reminders = taken.reminders;
     }
     Ok(())
 }
@@ -448,6 +493,7 @@ async fn put_away(
 pub(super) async fn restore_desk_state(
     state: &AppState,
     desk: &DeskUndo,
+    applied_at: i64,
 ) -> Result<(), HandlerError> {
     state
         .store
@@ -467,7 +513,7 @@ pub(super) async fn restore_desk_state(
     for (message_id, set_at) in &desk.reply_later {
         super::reply_later::set_reply_later_at(state, message_id, true, *set_at).await?;
     }
-    Ok(())
+    super::deferral::restore_timers(state, desk, applied_at).await
 }
 
 /// `run` over hand-built plans (each conversation's messages, archived or
@@ -492,8 +538,23 @@ pub(super) async fn run_messages_for_test(
             mark: None,
             commitment: None,
             reply_later: Vec::new(),
+            reminders: Vec::new(),
+            thread_messages: Vec::new(),
             error: None,
         })
         .collect();
+    run(state, plans).await
+}
+
+/// Done with `between` run after the plan and before the run, for tests of
+/// what happens in that gap (a reminder firing).
+#[cfg(test)]
+pub(super) async fn resolve_with_gap_for_test(
+    state: &AppState,
+    items: &[DeskDoneItemData],
+    between: impl std::future::Future<Output = ()>,
+) -> HandlerResult {
+    let plans = plan(state, items).await?;
+    between.await;
     run(state, plans).await
 }

@@ -165,6 +165,9 @@ fn describe(item: &DeskDoneOutcomeData, dry_run: bool) -> String {
     if item.reply_later_cleared > 0 {
         parts.push("out of reply later".to_string());
     }
+    if item.reminders_cancelled > 0 {
+        parts.push("won't come back on a timer".to_string());
+    }
     if item.dismissed {
         parts.push("off the desk until someone writes".to_string());
     }
@@ -188,6 +191,7 @@ mod tests {
             marked_read: 1,
             dismissed: true,
             reply_later_cleared: 0,
+            reminders_cancelled: 0,
             resolved_commitment_id: None,
             error: None,
         }

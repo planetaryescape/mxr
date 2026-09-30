@@ -2143,6 +2143,48 @@ pub async fn run() -> anyhow::Result<()> {
                             Some(error) => Err(MxrError::Ipc(format!("Not done: {error}"))),
                         }
                     }
+                    Ok(Response::Ok {
+                        data:
+                            ResponseData::ThreadsDeferred {
+                                items,
+                                until,
+                                mutation_id,
+                                ..
+                            },
+                    }) => {
+                        // Say what the daemon set, in its words: the time and
+                        // whether it waits on a reply.
+                        let when = until
+                            .with_timezone(&chrono::Local)
+                            .format("%a %e %b %H:%M")
+                            .to_string();
+                        let set = items
+                            .iter()
+                            .filter(|item| item.error.is_none())
+                            .filter_map(|item| item.kind)
+                            .collect::<Vec<_>>();
+                        let status = match set.first() {
+                            Some(mxr_protocol::DeferKindData::Waiting) => {
+                                format!("Back {when} if nobody replies")
+                            }
+                            _ => format!("Reply later: back {when}"),
+                        };
+                        if let Some(daemon_mutation_id) = mutation_id {
+                            let _ =
+                                result_tx_inner.send(AsyncResult::UndoCaptured(app::PendingUndo {
+                                    action: app::UndoAction::Mutations(vec![daemon_mutation_id]),
+                                    verb_past: "Time set".into(),
+                                    count: set.len() as u32,
+                                    applied_at: std::time::Instant::now(),
+                                }));
+                        }
+                        match items.iter().find_map(|item| item.error.as_deref()) {
+                            None => Ok(app::MutationEffect::RefreshPlaces(format!(
+                                "{status}. Press u to undo"
+                            ))),
+                            Some(error) => Err(MxrError::Ipc(format!("Not set: {error}"))),
+                        }
+                    }
                     Ok(Response::Error { message, .. }) => {
                         // A partly failed undo keeps what failed under the
                         // same id: `u` again retries just those.

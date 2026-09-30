@@ -898,6 +898,37 @@ const MIGRATIONS: &[Migration] = &[
         name: "owed_replies_index",
         kind: MigrationKind::Sql(include_str!("../migrations/054_owed_replies_index.sql")),
     },
+    Migration {
+        version: 56,
+        name: "reply_later_due",
+        // Timed reply later. Mirrors migrations/056_reply_later_due.sql.
+        kind: MigrationKind::Composite(&[
+            MigrationStep::AddColumn {
+                table: "message_flags",
+                column: "reply_later_due_at",
+                // When a timed reply later comes back; NULL is untimed.
+                sql: "ALTER TABLE message_flags ADD COLUMN reply_later_due_at INTEGER",
+            },
+            MigrationStep::AddColumn {
+                table: "message_flags",
+                column: "reply_later_returned_at",
+                // Set once, by the wake loop that announces the return.
+                sql: "ALTER TABLE message_flags ADD COLUMN reply_later_returned_at INTEGER",
+            },
+            MigrationStep::Sql(
+                "CREATE INDEX IF NOT EXISTS idx_message_flags_reply_later_due
+                     ON message_flags (reply_later_due_at)
+                     WHERE reply_later = 1
+                       AND reply_later_due_at IS NOT NULL
+                       AND reply_later_returned_at IS NULL",
+            ),
+            // A reminder's replies filed in another thread, by parent.
+            MigrationStep::Sql(
+                "CREATE INDEX IF NOT EXISTS idx_reply_pairs_parent
+                     ON reply_pairs (parent_message_id, direction)",
+            ),
+        ]),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

@@ -54,7 +54,10 @@ test("reply later adds to the queue in the table's words, and the toast undoes i
 }) => {
   await openList(page, "/m/inbox");
   await mailList(page).focus();
+  // `b` asks when; Enter with no time is the plain reply later.
   await page.keyboard.press("b");
+  await expect(page.getByRole("dialog", { name: "Reply later" })).toBeVisible();
+  await page.keyboard.press("Enter");
   const toast = lastToast(page, VERB_FEEDBACK["reply-later"].pastTense);
   await expect(toast).toBeVisible();
   const queued = page.waitForResponse((response) => response.url().includes("reply-later"));

@@ -178,10 +178,15 @@ function startControlServer() {
 function stopDaemon() {
   if (!daemon || daemon.exitCode !== null || daemon.killed) return Promise.resolve();
   daemonStoppedByControl = true;
+  // The daemon being stopped, not whichever one `daemon` names when the
+  // timer fires: a restart replaces it within the grace period.
+  const child = daemon;
   return new Promise((resolveStop) => {
-    daemon.once("exit", () => resolveStop());
-    daemon.kill("SIGTERM");
-    setTimeout(() => daemon?.kill("SIGKILL"), 2_000).unref();
+    child.once("exit", () => resolveStop());
+    child.kill("SIGTERM");
+    setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }, 2_000).unref();
   });
 }
 

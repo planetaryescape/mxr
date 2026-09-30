@@ -23,7 +23,7 @@ commitments and cadence watches. No language model decides what goes where.
 |---|---|---|---|
 | You owe | `owed` | Someone you are in conversation with wrote last and you have not replied. | Furthest past your usual reply time first. |
 | Due | `due` | A promise you made is due within 7 days, or overdue by up to 30 days. | By due date. |
-| Waiting on | `waiting` | You wrote last, at least 12 hours ago, and they have not answered. A watched contact who has gone quiet longer than their [cadence](/guides/timing-and-cadence/) joins too. | Furthest past their usual reply time first. |
+| Waiting on | `waiting` | You wrote last, at least 12 hours ago, and they have not answered. A watched contact who has gone quiet longer than their [cadence](/guides/timing-and-cadence/) joins too. A time set with [`mxr desk later`](#later) that passed with no reply brings it back, however old. | Furthest past their usual reply time first. |
 | New from people | `people_new` | A person you have not written to before wrote in the last 7 days. | Newest first. |
 
 - "In conversation with" means you have written to them before, or you
@@ -33,6 +33,10 @@ commitments and cadence watches. No language model decides what goes where.
   days.
 - A conversation that qualifies for two lanes shows once, in the first of:
   You owe, Due, Waiting on, New from people.
+- A conversation set to reply later is off the thread lanes until its time.
+  From then it is in You owe while their message is not in the trash, even
+  if it is archived, older than 30 days, or from a sender that is not a
+  person: you asked for it back.
 - "Usual" is the median of your past replies to that person (or theirs to
   you), and needs at least two of them. With no history, ordering assumes 24
   hours.
@@ -48,14 +52,17 @@ commitments and cadence watches. No language model decides what goes where.
 | Waiting on | They reply. The conversation is snoozed or trashed, or archived when it has mail from them. A conversation with only your own messages stays after archive. |
 | Waiting on (watched contact) | They write. Archive does not take it off. |
 | Due | The promise is resolved. What happens to the conversation does not matter. |
+| Any thread lane | You set a time with [`mxr desk later`](#later). It comes back then. |
 
 ### Reasons
 
 Each row's `reason` says why it is there, for example: `wrote to you`,
 `replied to your message`, `2 messages since you last wrote`, `copied you`,
 `first message from them`, `no reply to your last message`,
-`you followed up, no reply yet`, `usually in touch every ...`. A Due row's
-reason is the promise in your own words.
+`you followed up, no reply yet`, `usually in touch every ...`,
+`back from reply later`, `no reply by the time you set`. A Due row's
+reason is the promise in your own words. A row a time brought back keeps
+its reason even when a gist has an ask.
 
 ## Everything else
 
@@ -80,14 +87,17 @@ The desk's `elsewhere` counts are not unread counts:
 | Waiting on | No | Yes | Stops waiting until someone writes. |
 | Due | No | Yes | Resolves that promise. Other open promises in the conversation stay. |
 
-- Every lane also takes the conversation out of the reply-later queue.
+- Every lane also takes the conversation out of the reply-later queue, a
+  timed one included, and cancels a pending "bring it back" time
+  (`reminders_cancelled`), so nothing Done put away comes back on a timer.
 - "Until someone writes" means until a new message is stored in the
   conversation, from them or from you. Moving it back to the inbox by hand
   does not bring it back. A resolved promise does not come back.
 - Without `--lane`, the lane is Waiting on when you wrote last, otherwise
   You owe. `--promise COMMITMENT_ID` implies Due and takes one thread id.
-- Undo restores labels, read state, the dismissal, the promise and the
-  reply-later flag with its original time. The undo window is 60 seconds.
+- Undo restores labels, read state, the dismissal, the promise, the
+  reply-later flag with its original time and any time it was set for, and
+  a cancelled "bring it back" time. The undo window is 60 seconds.
 - When a conversation cannot be put away (its account is offline, say),
   its item has an `error`, the rest are still done, and the command exits
   non-zero. The first attempt's undo id still restores everything it
@@ -95,6 +105,61 @@ The desk's `elsewhere` counts are not unread counts:
 
 `mxr desk dismiss` is the older "done waiting" on its own: no mark read, no
 reply-later change. `mxr desk restore` reverses it.
+
+## Later
+
+`mxr desk later THREAD_ID... --at TIME`, and `b` in the web app and TUI,
+set a time on each conversation. Who wrote last decides what it does, the
+same rule Done uses without `--lane`:
+
+| Who wrote last | `kind` | Until the time | At the time |
+|---|---|---|---|
+| They did | `reply_later` | Off the desk and out of the reply queue. The inbox is not touched. | Back in You owe (`back from reply later`) and the reply queue, ranked by the time. |
+| You did | `waiting` | Off Waiting on. | If nobody else has written since your message: back in Waiting on (`no reply by the time you set`) and your message joins the reply queue. |
+
+- `--at` is resolved in local time before anything is sent; the daemon gets
+  the instant, never the words, and refuses a time that has passed. The web
+  app sends the instant its preview showed.
+- Reply later moves every reply-later flag in the conversation to the time.
+  Waiting clears the conversation's reply-later flags and cancels its other
+  pending reminders, so this one time is what brings it back.
+- Who wrote last, and whether someone replied, go by the order mail was
+  stored, not its Date header, and count only people: an auto-responder or
+  notification neither makes it theirs nor cancels a wait. A person's reply
+  cancels a waiting time, before or at the time, including one filed in
+  another thread whose In-Reply-To names your message. A new message in a
+  reply-later conversation does not bring it back early.
+- A conversation is back as soon as its time passes, whether or not the
+  daemon was running; a wait the daemon fires late (it was off for weeks)
+  still comes back. The daemon announces each return once per
+  conversation (`ReplyLaterReturned`, or `ReminderTriggered` for waiting),
+  even across restarts. Moving a time later always wins over the old one.
+- Undo puts back what it replaced, and takes the reply-queue entry a wait
+  added if it fired in the meantime.
+- `--dry-run` returns the same items without changing anything. The real
+  run prints an undo id; undo puts back every flag and reminder it replaced.
+  A conversation that cannot be set has an `error` and the command exits
+  non-zero.
+
+```json
+{
+  "dry_run": false,
+  "until": "2026-10-06T08:00:00Z",
+  "mutation_id": "01a0f2d3-5a6c-7db2-8456-4781c4303b08",
+  "undo_unavailable": false,
+  "items": [
+    {
+      "thread_id": "309ae832-4d84-5d78-a3ef-76a7eda21496",
+      "account_id": "190b5fb4-5733-5322-8aa6-5f775e603573",
+      "kind": "waiting",
+      "message_id": "b5700241-8d68-562a-92d3-ec69db053cea"
+    }
+  ]
+}
+```
+
+`message_id` is the message the time is on: their latest message for reply
+later, yours for waiting.
 
 ## Placement rules
 
@@ -209,6 +274,8 @@ Trimmed to one row:
 
 - `usual_seconds` is absent when the pace is unknown.
 - A Due row also has `commitment_id`. Pass it to `mxr desk done --promise`.
+- A row a time you set brought back has `back_at`, the time that was set,
+  and is `overdue`.
 - `--format jsonl` prints one row per line with its `lane`, `--format ids`
   prints thread ids, and `--format csv` prints the rows as CSV.
 - `--limit` (default 25) caps rows per lane. Each lane's `total` still
@@ -234,7 +301,8 @@ Trimmed to one row:
       "archived": 0,
       "marked_read": 0,
       "dismissed": true,
-      "reply_later_cleared": 0
+      "reply_later_cleared": 0,
+      "reminders_cancelled": 0
     }
   ],
   "mutation_id": null,

@@ -430,11 +430,7 @@ impl App {
             lane: Some(row.lane),
             commitment_id: row.commitment_id.clone(),
         };
-        self.mailbox.desk_page.remove_thread(&item.thread_id);
-        self.mailbox.selected_index = self
-            .mailbox
-            .selected_index
-            .min(self.mailbox.desk_page.row_count().saturating_sub(1));
+        self.remove_desk_thread(&item.thread_id);
         self.queue_mutation(
             Request::ResolveDeskItems {
                 items: vec![item],
@@ -444,6 +440,16 @@ impl App {
             "Putting it away...".into(),
         );
         true
+    }
+
+    /// Take a conversation off the desk at once (the daemon's answer, or a
+    /// refetch on failure, settles it), keeping the cursor in range.
+    pub(super) fn remove_desk_thread(&mut self, thread_id: &mxr_core::ThreadId) {
+        self.mailbox.desk_page.remove_thread(thread_id);
+        self.mailbox.selected_index = self
+            .mailbox
+            .selected_index
+            .min(self.mailbox.desk_page.row_count().saturating_sub(1));
     }
 
     /// Enter on a desk row: fetch the row's message by id and open it in

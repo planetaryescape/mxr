@@ -36,14 +36,22 @@ time string, and press `Enter` to send and set the reminder in one
 flow. Use `Ctrl-p → Cancel Reminder` from the focused sent message to
 cancel a pending reminder.
 
-A reply cancels the reminder: one that answers the sent message, or any
-message from someone else in the same conversation after it was sent.
+A reply from a person cancels the reminder: any message from someone else
+stored in the conversation after yours, or one whose In-Reply-To names your
+message wherever it was filed. An
+auto-responder or notification does not count. Storage order decides, not
+the Date header. The check runs when the reminder is due, and a reply that
+arrives while it runs stops the reminder from firing until it is checked.
 
-When the time elapses, mxr marks the sent message for reply-later,
-refreshes `is:reply-later` search state, and emits a
-`ReminderTriggered` event so connected clients can surface the
-follow-up. Re-setting the reminder on the same message replaces the
-existing schedule.
+While the reminder is pending, the conversation stays off the desk's
+Waiting on. When the time elapses, mxr marks the sent message for
+reply-later, refreshes `is:reply-later` search state, puts the conversation
+back on Waiting on, and emits one `ReminderTriggered` event so connected
+clients can surface the follow-up. It fires once, even if the daemon was
+stopped at the time and started later. Re-setting the reminder on the same
+message replaces the existing schedule. `mxr desk later THREAD_ID --at TIME`
+sets the same reminder on a conversation you wrote last, with a dry run and
+undo ([come back to it later](/guides/desk/#come-back-to-it-later)).
 
 ## Send Later
 

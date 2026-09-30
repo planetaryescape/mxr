@@ -685,6 +685,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/desk/later": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reply later, or bring back if nobody replies, until a time (by who wrote last). dry_run previews */
+        post: operations["mail_desk_later"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/desk/restore": {
         parameters: {
             query?: never;
@@ -3503,6 +3520,10 @@ export interface components {
             /** @enum {string} */
             event: "ThreadGistReady";
             gist: components["schemas"]["ThreadGistData"];
+        } | {
+            /** @enum {string} */
+            event: "ReplyLaterReturned";
+            message_id: components["schemas"]["MessageId"];
         };
         /** @enum {string} */
         DaemonHealthClass: "healthy" | "degraded" | "restart_required" | "repair_required";
@@ -3518,6 +3539,21 @@ export interface components {
             rationale?: string | null;
             thread_id: components["schemas"]["ThreadId"];
             topic?: string | null;
+        };
+        /**
+         * @description How a conversation is deferred, decided by who wrote last (the desk's
+         *     own rule).
+         * @enum {string}
+         */
+        DeferKindData: "reply_later" | "waiting";
+        /** @description What deferring one conversation did, or with `dry_run` would do. */
+        DeferredThreadData: {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @description Why this conversation was not deferred. The others still are. */
+            error?: string | null;
+            kind?: null | components["schemas"]["DeferKindData"];
+            message_id?: null | components["schemas"]["MessageId"];
+            thread_id: components["schemas"]["ThreadId"];
         };
         /** @description A tracked delivery for the Deliveries surface (CLI/web/TUI). */
         DeliveryData: {
@@ -3624,6 +3660,12 @@ export interface components {
             marked_read: number;
             /**
              * Format: int32
+             * @description Pending "bring it back if no reply" reminders cancelled, so the
+             *     conversation doesn't come back on its own.
+             */
+            reminders_cancelled?: number;
+            /**
+             * Format: int32
              * @description Messages taken out of the reply-later queue.
              */
             reply_later_cleared?: number;
@@ -3680,6 +3722,17 @@ export interface components {
          * @enum {string}
          */
         DeskLaneKind: "owed" | "due" | "waiting" | "people_new";
+        /** @description Body of `POST /api/v1/mail/desk/later`. */
+        DeskLaterBody: {
+            /** @description Preview only; nothing changes. */
+            dry_run?: boolean | null;
+            thread_ids: string[];
+            /**
+             * @description The instant the client previewed, as RFC3339. Never a phrase: resolve
+             *     it with `/api/v1/mail/time/resolve` and send the chosen `at`.
+             */
+            until: string;
+        };
         /** @description One row on the desk: a thread, who it is with, and why it is here. */
         DeskRowData: {
             account_id: components["schemas"]["AccountId"];
@@ -3689,6 +3742,12 @@ export interface components {
              *     is not due yet.
              */
             age_seconds: number;
+            /**
+             * Format: date-time
+             * @description The row is back because a time you set came: reply later on You
+             *     owe, "bring it back if no reply" on Waiting on. The time you set.
+             */
+            back_at?: string | null;
             /** @description Due rows: the promise's id, for resolving it. */
             commitment_id?: string | null;
             counterparty_email: string;
@@ -5844,6 +5903,13 @@ export interface components {
             cmd: "GetThreadGists";
             generate?: boolean;
             thread_ids: components["schemas"]["ThreadId"][];
+        } | {
+            /** @enum {string} */
+            cmd: "DeferThreads";
+            dry_run?: boolean;
+            thread_ids: components["schemas"]["ThreadId"][];
+            /** Format: date-time */
+            until: string;
         };
         /**
          * @description The daemon's reply to a [`Request`], correlated by [`IpcMessage::id`].
@@ -6546,6 +6612,16 @@ export interface components {
             batch: components["schemas"]["ThreadGistBatchData"];
             /** @enum {string} */
             kind: "ThreadGists";
+        } | {
+            dry_run: boolean;
+            items: components["schemas"]["DeferredThreadData"][];
+            /** @enum {string} */
+            kind: "ThreadsDeferred";
+            mutation_id?: string | null;
+            /** @description Something changed but its undo could not be saved. */
+            undo_unavailable?: boolean;
+            /** Format: date-time */
+            until: string;
         };
         /**
          * @description A single bucket of the response-time histogram. `count` rows had a
@@ -8590,6 +8666,44 @@ export interface operations {
                 };
             };
             /** @description No items */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_desk_later: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeskLaterBody"];
+            };
+        };
+        responses: {
+            /** @description The `ThreadsDeferred` variant: one item per conversation and the undo id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description No conversations */
             400: {
                 headers: {
                     [name: string]: unknown;

@@ -6,9 +6,12 @@
 //! The lane rules live in `desk_lanes.rs`.
 
 use super::desk_lanes::{
-    apply_pace, clean_subject, dedupe_by_precedence, sort_lane, thread_lanes, thread_starred,
-    waiting_set_aside, AccountInputs, PaceDirection, DESK_WINDOW_DAYS, DUE_AHEAD_DAYS,
+    apply_pace, clean_subject, dedupe_by_precedence, is_outbound, sender_kind, sort_lane,
+    thread_lanes, thread_starred, waiting_set_aside, AccountInputs, PaceDirection, WaitingAside,
+    DESK_WINDOW_DAYS, DUE_AHEAD_DAYS,
 };
+use super::desk_timers::DeskTimers;
+use super::mail_kind::SenderKind;
 use super::HandlerResult;
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
@@ -17,7 +20,7 @@ use mxr_core::types::{AccountAddressLookup, CalendarPartstat};
 use mxr_protocol::{DeskElsewhereData, DeskLaneData, DeskLaneKind, DeskRowData, ResponseData};
 use mxr_store::{
     CadenceDriftRow, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord,
-    DeliveryListFilter, DeskDismissal, DeskLatestExchange, DeskMessage, ScreenerDisposition,
+    DeliveryListFilter, DeskContact, DeskLatestExchange, DeskMessage, ScreenerDisposition,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -26,8 +29,17 @@ pub(super) async fn get_desk(
     account_id: Option<&AccountId>,
     lane_limit: u32,
 ) -> HandlerResult {
+    get_desk_at(state, account_id, lane_limit, Utc::now()).await
+}
+
+/// The desk as it stands at `now` (tests move the clock).
+pub(super) async fn get_desk_at(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    lane_limit: u32,
+    now: DateTime<Utc>,
+) -> HandlerResult {
     let started = std::time::Instant::now();
-    let now = Utc::now();
     let accounts: Vec<AccountId> = match account_id {
         Some(id) => vec![id.clone()],
         None => state
@@ -110,6 +122,65 @@ pub(super) async fn self_matcher(
     })
 }
 
+/// What the store knows about the senders of some desk messages, for the
+/// shared classifier: contacts and screener decisions, keyed by lowercased
+/// email.
+pub(super) struct Senders {
+    pub contacts: HashMap<String, DeskContact>,
+    pub screener: HashMap<String, ScreenerDisposition>,
+}
+
+impl Senders {
+    pub(super) async fn load(
+        state: &AppState,
+        account_id: &AccountId,
+        messages: &[DeskMessage],
+    ) -> Result<Self, super::HandlerError> {
+        let mut emails: Vec<String> = messages
+            .iter()
+            .flat_map(|m| {
+                std::iter::once(m.from.email.to_ascii_lowercase())
+                    .chain(m.to.iter().map(|a| a.email.to_ascii_lowercase()))
+            })
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        emails.sort_unstable();
+        let contacts = state
+            .store
+            .desk_contacts(account_id, &emails)
+            .await?
+            .into_iter()
+            .map(|contact| (contact.email.to_ascii_lowercase(), contact))
+            .collect();
+        let screener = state
+            .store
+            .list_screener_decisions(account_id)
+            .await?
+            .into_iter()
+            .map(|decision| {
+                (
+                    decision.sender_email.to_ascii_lowercase(),
+                    decision.disposition,
+                )
+            })
+            .collect();
+        Ok(Self { contacts, screener })
+    }
+
+    /// A person other than you wrote it (not an auto-responder, list or
+    /// notification): it answers you.
+    pub(super) fn answers(&self, message: &DeskMessage, is_self: &dyn Fn(&str) -> bool) -> bool {
+        let email = message.from.email.to_ascii_lowercase();
+        !is_outbound(message, is_self)
+            && sender_kind(
+                message,
+                self.contacts.get(&email),
+                self.screener.get(&email).copied(),
+            ) == SenderKind::Person
+    }
+}
+
 struct AccountDesk {
     rows: Vec<DeskRowData>,
     elsewhere: DeskElsewhereData,
@@ -122,46 +193,38 @@ async fn account_desk(
     now: DateTime<Utc>,
 ) -> Result<AccountDesk, super::HandlerError> {
     let store = &state.store;
-    let messages = store
+    let mut messages = store
         .desk_thread_messages(account_id, now - Duration::days(DESK_WINDOW_DAYS))
         .await?;
-
-    let mut emails: Vec<String> = messages
-        .iter()
-        .flat_map(|m| {
-            std::iter::once(m.from.email.to_ascii_lowercase())
-                .chain(m.to.iter().map(|a| a.email.to_ascii_lowercase()))
-        })
+    let timers = DeskTimers::new(
+        store.desk_reply_later(account_id).await?,
+        store
+            .desk_reminders(account_id, now - Duration::days(DESK_WINDOW_DAYS))
+            .await?,
+    );
+    // A conversation a time you set brought back may have gone quiet
+    // before the window: load it whole, once.
+    let loaded: HashSet<&ThreadId> = messages.iter().map(|m| &m.thread_id).collect();
+    let mut back: Vec<ThreadId> = timers
+        .maybe_back(now)
+        .filter(|thread| !loaded.contains(thread))
+        .cloned()
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
-    emails.sort_unstable();
-    let contacts: HashMap<String, _> = store
-        .desk_contacts(account_id, &emails)
-        .await?
-        .into_iter()
-        .map(|contact| (contact.email.to_ascii_lowercase(), contact))
-        .collect();
-    let screener: HashMap<String, ScreenerDisposition> = store
-        .list_screener_decisions(account_id)
-        .await?
-        .into_iter()
-        .map(|decision| {
-            (
-                decision.sender_email.to_ascii_lowercase(),
-                decision.disposition,
-            )
-        })
-        .collect();
+    back.sort_by_key(ThreadId::as_str);
+    messages.extend(store.desk_messages_in_threads(account_id, &back).await?);
 
+    let senders = Senders::load(state, account_id, &messages).await?;
     let is_self = self_matcher(state, account_id).await?;
     let dismissed = store.desk_dismissals(account_id).await?;
     let mut lanes = thread_lanes(&AccountInputs {
         account_id,
         messages: &messages,
-        contacts: &contacts,
-        screener: &screener,
+        contacts: &senders.contacts,
+        screener: &senders.screener,
         dismissed: &dismissed,
+        timers: &timers,
         is_self: &is_self,
         now,
     });
@@ -228,7 +291,18 @@ async fn account_desk(
             .push(message);
     }
     rows.extend(due_rows(account_id, due, &threads, now));
-    let drift = drift_rows(account_id, drifting, exchanges, &threads, &dismissed, now);
+    let drift = drift_rows(
+        account_id,
+        drifting,
+        exchanges,
+        &threads,
+        &WaitingAside {
+            dismissed: &dismissed,
+            timers: &timers,
+            answers: &|m: &DeskMessage| senders.answers(m, &is_self),
+            now,
+        },
+    );
     rows.extend(drift);
 
     // Usual pace for every counterparty in one query.
@@ -339,6 +413,7 @@ fn due_rows(
                 unread: false,
                 starred: thread_starred(thread),
                 commitment_id: Some(commitment.id),
+                back_at: None,
             };
             (row, None)
         })
@@ -354,18 +429,18 @@ fn thread_message_ids(thread: &[DeskMessage], fallback: &MessageId) -> Vec<Messa
 }
 
 /// Watched contacts who have gone quiet longer than usual join the waiting
-/// lane, anchored on the latest conversation with them. Snooze, trash and
-/// done waiting set them aside like every Waiting row; archive does not,
-/// because the row is about the person and their last thread is usually
-/// archived.
+/// lane, anchored on the latest conversation with them. Snooze, trash,
+/// done waiting and a pending "bring it back" time set them aside like
+/// every Waiting row; archive does not, because the row is about the
+/// person and their last thread is usually archived.
 fn drift_rows(
     account_id: &AccountId,
     drifting: Vec<(CadenceDriftRow, DateTime<Utc>)>,
     mut exchanges: HashMap<String, DeskLatestExchange>,
     threads: &Threads,
-    dismissed: &HashMap<ThreadId, DeskDismissal>,
-    now: DateTime<Utc>,
+    aside: &WaitingAside<'_>,
 ) -> Vec<(DeskRowData, Option<PaceDirection>)> {
+    let now = aside.now;
     let mut rows = Vec::new();
     for (drift, last_contact) in drifting {
         let Some(exchange) = exchanges.remove(&drift.email.to_ascii_lowercase()) else {
@@ -375,7 +450,7 @@ fn drift_rows(
             .get(&exchange.thread_id)
             .map(Vec::as_slice)
             .unwrap_or_default();
-        if waiting_set_aside(thread, dismissed.get(&exchange.thread_id)) {
+        if waiting_set_aside(thread, aside) {
             continue;
         }
         let expected_seconds = (drift.expected_days * 86_400.0).round() as i64;
@@ -402,6 +477,7 @@ fn drift_rows(
                 unread: false,
                 starred: thread_starred(thread),
                 commitment_id: None,
+                back_at: None,
             },
             None,
         ));

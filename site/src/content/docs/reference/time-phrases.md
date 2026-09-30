@@ -5,9 +5,10 @@ description: The words mxr understands wherever it asks for a time, and how they
 
 Every place mxr asks for a time reads the same phrases: `mxr snooze --until`,
 `mxr send --at`, `--remind-after` on `send`, `reply` and `reply-all`,
-`mxr remind --when`, `mxr send-time --at`, `mxr commitments add --due`, the
-TUI snooze, send-later and remind prompts, and the web app's snooze,
-send-later, reminder and promise fields. One parser, shared by the CLI, TUI,
+`mxr remind --when`, `mxr desk later --at`, `mxr send-time --at`,
+`mxr commitments add --due`, the TUI snooze, reply-later, send-later and
+remind prompts, and the web app's snooze, reply-later, send-later, reminder
+and promise fields. One parser, shared by the CLI, TUI,
 daemon and web bridge, resolves them, so every surface gives the same
 answer.
 

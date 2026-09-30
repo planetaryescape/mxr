@@ -106,6 +106,55 @@ Open the conversation, then do what it asks:
 When you reply, the row leaves You owe on its own. When they reply, a
 Waiting on row leaves on its own.
 
+## Come back to it later
+
+Reply later takes a time. Press `b` on a row, type when you want it back,
+such as `tue 9`, `tomorrow` or `in 2d`, and check the exact time shown under
+the field before you press Enter. The toast names that time. What happens
+depends on who wrote last:
+
+- **They did (You owe, New from people):** reply later. The conversation
+  leaves the desk and your reply queue, and comes back to both at that time
+  under You owe, with the reason "back from reply later". Your inbox is not
+  touched.
+- **You did (Waiting on):** bring it back if nobody replies. The conversation
+  leaves Waiting on. If nobody has replied by then, it comes back with the
+  reason "no reply by the time you set" and joins your reply queue so you
+  can follow up. If they reply first, it lands in You owe as usual and the
+  time is dropped.
+
+It comes back on its own, once, even if mxr was not running at the time.
+Press Enter with no time for the plain reply later: the reply queue, now.
+On Waiting on a time is required. `u`, or the toast's **Undo**, puts back
+whatever was set before, for about a minute.
+
+From the command line, preview with `--dry-run`, then set it. `--at` takes
+the same [time phrases](/reference/time-phrases/):
+
+```bash
+mxr desk later 7f5a428a-90b3-5f5f-a276-bfc82dd82874 309ae832-4d84-5d78-a3ef-76a7eda21496 --at "tue 9" --dry-run
+```
+
+```text
+Would set 2 conversations for Tuesday 6 October, 09:00 (in 6 days).
+  7f5a428a-90b3-5f5f-a276-bfc82dd82874  reply later: back in You owe and the reply queue then
+  309ae832-4d84-5d78-a3ef-76a7eda21496  waiting: back then if nobody has replied
+```
+
+```bash
+mxr desk later 309ae832-4d84-5d78-a3ef-76a7eda21496 --at "in 3d"
+```
+
+```text
+Set 1 conversation for Saturday 3 October, 15:58 (in 3 days).
+  309ae832-4d84-5d78-a3ef-76a7eda21496  waiting: back then if nobody has replied
+Undo with: mxr undo 01a0f2d3-5a6c-7db2-8456-4781c4303b08
+```
+
+Snooze is different: it takes the conversation out of the inbox until it
+wakes. Reply later leaves the inbox alone and only changes the desk and the
+reply queue.
+
 ## Put a row away with Done
 
 Use **Done** when a row needs nothing from you: a thank-you, a thread that
@@ -118,8 +167,9 @@ lane:
 | Waiting on | Marks it read and stops waiting. Nothing is archived. |
 | Due | Marks the promise kept and the conversation read. Other promises in the conversation stay. |
 
-Every lane also takes the conversation out of your reply-later queue. It
-stays off the desk until someone writes in it again, you or them.
+Every lane also takes the conversation out of your reply-later queue and
+drops any time set to bring it back. It stays off the desk until someone
+writes in it again, you or them.
 
 - **Web app:** the check at the end of the row. On the desk the archive key
   is Done, in every lane and on a selection, and from the reader when you
@@ -235,6 +285,9 @@ and the desk stays one step away. The TUI opens on the inbox.
   the next message.
 - **Came back after Done:** someone wrote in the conversation again. Done
   holds only until the next message.
+- **Gone after `b`:** you set a time. It comes back then; until then it is
+  still in the inbox. `u` right away, or `b` again with a new time, changes
+  it.
 - **In You owe instead of New from people:** you have written to them
   before, or allowed them in the screener.
 

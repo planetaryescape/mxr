@@ -1015,7 +1015,7 @@ async fn dispatch_set_auto_reminder_persists_and_loop_fires_when_due() {
     ));
 
     // Run one tick of the loop with `now` past the reminder.
-    let fired = crate::loops::process_due_reminders(&state, chrono::Utc::now())
+    let fired = crate::loops::process_due_timers(&state, chrono::Utc::now())
         .await
         .unwrap();
     assert_eq!(fired, 1, "one due reminder fires");
@@ -1052,7 +1052,7 @@ async fn dispatch_set_auto_reminder_persists_and_loop_fires_when_due() {
 
     // Second tick: nothing fires (already-triggered reminders are
     // excluded).
-    let fired_again = crate::loops::process_due_reminders(&state, chrono::Utc::now())
+    let fired_again = crate::loops::process_due_timers(&state, chrono::Utc::now())
         .await
         .unwrap();
     assert_eq!(fired_again, 0, "fired reminders are not re-fired");
@@ -1097,7 +1097,7 @@ async fn dispatch_cancel_auto_reminder_prevents_firing() {
         })
     ));
 
-    let fired = crate::loops::process_due_reminders(&state, chrono::Utc::now())
+    let fired = crate::loops::process_due_timers(&state, chrono::Utc::now())
         .await
         .unwrap();
     assert_eq!(fired, 0, "cancelled reminders never fire");
@@ -1139,7 +1139,7 @@ async fn due_reminder_is_cancelled_when_the_thread_got_a_reply_the_headers_misse
     reply.date = sent.date + chrono::Duration::days(1);
     state.store.upsert_envelope(&reply).await.unwrap();
 
-    let fired = crate::loops::process_due_reminders(&state, chrono::Utc::now())
+    let fired = crate::loops::process_due_timers(&state, chrono::Utc::now())
         .await
         .unwrap();
     assert_eq!(fired, 0, "a replied thread never nudges");

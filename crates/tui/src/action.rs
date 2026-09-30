@@ -106,9 +106,10 @@ pub enum Action {
     /// returns to the default inbox view. Out-of-range indices are
     /// no-ops.
     OpenSavedSearchByIndex(usize),
-    /// Mark the current message for reply-later. Local-only intent —
-    /// never roundtrips to the provider. Cleared via the queue view or
-    /// when the user replies.
+    /// Reply later: open the time prompt, or confirm it when open. A time
+    /// takes the conversation away until then (`DeferThreads`); no time is
+    /// the untimed local flag. Cleared via the queue view or when the user
+    /// replies.
     FlagReplyLater,
     /// Cancel a pending follow-up reminder for the current sent message.
     CancelAutoReminder,

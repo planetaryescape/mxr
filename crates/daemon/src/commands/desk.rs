@@ -154,6 +154,21 @@ pub async fn run_action(action: DeskAction) -> anyhow::Result<()> {
             )
             .await?;
         }
+        DeskAction::Later {
+            thread_ids,
+            at,
+            dry_run,
+            format,
+        } => {
+            super::desk_later::run(
+                &mut client,
+                parse_thread_ids(&thread_ids)?,
+                &at,
+                dry_run,
+                resolve_format(format),
+            )
+            .await?;
+        }
     }
     Ok(())
 }
@@ -307,7 +322,7 @@ fn table(desk: &ResponseData, gists: Option<&Gists>) -> String {
             // lane's reason does.
             let reason = match gist
                 .and_then(|gist| gist.ask.as_ref())
-                .filter(|_| kind.shows_ask())
+                .filter(|_| row.shows_ask())
             {
                 Some(ask) => super::thread_gists::ask_text(ask),
                 None => row.reason.clone(),
@@ -450,6 +465,7 @@ mod tests {
             unread: true,
             starred: false,
             commitment_id: None,
+            back_at: None,
         }
     }
 

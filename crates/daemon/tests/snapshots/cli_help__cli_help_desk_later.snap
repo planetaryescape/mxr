@@ -1,0 +1,26 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Reply later, or wait for a reply, until a time.
+
+When they wrote last: reply later. The conversation leaves the desk and the reply queue and comes back to both at the time. When you wrote last: it leaves Waiting on and comes back at the time if nobody has replied, joining the reply queue. Prints an undo id for `mxr undo`.
+
+Usage: mxr desk later [OPTIONS] --at <AT> <THREAD_IDS>...
+
+Arguments:
+  <THREAD_IDS>...
+          Thread ids, as `mxr desk --format ids` prints them
+
+Options:
+      --at <AT>
+          When it comes back, in local time: `tue 9`, `tomorrow`, `in 3d`, `next week`, or RFC3339. Preview with `mxr time`
+
+      --dry-run
+          Show what would be set without changing anything
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

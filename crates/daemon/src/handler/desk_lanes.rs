@@ -30,6 +30,7 @@ const OVERDUE_FLOOR_SECONDS: i64 = 60 * 60;
 /// Pace assumed for ordering when a person has no reply history.
 const DEFAULT_PACE_SECONDS: i64 = 24 * 60 * 60;
 
+use super::desk_timers::{DeskTimers, Timer};
 use super::mail_kind::{self, KindSignals};
 use super::mail_kind::{looks_automated, SenderKind};
 
@@ -46,16 +47,43 @@ pub(super) fn current_messages(thread: &[DeskMessage], now: DateTime<Utc>) -> &[
     &thread[..thread.partition_point(|m| m.date <= cutoff)]
 }
 
+/// The message of `current` (see `current_messages`) stored last among
+/// those `keep` accepts. Who wrote last goes by the order mail was stored,
+/// not its Date header, so a reply whose clock is behind still counts as
+/// the newest. The desk, Done and deferral all judge it here.
+pub(super) fn last_stored(
+    current: &[DeskMessage],
+    keep: impl Fn(&DeskMessage) -> bool,
+) -> Option<&DeskMessage> {
+    current
+        .iter()
+        .filter(|message| keep(message))
+        .max_by_key(|message| message.seq)
+}
+
+/// What sets a Waiting row aside besides the thread itself.
+pub(super) struct WaitingAside<'a> {
+    pub dismissed: &'a HashMap<ThreadId, DeskDismissal>,
+    pub timers: &'a DeskTimers,
+    /// A message that answers you: a person other than you wrote it.
+    pub answers: &'a dyn Fn(&DeskMessage) -> bool,
+    pub now: DateTime<Utc>,
+}
+
 /// Every Waiting row, from a thread or from a watched contact, stays off
-/// the desk while its conversation is snoozed, trashed, or marked done
-/// waiting with nothing new since.
-pub(super) fn waiting_set_aside(thread: &[DeskMessage], dismissal: Option<&DeskDismissal>) -> bool {
+/// the desk while its conversation is snoozed, trashed, marked done
+/// waiting with nothing new since, or waiting on a time you set.
+pub(super) fn waiting_set_aside(thread: &[DeskMessage], aside: &WaitingAside<'_>) -> bool {
     let Some(latest) = thread.last() else {
         return true;
     };
     thread.iter().any(|m| m.snoozed)
         || latest.trashed
-        || dismissal.is_some_and(|d| d.covers(thread))
+        || aside
+            .dismissed
+            .get(&latest.thread_id)
+            .is_some_and(|d| d.covers(thread))
+        || aside.timers.waiting(thread, aside.answers, aside.now) == Some(Timer::Pending)
 }
 
 /// A thread you wrote last also leaves Waiting when you archive it, if it
@@ -86,6 +114,8 @@ pub(super) struct AccountInputs<'a> {
     /// Threads marked done (or "done waiting"), through the messages
     /// stored at the time. Covers every thread lane; promises stand.
     pub dismissed: &'a HashMap<ThreadId, DeskDismissal>,
+    /// Times you set: reply later, and "bring it back if nobody replies".
+    pub timers: &'a DeskTimers,
     pub is_self: &'a dyn Fn(&str) -> bool,
     pub now: DateTime<Utc>,
 }
@@ -138,16 +168,13 @@ impl AccountInputs<'_> {
     /// never disagree about a message.
     pub(super) fn sender_kind(&self, message: &DeskMessage) -> SenderKind {
         let email = &message.from.email;
-        mail_kind::classify(&KindSignals {
-            email,
-            has_list_id: message.list_id.is_some(),
-            has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
-            is_delivery: message.is_delivery,
-            is_invite: message.is_invite,
-            list_sender: self.contact(email).is_some_and(|c| c.is_list_sender),
-            decision: self.decision(email),
-        })
-        .kind
+        sender_kind(message, self.contact(email), self.decision(email))
+    }
+
+    /// A person other than you wrote it: an answer. An auto-responder or a
+    /// notification in the thread is not.
+    pub(super) fn answers(&self, message: &DeskMessage) -> bool {
+        !self.is_outbound(message) && self.sender_kind(message) == SenderKind::Person
     }
 
     /// Only copied, not addressed: the reason says so.
@@ -155,6 +182,25 @@ impl AccountInputs<'_> {
         !message.to.iter().any(|a| (self.is_self)(&a.email))
             && message.cc.iter().any(|a| (self.is_self)(&a.email))
     }
+}
+
+/// The shared classifier (`mail_kind`) for one desk message, given what the
+/// store knows about its sender.
+pub(super) fn sender_kind(
+    message: &DeskMessage,
+    contact: Option<&DeskContact>,
+    decision: Option<ScreenerDisposition>,
+) -> SenderKind {
+    mail_kind::classify(&KindSignals {
+        email: &message.from.email,
+        has_list_id: message.list_id.is_some(),
+        has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
+        is_delivery: message.is_delivery,
+        is_invite: message.is_invite,
+        list_sender: contact.is_some_and(|c| c.is_list_sender),
+        decision,
+    })
+    .kind
 }
 
 /// A desk row before the usual pace is known.
@@ -237,14 +283,17 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
             }
         }
 
-        // A snoozed conversation is out of sight until it wakes.
-        if thread.iter().any(|m| m.snoozed) {
+        // A snoozed conversation is out of sight until it wakes, and one
+        // set to reply later until its time comes.
+        if thread.iter().any(|m| m.snoozed)
+            || inputs.timers.reply_later(&thread[0].thread_id, inputs.now) == Some(Timer::Pending)
+        {
             continue;
         }
         // The lane is judged on current mail; verbs still cover the whole
         // thread.
         let current = current_messages(thread, inputs.now);
-        let Some(latest) = current.last() else {
+        let Some(latest) = last_stored(current, |_| true) else {
             continue;
         };
         if let Some(row) = thread_row(
@@ -288,15 +337,45 @@ fn thread_row(
     }
     let thread = conversation.current;
     let now = inputs.now;
-    let latest_inbound = thread.iter().rev().find(|m| !inputs.is_outbound(m));
-    let latest_outbound = thread.iter().rev().find(|m| inputs.is_outbound(m));
+    let latest_inbound = last_stored(thread, |m| !inputs.is_outbound(m));
+    let latest_outbound = last_stored(thread, |m| inputs.is_outbound(m));
     let in_inbox = thread.iter().any(|m| m.in_inbox && !m.trashed);
 
     if inputs.is_outbound(latest) {
         return waiting_row(inputs, conversation, latest, latest_inbound.is_some());
     }
+    // An auto-responder or notification after your message answers nothing:
+    // a time you set on the wait still hides it or brings it back.
+    if let Some(sent) = latest_outbound.filter(|_| !inputs.answers(latest)) {
+        let answers = |m: &DeskMessage| inputs.answers(m);
+        if inputs
+            .timers
+            .waiting(conversation.all, &answers, now)
+            .is_some()
+        {
+            return waiting_row(inputs, conversation, sent, latest_inbound.is_some());
+        }
+    }
 
     let inbound = latest_inbound?;
+    // You said you'd reply by now: owed, wherever the mail is and whoever
+    // sent it, since you asked for it back. The newest message from a
+    // person anchors it; any inbound one when no person wrote (a reply
+    // later on a newsletter still comes back).
+    if let Some(Timer::Back(back_at)) = inputs.timers.reply_later(&latest.thread_id, now) {
+        let anchor = last_stored(thread, |m| inputs.answers(m)).unwrap_or(inbound);
+        if !anchor.trashed {
+            return Some(back_row(
+                inputs,
+                DeskLaneKind::Owed,
+                conversation.all,
+                anchor,
+                &anchor.from,
+                "back from reply later",
+                back_at,
+            ));
+        }
+    }
     if inbound.trashed || !in_inbox || inputs.sender_kind(inbound) != SenderKind::Person {
         return None;
     }
@@ -312,7 +391,7 @@ fn thread_row(
         let unanswered = latest_outbound.map_or(0, |sent| {
             thread
                 .iter()
-                .filter(|m| !inputs.is_outbound(m) && m.date > sent.date)
+                .filter(|m| !inputs.is_outbound(m) && m.seq > sent.seq)
                 .count()
         });
         let reason = if unanswered > 1 {
@@ -371,14 +450,18 @@ fn waiting_row(
 ) -> Option<DraftRow> {
     let thread = conversation.current;
     let now = inputs.now;
-    if sent.date > now - Duration::hours(WAITING_MIN_HOURS)
-        || sent.date < now - Duration::days(DESK_WINDOW_DAYS)
-        // Done waiting counts every stored message, future-dated or not.
-        || waiting_set_aside(conversation.all, inputs.dismissed.get(&sent.thread_id))
-        || waiting_archived(thread, inputs.is_self)
-    {
+    // Done waiting counts every stored message, future-dated or not.
+    let answers = |m: &DeskMessage| inputs.answers(m);
+    let aside = WaitingAside {
+        dismissed: inputs.dismissed,
+        timers: inputs.timers,
+        answers: &answers,
+        now,
+    };
+    if waiting_set_aside(conversation.all, &aside) {
         return None;
     }
+    let timer = inputs.timers.waiting(conversation.all, &answers, now);
     let recipient = sent.to.iter().find(|a| !(inputs.is_self)(&a.email))?;
     let email = recipient.email.as_str();
     let contact = inputs.contact(email);
@@ -388,10 +471,25 @@ fn waiting_row(
     {
         return None;
     }
-    let followed_up = thread
-        .iter()
-        .rev()
-        .nth(1)
+    // Nobody replied by the time you set: back, however old or archived.
+    if let Some(Timer::Back(back_at)) = timer {
+        return Some(back_row(
+            inputs,
+            DeskLaneKind::Waiting,
+            conversation.all,
+            sent,
+            recipient,
+            "no reply by the time you set",
+            back_at,
+        ));
+    }
+    if sent.date > now - Duration::hours(WAITING_MIN_HOURS)
+        || sent.date < now - Duration::days(DESK_WINDOW_DAYS)
+        || waiting_archived(thread, inputs.is_self)
+    {
+        return None;
+    }
+    let followed_up = last_stored(thread, |m| m.seq < sent.seq)
         .is_some_and(|previous| inputs.is_outbound(previous));
     let reason = if followed_up {
         "you followed up, no reply yet"
@@ -452,7 +550,40 @@ fn base_row(
         unread,
         starred: thread_starred(thread),
         commitment_id: None,
+        back_at: None,
     }
+}
+
+/// A row a time you set brought back. It is due by definition, so it is
+/// overdue and takes no pace (the usual pace would second-guess it).
+fn back_row(
+    inputs: &AccountInputs<'_>,
+    lane: DeskLaneKind,
+    thread: &[DeskMessage],
+    open: &DeskMessage,
+    counterparty: &mxr_core::types::Address,
+    reason: &str,
+    back_at: DateTime<Utc>,
+) -> DraftRow {
+    let name = counterparty.name.clone().or_else(|| {
+        inputs
+            .contact(&counterparty.email)
+            .and_then(|c| c.display_name.clone())
+    });
+    let mut row = base_row(
+        inputs,
+        lane,
+        thread,
+        open,
+        &counterparty.email,
+        name,
+        reason.to_string(),
+        open.date,
+        lane == DeskLaneKind::Owed && !open.flags.contains(mxr_core::MessageFlags::READ),
+    );
+    row.overdue = true;
+    row.back_at = Some(back_at);
+    DraftRow { row, pace: None }
 }
 
 /// Attach a person's usual pace and decide whether the row is past it.
@@ -588,6 +719,7 @@ mod tests {
             .collect();
         let screener = HashMap::new();
         let dismissed = HashMap::new();
+        let timers = DeskTimers::default();
         let is_self = |email: &str| email.eq_ignore_ascii_case(ME);
         thread_lanes(&AccountInputs {
             account_id: &account,
@@ -595,6 +727,7 @@ mod tests {
             contacts: &contacts,
             screener: &screener,
             dismissed: &dismissed,
+            timers: &timers,
             is_self: &is_self,
             now: now(),
         })

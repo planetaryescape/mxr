@@ -24,6 +24,9 @@ pub enum UndoableMutationKind {
     /// The desk's Done: labels and read state per message, plus the
     /// conversations' dismissals and any promise it resolved (`DeskUndo`).
     DeskDone,
+    /// Reply later or "bring it back if no reply" at a time: only the
+    /// flags and reminders it replaced (`DeskUndo`), no message changes.
+    Deferral,
 }
 
 /// Snapshot of a single envelope's state right before a mutation was
@@ -56,13 +59,26 @@ pub struct DeskUndo {
     #[serde(default)]
     pub commitments: Vec<CommitmentPrior>,
     /// Messages whose reply-later flag Done cleared, with when each was set.
+    /// Written by earlier versions; new entries use `reply_later_priors`.
     #[serde(default)]
     pub reply_later: Vec<(MessageId, chrono::DateTime<chrono::Utc>)>,
+    /// Reply-later flags as they were before, time included (`None`: not
+    /// flagged).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reply_later_priors: Vec<(MessageId, Option<crate::ReplyLaterState>)>,
+    /// "Bring it back if no reply" reminders as they were before (`None`:
+    /// there was none).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reminder_priors: Vec<(MessageId, Option<crate::ReminderState>)>,
 }
 
 impl DeskUndo {
     pub fn is_empty(&self) -> bool {
-        self.dismissals.is_empty() && self.commitments.is_empty() && self.reply_later.is_empty()
+        self.dismissals.is_empty()
+            && self.commitments.is_empty()
+            && self.reply_later.is_empty()
+            && self.reply_later_priors.is_empty()
+            && self.reminder_priors.is_empty()
     }
 }
 

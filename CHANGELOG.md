@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.44](https://github.com/planetaryescape/mxr/compare/v0.6.43...v0.6.44) (2026-09-30)
+
+
+### Features
+
+* defer a conversation to a time and have it come back on its own ([#261](https://github.com/planetaryescape/mxr/issues/261)) ([1e61e7a](https://github.com/planetaryescape/mxr/commit/1e61e7a13b6eeb3aee4bd71c9554af262603175c))
+* show where AI drafts come from, and keep your history off cloud models ([#262](https://github.com/planetaryescape/mxr/issues/262)) ([5973dfa](https://github.com/planetaryescape/mxr/commit/5973dfa7c8b399da0fe940373c1ce42494b58946))
+
 ## [0.6.43](https://github.com/planetaryescape/mxr/compare/v0.6.42...v0.6.43) (2026-09-30)
 
 

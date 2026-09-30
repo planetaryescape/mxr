@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.43](https://github.com/planetaryescape/mxr/compare/v0.6.42...v0.6.43) (2026-09-30)
+
+
+### Bug Fixes
+
+* answer mxr owed in a fifth of a second on large mailboxes ([#259](https://github.com/planetaryescape/mxr/issues/259)) ([8c9d371](https://github.com/planetaryescape/mxr/commit/8c9d371b2ee2d1b4b2b4bf401c35e1844779b32e))
+
+
+### Documentation
+
+* add the web experience plan to the blueprint ([#258](https://github.com/planetaryescape/mxr/issues/258)) ([531a921](https://github.com/planetaryescape/mxr/commit/531a9213a19240038276b00edac54aa2cbd9d51c))
+* record the independent rubric grade ([#257](https://github.com/planetaryescape/mxr/issues/257)) ([983dd14](https://github.com/planetaryescape/mxr/commit/983dd14dadfb1bf16ae60131065cbe0481472359))
+
 ## [0.6.42](https://github.com/planetaryescape/mxr/compare/v0.6.41...v0.6.42) (2026-09-30)
 
 

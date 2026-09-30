@@ -54,9 +54,10 @@ const STEPS = 60;
 const BLOCKS_PER_STEP = 60_000;
 
 /**
- * A model with a gist for every row. The first request (the rows on screen
- * at load) is answered with all 5,000, so the fling below draws a gist
- * line on every row it passes rather than waiting for scrolling to settle.
+ * A model with a cached gist for every row, answered for the rows each
+ * request names, as the daemon does. Lines come in once scrolling settles
+ * (the list holds at most 500), so the fling below measures the list with
+ * the gist machinery live and the rows on screen at load drawn with lines.
  */
 async function stubCachedGists(page: Page): Promise<() => number> {
   let requests = 0;
@@ -72,14 +73,16 @@ async function stubCachedGists(page: Page): Promise<() => number> {
         kind: "ThreadGists",
         batch: {
           model: "available",
-          gists: Array.from({ length: ROWS }, (_, index) => ({
-            thread_id: `bulk-thread-${index}`,
-            status: "ready",
-            gist: "Canary stays at 5% until the dashboard is quiet.",
-            ask: { summary: "confirm who owns the rollout check" },
-            provenance: { model: "stub-7b", locality: "local", sources: ["this_thread"] },
-            from_cache: true,
-          })),
+          gists: (route.request().postDataJSON() as { thread_ids: string[] }).thread_ids.map(
+            (thread_id) => ({
+              thread_id,
+              status: "ready",
+              gist: "Canary stays at 5% until the dashboard is quiet.",
+              ask: { summary: "confirm who owns the rollout check" },
+              provenance: { model: "stub-7b", locality: "local", sources: ["this_thread"] },
+              from_cache: true,
+            }),
+          ),
           queued: [],
           skipped: [],
         },
@@ -165,10 +168,10 @@ async function flingThroughTheList(page: Page, gists: boolean) {
   await expect(mailRows(page).filter({ hasText: `Bulk message ${ROWS}` })).toBeVisible();
   expect(await mailRows(page).count()).toBeLessThan(80);
   if (gists) {
-    // Every row passed drew its line; the fling asked the daemon for
-    // nothing, since gists are asked for once scrolling settles.
+    // Once the fling settles, the rows on screen get their lines; the
+    // fling itself asked only at its ends, not once per frame.
     await expect(mailRows(page).last().getByTestId("row-gist")).toBeVisible();
-    expect(gistRequests()).toBeLessThanOrEqual(2);
+    expect(gistRequests()).toBeLessThanOrEqual(3);
   }
 }
 

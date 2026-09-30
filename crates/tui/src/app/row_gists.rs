@@ -5,7 +5,7 @@
 //! rest arrive as `ThreadGistReady` events.
 
 use super::{App, MailboxView};
-use mxr_core::id::{MessageId, ThreadId};
+use mxr_core::id::ThreadId;
 use mxr_core::types::LabelKind;
 use mxr_protocol::{
     GistModelData, ThreadGistBatchData, ThreadGistData, ThreadGistStatusData,
@@ -68,16 +68,23 @@ impl RowGist {
 
 pub type RowGists = HashMap<ThreadId, RowGist>;
 
+/// Most rows remembered, shown or asked about; the oldest go first.
+const STATE_CAP: usize = 500;
+
 #[derive(Debug, Default)]
 pub struct RowGistState {
     pub gists: RowGists,
     /// What the daemon last said about its model. The desk reserves a line
     /// per row only when it is `Available`.
     pub model: Option<GistModelData>,
+    /// When each gist was stored, for dropping the oldest past the cap.
+    stored: HashMap<ThreadId, u64>,
+    stored_seq: u64,
     requested: HashMap<ThreadId, Instant>,
-    /// Each conversation's newest message as the event stream last said:
-    /// a gist written for an older one is not shown.
-    newest: HashMap<ThreadId, MessageId>,
+    /// Bumped whenever shown gists may no longer hold: a request answered
+    /// from an older epoch is dropped, so it can't put back what an
+    /// invalidation took away.
+    epoch: u64,
     off_until: Option<Instant>,
     /// When rows were last gathered, sent or not: an idle list isn't
     /// rebuilt on every pass of the event loop.
@@ -97,6 +104,11 @@ impl RowGistState {
     /// Reserve a gist line under desk rows: the daemon has a usable model.
     pub fn lines_reserved(&self) -> bool {
         self.model == Some(GistModelData::Available)
+    }
+
+    /// The epoch a request sent now belongs to.
+    pub fn epoch(&self) -> u64 {
+        self.epoch
     }
 
     /// The ids to ask about now, in order, or `None` when there is nothing
@@ -131,10 +143,33 @@ impl RowGistState {
         for id in &wanted {
             self.requested.insert(id.clone(), now);
         }
+        while self.requested.len() > STATE_CAP {
+            let Some(oldest) = self
+                .requested
+                .iter()
+                .min_by_key(|(_, at)| **at)
+                .map(|(id, _)| id.clone())
+            else {
+                break;
+            };
+            self.requested.remove(&oldest);
+        }
         Some(wanted)
     }
 
-    pub fn apply_batch(&mut self, batch: &ThreadGistBatchData, now: Instant) {
+    /// The answer to a request sent in `epoch` for `ids`. One from before
+    /// an invalidation is dropped, and its rows may be asked about again.
+    pub fn apply_batch(
+        &mut self,
+        ids: &[ThreadId],
+        epoch: u64,
+        batch: &ThreadGistBatchData,
+        now: Instant,
+    ) {
+        if epoch != self.epoch {
+            self.request_failed(ids);
+            return;
+        }
         self.model = Some(batch.model);
         if batch.model == GistModelData::Disabled {
             self.off_until = Some(now + NO_MODEL_RECHECK);
@@ -152,35 +187,47 @@ impl RowGistState {
         }
     }
 
+    /// A gist from the daemon: an answer or a `ThreadGistReady` event. The
+    /// daemon only hands out gists for a conversation as it is now.
     pub fn put(&mut self, data: &ThreadGistData) {
-        let known = self.newest.get(&data.thread_id);
-        if known.is_some() && data.newest_message_id.as_ref() != known {
+        let Some(gist) = RowGist::from_data(data) else {
             return;
-        }
-        if let Some(gist) = RowGist::from_data(data) {
-            self.gists.insert(data.thread_id.clone(), gist);
+        };
+        self.stored_seq += 1;
+        self.stored.insert(data.thread_id.clone(), self.stored_seq);
+        self.gists.insert(data.thread_id.clone(), gist);
+        while self.gists.len() > STATE_CAP {
+            let Some(oldest) = self
+                .stored
+                .iter()
+                .min_by_key(|(_, seq)| **seq)
+                .map(|(id, _)| id.clone())
+            else {
+                break;
+            };
+            self.stored.remove(&oldest);
+            self.gists.remove(&oldest);
         }
     }
 
-    /// New messages changed these conversations: their gists no longer
-    /// hold, and one written for an older message is ignored when it lands.
-    pub fn new_messages<'a>(
-        &mut self,
-        messages: impl IntoIterator<Item = (&'a ThreadId, &'a MessageId)>,
-    ) {
-        for (thread_id, message_id) in messages {
-            self.gists.remove(thread_id);
-            self.requested.remove(thread_id);
-            self.newest.insert(thread_id.clone(), message_id.clone());
+    /// New messages changed these conversations: drop their gists and let
+    /// their rows ask again. Answers already on their way are dropped.
+    pub fn changed<'a>(&mut self, ids: impl IntoIterator<Item = &'a ThreadId>) {
+        self.epoch += 1;
+        for id in ids {
+            self.gists.remove(id);
+            self.stored.remove(id);
+            self.requested.remove(id);
         }
     }
 
-    /// Events were missed, a new message among them perhaps: nothing shown
-    /// can be trusted. Drop it all; the rows on screen ask again.
-    pub fn lagged(&mut self) {
+    /// Nothing shown can be trusted (missed or sampled events, a
+    /// reconnect): drop it all; the rows on screen ask again.
+    pub fn invalidate_all(&mut self) {
+        self.epoch += 1;
         self.gists.clear();
+        self.stored.clear();
         self.requested.clear();
-        self.newest.clear();
     }
 }
 
@@ -286,8 +333,10 @@ mod tests {
     fn no_model_stops_the_asking() {
         let mut state = RowGistState::default();
         let start = Instant::now();
-        state.take_request([ThreadId::new()], start);
+        let ids = state.take_request([ThreadId::new()], start).unwrap();
         state.apply_batch(
+            &ids,
+            state.epoch(),
             &ThreadGistBatchData {
                 model: GistModelData::Disabled,
                 gists: vec![],
@@ -321,37 +370,57 @@ mod tests {
     }
 
     #[test]
-    fn a_gist_for_an_older_message_is_ignored_and_lag_clears_everything() {
-        let thread = ThreadId::new();
-        let (old, new) = (MessageId::new(), MessageId::new());
+    fn an_answer_from_before_an_invalidation_is_dropped() {
+        let (a, b) = (ThreadId::new(), ThreadId::new());
         let mut state = RowGistState::default();
-        state.put(&ready(&thread, None));
-        state.new_messages([(&thread, &new)]);
-        assert!(state.gists.is_empty(), "a new message retires the gist");
-
-        let mut late = ready(&thread, None);
-        late.newest_message_id = Some(old);
-        state.put(&late);
-        assert!(
-            state.gists.is_empty(),
-            "a late gist for the old message is ignored"
-        );
-        let mut current = ready(&thread, None);
-        current.newest_message_id = Some(new);
-        state.put(&current);
-        assert!(state.gists.contains_key(&thread));
-
         let start = Instant::now();
-        state.take_request([thread.clone()], start);
-        state.lagged();
+        let ids = state.take_request([a.clone(), b.clone()], start).unwrap();
+        let epoch = state.epoch();
+        // A new message in `a` lands while the request is out.
+        state.changed([&a]);
+        let batch = ThreadGistBatchData {
+            model: GistModelData::Available,
+            gists: vec![ready(&a, None), ready(&b, None)],
+            queued: vec![],
+            in_flight: vec![],
+            skipped: vec![],
+        };
+        state.apply_batch(&ids, epoch, &batch, start);
         assert!(
             state.gists.is_empty(),
-            "missed events: nothing shown is trusted"
+            "the old answer can't undo the invalidation"
         );
         assert_eq!(
-            state.take_request([thread.clone()], start + Duration::from_secs(1)),
-            Some(vec![thread]),
-            "and the rows ask again"
+            state.take_request([a.clone(), b.clone()], start + Duration::from_secs(1)),
+            Some(vec![a.clone(), b.clone()]),
+            "both rows ask again"
         );
+        let epoch = state.epoch();
+        state.apply_batch(&[a.clone(), b.clone()], epoch, &batch, start);
+        assert_eq!(state.gists.len(), 2);
+
+        state.invalidate_all();
+        assert!(state.gists.is_empty());
+    }
+
+    #[test]
+    fn state_is_capped_oldest_first() {
+        let mut state = RowGistState::default();
+        let ids: Vec<ThreadId> = (0..STATE_CAP + 5).map(|_| ThreadId::new()).collect();
+        for id in &ids {
+            state.put(&ready(id, None));
+        }
+        assert_eq!(state.gists.len(), STATE_CAP);
+        assert!(!state.gists.contains_key(&ids[0]));
+        assert!(state.gists.contains_key(ids.last().unwrap()));
+
+        let start = Instant::now();
+        for (index, chunk) in ids.chunks(50).enumerate() {
+            let at = start + Duration::from_secs(index as u64);
+            state.last_look = None;
+            state.gists.clear();
+            state.take_request(chunk.iter().cloned(), at);
+        }
+        assert_eq!(state.requested.len(), STATE_CAP);
     }
 }

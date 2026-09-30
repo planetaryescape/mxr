@@ -91,7 +91,8 @@ JSON has `model` (`available`, `disabled` or `blocked`), `gists` (each with
 `newest_message_id`, the message it answers for), `queued`, `in_flight`, and
 `skipped` with a reason: `not_people`, `not_found`, `recently_failed`,
 `not_generated` or `queue_full`. A gist that goes stale while the model is
-writing (someone replied) is never announced; it is written again. The same
+writing (someone replied) is never announced; the conversation goes to the
+back of the queue, twice at most, then waits a minute. The same
 data is at `POST /api/v1/mail/gists` (`{thread_ids, generate}`, at most 100)
 and in the `mxr_thread_gists` MCP tool.
 

@@ -151,16 +151,18 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             }
         }
         DaemonEvent::ThreadGistReady { gist } => app.row_gists.put(&gist),
-        DaemonEvent::NewMessages { envelopes, .. } => {
-            // Their conversations changed: the gists no longer hold.
-            app.row_gists.new_messages(
-                envelopes
-                    .iter()
-                    .map(|envelope| (&envelope.thread_id, &envelope.id)),
-            );
+        DaemonEvent::NewMessages { envelopes, total } => {
+            // A capped event is only a sample: any conversation may have
+            // changed.
+            if total > envelopes.len() {
+                app.row_gists.invalidate_all();
+            } else {
+                app.row_gists
+                    .changed(envelopes.iter().map(|envelope| &envelope.thread_id));
+            }
         }
         DaemonEvent::EventsLagged { skipped } => {
-            app.row_gists.lagged();
+            app.row_gists.invalidate_all();
             // We missed `skipped` events during a burst, so cached views
             // may be stale. Refresh everything the same way a completed
             // sync does rather than trusting our in-memory state.

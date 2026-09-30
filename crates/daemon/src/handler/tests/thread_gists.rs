@@ -6,12 +6,15 @@ use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::Duration;
 use mxr_core::id::ThreadId;
-use mxr_core::types::MessageBody;
+use mxr_core::types::{
+    Address, Envelope, EventSource, MessageBody, MessageDirection, MessageFlags,
+};
 use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider};
 use mxr_protocol::{
     AiLocalityData, AiSourceData, GistModelData, ThreadGistBatchData, ThreadGistData,
     ThreadGistSkipReasonData,
 };
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex as StdMutex;
 use tokio::sync::Semaphore;
@@ -676,4 +679,140 @@ async fn a_hundred_conversation_request_reports_what_was_queued_and_what_was_not
     let (pending, in_flight, _) = fx.state.gist_queue.snapshot();
     assert_eq!(pending.len() + in_flight.len(), 64);
     llm.release(64);
+}
+
+/// A model that, each time it is asked about one conversation, waits for
+/// the test to add a message to it first: that conversation's gist always
+/// goes stale mid-call.
+struct BusyThreadLlm {
+    marker: String,
+    calls_on_busy: AtomicUsize,
+    calls: AtomicUsize,
+    hook: tokio::sync::mpsc::UnboundedSender<tokio::sync::oneshot::Sender<()>>,
+}
+
+#[async_trait]
+impl LlmProvider for BusyThreadLlm {
+    async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        let prompt: String = req.messages.iter().map(|m| m.content.clone()).collect();
+        if prompt.contains(&self.marker) {
+            self.calls_on_busy.fetch_add(1, Ordering::SeqCst);
+            let (done, wait) = tokio::sync::oneshot::channel();
+            let _ = self.hook.send(done);
+            let _ = wait.await;
+        }
+        Ok(CompletionResponse {
+            content: r#"{"gist": "Canary stays at 5%.", "ask": null}"#.into(),
+            model: "qwen2.5:7b".into(),
+            finish_reason: Some("stop".into()),
+        })
+    }
+    fn capabilities(&self) -> LlmCapabilities {
+        LlmCapabilities {
+            context_window: 32_000,
+            supports_streaming: false,
+        }
+    }
+    fn model_name(&self) -> &str {
+        "qwen2.5:7b"
+    }
+}
+
+#[tokio::test]
+async fn a_conversation_that_keeps_changing_never_starves_the_others() {
+    let fx = Fixture::new().await;
+    let (busy, busy_first_message) = conversation(&fx, MAYA).await;
+    let (b, _) = conversation(&fx, MAYA).await;
+    let (c, _) = conversation(&fx, MAYA).await;
+    let (hook, mut asked) = tokio::sync::mpsc::unbounded_channel();
+    let llm = Arc::new(BusyThreadLlm {
+        marker: busy_first_message,
+        calls_on_busy: AtomicUsize::new(0),
+        calls: AtomicUsize::new(0),
+        hook,
+    });
+    fx.state.llm.replace(llm.clone());
+    let mut events = fx.state.event_tx.subscribe();
+
+    // Someone writes in `busy` during every call about it.
+    let writer_fx = fx.state.clone();
+    let busy_thread = busy.clone();
+    let account = fx.account.clone();
+    let inbox = fx.inbox.clone();
+    let feeder = tokio::spawn(async move {
+        let mut minutes = 1;
+        while let Some(done) = asked.recv().await {
+            let id = mxr_core::id::MessageId::new();
+            let envelope = Envelope {
+                id: id.clone(),
+                account_id: account.clone(),
+                provider_id: format!("busy-{id}"),
+                thread_id: busy_thread.clone(),
+                message_id_header: Some(format!("<{id}@example.com>")),
+                in_reply_to: None,
+                references: vec![],
+                from: Address {
+                    name: None,
+                    email: MAYA.into(),
+                },
+                to: vec![Address {
+                    name: None,
+                    email: ME.into(),
+                }],
+                cc: vec![],
+                bcc: vec![],
+                subject: "Re: Launch plan".into(),
+                date: chrono::Utc::now() + Duration::minutes(minutes),
+                flags: MessageFlags::empty(),
+                snippet: String::new(),
+                has_attachments: false,
+                size_bytes: 10,
+                unsubscribe: UnsubscribeMethod::None,
+                link_count: 0,
+                body_word_count: 0,
+                label_provider_ids: vec![],
+                keywords: std::collections::BTreeSet::new(),
+            };
+            minutes += 1;
+            writer_fx
+                .store
+                .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+                .await
+                .unwrap();
+            let _ = writer_fx
+                .store
+                .set_message_labels(&id, std::slice::from_ref(&inbox), EventSource::User)
+                .await;
+            let _ = done.send(());
+        }
+    });
+
+    let batch = gists(&fx, &[busy.clone(), b.clone(), c.clone()], true).await;
+    assert_eq!(batch.queued, vec![busy.clone(), b.clone(), c.clone()]);
+    let ready = ready_events(&mut events, 2).await;
+    let written: HashSet<ThreadId> = ready.iter().map(|g| g.thread_id.clone()).collect();
+    assert_eq!(
+        written,
+        HashSet::from([b.clone(), c.clone()]),
+        "the others are written"
+    );
+
+    wait_for("the busy conversation to back off", || {
+        let (pending, in_flight, _) = fx.state.gist_queue.snapshot();
+        pending.is_empty() && in_flight.is_empty()
+    })
+    .await;
+    assert_eq!(
+        llm.calls_on_busy.load(Ordering::SeqCst),
+        1 + 2,
+        "one try plus two retries, then it waits"
+    );
+    let again = gists(&fx, std::slice::from_ref(&busy), true).await;
+    assert!(again.queued.is_empty());
+    assert_eq!(
+        again.skipped[0].reason,
+        ThreadGistSkipReasonData::RecentlyFailed
+    );
+    feeder.abort();
 }

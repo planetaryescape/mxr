@@ -41,8 +41,13 @@ const PENDING_CAP: usize = 64;
 const FAILED_BACKOFF: Duration = Duration::from_secs(10 * 60);
 /// Upper bound on `llm.gist_concurrency`.
 const MAX_WRITERS: usize = 8;
-/// Most failures remembered for the backoff; the oldest go first.
+/// Most backoffs remembered; the soonest to expire go first.
 const FAILED_CAP: usize = 1024;
+/// A conversation whose gist goes stale mid-call (someone keeps writing)
+/// is tried again at the back of the queue this many times, then waits
+/// `STALE_BACKOFF`, so it can't hold the writer.
+const STALE_RETRIES: u32 = 2;
+const STALE_BACKOFF: Duration = Duration::from_secs(60);
 
 /// What happened to one conversation a request asked to queue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,9 +70,12 @@ struct QueueState {
     in_flight: HashSet<ThreadId>,
     /// Writers running now; each exits when the queue is empty.
     writers: usize,
-    /// Conversations the model failed on, with the content they failed at
-    /// and when.
-    failed: HashMap<ThreadId, (String, Instant)>,
+    /// Conversations backing off, until when: the model failed on this
+    /// content (`Some(hash)`), or its gists kept going stale (`None`, any
+    /// content).
+    failed: HashMap<ThreadId, (Option<String>, Instant)>,
+    /// Times each conversation's gist went stale mid-call in a row.
+    stale_attempts: HashMap<ThreadId, u32>,
 }
 
 impl GistQueue {
@@ -106,14 +114,24 @@ impl GistQueue {
         (outcomes, start)
     }
 
-    /// Put a conversation back at the front for the writer that just took
-    /// it: its result went stale while the model was writing.
-    fn requeue(&self, id: ThreadId) {
+    /// Its gist went stale while the model was writing: back of the queue
+    /// for another go, or, after `STALE_RETRIES`, a backoff. Never the
+    /// front, so a busy conversation can't starve the rest.
+    fn went_stale(&self, id: &ThreadId, now: Instant) {
         let mut state = self.inner.lock();
-        state.in_flight.remove(&id);
-        if !state.pending.contains(&id) {
-            state.pending.push_front(id);
-            state.pending.truncate(PENDING_CAP);
+        state.in_flight.remove(id);
+        if state.stale_attempts.len() >= FAILED_CAP {
+            state.stale_attempts.clear();
+        }
+        let attempts = state.stale_attempts.entry(id.clone()).or_default();
+        *attempts += 1;
+        if *attempts <= STALE_RETRIES {
+            if !state.pending.contains(id) && state.pending.len() < PENDING_CAP {
+                state.pending.push_back(id.clone());
+            }
+        } else {
+            state.stale_attempts.remove(id);
+            back_off(&mut state, id, None, now + STALE_BACKOFF);
         }
     }
 
@@ -142,27 +160,13 @@ impl GistQueue {
     fn finish_at(&self, id: &ThreadId, failed_at: Option<String>, now: Instant) {
         let mut state = self.inner.lock();
         state.in_flight.remove(id);
-        let Some(hash) = failed_at else {
-            state.failed.remove(id);
-            return;
-        };
-        // Bounded: expired entries go on every insert, then the oldest
-        // while the map is full.
-        state
-            .failed
-            .retain(|_, (_, at)| now.saturating_duration_since(*at) < FAILED_BACKOFF);
-        while state.failed.len() >= FAILED_CAP && !state.failed.contains_key(id) {
-            let Some(oldest) = state
-                .failed
-                .iter()
-                .min_by_key(|(_, (_, at))| *at)
-                .map(|(key, _)| key.clone())
-            else {
-                break;
-            };
-            state.failed.remove(&oldest);
+        state.stale_attempts.remove(id);
+        match failed_at {
+            Some(hash) => back_off(&mut state, id, Some(hash), now + FAILED_BACKOFF),
+            None => {
+                state.failed.remove(id);
+            }
         }
-        state.failed.insert(id.clone(), (hash, now));
     }
 
     /// Nothing more can be written (no model, privacy block, shutdown).
@@ -170,21 +174,26 @@ impl GistQueue {
         self.inner.lock().pending.clear();
     }
 
-    /// Forget failures older than the backoff; once per request.
+    /// Forget backoffs that have run out; once per request.
     fn prune_failed(&self) {
+        let now = Instant::now();
         self.inner
             .lock()
             .failed
-            .retain(|_, (_, at)| at.elapsed() < FAILED_BACKOFF);
+            .retain(|_, (_, until)| *until > now);
     }
 
-    /// The model failed on this conversation, as it is now, a moment ago.
+    /// Backing off: the model failed on this content a moment ago, or the
+    /// conversation's gists kept going stale.
     fn recently_failed(&self, id: &ThreadId, content_hash: &str) -> bool {
+        let now = Instant::now();
         self.inner
             .lock()
             .failed
             .get(id)
-            .is_some_and(|(hash, _)| hash == content_hash)
+            .is_some_and(|(hash, until)| {
+                *until > now && hash.as_deref().is_none_or(|hash| hash == content_hash)
+            })
     }
 
     #[cfg(test)]
@@ -201,6 +210,25 @@ impl GistQueue {
             state.writers,
         )
     }
+}
+
+/// Remember a backoff, bounded: expired entries go on every insert, then
+/// the soonest to expire while the map is full.
+fn back_off(state: &mut QueueState, id: &ThreadId, hash: Option<String>, until: Instant) {
+    let now = Instant::now();
+    state.failed.retain(|_, (_, at)| *at > now);
+    while state.failed.len() >= FAILED_CAP && !state.failed.contains_key(id) {
+        let Some(soonest) = state
+            .failed
+            .iter()
+            .min_by_key(|(_, (_, at))| *at)
+            .map(|(key, _)| key.clone())
+        else {
+            break;
+        };
+        state.failed.remove(&soonest);
+    }
+    state.failed.insert(id.clone(), (hash, until));
 }
 
 pub(super) async fn get_thread_gists(
@@ -398,8 +426,8 @@ async fn run_writer(state: Arc<AppState>) {
                             state.gist_queue.finish(&thread_id, None);
                             announce(&state, gist);
                         } else {
-                            tracing::info!(%thread_id, "list gist went stale; queued again");
-                            state.gist_queue.requeue(thread_id.clone());
+                            tracing::info!(%thread_id, "list gist went stale mid-call");
+                            state.gist_queue.went_stale(&thread_id, Instant::now());
                         }
                     }
                     ThreadGistStatusData::Failed => {
@@ -442,6 +470,7 @@ mod tests {
     fn the_backoff_map_is_bounded_and_forgets_expired_failures() {
         let queue = GistQueue::default();
         let start = Instant::now();
+        std::thread::sleep(Duration::from_millis(5));
         let ids: Vec<ThreadId> = (0..FAILED_CAP + 6).map(|_| ThreadId::new()).collect();
         for (offset, id) in ids.iter().enumerate() {
             let at = start + Duration::from_millis(offset as u64);
@@ -454,9 +483,14 @@ mod tests {
         );
         assert!(queue.recently_failed(ids.last().unwrap(), "hash"));
 
-        // Past the backoff, one insert clears everything that expired.
-        let later = start + FAILED_BACKOFF + Duration::from_secs(5);
-        queue.finish_at(&ThreadId::new(), Some("hash".into()), later);
+        // Once they run out, the next insert clears everything expired.
+        queue
+            .inner
+            .lock()
+            .failed
+            .values_mut()
+            .for_each(|(_, until)| *until = start);
+        queue.finish_at(&ThreadId::new(), Some("hash".into()), Instant::now());
         assert_eq!(queue.failed_len(), 1);
     }
 

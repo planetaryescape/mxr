@@ -505,6 +505,13 @@ impl App {
                 self.modals.error = None;
             }
         }
+        // Events sent while the connection was down are lost: gists shown
+        // may be stale.
+        if matches!(state, ConnectionState::Connected)
+            && !matches!(self.connection_state, ConnectionState::Connected)
+        {
+            self.row_gists.invalidate_all();
+        }
         self.connection_state = state;
     }
 

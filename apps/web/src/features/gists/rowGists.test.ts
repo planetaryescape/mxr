@@ -26,7 +26,7 @@ vi.mock("@/lib/ws", () => ({
   },
 }));
 
-const { getRowGist, putGist, requestRowGists, resetRowGistsForTest, toRowGist } =
+const { getRowGist, putGist, requestRowGists, resetRowGistsForTest, STATE_CAP, toRowGist } =
   await import("./rowGists");
 
 function gist(threadId: string, ask: string | null = "confirm the owner") {
@@ -102,33 +102,9 @@ describe("row gists", () => {
     expect(getRowGist("a")).toBeDefined();
   });
 
-  test("a stale gist the cache no longer holds is dropped, not kept", async () => {
-    putGist(gist("a"), 0);
-    apiFetch.mockResolvedValue(answer([], "available", ["a"]));
-    await requestRowGists(["a"], 6 * 60_000);
-    expect(getRowGist("a")).toBeUndefined();
-  });
-
   test("only ready gists with text become lines", () => {
     expect(toRowGist({ ...gist("a"), status: "failed" })).toBeNull();
     expect(toRowGist({ ...gist("a"), gist: "  " })).toBeNull();
-  });
-
-  test("a gist for an older message than one seen arriving is ignored", async () => {
-    apiFetch.mockResolvedValue(answer([], "available", ["a"]));
-    await requestRowGists(["a"], 1_000);
-    emit({
-      type: "NewMessages",
-      envelopes: [{ thread_id: "a", id: "m2" }],
-    } as unknown as DaemonEvent);
-    const late = { ...gist("a"), newest_message_id: "m1" };
-    emit({ type: "ThreadGistReady", gist: late } as unknown as DaemonEvent);
-    expect(getRowGist("a")).toBeUndefined();
-    emit({
-      type: "ThreadGistReady",
-      gist: { ...gist("a"), newest_message_id: "m2" },
-    } as unknown as DaemonEvent);
-    expect(getRowGist("a")).toBeDefined();
   });
 
   test("missed events or a reconnect drop every line and let the rows ask again", async () => {
@@ -145,5 +121,52 @@ describe("row gists", () => {
     expect(getRowGist("a")).toBeUndefined();
     await requestRowGists(["a"], 3_000);
     expect(apiFetch).toHaveBeenCalledTimes(3);
+  });
+
+  test("an answer from before an invalidation can't put a line back", async () => {
+    let answerNow: (value: unknown) => void = () => {};
+    apiFetch.mockReturnValueOnce(new Promise((resolve) => (answerNow = resolve)));
+    const pending = requestRowGists(["a"], 1_000);
+    // A new message lands in the conversation while the request is out.
+    emit({
+      type: "NewMessages",
+      envelopes: [{ thread_id: "a" }],
+      total: 1,
+    } as unknown as DaemonEvent);
+    answerNow(answer([gist("a")]));
+    await pending;
+    expect(getRowGist("a")).toBeUndefined();
+    // The row asks again at once, and this answer is kept.
+    apiFetch.mockResolvedValue(answer([gist("a")]));
+    await requestRowGists(["a"], 1_500);
+    expect(getRowGist("a")).toBeDefined();
+  });
+
+  test("a sampled NewMessages drops every line", async () => {
+    apiFetch.mockResolvedValue(answer([gist("a"), gist("b")]));
+    await requestRowGists(["a", "b"], 1_000);
+    emit({
+      type: "NewMessages",
+      envelopes: [{ thread_id: "z" }],
+      total: 900,
+    } as unknown as DaemonEvent);
+    expect(getRowGist("a")).toBeUndefined();
+    expect(getRowGist("b")).toBeUndefined();
+  });
+
+  test("lines and asked-about rows are capped, oldest first", async () => {
+    for (let index = 0; index < STATE_CAP + 3; index += 1) putGist(gist(`t${index}`));
+    expect(getRowGist("t0")).toBeUndefined();
+    expect(getRowGist(`t${STATE_CAP + 2}`)).toBeDefined();
+    resetRowGistsForTest();
+    apiFetch.mockResolvedValue(answer([], "available"));
+    const ids = Array.from({ length: STATE_CAP + 100 }, (_, index) => `r${index}`);
+    for (let start = 0; start < ids.length; start += 100) {
+      await requestRowGists(ids.slice(start, start + 100), 1_000);
+    }
+    apiFetch.mockClear();
+    // The oldest asked-about rows were forgotten, so they are asked again.
+    await requestRowGists(["r0", `r${STATE_CAP + 99}`], 2_000);
+    expect(apiFetch.mock.calls[0]?.[1]).toMatchObject({ body: { thread_ids: ["r0"] } });
   });
 });

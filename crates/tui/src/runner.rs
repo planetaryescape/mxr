@@ -1094,6 +1094,7 @@ pub async fn run() -> anyhow::Result<()> {
         if app.row_gists.due(now) {
             let candidates = app.row_gist_candidates();
             if let Some(thread_ids) = app.row_gists.take_request(candidates, now) {
+                let epoch = app.row_gists.epoch();
                 let socket_path = socket_path.clone();
                 let result_tx = result_tx.clone();
                 tokio::spawn(async move {
@@ -1115,7 +1116,11 @@ pub async fn run() -> anyhow::Result<()> {
                         )),
                         Err(e) => Err(e),
                     };
-                    let _ = result_tx.send(AsyncResult::RowGistsLoaded { thread_ids, result });
+                    let _ = result_tx.send(AsyncResult::RowGistsLoaded {
+                        thread_ids,
+                        epoch,
+                        result,
+                    });
                 });
             }
         }
@@ -2605,8 +2610,17 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::ThreadGistLoaded { thread_id, result } => {
                             apply_thread_gist_loaded(&mut app, &thread_id, result);
                         }
-                        AsyncResult::RowGistsLoaded { thread_ids, result } => match result {
-                            Ok(batch) => app.row_gists.apply_batch(&batch, std::time::Instant::now()),
+                        AsyncResult::RowGistsLoaded {
+                            thread_ids,
+                            epoch,
+                            result,
+                        } => match result {
+                            Ok(batch) => app.row_gists.apply_batch(
+                                &thread_ids,
+                                epoch,
+                                &batch,
+                                std::time::Instant::now(),
+                            ),
                             // Quiet: rows keep their snippets and are asked
                             // about again.
                             Err(error) => {

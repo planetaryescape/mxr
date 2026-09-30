@@ -323,7 +323,7 @@ pub(crate) async fn finish_draft_suggestion(
             .as_ref()
             .is_some_and(|rewrite| rewrite.history_used)
     {
-        state.history_text.record(account_id, &body);
+        crate::history_text::record(&state.store, account_id, &body).await;
     }
     let voice_match = baseline.map(|(baseline, count)| {
         let report = score_voice_match(&compute_metrics(&body), &baseline, count);

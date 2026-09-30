@@ -990,6 +990,28 @@ mod tests {
         let disclosed = provenance(&response);
         assert_eq!(disclosed.locality, mxr_protocol::AiLocalityData::Cloud);
         assert!(!disclosed.history_used);
+
+        // A local humanize of that history text is history text too: its
+        // output is remembered for the same account.
+        let rewritten = "Friday works for me and I will send the notes by noon.";
+        let mut providers: std::collections::HashMap<LlmFeature, Arc<dyn LlmProvider>> =
+            std::collections::HashMap::new();
+        providers.insert(
+            LlmFeature::HumanizeRewrite,
+            Arc::new(ScriptedLlm::new(rewritten, "local-rewriter", None)),
+        );
+        state
+            .llm
+            .replace_feature_providers(providers, std::collections::HashMap::new());
+        crate::handler::humanizer::rewrite_text(&state, &edited, None)
+            .await
+            .expect("a local model may rewrite it");
+        assert_eq!(
+            crate::history_text::source_accounts(&state.store, None, rewritten)
+                .await
+                .unwrap(),
+            vec![account_id]
+        );
     }
 
     // Privacy: a draft written from the user's history never goes to a cloud

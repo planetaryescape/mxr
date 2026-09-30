@@ -443,9 +443,6 @@ pub struct AppState {
     /// shared via `Arc` so the cache lookup is O(1) and lock-free
     /// after the first render.
     pub reply_context_cache: ParkingMutex<HashMap<MessageId, Arc<String>>>,
-    /// Sentences AI wrote from the user's history, so a later refine or
-    /// humanize doesn't send them to a cloud model without opt-in.
-    pub(crate) history_text: crate::history_text::HistoryTextLedger,
     /// 60s in-memory cache for `Wrapped` summaries. See
     /// `WrappedCacheKey` and `WRAPPED_CACHE_TTL` above.
     wrapped_cache: ParkingMutex<HashMap<WrappedCacheKey, (Instant, Arc<types::WrappedSummary>)>>,
@@ -729,7 +726,6 @@ impl AppState {
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
-            history_text: Default::default(),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
@@ -1853,7 +1849,6 @@ impl AppState {
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
-            history_text: Default::default(),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
@@ -1927,7 +1922,6 @@ impl AppState {
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
-            history_text: Default::default(),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
@@ -2027,7 +2021,6 @@ impl AppState {
                 start_time: Instant::now(),
                 wrapped_cache: ParkingMutex::new(HashMap::new()),
                 reply_context_cache: ParkingMutex::new(HashMap::new()),
-                history_text: Default::default(),
                 analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
                 lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
                 config: RwLock::new(config),

@@ -28,6 +28,7 @@ mod draft_commitments;
 mod draft_recovery;
 mod draft_safety;
 mod event_log;
+mod history_text;
 mod keywords;
 mod label;
 mod message;

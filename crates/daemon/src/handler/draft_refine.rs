@@ -66,7 +66,10 @@ pub(super) async fn draft_refine(
         .filter(|body| !body.trim().is_empty())
         .unwrap_or_else(|| draft.content.analysis_text());
     // The body itself may carry an earlier suggestion written from history.
-    let body_from_history = state.history_text.contains(Some(&draft.account_id), text);
+    let body_from_history =
+        !crate::history_text::source_accounts(&state.store, Some(&draft.account_id), text)
+            .await?
+            .is_empty();
     if body_from_history && !share {
         return Err(crate::handler::HandlerError::InvalidRequest(
             HISTORY_BODY_REFUSAL.to_string(),

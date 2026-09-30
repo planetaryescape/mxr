@@ -236,8 +236,9 @@ read from what the request actually did, not from your config:
 - A draft body that contains text an earlier draft wrote from your history
   won't be refined or humanized by a cloud model you haven't opted in to.
   mxr says so instead: refine it with a local model, or set
-  `llm.allow_cloud_relationship_data = true`. mxr remembers that text in
-  memory for 7 days, so a daemon restart forgets it.
+  `llm.allow_cloud_relationship_data = true`. mxr recognises that text for
+  7 days, across restarts, by storing a hash of each sentence in its local
+  database, never the text itself.
 
 `--format json` carries the same facts under `provenance`:
 

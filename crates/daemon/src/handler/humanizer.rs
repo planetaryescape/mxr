@@ -25,7 +25,8 @@ pub(super) async fn rewrite_text(
 ) -> HandlerResult {
     let policy = DraftPolicy::pin(state, LlmFeature::HumanizeRewrite);
     // The request names no account, so any account's history counts.
-    if !policy.share_history && state.history_text.contains(None, text) {
+    let from_history = crate::history_text::source_accounts(&state.store, None, text).await?;
+    if !from_history.is_empty() && !policy.share_history {
         return Err(super::HandlerError::InvalidRequest(
             super::draft_refine::HISTORY_BODY_REFUSAL.to_string(),
         ));
@@ -38,6 +39,13 @@ pub(super) async fn rewrite_text(
         None,
     )
     .await?;
+    // A rewrite of history text is history text too, for whichever
+    // accounts it came from.
+    if rewritten.iterations > 0 {
+        for account in &from_history {
+            crate::history_text::record(&state.store, account, &rewritten.text).await;
+        }
+    }
     let rewrite = rewritten.provenance(&policy, false);
     Ok(ResponseData::HumanizedText {
         text: rewritten.text,

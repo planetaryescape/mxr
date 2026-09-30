@@ -67,6 +67,11 @@ interface ActionBase {
   shortcut?: ShortcutChord;
   /** More chords bound to the same action in the same scopes. */
   aliases?: ShortcutChord[];
+  /**
+   * Retired chords that still work for a release so muscle memory has
+   * time to move. Bound, but never shown in help, hints or the docs.
+   */
+  retiredAliases?: ShortcutChord[];
   /** Listed in the palette but never bound to a key. */
   paletteOnly?: boolean;
   /** Scopes the binding is live in; defaults to ["global"]. */

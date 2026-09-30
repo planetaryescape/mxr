@@ -8,6 +8,19 @@ fn plain_or_shift(modifiers: KeyModifiers) -> bool {
     modifiers.is_empty() || modifiers == KeyModifiers::SHIFT
 }
 
+/// `g` + letter views that are sidebar lenses or modals in the TUI and
+/// pages in the web app. Same letters in both clients.
+fn g_view_chord(second: char) -> Option<Action> {
+    match second {
+        'q' => Some(Action::OpenReplyQueue),
+        'o' => Some(Action::OpenOwedReplies),
+        'v' => Some(Action::OpenCalendarInvites),
+        'u' => Some(Action::OpenSubscriptions),
+        'S' => Some(Action::OpenScreenerQueue),
+        _ => None,
+    }
+}
+
 #[derive(Debug)]
 pub enum KeyState {
     Normal,
@@ -182,6 +195,13 @@ impl InputHandler {
             ) => {
                 self.state = KeyState::Normal;
                 Some(Action::OpenActivityScreen)
+            }
+            // The same views the web app opens with these chords.
+            (KeyState::WaitingForSecond { first: 'g', .. }, KeyCode::Char(c), modifiers)
+                if plain_or_shift(modifiers) && g_view_chord(c).is_some() =>
+            {
+                self.state = KeyState::Normal;
+                g_view_chord(c)
             }
             // g <0-9>: jump to a saved-search tab by index. `g 0` returns
             // to the default inbox view; `g N` (1..=9) targets the Nth
@@ -433,6 +453,25 @@ mod tests {
             input.handle_key(key(KeyCode::Char('p'))),
             Some(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail))
         );
+    }
+
+    #[test]
+    fn chord_g_then_a_view_letter_opens_the_view_the_web_opens() {
+        for (second, modifiers, expected) in [
+            ('q', KeyModifiers::NONE, Action::OpenReplyQueue),
+            ('o', KeyModifiers::NONE, Action::OpenOwedReplies),
+            ('v', KeyModifiers::NONE, Action::OpenCalendarInvites),
+            ('u', KeyModifiers::NONE, Action::OpenSubscriptions),
+            ('S', KeyModifiers::SHIFT, Action::OpenScreenerQueue),
+        ] {
+            let mut input = InputHandler::new();
+            assert_eq!(input.handle_key(key(KeyCode::Char('g'))), None);
+            assert_eq!(
+                input.handle_key(key_with(KeyCode::Char(second), modifiers)),
+                Some(expected),
+                "g {second}"
+            );
+        }
     }
 
     #[test]

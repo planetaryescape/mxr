@@ -8,6 +8,7 @@ import {
   kindOptionForKey,
   paperTrailItems,
   readingIssues,
+  sweepConfirmLabel,
   sweepNote,
   sweepTitle,
   whyHere,
@@ -45,6 +46,10 @@ function bundle(email: string, messages: PlaceMessage[], name?: string): PlaceBu
     newest_subject: messages[0]?.subject ?? "",
     messages,
   };
+}
+
+function sweptSender(email: string, count: number) {
+  return { account_id: "acct", sender_email: email, count };
 }
 
 function preview(extra: Partial<SweepPreview> = {}): SweepPreview {
@@ -96,6 +101,15 @@ describe("copy", () => {
     expect(whyHere({ reason: "automated sender, has List-Unsubscribe" })).toBe(
       "Here because: automated sender, has List-Unsubscribe.",
     );
+  });
+
+  test("the whole-place confirm names its scope and size; a bundle's stays short", () => {
+    const all = preview({
+      count: 143,
+      senders: [sweptSender("a@x.example", 100), sweptSender("b@y.example", 43)],
+    });
+    expect(sweepConfirmLabel(all, true)).toBe("Archive all 143 from 2 senders");
+    expect(sweepConfirmLabel(preview(), false)).toBe("Archive 13 messages");
   });
 
   test("sweep titles name the bundle or the place, and what stays", () => {

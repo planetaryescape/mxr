@@ -47,7 +47,7 @@ help modal (`?`).
 | `G` | Jump to bottom |
 | `Ctrl-d` | Page down |
 | `Ctrl-u` | Page up |
-| `H` / `M` / `L` | Viewport top / middle / bottom |
+| `H` / `M` | Viewport top / middle |
 | `zz` | Center current item |
 | `Enter` / `o` | Open selected row |
 | `Tab` | Switch pane |
@@ -65,6 +65,11 @@ help modal (`?`).
 | `a` | Reply all |
 | `f` | Forward |
 | `y` | Summarize thread in the background |
+| `p` | Sender profile |
+| `B` | Thread briefing |
+| `W` | Who is this sender? |
+| `L` | Links in the previewed message |
+| `u` | Undo the last change |
 | `e` | Archive (on the desk: Done, put it away) |
 | `m` | Mark read + archive (on the desk: Done) |
 | `#` | Trash |
@@ -113,18 +118,35 @@ help modal (`?`).
 | `gs` | Go to Starred |
 | `gt` | Go to Sent |
 | `gd` | Go to Drafts |
+| `gE` | Local drafts and scheduled sends |
 | `ga` | Go to All Mail |
 | `gl` | Go to Label (picker) |
+| `gr` | Reading |
+| `gp` | Paper trail |
+| `gq` | Reply queue |
+| `go` | Owed replies |
+| `gv` | Calendar invites |
+| `gu` | Subscriptions |
+| `gS` | Screener |
+| `gA` | Analytics |
+| `gy` | Activity log |
 | `gc` | Edit config (opens `$EDITOR`) |
 | `gL` | Show recent logs |
 | `g 1`–`g 9` | Jump to saved-search 1–9 |
 | `g 0` | Return to default inbox (clear saved-search filter) |
+
+Draft assist, a new draft for this sender, commitments and the voice
+profile are in the command palette only (`Ctrl-p`). Help once listed
+`gA`, `gD`, `gC` and `gV` for them, but those chords never ran them;
+`gA` opens Analytics.
 
 ## Message view
 
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Scroll body |
+| `gg` / `G` | Top / end of the message |
+| `J` / `K` | Next / previous message in the thread |
 | `R` | Toggle reader mode |
 | `H` | Toggle HTML view |
 | `M` | Toggle remote content (HTML images) |
@@ -137,6 +159,7 @@ help modal (`?`).
 | `a` | Reply all |
 | `f` | Forward |
 | `y` | Summarize thread in the background |
+| `p` | Sender profile |
 | `e` | Archive |
 | `m` | Mark read + archive |
 | `#` | Trash |
@@ -153,7 +176,8 @@ help modal (`?`).
 
 | Key | Action |
 |-----|--------|
-| `j` / `k` | Move focused message in thread |
+| `j` / `k` | Scroll the thread |
+| `J` / `K` | Move to the next / previous message |
 | `r` | Reply to focused message |
 | `a` | Reply all to focused message |
 | `f` | Forward focused message |
@@ -188,6 +212,19 @@ help modal (`?`).
 | `d` | Delete the focused saved search (with confirm) |
 | `g 1`–`g 9` | Jump to saved-search 1–9 |
 | `g 0` | Clear saved-search filter (return to default inbox) |
+
+## Reading and Paper trail
+
+Lenses in the sidebar (`gr`, `gp`). Mail keys act on the message under the
+cursor.
+
+| Key | Action |
+|-----|--------|
+| `p` | Pin or unpin the message |
+| `K` | Move the sender to another place |
+| `S` | Sweep this sender's bundle (previews first) |
+| `A` | Sweep the whole place (previews first, opens on Cancel: `Tab`, then `Enter`) |
+| `>` / `+` | More senders / more from this sender |
 
 ## Calendar invites lens
 
@@ -330,7 +367,7 @@ Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your ma
 | Bulk confirm | `Enter` / `y` confirm, `Esc` / `n` cancel |
 | Snooze (preset list) | `j` / `k` move, `Enter` confirm, `Esc` close |
 | Snooze (custom mode) | typing (live preview), `Tab` other reading, `Enter` snooze, `Backspace`, `Esc` back to presets |
-| Reply queue | `j` / `k`, `Esc` close |
+| Reply queue | `j` / `k`, `Enter` / `r` reply, `F` focus & reply, `Esc` close |
 | Snippets browser | `j` / `k`, `Esc` close |
 | Sender profile | `j` / `k` select other sender email, `Enter` / `o` open selected email, `Esc` close |
 | Screener queue | `j` / `k` navigate, `a` allow, `d` deny, `f` feed, `p` paper-trail, `Esc` close |
@@ -348,8 +385,18 @@ The web app follows the TUI's live bindings. One dispatcher reads every key
 from the shared action registry (`apps/web/src/lib/actions/`), so these
 tables, the in-app help (`?`), the command palette and **Settings →
 Keybindings** always agree. Where the web deliberately differs from the TUI,
-the note says why. Keys never fire while you type in a field or while
-compose is open, except `⌘K` / `Ctrl+K`.
+the note says why, and a test fails if the two clients bind the same key
+to different things without a listed reason. Keys never fire while you
+type in a field or while compose is open, except `⌘K` / `Ctrl+K`.
+
+:::note[Changed in 0.6.41]
+Web keys now match the TUI's: `g h` opens the desk (was `g d`), `g d`
+opens Drafts (`g E` still does), `g r` / `g p` open Reading / Paper trail
+(were `g R` / `g P`, which keep working until 0.6.42), `g H` shows raw
+headers (was `g h`), and in Reading and Paper trail `S` sweeps a sender's
+bundle and `A` the whole place (were `s` / `S`). Rules is `3` or the
+palette; `g r` no longer opens it.
+:::
 
 <!-- web-keys:start (generated from the action registry; run UPDATE_KEY_DOCS=1 npm test) -->
 
@@ -372,12 +419,12 @@ Work on every page except while typing in a field or compose.
 | Key | Action | Note |
 |-----|--------|------|
 | `g 1` … `g 9` | Open saved search 1 to 9 | In sidebar order, as the TUI's tab strip |
-| `g d` | Go to Desk | The TUI opens the desk with g h and keeps g d for Drafts |
+| `g h` | Go to Desk |  |
 | `g w` | Waiting on | A lane of the desk lens in the TUI |
 | `g i`, `g 0` | Go to Inbox |  |
 | `g s` | Go to Starred |  |
 | `g t` | Go to Sent |  |
-| `g E` | Go to Drafts | g d opens the desk here; in the TUI g d is the Drafts lens |
+| `g d`, `g E` | Go to Drafts | One page here; in the TUI g d is the Drafts mailbox and g E its local drafts |
 | `g a` | Go to All Mail |  |
 | `g l` | Go to label |  |
 | `g A` | Analytics |  |
@@ -387,16 +434,16 @@ Work on every page except while typing in a field or compose.
 | `g n` | Go to Snoozed | Web only |
 | `g #` | Go to Trash | Web only |
 | `g !` | Go to Spam | Web only |
-| `g q` | Reply queue | Palette only in the TUI |
-| `g o` | Owed replies | Sidebar lens in the TUI |
-| `g v`, `9` | Calendar invites | Sidebar lens in the TUI |
-| `g R` | Reading |  |
-| `g P` | Paper trail |  |
-| `g u` | Subscriptions | Sidebar lens in the TUI |
-| `g S`, `8` | Screener | Palette only in the TUI |
+| `g q` | Reply queue |  |
+| `g o` | Owed replies |  |
+| `g v`, `9` | Calendar invites |  |
+| `g r` | Reading |  |
+| `g p` | Paper trail |  |
+| `g u` | Subscriptions |  |
+| `g S`, `8` | Screener |  |
 | `1` | Mail |  |
 | `2` | Search page |  |
-| `3`, `g r` | Rules |  |
+| `3` | Rules |  |
 | `4` | Accounts |  |
 | `5` | Diagnostics |  |
 | `6` | Analytics (tab) |  |
@@ -427,7 +474,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `E` | Export as Markdown |  |
 | `B` | Thread briefing |  |
 | `W` | Who is this sender? |  |
-| `p` | Sender profile | Palette only in the TUI |
+| `p` | Sender profile |  |
 | `L` | Links in this message |  |
 | `A` | Attachments |  |
 | `i a` | Accept invite |  |
@@ -474,7 +521,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `G`, `End` | End of thread |  |
 | `J` | Next message |  |
 | `K` | Previous message |  |
-| `o` | Expand or collapse message | Web only; the TUI shows every message |
+| `o` | Expand or collapse message | The TUI shows every message, and its o opens the original, like O |
 | `X` | Expand or collapse all | Web only |
 | `n` | Next conversation | The TUI steps results with n/N; the web steps conversations |
 | `N` | Previous conversation |  |
@@ -487,7 +534,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `M` | Load remote images |  |
 | `S` | Show or hide signatures |  |
 | `Q` | Show or hide quoted text | Web only |
-| `g h` | Raw headers | CLI `mxr cat --view headers`; not in the TUI |
+| `g H` | Raw headers | CLI `mxr cat --view headers`; not in the TUI |
 | `O` | Open original in a new tab |  |
 | `y` | Summarize thread |  |
 | `F` | Full-width reader |  |
@@ -540,8 +587,8 @@ Bundles of mail that isn't from people. The reader keeps its own keys.
 | `k`, `ArrowUp` | Previous |  |
 | `Enter`, `o` | Open, or expand a bundle |  |
 | `p` | Pin or unpin (a sweep leaves pins) |  |
-| `s` | Sweep this sender's bundle… | Previews the daemon's dry run first; undo afterwards |
-| `S` | Sweep the whole place… | Everything unpinned here; previews first |
+| `S` | Sweep this sender's bundle… | Previews the daemon's dry run first; undo afterwards |
+| `A` | Sweep the whole place… | Everything unpinned here; previews first and opens on Cancel (Tab, then Enter) |
 | `K` | Move sender to… | In the reader K is the previous message; use the palette or the line under the thread |
 | `D` | Unsubscribe… |  |
 

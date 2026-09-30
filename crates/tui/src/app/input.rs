@@ -201,6 +201,10 @@ impl App {
             (KeyCode::Char('W'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenWhoisOnFocusedSender)
             }
+            // Same keys as the web app. Reading and Paper trail take `p`
+            // for pin before these mail keys are consulted.
+            (KeyCode::Char('p'), KeyModifiers::NONE) => Some(Action::OpenSenderView),
+            (KeyCode::Char('y'), KeyModifiers::NONE) => Some(Action::SummarizeCurrentThread),
             _ => None,
         }
     }
@@ -836,10 +840,21 @@ impl App {
             }
         }
 
-        if self.mailbox.sweep_confirm.is_some() {
+        if let Some(confirm) = self.mailbox.sweep_confirm.as_mut() {
             return match (key.code, key.modifiers) {
-                (KeyCode::Enter, _) | (KeyCode::Char('y'), KeyModifiers::NONE) => {
+                (KeyCode::Enter, _) => {
                     self.confirm_sweep();
+                    None
+                }
+                // `y` is a one-key yes, so only one sender's bundle takes it.
+                (KeyCode::Char('y'), KeyModifiers::NONE)
+                    if confirm.target.sender_email.is_some() =>
+                {
+                    self.confirm_sweep();
+                    None
+                }
+                (KeyCode::Tab | KeyCode::BackTab, _) => {
+                    confirm.sweep_focused = !confirm.sweep_focused;
                     None
                 }
                 (KeyCode::Esc, _) | (KeyCode::Char('n' | 'q'), KeyModifiers::NONE) => {

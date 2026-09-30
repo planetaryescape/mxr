@@ -98,7 +98,7 @@ export function PaperTrailRoute() {
                 notePointerUse("place.sweep-all");
               }}
             >
-              Sweep all <KeyChip className="ml-1 h-4 px-1">S</KeyChip>
+              Sweep all <KeyChip className="ml-1 h-4 px-1">A</KeyChip>
             </Button>
           ) : null
         }
@@ -324,7 +324,7 @@ function Bundles({
           <KeyChip>p</KeyChip> pin
         </span>
         <span className="inline-flex items-center gap-1">
-          <KeyChip>s</KeyChip> sweep sender
+          <KeyChip>S</KeyChip> sweep sender
         </span>
         <span className="inline-flex items-center gap-1">
           <KeyChip>K</KeyChip> move sender

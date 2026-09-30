@@ -122,8 +122,7 @@ export const navigationActions: Action[] = [
       "What needs you: replies you owe, promises due, threads waiting, new mail from people",
     group: "Navigate",
     icon: LampDesk,
-    shortcut: "g d",
-    tuiNote: "The TUI opens the desk with g h and keeps g d for Drafts",
+    shortcut: "g h",
     run: go("/desk"),
   },
   {
@@ -166,8 +165,9 @@ export const navigationActions: Action[] = [
     label: "Go to Drafts",
     group: "Navigate",
     icon: FileText,
-    shortcut: "g E",
-    tuiNote: "g d opens the desk here; in the TUI g d is the Drafts lens",
+    shortcut: "g d",
+    aliases: ["g E"],
+    tuiNote: "One page here; in the TUI g d is the Drafts mailbox and g E its local drafts",
     run: go("/drafts"),
   },
   {
@@ -252,6 +252,7 @@ export const navigationActions: Action[] = [
     run: go("/m/spam"),
     tuiNote: "Web only",
   },
+  // Triage views. The same chords open the TUI's lenses and modals.
   {
     id: "nav.reply-queue",
     label: "Reply queue",
@@ -259,7 +260,6 @@ export const navigationActions: Action[] = [
     icon: Reply,
     shortcut: "g q",
     run: go("/reply-queue"),
-    tuiNote: "Palette only in the TUI",
   },
   {
     id: "nav.owed",
@@ -268,7 +268,6 @@ export const navigationActions: Action[] = [
     icon: Hourglass,
     shortcut: "g o",
     run: go("/owed"),
-    tuiNote: "Sidebar lens in the TUI",
   },
   {
     id: "nav.invites",
@@ -278,7 +277,6 @@ export const navigationActions: Action[] = [
     shortcut: "g v",
     aliases: ["9"],
     run: go("/invites"),
-    tuiNote: "Sidebar lens in the TUI",
   },
   {
     id: "nav.reading",
@@ -286,7 +284,10 @@ export const navigationActions: Action[] = [
     description: "Newsletters and lists, open as a feed; nothing here counts as unread",
     group: "Triage",
     icon: Newspaper,
-    shortcut: "g R",
+    shortcut: "g r",
+    // The web used g R and g P up to 0.6.40, while g r opened Rules.
+    // Drop these retired aliases after 0.6.41.
+    retiredAliases: ["g R"],
     run: go("/reading"),
   },
   {
@@ -295,7 +296,8 @@ export const navigationActions: Action[] = [
     description: "Receipts, notifications and automated mail, bundled by sender",
     group: "Triage",
     icon: Receipt,
-    shortcut: "g P",
+    shortcut: "g p",
+    retiredAliases: ["g P"],
     run: go("/paper-trail"),
   },
   {
@@ -305,7 +307,6 @@ export const navigationActions: Action[] = [
     icon: MailX,
     shortcut: "g u",
     run: go("/subscriptions"),
-    tuiNote: "Sidebar lens in the TUI",
   },
   {
     id: "nav.screener",
@@ -315,7 +316,6 @@ export const navigationActions: Action[] = [
     shortcut: "g S",
     aliases: ["8"],
     run: go("/screener"),
-    tuiNote: "Palette only in the TUI",
   },
   {
     id: "nav.jobs",
@@ -350,7 +350,6 @@ export const navigationActions: Action[] = [
     group: "Rules",
     icon: Workflow,
     shortcut: "3",
-    aliases: ["g r"],
     run: go("/rules"),
   },
   {

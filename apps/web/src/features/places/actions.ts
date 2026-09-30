@@ -41,15 +41,16 @@ export const placeActions: Action[] = [
     shortLabel: "Pin",
     icon: Pin,
   }),
-  placeAction("place.sweep-bundle", "sweepBundle", "Sweep this sender's bundle…", "s", {
+  // S and A, as in the TUI: s means star in every mail list.
+  placeAction("place.sweep-bundle", "sweepBundle", "Sweep this sender's bundle…", "S", {
     shortLabel: "Sweep sender",
     icon: Archive,
     tuiNote: "Previews the daemon's dry run first; undo afterwards",
   }),
-  placeAction("place.sweep-all", "sweepAll", "Sweep the whole place…", "S", {
+  placeAction("place.sweep-all", "sweepAll", "Sweep the whole place…", "A", {
     shortLabel: "Sweep all",
     icon: Archive,
-    tuiNote: "Everything unpinned here; previews first",
+    tuiNote: "Everything unpinned here; previews first and opens on Cancel (Tab, then Enter)",
   }),
   placeAction("place.move-sender", "moveSender", "Move sender to…", "K", {
     icon: Shuffle,

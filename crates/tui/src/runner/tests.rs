@@ -145,6 +145,7 @@ fn set_active_inbox(app: &mut App) {
 
 mod accounts_and_delivery;
 mod input_and_compose;
+mod keymap;
 mod mailbox_views;
 mod mutations_and_bulk;
 mod places;

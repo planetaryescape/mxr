@@ -88,6 +88,15 @@ export function sweepTitle(preview: SweepPreview, senderLabel?: string): string 
 }
 
 /**
+ * The confirm button. A whole-place sweep names its scope and size, so it
+ * never reads like one sender's bundle: "Archive all 143 from 35 senders".
+ */
+export function sweepConfirmLabel(preview: SweepPreview, wholePlace: boolean): string {
+  if (!wholePlace) return `Archive ${plural(preview.count, "message")}`;
+  return `Archive all ${preview.count.toLocaleString()} from ${plural(preview.senders.length, "sender")}`;
+}
+
+/**
  * The line under the title: how far the sweep reaches beyond the screen,
  * what stays, and how to get it back.
  */

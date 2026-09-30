@@ -73,7 +73,7 @@ export function ReadingRoute() {
                 notePointerUse("place.sweep-all");
               }}
             >
-              Sweep all <KeyChip className="ml-1 h-4 px-1">S</KeyChip>
+              Sweep all <KeyChip className="ml-1 h-4 px-1">A</KeyChip>
             </Button>
           ) : null
         }
@@ -202,7 +202,7 @@ function Feed({ issues, place }: { issues: ReadingIssue[]; place: ReturnType<typ
         </div>
       ) : (
         <p className="px-5 py-8 text-center text-[12.5px] text-muted-foreground">
-          That is everything in Reading. <KeyChip>S</KeyChip> sweeps what you have read.
+          That is everything in Reading. <KeyChip>A</KeyChip> sweeps what you have read.
         </p>
       )}
     </div>

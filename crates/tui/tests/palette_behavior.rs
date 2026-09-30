@@ -296,6 +296,10 @@ fn every_default_keybinding_is_searchable_in_palette() {
             let Some(action) = action_from_name(&action_name) else {
                 continue;
             };
+            // Esc backs out of whatever is open; it is not a command.
+            if action == Action::Back {
+                continue;
+            }
 
             if !palette_actions.contains(&action) {
                 missing.push(format!("{key_context:?}:{action_name}"));

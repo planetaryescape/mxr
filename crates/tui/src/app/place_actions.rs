@@ -216,6 +216,7 @@ impl App {
                         .is_none_or(|s| s == &bundle.sender_email)
             })
             .count() as u32;
+        confirm.sweep_focused = confirm.target.sender_email.is_some();
         self.mailbox.sweep_confirm = Some(confirm);
     }
 
@@ -254,8 +255,19 @@ impl App {
         });
     }
 
-    /// Enter on the preview: run exactly the previewed selection.
+    /// Confirm the preview: run exactly the previewed selection, or cancel
+    /// when Cancel has focus.
     pub(crate) fn confirm_sweep(&mut self) {
+        if self
+            .mailbox
+            .sweep_confirm
+            .as_ref()
+            .is_some_and(|confirm| !confirm.sweep_focused)
+        {
+            self.mailbox.sweep_confirm = None;
+            self.status_message = Some("Sweep cancelled".into());
+            return;
+        }
         if let Some(confirm) = self.mailbox.sweep_confirm.take() {
             self.status_message = Some(format!("Sweeping {}…", confirm.preview.count));
             self.mailbox.pending_sweep = Some(confirm);

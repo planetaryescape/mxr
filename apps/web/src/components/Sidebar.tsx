@@ -141,7 +141,7 @@ function folderEntries(lenses: MailLens[]): NavEntry[] {
     to: "/drafts",
     label: "Drafts",
     Icon: FileText,
-    shortcut: "g E",
+    shortcut: "g d",
   });
   return entries;
 }
@@ -210,7 +210,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
     const saved = lenses.filter((lens) => lens.section === "saved");
     const deskWork = desk.data ? desk.data.owed.total + desk.data.due.total : undefined;
     const places: NavEntry[] = [
-      { key: "desk", to: "/desk", label: "Desk", Icon: LampDesk, count: deskWork, shortcut: "g d" },
+      { key: "desk", to: "/desk", label: "Desk", Icon: LampDesk, count: deskWork, shortcut: "g h" },
       { key: "inbox", to: "/m/inbox", label: "Inbox", Icon: Inbox, shortcut: "g i" },
       {
         key: "reply-queue",
@@ -230,13 +230,13 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       },
       { key: "snoozed", to: "/snoozed", label: "Snoozed", Icon: Clock, shortcut: "g n" },
       // Mail that isn't from people: no counts, since none of it is work.
-      { key: "reading", to: "/reading", label: "Reading", Icon: Newspaper, shortcut: "g R" },
+      { key: "reading", to: "/reading", label: "Reading", Icon: Newspaper, shortcut: "g r" },
       {
         key: "paper-trail",
         to: "/paper-trail",
         label: "Paper trail",
         Icon: Receipt,
-        shortcut: "g P",
+        shortcut: "g p",
       },
     ];
     const screenerPlace = desk.data ? screenerEntry(desk.data) : null;

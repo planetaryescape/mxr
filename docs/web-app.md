@@ -210,7 +210,7 @@ for motion), implement the command in the view's controller, done.
 - Inline `cid:` images load through `GET /mail/messages/{id}/inline-image?source=`,
   which serves only parts the daemon materialized for that message, and become
   `data:` URIs.
-- Links (`L`), raw headers (`g h`), open original (`O`), export (`E`),
+- Links (`L`), raw headers (`g H`), open original (`O`), export (`E`),
   summary (`y`, automatic for long threads only when an LLM is configured).
 
 ## Compose

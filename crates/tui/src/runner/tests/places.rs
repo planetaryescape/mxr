@@ -196,6 +196,7 @@ fn s_previews_the_bundle_sweep_and_enter_runs_exactly_that_preview() {
         target: target.clone(),
         preview,
         shown: 0,
+        sweep_focused: false,
     });
     assert_eq!(
         app.mailbox.sweep_confirm.as_ref().map(|c| c.shown),
@@ -373,5 +374,88 @@ fn u_moves_a_sender_back_where_it_was() {
             crate::app::MutationEffect::RefreshPlaces(_)
         ),
         "the undo itself offers no undo"
+    );
+}
+
+/// Open the whole-place preview the way `A` and the daemon's dry run do.
+fn whole_place_preview() -> App {
+    let mut app = paper_trail(vec![bundle(
+        "receipts@shop.example",
+        vec![message("Receipt", false)],
+    )]);
+    press_shifted(&mut app, 'A');
+    let target = app
+        .mailbox
+        .pending_sweep_preview
+        .take()
+        .expect("A previews");
+    let sender = |email: &str, count| mxr_protocol::SweepSenderData {
+        account_id: mxr_core::AccountId::new(),
+        sender_email: email.into(),
+        sender_name: None,
+        count,
+    };
+    app.show_sweep_preview(crate::app::PendingSweepConfirm {
+        target,
+        preview: SweepPreviewData {
+            place: MailPlaceData::PaperTrail,
+            sender_email: None,
+            count: 143,
+            pinned_excluded: 0,
+            senders: vec![sender("a@shop.example", 100), sender("b@bank.example", 43)],
+            sample_subjects: vec!["Receipt".into()],
+            preview_token: Some("tok-all".into()),
+        },
+        shown: 0,
+        sweep_focused: true,
+    });
+    app
+}
+
+#[test]
+fn a_then_enter_never_sweeps_the_whole_place() {
+    let mut app = whole_place_preview();
+    assert_eq!(
+        app.mailbox.sweep_confirm.as_ref().map(|c| c.sweep_focused),
+        Some(false),
+        "the whole place opens on Cancel"
+    );
+    press(&mut app, KeyCode::Char('y'));
+    assert!(
+        app.mailbox.pending_sweep.is_none(),
+        "y is not enough either"
+    );
+    press(&mut app, KeyCode::Enter);
+    assert!(app.mailbox.pending_sweep.is_none());
+    assert!(
+        app.mailbox.sweep_confirm.is_none(),
+        "Enter on Cancel closes it"
+    );
+}
+
+#[test]
+fn a_tab_enter_sweeps_the_whole_place() {
+    let mut app = whole_place_preview();
+    press(&mut app, KeyCode::Tab);
+    press(&mut app, KeyCode::Enter);
+    let confirmed = app.mailbox.pending_sweep.clone().expect("sweep queued");
+    assert_eq!(confirmed.target.sender_email, None);
+    assert_eq!(confirmed.preview.preview_token.as_deref(), Some("tok-all"));
+}
+
+#[test]
+fn the_whole_place_confirm_names_its_scope_and_count() {
+    let app = whole_place_preview();
+    let rendered = render_to_string(100, 30, |frame| {
+        crate::ui::place_lens::draw_sweep_confirm(
+            frame,
+            ratatui::layout::Rect::new(0, 0, 100, 30),
+            app.mailbox.sweep_confirm.as_ref(),
+            &crate::theme::Theme::default(),
+        );
+    });
+    assert!(
+        rendered.contains("Archive all 143 from 2 senders"),
+        "{rendered}"
     );
 }

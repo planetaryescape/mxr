@@ -205,7 +205,7 @@ pub fn draw_sweep_confirm(
     };
     let preview = &confirm.preview;
     // Sized to its content: a count, up to five subjects, the keys.
-    let height = u16::try_from(preview.sample_subjects.len()).unwrap_or(5) + 9;
+    let height = u16::try_from(preview.sample_subjects.len()).unwrap_or(5) + 10;
     let popup = centered_rect_fixed_height(64, height, area);
     frame.render_widget(Clear, popup);
     let scope = match &confirm.target.sender_email {
@@ -255,10 +255,38 @@ pub fn draw_sweep_confirm(
         )));
     }
     lines.push(Line::from(""));
-    lines.push(Line::from(
-        "[Enter] sweep   [Esc] cancel   then u undoes it",
-    ));
+    let button = |label: String, focused: bool| {
+        let style = if focused {
+            Style::default().add_modifier(Modifier::REVERSED | Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.text_secondary)
+        };
+        Span::styled(format!("[ {label} ]"), style)
+    };
+    lines.push(Line::from(vec![
+        button("Cancel".into(), !confirm.sweep_focused),
+        Span::raw("  "),
+        button(sweep_confirm_label(confirm), confirm.sweep_focused),
+    ]));
+    lines.push(Line::from(Span::styled(
+        "Tab switches, Enter chooses, Esc cancels; u undoes a sweep",
+        Style::default().fg(theme.text_muted),
+    )));
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+}
+
+/// The confirm button names the scope, so the whole place never reads
+/// like one sender's bundle: "Archive all 143 from 35 senders".
+fn sweep_confirm_label(confirm: &PendingSweepConfirm) -> String {
+    let preview = &confirm.preview;
+    if confirm.target.sender_email.is_some() {
+        return format!("Archive {}", plural(preview.count, "message", "messages"));
+    }
+    format!(
+        "Archive all {} from {}",
+        preview.count,
+        plural(preview.senders.len() as u32, "sender", "senders")
+    )
 }
 
 /// The "move sender to…" menu. Its keys: p people, r Reading, t Paper
@@ -432,6 +460,7 @@ mod tests {
                 preview_token: Some("tok".into()),
             },
             shown: 1,
+            sweep_focused: true,
         };
         let rendered = render_to_string(100, 30, |frame| {
             draw_sweep_confirm(

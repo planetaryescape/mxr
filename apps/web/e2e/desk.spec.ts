@@ -93,7 +93,7 @@ test("desk journey: j, Done optimistically, undo, open and come back to the same
   await expectCursorOn(page, cursor);
 });
 
-test("g i goes to arrival order and g d comes back; Waiting on is one lane in full", async ({
+test("g i goes to arrival order and g h comes back; Waiting on is one lane in full", async ({
   page,
 }) => {
   await openApp(page);
@@ -101,7 +101,7 @@ test("g i goes to arrival order and g d comes back; Waiting on is one lane in fu
   await pressSequence(page, "g", "i");
   await expect(page).toHaveURL(/\/m\/inbox$/);
   await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
-  await pressSequence(page, "g", "d");
+  await pressSequence(page, "g", "h");
   await expect(page).toHaveURL(/\/desk$/);
 
   await sidebar(page).getByRole("link", { name: "Waiting on" }).click();

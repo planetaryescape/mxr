@@ -1790,3 +1790,17 @@ fn trash_on_a_desk_row_targets_that_rows_messages() {
         .unwrap_or("")
         .contains("Enter"));
 }
+
+#[test]
+fn g_g_in_the_reader_goes_to_the_top_of_the_message_not_the_list() {
+    let mut app = App::new();
+    app.mailbox.active_pane = ActivePane::MessageView;
+    app.mailbox.message_scroll_offset = 40;
+    app.mailbox.selected_index = 3;
+    let g = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+    assert_eq!(app.handle_key(g), None);
+    let action = app.handle_key(g).expect("g g jumps");
+    app.apply(action);
+    assert_eq!(app.mailbox.message_scroll_offset, 0);
+    assert_eq!(app.mailbox.selected_index, 3, "the list cursor stays put");
+}

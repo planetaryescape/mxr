@@ -164,8 +164,8 @@ screener) is one line of links at the bottom, with week counts that are
 never unread counts. [Reading and Paper trail](/guides/reading-and-paper-trail/)
 hold the mail that isn't from people: Reading is a feed with every issue
 already open, Paper trail bundles receipts and notifications by sender, `K`
-moves a sender for good, and `s` or `S` sweeps a bundle or the whole place
-after a preview, with undo. `g d` goes to the desk, `g i`
+moves a sender for good, and `S` or `A` sweeps a bundle or the whole place
+after a preview, with undo. `g h` goes to the desk, `g i`
 to the inbox in arrival order, and **Settings, Appearance, Home** makes the
 inbox the home instead. The arrival-order inbox deliberately shows
 everything, Reading and Paper trail mail included; the separation lives on
@@ -250,7 +250,7 @@ header says what was blocked and who serves it: "Blocked 2 trackers and 5
 remote images from Mailchimp." Images embedded in the message itself always
 show.
 
-`L` lists every link in the message to open or copy, `g h` shows the raw
+`L` lists every link in the message to open or copy, `g H` shows the raw
 headers, `O` opens the original in a new tab, and `E` saves the conversation
 as Markdown. `y` summarizes the conversation.
 

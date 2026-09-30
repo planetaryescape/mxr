@@ -45,7 +45,9 @@ export function draftProvenanceLine(provenance: DraftProvenance): string {
         ? `rewrite attempted by ${by}, not used`
         : rewrite.outcome === "skipped"
           ? `rewrite by ${by} skipped to keep your history local`
-          : `rewritten by ${by}`,
+          : rewrite.rejected_by
+            ? `rewritten by ${by}, a later pass by ${rewrite.rejected_by} not used`
+            : `rewritten by ${by}`,
     );
   }
   return parts.join(" · ");

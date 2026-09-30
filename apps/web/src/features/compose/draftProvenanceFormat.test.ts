@@ -70,6 +70,22 @@ describe("draftProvenanceLine", () => {
     ).toMatch(/rewrite by cloud model gpt-4o-mini skipped to keep your history local$/);
   });
 
+  test("a kept rewrite names a later dropped pass on its own", () => {
+    expect(
+      draftProvenanceLine(
+        provenance({
+          rewrite: {
+            model: "first-pass",
+            locality: "local",
+            history_used: true,
+            outcome: "applied",
+            rejected_by: "second-pass",
+          },
+        }),
+      ),
+    ).toMatch(/rewritten by local model first-pass, a later pass by second-pass not used$/);
+  });
+
   test("a cloud model that saw no history says so", () => {
     expect(draftProvenanceLine(provenance({ locality: "cloud", history_used: false }))).toBe(
       "Cloud model gemma4 · history not used",

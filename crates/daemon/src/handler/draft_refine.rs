@@ -22,6 +22,12 @@ emails. Keep any [[?: ...]] placeholders. Return only the revised email body as 
     )
 }
 
+/// Why a cloud model without opt-in won't refine or rewrite a body that
+/// carries text an earlier draft wrote from the user's history.
+pub(crate) const HISTORY_BODY_REFUSAL: &str = "This draft includes text written from your \
+history, and your model is a cloud one; refine it with a local model, or allow cloud history \
+with llm.allow_cloud_relationship_data = true.";
+
 pub(super) async fn draft_refine(
     state: &AppState,
     draft_id: &mxr_core::id::DraftId,
@@ -56,6 +62,16 @@ pub(super) async fn draft_refine(
     // The user's other mail only reaches a cloud model with their opt-in.
     let policy = DraftPolicy::pin(state, LlmFeature::DraftRefine);
     let share = policy.share_history;
+    let text = live_body
+        .filter(|body| !body.trim().is_empty())
+        .unwrap_or_else(|| draft.content.analysis_text());
+    // The body itself may carry an earlier suggestion written from history.
+    let body_from_history = state.history_text.contains(Some(&draft.account_id), text);
+    if body_from_history && !share {
+        return Err(crate::handler::HandlerError::InvalidRequest(
+            HISTORY_BODY_REFUSAL.to_string(),
+        ));
+    }
     let material = if share {
         draft_voice::voice_material(state, &draft.account_id, Some(&person), None, None).await
     } else {
@@ -137,9 +153,6 @@ pub(super) async fn draft_refine(
     // The draft can be AI-drafted from a poisoned thread, so it is wrapped as
     // untrusted data too; the system prompt names the [DRAFT] block.
     prompt.push_str("\n[DRAFT]\n");
-    let text = live_body
-        .filter(|body| !body.trim().is_empty())
-        .unwrap_or_else(|| draft.content.analysis_text());
     prompt.push_str(&wrap_untrusted_mail(text));
 
     let draft_words = text.split_whitespace().count() as u32;
@@ -178,8 +191,10 @@ pub(super) async fn draft_refine(
         }
         max_tokens = (max_tokens * 2).min(4_000);
     };
-    let history_used =
-        !material.examples.is_empty() || !material.habits.is_empty() || background.is_some();
+    let history_used = body_from_history
+        || !material.examples.is_empty()
+        || !material.habits.is_empty()
+        || background.is_some();
     let provenance = policy.provenance(
         &response.model,
         history_used,
@@ -192,6 +207,7 @@ pub(super) async fn draft_refine(
     );
     draft_context::finish_draft_suggestion(
         state,
+        &draft.account_id,
         draft_output::clean_draft(&response.content, me.name.as_deref()),
         provenance,
         context.baseline,

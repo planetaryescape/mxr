@@ -57,6 +57,10 @@ pub struct DraftRewriteProvenanceData {
     pub history_used: bool,
     #[serde(default)]
     pub outcome: DraftRewriteOutcomeData,
+    /// A later pass, after the text that was kept, whose answer was
+    /// dropped: this model saw the draft too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rejected_by: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -137,7 +141,12 @@ impl DraftRewriteProvenanceData {
         };
         let model = &self.model;
         match self.outcome {
-            DraftRewriteOutcomeData::Applied => format!("rewritten by {place} model {model}"),
+            DraftRewriteOutcomeData::Applied => match &self.rejected_by {
+                Some(later) => {
+                    format!("rewritten by {place} model {model}, a later pass by {later} not used")
+                }
+                None => format!("rewritten by {place} model {model}"),
+            },
             DraftRewriteOutcomeData::Rejected => {
                 format!("rewrite attempted by {place} model {model}, not used")
             }
@@ -226,6 +235,7 @@ mod tests {
             locality: AiLocalityData::Cloud,
             history_used: false,
             outcome: DraftRewriteOutcomeData::Applied,
+            rejected_by: None,
         });
         assert_eq!(
             data.summary_line(),
@@ -262,6 +272,7 @@ mod tests {
             locality: AiLocalityData::Cloud,
             history_used: false,
             outcome: DraftRewriteOutcomeData::Rejected,
+            rejected_by: None,
         };
         data.rewrite = Some(rewrite.clone());
         assert!(data

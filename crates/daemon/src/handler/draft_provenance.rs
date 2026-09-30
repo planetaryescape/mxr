@@ -74,6 +74,7 @@ impl DraftPolicy {
             locality: self.locality,
             history_used,
             outcome,
+            rejected_by: None,
         }
     }
 }

@@ -24,6 +24,12 @@ pub(super) async fn rewrite_text(
     max_iterations: Option<u8>,
 ) -> HandlerResult {
     let policy = DraftPolicy::pin(state, LlmFeature::HumanizeRewrite);
+    // The request names no account, so any account's history counts.
+    if !policy.share_history && state.history_text.contains(None, text) {
+        return Err(super::HandlerError::InvalidRequest(
+            super::draft_refine::HISTORY_BODY_REFUSAL.to_string(),
+        ));
+    }
     let rewritten = rewrite_to_threshold_with_context(
         state,
         &policy.llm,
@@ -47,9 +53,11 @@ pub(crate) struct Rewritten {
     pub report: HumanizerReportSummaryData,
     /// Rewrites kept; 0 when the original text came back.
     pub iterations: u8,
-    /// The model that answered the last rewrite call; `None` when no call
-    /// was made (humanizer off, score already fine, model disabled).
-    pub answered_by: Option<String>,
+    /// The model that wrote the text kept (`iterations > 0`).
+    pub kept_by: Option<String>,
+    /// The model whose answer was dropped (no better than what it was
+    /// given, or empty); the loop stops there.
+    pub dropped_by: Option<String>,
 }
 
 impl Rewritten {
@@ -58,24 +66,29 @@ impl Rewritten {
             text,
             report,
             iterations: 0,
-            answered_by: None,
+            kept_by: None,
+            dropped_by: None,
         }
     }
 
-    /// The disclosure for this pass: applied when its text is what came
-    /// back, rejected when a model saw the text but its output was dropped.
+    /// The disclosure for this pass: applied, credited to the model whose
+    /// text came back, with a later dropped pass named separately; or
+    /// rejected when models saw the text but none of their output was used.
+    /// `None` when no model was called.
     pub fn provenance(
         &self,
         policy: &DraftPolicy,
         history_used: bool,
     ) -> Option<DraftRewriteProvenanceData> {
-        let model = self.answered_by.as_deref()?;
-        let outcome = if self.iterations > 0 {
-            DraftRewriteOutcomeData::Applied
-        } else {
-            DraftRewriteOutcomeData::Rejected
-        };
-        Some(policy.rewrite_provenance(model, history_used, outcome))
+        if self.iterations > 0 {
+            let kept_by = self.kept_by.as_deref()?;
+            let mut rewrite =
+                policy.rewrite_provenance(kept_by, history_used, DraftRewriteOutcomeData::Applied);
+            rewrite.rejected_by.clone_from(&self.dropped_by);
+            return Some(rewrite);
+        }
+        let model = self.dropped_by.as_deref().or(self.kept_by.as_deref())?;
+        Some(policy.rewrite_provenance(model, history_used, DraftRewriteOutcomeData::Rejected))
     }
 }
 
@@ -118,7 +131,8 @@ pub(crate) async fn rewrite_to_threshold_with_context(
     let mut current_text = text;
     let mut current_report = initial;
     let mut iterations = 0;
-    let mut answered_by = None;
+    let mut kept_by = None;
+    let mut dropped_by = None;
 
     for _ in 0..max_iterations {
         let prompt = rewrite_prompt(&current_text, &current_report, voice_context);
@@ -134,20 +148,21 @@ pub(crate) async fn rewrite_to_threshold_with_context(
             Err(LlmError::Disabled) => break,
             Err(error) => return Err(format!("LLM error: {error}")),
         };
-        answered_by = Some(if response.model.trim().is_empty() {
+        let answered_by = if response.model.trim().is_empty() {
             llm.model_name().to_string()
         } else {
             response.model.clone()
-        });
+        };
         let candidate = response.content.trim().to_string();
-        if candidate.is_empty() {
+        let candidate_report = score(
+            &clean(Some(&candidate), None, &ReaderConfig::default()).content,
+            &opts,
+        );
+        if candidate.is_empty() || candidate_report.score <= current_report.score {
+            dropped_by = Some(answered_by);
             break;
         }
-        let candidate_cleaned = clean(Some(&candidate), None, &ReaderConfig::default()).content;
-        let candidate_report = score(&candidate_cleaned, &opts);
-        if candidate_report.score <= current_report.score {
-            break;
-        }
+        kept_by = Some(answered_by);
         current_text = candidate;
         current_report = candidate_report;
         iterations += 1;
@@ -161,11 +176,14 @@ pub(crate) async fn rewrite_to_threshold_with_context(
             text: current_text,
             report: report_summary(current_report),
             iterations,
-            answered_by,
+            kept_by,
+            dropped_by,
         })
     } else {
+        // Every candidate came back unused: whoever answered is disclosed
+        // as having seen the text.
         Ok(Rewritten {
-            answered_by,
+            dropped_by: dropped_by.or(kept_by),
             ..Rewritten::unchanged(original_text, report_summary(score(&cleaned, &opts)))
         })
     }

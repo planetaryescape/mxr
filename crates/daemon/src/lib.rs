@@ -14,6 +14,7 @@ pub mod cli;
 pub mod commands;
 #[doc(hidden)]
 pub mod handler;
+pub(crate) mod history_text;
 pub mod ipc_client;
 pub(crate) mod loops;
 pub mod output;

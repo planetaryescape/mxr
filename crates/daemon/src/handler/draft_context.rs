@@ -275,6 +275,7 @@ pub(crate) fn length_label(length: DraftLengthHintData) -> &'static str {
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn finish_draft_suggestion(
     state: &AppState,
+    account_id: &AccountId,
     body: String,
     mut provenance: DraftProvenanceData,
     baseline: Option<(StylometryMetrics, u32)>,
@@ -314,6 +315,16 @@ pub(crate) async fn finish_draft_suggestion(
         let humanizer = report_summary(humanizer_score(&body, &HumanizerOpts::default()));
         (body, humanizer, 0)
     };
+    // Remembered so a later refine or humanize of this text can't hand it
+    // to a cloud model without opt-in (see `history_text`).
+    if provenance.history_used
+        || provenance
+            .rewrite
+            .as_ref()
+            .is_some_and(|rewrite| rewrite.history_used)
+    {
+        state.history_text.record(account_id, &body);
+    }
     let voice_match = baseline.map(|(baseline, count)| {
         let report = score_voice_match(&compute_metrics(&body), &baseline, count);
         VoiceMatchData {

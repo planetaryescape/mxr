@@ -223,12 +223,21 @@ read from what the request actually did, not from your config:
 - **Local** means the endpoint's host is exactly `localhost`, a `127.x.x.x`
   address or `::1`, with no user name in the URL. Anything else, including
   `0.0.0.0`, LAN addresses and `localhost.example.com`, counts as cloud.
+  mxr never follows an LLM endpoint's redirect (it reports an error naming
+  the new address instead), and calls a local endpoint directly, ignoring
+  `HTTP_PROXY`, so a local model's prompts stay on your machine.
 - The humanizer's rewrite pass is named by the model that answered it:
   **rewritten by ...** when its text is what you got, **rewrite attempted
   by ..., not used** when the model saw the draft but its text was no
   better, and **rewrite by cloud model ... skipped to keep your history
   local** when the draft was written from your history and the rewrite
-  model is a cloud one you haven't opted in to.
+  model is a cloud one you haven't opted in to. When a kept rewrite was
+  followed by a pass that wasn't used, both models are named.
+- A draft body that contains text an earlier draft wrote from your history
+  won't be refined or humanized by a cloud model you haven't opted in to.
+  mxr says so instead: refine it with a local model, or set
+  `llm.allow_cloud_relationship_data = true`. mxr remembers that text in
+  memory for 7 days, so a daemon restart forgets it.
 
 `--format json` carries the same facts under `provenance`:
 

@@ -338,7 +338,7 @@ fn relationship_data_block_reason(
     if relationship_data_feature(feature)
         && effective.enabled
         && !config.allow_cloud_relationship_data
-        && !is_local_llm_url(&effective.base_url)
+        && !mxr_llm::is_loopback_endpoint(&effective.base_url)
     {
         return Some(format!(
             "{feature:?} points at non-local endpoint {}; set llm.allow_cloud_relationship_data=true to permit relationship data",
@@ -366,34 +366,7 @@ pub(crate) fn relationship_data_allowed(
 /// text may carry and how it is labelled. No endpoint (disabled, demo,
 /// tests) means nothing leaves the machine.
 pub(crate) fn llm_endpoint_is_local(base_url: Option<&str>) -> bool {
-    mxr_config::is_demo_instance() || base_url.is_none_or(is_local_llm_url)
-}
-
-/// Whether an LLM endpoint is on this machine: an http(s) URL whose host is
-/// exactly `localhost`, a 127.0.0.0/8 address or `::1`, with no userinfo.
-/// Anything else, unparseable included, counts as cloud: a prefix check
-/// would call `http://localhost@evil.example` or `http://localhost.evil.com`
-/// local and send them the user's history without their opt-in.
-fn is_local_llm_url(base_url: &str) -> bool {
-    let Ok(url) = url::Url::parse(base_url.trim()) else {
-        return false;
-    };
-    if !matches!(url.scheme(), "http" | "https")
-        || !url.username().is_empty()
-        || url.password().is_some()
-    {
-        return false;
-    }
-    match url.host() {
-        // The parser lowercases domains; `localhost.` and `*.localhost` stay
-        // cloud, since only the exact name is sure to be loopback.
-        Some(url::Host::Domain(domain)) => domain == "localhost",
-        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
-        Some(url::Host::Ipv6(ip)) => {
-            ip.is_loopback() || ip.to_ipv4_mapped().is_some_and(|ip| ip.is_loopback())
-        }
-        None => false,
-    }
+    mxr_config::is_demo_instance() || base_url.is_none_or(mxr_llm::is_loopback_endpoint)
 }
 
 /// Key for the in-memory `Wrapped` summary cache. Disambiguates by
@@ -470,6 +443,9 @@ pub struct AppState {
     /// shared via `Arc` so the cache lookup is O(1) and lock-free
     /// after the first render.
     pub reply_context_cache: ParkingMutex<HashMap<MessageId, Arc<String>>>,
+    /// Sentences AI wrote from the user's history, so a later refine or
+    /// humanize doesn't send them to a cloud model without opt-in.
+    pub(crate) history_text: crate::history_text::HistoryTextLedger,
     /// 60s in-memory cache for `Wrapped` summaries. See
     /// `WrappedCacheKey` and `WRAPPED_CACHE_TTL` above.
     wrapped_cache: ParkingMutex<HashMap<WrappedCacheKey, (Instant, Arc<types::WrappedSummary>)>>,
@@ -753,6 +729,7 @@ impl AppState {
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
+            history_text: Default::default(),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
@@ -1876,6 +1853,7 @@ impl AppState {
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
+            history_text: Default::default(),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
@@ -1949,6 +1927,7 @@ impl AppState {
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
+            history_text: Default::default(),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
@@ -2048,6 +2027,7 @@ impl AppState {
                 start_time: Instant::now(),
                 wrapped_cache: ParkingMutex::new(HashMap::new()),
                 reply_context_cache: ParkingMutex::new(HashMap::new()),
+                history_text: Default::default(),
                 analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
                 lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
                 config: RwLock::new(config),
@@ -2256,47 +2236,6 @@ fn provider_kind_name(kind: ProviderKind) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn only_a_loopback_host_counts_as_a_local_llm_endpoint() {
-        let local = [
-            "http://localhost:11434/v1",
-            "HTTP://LOCALHOST:11434/v1",
-            "https://localhost/v1",
-            "http://localhost",
-            "  http://localhost:1234/v1  ",
-            "http://127.0.0.1:11434/v1",
-            "http://127.1.2.3/v1",
-            "http://[::1]:11434/v1",
-            "http://[0:0:0:0:0:0:0:1]/v1",
-            "http://[::ffff:127.0.0.1]/v1",
-        ];
-        for url in local {
-            assert!(super::is_local_llm_url(url), "{url} should be local");
-        }
-        let cloud = [
-            "http://localhost@evil.example/v1",
-            "http://user:pw@localhost:11434/v1",
-            "http://localhost.evil.com/v1",
-            "http://localhost./v1",
-            "http://ollama.localhost/v1",
-            "http://evil.example/localhost",
-            "http://127.0.0.1.evil.example/v1",
-            "http://0.0.0.0:11434/v1",
-            "http://192.168.1.20:11434/v1",
-            "http://10.0.0.5/v1",
-            "http://[::]/v1",
-            "http://[fe80::1]/v1",
-            "https://api.openai.com/v1",
-            "ftp://localhost/v1",
-            "unix:///tmp/ollama.sock",
-            "localhost:11434",
-            "not a url",
-            "",
-        ];
-        for url in cloud {
-            assert!(!super::is_local_llm_url(url), "{url} should be cloud");
-        }
-    }
 
     use super::*;
 

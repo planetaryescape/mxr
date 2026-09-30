@@ -4089,6 +4089,11 @@ export interface components {
             /** @description The model that answered the rewrite (or would have, when skipped). */
             model: string;
             outcome?: components["schemas"]["DraftRewriteOutcomeData"];
+            /**
+             * @description A later pass, after the text that was kept, whose answer was
+             *     dropped: this model saw the draft too.
+             */
+            rejected_by?: string | null;
         };
         DraftSafetyContextData: {
             allow_llm?: boolean;

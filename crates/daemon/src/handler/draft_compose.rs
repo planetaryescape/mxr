@@ -315,6 +315,7 @@ async fn draft_with(
     );
     draft_context::finish_draft_suggestion(
         state,
+        account_id,
         body_text,
         provenance,
         context.baseline,
@@ -736,11 +737,11 @@ mod tests {
         assert!(captured_prompt(&llm).contains(inbound_text));
     }
 
-    /// A provider for one feature: answers `reply` as `answered_as`, while
-    /// its configured name is "configured-name", and counts its calls.
+    /// A provider for one feature: answers each call with the next
+    /// `(reply, answered_as)` (the last repeats), while its configured name
+    /// is "configured-name", and counts its calls.
     struct ScriptedLlm {
-        reply: &'static str,
-        answered_as: &'static str,
+        replies: Vec<(&'static str, &'static str)>,
         base_url: Option<&'static str>,
         calls: Mutex<u32>,
     }
@@ -751,9 +752,15 @@ mod tests {
             answered_as: &'static str,
             base_url: Option<&'static str>,
         ) -> Self {
+            Self::sequence(vec![(reply, answered_as)], base_url)
+        }
+
+        fn sequence(
+            replies: Vec<(&'static str, &'static str)>,
+            base_url: Option<&'static str>,
+        ) -> Self {
             Self {
-                reply,
-                answered_as,
+                replies,
                 base_url,
                 calls: Mutex::new(0),
             }
@@ -767,10 +774,15 @@ mod tests {
     #[async_trait::async_trait]
     impl LlmProvider for ScriptedLlm {
         async fn complete(&self, _req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
-            *self.calls.lock().expect("calls lock") += 1;
+            let call = {
+                let mut calls = self.calls.lock().expect("calls lock");
+                *calls += 1;
+                *calls as usize - 1
+            };
+            let (reply, answered_as) = self.replies[call.min(self.replies.len() - 1)];
             Ok(CompletionResponse {
-                content: self.reply.to_string(),
-                model: self.answered_as.to_string(),
+                content: reply.to_string(),
+                model: answered_as.to_string(),
                 finish_reason: Some("stop".to_string()),
             })
         }
@@ -798,6 +810,13 @@ mod tests {
     /// Draft a reply from the user's history with a local drafting model and
     /// `rewriter` serving only the humanizer's rewrite pass.
     async fn draft_with_rewriter(rewriter: Arc<ScriptedLlm>) -> ResponseData {
+        draft_from_history(rewriter).await.2
+    }
+
+    /// As [`draft_with_rewriter`], keeping the state and account.
+    async fn draft_from_history(
+        rewriter: Arc<ScriptedLlm>,
+    ) -> (AppState, mxr_core::id::AccountId, ResponseData) {
         let state = AppState::in_memory().await.unwrap();
         let drafter = Arc::new(ScriptedLlm::new(MACHINE_MADE, "drafter-7b", None));
         state.llm.replace(drafter);
@@ -810,7 +829,7 @@ mod tests {
         let account_id = state.default_account_id();
         seed_private_reply(&state, &account_id).await;
         let (thread_id, _, _) = seed_inbound_thread(&state, &account_id).await;
-        draft_compose(
+        let response = draft_compose(
             &state,
             Some(&account_id),
             None,
@@ -821,7 +840,156 @@ mod tests {
             None,
         )
         .await
-        .unwrap()
+        .unwrap();
+        (state, account_id, response)
+    }
+
+    // Credit: the kept rewrite is credited to the model that wrote it, and
+    // a later pass whose answer was dropped is named on its own.
+    #[tokio::test]
+    async fn a_kept_rewrite_is_credited_to_its_writer_and_a_later_dropped_pass_named() {
+        let rewriter = Arc::new(ScriptedLlm::sequence(
+            vec![
+                // Better than the draft (64 to 87), still under the bar.
+                (
+                    "Additionally, this serves as a testament to our work.",
+                    "first-pass",
+                ),
+                // No better: dropped.
+                (MACHINE_MADE, "second-pass"),
+            ],
+            None,
+        ));
+        let state = AppState::in_memory().await.unwrap();
+        let mut config = state.config_snapshot();
+        config.humanizer.score_threshold = 99;
+        config.humanizer.max_rewrite_iterations = 2;
+        state.set_config_for_test(config).await;
+        state
+            .llm
+            .replace(Arc::new(ScriptedLlm::new(MACHINE_MADE, "drafter-7b", None)));
+        let mut providers: std::collections::HashMap<LlmFeature, Arc<dyn LlmProvider>> =
+            std::collections::HashMap::new();
+        providers.insert(LlmFeature::HumanizeRewrite, rewriter.clone());
+        state
+            .llm
+            .replace_feature_providers(providers, std::collections::HashMap::new());
+        let account_id = state.default_account_id();
+        let (thread_id, _, _) = seed_inbound_thread(&state, &account_id).await;
+        let response = draft_compose(
+            &state,
+            Some(&account_id),
+            None,
+            "",
+            None,
+            Some(thread_id),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(rewriter.calls(), 2);
+        let rewrite = provenance(&response).rewrite.clone().expect("disclosed");
+        assert_eq!(
+            rewrite.outcome,
+            mxr_protocol::DraftRewriteOutcomeData::Applied
+        );
+        assert_eq!(rewrite.model, "first-pass");
+        assert_eq!(rewrite.rejected_by.as_deref(), Some("second-pass"));
+        assert!(provenance(&response).summary_line().ends_with(
+            "rewritten by local model first-pass, a later pass by second-pass not used"
+        ));
+    }
+
+    // Privacy: text an earlier draft wrote from history can't be refined by
+    // a cloud model without opt-in; a body the user wrote can.
+    #[tokio::test]
+    async fn a_cloud_refine_of_history_text_is_refused_and_of_my_own_text_allowed() {
+        let local_rewriter = Arc::new(ScriptedLlm::new(MACHINE_MADE, "rewriter", None));
+        let (state, account_id, response) = draft_from_history(local_rewriter).await;
+        assert!(provenance(&response).history_used);
+        let suggestion = match response {
+            ResponseData::DraftSuggestion { body, .. } => body,
+            other => panic!("{other:?}"),
+        };
+        let cloud = Arc::new(ScriptedLlm::new(
+            "Refined.",
+            "cloud-refiner",
+            Some("https://api.example-cloud.com/v1"),
+        ));
+        let mut providers: std::collections::HashMap<LlmFeature, Arc<dyn LlmProvider>> =
+            std::collections::HashMap::new();
+        providers.insert(LlmFeature::DraftRefine, cloud.clone());
+        state
+            .llm
+            .replace_feature_providers(providers, std::collections::HashMap::new());
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id: account_id.clone(),
+            from: None,
+            reply_headers: None,
+            intent: mxr_core::types::DraftIntent::Reply,
+            to: vec![Address {
+                name: None,
+                email: "customer@example.com".into(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "re".into(),
+            content: mxr_core::types::DraftContent::markdown("placeholder"),
+            inline_assets: Vec::new(),
+            attachments: vec![],
+            inline_calendar_reply: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        state.store.insert_draft(&draft).await.unwrap();
+        let knobs = mxr_protocol::DraftRefineKnobsData::default();
+
+        let edited = format!("Hi,\n\n{suggestion}\n\nThanks");
+        let error = crate::handler::draft_refine::draft_refine(
+            &state,
+            &draft.id,
+            knobs.clone(),
+            Some(&edited),
+        )
+        .await
+        .expect_err("history text never goes to the cloud refiner");
+        assert!(
+            matches!(&error, crate::handler::HandlerError::InvalidRequest(text)
+                if text == crate::handler::draft_refine::HISTORY_BODY_REFUSAL),
+            "{error:?}"
+        );
+        assert_eq!(cloud.calls(), 0);
+
+        // Nor through the standalone humanizer's cloud rewrite.
+        let mut providers: std::collections::HashMap<LlmFeature, Arc<dyn LlmProvider>> =
+            std::collections::HashMap::new();
+        providers.insert(LlmFeature::DraftRefine, cloud.clone());
+        providers.insert(LlmFeature::HumanizeRewrite, cloud.clone());
+        state
+            .llm
+            .replace_feature_providers(providers, std::collections::HashMap::new());
+        let error = crate::handler::humanizer::rewrite_text(&state, &edited, None)
+            .await
+            .expect_err("history text never goes to the cloud rewriter");
+        assert!(
+            matches!(&error, crate::handler::HandlerError::InvalidRequest(text)
+                if text == crate::handler::draft_refine::HISTORY_BODY_REFUSAL),
+            "{error:?}"
+        );
+        assert_eq!(cloud.calls(), 0);
+
+        let mine = "Can we move our call to Thursday afternoon instead?";
+        let response =
+            crate::handler::draft_refine::draft_refine(&state, &draft.id, knobs, Some(mine))
+                .await
+                .expect("the user's own words may go");
+        assert_eq!(cloud.calls(), 1);
+        let disclosed = provenance(&response);
+        assert_eq!(disclosed.locality, mxr_protocol::AiLocalityData::Cloud);
+        assert!(!disclosed.history_used);
     }
 
     // Privacy: a draft written from the user's history never goes to a cloud

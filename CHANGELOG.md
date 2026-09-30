@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.42](https://github.com/planetaryescape/mxr/compare/v0.6.41...v0.6.42) (2026-09-30)
+
+
+### Features
+
+* see what each email is about and what it asks, right in the list ([#255](https://github.com/planetaryescape/mxr/issues/255)) ([4e4b061](https://github.com/planetaryescape/mxr/commit/4e4b0615080c39a25f35b515ca0d6c3c0985d439))
+
 ## [0.6.41](https://github.com/planetaryescape/mxr/compare/v0.6.40...v0.6.41) (2026-09-30)
 
 

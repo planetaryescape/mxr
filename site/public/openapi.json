@@ -831,6 +831,41 @@
         }
       }
     },
+    "/api/v1/mail/gists": {
+      "post": {
+        "tags": [],
+        "summary": "List-row gists for many conversations: cached ones at once, missing ones queued with generate",
+        "operationId": "mail_thread_gists",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadGistsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ThreadGists` variant: model state, cached gists, queued and skipped ids",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed thread id or more than 100 ids"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/humanizer/rewrite": {
       "post": {
         "tags": [],
@@ -5220,6 +5255,25 @@
                 "minimum": 0
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "A list-row gist queued by `Request::GetThreadGists { generate: true }`\nis written (always `status: ready`).",
+            "required": [
+              "gist",
+              "event"
+            ],
+            "properties": {
+              "event": {
+                "type": "string",
+                "enum": [
+                  "ThreadGistReady"
+                ]
+              },
+              "gist": {
+                "$ref": "#/components/schemas/ThreadGistData"
+              }
+            }
           }
         ]
       },
@@ -7140,6 +7194,14 @@
             "type": "string"
           }
         }
+      },
+      "GistModelData": {
+        "type": "string",
+        "enum": [
+          "available",
+          "disabled",
+          "blocked"
+        ]
       },
       "GmailCredentialSourceData": {
         "type": "string",
@@ -14144,6 +14206,31 @@
                 }
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "Gists for list rows, many conversations at once. Returns the cached\ngists that still match each conversation at once, without calling a\nmodel. With `generate`, conversations from people that have none are\nqueued for a background writer, in the order given (put the rows on\nscreen first); each gist arrives as `DaemonEvent::ThreadGistReady`.\nA newer request goes ahead of older ones, and asking again for a\nqueued conversation never queues it twice. At most 100 ids. Returns\n`ResponseData::ThreadGists`.",
+            "required": [
+              "thread_ids",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetThreadGists"
+                ]
+              },
+              "generate": {
+                "type": "boolean"
+              },
+              "thread_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadId"
+                }
+              }
+            }
           }
         ],
         "description": "Every command a client can ask the daemon to perform.\n\nTagged `cmd` on the wire. One flat enum is the whole client-facing\nsurface: the CLI, TUI, web bridge, and MCP server all speak these same\nrequests, which is what keeps daemon capabilities client-agnostic (see\n[`IpcCategory`] for the conceptual grouping). Mutations are expressed as\nexplicit commands with dry-run/preview options rather than free-form\nstate writes."
@@ -17333,6 +17420,25 @@
                 "description": "Something changed but its undo could not be saved."
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetThreadGists`.",
+            "required": [
+              "batch",
+              "kind"
+            ],
+            "properties": {
+              "batch": {
+                "$ref": "#/components/schemas/ThreadGistBatchData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ThreadGists"
+                ]
+              }
+            }
           }
         ]
       },
@@ -19227,6 +19333,48 @@
           }
         }
       },
+      "ThreadGistBatchData": {
+        "type": "object",
+        "description": "Returned by `Request::GetThreadGists`: the gists a list can show now,\nstraight from the cache, and what was queued to be written.",
+        "required": [
+          "model",
+          "gists"
+        ],
+        "properties": {
+          "gists": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadGistData"
+            },
+            "description": "Cached gists that match each conversation's newest message, in\nrequest order. Only `ready` gists are listed."
+          },
+          "in_flight": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadId"
+            },
+            "description": "Conversations a writer is on right now; their gists arrive as events\ntoo."
+          },
+          "model": {
+            "$ref": "#/components/schemas/GistModelData",
+            "description": "Whether gists can be written at all. Anything but `available` means\nlists show their rows as they are, with nothing to wait for."
+          },
+          "queued": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadId"
+            },
+            "description": "Conversations waiting in the queue after this request. Each one's\ngist arrives as a `ThreadGistReady` event."
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadGistSkipData"
+            },
+            "description": "Conversations that have no gist and won't get one from this request."
+          }
+        }
+      },
       "ThreadGistData": {
         "type": "object",
         "description": "Returned by `Request::GetThreadGist`.",
@@ -19264,6 +19412,17 @@
             ],
             "description": "One plain-text sentence, at most 240 characters."
           },
+          "newest_message_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageId",
+                "description": "The conversation's newest message when the gist was written. A client\nthat has seen a newer message in the conversation ignores the gist."
+              }
+            ]
+          },
           "provenance": {
             "oneOf": [
               {
@@ -19289,6 +19448,31 @@
           }
         }
       },
+      "ThreadGistSkipData": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/ThreadGistSkipReasonData"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
+      "ThreadGistSkipReasonData": {
+        "type": "string",
+        "enum": [
+          "not_people",
+          "not_found",
+          "recently_failed",
+          "not_generated",
+          "queue_full"
+        ]
+      },
       "ThreadGistStatusData": {
         "type": "string",
         "enum": [
@@ -19297,6 +19481,29 @@
           "blocked",
           "failed"
         ]
+      },
+      "ThreadGistsBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/gists`.",
+        "required": [
+          "thread_ids"
+        ],
+        "properties": {
+          "generate": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Queue missing gists for people's conversations; each arrives as a\n`ThreadGistReady` event."
+          },
+          "thread_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "At most 100, in the order to write missing gists (visible rows first)."
+          }
+        }
       },
       "ThreadId": {
         "type": "string",

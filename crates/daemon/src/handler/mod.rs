@@ -56,6 +56,7 @@ mod suggest_recipients;
 pub(crate) mod summarize;
 mod thread_context;
 mod thread_gist;
+pub(crate) mod thread_gists;
 mod time;
 mod triage;
 mod user_voice;
@@ -1247,6 +1248,10 @@ async fn dispatch(
         Request::GetThreadGist { thread_id, refresh } => {
             thread_gist::get_thread_gist(state, thread_id, *refresh).await
         }
+        Request::GetThreadGists {
+            thread_ids,
+            generate,
+        } => thread_gists::get_thread_gists(state, thread_ids, *generate).await,
         Request::DetectPromises {
             source,
             now,
@@ -2024,6 +2029,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetThreadBriefing { .. }
         | Request::GetThreadContext { .. }
         | Request::GetThreadGist { .. }
+        | Request::GetThreadGists { .. }
         | Request::DetectPromises { .. }
         | Request::GetRecipientBriefing { .. }
         | Request::SuggestCollaborators { .. }
@@ -2351,6 +2357,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetThreadBriefing { .. } => "get_thread_briefing",
         Request::GetThreadContext { .. } => "get_thread_context",
         Request::GetThreadGist { .. } => "get_thread_gist",
+        Request::GetThreadGists { .. } => "get_thread_gists",
         Request::DetectPromises { .. } => "detect_promises",
         Request::RecordPromise { .. } => "record_promise",
         Request::GetRecipientBriefing { .. } => "get_recipient_briefing",

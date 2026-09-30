@@ -19,6 +19,7 @@ import {
   threadGistQuery,
 } from "@/features/thread/context/api";
 import { ASK_MARK_ATTRIBUTE } from "@/features/thread/context/askQuote";
+import { isLongThread } from "@/features/thread/context/longThread";
 import { ContextBlock } from "@/features/thread/context/ContextBlock";
 import { HeadersDialog } from "@/features/thread/HeadersDialog";
 import { MessageCard } from "@/features/thread/MessageCard";
@@ -82,7 +83,7 @@ export function FocusThread({ threadId }: { threadId: string }) {
       <ContextBlock
         context={context.data}
         gist={{
-          reserved: llm.enabled,
+          reserved: llm.enabled && isLongThread(data),
           data: gist.data,
           loading: gist.isFetching && !gist.data,
           error: gist.error?.message ?? null,

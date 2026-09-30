@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { expectCursorOn, mailList, mailRows, openList, reader } from "./helpers/mail";
 
@@ -15,7 +15,10 @@ test.beforeEach(async ({ page }) => {
   let templateThread = "";
   // A synthetic row opens the real conversation it was grown from.
   await page.route("**/api/v1/mail/threads/bulk-thread-*", async (route) => {
-    const url = route.request().url().replace(/bulk-thread-\d+/, encodeURIComponent(templateThread));
+    const url = route
+      .request()
+      .url()
+      .replace(/bulk-thread-\d+/, encodeURIComponent(templateThread));
     await route.fulfill({ response: await route.fetch({ url }) });
   });
   await page.route("**/api/v1/mail/mailbox?*", async (route) => {
@@ -50,7 +53,50 @@ const STEPS = 60;
  */
 const BLOCKS_PER_STEP = 60_000;
 
-test(`${ROWS} rows stay virtualized and scroll without re-walking the list`, async ({ page }) => {
+/**
+ * A model with a gist for every row. The first request (the rows on screen
+ * at load) is answered with all 5,000, so the fling below draws a gist
+ * line on every row it passes rather than waiting for scrolling to settle.
+ */
+async function stubCachedGists(page: Page): Promise<() => number> {
+  let requests = 0;
+  await page.route("**/api/v1/platform/llm/status", (route) =>
+    route.fulfill({
+      json: { kind: "LlmStatus", status: { enabled: true, provider: "stub", model: "stub-7b" } },
+    }),
+  );
+  await page.route("**/api/v1/mail/gists", async (route) => {
+    requests += 1;
+    await route.fulfill({
+      json: {
+        kind: "ThreadGists",
+        batch: {
+          model: "available",
+          gists: Array.from({ length: ROWS }, (_, index) => ({
+            thread_id: `bulk-thread-${index}`,
+            status: "ready",
+            gist: "Canary stays at 5% until the dashboard is quiet.",
+            ask: { summary: "confirm who owns the rollout check" },
+            provenance: { model: "stub-7b", locality: "local", sources: ["this_thread"] },
+            from_cache: true,
+          })),
+          queued: [],
+          skipped: [],
+        },
+      },
+    });
+  });
+  return () => requests;
+}
+
+test(`${ROWS} rows stay virtualized and scroll without re-walking the list`, ({ page }) =>
+  flingThroughTheList(page, false));
+
+test(`${ROWS} rows with gist lines stay under the same budget`, ({ page }) =>
+  flingThroughTheList(page, true));
+
+async function flingThroughTheList(page: Page, gists: boolean) {
+  const gistRequests = gists ? await stubCachedGists(page) : () => 0;
   // Counting executed code, not timing it: frame gaps and CPU durations on a
   // shared CI runner measure the runner's load as much as the app (the same
   // tree passed at 45 ms and failed at 90 ms). V8's block coverage counts are
@@ -61,6 +107,7 @@ test(`${ROWS} rows stay virtualized and scroll without re-walking the list`, asy
   await cdp.send("Profiler.enable");
   await cdp.send("Profiler.startPreciseCoverage", { callCount: true, detailed: true });
   await openList(page, "/m/inbox");
+  if (gists) await expect(mailRows(page).first().getByTestId("row-gist")).toBeVisible();
   // Only what fits on screen (plus overscan) is in the DOM.
   expect(await mailRows(page).count()).toBeLessThan(80);
   // Taking coverage resets the counters, so the fling is counted alone.
@@ -111,13 +158,19 @@ test(`${ROWS} rows stay virtualized and scroll without re-walking the list`, asy
     description: `list blocks/step ${Math.round(blocks / STEPS)}, frame p95 ${p95.toFixed(1)} ms`,
   });
   console.log(
-    `large-list: ${Math.round(blocks / STEPS)} list blocks/step, frame p95 ${p95.toFixed(1)} ms`,
+    `large-list${gists ? " (gist lines)" : ""}: ${Math.round(blocks / STEPS)} list blocks/step, frame p95 ${p95.toFixed(1)} ms`,
   );
   expect(blocks / STEPS, "list code executed per scroll step").toBeLessThan(BLOCKS_PER_STEP);
 
   await expect(mailRows(page).filter({ hasText: `Bulk message ${ROWS}` })).toBeVisible();
   expect(await mailRows(page).count()).toBeLessThan(80);
-});
+  if (gists) {
+    // Every row passed drew its line; the fling asked the daemon for
+    // nothing, since gists are asked for once scrolling settles.
+    await expect(mailRows(page).last().getByTestId("row-gist")).toBeVisible();
+    expect(gistRequests()).toBeLessThanOrEqual(2);
+  }
+}
 
 test("returning from the reader keeps the cursor and the scroll position", async ({ page }) => {
   await openList(page, "/m/inbox");

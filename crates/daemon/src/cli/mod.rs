@@ -580,6 +580,11 @@ pub enum Command {
         /// Rows to show per lane; each lane still reports its total.
         #[arg(long, default_value_t = 25)]
         limit: u32,
+        /// Show what each conversation is about and what it asks of you,
+        /// where a model has already written it. Never waits on a model;
+        /// `mxr briefing gists --generate` queues the missing ones.
+        #[arg(long)]
+        gists: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -2643,6 +2648,21 @@ pub enum BriefingAction {
         thread_id: String,
         #[arg(long)]
         refresh: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// One line per conversation: what it is about and what it asks of
+    /// you, the gist the desk and inbox rows show.
+    ///
+    /// Answers from the cache at once. With `--generate`, conversations
+    /// from people that have no gist yet are queued for the model in the
+    /// order given; `mxr events --type gist` shows each as it lands.
+    Gists {
+        #[arg(required = true, num_args = 1..=100)]
+        thread_ids: Vec<String>,
+        /// Queue the missing gists for the model.
+        #[arg(long)]
+        generate: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },

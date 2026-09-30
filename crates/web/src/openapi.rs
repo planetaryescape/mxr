@@ -79,7 +79,7 @@ use utoipa::{
         platform_voice_rebuild, mail_mutation_jobs, mail_owed, mail_desk, mail_desk_dismiss, mail_desk_restore, mail_desk_done, mail_whois,
         mail_send_time, mail_archive_ask, saved_searches_unread_counts,
         analytics_cadence_drift, cadence_watch_list, cadence_watch, cadence_unwatch,
-        mail_time_resolve, mail_thread_context, mail_thread_gist,
+        mail_time_resolve, mail_thread_context, mail_thread_gist, mail_thread_gists,
         compose_session_promises, mail_commitments_record,
         mail_place_list, mail_place_sweep, mail_message_kind, mail_messages_pin,
         mail_sender_kind
@@ -93,6 +93,7 @@ use utoipa::{
         SweepPlaceBody,
         PinMessagesBody,
         DeskDoneBody,
+        ThreadGistsBody,
         SenderKindBody,
     )),
     modifiers(&BearerSecurity),
@@ -307,6 +308,35 @@ fn compose_session_promises() {}
 fn mail_commitments_record() {}
 endpoint!(get mail_thread_context "/api/v1/mail/threads/{thread_id}/context", "Store facts for the reader's context block");
 endpoint!(get mail_thread_gist "/api/v1/mail/threads/{thread_id}/context/gist", "Model-written gist and ask for a conversation, cached per newest message");
+
+/// Body of `POST /api/v1/mail/gists`.
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+struct ThreadGistsBody {
+    /// At most 100, in the order to write missing gists (visible rows first).
+    thread_ids: Vec<String>,
+    /// Queue missing gists for people's conversations; each arrives as a
+    /// `ThreadGistReady` event.
+    generate: Option<bool>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/gists",
+    summary = "List-row gists for many conversations: cached ones at once, missing ones queued with generate",
+    request_body = ThreadGistsBody,
+    responses(
+        (
+            status = 200,
+            description = "The `ThreadGists` variant: model state, cached gists, queued and skipped ids",
+            body = ResponseData
+        ),
+        (status = 400, description = "A malformed thread id or more than 100 ids"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_thread_gists() {}
 
 /// Body of `POST /api/v1/mail/places/{place}/sweep`.
 #[derive(utoipa::ToSchema)]

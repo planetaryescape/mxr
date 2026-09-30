@@ -949,6 +949,8 @@ fn normalize_llm_config(
         // config-file value (default 45s) across runtime updates.
         background_request_timeout_secs: current.background_request_timeout_secs,
         allow_cloud_relationship_data: config.allow_cloud_relationship_data,
+        // Config-file only, like the background timeout.
+        gist_concurrency: current.gist_concurrency,
         overrides: match config.overrides {
             Some(overrides) => normalize_llm_overrides(overrides)?,
             None => current.overrides.clone(),

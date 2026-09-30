@@ -9,9 +9,9 @@
 //! Answers are cached per thread and newest message.
 
 use super::thread_context::{build_thread_context, owned_addresses};
-use super::HandlerResult;
+use super::{HandlerError, HandlerResult};
 use crate::state::{llm_endpoint_is_local, AppState};
-use mxr_core::id::{MessageId, ThreadId};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::Envelope;
 use mxr_llm::{
     guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
@@ -40,7 +40,7 @@ const QUOTE_MIN_CHARS: usize = 8;
 const MESSAGE_MAX_CHARS: usize = 6_000;
 const TRANSCRIPT_MAX_CHARS: usize = 24_000;
 
-const FEATURE: LlmFeature = LlmFeature::Summarize;
+pub(super) const FEATURE: LlmFeature = LlmFeature::Summarize;
 
 pub(crate) const SYSTEM_PROMPT: &str = r#"You write the reader gist for one email conversation, shown above the messages in an email client.
 
@@ -92,57 +92,140 @@ fn cache_key(thread_id: &ThreadId) -> String {
     format!("gist:{thread_id}")
 }
 
+/// How the model is called: a reader waiting on the gist gets the
+/// foreground budget; the list-row writer runs under the background
+/// timeout and breaker, so a slow or dead endpoint can't pile up work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum GistCall {
+    Foreground,
+    Background,
+}
+
 pub(super) async fn get_thread_gist(
     state: &AppState,
     thread_id: &ThreadId,
     refresh: bool,
 ) -> HandlerResult {
+    let envelopes = thread_envelopes(state, thread_id).await?;
+    let setup = GistSetup::new(&GistPolicy::pin(state), thread_id, &envelopes)
+        .ok_or_else(|| HandlerError::from(format!("thread {thread_id} not found")))?;
+    let gist = thread_gist(state, thread_id, &envelopes, &setup, refresh, GistCall::Foreground)
+        .await?;
+    Ok(ResponseData::ThreadGist { gist })
+}
+
+/// The conversation's messages, oldest first; empty for an unknown thread.
+pub(super) async fn thread_envelopes(
+    state: &AppState,
+    thread_id: &ThreadId,
+) -> Result<Vec<Envelope>, HandlerError> {
     let mut envelopes = state.store.get_thread_envelopes(thread_id).await?;
     envelopes.sort_by_key(|envelope| envelope.date);
-    let Some(newest) = envelopes.last() else {
-        return Err(format!("thread {thread_id} not found").into());
-    };
-    let account_id = newest.account_id.clone();
-    // Pin the provider once: what the prompt may carry, the provenance label
-    // and the call itself all follow this one endpoint, even if a config
-    // reload swaps the runtime mid-request.
-    let llm = state.llm.for_feature(FEATURE).pin();
-    let local = llm_endpoint_is_local(llm.base_url());
-    let share_history = local || state.config_snapshot().llm.allow_cloud_relationship_data;
-    let locality = if local {
-        AiLocalityData::Local
-    } else {
-        AiLocalityData::Cloud
-    };
-    let content_hash = gist_content_hash(&envelopes, share_history, &llm);
-    let key = cache_key(thread_id);
+    Ok(envelopes)
+}
 
-    if !refresh {
-        if let Some(cached) = state
-            .store
-            .get_context_briefing(&account_id, BriefingKind::Thread, &key)
-            .await?
-            .filter(|row| row.content_hash == content_hash)
-        {
-            if let Ok(payload) = serde_json::from_str::<CachedGist>(&cached.body_markdown) {
-                if payload.snippet_ids.is_empty()
-                    || !state.store.any_body_synced(&payload.snippet_ids).await?
-                {
-                    return Ok(ready(thread_id, payload, cached.generated_at, true));
-                }
-            }
+/// The model a gist request uses and what its prompt may carry, decided
+/// once per request (or once per batch).
+#[derive(Clone)]
+pub(super) struct GistPolicy {
+    /// Pin the provider once: what the prompt may carry, the provenance
+    /// label and the call itself all follow this one endpoint, even if a
+    /// config reload swaps the runtime mid-request.
+    pub llm: PinnedLlm,
+    share_history: bool,
+    locality: AiLocalityData,
+}
+
+impl GistPolicy {
+    pub fn pin(state: &AppState) -> Self {
+        let llm = state.llm.for_feature(FEATURE).pin();
+        let local = llm_endpoint_is_local(llm.base_url());
+        let share_history = local || state.config_snapshot().llm.allow_cloud_relationship_data;
+        let locality = if local {
+            AiLocalityData::Local
+        } else {
+            AiLocalityData::Cloud
+        };
+        Self {
+            llm,
+            share_history,
+            locality,
         }
     }
+}
 
-    let owned = owned_addresses(state, &account_id).await?;
-    let facts = if share_history {
-        Some(build_thread_context(state, thread_id, &envelopes, &owned).await?)
+/// One conversation's gist request: the policy plus its cache key.
+pub(super) struct GistSetup {
+    policy: GistPolicy,
+    account_id: AccountId,
+    pub content_hash: String,
+    key: String,
+}
+
+impl GistSetup {
+    /// `envelopes` is the whole conversation, oldest first; `None` when it
+    /// has no messages.
+    pub fn new(policy: &GistPolicy, thread_id: &ThreadId, envelopes: &[Envelope]) -> Option<Self> {
+        let newest = envelopes.last()?;
+        Some(Self {
+            content_hash: gist_content_hash(envelopes, policy.share_history, &policy.llm),
+            policy: policy.clone(),
+            account_id: newest.account_id.clone(),
+            key: cache_key(thread_id),
+        })
+    }
+}
+
+/// The cached gist, when it was written for this conversation's newest
+/// message under the same model, endpoint and privacy setting, and no
+/// message it read from a snippet has synced its body since. No model call.
+pub(super) async fn cached_gist(
+    state: &AppState,
+    thread_id: &ThreadId,
+    setup: &GistSetup,
+) -> Result<Option<ThreadGistData>, HandlerError> {
+    let Some(cached) = state
+        .store
+        .get_context_briefing(&setup.account_id, BriefingKind::Thread, &setup.key)
+        .await?
+        .filter(|row| row.content_hash == setup.content_hash)
+    else {
+        return Ok(None);
+    };
+    let Ok(payload) = serde_json::from_str::<CachedGist>(&cached.body_markdown) else {
+        return Ok(None);
+    };
+    if !payload.snippet_ids.is_empty() && state.store.any_body_synced(&payload.snippet_ids).await? {
+        return Ok(None);
+    }
+    Ok(Some(ready(thread_id, payload, cached.generated_at, true)))
+}
+
+/// The gist for a conversation: from the cache unless `refresh`, else
+/// written by the model and cached. An unavailable model is a status.
+pub(super) async fn thread_gist(
+    state: &AppState,
+    thread_id: &ThreadId,
+    envelopes: &[Envelope],
+    setup: &GistSetup,
+    refresh: bool,
+    call: GistCall,
+) -> Result<ThreadGistData, HandlerError> {
+    if !refresh {
+        if let Some(cached) = cached_gist(state, thread_id, setup).await? {
+            return Ok(cached);
+        }
+    }
+    let llm = &setup.policy.llm;
+    let owned = owned_addresses(state, &setup.account_id).await?;
+    let facts = if setup.policy.share_history {
+        Some(build_thread_context(state, thread_id, envelopes, &owned).await?)
     } else {
         None
     };
-    let texts = message_texts(state, &envelopes).await;
+    let texts = message_texts(state, envelopes).await;
     let history = facts.as_ref().and_then(history_line);
-    let prompt = build_user_prompt(&owned, &envelopes, &texts, history.as_deref());
+    let prompt = build_user_prompt(&owned, envelopes, &texts, history.as_deref());
     let mut sources = vec![AiSourceData::ThisThread];
     if history.is_some() {
         sources.push(AiSourceData::RelationshipHistory);
@@ -156,7 +239,11 @@ pub(super) async fn get_thread_gist(
         max_tokens: Some(400),
         temperature: Some(0.1),
     };
-    let response = match llm.complete(request).await {
+    let answer = match call {
+        GistCall::Foreground => llm.complete(request).await,
+        GistCall::Background => llm.complete_background(request).await,
+    };
+    let response = match answer {
         Ok(response) => response,
         Err(LlmError::Disabled) => {
             return Ok(unavailable(
@@ -210,7 +297,7 @@ pub(super) async fn get_thread_gist(
         ask: parsed.1,
         provenance: AiProvenanceData {
             model,
-            locality,
+            locality: setup.policy.locality,
             sources,
         },
         snippet_ids: texts
@@ -224,10 +311,10 @@ pub(super) async fn get_thread_gist(
         .store
         .upsert_context_briefing(&ContextBriefing {
             id: new_briefing_id(),
-            account_id,
+            account_id: setup.account_id.clone(),
             kind: BriefingKind::Thread,
-            subject_key: key,
-            content_hash,
+            subject_key: setup.key.clone(),
+            content_hash: setup.content_hash.clone(),
             body_markdown: serde_json::to_string(&payload)?,
             citations: vec![],
             generated_at,
@@ -241,33 +328,29 @@ fn ready(
     payload: CachedGist,
     generated_at: chrono::DateTime<chrono::Utc>,
     from_cache: bool,
-) -> ResponseData {
-    ResponseData::ThreadGist {
-        gist: ThreadGistData {
-            thread_id: thread_id.clone(),
-            status: ThreadGistStatusData::Ready,
-            gist: Some(payload.gist),
-            ask: payload.ask,
-            provenance: Some(payload.provenance),
-            reason: None,
-            generated_at: Some(generated_at),
-            from_cache,
-        },
+) -> ThreadGistData {
+    ThreadGistData {
+        thread_id: thread_id.clone(),
+        status: ThreadGistStatusData::Ready,
+        gist: Some(payload.gist),
+        ask: payload.ask,
+        provenance: Some(payload.provenance),
+        reason: None,
+        generated_at: Some(generated_at),
+        from_cache,
     }
 }
 
-fn unavailable(thread_id: &ThreadId, status: ThreadGistStatusData, reason: &str) -> ResponseData {
-    ResponseData::ThreadGist {
-        gist: ThreadGistData {
-            thread_id: thread_id.clone(),
-            status,
-            gist: None,
-            ask: None,
-            provenance: None,
-            reason: Some(reason.to_string()),
-            generated_at: None,
-            from_cache: false,
-        },
+fn unavailable(thread_id: &ThreadId, status: ThreadGistStatusData, reason: &str) -> ThreadGistData {
+    ThreadGistData {
+        thread_id: thread_id.clone(),
+        status,
+        gist: None,
+        ask: None,
+        provenance: None,
+        reason: Some(reason.to_string()),
+        generated_at: None,
+        from_cache: false,
     }
 }
 

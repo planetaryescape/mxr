@@ -1,0 +1,23 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+One line per conversation: what it is about and what it asks of you, the gist the desk and inbox rows show.
+
+Answers from the cache at once. With `--generate`, conversations from people that have no gist yet are queued for the model in the order given; `mxr events --type gist` shows each as it lands.
+
+Usage: mxr briefing gists [OPTIONS] <THREAD_IDS>...
+
+Arguments:
+  <THREAD_IDS>...
+
+
+Options:
+      --generate
+          Queue the missing gists for the model
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

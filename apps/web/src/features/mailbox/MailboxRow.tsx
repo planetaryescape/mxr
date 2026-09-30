@@ -14,6 +14,8 @@ import {
 import { memo, type MouseEvent, type ReactNode } from "react";
 
 import type { MessageRowView } from "./types";
+import { gistText, RowGistLine } from "@/features/gists/RowGistLine";
+import { useRowGist, type RowGist } from "@/features/gists/rowGists";
 import { notePointerUse } from "@/lib/actions/keyHints";
 import { formatListDate, initials, parseAddress, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -63,6 +65,8 @@ export const MailboxRow = memo(function MailboxRow({
       ? row.open_commitment_count
       : null;
   const who = displaySender(row);
+  // This row's own line: when it lands, only this row re-renders.
+  const gist = useRowGist(row.thread_id);
   const userLabels = (row.labels ?? []).filter((label) => label.kind === "user").slice(0, 2);
 
   const stop = (handler: () => void) => (event: MouseEvent) => {
@@ -75,7 +79,7 @@ export const MailboxRow = memo(function MailboxRow({
       id={domId}
       role="option"
       aria-selected={selected}
-      aria-label={rowLabel(row, who, count)}
+      aria-label={rowLabel(row, who, count, gist)}
       onClick={(event) => {
         if (!readOnly && (event.metaKey || event.ctrlKey)) {
           onToggleSelection(row, false);
@@ -201,7 +205,7 @@ export const MailboxRow = memo(function MailboxRow({
           <span className="hidden @2xl:inline" aria-hidden>
             ·{" "}
           </span>
-          {row.snippet}
+          {gist ? <RowGistLine gist={gist} /> : row.snippet}
         </span>
       </div>
 
@@ -321,12 +325,18 @@ function firstName(value: string): string {
   return value.split(/\s+/)[0] ?? value;
 }
 
-function rowLabel(row: MessageRowView, who: string, count: number | null): string {
+function rowLabel(
+  row: MessageRowView,
+  who: string,
+  count: number | null,
+  gist: RowGist | undefined,
+): string {
   return [
     row.unread ? "Unread." : null,
     row.starred ? "Starred." : null,
     who,
     row.subject || "(no subject)",
+    gist ? gistText(gist) : null,
     count ? `${plural(count, "message")} in conversation` : null,
     row.has_attachments ? "Has attachments" : null,
     formatListDate(row.date),

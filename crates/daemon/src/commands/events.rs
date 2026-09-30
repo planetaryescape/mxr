@@ -32,6 +32,7 @@ pub fn event_matches_type(event: &DaemonEvent, event_type: Option<&str>) -> bool
                 | DaemonEvent::OperationCancelled { .. }
         ),
         "mutation" => matches!(event, DaemonEvent::MutationReconciliationFailed { .. }),
+        "gist" => matches!(event, DaemonEvent::ThreadGistReady { .. }),
         "error" => matches!(
             event,
             DaemonEvent::SyncError { .. }
@@ -127,6 +128,11 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
             DaemonEvent::EventsLagged { skipped } => {
                 format!("events lagged skipped={skipped}")
             }
+            DaemonEvent::ThreadGistReady { gist } => format!(
+                "gist ready thread={} asks={}",
+                gist.thread_id,
+                gist.ask.is_some()
+            ),
         },
     })
 }

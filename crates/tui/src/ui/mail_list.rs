@@ -1,4 +1,4 @@
-use crate::app::{ActivePane, MailListMode, MailListRow};
+use crate::app::{ActivePane, MailListMode, MailListRow, RowGists};
 use crate::theme::Theme;
 use crate::ui::sanitize::strip_control_chars;
 use chrono::{Datelike, Local, Utc};
@@ -21,6 +21,9 @@ pub struct MailListView<'a> {
     pub mode: MailListMode,
     pub loading_message: Option<&'a str>,
     pub loading_throbber: Option<&'a throbber_widgets_tui::ThrobberState>,
+    /// Gist lines by conversation; a row with one shows it in place of the
+    /// snippet.
+    pub row_gists: &'a RowGists,
 }
 
 pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: &Theme) {
@@ -231,7 +234,10 @@ fn build_row<'a>(
 
     // Sanitize mail-controlled display fields at the render boundary.
     let safe_subject = strip_control_chars(&env.subject);
-    let safe_snippet = strip_control_chars(&env.snippet);
+    // A gist says what the conversation is about and asks; the snippet is
+    // the fallback, in the same place.
+    let gist_line = view.row_gists.get(&row.thread_id).map(|gist| gist.line());
+    let safe_snippet = strip_control_chars(gist_line.as_deref().unwrap_or(&env.snippet));
 
     // Sender (with thread count badge)
     let (sender_text_raw, thread_count) = sender_parts(row, view.mode);
@@ -756,6 +762,7 @@ mod tests {
                         mode: MailListMode::Threads,
                         loading_message: None,
                         loading_throbber: None,
+                        row_gists: &RowGists::new(),
                     },
                     &Theme::default(),
                 );
@@ -809,6 +816,7 @@ mod tests {
                     mode: MailListMode::Messages,
                     loading_message: None,
                     loading_throbber: None,
+                    row_gists: &RowGists::new(),
                 },
                 &Theme::default(),
             );
@@ -844,6 +852,7 @@ mod tests {
                     mode: MailListMode::Messages,
                     loading_message: None,
                     loading_throbber: None,
+                    row_gists: &RowGists::new(),
                 },
                 &Theme::default(),
             );
@@ -892,6 +901,7 @@ mod tests {
                     mode: MailListMode::Threads,
                     loading_message: None,
                     loading_throbber: None,
+                    row_gists: &RowGists::new(),
                 },
                 &Theme::default(),
             );
@@ -909,6 +919,45 @@ mod tests {
             snapshot.contains("2M"),
             "row must surface the size chip from format_attachment_chip; got:\n{snapshot}",
         );
+    }
+
+    #[test]
+    fn a_gist_takes_the_snippets_place_ask_first() {
+        let mut row = row(1, true);
+        row.representative.subject = "Status update".into();
+        row.representative.snippet = "Shipping plan ready for review".into();
+        let gists = RowGists::from([(
+            row.thread_id.clone(),
+            crate::app::RowGist {
+                about: "Canary stays at 5%.".into(),
+                ask: Some("confirm the owner".into()),
+            },
+        )]);
+        let rows = vec![row];
+        let snapshot = mxr_test_support::render_to_string(140, 6, |frame| {
+            draw_view(
+                frame,
+                Rect::new(0, 0, 140, 6),
+                &MailListView {
+                    rows: &rows,
+                    selected_index: 0,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MailList,
+                    title: "Inbox",
+                    selected_set: &HashSet::new(),
+                    mode: MailListMode::Threads,
+                    loading_message: None,
+                    loading_throbber: None,
+                    row_gists: &gists,
+                },
+                &Theme::default(),
+            );
+        });
+        assert!(
+            snapshot.contains("Status update · asks: confirm the owner · Canary stays at 5%."),
+            "{snapshot}"
+        );
+        assert!(!snapshot.contains("Shipping plan"), "{snapshot}");
     }
 
     #[test]
@@ -935,6 +984,7 @@ mod tests {
                     mode: MailListMode::Threads,
                     loading_message: None,
                     loading_throbber: None,
+                    row_gists: &RowGists::new(),
                 },
                 &Theme::default(),
             );
@@ -975,6 +1025,7 @@ mod tests {
                     mode: MailListMode::Threads,
                     loading_message: None,
                     loading_throbber: None,
+                    row_gists: &RowGists::new(),
                 },
                 &Theme::default(),
             );
@@ -1011,6 +1062,7 @@ mod tests {
                     mode: MailListMode::Threads,
                     loading_message: None,
                     loading_throbber: None,
+                    row_gists: &RowGists::new(),
                 },
                 &Theme::default(),
             );
@@ -1057,6 +1109,7 @@ mod tests {
                     mode: MailListMode::Threads,
                     loading_message: Some("Loading selected account..."),
                     loading_throbber: Some(&throbber),
+                    row_gists: &RowGists::new(),
                 },
                 &Theme::default(),
             );
@@ -1093,6 +1146,7 @@ mod tests {
                     mode: MailListMode::Threads,
                     loading_message: None,
                     loading_throbber: None,
+                    row_gists: &RowGists::new(),
                 },
                 &Theme::default(),
             );

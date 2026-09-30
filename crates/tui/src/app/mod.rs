@@ -25,6 +25,7 @@ mod place_actions;
 mod platform_actions;
 mod promises;
 mod recorder;
+mod row_gists;
 mod rule_actions;
 mod runtime_helpers;
 mod saved_search_actions;
@@ -58,6 +59,7 @@ use tui_textarea::TextArea;
 
 pub(in crate::app) use crate::ui::label_picker::LabelPickerMode;
 pub use focus_run::FocusRun;
+pub use row_gists::{RowGist, RowGistState, RowGists};
 pub(crate) use mailbox_helpers::auto_summary_eligible;
 pub use mutation_snapshot::{
     MutationId, MutationIdGenerator, MutationSnapshot, MutationSnapshotStore, QueuedMutation,
@@ -328,6 +330,8 @@ pub struct App {
     /// Debounced gist fetch (`GetThreadGist`), like the summary: only the
     /// thread the user lands on goes to the model.
     pub pending_gist_debounce: Option<(mxr_core::ThreadId, tokio::time::Instant)>,
+    /// List-row gists (`GetThreadGists`) for the desk and triage lists.
+    pub row_gists: RowGistState,
     /// Slice 5.1/5.2 (C2.6): pending briefing fetch. Drained by the
     /// runtime, which fires either `Request::GetThreadBriefing` or
     /// `Request::GetRecipientBriefing` depending on the variant.
@@ -462,6 +466,7 @@ impl App {
             pending_summary_debounce: None,
             pending_thread_context: None,
             pending_gist_debounce: None,
+            row_gists: RowGistState::default(),
             pending_briefing_request: None,
             pending_whois_query: None,
             pending_expert_query: None,

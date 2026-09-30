@@ -10,6 +10,8 @@
  * branches in `useDaemonEvents` will simply not fire — no runtime errors.
  */
 
+import type { components } from "./generated";
+
 export type DaemonEvent =
   | { type: "SyncCompleted"; event?: "SyncCompleted"; account_id: string; messages_synced: number }
   | { type: "SyncError"; event?: "SyncError"; account_id: string; error: string }
@@ -73,6 +75,12 @@ export type DaemonEvent =
       error_summary: string;
     }
   | { type: "EventsLagged"; event?: "EventsLagged"; skipped: number }
+  | {
+      type: "ThreadGistReady";
+      event?: "ThreadGistReady";
+      /** `ThreadGistData`, always `status: "ready"`. */
+      gist: components["schemas"]["ThreadGistData"];
+    }
   | { type: string; [key: string]: unknown };
 
 export type DaemonEventHandler = (event: DaemonEvent) => void;

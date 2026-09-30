@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { MailboxList, type MailboxListProps } from "./MailboxList";
+import { gistOrder, MailboxList, type MailboxListProps } from "./MailboxList";
 import type { MessageGroupView, MessageRowView, MutationResponse } from "./types";
 import { usePendingMailOps, useProjectedGroups } from "@/features/mail-actions/pendingMailOps";
 import { useMailDialogs } from "@/features/mail-actions/mailDialogStore";
@@ -354,5 +354,24 @@ describe("MailboxList rows", () => {
 
     expect(screen.getByText("Empty")).toBeInTheDocument();
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+});
+
+describe("gistOrder", () => {
+  const rowItems = (ids: string[]) =>
+    ids.map((id) => ({ kind: "row" as const, row: { thread_id: id } as MessageRowView }));
+  test("visible rows first, then the next few below, then the overscan above", () => {
+    const flat = [
+      { kind: "header" as const, id: "h", group: {} as never },
+      ...rowItems(["a", "b", "c", "d", "e", "f", "g"]),
+    ];
+    expect(gistOrder(flat, { startIndex: 3, endIndex: 4 }, 1, 2)).toEqual([
+      "c",
+      "d",
+      "e",
+      "f",
+      "b",
+      "a",
+    ]);
   });
 });

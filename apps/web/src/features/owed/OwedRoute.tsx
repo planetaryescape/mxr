@@ -51,6 +51,7 @@ export function OwedRoute() {
       meta={rows.length > 0 ? plural(rows.length, "conversation") : null}
       groups={groups}
       scopeKey={`owed|${account ?? "all"}`}
+      rowGists
       status={owed}
       empty={
         <Centered

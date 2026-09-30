@@ -15,5 +15,6 @@ Commands:
 Options:
       --account <ACCOUNT>  Limit to one account; the default covers every account
       --limit <LIMIT>      Rows to show per lane; each lane still reports its total [default: 25]
+      --gists              Show what each conversation is about and what it asks of you, where a model has already written it. Never waits on a model; `mxr briefing gists --generate` queues the missing ones
       --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
   -h, --help               Print help

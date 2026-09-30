@@ -247,6 +247,11 @@ pub struct LlmConfig {
     pub background_request_timeout_secs: u64,
     /// Allow relationship/profile data to be sent to non-local LLM endpoints.
     pub allow_cloud_relationship_data: bool,
+    /// How many list-row gists (the one line per conversation in the desk
+    /// and inbox) the daemon writes at once in the background. A local
+    /// model answers one request at a time well; raise it for a hosted
+    /// endpoint. Clamped to 1..=8.
+    pub gist_concurrency: usize,
     /// Optional feature-specific provider overrides. Each override inherits
     /// unspecified fields from this base `[llm]` section.
     pub overrides: LlmOverrides,
@@ -263,6 +268,7 @@ impl Default for LlmConfig {
             request_timeout_secs: 120,
             background_request_timeout_secs: 45,
             allow_cloud_relationship_data: false,
+            gist_concurrency: 1,
             overrides: LlmOverrides::default(),
         }
     }

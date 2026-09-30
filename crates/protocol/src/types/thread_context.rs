@@ -107,6 +107,59 @@ pub enum ThreadGistStatusData {
     Failed,
 }
 
+/// Returned by `Request::GetThreadGists`: the gists a list can show now,
+/// straight from the cache, and what was queued to be written.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadGistBatchData {
+    /// Whether gists can be written at all. Anything but `available` means
+    /// lists show their rows as they are, with nothing to wait for.
+    pub model: GistModelData,
+    /// Cached gists that match each conversation's newest message, in
+    /// request order. Only `ready` gists are listed.
+    pub gists: Vec<ThreadGistData>,
+    /// Conversations queued for a gist (or already being written). Each
+    /// one's gist arrives as a `ThreadGistReady` event.
+    #[serde(default)]
+    pub queued: Vec<ThreadId>,
+    /// Conversations that have no gist and won't get one from this request.
+    #[serde(default)]
+    pub skipped: Vec<ThreadGistSkipData>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum GistModelData {
+    Available,
+    /// No model is configured.
+    Disabled,
+    /// Privacy settings keep conversations from the configured model.
+    Blocked,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadGistSkipData {
+    pub thread_id: ThreadId,
+    pub reason: ThreadGistSkipReasonData,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ThreadGistSkipReasonData {
+    /// Newsletters, lists and automated mail never go to the model for a
+    /// list gist; the row's own snippet says enough.
+    NotPeople,
+    /// No such conversation, or it is in the trash.
+    NotFound,
+    /// The model failed on it a moment ago; it is tried again later.
+    RecentlyFailed,
+    /// Only asked for cached gists (`generate: false`).
+    NotGenerated,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadAskData {

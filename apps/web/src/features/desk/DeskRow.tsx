@@ -3,6 +3,8 @@ import { memo } from "react";
 
 import type { DeskRow as DeskRowData } from "./api";
 import { rowAge, rowPerson } from "./deskCopy";
+import { GistAsk, gistText, gistTitle } from "@/features/gists/RowGistLine";
+import { useRowGist } from "@/features/gists/rowGists";
 import type { RowRenderState } from "@/features/mailbox/MailboxList";
 import type { MessageRowView } from "@/features/mailbox/types";
 import { cn } from "@/lib/utils";
@@ -12,7 +14,15 @@ type DeskRowProps = RowRenderState & {
   desk: DeskRowData;
   /** Done: put the conversation away. Must be stable, the row is memoized. */
   onDone: (row: MessageRowView) => void;
+  /**
+   * A model is configured: reserve a line for the gist (what the
+   * conversation is about) so nothing moves when it lands.
+   */
+  gistLine: boolean;
 };
+
+/** Lanes where the other person's ask says why the row is here. */
+const ASK_LANES = new Set(["owed", "people_new"]);
 
 /**
  * One line of the desk: who, what and why, and how long. Wide lists read
@@ -24,10 +34,19 @@ type DeskRowProps = RowRenderState & {
  * the cursor's row; on touch it is always there, quiet. Its slot is always
  * reserved, so nothing shifts when it appears.
  */
-export const DeskRow = memo(function DeskRow({ row, desk, onDone, ...state }: DeskRowProps) {
+export const DeskRow = memo(function DeskRow({
+  row,
+  desk,
+  onDone,
+  gistLine,
+  ...state
+}: DeskRowProps) {
   const who = rowPerson(desk);
   const age = rowAge(desk);
   const subject = desk.subject.trim();
+  // This row's own gist: when it lands, only this row re-renders.
+  const gist = useRowGist(desk.thread_id);
+  const ask = gist?.ask && ASK_LANES.has(desk.lane) ? gist.ask : null;
   return (
     <div
       id={state.domId}
@@ -37,7 +56,8 @@ export const DeskRow = memo(function DeskRow({ row, desk, onDone, ...state }: De
         row.starred ? "Starred." : null,
         who,
         subject || null,
-        desk.reason,
+        ask ? null : desk.reason,
+        gist ? gistText(gist) : null,
         age.usual ? `${age.label}, ${age.usual}` : age.label,
         age.late ? "past the usual pace" : null,
       ]
@@ -77,11 +97,35 @@ export const DeskRow = memo(function DeskRow({ row, desk, onDone, ...state }: De
       >
         {who}
       </span>
-      <span className="col-span-2 col-start-1 row-start-2 line-clamp-2 min-w-0 text-[13px] text-muted-foreground @2xl:col-span-1 @2xl:col-start-2 @2xl:row-start-1 @2xl:line-clamp-none @2xl:truncate">
+      <span
+        className={cn(
+          "col-span-2 col-start-1 row-start-2 min-w-0 text-[13px] text-muted-foreground @2xl:col-span-1 @2xl:col-start-2 @2xl:row-start-1 @2xl:truncate",
+          // With a gist line the reason may turn into the ask: one line, so
+          // the row keeps its height when it does.
+          gistLine ? "truncate" : "line-clamp-2 @2xl:line-clamp-none",
+        )}
+        title={ask && gist ? gistTitle(gist) : undefined}
+      >
         {subject ? <span className="font-medium text-foreground/85">{subject}</span> : null}
         {subject ? <span aria-hidden> · </span> : null}
-        <span>{desk.reason}</span>
+        {ask ? (
+          <span data-testid="desk-ask">
+            <GistAsk ask={ask} />
+          </span>
+        ) : (
+          <span>{desk.reason}</span>
+        )}
       </span>
+      {gistLine ? (
+        <span
+          data-testid="desk-gist"
+          data-state={gist ? "ready" : "waiting"}
+          title={gist ? gistTitle(gist) : undefined}
+          className="col-span-2 col-start-1 row-start-3 h-5 min-w-0 truncate text-[12.5px] leading-5 text-muted-foreground/90 @2xl:col-span-1 @2xl:col-start-2 @2xl:row-start-2"
+        >
+          {gist?.about ?? ""}
+        </span>
+      ) : null}
       <span className="col-start-2 row-start-1 flex items-center justify-end gap-1.5 @2xl:col-start-3">
         <time
           dateTime={desk.since}

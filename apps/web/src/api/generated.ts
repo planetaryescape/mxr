@@ -855,6 +855,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/gists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** List-row gists for many conversations: cached ones at once, missing ones queued with generate */
+        post: operations["mail_thread_gists"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/humanizer/rewrite": {
         parameters: {
             query?: never;
@@ -3482,6 +3499,10 @@ export interface components {
             event: "EventsLagged";
             /** Format: int64 */
             skipped: number;
+        } | {
+            /** @enum {string} */
+            event: "ThreadGistReady";
+            gist: components["schemas"]["ThreadGistData"];
         };
         /** @enum {string} */
         DaemonHealthClass: "healthy" | "degraded" | "restart_required" | "repair_required";
@@ -4140,6 +4161,8 @@ export interface components {
             from: string;
             subject: string;
         };
+        /** @enum {string} */
+        GistModelData: "available" | "disabled" | "blocked";
         /** @enum {string} */
         GmailCredentialSourceData: "bundled" | "custom";
         HtmlImageAsset: {
@@ -5816,6 +5839,11 @@ export interface components {
             cmd: "ResolveDeskItems";
             dry_run?: boolean;
             items: components["schemas"]["DeskDoneItemData"][];
+        } | {
+            /** @enum {string} */
+            cmd: "GetThreadGists";
+            generate?: boolean;
+            thread_ids: components["schemas"]["ThreadId"][];
         };
         /**
          * @description The daemon's reply to a [`Request`], correlated by [`IpcMessage::id`].
@@ -6514,6 +6542,10 @@ export interface components {
             mutation_id?: string | null;
             /** @description Something changed but its undo could not be saved. */
             undo_unavailable?: boolean;
+        } | {
+            batch: components["schemas"]["ThreadGistBatchData"];
+            /** @enum {string} */
+            kind: "ThreadGists";
         };
         /**
          * @description A single bucket of the response-time histogram. `count` rows had a
@@ -7147,6 +7179,29 @@ export interface components {
             /** Format: int32 */
             your_reply_samples: number;
         };
+        /**
+         * @description Returned by `Request::GetThreadGists`: the gists a list can show now,
+         *     straight from the cache, and what was queued to be written.
+         */
+        ThreadGistBatchData: {
+            /**
+             * @description Cached gists that match each conversation's newest message, in
+             *     request order. Only `ready` gists are listed.
+             */
+            gists: components["schemas"]["ThreadGistData"][];
+            /**
+             * @description Whether gists can be written at all. Anything but `available` means
+             *     lists show their rows as they are, with nothing to wait for.
+             */
+            model: components["schemas"]["GistModelData"];
+            /**
+             * @description Conversations queued for a gist (or already being written). Each
+             *     one's gist arrives as a `ThreadGistReady` event.
+             */
+            queued?: components["schemas"]["ThreadId"][];
+            /** @description Conversations that have no gist and won't get one from this request. */
+            skipped?: components["schemas"]["ThreadGistSkipData"][];
+        };
         /** @description Returned by `Request::GetThreadGist`. */
         ThreadGistData: {
             ask?: null | components["schemas"]["ThreadAskData"];
@@ -7161,8 +7216,24 @@ export interface components {
             status: components["schemas"]["ThreadGistStatusData"];
             thread_id: components["schemas"]["ThreadId"];
         };
+        ThreadGistSkipData: {
+            reason: components["schemas"]["ThreadGistSkipReasonData"];
+            thread_id: components["schemas"]["ThreadId"];
+        };
+        /** @enum {string} */
+        ThreadGistSkipReasonData: "not_people" | "not_found" | "recently_failed" | "not_generated";
         /** @enum {string} */
         ThreadGistStatusData: "ready" | "disabled" | "blocked" | "failed";
+        /** @description Body of `POST /api/v1/mail/gists`. */
+        ThreadGistsBody: {
+            /**
+             * @description Queue missing gists for people's conversations; each arrives as a
+             *     `ThreadGistReady` event.
+             */
+            generate?: boolean | null;
+            /** @description At most 100, in the order to write missing gists (visible rows first). */
+            thread_ids: string[];
+        };
         /** Format: uuid */
         ThreadId: string;
         /** @description An open promise in the thread and who made it. */
@@ -8764,6 +8835,44 @@ export interface operations {
         responses: {
             /** @description OK */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_thread_gists: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadGistsBody"];
+            };
+        };
+        responses: {
+            /** @description The `ThreadGists` variant: model state, cached gists, queued and skipped ids */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description A malformed thread id or more than 100 ids */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

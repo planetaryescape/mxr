@@ -1088,6 +1088,38 @@ pub async fn run() -> anyhow::Result<()> {
             }
         }
 
+        // Gists for the rows around the cursor on the desk and triage
+        // lists; the daemon answers from its cache and queues the rest.
+        let now = std::time::Instant::now();
+        if app.row_gists.due(now) {
+            let candidates = app.row_gist_candidates();
+            if let Some(thread_ids) = app.row_gists.take_request(candidates, now) {
+                let socket_path = socket_path.clone();
+                let result_tx = result_tx.clone();
+                tokio::spawn(async move {
+                    let resp = ipc_call_dedicated(
+                        &socket_path,
+                        Request::GetThreadGists {
+                            thread_ids: thread_ids.clone(),
+                            generate: true,
+                        },
+                    )
+                    .await;
+                    let result = match resp {
+                        Ok(Response::Ok {
+                            data: ResponseData::ThreadGists { batch },
+                        }) => Ok(Box::new(batch)),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Ok(_) => Err(MxrError::Ipc(
+                            "unexpected response to GetThreadGists".into(),
+                        )),
+                        Err(e) => Err(e),
+                    };
+                    let _ = result_tx.send(AsyncResult::RowGistsLoaded { thread_ids, result });
+                });
+            }
+        }
+
         if let Some(rule) = app.rules.pending_detail.take() {
             app.rules.detail_request_id = app.rules.detail_request_id.wrapping_add(1);
             let _ = replaceable.send(ReplaceableRequest::RuleDetail {
@@ -2573,6 +2605,15 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::ThreadGistLoaded { thread_id, result } => {
                             apply_thread_gist_loaded(&mut app, &thread_id, result);
                         }
+                        AsyncResult::RowGistsLoaded { thread_ids, result } => match result {
+                            Ok(batch) => app.row_gists.apply_batch(&batch, std::time::Instant::now()),
+                            // Quiet: rows keep their snippets and are asked
+                            // about again.
+                            Err(error) => {
+                                tracing::debug!(%error, "row gists request failed");
+                                app.row_gists.request_failed(&thread_ids);
+                            }
+                        },
                         AsyncResult::RuleDetail {
                             request_id,
                             result: Ok(rule),

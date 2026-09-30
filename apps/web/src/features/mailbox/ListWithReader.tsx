@@ -34,6 +34,7 @@ interface ListWithReaderProps extends Pick<
   | "airyHeaders"
   | "interceptVerb"
   | "swipeActions"
+  | "rowGists"
 > {
   /** URL of the list; an open conversation lives at `${basePath}/<thread>`. */
   basePath: string;

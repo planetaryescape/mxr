@@ -107,6 +107,8 @@ pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &The
                     mode: mail_list_mode,
                     loading_message: None,
                     loading_throbber: None,
+                    // Search results are not a triage list: no gists here.
+                    row_gists: &crate::app::RowGists::new(),
                 },
                 theme,
             );

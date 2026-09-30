@@ -31,6 +31,7 @@ import {
 } from "./context/api";
 import { ASK_MARK_ATTRIBUTE } from "./context/askQuote";
 import { ContextBlock } from "./context/ContextBlock";
+import { isLongThread } from "./context/longThread";
 import { firstName } from "./context/contextFormat";
 import { HeadersDialog } from "./HeadersDialog";
 import { standaloneHtmlDocument } from "./MessageBody";
@@ -130,7 +131,9 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
   const queryClient = useQueryClient();
   const context = useQuery(threadContextQuery(threadId));
   const policy = llmPolicyKey(llm.data?.status);
+  // Still fetched for short threads: the ask's highlight in the body needs it.
   const gist = useQuery({ ...threadGistQuery(threadId, policy), enabled: llm.enabled });
+  const longThread = useMemo(() => isLongThread(data), [data]);
   const resolve = useMutation({
     mutationFn: resolveCommitment,
     onSuccess: () => {
@@ -369,7 +372,7 @@ export function ThreadReader({ data }: { data: ThreadResponse }) {
           <ContextBlock
             context={context.data}
             gist={{
-              reserved: llm.enabled,
+              reserved: llm.enabled && longThread,
               data: gist.data,
               loading: gist.isFetching && !gist.data,
               error: gist.error?.message ?? null,

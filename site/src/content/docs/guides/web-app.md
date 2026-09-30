@@ -304,6 +304,12 @@ the instruction empty; a new email needs to know what it's for (the subject
 counts as context, not as the instruction). A recipient outside the
 conversation drafts a forwarding note. Refine works on what's in the editor.
 
+Under **Draft for me**, a line says which model wrote the draft (local or
+cloud), how many of your emails shaped the voice and whether your history
+was used. **Sources** lists those emails and the messages it read from the
+conversation; each opens in a new tab on that message
+([where a draft came from](/guides/llm-features/#see-where-a-draft-came-from)).
+
 Drafts save as you type and when you close the composer. Sending asks for
 confirmation with the recipients, the From address and the pre-send safety
 check, and then waits 10 seconds so you can undo

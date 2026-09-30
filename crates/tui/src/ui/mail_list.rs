@@ -236,8 +236,11 @@ fn build_row<'a>(
     let safe_subject = strip_control_chars(&env.subject);
     // A gist says what the conversation is about and asks; the snippet is
     // the fallback, in the same place.
-    let gist_line = view.row_gists.get(&row.thread_id).map(|gist| gist.line());
-    let safe_snippet = strip_control_chars(gist_line.as_deref().unwrap_or(&env.snippet));
+    let snippet = view
+        .row_gists
+        .get(&row.thread_id)
+        .map_or(env.snippet.as_str(), crate::app::RowGist::line);
+    let safe_snippet = strip_control_chars(snippet);
 
     // Sender (with thread count badge)
     let (sender_text_raw, thread_count) = sender_parts(row, view.mode);
@@ -928,10 +931,10 @@ mod tests {
         row.representative.snippet = "Shipping plan ready for review".into();
         let gists = RowGists::from([(
             row.thread_id.clone(),
-            crate::app::RowGist {
-                about: "Canary stays at 5%.".into(),
-                ask: Some("confirm the owner".into()),
-            },
+            crate::app::RowGist::new(
+                "Canary stays at 5%.".into(),
+                Some("confirm the owner".into()),
+            ),
         )]);
         let rows = vec![row];
         let snapshot = mxr_test_support::render_to_string(140, 6, |frame| {

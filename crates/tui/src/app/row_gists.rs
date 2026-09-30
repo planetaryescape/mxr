@@ -7,8 +7,11 @@
 use super::{App, MailboxView};
 use mxr_core::id::ThreadId;
 use mxr_core::types::LabelKind;
-use mxr_protocol::{GistModelData, ThreadGistBatchData, ThreadGistData, ThreadGistStatusData};
-use std::collections::HashMap;
+use mxr_protocol::{
+    GistModelData, ThreadGistBatchData, ThreadGistData, ThreadGistStatusData,
+    THREAD_GISTS_MAX_BATCH,
+};
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 /// Rows past the cursor whose gists are asked for.
@@ -21,8 +24,6 @@ const REQUEST_TTL: Duration = Duration::from_secs(60);
 const MIN_INTERVAL: Duration = Duration::from_millis(300);
 /// With no model, stop asking for this long.
 const NO_MODEL_RECHECK: Duration = Duration::from_secs(5 * 60);
-/// The daemon's cap on one request.
-const MAX_BATCH: usize = 100;
 
 /// One row's line.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +31,8 @@ pub struct RowGist {
     pub about: String,
     /// The model's summary of the ask, when there is one.
     pub ask: Option<String>,
+    /// The list line, built once: rows are drawn every frame.
+    line: String,
 }
 
 impl RowGist {
@@ -41,22 +44,25 @@ impl RowGist {
         if about.is_empty() {
             return None;
         }
-        Some(Self {
-            about: about.to_string(),
-            ask: data
-                .ask
-                .as_ref()
-                .map(|ask| ask.summary.trim().to_string())
-                .filter(|ask| !ask.is_empty()),
-        })
+        let ask = data
+            .ask
+            .as_ref()
+            .map(|ask| ask.summary.trim().to_string())
+            .filter(|ask| !ask.is_empty());
+        Some(Self::new(about.to_string(), ask))
+    }
+
+    pub fn new(about: String, ask: Option<String>) -> Self {
+        let line = match &ask {
+            Some(ask) => format!("asks: {ask} \u{b7} {about}"),
+            None => about.clone(),
+        };
+        Self { about, ask, line }
     }
 
     /// "asks: confirm the owner · Canary stays at 5%", ask first.
-    pub fn line(&self) -> String {
-        match &self.ask {
-            Some(ask) => format!("asks: {ask} \u{b7} {}", self.about),
-            None => self.about.clone(),
-        }
+    pub fn line(&self) -> &str {
+        &self.line
     }
 }
 
@@ -70,17 +76,24 @@ pub struct RowGistState {
     pub model: Option<GistModelData>,
     requested: HashMap<ThreadId, Instant>,
     off_until: Option<Instant>,
-    last_request: Option<Instant>,
+    /// When rows were last gathered, sent or not: an idle list isn't
+    /// rebuilt on every pass of the event loop.
+    last_look: Option<Instant>,
 }
 
 impl RowGistState {
-    /// Whether a request may go out now: not too soon after the last, and
-    /// not while the daemon has no model. Check before gathering rows.
+    /// Whether a request may go out now: not too soon after the last look,
+    /// and not while the daemon has no model. Check before gathering rows.
     pub fn due(&self, now: Instant) -> bool {
         !self.off_until.is_some_and(|until| now < until)
             && !self
-                .last_request
+                .last_look
                 .is_some_and(|at| now.duration_since(at) < MIN_INTERVAL)
+    }
+
+    /// Reserve a gist line under desk rows: the daemon has a usable model.
+    pub fn lines_reserved(&self) -> bool {
+        self.model == Some(GistModelData::Available)
     }
 
     /// The ids to ask about now, in order, or `None` when there is nothing
@@ -93,16 +106,18 @@ impl RowGistState {
         if !self.due(now) {
             return None;
         }
+        self.last_look = Some(now);
+        let mut seen = HashSet::new();
         let mut wanted = Vec::new();
         for id in candidates {
-            if wanted.len() == MAX_BATCH {
+            if wanted.len() == THREAD_GISTS_MAX_BATCH {
                 break;
             }
             let asked = self
                 .requested
                 .get(&id)
                 .is_some_and(|at| now.duration_since(*at) < REQUEST_TTL);
-            if self.gists.contains_key(&id) || asked || wanted.contains(&id) {
+            if self.gists.contains_key(&id) || asked || !seen.insert(id.clone()) {
                 continue;
             }
             wanted.push(id);
@@ -113,7 +128,6 @@ impl RowGistState {
         for id in &wanted {
             self.requested.insert(id.clone(), now);
         }
-        self.last_request = Some(now);
         Some(wanted)
     }
 
@@ -228,9 +242,17 @@ mod tests {
             Some(vec![a.clone(), b.clone()])
         );
         let soon = start + Duration::from_millis(100);
-        assert_eq!(state.take_request([ThreadId::new()], soon), None, "rate limited");
+        assert_eq!(
+            state.take_request([ThreadId::new()], soon),
+            None,
+            "rate limited"
+        );
         let later = start + Duration::from_secs(1);
-        assert_eq!(state.take_request([a.clone(), b.clone()], later), None, "asked already");
+        assert_eq!(
+            state.take_request([a.clone(), b.clone()], later),
+            None,
+            "asked already"
+        );
         state.put(&ready(&a, Some("confirm the owner")));
         let after_ttl = start + REQUEST_TTL + Duration::from_secs(1);
         assert_eq!(

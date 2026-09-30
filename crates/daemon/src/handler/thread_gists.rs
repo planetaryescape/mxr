@@ -13,28 +13,25 @@
 //! queued or in-flight conversation never queues it twice; and the queue is
 //! capped, so requests for rows scrolled past long ago fall off the back.
 
+use super::diagnostics_impl::emit_operation_event;
 use super::mail_kind::{self, SenderKind};
 use super::places::AccountKinds;
 use super::thread_gist::{
-    cached_gist, thread_envelopes, thread_gist, GistCall, GistPolicy, GistSetup,
+    cached_gist, load_and_write_gist, thread_envelopes, GistCall, GistPolicy, GistSetup,
 };
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::Envelope;
 use mxr_protocol::{
-    ClientKind, DaemonEvent, GistModelData, IpcMessage, IpcPayload, ResponseData,
-    ThreadGistBatchData, ThreadGistData, ThreadGistSkipData, ThreadGistSkipReasonData,
-    ThreadGistStatusData,
+    DaemonEvent, GistModelData, ResponseData, ThreadGistBatchData, ThreadGistData,
+    ThreadGistSkipData, ThreadGistSkipReasonData, ThreadGistStatusData, THREAD_GISTS_MAX_BATCH,
 };
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// Most conversations one request may name: a screen of rows plus lookahead
-/// is a few dozen.
-pub(crate) const MAX_BATCH: usize = 100;
 /// Most conversations waiting for a writer. At one gist every few seconds,
 /// more than this is minutes of work for rows the user has left behind.
 const PENDING_CAP: usize = 64;
@@ -72,8 +69,7 @@ impl GistQueue {
             .filter(|id| !state.in_flight.contains(*id))
             .cloned()
             .collect();
-        let wanted: HashSet<&ThreadId> = fresh.iter().collect();
-        state.pending.retain(|id| !wanted.contains(id));
+        state.pending.retain(|id| !fresh.contains(id));
         for id in fresh.into_iter().rev() {
             state.pending.push_front(id);
         }
@@ -121,13 +117,18 @@ impl GistQueue {
         self.inner.lock().pending.clear();
     }
 
-    /// The model failed on this conversation, as it is now, a moment ago.
-    fn recently_failed(&self, id: &ThreadId, content_hash: &str) -> bool {
-        let mut state = self.inner.lock();
-        state
+    /// Forget failures older than the backoff; once per request.
+    fn prune_failed(&self) {
+        self.inner
+            .lock()
             .failed
             .retain(|_, (_, at)| at.elapsed() < FAILED_BACKOFF);
-        state
+    }
+
+    /// The model failed on this conversation, as it is now, a moment ago.
+    fn recently_failed(&self, id: &ThreadId, content_hash: &str) -> bool {
+        self.inner
+            .lock()
             .failed
             .get(id)
             .is_some_and(|(hash, _)| hash == content_hash)
@@ -149,9 +150,9 @@ pub(super) async fn get_thread_gists(
     thread_ids: &[ThreadId],
     generate: bool,
 ) -> HandlerResult {
-    if thread_ids.len() > MAX_BATCH {
+    if thread_ids.len() > THREAD_GISTS_MAX_BATCH {
         return Err(HandlerError::from(format!(
-            "at most {MAX_BATCH} conversations per request, got {}",
+            "at most {THREAD_GISTS_MAX_BATCH} conversations per request, got {}",
             thread_ids.len()
         )));
     }
@@ -174,6 +175,7 @@ pub(super) async fn get_thread_gists(
         return Ok(ResponseData::ThreadGists { batch });
     }
 
+    state.gist_queue.prune_failed();
     let mut seen = HashSet::new();
     let mut missing: Vec<Candidate> = Vec::new();
     for thread_id in thread_ids {
@@ -182,7 +184,9 @@ pub(super) async fn get_thread_gists(
         }
         let envelopes = thread_envelopes(state, thread_id).await?;
         let Some(setup) = GistSetup::new(&policy, thread_id, &envelopes) else {
-            batch.skipped.push(skip(thread_id, ThreadGistSkipReasonData::NotFound));
+            batch
+                .skipped
+                .push(skip(thread_id, ThreadGistSkipReasonData::NotFound));
             continue;
         };
         if let Some(gist) = cached_gist(state, thread_id, &setup).await? {
@@ -344,25 +348,9 @@ async fn write_one(
     state: &AppState,
     thread_id: &ThreadId,
 ) -> Result<(ThreadGistData, String), HandlerError> {
-    let envelopes = thread_envelopes(state, thread_id).await?;
-    let setup = GistSetup::new(&GistPolicy::pin(state), thread_id, &envelopes)
-        .ok_or_else(|| HandlerError::from(format!("thread {thread_id} not found")))?;
-    let gist = thread_gist(
-        state,
-        thread_id,
-        &envelopes,
-        &setup,
-        false,
-        GistCall::Background,
-    )
-    .await?;
-    Ok((gist, setup.content_hash))
+    load_and_write_gist(state, thread_id, false, GistCall::Background).await
 }
 
 fn announce(state: &AppState, gist: ThreadGistData) {
-    let _ = state.event_tx.send(IpcMessage {
-        id: 0,
-        source: ClientKind::default(),
-        payload: IpcPayload::Event(DaemonEvent::ThreadGistReady { gist }),
-    });
+    emit_operation_event(state, DaemonEvent::ThreadGistReady { gist });
 }

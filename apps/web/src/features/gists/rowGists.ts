@@ -11,16 +11,15 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 
-import { apiFetch } from "@/api/client";
 import type { DaemonEvent } from "@/api/events";
-import type { components } from "@/api/generated";
+import {
+  fetchThreadGists,
+  type GistModel,
+  type ThreadGist,
+  type ThreadGistBatch,
+} from "@/features/thread/context/api";
 import { provenanceLabel } from "@/features/thread/context/contextFormat";
 import { daemonEvents } from "@/lib/ws";
-
-type Schemas = components["schemas"];
-export type ThreadGistBatch = Schemas["ThreadGistBatchData"];
-type ThreadGist = Schemas["ThreadGistData"];
-type BatchResponse = Extract<Schemas["ResponseData"], { kind: "ThreadGists" }>;
 
 /** What a row shows. `ask` is the model's summary of the ask, not a quote. */
 export interface RowGist {
@@ -30,7 +29,7 @@ export interface RowGist {
   source: string;
 }
 
-/** Most ids one request may carry (the daemon's cap). */
+/** Most ids one request may carry (the daemon's `THREAD_GISTS_MAX_BATCH`). */
 export const MAX_BATCH = 100;
 /** A row asked about recently isn't asked about again until this passes. */
 const REQUEST_TTL_MS = 60_000;
@@ -43,6 +42,9 @@ const gists = new Map<string, { gist: RowGist; at: number }>();
 const listeners = new Map<string, Set<() => void>>();
 const requestedAt = new Map<string, number>();
 let noModelUntil = 0;
+/** What the daemon last said about its model; `undefined` until it has. */
+let model: GistModel | undefined;
+const modelListeners = new Set<() => void>();
 let unsubscribeEvents: (() => void) | undefined;
 
 export function toRowGist(data: ThreadGist): RowGist | null {
@@ -63,16 +65,44 @@ function notify(threadId: string): void {
 export function putGist(data: ThreadGist, now = Date.now()): void {
   const gist = toRowGist(data);
   if (!gist) return;
-  gists.set(data.thread_id, { gist, at: now });
-  notify(data.thread_id);
+  const shown = gists.get(data.thread_id)?.gist;
+  const same =
+    shown?.about === gist.about && shown.ask === gist.ask && shown.source === gist.source;
+  // Same words: refresh the timestamp without waking the row.
+  gists.set(data.thread_id, { gist: same ? shown : gist, at: now });
+  if (!same) notify(data.thread_id);
 }
 
-/** A new message changed these conversations: their gists no longer hold. */
-export function forgetGists(threadIds: Iterable<string>): void {
+/**
+ * Drop these conversations' gists. A new message (`askAgain`) also lets
+ * their rows ask again at once; a gist the cache no longer holds waits out
+ * the request TTL, since it was just asked about.
+ */
+export function forgetGists(threadIds: Iterable<string>, askAgain = true): void {
   for (const threadId of threadIds) {
-    requestedAt.delete(threadId);
+    if (askAgain) requestedAt.delete(threadId);
     if (gists.delete(threadId)) notify(threadId);
   }
+}
+
+function setModel(next: GistModel): void {
+  if (model === next) return;
+  model = next;
+  for (const listener of modelListeners) listener();
+}
+
+function subscribeModel(listener: () => void): () => void {
+  modelListeners.add(listener);
+  return () => modelListeners.delete(listener);
+}
+
+/** The daemon's last word on its model, for reserving row space. */
+export function useGistModel(): GistModel | undefined {
+  return useSyncExternalStore(
+    subscribeModel,
+    () => model,
+    () => model,
+  );
 }
 
 export function getRowGist(threadId: string): RowGist | undefined {
@@ -123,20 +153,23 @@ function onDaemonEvent(event: DaemonEvent): void {
   }
 }
 
+/**
+ * The event stream is typed loosely (any `type` string passes), so check
+ * the fields `putGist` reads before trusting the payload.
+ */
 function isGistEvent(event: DaemonEvent): event is { type: string; gist: ThreadGist } {
   const gist = (event as { gist?: unknown }).gist;
-  return typeof gist === "object" && gist !== null && "thread_id" in gist;
+  if (typeof gist !== "object" || gist === null) return false;
+  const { thread_id, status, gist: text } = gist as Record<string, unknown>;
+  return (
+    typeof thread_id === "string" &&
+    typeof status === "string" &&
+    (text == null || typeof text === "string")
+  );
 }
 
 function listen(): void {
   unsubscribeEvents ??= daemonEvents.subscribe(onDaemonEvent);
-}
-
-export function fetchGists(threadIds: string[], generate: boolean): Promise<ThreadGistBatch> {
-  return apiFetch<BatchResponse>("/api/v1/mail/gists", {
-    method: "POST",
-    body: { thread_ids: threadIds, generate },
-  }).then((response) => response.batch);
 }
 
 /**
@@ -167,12 +200,13 @@ export async function requestRowGists(
 
   let batch: ThreadGistBatch;
   try {
-    batch = await fetchGists(wanted, true);
+    batch = await fetchThreadGists(wanted, true);
   } catch {
     // Quiet: rows keep their snippets, and the next scroll asks again.
     for (const threadId of wanted) requestedAt.delete(threadId);
     return;
   }
+  setModel(batch.model);
   if (batch.model === "disabled") {
     noModelUntil = now + NO_MODEL_RECHECK_MS;
     return;
@@ -184,13 +218,10 @@ export async function requestRowGists(
   }
   // A shown gist the cache no longer has was for an older version of the
   // conversation: drop it rather than keep saying something stale.
-  forgetStale([...stale].filter((threadId) => !answered.has(threadId)));
-}
-
-function forgetStale(threadIds: string[]): void {
-  for (const threadId of threadIds) {
-    if (gists.delete(threadId)) notify(threadId);
-  }
+  forgetGists(
+    [...stale].filter((threadId) => !answered.has(threadId)),
+    false,
+  );
 }
 
 /** Tests only: start from nothing. */
@@ -199,6 +230,8 @@ export function resetRowGistsForTest(): void {
   requestedAt.clear();
   listeners.clear();
   noModelUntil = 0;
+  model = undefined;
+  modelListeners.clear();
   unsubscribeEvents?.();
   unsubscribeEvents = undefined;
 }

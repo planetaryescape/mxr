@@ -8,9 +8,10 @@ use crate::ipc_client::IpcClient;
 use crate::output::terminal_text;
 use mxr_core::ThreadId;
 use mxr_protocol::{
-    AiLocalityData, GistModelData, Request, Response, ResponseData, ThreadGistBatchData,
+    GistModelData, Request, Response, ResponseData, ThreadAskData, ThreadGistBatchData,
     ThreadGistData, ThreadGistSkipReasonData,
 };
+use mxr_tui::thread_context_rows::provenance_text;
 
 pub async fn run(
     client: &mut IpcClient,
@@ -43,25 +44,25 @@ pub(crate) async fn fetch(
     }
 }
 
-/// "What it's about · asks: what they want", the line a list row shows.
-/// The ask is the model's summary; a verified quote, when there is one, is
-/// in the JSON for highlighting.
+/// "asks: confirm the owner", the ask as list rows show it: the model's
+/// summary; a verified quote, when there is one, is in the JSON.
+pub(crate) fn ask_text(ask: &ThreadAskData) -> String {
+    format!("asks: {}", ask.summary)
+}
+
+/// "asks: what they want · what it's about", the line a list row shows,
+/// ask first as in the web and TUI rows.
 pub(crate) fn gist_line(gist: &ThreadGistData) -> String {
     let about = gist.gist.as_deref().unwrap_or_default();
     match &gist.ask {
-        Some(ask) => format!("{about} \u{b7} asks: {}", ask.summary),
+        Some(ask) => format!("{} \u{b7} {about}", ask_text(ask)),
         None => about.to_string(),
     }
 }
 
-/// "local model qwen2.5:7b", for saying where a line came from.
-pub(crate) fn source_label(gist: &ThreadGistData) -> Option<String> {
-    let provenance = gist.provenance.as_ref()?;
-    let place = match provenance.locality {
-        AiLocalityData::Local => "local",
-        AiLocalityData::Cloud => "cloud",
-    };
-    Some(format!("{place} model {}", provenance.model))
+/// Where a line came from, in the reader's words.
+fn source_label(gist: &ThreadGistData) -> Option<String> {
+    gist.provenance.as_ref().map(provenance_text)
 }
 
 fn render(
@@ -151,7 +152,7 @@ fn table(thread_ids: &[ThreadId], batch: &ThreadGistBatchData) -> String {
 mod tests {
     use super::*;
     use mxr_protocol::{
-        AiProvenanceData, AiSourceData, ThreadAskData, ThreadGistSkipData, ThreadGistStatusData,
+        AiLocalityData, AiProvenanceData, AiSourceData, ThreadGistSkipData, ThreadGistStatusData,
     };
 
     fn gist(thread_id: &ThreadId, ask: bool) -> ThreadGistData {
@@ -196,8 +197,8 @@ mod tests {
         assert_eq!(
             lines,
             vec![
-                format!("{a}  Canary stays at 5% until the dashboard is quiet.  (local model gemma4)"),
-                format!("{b}  Canary stays at 5% until the dashboard is quiet. \u{b7} asks: confirm who owns the rollout check  (local model gemma4)"),
+                format!("{a}  Canary stays at 5% until the dashboard is quiet.  (local model gemma4 \u{b7} from this thread only)"),
+                format!("{b}  asks: confirm who owns the rollout check \u{b7} Canary stays at 5% until the dashboard is quiet.  (local model gemma4 \u{b7} from this thread only)"),
                 format!("{c}  queued for the model"),
                 format!("{d}  not from a person, no gist"),
             ]

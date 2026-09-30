@@ -40,7 +40,7 @@ const QUOTE_MIN_CHARS: usize = 8;
 const MESSAGE_MAX_CHARS: usize = 6_000;
 const TRANSCRIPT_MAX_CHARS: usize = 24_000;
 
-pub(super) const FEATURE: LlmFeature = LlmFeature::Summarize;
+const FEATURE: LlmFeature = LlmFeature::Summarize;
 
 pub(crate) const SYSTEM_PROMPT: &str = r#"You write the reader gist for one email conversation, shown above the messages in an email client.
 
@@ -106,12 +106,23 @@ pub(super) async fn get_thread_gist(
     thread_id: &ThreadId,
     refresh: bool,
 ) -> HandlerResult {
+    let (gist, _) = load_and_write_gist(state, thread_id, refresh, GistCall::Foreground).await?;
+    Ok(ResponseData::ThreadGist { gist })
+}
+
+/// Load the conversation and return its gist (cached unless `refresh`),
+/// with the content hash it answers for.
+pub(super) async fn load_and_write_gist(
+    state: &AppState,
+    thread_id: &ThreadId,
+    refresh: bool,
+    call: GistCall,
+) -> Result<(ThreadGistData, String), HandlerError> {
     let envelopes = thread_envelopes(state, thread_id).await?;
     let setup = GistSetup::new(&GistPolicy::pin(state), thread_id, &envelopes)
         .ok_or_else(|| HandlerError::from(format!("thread {thread_id} not found")))?;
-    let gist = thread_gist(state, thread_id, &envelopes, &setup, refresh, GistCall::Foreground)
-        .await?;
-    Ok(ResponseData::ThreadGist { gist })
+    let gist = thread_gist(state, thread_id, &envelopes, &setup, refresh, call).await?;
+    Ok((gist, setup.content_hash))
 }
 
 /// The conversation's messages, oldest first; empty for an unknown thread.
@@ -203,7 +214,7 @@ pub(super) async fn cached_gist(
 
 /// The gist for a conversation: from the cache unless `refresh`, else
 /// written by the model and cached. An unavailable model is a status.
-pub(super) async fn thread_gist(
+async fn thread_gist(
     state: &AppState,
     thread_id: &ThreadId,
     envelopes: &[Envelope],

@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { isLongThread } from "./longThread";
 
-const message = (id: string) => ({ id }) as never;
+const message = (id: string) => ({ id });
 const words = (count: number) => Array.from({ length: count }, (_, i) => `w${i}`).join(" ");
 
 describe("isLongThread", () => {

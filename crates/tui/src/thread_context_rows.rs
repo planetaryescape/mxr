@@ -151,7 +151,9 @@ fn relationship(person: &ThreadCounterpartyData, now: DateTime<Utc>) -> String {
 }
 
 /// "local model qwen2.5 · from this thread only".
-fn provenance_text(provenance: &AiProvenanceData) -> String {
+/// "local model qwen2.5 · from this thread only": who wrote model text
+/// and what it read.
+pub fn provenance_text(provenance: &AiProvenanceData) -> String {
     let place = match provenance.locality {
         AiLocalityData::Local => "local model",
         AiLocalityData::Cloud => "cloud model",

@@ -21,7 +21,10 @@ type DeskRowProps = RowRenderState & {
   gistLine: boolean;
 };
 
-/** Lanes where the other person's ask says why the row is here. */
+/**
+ * Lanes where the other person's ask says why the row is here; the
+ * daemon's `DeskLaneKind::shows_ask`, which the CLI and TUI use.
+ */
 const ASK_LANES = new Set(["owed", "people_new"]);
 
 /**
@@ -47,6 +50,7 @@ export const DeskRow = memo(function DeskRow({
   // This row's own gist: when it lands, only this row re-renders.
   const gist = useRowGist(desk.thread_id);
   const ask = gist?.ask && ASK_LANES.has(desk.lane) ? gist.ask : null;
+  const askTitle = ask && gist ? gistTitle(gist) : undefined;
   return (
     <div
       id={state.domId}
@@ -104,10 +108,21 @@ export const DeskRow = memo(function DeskRow({
           // the row keeps its height when it does.
           gistLine ? "truncate" : "line-clamp-2 @2xl:line-clamp-none",
         )}
-        title={ask && gist ? gistTitle(gist) : undefined}
+        title={askTitle}
       >
-        {subject ? <span className="font-medium text-foreground/85">{subject}</span> : null}
-        {subject ? <span aria-hidden> · </span> : null}
+        {/* On a narrow row an ask would be cut off after the subject: it
+            goes first, and the gist line below says what it is about. */}
+        {subject ? (
+          <span className={cn("font-medium text-foreground/85", ask && "hidden @2xl:inline")}>
+            {subject}
+          </span>
+        ) : null}
+        {subject ? (
+          <span aria-hidden className={cn(ask && "hidden @2xl:inline")}>
+            {" "}
+            ·{" "}
+          </span>
+        ) : null}
         {ask ? (
           <span data-testid="desk-ask">
             <GistAsk ask={ask} />

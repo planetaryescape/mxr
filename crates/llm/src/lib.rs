@@ -416,9 +416,7 @@ impl FeatureLlmRuntime {
         &self,
         req: CompletionRequest,
     ) -> Result<CompletionResponse, LlmError> {
-        self.runtime
-            .guard_background(self.complete(req))
-            .await
+        self.runtime.guard_background(self.complete(req)).await
     }
 
     /// Whether a background worker should send this input (`key` names it,

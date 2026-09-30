@@ -175,7 +175,7 @@ fn row_line(
     // row is here better than the lane's reason.
     let ask = gist
         .and_then(|gist| gist.ask.as_deref())
-        .filter(|_| matches!(kind, DeskLaneKind::Owed | DeskLaneKind::PeopleNew));
+        .filter(|_| kind.shows_ask());
     let reason = match ask {
         Some(ask) => format!("asks: {}", one_line(ask)),
         None => one_line(&row.reason),
@@ -340,10 +340,10 @@ mod tests {
         let waiting = row(DeskLaneKind::Owed, "Nora", 7_200, None);
         let gists = RowGists::from([(
             owed.thread_id.clone(),
-            RowGist {
-                about: "Canary stays at 5% until the dashboard is quiet.".into(),
-                ask: Some("confirm the owner".into()),
-            },
+            RowGist::new(
+                "Canary stays at 5% until the dashboard is quiet.".into(),
+                Some("confirm the owner".into()),
+            ),
         )]);
         let desk = desk(vec![owed, waiting], vec![]);
         let rendered = render_with(&desk, &gists, true);
@@ -356,7 +356,10 @@ mod tests {
         assert!(rendered.contains("replied to your message"), "{rendered}");
         let lines: Vec<&str> = rendered.lines().collect();
         let nora = lines.iter().position(|l| l.contains("Nora")).unwrap();
-        assert!(lines[nora + 1].trim_matches(['│', ' ', '"']).is_empty(), "{rendered}");
+        assert!(
+            lines[nora + 1].trim_matches(['│', ' ', '"']).is_empty(),
+            "{rendered}"
+        );
 
         // With no model, rows are exactly as before: no reserved lines.
         let plain = render(&desk);

@@ -203,8 +203,7 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                     row_gists: &self.row_gists.gists,
-                                    gist_lines: self.row_gists.model
-                                        == Some(mxr_protocol::GistModelData::Available),
+                                    gist_lines: self.row_gists.lines_reserved(),
                                 },
                                 theme,
                             );
@@ -300,8 +299,7 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                     row_gists: &self.row_gists.gists,
-                                    gist_lines: self.row_gists.model
-                                        == Some(mxr_protocol::GistModelData::Available),
+                                    gist_lines: self.row_gists.lines_reserved(),
                                 },
                                 theme,
                             );

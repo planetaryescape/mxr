@@ -115,7 +115,9 @@ impl LlmProvider for GatedLlm {
 /// thread and its message id (which the prompt names).
 async fn conversation(fx: &Fixture, from: &str) -> (ThreadId, String) {
     let thread = ThreadId::new();
-    let envelope = fx.message(&thread, from, ME, Duration::hours(2), None).await;
+    let envelope = fx
+        .message(&thread, from, ME, Duration::hours(2), None)
+        .await;
     fx.state
         .store
         .insert_body(&MessageBody {
@@ -211,7 +213,10 @@ async fn cached_gists_come_back_at_once_without_a_model_call() {
     let gist = &batch.gists[0];
     assert!(gist.from_cache);
     assert_eq!(
-        gist.ask.as_ref().and_then(|ask| ask.quote.as_ref()).map(|q| q.text.as_str()),
+        gist.ask
+            .as_ref()
+            .and_then(|ask| ask.quote.as_ref())
+            .map(|q| q.text.as_str()),
         Some(ASK),
         "the verified quote travels with the list gist"
     );
@@ -227,7 +232,10 @@ async fn without_generate_a_missing_gist_is_only_reported() {
     fx.state.llm.replace(llm.clone());
     let batch = gists(&fx, std::slice::from_ref(&thread), false).await;
     assert!(batch.gists.is_empty() && batch.queued.is_empty());
-    assert_eq!(batch.skipped[0].reason, ThreadGistSkipReasonData::NotGenerated);
+    assert_eq!(
+        batch.skipped[0].reason,
+        ThreadGistSkipReasonData::NotGenerated
+    );
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     assert_eq!(llm.calls.load(Ordering::SeqCst), 0);
 }
@@ -273,7 +281,11 @@ async fn only_conversations_with_people_go_to_the_model() {
     let ready = ready_events(&mut events, 1).await;
     assert_eq!(ready[0].thread_id, person);
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert_eq!(llm.calls.load(Ordering::SeqCst), 1, "one call, for the person");
+    assert_eq!(
+        llm.calls.load(Ordering::SeqCst),
+        1,
+        "one call, for the person"
+    );
 }
 
 #[tokio::test]
@@ -296,28 +308,51 @@ async fn gists_are_written_in_the_order_asked_newest_request_first_each_once() {
     // The user scrolled: the new rows jump the queue, and asking again for
     // one already queued or being written never adds it twice.
     let second = gists(&fx, &[ids[3].clone(), ids[1].clone(), ids[0].clone()], true).await;
-    assert_eq!(second.queued.len(), 3, "queued or in flight, each is reported");
+    assert_eq!(
+        second.queued.len(),
+        3,
+        "queued or in flight, each is reported"
+    );
     let (pending, in_flight, writers) = fx.state.gist_queue.snapshot();
     assert_eq!(pending, vec![ids[3].clone(), ids[1].clone()]);
     assert_eq!(in_flight, vec![ids[0].clone()]);
     assert_eq!(writers, 1);
 
     let third = gists(&fx, &[ids[2].clone(), ids[2].clone()], true).await;
-    assert_eq!(third.queued, vec![ids[2].clone()], "duplicates in a request collapse");
+    assert_eq!(
+        third.queued,
+        vec![ids[2].clone()],
+        "duplicates in a request collapse"
+    );
 
     llm.release(4);
     let ready = ready_events(&mut events, 4).await;
     let order = llm.order(&threads);
     assert_eq!(
         order,
-        vec![ids[0].clone(), ids[2].clone(), ids[3].clone(), ids[1].clone()]
+        vec![
+            ids[0].clone(),
+            ids[2].clone(),
+            ids[3].clone(),
+            ids[1].clone()
+        ]
     );
     assert_eq!(
-        ready.iter().map(|gist| gist.thread_id.clone()).collect::<Vec<_>>(),
+        ready
+            .iter()
+            .map(|gist| gist.thread_id.clone())
+            .collect::<Vec<_>>(),
         order
     );
-    assert_eq!(llm.calls.load(Ordering::SeqCst), 4, "each conversation once");
-    wait_for("the writer to retire", || fx.state.gist_queue.snapshot().2 == 0).await;
+    assert_eq!(
+        llm.calls.load(Ordering::SeqCst),
+        4,
+        "each conversation once"
+    );
+    wait_for("the writer to retire", || {
+        fx.state.gist_queue.snapshot().2 == 0
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -395,7 +430,7 @@ async fn a_privacy_block_queues_nothing() {
 #[tokio::test]
 async fn a_batch_is_capped() {
     let fx = Fixture::new().await;
-    let ids: Vec<ThreadId> = (0..=super::super::thread_gists::MAX_BATCH)
+    let ids: Vec<ThreadId> = (0..=mxr_protocol::THREAD_GISTS_MAX_BATCH)
         .map(|_| ThreadId::new())
         .collect();
     let msg = IpcMessage {
@@ -432,10 +467,14 @@ async fn a_conversation_the_model_failed_on_waits_before_it_is_tried_again() {
 
     let again = gists(&fx, std::slice::from_ref(&thread), true).await;
     assert!(again.queued.is_empty());
-    assert_eq!(again.skipped[0].reason, ThreadGistSkipReasonData::RecentlyFailed);
+    assert_eq!(
+        again.skipped[0].reason,
+        ThreadGistSkipReasonData::RecentlyFailed
+    );
 
     // A new message changes the conversation: it is worth another try.
-    fx.message(&thread, MAYA, ME, Duration::minutes(1), None).await;
+    fx.message(&thread, MAYA, ME, Duration::minutes(1), None)
+        .await;
     let changed = gists(&fx, std::slice::from_ref(&thread), true).await;
     assert_eq!(changed.queued, vec![thread]);
 }
@@ -479,12 +518,20 @@ async fn list_gist_throughput_against_a_local_model() {
     for (index, messages) in [1usize, 1, 2, 3, 4, 6].iter().enumerate() {
         let thread = ThreadId::new();
         for position in 0..*messages {
-            let from = if position % 2 == 1 { ME } else { people[index % people.len()] };
+            let from = if position % 2 == 1 {
+                ME
+            } else {
+                people[index % people.len()]
+            };
             let envelope = fx
                 .message(
                     &thread,
                     from,
-                    if from == ME { people[index % people.len()] } else { ME },
+                    if from == ME {
+                        people[index % people.len()]
+                    } else {
+                        ME
+                    },
                     Duration::hours((messages - position) as i64),
                     None,
                 )

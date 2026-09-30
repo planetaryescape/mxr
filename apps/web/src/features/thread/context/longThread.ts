@@ -7,19 +7,22 @@
  * the messages are the gist.
  */
 
-import type { ThreadResponse } from "@/features/mailbox/types";
+import type { MessageBodyView } from "@/features/mailbox/types";
 
 export const LONG_THREAD_MESSAGES = 4;
 export const LONG_THREAD_WORDS = 400;
 
 /** Words the reader would show: the cleaned text, not quoted history. */
-function bodyWords(body: ThreadResponse["bodies"][number]): number {
+function bodyWords(body: MessageBodyView): number {
   const text =
     body.reader_text ?? body.text_plain ?? body.text_html?.replace(/<[^>]*>/g, " ") ?? "";
   return text.split(/\s+/).filter(Boolean).length;
 }
 
-export function isLongThread(data: Pick<ThreadResponse, "messages" | "bodies">): boolean {
+export function isLongThread(data: {
+  messages: readonly unknown[];
+  bodies: readonly MessageBodyView[];
+}): boolean {
   if (data.messages.length >= LONG_THREAD_MESSAGES) return true;
   let words = 0;
   for (const body of data.bodies) {

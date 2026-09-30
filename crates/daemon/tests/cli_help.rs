@@ -359,10 +359,7 @@ fn cli_help_snapshots_cover_all_commands() {
             "cli_help_briefing_recipient",
             &["briefing", "recipient", "--help"],
         ),
-        (
-            "cli_help_briefing_gists",
-            &["briefing", "gists", "--help"],
-        ),
+        ("cli_help_briefing_gists", &["briefing", "gists", "--help"]),
     ];
 
     assert_eq!(cases.len(), 204);

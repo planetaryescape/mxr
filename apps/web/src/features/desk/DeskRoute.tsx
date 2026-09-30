@@ -15,6 +15,7 @@ import { deskDoneItem, markDeskDone, useDeskDone } from "./deskDone";
 import { elsewhereLinks } from "./deskLinks";
 import { deskGroups, partialLane } from "./deskRows";
 import { DeskRow } from "./DeskRow";
+import { useGistModel } from "@/features/gists/rowGists";
 import { useLlmStatus } from "@/features/llm/useLlmStatus";
 import { LowTide } from "@/features/low-tide/LowTide";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
@@ -95,9 +96,11 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
     [index],
   );
 
-  // A model is configured: rows reserve a line for their gist. Read here,
-  // once for the page; each row subscribes to its own gist.
-  const gistLine = useLlmStatus().enabled;
+  // A model is configured and the daemon can use it: rows reserve a line
+  // for their gist. Read here, once for the page; each row subscribes to
+  // its own gist.
+  const gistModel = useGistModel();
+  const gistLine = useLlmStatus().enabled && gistModel !== "disabled" && gistModel !== "blocked";
   const renderRow = useCallback(
     (row: MessageRowView, state: RowRenderState) => {
       const source = index.get(row.id);

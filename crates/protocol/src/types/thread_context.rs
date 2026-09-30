@@ -107,6 +107,10 @@ pub enum ThreadGistStatusData {
     Failed,
 }
 
+/// Most conversations one `Request::GetThreadGists` may name: a screen of
+/// rows plus lookahead is a few dozen.
+pub const THREAD_GISTS_MAX_BATCH: usize = 100;
+
 /// Returned by `Request::GetThreadGists`: the gists a list can show now,
 /// straight from the cache, and what was queued to be written.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

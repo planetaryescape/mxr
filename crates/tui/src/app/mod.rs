@@ -59,7 +59,6 @@ use tui_textarea::TextArea;
 
 pub(in crate::app) use crate::ui::label_picker::LabelPickerMode;
 pub use focus_run::FocusRun;
-pub use row_gists::{RowGist, RowGistState, RowGists};
 pub(crate) use mailbox_helpers::auto_summary_eligible;
 pub use mutation_snapshot::{
     MutationId, MutationIdGenerator, MutationSnapshot, MutationSnapshotStore, QueuedMutation,
@@ -69,6 +68,7 @@ pub use pending_optimistic::PendingOptimisticState;
 pub use promises::PromisePrompt;
 #[cfg(test)]
 pub(crate) use promises::{PROMISE_ANSWER_GUARD, PROMISE_PROMPT_TTL};
+pub use row_gists::{RowGist, RowGistState, RowGists};
 use state::PendingPreviewRead;
 pub use state::*;
 

@@ -33,8 +33,15 @@ pub struct OwedReplyRow {
     pub overdue_score: f64,
 }
 
-/// Latest unanswered inbound message per thread, with its sender's contact
-/// and screener rows. Shared with the query-plan test below.
+/// Latest unanswered inbound message per thread, scored and ranked in
+/// SQL so only the returned page is read into Rust. Every candidate is
+/// scored, so the per-thread work stays inside `idx_messages_owed` and the
+/// table row is read only for the returned page (see `scale_tests`).
+///
+/// Parameters: ?1 account, ?2 earliest latest-inbound time (the `within`
+/// window) or NULL, ?3 latest latest-inbound time (the `older than`
+/// floor) or NULL, ?4 now (unix seconds), ?5 the expected days when no
+/// contact has a cadence, ?6 the limit.
 const OWED_REPLIES_SQL: &str = r#"WITH inbound_latest AS (
         SELECT
             thread_id,
@@ -42,23 +49,73 @@ const OWED_REPLIES_SQL: &str = r#"WITH inbound_latest AS (
         FROM messages
         WHERE account_id = ?1 AND direction = 'inbound'
         GROUP BY thread_id
+        -- A future-dated latest inbound is not waiting yet. The windows
+        -- apply to the latest inbound, so they drop threads before lookups.
+        HAVING MAX(date) <= ?4
+           AND (?2 IS NULL OR MAX(date) >= ?2)
+           AND (?3 IS NULL OR MAX(date) <= ?3)
     ),
-    outbound_latest AS (
-        SELECT
-            thread_id,
-            MAX(date) AS latest_outbound_at
-        FROM messages
-        WHERE account_id = ?1 AND direction = 'outbound'
-        GROUP BY thread_id
+    global_cadence AS (
+        SELECT COALESCE(AVG(cadence_days_p50), ?5) AS days
+        FROM contacts
+        WHERE account_id = ?1 AND cadence_days_p50 IS NOT NULL
     ),
-    owed AS (
+    scored AS (
         SELECT
-            inbound_latest.thread_id,
-            inbound_latest.latest_inbound_at
+            m.rowid AS msg_rowid,
+            m.thread_id,
+            m.date,
+            -- The sender's reply cadence when it is a usable number of
+            -- days, else the account's average, and never under half a day.
+            MAX(
+                CASE
+                    -- Text sorts above any number, so these bounds also
+                    -- reject a non-numeric value, as decoding it did.
+                    WHEN contacts.cadence_days_p50 > 0
+                     AND contacts.cadence_days_p50 <= 1.7976931348623157e308
+                    THEN contacts.cadence_days_p50
+                    ELSE global_cadence.days
+                END,
+                0.5
+            ) AS expected_days,
+            (CAST(?4 - m.date AS REAL) / 86400.0) AS waiting_days
+        -- CROSS JOIN pins the join order: threads first, then a key search
+        -- for their latest inbound message (ties on date return each one).
         FROM inbound_latest
-        LEFT JOIN outbound_latest USING (thread_id)
-        WHERE outbound_latest.latest_outbound_at IS NULL
-           OR outbound_latest.latest_outbound_at <= inbound_latest.latest_inbound_at
+        CROSS JOIN global_cadence
+        CROSS JOIN messages m
+          ON m.account_id = ?1
+         AND m.direction = 'inbound'
+         AND m.thread_id = inbound_latest.thread_id
+         AND m.date = inbound_latest.latest_inbound_at
+        -- Bare columns on the table side, so the (account_id, email)
+        -- keys are used: contacts are stored lowercase, and
+        -- screener_decisions.sender_email is COLLATE NOCASE. Wrapping
+        -- them in LOWER() scanned every contact per candidate thread.
+        LEFT JOIN contacts
+          ON contacts.account_id = m.account_id
+         AND contacts.email = LOWER(m.from_email)
+        LEFT JOIN screener_decisions
+          ON screener_decisions.account_id = m.account_id
+         AND screener_decisions.sender_email = LOWER(m.from_email)
+        WHERE NOT EXISTS (
+                SELECT 1
+                FROM messages outbound
+                WHERE outbound.account_id = ?1
+                  AND outbound.direction = 'outbound'
+                  AND outbound.thread_id = inbound_latest.thread_id
+                  AND outbound.date > inbound_latest.latest_inbound_at
+            )
+          AND COALESCE(contacts.is_list_sender, 0) = 0
+          AND COALESCE(screener_decisions.disposition, '') != 'deny'
+    ),
+    ranked AS (
+        SELECT *, waiting_days / expected_days AS overdue_score
+        FROM scored
+        -- Highest overdue first, then most recent inbound, then thread id,
+        -- then insertion order for two messages sharing a thread and date.
+        ORDER BY overdue_score DESC, date DESC, thread_id, msg_rowid
+        LIMIT ?6
     )
     SELECT
         m.id AS msg_id,
@@ -67,31 +124,13 @@ const OWED_REPLIES_SQL: &str = r#"WITH inbound_latest AS (
         m.from_name,
         m.subject,
         m.date AS latest_inbound_at,
-        contacts.cadence_days_p50 AS contact_cadence,
-        COALESCE(contacts.is_list_sender, 0) AS is_list_sender,
-        COALESCE(screener_decisions.disposition, '') AS screener_disposition
-    FROM owed
-    JOIN messages m
-      ON m.thread_id = owed.thread_id
-     AND m.date = owed.latest_inbound_at
-     AND m.account_id = ?1
-     AND m.direction = 'inbound'
-    -- Bare columns on the table side, so the (account_id, email)
-    -- keys are used: contacts are stored lowercase, and
-    -- screener_decisions.sender_email is COLLATE NOCASE. Wrapping
-    -- them in LOWER() scanned every contact per candidate thread.
-    LEFT JOIN contacts
-      ON contacts.account_id = m.account_id
-     AND contacts.email = LOWER(m.from_email)
-    LEFT JOIN screener_decisions
-      ON screener_decisions.account_id = m.account_id
-     AND screener_decisions.sender_email = LOWER(m.from_email)
-    WHERE COALESCE(contacts.is_list_sender, 0) = 0
-      AND COALESCE(screener_decisions.disposition, '') != 'deny'
-      -- The waiting window, when asked for: a large mailbox has tens of
-      -- thousands of unanswered threads, most of them years old.
-      AND (?2 IS NULL OR m.date >= ?2)
-      AND (?3 IS NULL OR m.date <= ?3)
+        ranked.waiting_days,
+        ranked.expected_days,
+        ranked.overdue_score
+    FROM ranked
+    JOIN messages m ON m.rowid = ranked.msg_rowid
+    -- The join does not keep the subquery's order.
+    ORDER BY ranked.overdue_score DESC, ranked.date DESC, ranked.thread_id, ranked.msg_rowid
     "#;
 
 impl super::Store {
@@ -109,78 +148,52 @@ impl super::Store {
         within_days: Option<u32>,
         limit: u32,
     ) -> Result<Vec<OwedReplyRow>, sqlx::Error> {
-        let started_at = Instant::now();
-        let now_unix = Utc::now().timestamp();
-        let global_p50: Option<f64> = sqlx::query_scalar(
-            "SELECT AVG(cadence_days_p50)
-             FROM contacts
-             WHERE account_id = ? AND cadence_days_p50 IS NOT NULL",
+        self.list_owed_replies_at(
+            account_id,
+            older_than_days,
+            within_days,
+            limit,
+            Utc::now().timestamp(),
         )
-        .bind(account_id.as_str())
-        .fetch_optional(self.reader())
-        .await?
-        .flatten();
-        let global_p50 = global_p50.unwrap_or(DEFAULT_EXPECTED_DAYS);
+        .await
+    }
 
+    async fn list_owed_replies_at(
+        &self,
+        account_id: &AccountId,
+        older_than_days: Option<u32>,
+        within_days: Option<u32>,
+        limit: u32,
+        now_unix: i64,
+    ) -> Result<Vec<OwedReplyRow>, sqlx::Error> {
+        let started_at = Instant::now();
         let day = 86_400_i64;
         let rows = sqlx::query(OWED_REPLIES_SQL)
             .bind(account_id.as_str())
             .bind(within_days.map(|days| now_unix - i64::from(days) * day))
             .bind(older_than_days.map(|days| now_unix - i64::from(days) * day))
+            .bind(now_unix)
+            .bind(DEFAULT_EXPECTED_DAYS)
+            .bind(i64::from(limit))
             .fetch_all(self.reader())
             .await?;
 
-        let mut owed = Vec::with_capacity(rows.len());
-        for row in rows {
-            let inbound_at_secs: i64 = row.try_get("latest_inbound_at")?;
-            let inbound_at = decode_timestamp(inbound_at_secs)?;
-            let waiting_secs = now_unix - inbound_at_secs;
-            if waiting_secs < 0 {
-                continue;
-            }
-            let waiting_days = waiting_secs as f64 / 86_400.0;
-
-            if let Some(min) = older_than_days {
-                if waiting_days < min as f64 {
-                    continue;
-                }
-            }
-            if let Some(max) = within_days {
-                if waiting_days > max as f64 {
-                    continue;
-                }
-            }
-
-            let contact_cadence: Option<f64> = row.try_get("contact_cadence").ok();
-            let expected_days = contact_cadence
-                .filter(|v| v.is_finite() && *v > 0.0)
-                .unwrap_or(global_p50)
-                .max(0.5);
-            let overdue_score = waiting_days / expected_days;
-
-            owed.push(OwedReplyRow {
-                thread_id: decode_id(row.try_get::<&str, _>("thread_id")?)?,
-                latest_inbound_msg_id: decode_id(row.try_get::<&str, _>("msg_id")?)?,
-                from_email: row.try_get("from_email")?,
-                from_name: row.try_get("from_name")?,
-                subject: row.try_get("subject")?,
-                latest_inbound_at: inbound_at,
-                waiting_days,
-                expected_days,
-                overdue_score,
-            });
-        }
-
-        // Stable sort: highest overdue first, then most-recent inbound
-        // first, then thread_id for determinism.
-        owed.sort_by(|a, b| {
-            b.overdue_score
-                .partial_cmp(&a.overdue_score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then(b.latest_inbound_at.cmp(&a.latest_inbound_at))
-                .then(a.thread_id.as_str().cmp(&b.thread_id.as_str()))
-        });
-        owed.truncate(limit as usize);
+        let owed = rows
+            .into_iter()
+            .map(|row| {
+                Ok(OwedReplyRow {
+                    thread_id: decode_id(row.try_get::<&str, _>("thread_id")?)?,
+                    latest_inbound_msg_id: decode_id(row.try_get::<&str, _>("msg_id")?)?,
+                    from_email: row.try_get("from_email")?,
+                    from_name: row.try_get("from_name")?,
+                    subject: row.try_get("subject")?,
+                    latest_inbound_at: decode_timestamp(row.try_get("latest_inbound_at")?)?,
+                    waiting_days: row.try_get("waiting_days")?,
+                    expected_days: row.try_get("expected_days")?,
+                    overdue_score: row.try_get("overdue_score")?,
+                })
+            })
+            .collect::<Result<Vec<_>, sqlx::Error>>()?;
 
         trace_query("owed_replies.list", started_at, owed.len());
         Ok(owed)
@@ -192,43 +205,6 @@ mod tests {
     use super::*;
     use crate::Store;
     use mxr_core::types::*;
-
-    /// Every candidate thread looks up its sender's contact and screener
-    /// rows. On a large mailbox (tens of thousands of threads, thousands of
-    /// contacts) that must be a keyed search: a scan per thread took the
-    /// query past two minutes. Wrapping the table's column in a function
-    /// (LOWER(contacts.email)) is what turns it into a scan.
-    #[tokio::test]
-    async fn owed_query_looks_up_contacts_and_screener_by_key() {
-        let store = Store::in_memory().await.unwrap();
-        let plan: Vec<String> = sqlx::query(sqlx::AssertSqlSafe(format!(
-            "EXPLAIN QUERY PLAN {OWED_REPLIES_SQL}"
-        )))
-        .bind("account")
-        .fetch_all(store.reader())
-        .await
-        .unwrap()
-        .into_iter()
-        .map(|row| row.get::<String, _>("detail"))
-        .collect();
-        for table in ["contacts", "screener_decisions"] {
-            // The table's own key, not an automatic index built per query.
-            assert!(
-                plan.iter().any(|step| {
-                    step.starts_with(&format!("SEARCH {table} USING"))
-                        && step.contains("sqlite_autoindex")
-                        && !step.contains("AUTOMATIC")
-                }),
-                "{table} must be searched by its key: {plan:#?}"
-            );
-            assert!(
-                !plan
-                    .iter()
-                    .any(|step| step.starts_with(&format!("SCAN {table}"))),
-                "{table} must not be scanned: {plan:#?}"
-            );
-        }
-    }
 
     async fn fixture_account(store: &Store) -> AccountId {
         let acct = mxr_core::Account {
@@ -455,3 +431,6 @@ mod tests {
         assert_eq!(rows.len(), 1);
     }
 }
+
+#[cfg(test)]
+mod scale_tests;

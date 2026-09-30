@@ -37,9 +37,16 @@ export function draftProvenanceLine(provenance: DraftProvenance): string {
     );
   }
   parts.push(provenance.history_used ? "history used" : "history not used");
-  if (provenance.rewrite) {
-    const place = provenance.rewrite.locality === "local" ? "local" : "cloud";
-    parts.push(`rewritten by ${place} model ${provenance.rewrite.model}`);
+  const rewrite = provenance.rewrite;
+  if (rewrite) {
+    const by = `${rewrite.locality === "local" ? "local" : "cloud"} model ${rewrite.model}`;
+    parts.push(
+      rewrite.outcome === "rejected"
+        ? `rewrite attempted by ${by}, not used`
+        : rewrite.outcome === "skipped"
+          ? `rewrite by ${by} skipped to keep your history local`
+          : `rewritten by ${by}`,
+    );
   }
   return parts.join(" · ");
 }

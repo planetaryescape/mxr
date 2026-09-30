@@ -25,7 +25,8 @@ pub struct DraftProvenanceData {
     /// oldest first. Empty for a new message or a refine.
     #[serde(default)]
     pub conversation: Vec<DraftSourceData>,
-    /// A second model pass rewrote the draft to read less machine-made.
+    /// The humanizer's second model pass (to read less machine-made): who
+    /// ran it and whether its text was used. Absent when no pass was due.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rewrite: Option<DraftRewriteProvenanceData>,
 }
@@ -45,14 +46,32 @@ pub struct DraftSourceData {
     pub person_name: Option<String>,
 }
 
-/// The model that rewrote a draft after it was written.
+/// The model pass that rewrites a draft after it was written.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DraftRewriteProvenanceData {
+    /// The model that answered the rewrite (or would have, when skipped).
     pub model: String,
     pub locality: AiLocalityData,
     /// The rewrite saw the user's habits and past emails, to keep the voice.
     pub history_used: bool,
+    #[serde(default)]
+    pub outcome: DraftRewriteOutcomeData,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DraftRewriteOutcomeData {
+    /// The rewritten text is what the user got.
+    #[default]
+    Applied,
+    /// The model was called and saw the draft, but its text wasn't better,
+    /// so the original was kept.
+    Rejected,
+    /// Not called: the draft was written from the user's history and the
+    /// rewrite model is a cloud one without their opt-in.
+    Skipped,
 }
 
 impl DraftProvenanceData {
@@ -81,11 +100,7 @@ impl DraftProvenanceData {
             .to_string(),
         );
         if let Some(rewrite) = &self.rewrite {
-            let place = match rewrite.locality {
-                AiLocalityData::Local => "local",
-                AiLocalityData::Cloud => "cloud",
-            };
-            parts.push(format!("rewritten by {place} model {}", rewrite.model));
+            parts.push(rewrite.label());
         }
         parts.join(" · ")
     }
@@ -109,6 +124,27 @@ impl DraftProvenanceData {
             lines.extend(sources.iter().map(DraftSourceData::terminal_line));
         }
         lines
+    }
+}
+
+impl DraftRewriteProvenanceData {
+    /// "rewritten by local model gemma4", "rewrite attempted by cloud model
+    /// gpt-4o-mini, not used", or why it was skipped.
+    pub fn label(&self) -> String {
+        let place = match self.locality {
+            AiLocalityData::Local => "local",
+            AiLocalityData::Cloud => "cloud",
+        };
+        let model = &self.model;
+        match self.outcome {
+            DraftRewriteOutcomeData::Applied => format!("rewritten by {place} model {model}"),
+            DraftRewriteOutcomeData::Rejected => {
+                format!("rewrite attempted by {place} model {model}, not used")
+            }
+            DraftRewriteOutcomeData::Skipped => {
+                format!("rewrite by {place} model {model} skipped to keep your history local")
+            }
+        }
     }
 }
 
@@ -136,7 +172,7 @@ impl DraftSourceData {
 }
 
 /// "Local model gemma4" / "Cloud model gpt-4o-mini".
-pub fn model_label(locality: AiLocalityData, model: &str) -> String {
+fn model_label(locality: AiLocalityData, model: &str) -> String {
     match locality {
         AiLocalityData::Local => format!("Local model {model}"),
         AiLocalityData::Cloud => format!("Cloud model {model}"),
@@ -189,6 +225,7 @@ mod tests {
             model: "gpt-4o-mini".to_string(),
             locality: AiLocalityData::Cloud,
             history_used: false,
+            outcome: DraftRewriteOutcomeData::Applied,
         });
         assert_eq!(
             data.summary_line(),
@@ -215,6 +252,26 @@ mod tests {
         }))
         .expect("a source without a name parses");
         assert_eq!(data.short_person(), "maya@x.com");
+    }
+
+    #[test]
+    fn a_rewrite_that_was_not_used_or_not_run_says_so() {
+        let mut data = provenance(Vec::new());
+        let mut rewrite = DraftRewriteProvenanceData {
+            model: "gpt-4o-mini".to_string(),
+            locality: AiLocalityData::Cloud,
+            history_used: false,
+            outcome: DraftRewriteOutcomeData::Rejected,
+        };
+        data.rewrite = Some(rewrite.clone());
+        assert!(data
+            .summary_line()
+            .ends_with("rewrite attempted by cloud model gpt-4o-mini, not used"));
+        rewrite.outcome = DraftRewriteOutcomeData::Skipped;
+        data.rewrite = Some(rewrite);
+        assert!(data
+            .summary_line()
+            .ends_with("rewrite by cloud model gpt-4o-mini skipped to keep your history local"));
     }
 
     #[test]

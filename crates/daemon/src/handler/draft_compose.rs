@@ -60,9 +60,7 @@ pub(super) async fn draft_compose(
         if envelopes.is_empty() {
             return Err(format!("Thread {thread_id} has no messages to reply to").into());
         }
-        let account = account_id
-            .cloned()
-            .unwrap_or_else(|| envelopes[0].account_id.clone());
+        let account = thread_account(account_id, &envelopes)?;
         let forward_to = to.filter(|address| !is_participant(&envelopes, &address.email));
         return draft_in_thread(state, &account, &request, envelopes, None, forward_to).await;
     }
@@ -72,9 +70,7 @@ pub(super) async fn draft_compose(
     if let Some(message_id) = source_message_id.as_ref() {
         let envelopes = draft_context::resolve_thread_envelopes(state, message_id).await;
         if !envelopes.is_empty() {
-            let account = account_id
-                .cloned()
-                .unwrap_or_else(|| envelopes[0].account_id.clone());
+            let account = thread_account(account_id, &envelopes)?;
             // A recipient outside the conversation means a forward.
             let forward_to = to.filter(|address| !is_participant(&envelopes, &address.email));
             return draft_in_thread(
@@ -109,6 +105,25 @@ pub(crate) struct DraftRequest<'a> {
     pub register: Option<VoiceRegisterData>,
     pub length_hint: Option<DraftLengthHintData>,
     pub before: Option<DateTime<Utc>>,
+}
+
+/// The account a reply drafts as: the conversation's own. A request naming
+/// a different account is refused, or the draft would take its voice and
+/// its cited sources from one account for another account's conversation.
+fn thread_account(
+    requested: Option<&AccountId>,
+    envelopes: &[Envelope],
+) -> Result<AccountId, crate::handler::HandlerError> {
+    let owner = &envelopes[0].account_id;
+    match requested {
+        Some(requested) if requested != owner => {
+            Err(crate::handler::HandlerError::InvalidRequest(format!(
+                "that conversation belongs to account {owner}, not {requested}; \
+                 draft from its own account"
+            )))
+        }
+        _ => Ok(owner.clone()),
+    }
 }
 
 fn is_participant(envelopes: &[Envelope], email: &str) -> bool {
@@ -719,6 +734,200 @@ mod tests {
         .unwrap();
         assert!(matches!(response, ResponseData::DraftSuggestion { .. }));
         assert!(captured_prompt(&llm).contains(inbound_text));
+    }
+
+    /// A provider for one feature: answers `reply` as `answered_as`, while
+    /// its configured name is "configured-name", and counts its calls.
+    struct ScriptedLlm {
+        reply: &'static str,
+        answered_as: &'static str,
+        base_url: Option<&'static str>,
+        calls: Mutex<u32>,
+    }
+
+    impl ScriptedLlm {
+        fn new(
+            reply: &'static str,
+            answered_as: &'static str,
+            base_url: Option<&'static str>,
+        ) -> Self {
+            Self {
+                reply,
+                answered_as,
+                base_url,
+                calls: Mutex::new(0),
+            }
+        }
+
+        fn calls(&self) -> u32 {
+            *self.calls.lock().expect("calls lock")
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl LlmProvider for ScriptedLlm {
+        async fn complete(&self, _req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+            *self.calls.lock().expect("calls lock") += 1;
+            Ok(CompletionResponse {
+                content: self.reply.to_string(),
+                model: self.answered_as.to_string(),
+                finish_reason: Some("stop".to_string()),
+            })
+        }
+
+        fn capabilities(&self) -> LlmCapabilities {
+            LlmCapabilities {
+                context_window: 8192,
+                supports_streaming: false,
+            }
+        }
+
+        fn model_name(&self) -> &str {
+            "configured-name"
+        }
+
+        fn base_url(&self) -> Option<&str> {
+            self.base_url
+        }
+    }
+
+    /// Scores under the humanizer threshold, so a rewrite pass is due.
+    const MACHINE_MADE: &str = "Additionally, this serves as a testament, not just showcasing our \
+        commitment to innovation, but fostering a vibrant tapestry of ideas.";
+
+    /// Draft a reply from the user's history with a local drafting model and
+    /// `rewriter` serving only the humanizer's rewrite pass.
+    async fn draft_with_rewriter(rewriter: Arc<ScriptedLlm>) -> ResponseData {
+        let state = AppState::in_memory().await.unwrap();
+        let drafter = Arc::new(ScriptedLlm::new(MACHINE_MADE, "drafter-7b", None));
+        state.llm.replace(drafter);
+        let mut providers: std::collections::HashMap<LlmFeature, Arc<dyn LlmProvider>> =
+            std::collections::HashMap::new();
+        providers.insert(LlmFeature::HumanizeRewrite, rewriter);
+        state
+            .llm
+            .replace_feature_providers(providers, std::collections::HashMap::new());
+        let account_id = state.default_account_id();
+        seed_private_reply(&state, &account_id).await;
+        let (thread_id, _, _) = seed_inbound_thread(&state, &account_id).await;
+        draft_compose(
+            &state,
+            Some(&account_id),
+            None,
+            "",
+            None,
+            Some(thread_id),
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+    }
+
+    // Privacy: a draft written from the user's history never goes to a cloud
+    // rewrite model they haven't opted in to; the draft says it was skipped.
+    #[tokio::test]
+    async fn a_history_draft_skips_a_cloud_rewrite_and_says_so() {
+        let rewriter = Arc::new(ScriptedLlm::new(
+            "Friday works.",
+            "cloud-rewriter",
+            Some("https://api.example-cloud.com/v1"),
+        ));
+        let response = draft_with_rewriter(rewriter.clone()).await;
+        assert_eq!(rewriter.calls(), 0, "the cloud rewrite never ran");
+        let disclosed = provenance(&response);
+        assert!(disclosed.history_used);
+        let rewrite = disclosed.rewrite.as_ref().expect("the skip is disclosed");
+        assert_eq!(
+            rewrite.outcome,
+            mxr_protocol::DraftRewriteOutcomeData::Skipped
+        );
+        assert_eq!(rewrite.locality, mxr_protocol::AiLocalityData::Cloud);
+        assert!(disclosed
+            .summary_line()
+            .ends_with("skipped to keep your history local"));
+    }
+
+    // Truthful: the rewrite names the model that answered, and a rewrite
+    // whose text was dropped is still disclosed, as not used.
+    #[tokio::test]
+    async fn a_rewrite_names_who_answered_and_whether_its_text_was_used() {
+        let used = Arc::new(ScriptedLlm::new(
+            "Friday works for me.",
+            "rewriter-actual",
+            None,
+        ));
+        let response = draft_with_rewriter(used.clone()).await;
+        assert!(used.calls() > 0);
+        let rewrite = provenance(&response).rewrite.clone().expect("disclosed");
+        assert_eq!(
+            rewrite.outcome,
+            mxr_protocol::DraftRewriteOutcomeData::Applied
+        );
+        assert_eq!(rewrite.model, "rewriter-actual");
+        assert!(rewrite.history_used, "a local rewrite keeps the voice");
+        match &response {
+            ResponseData::DraftSuggestion { body, .. } => assert_eq!(body, "Friday works for me."),
+            other => panic!("{other:?}"),
+        }
+
+        // No better than the draft: the call happened, its text didn't land.
+        let dropped = Arc::new(ScriptedLlm::new(MACHINE_MADE, "rewriter-actual", None));
+        let response = draft_with_rewriter(dropped.clone()).await;
+        assert!(dropped.calls() > 0);
+        let rewrite = provenance(&response).rewrite.clone().expect("disclosed");
+        assert_eq!(
+            rewrite.outcome,
+            mxr_protocol::DraftRewriteOutcomeData::Rejected
+        );
+        assert_eq!(rewrite.model, "rewriter-actual");
+        assert!(provenance(&response)
+            .summary_line()
+            .ends_with("rewrite attempted by local model rewriter-actual, not used"));
+    }
+
+    // Account scope: a conversation from another account is refused, by
+    // thread or by source message, before any model call, so one account's
+    // voice and sources never dress another account's reply.
+    #[tokio::test]
+    async fn a_conversation_from_another_account_is_refused() {
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+        let mine = state.default_account_id();
+        let other = mxr_core::AccountId::new();
+        state
+            .store
+            .insert_account(&crate::test_fixtures::test_account_with_id(other.clone()))
+            .await
+            .unwrap();
+        let (thread_id, message_id, _) = seed_inbound_thread(&state, &other).await;
+
+        for (source, thread) in [(None, Some(thread_id.clone())), (Some(message_id), None)] {
+            let error = draft_compose(&state, Some(&mine), None, "", source, thread, None, None)
+                .await
+                .expect_err("another account's conversation is refused");
+            assert!(
+                matches!(error, crate::handler::HandlerError::InvalidRequest(ref text)
+                    if text.contains("belongs to account")),
+                "{error:?}"
+            );
+        }
+        assert!(llm.last_request.lock().unwrap().is_none(), "no model call");
+
+        // Its own account drafts it.
+        draft_compose(
+            &state,
+            Some(&other),
+            None,
+            "",
+            None,
+            Some(thread_id),
+            None,
+            None,
+        )
+        .await
+        .expect("the owning account drafts");
     }
 
     // Behavior 4: new message includes the relationship summary even when the

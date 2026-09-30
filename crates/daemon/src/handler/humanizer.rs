@@ -6,7 +6,10 @@ use mxr_llm::{
     wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError, LlmFeature, PinnedLlm,
     UNTRUSTED_MAIL_GUARD,
 };
-use mxr_protocol::{HumanizerHitData, HumanizerReportSummaryData, ResponseData};
+use mxr_protocol::{
+    DraftRewriteOutcomeData, DraftRewriteProvenanceData, HumanizerHitData,
+    HumanizerReportSummaryData, ResponseData,
+};
 use mxr_reader::{clean, ReaderConfig};
 
 pub(super) async fn score_text(text: &str) -> HandlerResult {
@@ -21,7 +24,7 @@ pub(super) async fn rewrite_text(
     max_iterations: Option<u8>,
 ) -> HandlerResult {
     let policy = DraftPolicy::pin(state, LlmFeature::HumanizeRewrite);
-    let (text, report, iterations) = rewrite_to_threshold_with_context(
+    let rewritten = rewrite_to_threshold_with_context(
         state,
         &policy.llm,
         text.to_string(),
@@ -29,12 +32,62 @@ pub(super) async fn rewrite_text(
         None,
     )
     .await?;
+    let rewrite = rewritten.provenance(&policy, false);
     Ok(ResponseData::HumanizedText {
-        text,
-        report,
-        iterations,
-        rewrite: (iterations > 0).then(|| policy.rewrite_provenance(false)),
+        text: rewritten.text,
+        report: rewritten.report,
+        iterations: rewritten.iterations,
+        rewrite,
     })
+}
+
+/// What a rewrite pass did.
+pub(crate) struct Rewritten {
+    pub text: String,
+    pub report: HumanizerReportSummaryData,
+    /// Rewrites kept; 0 when the original text came back.
+    pub iterations: u8,
+    /// The model that answered the last rewrite call; `None` when no call
+    /// was made (humanizer off, score already fine, model disabled).
+    pub answered_by: Option<String>,
+}
+
+impl Rewritten {
+    fn unchanged(text: String, report: HumanizerReportSummaryData) -> Self {
+        Self {
+            text,
+            report,
+            iterations: 0,
+            answered_by: None,
+        }
+    }
+
+    /// The disclosure for this pass: applied when its text is what came
+    /// back, rejected when a model saw the text but its output was dropped.
+    pub fn provenance(
+        &self,
+        policy: &DraftPolicy,
+        history_used: bool,
+    ) -> Option<DraftRewriteProvenanceData> {
+        let model = self.answered_by.as_deref()?;
+        let outcome = if self.iterations > 0 {
+            DraftRewriteOutcomeData::Applied
+        } else {
+            DraftRewriteOutcomeData::Rejected
+        };
+        Some(policy.rewrite_provenance(model, history_used, outcome))
+    }
+}
+
+/// Whether a rewrite pass would call the model for `text`: the humanizer
+/// is on, may fix, and the text scores under its threshold.
+pub(crate) fn rewrite_due(state: &AppState, text: &str) -> bool {
+    let config = state.config_snapshot().humanizer;
+    let opts = HumanizerOpts {
+        score_threshold: config.score_threshold,
+    };
+    let cleaned = clean(Some(text), None, &ReaderConfig::default()).content;
+    config.enabled && config.auto_fix && score(&cleaned, &opts).score < config.score_threshold
 }
 
 /// Rewrite through `llm`, the provider the caller pinned, so what it
@@ -45,18 +98,15 @@ pub(crate) async fn rewrite_to_threshold_with_context(
     text: String,
     max_iterations: Option<u8>,
     voice_context: Option<&str>,
-) -> Result<(String, HumanizerReportSummaryData, u8), String> {
+) -> Result<Rewritten, String> {
     let config = state.config_snapshot().humanizer;
     let opts = HumanizerOpts {
         score_threshold: config.score_threshold,
     };
     let cleaned = clean(Some(&text), None, &ReaderConfig::default()).content;
     let initial = score(&cleaned, &opts);
-    if !config.enabled || initial.score >= config.score_threshold {
-        return Ok((text, report_summary(initial), 0));
-    }
-    if !config.auto_fix {
-        return Ok((text, report_summary(initial), 0));
+    if !config.enabled || initial.score >= config.score_threshold || !config.auto_fix {
+        return Ok(Rewritten::unchanged(text, report_summary(initial)));
     }
 
     let max_iterations = max_iterations
@@ -68,6 +118,7 @@ pub(crate) async fn rewrite_to_threshold_with_context(
     let mut current_text = text;
     let mut current_report = initial;
     let mut iterations = 0;
+    let mut answered_by = None;
 
     for _ in 0..max_iterations {
         let prompt = rewrite_prompt(&current_text, &current_report, voice_context);
@@ -83,6 +134,11 @@ pub(crate) async fn rewrite_to_threshold_with_context(
             Err(LlmError::Disabled) => break,
             Err(error) => return Err(format!("LLM error: {error}")),
         };
+        answered_by = Some(if response.model.trim().is_empty() {
+            llm.model_name().to_string()
+        } else {
+            response.model.clone()
+        });
         let candidate = response.content.trim().to_string();
         if candidate.is_empty() {
             break;
@@ -101,9 +157,17 @@ pub(crate) async fn rewrite_to_threshold_with_context(
     }
 
     if iterations > 0 && current_report.score.saturating_sub(original_score) >= 10 {
-        Ok((current_text, report_summary(current_report), iterations))
+        Ok(Rewritten {
+            text: current_text,
+            report: report_summary(current_report),
+            iterations,
+            answered_by,
+        })
     } else {
-        Ok((original_text, report_summary(score(&cleaned, &opts)), 0))
+        Ok(Rewritten {
+            answered_by,
+            ..Rewritten::unchanged(original_text, report_summary(score(&cleaned, &opts)))
+        })
     }
 }
 

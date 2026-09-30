@@ -369,16 +369,31 @@ pub(crate) fn llm_endpoint_is_local(base_url: Option<&str>) -> bool {
     mxr_config::is_demo_instance() || base_url.is_none_or(is_local_llm_url)
 }
 
+/// Whether an LLM endpoint is on this machine: an http(s) URL whose host is
+/// exactly `localhost`, a 127.0.0.0/8 address or `::1`, with no userinfo.
+/// Anything else, unparseable included, counts as cloud: a prefix check
+/// would call `http://localhost@evil.example` or `http://localhost.evil.com`
+/// local and send them the user's history without their opt-in.
 fn is_local_llm_url(base_url: &str) -> bool {
-    let lower = base_url.trim().to_ascii_lowercase();
-    lower.starts_with("http://localhost")
-        || lower.starts_with("http://127.")
-        || lower.starts_with("http://[::1]")
-        || lower.starts_with("http://::1")
-        || lower.starts_with("https://localhost")
-        || lower.starts_with("https://127.")
-        || lower.starts_with("https://[::1]")
-        || lower.starts_with("https://::1")
+    let Ok(url) = url::Url::parse(base_url.trim()) else {
+        return false;
+    };
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return false;
+    }
+    match url.host() {
+        // The parser lowercases domains; `localhost.` and `*.localhost` stay
+        // cloud, since only the exact name is sure to be loopback.
+        Some(url::Host::Domain(domain)) => domain == "localhost",
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => {
+            ip.is_loopback() || ip.to_ipv4_mapped().is_some_and(|ip| ip.is_loopback())
+        }
+        None => false,
+    }
 }
 
 /// Key for the in-memory `Wrapped` summary cache. Disambiguates by
@@ -2241,6 +2256,48 @@ fn provider_kind_name(kind: ProviderKind) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_a_loopback_host_counts_as_a_local_llm_endpoint() {
+        let local = [
+            "http://localhost:11434/v1",
+            "HTTP://LOCALHOST:11434/v1",
+            "https://localhost/v1",
+            "http://localhost",
+            "  http://localhost:1234/v1  ",
+            "http://127.0.0.1:11434/v1",
+            "http://127.1.2.3/v1",
+            "http://[::1]:11434/v1",
+            "http://[0:0:0:0:0:0:0:1]/v1",
+            "http://[::ffff:127.0.0.1]/v1",
+        ];
+        for url in local {
+            assert!(super::is_local_llm_url(url), "{url} should be local");
+        }
+        let cloud = [
+            "http://localhost@evil.example/v1",
+            "http://user:pw@localhost:11434/v1",
+            "http://localhost.evil.com/v1",
+            "http://localhost./v1",
+            "http://ollama.localhost/v1",
+            "http://evil.example/localhost",
+            "http://127.0.0.1.evil.example/v1",
+            "http://0.0.0.0:11434/v1",
+            "http://192.168.1.20:11434/v1",
+            "http://10.0.0.5/v1",
+            "http://[::]/v1",
+            "http://[fe80::1]/v1",
+            "https://api.openai.com/v1",
+            "ftp://localhost/v1",
+            "unix:///tmp/ollama.sock",
+            "localhost:11434",
+            "not a url",
+            "",
+        ];
+        for url in cloud {
+            assert!(!super::is_local_llm_url(url), "{url} should be cloud");
+        }
+    }
+
     use super::*;
 
     fn imap_smtp_config(default_account: &str) -> mxr_config::MxrConfig {

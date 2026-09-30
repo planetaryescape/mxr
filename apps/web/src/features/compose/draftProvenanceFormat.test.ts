@@ -47,12 +47,27 @@ describe("draftProvenanceLine", () => {
     const line = draftProvenanceLine(
       provenance({
         voice_examples: [source(), source({ person: "sam@example.com", person_name: null })],
-        rewrite: { model: "gpt-4o-mini", locality: "cloud", history_used: false },
+        rewrite: {
+          model: "gpt-4o-mini",
+          locality: "cloud",
+          history_used: false,
+          outcome: "applied",
+        },
       }),
     );
     expect(line).toBe(
       "Local model gemma4 · used 2 of your emails · history used · rewritten by cloud model gpt-4o-mini",
     );
+  });
+
+  test("a rewrite that was not used, or not run, says so", () => {
+    const rewrite = { model: "gpt-4o-mini", locality: "cloud", history_used: false } as const;
+    expect(
+      draftProvenanceLine(provenance({ rewrite: { ...rewrite, outcome: "rejected" } })),
+    ).toMatch(/rewrite attempted by cloud model gpt-4o-mini, not used$/);
+    expect(
+      draftProvenanceLine(provenance({ rewrite: { ...rewrite, outcome: "skipped" } })),
+    ).toMatch(/rewrite by cloud model gpt-4o-mini skipped to keep your history local$/);
   });
 
   test("a cloud model that saw no history says so", () => {

@@ -4079,12 +4079,16 @@ export interface components {
             shorter?: boolean;
             warmer?: boolean;
         };
-        /** @description The model that rewrote a draft after it was written. */
+        /** @enum {string} */
+        DraftRewriteOutcomeData: "applied" | "rejected" | "skipped";
+        /** @description The model pass that rewrites a draft after it was written. */
         DraftRewriteProvenanceData: {
             /** @description The rewrite saw the user's habits and past emails, to keep the voice. */
             history_used: boolean;
             locality: components["schemas"]["AiLocalityData"];
+            /** @description The model that answered the rewrite (or would have, when skipped). */
             model: string;
+            outcome?: components["schemas"]["DraftRewriteOutcomeData"];
         };
         DraftSafetyContextData: {
             allow_llm?: boolean;

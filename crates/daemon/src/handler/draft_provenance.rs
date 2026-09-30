@@ -6,7 +6,8 @@
 use crate::state::{llm_endpoint_is_local, relationship_data_allowed, AppState};
 use mxr_llm::{LlmFeature, PinnedLlm};
 use mxr_protocol::{
-    AiLocalityData, DraftProvenanceData, DraftRewriteProvenanceData, DraftSourceData,
+    AiLocalityData, DraftProvenanceData, DraftRewriteOutcomeData, DraftRewriteProvenanceData,
+    DraftSourceData,
 };
 
 pub(crate) struct DraftPolicy {
@@ -59,13 +60,20 @@ impl DraftPolicy {
         }
     }
 
-    /// Who rewrote text after it was written; `history_used` when the
-    /// rewrite saw the user's habits or past emails.
-    pub fn rewrite_provenance(&self, history_used: bool) -> DraftRewriteProvenanceData {
+    /// A rewrite pass by this policy's model. `model` is the name the
+    /// endpoint answered with; `history_used` when the rewrite saw the
+    /// user's habits or past emails.
+    pub fn rewrite_provenance(
+        &self,
+        model: &str,
+        history_used: bool,
+        outcome: DraftRewriteOutcomeData,
+    ) -> DraftRewriteProvenanceData {
         DraftRewriteProvenanceData {
-            model: self.llm.model_name().to_string(),
+            model: model.to_string(),
             locality: self.locality,
             history_used,
+            outcome,
         }
     }
 }

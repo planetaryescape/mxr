@@ -12,8 +12,9 @@ use mxr_core::types::Envelope;
 use mxr_humanizer::{score as humanizer_score, HumanizerOpts};
 use mxr_llm::LlmFeature;
 use mxr_protocol::{
-    ContactStyleData, DraftLengthHintData, DraftProvenanceData, HumanizerReportSummaryData,
-    ResponseData, VoiceMatchConfidenceData, VoiceMatchData, VoiceRegisterData,
+    ContactStyleData, DraftLengthHintData, DraftProvenanceData, DraftRewriteOutcomeData,
+    HumanizerReportSummaryData, ResponseData, VoiceMatchConfidenceData, VoiceMatchData,
+    VoiceRegisterData,
 };
 use mxr_relationship::stylometry::StylometryMetrics;
 use mxr_relationship::{compute_metrics, infer_register, score_voice_match, VoiceMatchConfidence};
@@ -268,7 +269,9 @@ pub(crate) fn length_label(length: DraftLengthHintData) -> &'static str {
 /// Run the humanizer pass, score voice match, and package the response with
 /// the inferred tone/length, context note and provenance. `voice_context`
 /// (habits and past emails) reaches the rewrite model only when its own
-/// pinned endpoint may see the user's history.
+/// pinned endpoint may see the user's history; and a draft written from
+/// that history never goes to a rewrite model that may not see it, since
+/// the draft itself carries the voice and facts drawn from it.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn finish_draft_suggestion(
     state: &AppState,
@@ -283,20 +286,30 @@ pub(crate) async fn finish_draft_suggestion(
     let (body, humanizer, rewrite_iterations) = if state.config_snapshot().humanizer.apply_to_drafts
     {
         let rewrite = DraftPolicy::pin(state, LlmFeature::HumanizeRewrite);
-        let voice_context = Some(voice_context)
-            .filter(|context| rewrite.share_history && !context.trim().is_empty());
-        let rewritten = super::humanizer::rewrite_to_threshold_with_context(
-            state,
-            &rewrite.llm,
-            body,
-            None,
-            voice_context,
-        )
-        .await?;
-        if rewritten.2 > 0 {
-            provenance.rewrite = Some(rewrite.rewrite_provenance(voice_context.is_some()));
+        if provenance.history_used && !rewrite.share_history {
+            if super::humanizer::rewrite_due(state, &body) {
+                provenance.rewrite = Some(rewrite.rewrite_provenance(
+                    rewrite.llm.model_name(),
+                    false,
+                    DraftRewriteOutcomeData::Skipped,
+                ));
+            }
+            let humanizer = report_summary(humanizer_score(&body, &HumanizerOpts::default()));
+            (body, humanizer, 0)
+        } else {
+            let voice_context = Some(voice_context)
+                .filter(|context| rewrite.share_history && !context.trim().is_empty());
+            let rewritten = super::humanizer::rewrite_to_threshold_with_context(
+                state,
+                &rewrite.llm,
+                body,
+                None,
+                voice_context,
+            )
+            .await?;
+            provenance.rewrite = rewritten.provenance(&rewrite, voice_context.is_some());
+            (rewritten.text, rewritten.report, rewritten.iterations)
         }
-        rewritten
     } else {
         let humanizer = report_summary(humanizer_score(&body, &HumanizerOpts::default()));
         (body, humanizer, 0)

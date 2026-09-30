@@ -220,8 +220,15 @@ read from what the request actually did, not from your config:
   `llm.allow_cloud_relationship_data`.
 - **Your emails it matched the voice of** lists only the emails that fit
   in the prompt, not every one mxr considered.
-- **rewritten by local model ...** appears when the humanizer's rewrite
-  pass changed the draft, naming the model that did it.
+- **Local** means the endpoint's host is exactly `localhost`, a `127.x.x.x`
+  address or `::1`, with no user name in the URL. Anything else, including
+  `0.0.0.0`, LAN addresses and `localhost.example.com`, counts as cloud.
+- The humanizer's rewrite pass is named by the model that answered it:
+  **rewritten by ...** when its text is what you got, **rewrite attempted
+  by ..., not used** when the model saw the draft but its text was no
+  better, and **rewrite by cloud model ... skipped to keep your history
+  local** when the draft was written from your history and the rewrite
+  model is a cloud one you haven't opted in to.
 
 `--format json` carries the same facts under `provenance`:
 
@@ -238,7 +245,10 @@ read from what the request actually did, not from your config:
 }
 ```
 
-`rewrite` is present only when a rewrite pass changed the text. `mxr draft`
+`rewrite` is present only when a rewrite pass ran or was skipped, and its
+`outcome` is `applied`, `rejected` or `skipped`. A reply always drafts from
+the conversation's own account: naming another account in the request is
+refused. `mxr draft`
 and `mxr draft refine` print the same notes, and `mxr humanize` names the
 model under `rewrite` when it rewrote your text. In the web app the line
 sits under **Draft for me** and under the **Draft assist** panel. Select

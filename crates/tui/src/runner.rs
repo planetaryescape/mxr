@@ -280,12 +280,9 @@ fn format_platform_response(data: &ResponseData) -> String {
             iterations,
             rewrite,
         } => {
-            let by = rewrite.as_ref().map_or_else(String::new, |rewrite| {
-                format!(
-                    " by {}",
-                    mxr_protocol::model_label(rewrite.locality, &rewrite.model)
-                )
-            });
+            let by = rewrite
+                .as_ref()
+                .map_or_else(String::new, |rewrite| format!("\n{}", rewrite.label()));
             format!(
                 "{}\n\nHumanizer: {}/100\nRewritten: {}x{by}",
                 text.trim(),

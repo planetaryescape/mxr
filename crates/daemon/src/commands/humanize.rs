@@ -67,10 +67,7 @@ fn print_response(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                 println!("{text}");
                 eprintln!("humanizer: {}/100, rewritten {}x", report.score, iterations);
                 if let Some(rewrite) = rewrite {
-                    eprintln!(
-                        "rewritten by {}",
-                        mxr_protocol::model_label(rewrite.locality, &rewrite.model)
-                    );
+                    eprintln!("{}", rewrite.label());
                 }
             }
         },

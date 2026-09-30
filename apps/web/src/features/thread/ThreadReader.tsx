@@ -36,6 +36,7 @@ import { firstName } from "./context/contextFormat";
 import { HeadersDialog } from "./HeadersDialog";
 import { standaloneHtmlDocument } from "./MessageBody";
 import { MessageCard } from "./MessageCard";
+import { OtherAccountLine } from "./OtherAccountLine";
 import { initialExpanded, initialLanding } from "./threadExpansion";
 import { ThreadHeader } from "./ThreadHeader";
 import { ReplyField } from "./ReplyField";
@@ -374,6 +375,7 @@ export function ThreadReader({
         full={readerLayout === "full"}
         position={position}
       />
+      <OtherAccountLine accountId={data.thread.account_id} />
       <div
         ref={scrollRef}
         tabIndex={-1}

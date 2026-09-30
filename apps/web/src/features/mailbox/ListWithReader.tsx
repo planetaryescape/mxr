@@ -223,7 +223,7 @@ export function ListWithReader({
           </header>
           {phase !== "ready" ? (
             <ListSkeleton quiet={phase === "quiet"} />
-          ) : status.isError ? (
+          ) : status.isError && groups.length === 0 ? (
             <Centered
               icon={<RefreshCw className="size-6" />}
               title={`Couldn't load ${title.toLowerCase()}`}

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { undoMutation, unsnoozeMessage } from "@/features/mailbox/api";
 import type { MutationResponse } from "@/features/mailbox/types";
+import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { plural } from "@/lib/format";
 import { useUndo } from "@/state/undoStore";
 import { verb } from "./actionPastTense";
@@ -16,6 +17,7 @@ import type { MailAction, MailActionPayload } from "./pendingMailOps";
 
 /** Undo by mutation id, then refresh every view that showed the change. */
 export async function performUndo(mutationId: string): Promise<boolean> {
+  if (refuseWhileDaemonDown("undo")) return false;
   try {
     await undoMutation(mutationId);
     const undo = useUndo.getState();

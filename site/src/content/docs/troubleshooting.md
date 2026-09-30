@@ -140,6 +140,22 @@ mxr reset --hard                  # destructive; preserves config + credentials
 
 `mxr reset --hard` wipes local cache and the search index but keeps your account config and credentials. Re-run `mxr sync --wait --wait-timeout-secs 900` after — that resync is a full backfill.
 
+## Web app says "mxr's daemon is stopped"
+
+The web app couldn't reach the daemon. What's already loaded stays readable,
+but changes are refused until the daemon answers again. Check it and start it:
+
+```bash
+mxr status
+mxr restart
+```
+
+The banner clears on its own once the daemon is back; you don't need to
+reload the page. If the banner says "Live updates are paused" instead, the
+daemon is answering but the live event stream isn't: mail still loads and
+changes still work, and new mail shows up once the stream reconnects. That
+usually means a proxy in front of the bridge doesn't pass WebSockets.
+
 ## Daemon unreachable after an upgrade
 
 When you run a newly upgraded `mxr` binary, the first command restarts the daemon to match the new build. The restart waits for the old daemon to fully exit before starting its successor, and a shutting-down daemon never removes a socket it no longer owns — so the replacement daemon is reachable as soon as the restart message finishes.

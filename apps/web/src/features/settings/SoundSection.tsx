@@ -14,6 +14,7 @@ import {
 } from "@/features/sound/api";
 import { previewSound } from "@/features/sound/player";
 import type { Voice } from "@/features/sound/voices";
+import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import {
   Select,
   SelectContent,
@@ -52,27 +53,35 @@ export function SoundSection() {
   // reply can never put an older value back.
   const latestChange = useRef(0);
   const save = useMutation({
-    mutationFn: ({ patch }: { patch: ChimesPatch; change: number }) => saveChimeSettings(patch),
+    mutationFn: ({ patch }: { patch: ChimesPatch; change: number; before?: ChimeSettings }) =>
+      saveChimeSettings(patch),
     scope: { id: "notification-chimes" },
     onSuccess: (saved, { change }) => {
       if (change === latestChange.current) {
         queryClient.setQueryData(chimeSettingsQuery.queryKey, saved);
       }
     },
-    onError: (error, { change }) => {
+    onError: (error, { change, before }) => {
       toast.error("Couldn't save the sound setting", { description: error.message });
-      // Show what the daemon has now, unless a newer change will say so.
+      // Put back what was shown before this change, unless a newer change
+      // will say, then ask the daemon. The put-back doesn't wait for the
+      // refetch, which pauses while the daemon is unreachable.
       if (change === latestChange.current) {
+        if (before) queryClient.setQueryData(chimeSettingsQuery.queryKey, before);
         void queryClient.invalidateQueries({ queryKey: chimeSettingsQuery.queryKey });
       }
     },
   });
   const update = (patch: ChimesPatch) => {
+    // Refused before the optimistic write, so the screen never shows a
+    // setting the daemon didn't take.
+    if (refuseWhileDaemonDown("change the sound setting")) return;
     latestChange.current += 1;
+    const before = queryClient.getQueryData<ChimeSettings>(chimeSettingsQuery.queryKey);
     queryClient.setQueryData<ChimeSettings>(chimeSettingsQuery.queryKey, (current) =>
       current ? { ...current, ...definedFields(patch) } : current,
     );
-    save.mutate({ patch, change: latestChange.current });
+    save.mutate({ patch, change: latestChange.current, before });
   };
 
   const config = settings.data;

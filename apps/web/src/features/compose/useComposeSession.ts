@@ -68,6 +68,9 @@ export function useComposeSession(
     // Reopening an intent (undoing a send, a reply closed and reopened)
     // must read the saved file, not the session as it was first loaded.
     gcTime: 0,
+    // Loading it again resets the editor to the saved file, dropping text
+    // typed since: never as part of a refresh after an outage.
+    meta: { keepThroughGaps: true },
   });
 
   const [draft, setDraft] = useState<ComposeDraftState | null>(null);

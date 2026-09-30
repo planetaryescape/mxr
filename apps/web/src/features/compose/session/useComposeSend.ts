@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { archiveMessages } from "@/features/mailbox/api";
 import { detectComposePromises } from "@/features/promises/api";
 import { offerPromises } from "@/features/promises/promiseOffers";
+import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useUndo } from "@/state/undoStore";
 import {
@@ -62,6 +63,8 @@ interface ComposeSendInput {
    * inline, so this only moves focus to help fix them. */
   onValidationBlocked: () => void;
 }
+
+const KEPT_WHILE_DOWN = "Your message stays here. Send it once the daemon is back.";
 
 export function useComposeSend({
   intent,
@@ -167,6 +170,7 @@ export function useComposeSend({
     if (!current) return;
     // Refuse before validation so a second press never re-runs anything.
     if (sendLockRef.current) return;
+    if (refuseWhileDaemonDown("send", KEPT_WHILE_DOWN)) return;
     markSendAttempted();
     if (hasBlockingIssues(current)) {
       onValidationBlocked();
@@ -218,6 +222,7 @@ export function useComposeSend({
     const current = draftRef.current;
     if (!current) return;
     if (sendLockRef.current) return;
+    if (refuseWhileDaemonDown("schedule a send", KEPT_WHILE_DOWN)) return;
     markSendAttempted();
     if (hasBlockingIssues(current)) {
       onValidationBlocked();
@@ -231,6 +236,7 @@ export function useComposeSend({
    * lock before the first await: a second Enter or click during the save
    * would otherwise schedule a second copy under a new draft id. */
   async function scheduleSend(at: Date, label?: string) {
+    if (refuseWhileDaemonDown("schedule a send", KEPT_WHILE_DOWN)) return;
     if (!acquireSendLock()) return;
     try {
       await runScheduleSend(at, label);
@@ -311,6 +317,8 @@ export function useComposeSend({
         ? (safetyReport?.issues.find((issue) => issue.override_token)?.override_token ?? undefined)
         : undefined;
     if (blocked && !overrideToken) return;
+    // The dialog can outlive the daemon: confirming it is a new send step.
+    if (refuseWhileDaemonDown("send", KEPT_WHILE_DOWN)) return;
     setSendConfirmOpen(false);
     setSafetyReport(null);
     setSafetyCheckError(null);
@@ -328,7 +336,7 @@ export function useComposeSend({
    * would silently drop the send. Cancellable via the toast or global z. */
   function dispatchSend(overrideToken?: string) {
     const current = draftRef.current;
-    if (!current) {
+    if (!current || refuseWhileDaemonDown("send", KEPT_WHILE_DOWN)) {
       releaseSendLock();
       return;
     }
@@ -434,6 +442,14 @@ export function useComposeSend({
       useUndo.getState().clearPendingSendCancel(cancel);
       // Hovering pauses a toast's own clock; the send doesn't wait for it.
       toast.dismiss(toastId);
+      // Down when the window closes: the send is cancelled, not held for
+      // later. Sending after the daemon returns needs a new press.
+      if (refuseWhileDaemonDown("send", KEPT_WHILE_DOWN)) {
+        setPendingSends((count) => Math.max(0, count - 1));
+        releaseSendLock();
+        emitSendEvent({ kind: "cancelled", ...sendEvent });
+        return;
+      }
       fire();
     }, windowSeconds * 1000);
     pendingCancelsRef.current.add(cancelThis);

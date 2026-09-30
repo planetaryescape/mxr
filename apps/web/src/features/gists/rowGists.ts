@@ -24,6 +24,7 @@ import {
   type ThreadGistBatch,
 } from "@/features/thread/context/api";
 import { provenanceLabel } from "@/features/thread/context/contextFormat";
+import { isDaemonDown } from "@/lib/daemonAvailability";
 import { daemonEvents } from "@/lib/ws";
 
 /** What a row shows. `ask` is the model's summary of the ask, not a quote. */
@@ -255,6 +256,8 @@ export async function requestRowGists(
 ): Promise<void> {
   if (now < noModelUntil) return;
   listen();
+  // Nothing to ask while the daemon is down; reconnecting re-asks.
+  if (isDaemonDown()) return;
   const wanted: string[] = [];
   for (const threadId of new Set(threadIds)) {
     const asked = now - (requestedAt.get(threadId) ?? -Infinity) < REQUEST_TTL_MS;

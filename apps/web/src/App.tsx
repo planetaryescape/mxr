@@ -8,6 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useConnectionStatusBootstrap } from "@/hooks/useConnectionStatus";
 import { useDaemonEventInvalidation } from "@/hooks/useDaemonEventInvalidation";
 import { useProtocolCompatibilityBootstrap } from "@/hooks/useProtocolCompatibility";
+import { startDaemonAvailability } from "@/lib/daemonAvailability";
 import { createQueryClient, setActiveQueryClient } from "@/lib/queryClient";
 import { daemonEvents } from "@/lib/ws";
 import { routeTree } from "@/routeTree.gen";
@@ -55,6 +56,8 @@ function RealtimeBootstrap() {
   useConnectionStatusBootstrap();
   useProtocolCompatibilityBootstrap();
   useDaemonEventInvalidation();
+  // Before the socket starts, so its first drop is heard.
+  useEffect(() => startDaemonAvailability(queryClient), []);
   useEffect(() => {
     daemonEvents.start();
     return () => daemonEvents.stop();

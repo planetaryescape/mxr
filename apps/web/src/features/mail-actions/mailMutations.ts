@@ -9,6 +9,7 @@
 import { usePendingMailOps, type MailAction, type MailActionPayload } from "./pendingMailOps";
 import { playMailActionSound } from "@/features/sound/feedback";
 import type { MutationResponse } from "@/features/mailbox/types";
+import { isDaemonDown, refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 import { useSelection } from "@/state/selectionStore";
 import { runAction } from "./mailActionRequests";
@@ -44,6 +45,10 @@ export async function performMailAction(
 ): Promise<MailMutationOutcome> {
   const ids = [...new Set(messageIds)];
   if (ids.length === 0) return { ok: false };
+  // A silent change (mark read on open) just doesn't happen yet.
+  if (options.silent ? isDaemonDown() : refuseMailActionWhileDaemonDown(action)) {
+    return { ok: false };
+  }
   const opId = `op-${Date.now()}-${(opSequence += 1)}`;
   const pending = usePendingMailOps.getState();
   pending.add({ id: opId, action, messageIds: new Set(ids), payload: options.payload });
@@ -92,4 +97,24 @@ const DESTRUCTIVE = new Set<MailAction>([
 
 export function isDestructive(action: MailAction): boolean {
   return DESTRUCTIVE.has(action);
+}
+
+/** "Can't … while mxr's daemon is stopped", where it isn't the action's name. */
+const REFUSED_WHILE_DOWN: Partial<Record<MailAction, string>> = {
+  trash: "move to Trash",
+  spam: "mark as spam",
+  read: "mark as read",
+  unread: "mark as unread",
+  "read-and-archive": "mark read and archive",
+  "label-add": "change labels",
+  "label-remove": "change labels",
+  labels: "change labels",
+};
+
+/**
+ * No offline queue: a change the daemon can't take is refused up front,
+ * before any row moves, so nothing on screen claims it happened.
+ */
+export function refuseMailActionWhileDaemonDown(action: MailAction): boolean {
+  return refuseWhileDaemonDown(REFUSED_WHILE_DOWN[action] ?? action);
 }

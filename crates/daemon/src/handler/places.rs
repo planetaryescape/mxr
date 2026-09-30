@@ -40,7 +40,7 @@ const fn place_kind(place: MailPlaceData) -> SenderKindData {
 }
 
 /// Everything deciding kinds needs about one account, read once.
-struct AccountKinds {
+pub(super) struct AccountKinds {
     decisions: HashMap<String, ScreenerDisposition>,
     list_senders: HashSet<String>,
     addresses: Arc<mxr_core::types::InMemoryAccountAddressLookup>,
@@ -49,7 +49,7 @@ struct AccountKinds {
 }
 
 impl AccountKinds {
-    async fn load(
+    pub(super) async fn load(
         state: &AppState,
         account_id: &AccountId,
         senders: &[String],
@@ -81,7 +81,7 @@ impl AccountKinds {
         })
     }
 
-    fn is_self(&self, email: &str) -> bool {
+    pub(super) fn is_self(&self, email: &str) -> bool {
         self.addresses.is_account_address(&self.account_id, email)
             || self
                 .account_email
@@ -89,7 +89,7 @@ impl AccountKinds {
                 .is_some_and(|own| own.eq_ignore_ascii_case(email))
     }
 
-    fn signals<'a>(&self, message: &'a PlaceMessage) -> KindSignals<'a> {
+    pub(super) fn signals<'a>(&self, message: &'a PlaceMessage) -> KindSignals<'a> {
         let key = message.from_email.to_ascii_lowercase();
         KindSignals {
             email: &message.from_email,

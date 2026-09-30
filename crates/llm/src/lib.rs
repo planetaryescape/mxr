@@ -220,6 +220,12 @@ pub trait LlmProvider: Send + Sync {
     fn base_url(&self) -> Option<&str> {
         None
     }
+    /// False only for the stand-in used when no model is configured, so
+    /// callers can tell "no model" from "a model that failed" before
+    /// making a call.
+    fn is_configured(&self) -> bool {
+        true
+    }
 }
 
 /// Default ceiling for background LLM work (relationship summary,
@@ -320,6 +326,35 @@ impl LlmRuntime {
         self.blocked_reason(feature)
     }
 
+    /// The background budget and breaker around one call: refuse while the
+    /// breaker is open, cut the call at the background timeout, and count
+    /// real endpoint failures toward opening it.
+    async fn guard_background(
+        &self,
+        call: impl std::future::Future<Output = Result<CompletionResponse, LlmError>>,
+    ) -> Result<CompletionResponse, LlmError> {
+        let open_for = self.breaker().remaining(Instant::now());
+        if let Some(remaining) = open_for {
+            return Err(LlmError::CircuitOpen {
+                retry_after_secs: remaining.as_secs().max(1),
+            });
+        }
+        let budget = self.background_timeout();
+        let result = match tokio::time::timeout(budget, call).await {
+            Ok(result) => result,
+            Err(_elapsed) => Err(LlmError::Timeout(budget)),
+        };
+        match &result {
+            Ok(_) => self.breaker().record_success(),
+            // Not endpoint failures: no request was made.
+            Err(
+                LlmError::Disabled | LlmError::PrivacyBlocked(_) | LlmError::CircuitOpen { .. },
+            ) => {}
+            Err(error) => self.breaker().record_failure(Instant::now(), error),
+        }
+        result
+    }
+
     fn current(&self) -> Arc<dyn LlmProvider> {
         self.provider
             .read()
@@ -381,26 +416,7 @@ impl FeatureLlmRuntime {
         &self,
         req: CompletionRequest,
     ) -> Result<CompletionResponse, LlmError> {
-        let open_for = self.runtime.breaker().remaining(Instant::now());
-        if let Some(remaining) = open_for {
-            return Err(LlmError::CircuitOpen {
-                retry_after_secs: remaining.as_secs().max(1),
-            });
-        }
-        let budget = self.runtime.background_timeout();
-        let result = match tokio::time::timeout(budget, self.complete(req)).await {
-            Ok(result) => result,
-            Err(_elapsed) => Err(LlmError::Timeout(budget)),
-        };
-        match &result {
-            Ok(_) => self.runtime.breaker().record_success(),
-            // Not endpoint failures: no request was made.
-            Err(
-                LlmError::Disabled | LlmError::PrivacyBlocked(_) | LlmError::CircuitOpen { .. },
-            ) => {}
-            Err(error) => self.runtime.breaker().record_failure(Instant::now(), error),
-        }
-        result
+        self.runtime.guard_background(self.complete(req)).await
     }
 
     /// Whether a background worker should send this input (`key` names it,
@@ -443,15 +459,18 @@ impl FeatureLlmRuntime {
         PinnedLlm {
             provider: self.runtime.provider_for_feature(self.feature),
             blocked: self.runtime.blocked_reason(self.feature),
+            runtime: self.runtime.clone(),
         }
     }
 }
 
 /// One feature's provider, fixed for the length of a request. See
 /// [`FeatureLlmRuntime::pin`].
+#[derive(Clone)]
 pub struct PinnedLlm {
     provider: Arc<dyn LlmProvider>,
     blocked: Option<String>,
+    runtime: Arc<LlmRuntime>,
 }
 
 impl PinnedLlm {
@@ -460,6 +479,26 @@ impl PinnedLlm {
             return Err(LlmError::PrivacyBlocked(reason.clone()));
         }
         self.provider.complete(req).await
+    }
+
+    /// [`Self::complete`] under the background timeout and breaker, like
+    /// [`FeatureLlmRuntime::complete_background`], on the pinned provider.
+    pub async fn complete_background(
+        &self,
+        req: CompletionRequest,
+    ) -> Result<CompletionResponse, LlmError> {
+        self.runtime.guard_background(self.complete(req)).await
+    }
+
+    /// A model is configured for this feature (see
+    /// [`LlmProvider::is_configured`]).
+    pub fn is_configured(&self) -> bool {
+        self.provider.is_configured()
+    }
+
+    /// Why privacy settings keep this feature from its model, if they do.
+    pub fn blocked_reason(&self) -> Option<&str> {
+        self.blocked.as_deref()
     }
 
     pub fn model_name(&self) -> &str {
@@ -491,6 +530,10 @@ impl LlmProvider for NoopProvider {
 
     fn model_name(&self) -> &str {
         "noop"
+    }
+
+    fn is_configured(&self) -> bool {
+        false
     }
 }
 

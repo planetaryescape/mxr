@@ -1683,6 +1683,19 @@ pub enum Request {
         #[serde(default)]
         dry_run: bool,
     },
+    /// Gists for list rows, many conversations at once. Returns the cached
+    /// gists that still match each conversation at once, without calling a
+    /// model. With `generate`, conversations from people that have none are
+    /// queued for a background writer, in the order given (put the rows on
+    /// screen first); each gist arrives as `DaemonEvent::ThreadGistReady`.
+    /// A newer request goes ahead of older ones, and asking again for a
+    /// queued conversation never queues it twice. At most 100 ids. Returns
+    /// `ResponseData::ThreadGists`.
+    GetThreadGists {
+        thread_ids: Vec<ThreadId>,
+        #[serde(default)]
+        generate: bool,
+    },
 }
 
 impl Request {
@@ -1811,6 +1824,7 @@ impl Request {
             | Self::GetThreadBriefing { .. }
             | Self::GetThreadContext { .. }
             | Self::GetThreadGist { .. }
+            | Self::GetThreadGists { .. }
             | Self::DetectPromises { .. }
             | Self::RecordPromise { .. }
             | Self::GetRecipientBriefing { .. }
@@ -2815,6 +2829,10 @@ pub enum ResponseData {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         undo_unavailable: bool,
     },
+    /// Returned by `Request::GetThreadGists`.
+    ThreadGists {
+        batch: ThreadGistBatchData,
+    },
 }
 
 impl ResponseData {
@@ -2920,6 +2938,7 @@ impl ResponseData {
             | Self::ThreadBriefing { .. }
             | Self::ThreadContext { .. }
             | Self::ThreadGist { .. }
+            | Self::ThreadGists { .. }
             | Self::Promises { .. }
             | Self::RecordedPromise { .. }
             | Self::RecipientBriefing { .. }
@@ -3894,6 +3913,11 @@ pub enum DaemonEvent {
     EventsLagged {
         skipped: u64,
     },
+    /// A list-row gist queued by `Request::GetThreadGists { generate: true }`
+    /// is written (always `status: ready`).
+    ThreadGistReady {
+        gist: ThreadGistData,
+    },
 }
 
 impl DaemonEvent {
@@ -3910,9 +3934,9 @@ impl DaemonEvent {
             | Self::OperationCompleted { .. }
             | Self::OperationFailed { .. }
             | Self::OperationCancelled { .. } => IpcCategory::AdminMaintenance,
-            Self::MutationReconciliationFailed { .. } | Self::EventsLagged { .. } => {
-                IpcCategory::CoreMail
-            }
+            Self::MutationReconciliationFailed { .. }
+            | Self::EventsLagged { .. }
+            | Self::ThreadGistReady { .. } => IpcCategory::CoreMail,
         }
     }
 }

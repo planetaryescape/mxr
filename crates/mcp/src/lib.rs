@@ -264,6 +264,26 @@ impl MxrMcpServer {
     }
 
     #[tool(
+        name = "mxr_thread_gists",
+        description = "One line per conversation, for triage without opening it: what it is about (gist) and what it asks of the user (ask.summary, the model's words; ask.quote, when present, is verified to be in the message). Cached answers only, never waits on a model. With generate=true, conversations from people that have none are queued for the model in the order given (visible rows first). Returns {model, gists, queued, skipped}; at most 100 thread ids."
+    )]
+    pub async fn thread_gists(
+        &self,
+        Parameters(input): Parameters<ThreadGistsInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let thread_ids = input
+            .thread_ids
+            .iter()
+            .map(|id| parse_id(id))
+            .collect::<Result<Vec<ThreadId>, _>>()?;
+        self.daemon_json(Request::GetThreadGists {
+            thread_ids,
+            generate: input.generate.unwrap_or(false),
+        })
+        .await
+    }
+
+    #[tool(
         name = "mxr_list_place",
         description = "Mail that isn't from people, where it lives: place 'reading' (newsletters and lists) or 'paper_trail' (receipts, notifications, automated mail). Inbox mail grouped by sender, each bundle with the reason it is there (kind, rule, reason) and its newest messages. Use mxr_sweep_preview to see what sweeping would archive."
     )]
@@ -639,6 +659,14 @@ pub struct ThreadContextInput {
     pub include_gist: Option<bool>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ThreadGistsInput {
+    pub thread_ids: Vec<String>,
+    /// Queue the missing gists for the model (people's conversations only).
+    #[serde(default)]
+    pub generate: Option<bool>,
+}
+
 /// A place for mail that isn't from people.
 #[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -821,6 +849,7 @@ mod tests {
         assert!(names.contains(&"mxr_status"));
         assert!(names.contains(&"mxr_read_message"));
         assert!(names.contains(&"mxr_thread_context"));
+        assert!(names.contains(&"mxr_thread_gists"));
         assert!(names.contains(&"mxr_list_place"));
         assert!(names.contains(&"mxr_sweep_preview"));
         assert!(names.contains(&"mxr_mutation_preview"));

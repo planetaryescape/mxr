@@ -217,6 +217,13 @@ pub(crate) enum AsyncResult {
         message_id: mxr_core::MessageId,
         result: Result<Box<mxr_protocol::PromiseDetectionData>, MxrError>,
     },
+    /// List-row gists (`GetThreadGists`) for the rows around the cursor.
+    RowGistsLoaded {
+        thread_ids: Vec<mxr_core::ThreadId>,
+        /// `RowGistState::epoch` when the request went out.
+        epoch: u64,
+        result: Result<Box<mxr_protocol::ThreadGistBatchData>, MxrError>,
+    },
     /// The model's gist and ask for a thread (`GetThreadGist`).
     ThreadGistLoaded {
         thread_id: mxr_core::ThreadId,

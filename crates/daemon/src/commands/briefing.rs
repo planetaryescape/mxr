@@ -34,6 +34,14 @@ pub async fn run(action: BriefingAction) -> anyhow::Result<()> {
                 .await?;
             print(resp, resolve_format(format), true)
         }
+        BriefingAction::Gists {
+            thread_ids,
+            generate,
+            format,
+        } => {
+            let ids = super::desk::parse_thread_ids(&thread_ids)?;
+            super::thread_gists::run(&mut client, ids, generate, resolve_format(format)).await
+        }
         BriefingAction::Recipient {
             email,
             account,

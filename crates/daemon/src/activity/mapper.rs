@@ -706,6 +706,7 @@ pub fn map_request(
         | Request::GetThreadBriefing { .. }
         | Request::GetThreadContext { .. }
         | Request::GetThreadGist { .. }
+        | Request::GetThreadGists { .. }
         | Request::DetectPromises { .. }
         | Request::GetRecipientBriefing { .. }
         | Request::SendTimeRecommendation { .. }

@@ -15,6 +15,8 @@ import { deskDoneItem, markDeskDone, useDeskDone } from "./deskDone";
 import { elsewhereLinks } from "./deskLinks";
 import { deskGroups, partialLane } from "./deskRows";
 import { DeskRow } from "./DeskRow";
+import { useGistModel } from "@/features/gists/rowGists";
+import { useLlmStatus } from "@/features/llm/useLlmStatus";
 import { LowTide } from "@/features/low-tide/LowTide";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { usePendingMailOps, type MailAction } from "@/features/mail-actions/pendingMailOps";
@@ -94,13 +96,20 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
     [index],
   );
 
+  // A model is configured and the daemon can use it: rows reserve a line
+  // for their gist. Read here, once for the page; each row subscribes to
+  // its own gist.
+  const gistModel = useGistModel();
+  const gistLine = useLlmStatus().enabled && gistModel !== "disabled" && gistModel !== "blocked";
   const renderRow = useCallback(
     (row: MessageRowView, state: RowRenderState) => {
       const source = index.get(row.id);
       // Spread, not an object prop: the row stays memoized across renders.
-      return source ? <DeskRow row={row} desk={source} onDone={doneRow} {...state} /> : null;
+      return source ? (
+        <DeskRow row={row} desk={source} onDone={doneRow} gistLine={gistLine} {...state} />
+      ) : null;
     },
-    [doneRow, index],
+    [doneRow, gistLine, index],
   );
 
   // `w`, the list's row action, is Done too.
@@ -154,6 +163,7 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
       interceptVerb={interceptVerb}
       swipeActions={swipeActions}
       rowAction={done}
+      rowGists
       empty={<ClearDesk lane={lane} lowTide={lowTide} />}
     />
   );

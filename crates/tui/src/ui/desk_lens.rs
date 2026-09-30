@@ -8,14 +8,22 @@ use mxr_protocol::{DeskElsewhereData, DeskLaneData, DeskLaneKind, DeskRowData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-use crate::app::{ActivePane, DeskPageState};
+use crate::app::{ActivePane, DeskPageState, RowGist, RowGists};
 use crate::ui::sanitize::{one_line, truncate};
 
 pub struct DeskView<'a> {
     pub desk: &'a DeskPageState,
     pub selected_index: usize,
     pub active_pane: &'a ActivePane,
+    /// Gist lines by conversation (`GetThreadGists`).
+    pub row_gists: &'a RowGists,
+    /// A model is configured: every row keeps a line for its gist, so rows
+    /// don't move as gists land.
+    pub gist_lines: bool,
 }
+
+/// Where the "what" column starts: marker (2) + who (20) + gap (2).
+const WHAT_COLUMN: usize = 24;
 
 fn lane_title(kind: DeskLaneKind) -> &'static str {
     match kind {
@@ -70,7 +78,11 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &DeskView<'_>, theme: &crate::t
             if selected {
                 selected_line = lines.len();
             }
-            lines.push(row_line(*kind, row, selected, width, theme));
+            let gist = view.row_gists.get(&row.thread_id);
+            lines.push(row_line(*kind, row, gist, selected, width, theme));
+            if view.gist_lines {
+                lines.push(gist_line(gist, width, theme));
+            }
             row_index += 1;
         }
         let hidden = (lane.total as usize).saturating_sub(lane.rows.len());
@@ -125,9 +137,24 @@ fn lane_header(
     ])
 }
 
+/// What the conversation is about, under the row's "what" column; blank
+/// until the gist lands.
+fn gist_line(gist: Option<&RowGist>, width: usize, theme: &crate::theme::Theme) -> Line<'static> {
+    let about = gist.map(|gist| one_line(&gist.about)).unwrap_or_default();
+    Line::from(Span::styled(
+        format!(
+            "{:WHAT_COLUMN$}{}",
+            "",
+            truncate(&about, width.saturating_sub(WHAT_COLUMN + 2))
+        ),
+        Style::default().fg(theme.text_muted),
+    ))
+}
+
 fn row_line(
     kind: DeskLaneKind,
     row: &DeskRowData,
+    gist: Option<&RowGist>,
     selected: bool,
     width: usize,
     theme: &crate::theme::Theme,
@@ -144,14 +171,19 @@ fn row_line(
     } else {
         who
     };
+    // On You owe and New from people, the other person's ask says why the
+    // row is here better than the lane's reason.
+    let ask = gist
+        .and_then(|gist| gist.ask.as_deref())
+        .filter(|_| kind.shows_ask());
+    let reason = match ask {
+        Some(ask) => format!("asks: {}", one_line(ask)),
+        None => one_line(&row.reason),
+    };
     let what = if row.subject.is_empty() {
-        one_line(&row.reason)
+        reason
     } else {
-        format!(
-            "{} \u{b7} {}",
-            one_line(&row.subject),
-            one_line(&row.reason)
-        )
+        format!("{} \u{b7} {reason}", one_line(&row.subject))
     };
     let age = age_cell(row);
     let marker = if selected { "\u{258c} " } else { "  " };
@@ -282,6 +314,10 @@ mod tests {
     }
 
     fn render(desk: &DeskPageState) -> String {
+        render_with(desk, &RowGists::new(), false)
+    }
+
+    fn render_with(desk: &DeskPageState, row_gists: &RowGists, gist_lines: bool) -> String {
         render_to_string(110, 16, |frame| {
             draw(
                 frame,
@@ -290,10 +326,47 @@ mod tests {
                     desk,
                     selected_index: 0,
                     active_pane: &ActivePane::MailList,
+                    row_gists,
+                    gist_lines,
                 },
                 &crate::theme::Theme::default(),
             );
         })
+    }
+
+    #[test]
+    fn a_gist_turns_the_reason_into_the_ask_and_says_what_it_is_about() {
+        let owed = row(DeskLaneKind::Owed, "Maya", 3_600, None);
+        let waiting = row(DeskLaneKind::Owed, "Nora", 7_200, None);
+        let gists = RowGists::from([(
+            owed.thread_id.clone(),
+            RowGist::new(
+                "Canary stays at 5% until the dashboard is quiet.".into(),
+                Some("confirm the owner".into()),
+            ),
+        )]);
+        let desk = desk(vec![owed, waiting], vec![]);
+        let rendered = render_with(&desk, &gists, true);
+        assert!(
+            rendered.contains("Launch checklist \u{b7} asks: confirm the owner"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("Canary stays at 5%"), "{rendered}");
+        // The row still waiting for its gist keeps its reason and its line.
+        assert!(rendered.contains("replied to your message"), "{rendered}");
+        let lines: Vec<&str> = rendered.lines().collect();
+        let nora = lines.iter().position(|l| l.contains("Nora")).unwrap();
+        assert!(
+            lines[nora + 1].trim_matches(['│', ' ', '"']).is_empty(),
+            "{rendered}"
+        );
+
+        // With no model, rows are exactly as before: no reserved lines.
+        let plain = render(&desk);
+        assert!(!plain.contains("Canary"));
+        let lines: Vec<&str> = plain.lines().collect();
+        let maya = lines.iter().position(|l| l.contains("Maya")).unwrap();
+        assert!(lines[maya + 1].contains("Nora"), "{plain}");
     }
 
     #[test]

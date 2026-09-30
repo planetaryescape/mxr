@@ -572,6 +572,10 @@ The API key is read from `api_key_env` at runtime and is never persisted
 to the config file. Empty `api_key_env` means no `Authorization` header
 is sent — correct for Ollama and LM Studio.
 
+`gist_concurrency` (default 1, at most 8) sets how many list-row gists the
+daemon writes at once in the background. A local model does best one at a
+time; raise it for a hosted endpoint.
+
 `allow_cloud_relationship_data = false` blocks relationship/profile context
 from being sent to non-local LLM endpoints. Set it to `true` only when you want
 cloud providers to receive that context for relationship-aware summaries,

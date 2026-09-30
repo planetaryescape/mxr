@@ -15,6 +15,7 @@ import { BulkActionBar } from "./BulkActionBar";
 import { MailboxRow, RowActionChip, type RowAction, type RowQuickAction } from "./MailboxRow";
 import { rowKey } from "./rowKey";
 import type { MessageGroupView, MessageRowView } from "./types";
+import { requestRowGists, useGistEpoch } from "@/features/gists/rowGists";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
 import { createMailVerbs, type MailVerbHooks } from "@/features/mail-actions/mailVerbs";
@@ -65,6 +66,11 @@ export interface MailboxListProps {
   interceptVerb?: MailVerbHooks["intercept"];
   /** What a touch swipe does on a row, when it differs from archive, trash, snooze. */
   swipeActions?: (row: MessageRowView) => SwipeMap;
+  /**
+   * Ask the daemon for each visible conversation's gist (what it is about,
+   * what it asks), shown in place of the snippet as each one lands.
+   */
+  rowGists?: boolean;
 }
 
 export interface RowRenderState {
@@ -75,7 +81,7 @@ export interface RowRenderState {
   onOpen: (row: MessageRowView) => void;
 }
 
-type FlatItem =
+export type FlatItem =
   | { kind: "header"; id: string; group: MessageGroupView }
   | { kind: "row"; row: MessageRowView };
 
@@ -105,6 +111,33 @@ function domId(row: MessageRowView): string {
 
 const ROW_ESTIMATE = { compact: 38, regular: 64, comfortable: 80 } as const;
 
+/** Rows past the bottom of the screen whose gists are asked for too. */
+const GIST_LOOKAHEAD = 10;
+/** Wait for scrolling to settle before asking for gists. */
+const GIST_REQUEST_DELAY_MS = 150;
+
+/**
+ * Thread ids for the gist request, in the order they should be written:
+ * the visible rows top to bottom, then the rows just below, then those
+ * just above.
+ */
+export function gistOrder(
+  flat: readonly FlatItem[],
+  visible: { startIndex: number; endIndex: number },
+  overscanStart: number,
+  lookahead = GIST_LOOKAHEAD,
+): string[] {
+  const ids: string[] = [];
+  const take = (index: number) => {
+    const item = flat[index];
+    if (item?.kind === "row") ids.push(item.row.thread_id);
+  };
+  const last = Math.min(flat.length - 1, visible.endIndex + lookahead);
+  for (let index = visible.startIndex; index <= last; index += 1) take(index);
+  for (let index = visible.startIndex - 1; index >= overscanStart; index -= 1) take(index);
+  return ids;
+}
+
 export function MailboxList({
   groups,
   scopeKey,
@@ -125,6 +158,7 @@ export function MailboxList({
   airyHeaders = false,
   interceptVerb,
   swipeActions,
+  rowGists = false,
 }: MailboxListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const density = useUiPrefs((s) => s.density);
@@ -211,6 +245,25 @@ export function MailboxList({
   useEffect(() => {
     virtualizer.measure();
   }, [density, virtualizer]);
+
+  // Gists for what is on screen, once scrolling settles. Keyed on the
+  // visible range, not on every scroll frame; the store skips rows it has
+  // already asked about (and asks nothing while the daemon has no model),
+  // and each row subscribes to its own line.
+  const visibleStart = virtualizer.range?.startIndex ?? 0;
+  const visibleEnd = virtualizer.range?.endIndex ?? -1;
+  const overscanStart = virtualItems[0]?.index ?? 0;
+  // Bumped only when every gist was dropped (missed events, a reconnect).
+  const gistEpoch = useGistEpoch();
+  useEffect(() => {
+    if (!rowGists || visibleEnd < 0) return;
+    const handle = window.setTimeout(() => {
+      void requestRowGists(
+        gistOrder(flat, { startIndex: visibleStart, endIndex: visibleEnd }, overscanStart),
+      );
+    }, GIST_REQUEST_DELAY_MS);
+    return () => window.clearTimeout(handle);
+  }, [flat, gistEpoch, overscanStart, rowGists, visibleEnd, visibleStart]);
 
   useEffect(() => {
     const last = virtualItems.at(-1);

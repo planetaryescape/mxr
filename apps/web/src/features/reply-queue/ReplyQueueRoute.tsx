@@ -69,6 +69,7 @@ export function ReplyQueueRoute() {
       meta={rows.length > 0 ? plural(rows.length, "message") : null}
       groups={groups}
       scopeKey="reply-queue"
+      rowGists
       status={queue}
       rowAction={{
         label: "Done",

@@ -17,6 +17,15 @@ pub enum DeskLaneKind {
     PeopleNew,
 }
 
+impl DeskLaneKind {
+    /// Whether a list gist's ask replaces the lane's reason on this lane:
+    /// on You owe and New from people the other person's ask says why the
+    /// row is here; Due is your promise and Waiting is on them.
+    pub const fn shows_ask(self) -> bool {
+        matches!(self, Self::Owed | Self::PeopleNew)
+    }
+}
+
 /// One row on the desk: a thread, who it is with, and why it is here.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

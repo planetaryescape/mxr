@@ -65,6 +65,30 @@ In the web app, the greeting counts the work ("Saturday morning. 3 replies,
 **Show all** opens the rest. `mxr desk --account NAME` limits the CLI to one
 account.
 
+## See what each row asks
+
+With a language model configured, each row from a person says in one line
+what the conversation is about, and on You owe and New from people the
+reason becomes what they ask of you ("Asks: confirm who owns the rollout
+check"). The inbox, label queues, the reply queue and owed replies show the
+same line in place of the snippet, and so does the TUI.
+
+Lines come from the cache at once. Missing ones are written in the
+background for the rows on screen first and appear as each is ready; the
+desk keeps a line's space under every row, so nothing moves. Pointing at a
+line names the model that wrote it. Newsletters and automated mail never go
+to the model, and with no model the rows look as they always did.
+
+A local model writes a line every few seconds (about 3 s each with gemma4 on
+Ollama), so a screen of rows fills in over a minute or so the first time,
+then comes from the cache until someone writes again.
+`llm.gist_concurrency` lets a hosted model write several at once.
+
+```bash
+mxr desk --gists                          # cached lines only, never waits
+mxr briefing gists THREAD_ID --generate   # queue the missing ones
+```
+
 ## Deal with a row
 
 Open the conversation, then do what it asks:

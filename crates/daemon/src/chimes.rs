@@ -100,7 +100,9 @@ pub(crate) fn event_for_daemon_event(event: &DaemonEvent) -> Option<ChimeEvent> 
         | DaemonEvent::OperationCompleted { .. }
         | DaemonEvent::OperationCancelled { .. }
         // Internal resync signal, not a user-facing notification.
-        | DaemonEvent::EventsLagged { .. } => None,
+        | DaemonEvent::EventsLagged { .. }
+        // A list line filling in is quiet by design.
+        | DaemonEvent::ThreadGistReady { .. } => None,
     }
 }
 

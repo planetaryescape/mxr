@@ -17,17 +17,36 @@ const BODY_HTML =
 
 const isThreadRead = (url: URL) => /^\/api\/v1\/mail\/threads\/[^/]+$/.test(url.pathname);
 
-/** Rewrite the newest body; returns a getter for that message's id. */
-async function stubNewestBody(page: Page): Promise<() => string> {
+// Enough reading that a gist saves some: the reader shows it past 400 words.
+const BACKGROUND = Array.from(
+  { length: 45 },
+  (_, i) => `Background note ${i + 1}: the canary covers five percent of traffic today.`,
+).join(" ");
+
+/**
+ * Rewrite the newest body; returns a getter for that message's id. `long`
+ * adds 450 words of background so the reader treats it as a long thread;
+ * `alone` drops the earlier messages, leaving a short one-message thread.
+ */
+async function stubNewestBody(
+  page: Page,
+  { long = true, alone = false }: { long?: boolean; alone?: boolean } = {},
+): Promise<() => string> {
   let newestId = "";
   await page.route(isThreadRead, async (route) => {
     const response = await route.fetch();
     const json = await response.json();
     const newest = json.bodies?.at(-1);
     if (newest) {
-      newest.text_plain = BODY_TEXT;
-      newest.text_html = BODY_HTML;
+      newest.text_plain = long ? `${BACKGROUND}\n\n${BODY_TEXT}` : BODY_TEXT;
+      newest.text_html = long ? `<p>${BACKGROUND}</p>${BODY_HTML}` : BODY_HTML;
       newestId = newest.message_id;
+      if (alone) {
+        json.bodies = [newest];
+        json.messages = json.messages.filter(
+          (message: { id: string }) => message.id === newest.message_id,
+        );
+      }
     }
     await route.fulfill({ response, json });
   });
@@ -43,7 +62,10 @@ async function stubNewestBody(page: Page): Promise<() => string> {
 async function stubModel(page: Page, newestId: () => string, delayMs: number): Promise<void> {
   await page.route("**/api/v1/platform/llm/status", (route) =>
     route.fulfill({
-      json: { kind: "LlmStatus", status: { enabled: true, provider: "stub", model: "stub-7b" } },
+      json: {
+        kind: "LlmStatus",
+        status: { enabled: true, provider: "stub", model: "stub-7b" },
+      },
     }),
   );
   await page.route("**/api/v1/mail/threads/*/context/gist**", async (route) => {
@@ -63,7 +85,11 @@ async function stubModel(page: Page, newestId: () => string, delayMs: number): P
             summary: "confirm who owns the rollout check",
             quote: { message_id: newestId(), text: ASK },
           },
-          provenance: { model: "stub-7b", locality: "local", sources: ["this_thread"] },
+          provenance: {
+            model: "stub-7b",
+            locality: "local",
+            sources: ["this_thread"],
+          },
           from_cache: false,
         },
       },
@@ -140,6 +166,21 @@ test("the ask lands without moving the messages and is marked in the message", a
   await composer(page).getByRole("button", { name: "Close composer (saves draft)" }).click();
 });
 
+test("a short conversation shows no gist, only the ask marked in the message", async ({ page }) => {
+  const newestId = await stubNewestBody(page, { long: false, alone: true });
+  await stubModel(page, newestId, 300);
+  const gistAsked = page.waitForRequest("**/api/v1/mail/threads/*/context/gist**");
+  await openFirstConversation(page);
+  await expect(threadMessages(page)).toHaveCount(1);
+  // The list already said what it is about: no gist slot in the reader...
+  await expect(page.getByTestId("thread-context-facts")).toBeVisible();
+  await expect(page.getByTestId("thread-gist")).toHaveCount(0);
+  // ...but the ask is still found and marked where it is written.
+  await gistAsked;
+  await page.keyboard.press("R");
+  await expect(reader(page).locator("mark[data-ask-quote]")).toHaveText(ASK);
+});
+
 test("r opens the reply at the end of the thread, in view; so does the field", async ({ page }) => {
   await openFirstConversation(page);
   const field = page.getByTestId("reply-field");
@@ -174,7 +215,11 @@ test("the privacy line names what was blocked and from whom", async ({ page }) =
   const imageHits: string[] = [];
   await page.context().route("https://mcusercontent.com/**", async (route) => {
     imageHits.push(route.request().url());
-    await route.fulfill({ status: 200, contentType: "image/png", body: Buffer.alloc(0) });
+    await route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      body: Buffer.alloc(0),
+    });
   });
   const trackerHits: string[] = [];
   await page.context().route("https://acme.list-manage.com/**", async (route) => {

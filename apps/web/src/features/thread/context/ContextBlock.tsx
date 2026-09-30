@@ -3,7 +3,8 @@
  * then how you know this person, whether you owe a reply, and open promises
  * both ways. Facts come from the store and are there when the thread opens.
  * The model's part has a fixed-height slot, reserved only when a model is
- * configured, so nothing below moves when it arrives; it fades in.
+ * configured and the thread is long enough for a gist to save reading
+ * (`longThread.ts`), so nothing below moves when it arrives; it fades in.
  */
 
 import { Check, RefreshCw } from "lucide-react";
@@ -15,7 +16,7 @@ import type { ThreadContext, ThreadGist } from "./api";
 import { contextFacts, firstName, promiseViews, provenanceLabel } from "./contextFormat";
 
 export interface GistState {
-  /** A model is configured, so the slot is reserved. */
+  /** A model is configured and the thread is long: the slot is reserved. */
   reserved: boolean;
   data?: ThreadGist;
   loading: boolean;

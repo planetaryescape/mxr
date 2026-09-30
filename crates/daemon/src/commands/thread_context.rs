@@ -116,6 +116,7 @@ mod tests {
             reason: None,
             generated_at: Some(Utc::now()),
             from_cache: true,
+            newest_message_id: None,
         };
         assert_eq!(
             render(&context, Some(&gist), Utc::now()),

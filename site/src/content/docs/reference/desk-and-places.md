@@ -213,6 +213,13 @@ Trimmed to one row:
   prints thread ids, and `--format csv` prints the rows as CSV.
 - `--limit` (default 25) caps rows per lane. Each lane's `total` still
   counts all of them.
+- `--gists` adds each conversation's cached gist, never waiting on a model:
+  `gists` (a list in desk order, `[]` when none is cached) in JSON, a
+  `gist` field (`null` when none) on each JSONL row, and `gist` and `ask`
+  columns in CSV. The table shows the ask in place of the reason on You owe
+  and New from people, and the gist under the row. Gist fields are
+  described under
+  [`mxr briefing gists`](/guides/briefings-and-loop-in/#many-conversations-at-once-mxr-briefing-gists).
 
 ### `mxr desk done --format json`
 

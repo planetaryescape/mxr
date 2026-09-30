@@ -47,6 +47,7 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_read_message`
 - `mxr_read_thread`
 - `mxr_thread_context`
+- `mxr_thread_gists`
 - `mxr_list_place`
 - `mxr_sweep_preview`
 - `mxr_draft_assist`
@@ -66,6 +67,8 @@ The server exposes stable mxr tools for common agent workflows:
 `mxr_thread_context` returns a thread's facts (counterparty, owed reply, open
 promises) and, with `include_gist = true`, the model's gist and verified ask.
 It has no refresh option, so a cached gist is reused.
+`mxr_thread_gists` returns cached one-line gists for up to 100 threads without
+calling a model; `generate = true` queues the missing ones from people.
 `mxr_list_place` lists [Reading or Paper trail](/guides/reading-and-paper-trail/)
 (`place` is `reading` or `paper_trail`) bundled by sender, with the reason for
 each bundle. `mxr_sweep_preview` shows what sweeping a place, or one sender's

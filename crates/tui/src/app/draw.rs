@@ -202,6 +202,8 @@ impl App {
                                     desk: &self.mailbox.desk_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
+                                    row_gists: &self.row_gists.gists,
+                                    gist_lines: self.row_gists.lines_reserved(),
                                 },
                                 theme,
                             );
@@ -258,6 +260,7 @@ impl App {
                                         .mailbox_loading_message
                                         .as_ref()
                                         .map(|_| &self.mailbox.mailbox_loading_throbber),
+                                    row_gists: &self.row_gists.gists,
                                 },
                                 theme,
                             );
@@ -295,6 +298,8 @@ impl App {
                                     desk: &self.mailbox.desk_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
+                                    row_gists: &self.row_gists.gists,
+                                    gist_lines: self.row_gists.lines_reserved(),
                                 },
                                 theme,
                             );
@@ -358,6 +363,7 @@ impl App {
                                         .mailbox_loading_message
                                         .as_ref()
                                         .map(|_| &self.mailbox.mailbox_loading_throbber),
+                                    row_gists: &self.row_gists.gists,
                                 },
                                 theme,
                             );

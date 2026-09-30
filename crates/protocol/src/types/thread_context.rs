@@ -92,6 +92,10 @@ pub struct ThreadGistData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generated_at: Option<chrono::DateTime<chrono::Utc>>,
     pub from_cache: bool,
+    /// The conversation's newest message when the gist was written. A client
+    /// that has seen a newer message in the conversation ignores the gist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub newest_message_id: Option<MessageId>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -105,6 +109,70 @@ pub enum ThreadGistStatusData {
     Blocked,
     /// The model failed or returned something unusable.
     Failed,
+}
+
+/// Most conversations one `Request::GetThreadGists` may name: a screen of
+/// rows plus lookahead is a few dozen.
+pub const THREAD_GISTS_MAX_BATCH: usize = 100;
+
+/// Returned by `Request::GetThreadGists`: the gists a list can show now,
+/// straight from the cache, and what was queued to be written.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadGistBatchData {
+    /// Whether gists can be written at all. Anything but `available` means
+    /// lists show their rows as they are, with nothing to wait for.
+    pub model: GistModelData,
+    /// Cached gists that match each conversation's newest message, in
+    /// request order. Only `ready` gists are listed.
+    pub gists: Vec<ThreadGistData>,
+    /// Conversations waiting in the queue after this request. Each one's
+    /// gist arrives as a `ThreadGistReady` event.
+    #[serde(default)]
+    pub queued: Vec<ThreadId>,
+    /// Conversations a writer is on right now; their gists arrive as events
+    /// too.
+    #[serde(default)]
+    pub in_flight: Vec<ThreadId>,
+    /// Conversations that have no gist and won't get one from this request.
+    #[serde(default)]
+    pub skipped: Vec<ThreadGistSkipData>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum GistModelData {
+    Available,
+    /// No model is configured.
+    Disabled,
+    /// Privacy settings keep conversations from the configured model.
+    Blocked,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadGistSkipData {
+    pub thread_id: ThreadId,
+    pub reason: ThreadGistSkipReasonData,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ThreadGistSkipReasonData {
+    /// Newsletters, lists and automated mail never go to the model for a
+    /// list gist; the row's own snippet says enough.
+    NotPeople,
+    /// No such conversation, or it is in the trash.
+    NotFound,
+    /// The model failed on it a moment ago; it is tried again later.
+    RecentlyFailed,
+    /// Only asked for cached gists (`generate: false`).
+    NotGenerated,
+    /// The queue was full: older requests are ahead of it. Asking again
+    /// once the rows are still on screen queues it.
+    QueueFull,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

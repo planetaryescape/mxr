@@ -3,11 +3,14 @@ use crate::commands::owed::{csv_escape, truncate};
 use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::{resolve_format, terminal_text};
+use mxr_core::id::ThreadId;
 use mxr_protocol::*;
+use std::collections::{HashMap, HashSet};
 
 pub async fn run(
     account: Option<String>,
     limit: u32,
+    with_gists: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
@@ -23,8 +26,37 @@ pub async fn run(
         Response::Error { message, .. } => anyhow::bail!(message),
         _ => anyhow::bail!("Unexpected response"),
     };
-    print!("{}", render(&desk, resolve_format(format))?);
+    let gists = if with_gists {
+        Some(cached_gists(&mut client, &desk).await?)
+    } else {
+        None
+    };
+    print!("{}", render(&desk, resolve_format(format), gists.as_ref())?);
     Ok(())
+}
+
+/// Cached gists by conversation.
+type Gists = HashMap<ThreadId, ThreadGistData>;
+
+/// The desk's conversations' cached gists: never a model call.
+async fn cached_gists(client: &mut IpcClient, desk: &ResponseData) -> anyhow::Result<Gists> {
+    let mut seen = HashSet::new();
+    let ids: Vec<ThreadId> = lanes(desk)
+        .into_iter()
+        .flat_map(|(_, _, lane)| lane.rows.iter())
+        .map(|row| row.thread_id.clone())
+        .filter(|id| seen.insert(id.clone()))
+        .take(THREAD_GISTS_MAX_BATCH)
+        .collect();
+    if ids.is_empty() {
+        return Ok(Gists::new());
+    }
+    let batch = super::thread_gists::fetch(client, ids, false).await?;
+    Ok(batch
+        .gists
+        .into_iter()
+        .map(|gist| (gist.thread_id.clone(), gist))
+        .collect())
 }
 
 pub async fn run_action(action: DeskAction) -> anyhow::Result<()> {
@@ -167,7 +199,9 @@ fn lanes(desk: &ResponseData) -> Vec<(DeskLaneKind, &str, &DeskLaneData)> {
         .collect()
 }
 
-fn render(desk: &ResponseData, fmt: OutputFormat) -> anyhow::Result<String> {
+/// `gists` is `Some` with `--gists`: then the shape is the same whatever is
+/// cached (`gists: []`, `gist: null`, empty CSV cells).
+fn render(desk: &ResponseData, fmt: OutputFormat, gists: Option<&Gists>) -> anyhow::Result<String> {
     let rows = || {
         lanes(desk)
             .into_iter()
@@ -176,12 +210,31 @@ fn render(desk: &ResponseData, fmt: OutputFormat) -> anyhow::Result<String> {
     let mut out = String::new();
     match fmt {
         OutputFormat::Json => {
-            out.push_str(&serde_json::to_string_pretty(desk)?);
+            let mut value = serde_json::to_value(desk)?;
+            if let Some(gists) = gists {
+                if let Some(object) = value.as_object_mut() {
+                    // In desk order, each conversation once.
+                    let mut seen = HashSet::new();
+                    let listed: Vec<&ThreadGistData> = rows()
+                        .filter(|row| seen.insert(&row.thread_id))
+                        .filter_map(|row| gists.get(&row.thread_id))
+                        .collect();
+                    object.insert("gists".into(), serde_json::to_value(listed)?);
+                }
+            }
+            out.push_str(&serde_json::to_string_pretty(&value)?);
             out.push('\n');
         }
         OutputFormat::Jsonl => {
             for row in rows() {
-                out.push_str(&serde_json::to_string(row)?);
+                let mut value = serde_json::to_value(row)?;
+                if let (Some(gists), Some(object)) = (gists, value.as_object_mut()) {
+                    object.insert(
+                        "gist".into(),
+                        serde_json::to_value(gists.get(&row.thread_id))?,
+                    );
+                }
+                out.push_str(&serde_json::to_string(&value)?);
                 out.push('\n');
             }
         }
@@ -192,11 +245,12 @@ fn render(desk: &ResponseData, fmt: OutputFormat) -> anyhow::Result<String> {
         }
         OutputFormat::Csv => {
             out.push_str(
-                "lane,thread_id,message_id,counterparty_email,subject,reason,since,age_seconds,usual_seconds,overdue\n",
+                "lane,thread_id,message_id,counterparty_email,subject,reason,since,age_seconds,usual_seconds,overdue",
             );
+            out.push_str(if gists.is_none() { "\n" } else { ",gist,ask\n" });
             for row in rows() {
                 out.push_str(&format!(
-                    "{},{},{},{},{},{},{},{},{},{}\n",
+                    "{},{},{},{},{},{},{},{},{},{}",
                     lane_key(row.lane),
                     row.thread_id,
                     row.message_id,
@@ -208,14 +262,27 @@ fn render(desk: &ResponseData, fmt: OutputFormat) -> anyhow::Result<String> {
                     row.usual_seconds.map(|s| s.to_string()).unwrap_or_default(),
                     row.overdue,
                 ));
+                if let Some(gists) = gists {
+                    let gist = gists.get(&row.thread_id);
+                    out.push_str(&format!(
+                        ",{},{}",
+                        csv_escape(gist.and_then(|g| g.gist.as_deref()).unwrap_or_default()),
+                        csv_escape(
+                            gist.and_then(|g| g.ask.as_ref())
+                                .map(|ask| ask.summary.as_str())
+                                .unwrap_or_default()
+                        ),
+                    ));
+                }
+                out.push('\n');
             }
         }
-        OutputFormat::Table => out.push_str(&table(desk)),
+        OutputFormat::Table => out.push_str(&table(desk, gists)),
     }
     Ok(out)
 }
 
-fn table(desk: &ResponseData) -> String {
+fn table(desk: &ResponseData, gists: Option<&Gists>) -> String {
     let mut out = String::new();
     out.push_str(&summary_line(desk));
     out.push('\n');
@@ -235,10 +302,20 @@ fn table(desk: &ResponseData) -> String {
             } else {
                 who.to_string()
             };
+            let gist = gists.and_then(|gists| gists.get(&row.thread_id));
+            // With a gist, the ask says why the row is here better than the
+            // lane's reason does.
+            let reason = match gist
+                .and_then(|gist| gist.ask.as_ref())
+                .filter(|_| kind.shows_ask())
+            {
+                Some(ask) => super::thread_gists::ask_text(ask),
+                None => row.reason.clone(),
+            };
             let what = if row.subject.is_empty() {
-                row.reason.clone()
+                reason
             } else {
-                format!("{} \u{b7} {}", row.subject, row.reason)
+                format!("{} \u{b7} {}", row.subject, reason)
             };
             out.push_str(&format!(
                 "  {:<22}  {:<58}  {}\n",
@@ -246,6 +323,13 @@ fn table(desk: &ResponseData) -> String {
                 truncate(&terminal_text(&what), 58),
                 age_cell(row)
             ));
+            if let Some(about) = gist.and_then(|gist| gist.gist.as_deref()) {
+                out.push_str(&format!(
+                    "  {:<22}  {}\n",
+                    "",
+                    truncate(&terminal_text(about), 58)
+                ));
+            }
         }
         let hidden = lane.total as usize - lane.rows.len();
         if hidden > 0 {
@@ -397,6 +481,7 @@ mod tests {
                 vec![row(DeskLaneKind::Due, -2 * 86_400, None)],
             ),
             OutputFormat::Table,
+            None,
         )
         .unwrap();
         assert!(text.starts_with("1 reply owed, 1 promise due.\n"), "{text}");
@@ -413,7 +498,7 @@ mod tests {
         let mut hostile = row(DeskLaneKind::Owed, 60, None);
         hostile.subject = "Invoice\u{1b}]0;pwned\u{7}\u{1b}[2J\r\nnow".into();
         hostile.counterparty_name = Some("Eve\u{9b}31m".into());
-        let text = render(&desk(vec![hostile], vec![]), OutputFormat::Table).unwrap();
+        let text = render(&desk(vec![hostile], vec![]), OutputFormat::Table, None).unwrap();
         assert!(
             !text
                 .chars()
@@ -425,7 +510,7 @@ mod tests {
 
     #[test]
     fn empty_desk_is_calm() {
-        let text = render(&desk(vec![], vec![]), OutputFormat::Table).unwrap();
+        let text = render(&desk(vec![], vec![]), OutputFormat::Table, None).unwrap();
         assert!(text.starts_with("Nothing needs you right now."));
     }
 
@@ -434,9 +519,71 @@ mod tests {
         let text = render(
             &desk(vec![row(DeskLaneKind::Owed, 60, None)], vec![]),
             OutputFormat::Jsonl,
+            None,
         )
         .unwrap();
         let value: serde_json::Value = serde_json::from_str(text.trim()).unwrap();
         assert_eq!(value["lane"], "owed");
+    }
+
+    #[test]
+    fn with_gists_the_ask_replaces_the_reason_and_the_gist_goes_under() {
+        let owed = row(DeskLaneKind::Owed, 60, None);
+        let gist = ThreadGistData {
+            thread_id: owed.thread_id.clone(),
+            status: ThreadGistStatusData::Ready,
+            gist: Some("Canary stays at 5% until the dashboard is quiet.".into()),
+            ask: Some(ThreadAskData {
+                summary: "confirm the owner".into(),
+                quote: None,
+            }),
+            provenance: None,
+            reason: None,
+            generated_at: None,
+            from_cache: true,
+            newest_message_id: None,
+        };
+        let gists = Gists::from([(owed.thread_id.clone(), gist)]);
+        let desk = desk(vec![owed], vec![]);
+        let text = render(&desk, OutputFormat::Table, Some(&gists)).unwrap();
+        assert!(
+            text.contains("Launch checklist \u{b7} asks: confirm the owner"),
+            "{text}"
+        );
+        assert!(!text.contains("replied to your message"), "{text}");
+        assert!(
+            text.contains("\n                          Canary stays at 5%"),
+            "{text}"
+        );
+
+        let jsonl = render(&desk, OutputFormat::Jsonl, Some(&gists)).unwrap();
+        let value: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
+        assert_eq!(value["gist"]["ask"]["summary"], "confirm the owner");
+        let json = render(&desk, OutputFormat::Json, Some(&gists)).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            value["gists"][0]["gist"],
+            "Canary stays at 5% until the dashboard is quiet."
+        );
+    }
+
+    #[test]
+    fn with_gists_the_json_shape_is_the_same_when_nothing_is_cached() {
+        let desk = desk(vec![row(DeskLaneKind::Owed, 60, None)], vec![]);
+        let none = Gists::new();
+        let json: serde_json::Value =
+            serde_json::from_str(&render(&desk, OutputFormat::Json, Some(&none)).unwrap()).unwrap();
+        assert_eq!(json["gists"], serde_json::json!([]));
+        let jsonl = render(&desk, OutputFormat::Jsonl, Some(&none)).unwrap();
+        let row: serde_json::Value = serde_json::from_str(jsonl.trim()).unwrap();
+        assert!(row.as_object().unwrap().contains_key("gist"));
+        assert!(row["gist"].is_null());
+        let csv = render(&desk, OutputFormat::Csv, Some(&none)).unwrap();
+        assert!(csv.lines().next().unwrap().ends_with(",gist,ask"));
+        assert!(csv.lines().nth(1).unwrap().ends_with(",,"));
+        // Without --gists, no gist fields at all.
+        let plain: serde_json::Value =
+            serde_json::from_str(&render(&desk, OutputFormat::Json, None).unwrap()).unwrap();
+        assert!(plain.get("gists").is_none());
     }
 }

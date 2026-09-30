@@ -16,7 +16,11 @@ export type ThreadAsk = Schemas["ThreadAskData"];
 export type AiProvenance = Schemas["AiProvenanceData"];
 export type ThreadPromise = Schemas["ThreadPromiseData"];
 
+export type ThreadGistBatch = Schemas["ThreadGistBatchData"];
+export type GistModel = Schemas["GistModelData"];
+
 type ContextResponse = Extract<Schemas["ResponseData"], { kind: "ThreadContext" }>;
+type GistBatchResponse = Extract<Schemas["ResponseData"], { kind: "ThreadGists" }>;
 type GistResponse = Extract<Schemas["ResponseData"], { kind: "ThreadGist" }>;
 
 /*
@@ -71,4 +75,21 @@ export async function fetchThreadGist(threadId: string, refresh = false): Promis
     `/api/v1/mail/threads/${encodeURIComponent(threadId)}/context/gist${query}`,
   );
   return response.gist;
+}
+
+/**
+ * List-row gists for many conversations: cached ones at once; with
+ * `generate`, the missing ones from people are queued and arrive as
+ * `ThreadGistReady` events. At most 100 ids (the daemon's
+ * `THREAD_GISTS_MAX_BATCH`).
+ */
+export async function fetchThreadGists(
+  threadIds: string[],
+  generate: boolean,
+): Promise<ThreadGistBatch> {
+  const response = await apiFetch<GistBatchResponse>("/api/v1/mail/gists", {
+    method: "POST",
+    body: { thread_ids: threadIds, generate },
+  });
+  return response.batch;
 }

@@ -1800,18 +1800,45 @@ pub async fn process_due_timers(
     state: &AppState,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<u32, String> {
-    if let Err(e) = crate::handler::deferral::settle_answered_reminders(state, now).await {
-        tracing::warn!("auto-reminder reply check failed: {e}");
-    }
-    let due = state
-        .store
-        .get_due_auto_reminders(now)
-        .await
-        .map_err(|e| e.to_string())?;
+    process_due_timers_with_gap(state, now, std::future::ready(())).await
+}
+
+/// `process_due_timers` with `gap` run between the reply check and the
+/// claims: tests land a reply there.
+pub(crate) async fn process_due_timers_with_gap(
+    state: &AppState,
+    now: chrono::DateTime<chrono::Utc>,
+    gap: impl std::future::Future<Output = ()>,
+) -> Result<u32, String> {
+    // Fail closed: a reminder never fires on a pass whose reply check
+    // failed. Its claim also refuses while a possible reply stored after
+    // the check exists, so the next pass classifies that one first.
+    let checked_through =
+        match crate::handler::deferral::settle_answered_reminders(state, now).await {
+            Ok(checked_through) => Some(checked_through),
+            Err(e) => {
+                tracing::warn!("auto-reminder reply check failed; none fire this pass: {e}");
+                None
+            }
+        };
+    gap.await;
+    let due = match checked_through {
+        Some(_) => state
+            .store
+            .get_due_auto_reminders(now)
+            .await
+            .map_err(|e| e.to_string())?,
+        None => Vec::new(),
+    };
+    let checked_through = checked_through.unwrap_or_default();
     let mut fired = Vec::new();
     for reminder in due {
         let id = reminder.sent_message_id;
-        match state.store.trigger_auto_reminder(&id, now).await {
+        match state
+            .store
+            .trigger_auto_reminder(&id, now, checked_through)
+            .await
+        {
             Ok(true) => {}
             Ok(false) => continue,
             Err(e) => {

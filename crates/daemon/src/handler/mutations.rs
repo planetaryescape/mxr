@@ -1302,7 +1302,7 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
     // Those are local rows: put them back first, and only once.
     let mut restored = 0u32;
     if let Some(desk) = entry.desk.as_ref() {
-        super::desk_done::restore_desk_state(state, desk).await?;
+        super::desk_done::restore_desk_state(state, desk, entry.applied_at).await?;
         restored += (desk.dismissals.len()
             + desk.commitments.len()
             + desk.reply_later_priors.len()

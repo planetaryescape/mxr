@@ -47,6 +47,20 @@ pub(super) fn current_messages(thread: &[DeskMessage], now: DateTime<Utc>) -> &[
     &thread[..thread.partition_point(|m| m.date <= cutoff)]
 }
 
+/// The message of `current` (see `current_messages`) stored last among
+/// those `keep` accepts. Who wrote last goes by the order mail was stored,
+/// not its Date header, so a reply whose clock is behind still counts as
+/// the newest. The desk, Done and deferral all judge it here.
+pub(super) fn last_stored(
+    current: &[DeskMessage],
+    keep: impl Fn(&DeskMessage) -> bool,
+) -> Option<&DeskMessage> {
+    current
+        .iter()
+        .filter(|message| keep(message))
+        .max_by_key(|message| message.seq)
+}
+
 /// What sets a Waiting row aside besides the thread itself.
 pub(super) struct WaitingAside<'a> {
     pub dismissed: &'a HashMap<ThreadId, DeskDismissal>,
@@ -279,7 +293,7 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
         // The lane is judged on current mail; verbs still cover the whole
         // thread.
         let current = current_messages(thread, inputs.now);
-        let Some(latest) = current.last() else {
+        let Some(latest) = last_stored(current, |_| true) else {
             continue;
         };
         if let Some(row) = thread_row(
@@ -323,8 +337,8 @@ fn thread_row(
     }
     let thread = conversation.current;
     let now = inputs.now;
-    let latest_inbound = thread.iter().rev().find(|m| !inputs.is_outbound(m));
-    let latest_outbound = thread.iter().rev().find(|m| inputs.is_outbound(m));
+    let latest_inbound = last_stored(thread, |m| !inputs.is_outbound(m));
+    let latest_outbound = last_stored(thread, |m| inputs.is_outbound(m));
     let in_inbox = thread.iter().any(|m| m.in_inbox && !m.trashed);
 
     if inputs.is_outbound(latest) {
@@ -349,11 +363,7 @@ fn thread_row(
     // person anchors it; any inbound one when no person wrote (a reply
     // later on a newsletter still comes back).
     if let Some(Timer::Back(back_at)) = inputs.timers.reply_later(&latest.thread_id, now) {
-        let anchor = thread
-            .iter()
-            .rev()
-            .find(|m| inputs.answers(m))
-            .unwrap_or(inbound);
+        let anchor = last_stored(thread, |m| inputs.answers(m)).unwrap_or(inbound);
         if !anchor.trashed {
             return Some(back_row(
                 inputs,
@@ -381,7 +391,7 @@ fn thread_row(
         let unanswered = latest_outbound.map_or(0, |sent| {
             thread
                 .iter()
-                .filter(|m| !inputs.is_outbound(m) && m.date > sent.date)
+                .filter(|m| !inputs.is_outbound(m) && m.seq > sent.seq)
                 .count()
         });
         let reason = if unanswered > 1 {
@@ -479,10 +489,7 @@ fn waiting_row(
     {
         return None;
     }
-    let followed_up = thread
-        .iter()
-        .rev()
-        .nth(1)
+    let followed_up = last_stored(thread, |m| m.seq < sent.seq)
         .is_some_and(|previous| inputs.is_outbound(previous));
     let reason = if followed_up {
         "you followed up, no reply yet"

@@ -674,3 +674,159 @@ async fn a_conversation_is_announced_once_however_many_messages_came_back() {
     );
     assert_eq!(drain(&mut events).len(), 1, "one announcement, one chime");
 }
+
+#[tokio::test]
+async fn a_reply_stored_between_the_check_and_the_claim_stops_the_firing() {
+    let fx = Fixture::new().await;
+    let (thread, _, mine) = waiting(&fx, Duration::days(2)).await;
+    due_reminder(&fx, &mine, Utc::now() - Duration::minutes(1)).await;
+
+    let reply_lands = async {
+        fx.message(
+            &thread,
+            "jon@example.com",
+            ME,
+            Duration::minutes(1),
+            mine.message_id_header.as_deref(),
+        )
+        .await;
+    };
+    assert_eq!(
+        crate::loops::process_due_timers_with_gap(&fx.state, Utc::now(), reply_lands).await,
+        Ok(0),
+        "the claim refuses: a reply it wasn't checked for exists"
+    );
+    assert!(!fx.state.store.is_reply_later(&mine.id).await.unwrap());
+
+    // The next pass classifies it: a person, so the wait is over.
+    assert_eq!(
+        crate::loops::process_due_timers(&fx.state, Utc::now()).await,
+        Ok(0)
+    );
+    let stored = fx
+        .state
+        .store
+        .get_auto_reminder(&mine.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(stored.cancelled_at.is_some() && stored.triggered_at.is_none());
+}
+
+#[tokio::test]
+async fn a_reply_filed_under_another_thread_still_answers_by_its_headers() {
+    let fx = Fixture::new().await;
+    let (_, _, mine) = waiting(&fx, Duration::days(2)).await;
+    due_reminder(&fx, &mine, Utc::now() - Duration::minutes(1)).await;
+    // IMAP threading put the answer in a thread of its own.
+    fx.message(
+        &ThreadId::new(),
+        "jon@example.com",
+        ME,
+        Duration::hours(3),
+        mine.message_id_header.as_deref(),
+    )
+    .await;
+
+    assert_eq!(
+        crate::loops::process_due_timers(&fx.state, Utc::now()).await,
+        Ok(0)
+    );
+    let stored = fx
+        .state
+        .store
+        .get_auto_reminder(&mine.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(stored.cancelled_at.is_some());
+}
+
+#[tokio::test]
+async fn an_auto_responder_filed_under_another_thread_does_not_answer() {
+    let fx = Fixture::new().await;
+    let (_, _, mine) = waiting(&fx, Duration::days(2)).await;
+    due_reminder(&fx, &mine, Utc::now() - Duration::minutes(1)).await;
+    fx.message(
+        &ThreadId::new(),
+        "notifications@example.com",
+        ME,
+        Duration::hours(3),
+        mine.message_id_header.as_deref(),
+    )
+    .await;
+
+    assert_eq!(
+        crate::loops::process_due_timers(&fx.state, Utc::now()).await,
+        Ok(1)
+    );
+    assert!(fx.state.store.is_reply_later(&mine.id).await.unwrap());
+}
+
+#[tokio::test]
+async fn a_backdated_reply_brings_reply_later_back_to_you_owe() {
+    let fx = Fixture::new().await;
+    let (thread, _, mine) = waiting(&fx, Duration::days(1)).await;
+    // Stored after yours, dated before it.
+    fx.message(
+        &thread,
+        "jon@example.com",
+        ME,
+        Duration::days(2),
+        mine.message_id_header.as_deref(),
+    )
+    .await;
+    let now = Utc::now();
+    assert_eq!(
+        threads_of(&lanes_at(&fx, now).await[0]),
+        vec![thread.clone()],
+        "the desk agrees they wrote last"
+    );
+
+    let until = now + Duration::days(1);
+    let run = defer(&fx, std::slice::from_ref(&thread), until, false).await;
+    assert_eq!(run.items[0].kind, Some(DeferKindData::ReplyLater));
+    let [owed, _, waiting, _] = lanes_at(&fx, until + Duration::minutes(1)).await;
+    assert_eq!(threads_of(&owed), vec![thread]);
+    assert_eq!(owed[0].reason, "back from reply later");
+    assert!(waiting.is_empty());
+}
+
+#[tokio::test]
+async fn undo_takes_the_flag_of_a_second_firing() {
+    let fx = Fixture::new().await;
+    let (thread, _, mine) = waiting(&fx, Duration::days(3)).await;
+    // It fired once before, and you cleared the queue entry since.
+    due_reminder(&fx, &mine, Utc::now() - Duration::hours(1)).await;
+    assert_eq!(
+        crate::loops::process_due_timers(&fx.state, Utc::now()).await,
+        Ok(1)
+    );
+    fx.state
+        .store
+        .clear_reply_later(&mine.id, Utc::now())
+        .await
+        .unwrap();
+
+    let until = Utc::now() + Duration::days(1);
+    let run = defer(&fx, std::slice::from_ref(&thread), until, false).await;
+    assert_eq!(
+        crate::loops::process_due_timers(&fx.state, until + Duration::minutes(1)).await,
+        Ok(1)
+    );
+    assert!(fx.state.store.is_reply_later(&mine.id).await.unwrap());
+
+    undo(&fx, run.mutation_id.unwrap()).await;
+    assert!(
+        !fx.state.store.is_reply_later(&mine.id).await.unwrap(),
+        "the second firing's flag is gone"
+    );
+    let restored = fx
+        .state
+        .store
+        .get_auto_reminder(&mine.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(restored.triggered_at.is_some(), "the first firing stands");
+}

@@ -16,7 +16,7 @@
 //! holding every flag and reminder it replaced, as it was.
 
 use super::desk::{self_matcher, Senders};
-use super::desk_lanes::is_outbound;
+use super::desk_lanes::{current_messages, is_outbound, last_stored};
 use super::mutations::UNDO_WINDOW_SECS;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -88,7 +88,7 @@ pub(super) async fn defer_threads_at(
     if until <= now {
         return Err("that time has already passed; pick a later one".into());
     }
-    let mut plans = plan(state, thread_ids).await?;
+    let mut plans = plan(state, thread_ids, now).await?;
     if dry_run {
         return Ok(ResponseData::ThreadsDeferred {
             items: plans.iter().map(Plan::item).collect(),
@@ -139,7 +139,11 @@ pub(super) async fn defer_threads_at(
     })
 }
 
-async fn plan(state: &AppState, thread_ids: &[ThreadId]) -> Result<Vec<Plan>, HandlerError> {
+async fn plan(
+    state: &AppState,
+    thread_ids: &[ThreadId],
+    now: DateTime<Utc>,
+) -> Result<Vec<Plan>, HandlerError> {
     let owners: HashMap<ThreadId, AccountId> = state
         .store
         .get_threads_batch(thread_ids)
@@ -207,7 +211,7 @@ async fn plan(state: &AppState, thread_ids: &[ThreadId]) -> Result<Vec<Plan>, Ha
             };
             let is_self = &matchers[account];
             let answers = |m: &DeskMessage| senders[account].answers(m, is_self);
-            plan_thread(account, thread, is_self, &answers, &flagged, &pending)
+            plan_thread(account, thread, is_self, &answers, &flagged, &pending, now)
         })
         .collect();
     Ok(plans)
@@ -220,18 +224,20 @@ fn plan_thread(
     answers: &dyn Fn(&DeskMessage) -> bool,
     flagged: &HashSet<MessageId>,
     pending: &HashSet<MessageId>,
+    now: DateTime<Utc>,
 ) -> Plan {
     let thread_id = &thread[0].thread_id;
     // Who wrote last, by storage order (a skewed Date header can't reorder
     // it), among you and people: an auto-responder or notification after
     // your message doesn't make it theirs. With neither (a newsletter
     // thread), their latest message: reply later still works on it.
-    let live = || thread.iter().filter(|message| !message.trashed);
-    let Some(latest) = live()
-        .filter(|message| is_outbound(message, is_self) || answers(message))
-        .max_by_key(|message| message.seq)
-        .or_else(|| live().max_by_key(|message| message.seq))
-    else {
+    // The desk's own rule (`last_stored`), so what this sets is what the
+    // desk shows when it comes back.
+    let current = current_messages(thread, now);
+    let Some(latest) = last_stored(current, |m| {
+        !m.trashed && (is_outbound(m, is_self) || answers(m))
+    })
+    .or_else(|| last_stored(current, |m| !m.trashed)) else {
         return Plan::failed(
             thread_id,
             Some(account_id.clone()),
@@ -326,10 +332,15 @@ async fn apply(
 }
 
 /// Undo's half for flags and reminders: each back exactly as it was.
-/// Reminders go first: one that fired since (it had not before) put its
-/// message in the reply queue, and that flag goes too. Flags recorded in
-/// `undo` are then put back over it as they were.
-pub(super) async fn restore_timers(state: &AppState, undo: &DeskUndo) -> Result<(), HandlerError> {
+/// Reminders go first: one that fired after the change being undone
+/// (`applied_at`, unix seconds) put its message in the reply queue, and
+/// that flag goes too, even if the reminder had also fired once before.
+/// Flags recorded in `undo` are then put back over it as they were.
+pub(super) async fn restore_timers(
+    state: &AppState,
+    undo: &DeskUndo,
+    applied_at: i64,
+) -> Result<(), HandlerError> {
     let now = Utc::now();
     let reminder_ids: Vec<MessageId> = undo
         .reminder_priors
@@ -340,8 +351,8 @@ pub(super) async fn restore_timers(state: &AppState, undo: &DeskUndo) -> Result<
     for (id, prior) in &undo.reminder_priors {
         let fired_since = current
             .get(id)
-            .is_some_and(|now| now.triggered_at.is_some())
-            && prior.as_ref().is_none_or(|was| was.triggered_at.is_none());
+            .and_then(|reminder| reminder.triggered_at)
+            .is_some_and(|fired| fired.timestamp() >= applied_at);
         state
             .store
             .restore_auto_reminder(id, prior.as_ref())
@@ -358,28 +369,37 @@ pub(super) async fn restore_timers(state: &AppState, undo: &DeskUndo) -> Result<
 }
 
 /// Cancel due "bring it back if nobody replies" reminders that a person
-/// answered: someone other than you, not an auto-responder or a
-/// notification (the shared classifier), stored after the message the
-/// reminder is on (storage order, not the Date header).
+/// answered: someone other than you (the shared classifier: not an
+/// auto-responder, list or notification) wrote a message stored after
+/// yours in the thread, or naming yours in In-Reply-To or References in
+/// any thread. Returns the message rowid the check covered, for the claim's
+/// guard against a reply stored after it.
 pub(crate) async fn settle_answered_reminders(
     state: &AppState,
     now: DateTime<Utc>,
-) -> Result<(), HandlerError> {
+) -> Result<i64, HandlerError> {
+    // Read first: every reply at or below it is among the candidates below.
+    let checked_through = state.store.max_message_rowid().await?;
     let due = state.store.get_due_auto_reminders(now).await?;
     if due.is_empty() {
-        return Ok(());
+        return Ok(checked_through);
     }
-    let sent: Vec<MessageId> = due.iter().map(|r| r.sent_message_id.clone()).collect();
-    let mut by_account: HashMap<AccountId, Vec<(MessageId, ThreadId)>> = HashMap::new();
-    for envelope in state.store.list_envelopes_by_ids(&sent).await? {
+    let mut by_account: HashMap<AccountId, Vec<MessageId>> = HashMap::new();
+    for reminder in due {
         by_account
-            .entry(envelope.account_id)
+            .entry(reminder.account_id)
             .or_default()
-            .push((envelope.id, envelope.thread_id));
+            .push(reminder.sent_message_id);
     }
-    for (account, reminders) in by_account {
-        let mut thread_ids: Vec<ThreadId> =
-            reminders.iter().map(|(_, thread)| thread.clone()).collect();
+    for (account, sent) in by_account {
+        let candidates = state.store.reminder_reply_candidates(&sent).await?;
+        if candidates.is_empty() {
+            continue;
+        }
+        let mut thread_ids: Vec<ThreadId> = candidates
+            .iter()
+            .map(|c| c.reply_thread_id.clone())
+            .collect();
         thread_ids.sort_by_key(ThreadId::as_str);
         thread_ids.dedup();
         let messages = state
@@ -388,21 +408,23 @@ pub(crate) async fn settle_answered_reminders(
             .await?;
         let senders = Senders::load(state, &account, &messages).await?;
         let is_self = self_matcher(state, &account).await?;
-        for (sent_id, thread_id) in reminders {
-            let thread = messages.iter().filter(|m| m.thread_id == thread_id);
-            let Some(sent_seq) = thread.clone().find(|m| m.id == sent_id).map(|m| m.seq) else {
-                continue;
-            };
-            if thread
-                .into_iter()
-                .any(|m| m.seq > sent_seq && senders.answers(m, &is_self))
-            {
-                state
-                    .store
-                    .cancel_pending_auto_reminder(&sent_id, now)
-                    .await?;
-            }
+        let by_id: HashMap<&MessageId, &DeskMessage> =
+            messages.iter().map(|m| (&m.id, m)).collect();
+        let answered: HashSet<&MessageId> = candidates
+            .iter()
+            .filter(|c| {
+                by_id
+                    .get(&c.reply_message_id)
+                    .is_some_and(|reply| senders.answers(reply, &is_self))
+            })
+            .map(|c| &c.sent_message_id)
+            .collect();
+        for sent_id in answered {
+            state
+                .store
+                .cancel_pending_auto_reminder(sent_id, now)
+                .await?;
         }
     }
-    Ok(())
+    Ok(checked_through)
 }

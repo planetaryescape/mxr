@@ -19,7 +19,7 @@
 //! state plus the dismissals and promises as they were.
 
 use super::desk::self_matcher;
-use super::desk_lanes::{current_messages, is_outbound};
+use super::desk_lanes::{current_messages, is_outbound, last_stored};
 use super::mutations::{apply_mutation_batch, UNDO_WINDOW_SECS};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -316,7 +316,7 @@ fn lane_archives(lane: DeskLaneKind) -> bool {
 /// The desk's own rule when the caller names no lane: waiting when you
 /// wrote last, otherwise owed.
 fn inferred_lane(thread: &[DeskMessage], is_self: &dyn Fn(&str) -> bool) -> DeskLaneKind {
-    match current_messages(thread, Utc::now()).last() {
+    match last_stored(current_messages(thread, Utc::now()), |_| true) {
         Some(message) if is_outbound(message, is_self) => DeskLaneKind::Waiting,
         _ => DeskLaneKind::Owed,
     }
@@ -493,6 +493,7 @@ async fn put_away(
 pub(super) async fn restore_desk_state(
     state: &AppState,
     desk: &DeskUndo,
+    applied_at: i64,
 ) -> Result<(), HandlerError> {
     state
         .store
@@ -512,7 +513,7 @@ pub(super) async fn restore_desk_state(
     for (message_id, set_at) in &desk.reply_later {
         super::reply_later::set_reply_later_at(state, message_id, true, *set_at).await?;
     }
-    super::deferral::restore_timers(state, desk).await
+    super::deferral::restore_timers(state, desk, applied_at).await
 }
 
 /// `run` over hand-built plans (each conversation's messages, archived or

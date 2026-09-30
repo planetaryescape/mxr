@@ -37,6 +37,34 @@ impl ReminderState {
     }
 }
 
+/// A stored message `r` that may answer the sent message `s` of a reminder:
+/// inbound, from someone else, and either later in the same thread (by
+/// storage order) or, in any thread, naming `s` in In-Reply-To or
+/// References (IMAP can file a reply under another thread id). Whether it
+/// is a person is the daemon's classifier's call.
+const REPLY_CANDIDATE: &str = r#"r.account_id = s.account_id
+    AND r.id != s.id
+    AND r.direction != 'outbound'
+    AND LOWER(r.from_email) != LOWER(s.from_email)
+    AND (
+        (r.thread_id = s.thread_id AND r.rowid > s.rowid)
+        OR (
+            COALESCE(s.message_id_header, '') != ''
+            AND (
+                r.in_reply_to = s.message_id_header
+                OR instr(COALESCE(r.reference_headers, ''), '"' || s.message_id_header || '"') > 0
+            )
+        )
+    )"#;
+
+/// A stored message that may answer a reminder's sent message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplyCandidate {
+    pub sent_message_id: MessageId,
+    pub reply_message_id: MessageId,
+    pub reply_thread_id: ThreadId,
+}
+
 /// What `take_timers` took off, each as it was.
 #[derive(Debug, Default)]
 pub struct TakenTimers {
@@ -151,27 +179,39 @@ impl super::Store {
     /// already fired, been cancelled, or been moved to a later time since
     /// the caller read it, so each reminder fires exactly once, at its
     /// current time, however often (or concurrently) the loop runs.
+    ///
+    /// `checked_through` is the highest message rowid the caller had when it
+    /// checked the replies: the claim also refuses while any possible reply
+    /// stored after that exists, so a reply landing between the check and
+    /// the claim always wins. The next pass classifies it.
     pub async fn trigger_auto_reminder(
         &self,
         sent_message_id: &MessageId,
         now: DateTime<Utc>,
+        checked_through: i64,
     ) -> Result<bool, sqlx::Error> {
         let mid = sent_message_id.as_str();
         let now_ts = now.timestamp();
         let mut tx = self.writer().begin().await?;
-        let claimed = sqlx::query(
+        let claim = format!(
             r#"UPDATE auto_reminders
                SET triggered_at = ?1
                WHERE sent_message_id = ?2
                  AND remind_at <= ?1
                  AND triggered_at IS NULL
-                 AND cancelled_at IS NULL"#,
-        )
-        .bind(now_ts)
-        .bind(&mid)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected()
+                 AND cancelled_at IS NULL
+                 AND NOT EXISTS (
+                   SELECT 1 FROM messages s, messages r
+                   WHERE s.id = ?2 AND r.rowid > ?3 AND {REPLY_CANDIDATE}
+                 )"#
+        );
+        let claimed = sqlx::query(sqlx::AssertSqlSafe(claim.as_str()))
+            .bind(now_ts)
+            .bind(&mid)
+            .bind(checked_through)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected()
             == 1;
         if claimed {
             let queued = crate::ReplyLaterState {
@@ -333,6 +373,46 @@ impl super::Store {
                 })
             })
             .collect()
+    }
+
+    /// The highest message rowid stored so far: a watermark for
+    /// `trigger_auto_reminder`, read before the replies are checked.
+    pub async fn max_message_rowid(&self) -> Result<i64, sqlx::Error> {
+        let max: Option<i64> = sqlx::query_scalar("SELECT MAX(rowid) FROM messages")
+            .fetch_one(self.writer())
+            .await?;
+        Ok(max.unwrap_or(0))
+    }
+
+    /// Every stored message that may answer one of these sent messages
+    /// (see `REPLY_CANDIDATE`), for the daemon to classify.
+    pub async fn reminder_reply_candidates(
+        &self,
+        sent_message_ids: &[MessageId],
+    ) -> Result<Vec<ReplyCandidate>, sqlx::Error> {
+        let mut candidates = Vec::new();
+        let sql = format!(
+            r#"SELECT s.id AS sent_id, r.id AS reply_id, r.thread_id AS reply_thread
+               FROM messages s, messages r
+               WHERE s.id = ? AND {REPLY_CANDIDATE}"#
+        );
+        for sent in sent_message_ids {
+            for row in sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(sent.as_str())
+                .fetch_all(self.writer())
+                .await?
+            {
+                let sent_id: String = row.try_get("sent_id")?;
+                let reply_id: String = row.try_get("reply_id")?;
+                let reply_thread: String = row.try_get("reply_thread")?;
+                candidates.push(ReplyCandidate {
+                    sent_message_id: decode_id(&sent_id)?,
+                    reply_message_id: decode_id(&reply_id)?,
+                    reply_thread_id: decode_id(&reply_thread)?,
+                });
+            }
+        }
+        Ok(candidates)
     }
 
     /// Cancel a reminder that has not fired: someone answered. Returns
@@ -684,12 +764,12 @@ mod tests {
             .unwrap();
 
         assert!(store
-            .trigger_auto_reminder(&env.id, anchor())
+            .trigger_auto_reminder(&env.id, anchor(), i64::MAX)
             .await
             .unwrap());
         assert!(
             !store
-                .trigger_auto_reminder(&env.id, anchor() + Duration::minutes(1))
+                .trigger_auto_reminder(&env.id, anchor() + Duration::minutes(1), i64::MAX)
                 .await
                 .unwrap(),
             "a fired reminder never fires again"
@@ -710,7 +790,7 @@ mod tests {
         store.cancel_auto_reminder(&env.id, anchor()).await.unwrap();
 
         assert!(!store
-            .trigger_auto_reminder(&env.id, anchor())
+            .trigger_auto_reminder(&env.id, anchor(), i64::MAX)
             .await
             .unwrap());
         assert!(!store.is_reply_later(&env.id).await.unwrap());
@@ -773,11 +853,14 @@ mod tests {
             .unwrap();
 
         assert!(!store
-            .trigger_auto_reminder(&env.id, anchor())
+            .trigger_auto_reminder(&env.id, anchor(), i64::MAX)
             .await
             .unwrap());
         assert!(!store.is_reply_later(&env.id).await.unwrap());
-        assert!(store.trigger_auto_reminder(&env.id, later).await.unwrap());
+        assert!(store
+            .trigger_auto_reminder(&env.id, later, i64::MAX)
+            .await
+            .unwrap());
     }
 
     #[tokio::test]
@@ -803,7 +886,7 @@ mod tests {
         assert_eq!(taken.reminders.len(), 1);
         assert!(!store.is_reply_later(&env.id).await.unwrap());
         assert!(!store
-            .trigger_auto_reminder(&env.id, anchor())
+            .trigger_auto_reminder(&env.id, anchor(), i64::MAX)
             .await
             .unwrap());
         assert!(store

@@ -1,13 +1,13 @@
 ---
 title: Triage flow
-description: Reply-later, screener, and custom snooze — the keyboard-first triage loop in mxr.
+description: Reply-later, screener, and custom snooze, the keyboard-first triage loop in mxr.
 ---
 
 ## The shape of triage in mxr
 
 Email triage is a two-pass loop:
 
-1. **First pass**: classify each message — does it deserve attention now,
+1. **First pass**: classify each message: does it deserve attention now,
    later, or never?
 2. **Second pass**: actually deal with the "later" pile.
 
@@ -16,7 +16,7 @@ mxr ships three primitives that together make the loop fast.
 ## Reply-later (first pass)
 
 The fastest decision: "I want to reply, just not now." Press `b` on a
-message and it's flagged as reply-later. The flag is local-only — never
+message and it's flagged as reply-later. The flag is local-only, never
 roundtrips to the provider.
 
 ```bash
@@ -32,8 +32,8 @@ TUI `r`).
 
 The decision you make once per *sender* rather than per message:
 
-- `allow` — you want their mail in the inbox
-- `deny` — auto-trash + mark-read
+- `allow`: you want their mail in the inbox
+- `deny`: auto-trash + mark-read
 - `feed`: newsletters and lists. Their mail lives in [Reading](/guides/reading-and-paper-trail/), off the desk.
 - `paper-trail`: receipts and notifications. Their mail lives in [Paper trail](/guides/reading-and-paper-trail/), off the desk.
 
@@ -45,19 +45,19 @@ mxr screener feed newsletter@example.com
 mxr screener paper-trail receipts@example.com
 ```
 
-The screener is **local-only by default**. Mobile / web Gmail won't see
-your decisions unless you opt in per-sender:
+Screener decisions are **local**: they live in mxr's store, not in your
+provider. To also label a sender's mail:
 
 ```bash
 mxr screener feed newsletter@example.com --label "Newsletters"
 ```
 
-When `--label` is set, the daemon mirrors the disposition as a real
-provider label so the categorisation rolls out to all your devices.
+With `--label`, mxr adds that label to the sender's new mail as it syncs
+in. Decisions match the exact sender address; wildcards are not supported.
 
 ## Custom snooze (first pass, defer)
 
-When "reply later" is too vague — you know exactly when this should
+When "reply later" is too vague: you know exactly when this should
 come back. `--until` takes a time in words, resolved in your local time:
 
 ```bash
@@ -107,11 +107,10 @@ The whole loop stays in the keyboard. No mouse, no context switches.
 - **Monday morning:** open mxr, hit `Ctrl-p → Reply Queue` to see what
   you bookmarked over the weekend; walk it with `j/k` and `r`.
 - **Inbox bombing after vacation:** `mxr screener queue --format ids
-  | xargs -n1 mxr cat | less` — skim every unknown sender at once,
+  | xargs -n1 mxr cat | less` to skim every unknown sender at once,
   decide dispositions in one pass.
-- **Tax season:** `mxr screener feed billing@*.example.com --label "Receipts"`
-  and the disposition mirrors to Gmail so your accountant's mobile app
-  sees the categorisation too.
+- **Tax season:** `mxr screener paper-trail billing@shop.example --label "Receipts"`
+  files that sender's new receipts under one label as they arrive.
 - **Newsletter overload:** `mxr subscriptions --rank --format json |
   jq '.[:10]'` shows the worst ROI lists; pipe to `xargs -n1 mxr
   unsubscribe`.
@@ -139,6 +138,6 @@ suggest a 2-line reply, and wait for me to approve. Use `mxr replies
 ## See also
 
 - [Unsubscribe](/guides/unsubscribe/)
-- [Recipes — fzf / jq / xargs](/guides/recipes/)
+- [Recipes: fzf / jq / xargs](/guides/recipes/)
 - [Automated follow-ups](/guides/automated-followups/)
-- [CLI — `mxr snooze`](/reference/cli/snooze/)
+- [CLI: `mxr snooze`](/reference/cli/snooze/)

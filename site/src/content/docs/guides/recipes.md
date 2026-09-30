@@ -118,7 +118,7 @@ mxr stale --theirs --older-than-days 7 --format json \
 ```bash
 mxr owed --format json \
   | jq -r 'sort_by(-.overdue_score) | .[]
-           | "\(.overdue_score | tostring | .[0:4])\t\(.waiting_days|round)d\t\(.counterparty_email)\t\(.subject)"' \
+           | "\(.overdue_score | tostring | .[0:4])\t\(.waiting_days|round)d\t\(.from_email)\t\(.subject)"' \
   | head -20
 ```
 
@@ -242,7 +242,7 @@ warning isn't enough — only Blockers stop a scheduled send).
 `crontab -e`:
 
 ```text
-0 8 * * 1-5 /usr/local/bin/mxr owed --format json | jq -r 'sort_by(-.overdue_score) | .[0:10] | .[] | "  • \(.counterparty_email): \(.waiting_days|round)d — \(.subject)"' | { echo "Threads you owe (top 10):"; cat; } | mail -s "mxr: owed replies" you@example.com
+0 8 * * 1-5 /usr/local/bin/mxr owed --format json | jq -r 'sort_by(-.overdue_score) | .[0:10] | .[] | "  • \(.from_email): \(.waiting_days|round)d, \(.subject)"' | { echo "Threads you owe (top 10):"; cat; } | mail -s "mxr: owed replies" you@example.com
 ```
 
 ```text

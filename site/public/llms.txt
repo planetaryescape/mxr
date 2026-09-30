@@ -21,10 +21,19 @@
 - [CLI concepts](https://mxr.sh/reference/cli/concepts.md): query operators, search modes, output formats, IPC buckets
 - [JSON output schemas](https://mxr.sh/reference/json-output.md): canonical field names returned by `mxr ... --format json`
 - [Keybindings](https://mxr.sh/reference/keybindings.md): default TUI bindings; vim-native nav + Gmail email actions
-- [TUI](https://mxr.sh/reference/tui.md): six top-level screens, modals, panes
+- [TUI](https://mxr.sh/reference/tui.md): seven top-level screens, lenses, modals, panes
+- [Desk and places](https://mxr.sh/reference/desk-and-places.md): desk lanes, Done, placement rules for Reading and Paper trail, JSON output
+- [Time phrases](https://mxr.sh/reference/time-phrases.md): every time phrase mxr accepts and how it resolves
 - [Config](https://mxr.sh/reference/config.md): TOML schema for ~/.config/mxr/config.toml + custom keybindings
 - [HTTP bridge](https://mxr.sh/reference/bridge.md): endpoints, auth, curl recipes
 - [API route inventory](https://mxr.sh/reference/api-explorer/): read-only list of the daemon HTTP routes in the generated OpenAPI document; some live routes are missing (requires JS)
+
+## Your day in mxr
+
+- [Work through your day](https://mxr.sh/guides/your-day.md): desk, focus & reply, then Reading and Paper trail
+- [Clear the desk](https://mxr.sh/guides/desk.md): replies you owe, promises due, threads waiting, new mail from people; `mxr desk`, `mxr desk done`
+- [Reply to everyone you owe](https://mxr.sh/guides/focus-and-reply.md): focus mode, undo send, promises on send, `mxr commitments add`
+- [Clear Reading and Paper trail](https://mxr.sh/guides/reading-and-paper-trail.md): `mxr reading`, `mxr paper-trail`, `mxr why`, `mxr sender kind`, `mxr pin`, `mxr sweep`
 
 ## Working with mxr
 

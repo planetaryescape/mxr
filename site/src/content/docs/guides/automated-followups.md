@@ -7,9 +7,9 @@ description: Auto-reminders, send-later, and the daemon background loops that dr
 
 Email follow-up is a memory tax. mxr's automated follow-ups remove it:
 
-- Send a message and configure a reminder — if no reply lands by the
+- Send a message and configure a reminder: if no reply lands by the
   given time, mxr surfaces it back to you.
-- Schedule a draft for a future send time — write now, deliver later.
+- Schedule a draft for a future send time: write now, deliver later.
 
 Both run as 60-second daemon background loops. They survive daemon
 restarts, idempotently.
@@ -25,7 +25,7 @@ mxr remind MESSAGE_ID --when "in 5d"
 mxr remind MESSAGE_ID --when "monday 9am"
 
 # Send a reply and set the follow-up in one step:
-mxr reply MESSAGE_ID --body "Thanks — I'll check." --yes --remind-after "in 5d"
+mxr reply MESSAGE_ID --body "Thanks, I'll check." --yes --remind-after "in 5d"
 
 # Cancel before it fires:
 mxr remind MESSAGE_ID --cancel
@@ -49,7 +49,7 @@ existing schedule.
 
 Schedule a draft for a future send time. The daemon's flusher loop
 picks up due drafts and runs them through the same `send_stored_draft`
-pipeline that interactive sends use — so the message arrives at the
+pipeline that interactive sends use, so the message arrives at the
 provider exactly as it would have if you'd sent it manually then.
 
 ```bash
@@ -62,7 +62,7 @@ mxr send DRAFT_ID --at "monday 17:00"
 mxr unsend DRAFT_ID
 ```
 
-The draft itself is preserved on cancel — you can edit and reschedule.
+The draft itself is preserved on cancel; you can edit and reschedule.
 
 ### Idempotency under daemon restart
 
@@ -93,10 +93,10 @@ Past times are rejected. "Today" without a specific time is rejected
   practical scheduling resolution is therefore 60s; finer-grained
   scheduling would require ticker tuning.
 - Both loops are crash-safe by virtue of the underlying state being in
-  SQLite — restarting the daemon picks up where it left off.
-- Cancelled reminders / sends are non-destructive: the row stays in
-  the table with `cancelled_at` set, so analytics can answer "how
-  often did you actually need this nudge?" later.
+  SQLite: restarting the daemon picks up where it left off.
+- A cancelled reminder keeps its row with `cancelled_at` set. A
+  cancelled send (`mxr unsend`) only clears the draft's send time; the
+  draft stays.
 
 ## Composition with reply-later
 

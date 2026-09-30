@@ -45,8 +45,8 @@ chaining mxr-on-mxr, prefer
 the daemon mutators see. When you're piping into a non-mxr tool, use
 the `--format ids | xargs` form.
 
-For real recipes — `fzf` interactive pickers, `jq` digests, parallel
-`xargs`, cron / systemd, `watch` dashboards, agent prompts — see the
+For real recipes (`fzf` interactive pickers, `jq` digests, parallel
+`xargs`, cron / systemd, `watch` dashboards, agent prompts), see the
 [Recipes guide](/guides/recipes/).
 
 ## Account selection
@@ -102,7 +102,7 @@ The query parser accepts Gmail-style operators. The same grammar drives `mxr sea
 | bare text | `invoice receipt` | full-text across subject, sender name/email, snippet, body text, and attachment filenames |
 | quoted phrase | `"quarterly review"` | phrase search across text fields |
 | `+` | `+unicorn` | parsed as Gmail's exact/no-stemming hint; current Tantivy execution treats it like normal text until a non-stemmed mirror field exists |
-| `from:` / `to:` / `cc:` / `bcc:` | `from:alice@example.com` | whole address, case-insensitive — no partial or domain match |
+| `from:` / `to:` / `cc:` / `bcc:` | `from:alice@example.com` | whole address, case-insensitive; no partial or domain match |
 | `subject:` | `subject:"quarterly review"` | quoted phrase, exact within tokens |
 | `body:` | `body:reimbursement` | full-text body |
 | `label:` | `label:inbox` | matches by `provider_id` (case-insensitive) |
@@ -131,9 +131,9 @@ The parser lives in the public `mail-query` crate. mxr re-exports its AST and ma
 
 `mxr search` accepts `--mode lexical|hybrid|semantic`. Default is whatever `config.search.default_mode` is set to.
 
-- `lexical` — Tantivy BM25 only. Exact, fast, deterministic.
-- `hybrid` — lexical + dense retrieval, fused with reciprocal-rank fusion. Best recall.
-- `semantic` — dense retrieval only. Useful when you don't know the keywords.
+- `lexical`: Tantivy BM25 only. Exact, fast, deterministic.
+- `hybrid`: lexical + dense retrieval, fused with reciprocal-rank fusion. Best recall.
+- `semantic`: dense retrieval only. Useful when you don't know the keywords.
 
 Field prefixes route to chunk types under hybrid/semantic:
 
@@ -156,35 +156,48 @@ Most reads accept `--format <FORMAT>`. Available values per command live in the 
 | `table` | human reading; default for terminals |
 | `json` | one full record per call (single-payload commands) |
 | `jsonl` | line-delimited JSON, one record per line (streaming-friendly) |
-| `ids` | one ID per line — pipe into `xargs`, `fzf`, etc. |
+| `ids` | one ID per line; pipe into `xargs`, `fzf`, etc. Most commands print message ids; `mxr desk` prints thread ids, which is what `mxr desk done` takes. |
 | `csv` | spreadsheet ingest |
 
 For canonical field names per command, see [JSON output schemas](/reference/json-output/). For what's safe to script and which mutations accept piped IDs, see the [automation contract](/guides/automation-contract/).
+
+## Times in words
+
+Every flag that takes a time reads the same phrases: `snooze --until`,
+`send --at`, `--remind-after`, `remind --when`, `send-time --at` and
+`commitments add --due`. Phrases such as `fri 3`, `tomorrow 9am` and `in 2d`
+resolve in your local time zone. Preview one before a flag uses it:
+
+```bash
+mxr time "fri 3"
+```
+
+The [time phrases reference](/reference/time-phrases/) lists every phrase.
 
 ## IPC buckets
 
 The CLI is a thin wrapper around daemon IPC. Conceptually, every subcommand falls into one of three buckets:
 
-- **`core-mail`** — stable mail/runtime capabilities. Search, read, mutate, sync, send.
-- **`mxr-platform`** — accounts, rules, saved searches, subscriptions, semantic runtime.
-- **`admin-maintenance`** — status, events, logs, doctor, bug reports, local reset, repair.
+- **`core-mail`**: stable mail/runtime capabilities. Search, read, mutate, sync, send.
+- **`mxr-platform`**: accounts, rules, saved searches, subscriptions, semantic runtime.
+- **`admin-maintenance`**: status, events, logs, doctor, bug reports, local reset, repair.
 
 Client-specific shaping (TUI panes, web view models) is _not_ a daemon concern. The daemon serves reusable truth; clients shape it for their UI.
 
-This matters when reading the auto-generated pages — most flags fall cleanly within their bucket and don't surprise across them.
+This matters when reading the auto-generated pages: most flags fall cleanly within their bucket and don't surprise across them.
 
 ## Daemon lifecycle
 
 `mxr` autostarts the daemon. You don't need to manage it yourself unless debugging.
 
-- `mxr daemon` — starts it explicitly (use `--foreground` to see logs)
-- `mxr restart` — reaps the running daemon and starts a fresh one against the current binary
-- `mxr status` — health check
-- `mxr reset --hard` / `mxr burn` — destroy local runtime state (preserves config + credentials by default)
+- `mxr daemon`: starts it explicitly (use `--foreground` to see logs)
+- `mxr restart`: reaps the running daemon and starts a fresh one against the current binary
+- `mxr status`: health check
+- `mxr reset --hard` / `mxr burn`: destroy local runtime state (preserves config + credentials by default)
 
 ## See also
 
-- [CLI command index](/reference/cli/) — every subcommand, alphabetical
-- [Automation contract](/guides/automation-contract/) — `--format`, `--dry-run`, stdin support per command
-- [JSON output schemas](/reference/json-output/) — canonical field names
-- [HTTP bridge](/reference/bridge/) — same surface over HTTP
+- [CLI command index](/reference/cli/): every subcommand, alphabetical
+- [Automation contract](/guides/automation-contract/): `--format`, `--dry-run`, stdin support per command
+- [JSON output schemas](/reference/json-output/): canonical field names
+- [HTTP bridge](/reference/bridge/): same surface over HTTP

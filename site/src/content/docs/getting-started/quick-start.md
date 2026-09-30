@@ -15,9 +15,9 @@ mxr demo
 
 This creates a separate `mxr-demo` config, database, socket, and daemon. It seeds a 50k-message, two-account synthetic inbox with repeat senders, threads, attachments, links, images, newsletters, promos, spam, suspicious inbox mail, receipts, alerts, and demo rules. You get search, labels, summaries, sender profiles, analytics, and keyboard triage without granting access to your real inbox.
 
-`mxr demo` prints progress and waits on progress, not on a wall clock — the seed and sync waits give up only if nothing has moved for ten minutes, however long the work itself takes, and the analytics prewarm streams progress with no deadline at all. Expect a couple of minutes end to end on a laptop, longer on a small cloud VM; the mailbox is seeded and the demo is announced as active around the 30–45 second mark. After that it prewarms analytics and Wrapped so the first click on each surface is instant, and watches semantic indexing briefly (about 90 seconds) before handing over — embedding 50k messages takes far longer than anyone should wait, so it reports how far it got and continues in the background (`mxr semantic status`). Search works throughout; semantic results sharpen as vectors land. Press Ctrl-C any time during the prewarm phase and start using the demo. Pass `--messages` for a smaller mailbox (`mxr demo --messages 5000`).
+`mxr demo` prints progress and waits on progress, not on a wall clock: the seed and sync waits give up only if nothing has moved for ten minutes, however long the work itself takes, and the analytics prewarm streams progress with no deadline at all. Expect a couple of minutes end to end on a laptop, longer on a small cloud VM; the mailbox is seeded and the demo is announced as active around the 30–45 second mark. After that it prewarms analytics and Wrapped so the first click on each surface is instant, and watches semantic indexing briefly (about 90 seconds) before handing over. Embedding 50k messages takes far longer than anyone should wait, so it reports how far it got and continues in the background (`mxr semantic status`). Search works throughout; semantic results sharpen as vectors land. Press Ctrl-C any time during the prewarm phase and start using the demo. Pass `--messages` for a smaller mailbox (`mxr demo --messages 5000`).
 
-The demo also pre-seeds every "empty queue" surface so the first click on any feature shows something useful: snippets, signatures, custom labels, saved searches, screener decisions, snoozed messages, reply-later flags, and a couple of in-progress drafts. LLM-backed features (summarize, briefing, ask, draft-assist, voice, decisions, commitments) are answered by an in-process **canned provider**, so the demo works fully offline — no `OPENAI_API_KEY` needed, and your real LLM credentials are never invoked even if `[llm]` is configured.
+The demo also pre-seeds every "empty queue" surface so the first click on any feature shows something useful: snippets, signatures, custom labels, saved searches, screener decisions, snoozed messages, reply-later flags, and a couple of in-progress drafts. LLM-backed features (summarize, briefing, ask, draft-assist, voice, decisions, commitments) are answered by an in-process **canned provider**, so the demo works fully offline: no `OPENAI_API_KEY` needed, and your real LLM credentials are never invoked even if `[llm]` is configured.
 
 **Demo mode is sticky.** Once `mxr demo` finishes, every subsequent `mxr` command (`mxr search`, `mxr cat`, `mxr archive`, `mxr web`, ...) automatically targets the demo profile. The TUI status bar and the web app's topbar both show a `DEMO` chip so you always know which profile you're on. Exit with:
 
@@ -69,7 +69,7 @@ MXR_IMAP_PASSWORD="$APP_PASSWORD" MXR_SMTP_PASSWORD="$APP_PASSWORD" \
     --smtp-username you@gmail.com
 ```
 
-`MXR_IMAP_PASSWORD` / `MXR_SMTP_PASSWORD` env vars resolve when stdin is not a TTY — handy for CI. You can also pass `--imap-password` / `--smtp-password` literal values if you don't mind shell history.
+`MXR_IMAP_PASSWORD` / `MXR_SMTP_PASSWORD` env vars resolve when stdin is not a TTY, which is handy for CI. You can also pass `--imap-password` / `--smtp-password` literal values if you don't mind shell history.
 
 ## 3. Sync
 
@@ -93,7 +93,7 @@ The denominator appears only when the provider can say how much is left. Gmail a
 It defaults to 60 seconds. When it expires, `mxr sync` exits non-zero with `timed out after 60s waiting for sync to quiesce` and the sync carries on in the daemon. Give a first backfill a generous value.
 :::
 
-`--wait` also exits non-zero if the sync it started failed — an error the account was already carrying before the trigger does not count.
+`--wait` also exits non-zero if the sync it started failed. An error the account was already carrying before the trigger does not count.
 
 Check on it any time without waiting:
 
@@ -112,9 +112,23 @@ mxr
 
 `j`/`k` to navigate, `<Enter>` to open, `R` for reader mode, `Ctrl-p` for the command palette, `/` for search, `?` for help.
 
-## 5. Or do it from the CLI
+## 5. Or open the web app
 
 ```bash
+mxr web
+```
+
+The web app opens on the [desk](/guides/desk/): replies you owe, promises
+coming due, threads waiting on someone and new mail from people. In the TUI,
+the same desk is the first lens in the sidebar.
+[Work through your day](/guides/your-day/) walks through it.
+
+## 6. Or do it from the CLI
+
+```bash
+# What needs you
+mxr desk
+
 # Search
 mxr search "from:alice@example.com is:unread" --format json | jq .
 
@@ -133,8 +147,9 @@ Most read/list/status/mutation surfaces accept `--format json`; the generated [C
 
 ## What's next
 
+- [Work through your day](/guides/your-day/): the desk, focus & reply, and sweeping newsletters and receipts.
 - [Configure rules](/guides/rules/) for declarative filing.
 - [Write a saved search](/guides/search/) for your daily inbox lens.
-- [Hand mxr to an LLM](/guides/agent-skill/) — the same CLI is the agent surface.
+- [Hand mxr to an LLM](/guides/agent-skill/): the same CLI is the agent surface.
 
 Run into something? See [Troubleshooting](/troubleshooting/).

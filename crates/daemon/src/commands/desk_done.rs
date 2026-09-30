@@ -127,7 +127,7 @@ fn render(
                     "  {}  {:<10}  {}\n",
                     item.thread_id,
                     lane_key(item.lane),
-                    describe(item)
+                    describe(item, dry_run)
                 ));
             }
             if let Some(id) = mutation_id {
@@ -140,17 +140,24 @@ fn render(
     Ok(out)
 }
 
-/// "archived 2, marked 1 read, off the desk until someone writes".
-fn describe(item: &DeskDoneOutcomeData) -> String {
+/// "archived 2, marked 1 read, off the desk until someone writes"; a dry
+/// run says "would archive 2, mark 1 read, ..." because nothing changed.
+fn describe(item: &DeskDoneOutcomeData, dry_run: bool) -> String {
     if let Some(error) = &item.error {
         return format!("not done: {error}");
     }
     let mut parts = Vec::new();
     if item.archived > 0 {
-        parts.push(format!("archived {}", item.archived));
+        let verb = if dry_run { "would archive" } else { "archived" };
+        parts.push(format!("{verb} {}", item.archived));
     }
     if item.marked_read > 0 {
-        parts.push(format!("marked {} read", item.marked_read));
+        let verb = match (dry_run, item.archived > 0) {
+            (false, _) => "marked",
+            (true, true) => "mark",
+            (true, false) => "would mark",
+        };
+        parts.push(format!("{verb} {} read", item.marked_read));
     }
     if item.resolved_commitment_id.is_some() {
         parts.push("promise kept".to_string());
@@ -165,5 +172,43 @@ fn describe(item: &DeskDoneOutcomeData) -> String {
         "nothing left to change".to_string()
     } else {
         parts.join(", ")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn owed_item() -> DeskDoneOutcomeData {
+        DeskDoneOutcomeData {
+            thread_id: ThreadId::from_uuid(uuid::Uuid::nil()),
+            account_id: None,
+            lane: DeskLaneKind::Owed,
+            archived: 5,
+            marked_read: 1,
+            dismissed: true,
+            reply_later_cleared: 0,
+            resolved_commitment_id: None,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn dry_run_table_says_what_would_change() {
+        let out = render(&[owed_item()], true, None, false, OutputFormat::Table).unwrap();
+        insta::assert_snapshot!(out);
+    }
+
+    #[test]
+    fn real_run_table_says_what_changed() {
+        let out = render(
+            &[owed_item()],
+            false,
+            Some("01a0e733-f0fb-7510-9fb5-0462837a28ae"),
+            false,
+            OutputFormat::Table,
+        )
+        .unwrap();
+        insta::assert_snapshot!(out);
     }
 }

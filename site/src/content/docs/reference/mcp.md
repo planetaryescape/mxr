@@ -47,6 +47,8 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_read_message`
 - `mxr_read_thread`
 - `mxr_thread_context`
+- `mxr_list_place`
+- `mxr_sweep_preview`
 - `mxr_draft_assist`
 - `mxr_save_draft`
 - `mxr_get_draft`
@@ -63,6 +65,12 @@ The server exposes stable mxr tools for common agent workflows:
 `mxr_read_message` only includes full body content when `include_body = true`.
 `mxr_thread_context` returns a thread's facts (counterparty, owed reply, open
 promises) and, with `include_gist = true`, the model's gist and verified ask.
+It has no refresh option, so a cached gist is reused.
+`mxr_list_place` lists [Reading or Paper trail](/guides/reading-and-paper-trail/)
+(`place` is `reading` or `paper_trail`) bundled by sender, with the reason for
+each bundle. `mxr_sweep_preview` shows what sweeping a place, or one sender's
+bundle, would archive. It is read-only: the sweep itself happens in
+`mxr sweep` or the apps.
 `mxr_mutate` requires `confirm = true` and should be called only after
 `mxr_mutation_preview`. `mxr_send_draft` requires `confirm = true`; the daemon
 can still reject the request if the `mcp` profile disallows sends or the draft
@@ -162,6 +170,6 @@ mxr activity list --source mcp --format json
 
 ## See also
 
-- [For agents](/guides/for-agents/) — workflows and guardrails
-- [Config](/reference/config/) — profile and account config
-- [Automation contract](/guides/automation-contract/) — dry-run and JSON conventions
+- [For agents](/guides/for-agents/): workflows and guardrails
+- [Config](/reference/config/): profile and account config
+- [Automation contract](/guides/automation-contract/): dry-run and JSON conventions

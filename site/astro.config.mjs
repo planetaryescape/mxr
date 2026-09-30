@@ -58,10 +58,17 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Your Day in mxr',
+          items: [
+            { label: 'Work Through Your Day', slug: 'guides/your-day' },
+            { label: 'Clear the Desk', slug: 'guides/desk' },
+            { label: 'Reply to Everyone You Owe', slug: 'guides/focus-and-reply' },
+            { label: 'Clear Reading and Paper Trail', slug: 'guides/reading-and-paper-trail' },
+          ],
+        },
+        {
           label: 'Daily Use',
           items: [
-            { label: 'The Desk', slug: 'guides/desk' },
-            { label: 'Reading and Paper Trail', slug: 'guides/reading-and-paper-trail' },
             { label: 'Mailbox Workflow', slug: 'guides/mailbox' },
             { label: 'Triage Flow', slug: 'guides/triage-flow' },
             { label: 'Unsubscribe', slug: 'guides/unsubscribe' },
@@ -75,7 +82,6 @@ export default defineConfig({
             { label: 'Sender View', slug: 'guides/sender-view' },
             { label: 'Snippets', slug: 'guides/snippets' },
             { label: 'Web App', slug: 'guides/web-app' },
-            { label: 'Focus & Reply', slug: 'guides/focus-and-reply' },
             { label: 'Sound, Key Hints and Touch', slug: 'guides/sound-hints-and-touch' },
             { label: 'No Native Desktop App', slug: 'guides/no-native-desktop-app' },
             { label: 'Recipes (fzf, jq, xargs, cron)', slug: 'guides/recipes' },
@@ -143,6 +149,7 @@ export default defineConfig({
             },
             { label: 'TUI', slug: 'reference/tui' },
             { label: 'Keybindings', slug: 'reference/keybindings' },
+            { label: 'Desk and places', slug: 'reference/desk-and-places' },
             { label: 'Time phrases', slug: 'reference/time-phrases' },
             { label: 'Config', slug: 'reference/config' },
             { label: 'JSON output schemas', slug: 'reference/json-output' },

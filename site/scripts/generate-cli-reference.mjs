@@ -75,7 +75,7 @@ const COMMAND_EXAMPLES = {
   },
   unsnooze: { use: 'Wake snoozed messages early.', examples: ["mxr unsnooze MESSAGE_ID", "mxr unsnooze --all --dry-run"] },
   unsubscribe: {
-    use: 'Unsubscribe from a single message id, or from every message by a given sender address. Passing an email address is shorthand for `--search "from:<addr>"` — the daemon picks the most recent match and uses its List-Unsubscribe header.',
+    use: 'Unsubscribe from a single message id, or from every message by a given sender address. Passing an email address is shorthand for `--search "from:<addr>"`; the daemon picks the most recent match and uses its List-Unsubscribe header.',
     examples: [
       "mxr unsubscribe alice@example.com --dry-run",
       "mxr unsubscribe alice@example.com bob@example.com --yes",
@@ -84,7 +84,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   compose: {
-    use: 'Write a new message in $EDITOR or from stdin in scripts. `--yes` sends; `--draft` saves to `mxr drafts` without sending (the two are mutually exclusive, so no added flag can turn a draft into a send). Add `--check` to run the [pre-send safety pipeline](/guides/pre-send-safety/) against a transient draft built from these flags — useful in CI / pre-commit hooks.',
+    use: 'Write a new message in $EDITOR or from stdin in scripts. `--yes` sends; `--draft` saves to `mxr drafts` without sending (the two are mutually exclusive, so no added flag can turn a draft into a send). Add `--check` to run the [pre-send safety pipeline](/guides/pre-send-safety/) against a transient draft built from these flags, useful in CI or pre-commit hooks.',
     examples: [
       "mxr compose --to alice@example.com --subject 'Friday'",
       "printf 'Approved' | mxr compose --to alice@example.com --subject 'Re: plan' --body-stdin --dry-run",
@@ -142,7 +142,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   activity: {
-    use: "Browse the local user-activity log — the git-reflog of your inbox. Strictly local; never transmitted off-device. See the [Activity Log guide](/guides/activity-log/) for the full design.",
+    use: "Browse the local user-activity log: the git-reflog of your inbox. Strictly local; never transmitted off-device. See the [Activity Log guide](/guides/activity-log/) for the full design.",
     examples: [
       "mxr activity list --since 24h",
       "mxr activity stats --group-by action --since 7d --format json",
@@ -199,20 +199,63 @@ const COMMAND_EXAMPLES = {
   'response-time': { use: 'Measure reply latency with a counterparty or account.', examples: ["mxr response-time --theirs --counterparty alice@example.com --format json"] },
   stale: { use: 'Find threads where someone owes a reply.', examples: ["mxr stale --theirs --older-than-days 7", "mxr stale --mine --format ids | mxr snooze --until tomorrow --dry-run"] },
   owed: {
-    use: "List threads where you're the bottleneck, ranked by overdue score (waiting days / recipient's typical cadence). Same set as `is:owed-reply` in search — pick whichever surface you prefer.",
+    use: "List threads where you're the bottleneck, ranked by overdue score (waiting days / recipient's typical cadence). Same set as `is:owed-reply` in search; pick whichever surface you prefer. For a daily view limited to people and to mail still in the inbox, use `mxr desk`.",
     examples: [
       "mxr owed --format ids",
-      "mxr owed --since 7 --format json | jq '.[] | {who:.counterparty_email, days:.waiting_days, score:.overdue_score}'",
+      "mxr owed --since 7 --format json | jq '.[] | {who:.from_email, days:.waiting_days, score:.overdue_score}'",
       "mxr saved add owed 'is:owed-reply'   # persistent sidebar lens",
     ],
   },
   commitments: {
-    use: 'List or resolve commitments mxr extracted from your sent mail. Set after every successful `mxr send`; persisted in `contact_commitments`. See the [forgotten-work guide](/guides/forgotten-work/) for the full draft → send → ledger flow.',
+    use: 'List, keep or resolve promises made in mail. `detect` finds the promises in a message you sent; `add` keeps one so it comes back under Due on the desk. See [promises on send](/guides/focus-and-reply/#keep-the-promises-you-make) and the [forgotten-work guide](/guides/forgotten-work/).',
     examples: [
       "mxr commitments --status open --format json",
-      "mxr commitments --contact alice@example.com",
+      "mxr commitments detect SENT_MESSAGE_ID",
+      "mxr commitments add SENT_MESSAGE_ID --what 'send the deck' --due 'fri 9am' --dry-run",
       "mxr commitments resolve COMMITMENT_ID",
     ],
+  },
+  desk: {
+    use: 'See what needs you: replies you owe, promises coming due, threads waiting on someone and new mail from people. `done` puts a row away; preview it with `--dry-run`. See [Clear the desk](/guides/desk/) and the [desk reference](/reference/desk-and-places/).',
+    examples: [
+      "mxr desk",
+      "mxr desk --format json | jq -r '.owed.rows[] | .subject'",
+      "mxr desk done THREAD_ID --dry-run",
+      "mxr desk done THREAD_ID",
+    ],
+  },
+  reading: {
+    use: 'Newsletters and lists in your inbox, bundled by sender, each with the reason it is there. See [Reading and Paper trail](/guides/reading-and-paper-trail/).',
+    examples: ["mxr reading", "mxr reading --sender digest@news.example.com --format json"],
+  },
+  'paper-trail': {
+    use: 'Receipts, notifications and other automated mail in your inbox, bundled by sender. See [Reading and Paper trail](/guides/reading-and-paper-trail/).',
+    examples: ["mxr paper-trail --messages 5", "mxr paper-trail --format ids"],
+  },
+  sweep: {
+    use: 'Archive everything unpinned in Reading or Paper trail, or one sender\'s bundle there. Preview first; the real sweep archives only what the preview listed.',
+    examples: [
+      "mxr sweep paper-trail --dry-run",
+      "mxr sweep paper-trail --sender receipts@shop.example --yes",
+      "mxr undo MUTATION_ID",
+    ],
+  },
+  why: {
+    use: 'Explain why a message is on the desk, in Reading, in Paper trail or screened out.',
+    examples: ["mxr why MESSAGE_ID", "mxr why MESSAGE_ID --format json"],
+  },
+  pin: {
+    use: 'Keep messages in place when you sweep Reading or Paper trail. Pins are local to this machine.',
+    examples: ["mxr pin MESSAGE_ID", "mxr unpin MESSAGE_ID"],
+  },
+  unpin: { use: 'Unpin messages so the next sweep takes them too.', examples: ["mxr unpin MESSAGE_ID"] },
+  time: {
+    use: 'Preview how a time phrase resolves before a flag uses it. See [time phrases](/reference/time-phrases/).',
+    examples: ["mxr time 'fri 3'", "mxr time 'in 2d' --format json"],
+  },
+  chimes: {
+    use: 'Turn notification sounds on or off and pick the sound for each event. The web app shares this setting.',
+    examples: ["mxr chimes status", "mxr chimes enable", "mxr chimes set archived pop"],
   },
   ask: {
     use: 'Synthesize a citation-backed answer over your local mail. Every claim cites a retrieved message id; uncited LLM output is rejected. See [archive intelligence](/guides/archive-intelligence/).',
@@ -242,7 +285,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   cadence: {
-    use: 'Watchlist for relationships you chose to maintain. Surfaces drift against an explicit expected interval — never auto-watches contacts. See [timing and cadence](/guides/timing-and-cadence/#cadence-drift--mxr-cadence).',
+    use: 'Watchlist for relationships you chose to maintain. Surfaces drift against an explicit expected interval and never auto-watches contacts. See [timing and cadence](/guides/timing-and-cadence/#cadence-drift-mxr-cadence).',
     examples: [
       "mxr cadence watch alice@example.com --every 14d",
       "mxr cadence list --format json",
@@ -251,7 +294,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   'send-time': {
-    use: "Show the recipient's typical reply-time bucket from local `reply_pairs`. Statistical only — no LLM, no tracking pixels. See [timing and cadence](/guides/timing-and-cadence/).",
+    use: "Show the recipient's typical reply-time bucket from local `reply_pairs`. Statistical only: no LLM, no tracking pixels. See [timing and cadence](/guides/timing-and-cadence/).",
     examples: [
       "mxr send-time alice@example.com",
       "mxr send-time alice@example.com --at 'fri 19:00' --format json",
@@ -259,7 +302,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   expert: {
-    use: 'Identify locally who has answered similar questions before. Ranks answerers above askers; citations point at answer messages, not just topic matches. See [briefings and loop-in](/guides/briefings-and-loop-in/#whos-the-expert--mxr-expert).',
+    use: 'Identify locally who has answered similar questions before. Ranks answerers above askers; citations point at answer messages, not just topic matches. See [briefings and loop-in](/guides/briefings-and-loop-in/#whos-the-expert-mxr-expert).',
     examples: [
       "mxr expert MESSAGE_ID",
       "mxr expert --query 'DKIM setup' --format json",
@@ -267,7 +310,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   whois: {
-    use: 'Explain a person, project, or jargon term using only locally cited mail evidence. No invented summaries when the corpus has nothing. See [briefings and loop-in](/guides/briefings-and-loop-in/#personal-knowledge-graph--mxr-whois).',
+    use: 'Explain a person, project, or jargon term using only locally cited mail evidence. No invented summaries when the corpus has nothing. See [briefings and loop-in](/guides/briefings-and-loop-in/#personal-knowledge-graph-mxr-whois).',
     examples: [
       "mxr whois sam",
       "mxr whois 'Project Apollo' --format json",
@@ -275,7 +318,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   'suggest-recipients': {
-    use: 'Suggest "maybe include" Cc recipients for a draft based on co-participation in similar prior threads. Suggestions only, never auto-adds; never reveals Bcc. See [briefings and loop-in](/guides/briefings-and-loop-in/#maybe-include--mxr-suggest-recipients).',
+    use: 'Suggest "maybe include" Cc recipients for a draft based on co-participation in similar prior threads. Suggestions only, never auto-adds; never reveals Bcc. See [briefings and loop-in](/guides/briefings-and-loop-in/#maybe-include-mxr-suggest-recipients).',
     examples: [
       "mxr suggest-recipients --draft DRAFT_ID --format json",
       "echo 'rollout plan attached' | mxr suggest-recipients --subject 'pricing rollout' --body-stdin",
@@ -435,7 +478,7 @@ function flagsToTable(flags) {
   if (flags.length === 0) return '';
   let md = '| Flag | Description |\n|---|---|\n';
   for (const f of flags) {
-    md += `| \`${escapePipes(f.token)}\` | ${escapePipes(f.body || '—')} |\n`;
+    md += `| \`${escapePipes(f.token)}\` | ${escapePipes(f.body || '')} |\n`;
   }
   return md;
 }
@@ -444,7 +487,7 @@ function subsToTable(subs) {
   if (subs.length === 0) return '';
   let md = '| Subcommand | Purpose |\n|---|---|\n';
   for (const s of subs) {
-    md += `| \`${escapePipes(s.name)}\` | ${escapePipes(s.summary || '—')} |\n`;
+    md += `| \`${escapePipes(s.name)}\` | ${escapePipes(s.summary || '')} |\n`;
   }
   return md;
 }
@@ -510,7 +553,7 @@ function main() {
 
   const rootFile = files.find((f) => f === `${PREFIX}root.snap`);
   if (!rootFile) {
-    console.error('cli_help_root.snap missing — cannot derive top-level command list.');
+    console.error('cli_help_root.snap missing; cannot derive top-level command list.');
     process.exit(1);
   }
 
@@ -602,7 +645,7 @@ description: ${JSON.stringify(summary || `mxr ${cmd.name}`)}
       }
     }
 
-    md += `\n## See also\n\n- [CLI overview](/reference/cli/) — full command index\n- [Concepts](/reference/cli/concepts/) — query operators, search modes, JSON shapes\n- [Automation contract](/guides/automation-contract/) — which commands support \`--format json\`, \`--dry-run\`, stdin\n`;
+    md += `\n## See also\n\n- [CLI overview](/reference/cli/): full command index\n- [Concepts](/reference/cli/concepts/): query operators, search modes, JSON shapes\n- [Automation contract](/guides/automation-contract/): which commands support \`--format json\`, \`--dry-run\`, stdin\n`;
 
     const slug = cmd.name; // already in hyphenated form from root parse
     writeFileSync(join(OUT_DIR, `${slug}.md`), md);
@@ -619,7 +662,7 @@ description: ${JSON.stringify(summary || `mxr ${cmd.name}`)}
 
   let index = `---
 title: CLI reference
-description: Every \`mxr\` subcommand. Generated from --help snapshots — never out of date with the binary.
+description: Every \`mxr\` subcommand. Generated from --help snapshots, so it matches the binary.
 ---
 
 > Generated from the captured \`--help\` snapshots at \`crates/daemon/tests/snapshots/cli_help__*.snap\`. To change a flag, change the clap definition in \`crates/daemon/src/cli/\` and the docs follow on rebuild.
@@ -635,7 +678,7 @@ For higher-level concepts (query operators, search modes, JSON output shapes), s
   for (const letter of [...groupsByLetter.keys()].sort()) {
     index += `### ${letter}\n\n`;
     for (const c of groupsByLetter.get(letter).sort((a, b) => a.name.localeCompare(b.name))) {
-      index += `- [\`mxr ${c.name}\`](/reference/cli/${c.name}/) — ${c.summary || '_no description_'}\n`;
+      index += `- [\`mxr ${c.name}\`](/reference/cli/${c.name}/): ${c.summary || '_no description_'}\n`;
     }
     index += '\n';
   }

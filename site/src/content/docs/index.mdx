@@ -94,8 +94,8 @@ mxr search "from:supplier@example.com has:attachment after:2019"
 mxr subscriptions --rank --format json
 mxr unsubscribe newsletter@example.com --dry-run
 
-# surface what you owe a reply to
-mxr owed --since 7 --format json
+# what needs you: replies owed, promises due, threads waiting
+mxr desk
 
 # give an agent structured results
 mxr search "from:sarah@example.com after:2026-04-23" --format json | jq '.results[0]'
@@ -312,7 +312,7 @@ would archive 142 messages.`}</code></pre>
       <div class="surface-tag">◈ browser-friendly</div>
     </div>
     <div class="surface-body">
-      <p><code>mxr web</code> opens the browser app through the local HTTP and WebSocket bridge. The same bridge publishes OpenAPI and can support another client.</p>
+      <p><code>mxr web</code> opens the browser app on the desk, through the local HTTP and WebSocket bridge. The same bridge publishes OpenAPI and can support another client.</p>
       <pre class="surface-snippet" tabindex="0"><code>{`curl -H "Authorization: Bearer $TOKEN" \\
     "http://mxr.localhost:42829/api/v1/mail/search?q=is:unread"
 {"results": [...]}`}</code></pre>
@@ -340,7 +340,7 @@ would archive 142 messages.`}</code></pre>
 <div class="cap-grid">
   <div class="cap"><strong>Compose in $EDITOR.</strong> Write Markdown with your own keybindings and plugins. mxr builds and sends the multipart message.</div>
   <div class="cap"><strong>Reader mode.</strong> Remove tracking pixels, banners, signatures, and quoted text from the terminal view.</div>
-  <div class="cap"><strong>Follow-up queues.</strong> Track replies you owe, remind yourself when someone has not replied, snooze threads, and schedule sends.</div>
+  <div class="cap"><strong>The desk.</strong> See replies you owe, promises coming due and threads waiting on others, remind yourself when someone has not replied, and schedule sends.</div>
   <div class="cap"><strong>Mailbox analytics.</strong> Inspect response times, stale relationships, subscription activity, and storage by sender or attachment type.</div>
   <div class="cap"><strong>Mail rules.</strong> Preview and run rules that label, archive, star, mark, or route matching mail.</div>
   <div class="cap"><strong>Saved searches.</strong> Keep useful mailbox queries in the TUI sidebar and rerun them without rebuilding the filter.</div>

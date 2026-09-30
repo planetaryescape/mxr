@@ -166,8 +166,9 @@ kept.
 
 Use **Send, remind me if nobody replies** in focus mode, or **More send
 options > Send and remind me if no reply in** in any reply, and type a time.
-If nobody has written in the conversation by then, it comes back to your
-reply-later queue. A reply cancels the reminder, whether it answers your
+Until then the conversation stays off the desk's Waiting on. If nobody has
+written in it by then, it comes back to Waiting on and your reply-later
+queue. A reply cancels the reminder, whether it answers your
 message or an earlier one in the same conversation, including one sent in the
 same second. For the command line (`mxr send --remind-after`,
 `mxr remind`), see [Automated follow-ups](/guides/automated-followups/).

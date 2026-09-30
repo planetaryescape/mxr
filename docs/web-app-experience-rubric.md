@@ -209,6 +209,17 @@ convergence (a change in CLI, TUI or web shows everywhere without a
 refresh); reminder reliability across restarts, offline periods and clock
 changes; and partial batch recovery.
 
+### Proposed after the grade: timed deferral (feat/deferral)
+
+Proposed by the builder of `feat/deferral` for plan item 2; under E1 these
+are proposals until an independent reviewer grades them. A5 stays capped at
+2 by E2.
+
+| # | Proposed | Evidence |
+|---|---|---|
+| A5 | 2 | `deferral.spec`: `b` on a You owe row, typed "in 2d", shows the resolved time before Enter, sends that instant (not the words), the toast names the same time, the row leaves the desk and `u` brings it back; `b` on a Waiting on row, "in 3d", says it comes back only if nobody replies and the toast's Undo restores it; a time set a few seconds out brings the conversation back to You owe ("back from reply later") and the reply queue after a daemon restart. Daemon tests with a moved clock (`handler/tests/deferral.rs`): each kind returns at its time, is announced exactly once across a second tick and a restarted store (`message_flags` restart test), a reply cancels the wait, Done cancels a pending time and undo restores it. TUI: `b` opens a prompt with the shared time preview (`mutation_behavior.rs`, `input_and_compose.rs`). CLI: `mxr desk later THREAD... --at TIME --dry-run`. |
+| B5 | 2 | Adds the reply-later and waiting-on journeys above to `natural-time.spec`'s snooze journey: every deferral field previews the resolved time and stores the previewed instant. |
+
 The parity floor in `docs/web-app-rubric.md` still holds: the suites it cites
 (`triage`, `reading`, `reader`, `search`, `labels`, `snooze`, `responsive`,
 `accessibility`, `keyboard-navigation`, `large-list`) passed in the same run.

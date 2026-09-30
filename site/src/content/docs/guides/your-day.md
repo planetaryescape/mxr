@@ -53,8 +53,10 @@ undo send and promises.
 
 **Waiting on** lists conversations where you wrote last and nobody has
 answered. Nudge the ones that matter. Use Done on the ones you no longer
-need an answer to. To have a conversation come back if nobody answers, send
-with **Send and remind me if no reply in**
+need an answer to. To stop watching one until a time, press `b` and type it
+(`in 3d`): it leaves Waiting on and comes back then if nobody has replied
+([come back to it later](/guides/desk/#come-back-to-it-later)). Sending with
+**Send and remind me if no reply in** does the same from the start
 ([automated follow-ups](/guides/automated-followups/)).
 
 ## 5. Clear Reading and Paper trail

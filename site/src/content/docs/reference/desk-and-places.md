@@ -127,7 +127,7 @@ same rule Done uses without `--lane`:
   stored, not its Date header, and count only people: an auto-responder or
   notification neither makes it theirs nor cancels a wait. A person's reply
   cancels a waiting time, before or at the time, including one filed in
-  another thread that names your message in its In-Reply-To or References. A new message in a
+  another thread whose In-Reply-To names your message. A new message in a
   reply-later conversation does not bring it back early.
 - A conversation is back as soon as its time passes, whether or not the
   daemon was running; a wait the daemon fires late (it was off for weeks)

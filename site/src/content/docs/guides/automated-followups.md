@@ -37,8 +37,8 @@ flow. Use `Ctrl-p → Cancel Reminder` from the focused sent message to
 cancel a pending reminder.
 
 A reply from a person cancels the reminder: any message from someone else
-stored in the conversation after yours, or one that names your message in
-its In-Reply-To or References headers wherever it was filed. An
+stored in the conversation after yours, or one whose In-Reply-To names your
+message wherever it was filed. An
 auto-responder or notification does not count. Storage order decides, not
 the Date header. The check runs when the reminder is due, and a reply that
 arrives while it runs stops the reminder from firing until it is checked.

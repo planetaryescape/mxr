@@ -371,8 +371,8 @@ pub(super) async fn restore_timers(
 /// Cancel due "bring it back if nobody replies" reminders that a person
 /// answered: someone other than you (the shared classifier: not an
 /// auto-responder, list or notification) wrote a message stored after
-/// yours in the thread, or naming yours in In-Reply-To or References in
-/// any thread. Returns the message rowid the check covered, for the claim's
+/// yours in the thread, or answering yours by In-Reply-To (`reply_pairs`)
+/// in any thread. Returns the message rowid the check covered, for the claim's
 /// guard against a reply stored after it.
 pub(crate) async fn settle_answered_reminders(
     state: &AppState,

@@ -23,3 +23,8 @@ CREATE INDEX IF NOT EXISTS idx_message_flags_reply_later_due
     WHERE reply_later = 1
       AND reply_later_due_at IS NOT NULL
       AND reply_later_returned_at IS NULL;
+
+-- A due reminder looks up replies to its sent message filed in another
+-- thread (IMAP rethreading) through reply_pairs, by parent.
+CREATE INDEX IF NOT EXISTS idx_reply_pairs_parent
+    ON reply_pairs (parent_message_id, direction);

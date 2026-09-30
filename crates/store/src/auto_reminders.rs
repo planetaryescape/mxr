@@ -37,25 +37,54 @@ impl ReminderState {
     }
 }
 
-/// A stored message `r` that may answer the sent message `s` of a reminder:
-/// inbound, from someone else, and either later in the same thread (by
-/// storage order) or, in any thread, naming `s` in In-Reply-To or
-/// References (IMAP can file a reply under another thread id). Whether it
-/// is a person is the daemon's classifier's call.
-const REPLY_CANDIDATE: &str = r#"r.account_id = s.account_id
-    AND r.id != s.id
-    AND r.direction != 'outbound'
-    AND LOWER(r.from_email) != LOWER(s.from_email)
-    AND (
-        (r.thread_id = s.thread_id AND r.rowid > s.rowid)
-        OR (
-            COALESCE(s.message_id_header, '') != ''
-            AND (
-                r.in_reply_to = s.message_id_header
-                OR instr(COALESCE(r.reference_headers, ''), '"' || s.message_id_header || '"') > 0
-            )
-        )
-    )"#;
+/// The stored messages `r` that may answer the sent message `s` of a
+/// reminder: inbound and from someone else, and either later in the same
+/// thread (storage order) or, in any thread, linked to `s` in
+/// `reply_pairs` (its In-Reply-To named `s`: IMAP can file a reply under
+/// another thread id). A References-only reply is caught when it shares
+/// the thread. Whether `r` is a person is the daemon's classifier's call.
+///
+/// Two branches, each on an index (`idx_messages_thread`,
+/// `idx_reply_pairs_parent`), so a due reminder costs lookups rather than
+/// a scan of the account. `extra` adds a condition on `r` to both.
+fn reply_candidate_branches(extra: &str) -> [String; 2] {
+    let common = "r.account_id = s.account_id
+        AND r.id != s.id
+        AND r.direction != 'outbound'
+        AND LOWER(r.from_email) != LOWER(s.from_email)";
+    [
+        format!(
+            "FROM messages s
+             JOIN messages r ON r.thread_id = s.thread_id AND r.rowid > s.rowid
+             WHERE s.id = ?1 AND {common} {extra}"
+        ),
+        format!(
+            // CROSS JOIN pins the order (sent, its pairs, their replies):
+            // left alone, SQLite may walk the account's newer messages.
+            "FROM messages s
+             CROSS JOIN reply_pairs p ON p.parent_message_id = s.id AND p.direction = 'they_replied'
+             CROSS JOIN messages r ON r.id = p.reply_message_id
+             WHERE s.id = ?1 AND {common} {extra}"
+        ),
+    ]
+}
+
+/// Every possible reply to the sent message `?1`: id and thread.
+fn reply_candidates_sql() -> String {
+    let [thread, pairs] = reply_candidate_branches("");
+    format!(
+        "SELECT r.id AS reply_id, r.thread_id AS reply_thread {thread}
+         UNION
+         SELECT r.id AS reply_id, r.thread_id AS reply_thread {pairs}"
+    )
+}
+
+/// Whether a possible reply to `?1` was stored after rowid `?2`: the claim's
+/// guard, over the same definition as `reply_candidates_sql`.
+fn reply_after_sql() -> String {
+    let [thread, pairs] = reply_candidate_branches("AND r.rowid > ?2");
+    format!("EXISTS (SELECT 1 {thread}) OR EXISTS (SELECT 1 {pairs})")
+}
 
 /// A stored message that may answer a reminder's sent message.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,20 +224,18 @@ impl super::Store {
         let mut tx = self.writer().begin().await?;
         let claim = format!(
             r#"UPDATE auto_reminders
-               SET triggered_at = ?1
-               WHERE sent_message_id = ?2
-                 AND remind_at <= ?1
+               SET triggered_at = ?3
+               WHERE sent_message_id = ?1
+                 AND remind_at <= ?3
                  AND triggered_at IS NULL
                  AND cancelled_at IS NULL
-                 AND NOT EXISTS (
-                   SELECT 1 FROM messages s, messages r
-                   WHERE s.id = ?2 AND r.rowid > ?3 AND {REPLY_CANDIDATE}
-                 )"#
+                 AND NOT ({})"#,
+            reply_after_sql()
         );
         let claimed = sqlx::query(sqlx::AssertSqlSafe(claim.as_str()))
-            .bind(now_ts)
             .bind(&mid)
             .bind(checked_through)
+            .bind(now_ts)
             .execute(&mut *tx)
             .await?
             .rows_affected()
@@ -385,28 +412,23 @@ impl super::Store {
     }
 
     /// Every stored message that may answer one of these sent messages
-    /// (see `REPLY_CANDIDATE`), for the daemon to classify.
+    /// (see `reply_candidate_branches`), for the daemon to classify.
     pub async fn reminder_reply_candidates(
         &self,
         sent_message_ids: &[MessageId],
     ) -> Result<Vec<ReplyCandidate>, sqlx::Error> {
         let mut candidates = Vec::new();
-        let sql = format!(
-            r#"SELECT s.id AS sent_id, r.id AS reply_id, r.thread_id AS reply_thread
-               FROM messages s, messages r
-               WHERE s.id = ? AND {REPLY_CANDIDATE}"#
-        );
+        let sql = reply_candidates_sql();
         for sent in sent_message_ids {
             for row in sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(sent.as_str())
                 .fetch_all(self.writer())
                 .await?
             {
-                let sent_id: String = row.try_get("sent_id")?;
                 let reply_id: String = row.try_get("reply_id")?;
                 let reply_thread: String = row.try_get("reply_thread")?;
                 candidates.push(ReplyCandidate {
-                    sent_message_id: decode_id(&sent_id)?,
+                    sent_message_id: sent.clone(),
                     reply_message_id: decode_id(&reply_id)?,
                     reply_thread_id: decode_id(&reply_thread)?,
                 });
@@ -895,5 +917,46 @@ mod tests {
             .unwrap()
             .reply_later
             .is_empty());
+    }
+
+    /// A due reminder's reply lookup and the claim's guard use indexes: a
+    /// SCAN of messages or reply_pairs here costs a whole mailbox per due
+    /// reminder (0.2 s on 110k messages).
+    #[tokio::test]
+    async fn reply_lookups_use_indexes_not_scans() {
+        let store = Store::in_memory().await.unwrap();
+        for sql in [
+            super::reply_candidates_sql(),
+            format!("SELECT {}", super::reply_after_sql()),
+        ] {
+            let plan = explain(&store, &sql).await;
+            assert!(!plan.is_empty(), "no plan for {sql}");
+            let scans: Vec<&String> = plan
+                .iter()
+                .filter(|line| line.starts_with("SCAN") && line.as_str() != "SCAN CONSTANT ROW")
+                .collect();
+            assert!(scans.is_empty(), "scans {scans:?} in plan {plan:?}");
+            for index in ["idx_messages_thread", "idx_reply_pairs_parent"] {
+                assert!(
+                    plan.iter().any(|line| line.contains(index)),
+                    "{index} unused in plan {plan:?}"
+                );
+            }
+        }
+    }
+
+    async fn explain(store: &Store, sql: &str) -> Vec<String> {
+        use sqlx::Row;
+        sqlx::query(sqlx::AssertSqlSafe(
+            format!("EXPLAIN QUERY PLAN {sql}").as_str(),
+        ))
+        .bind("m")
+        .bind(0_i64)
+        .fetch_all(store.reader())
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|row| row.get::<String, _>("detail"))
+        .collect()
     }
 }

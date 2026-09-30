@@ -922,6 +922,11 @@ const MIGRATIONS: &[Migration] = &[
                        AND reply_later_due_at IS NOT NULL
                        AND reply_later_returned_at IS NULL",
             ),
+            // A reminder's replies filed in another thread, by parent.
+            MigrationStep::Sql(
+                "CREATE INDEX IF NOT EXISTS idx_reply_pairs_parent
+                     ON reply_pairs (parent_message_id, direction)",
+            ),
         ]),
     },
 ];

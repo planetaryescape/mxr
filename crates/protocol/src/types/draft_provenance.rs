@@ -111,7 +111,7 @@ impl DraftProvenanceData {
 
     /// Each source under a heading, with the command that opens it, for
     /// terminal clients:
-    /// "  2026-09-29 · you to Maya  mxr cat <message-id>".
+    /// `"  2026-09-29 · you to Maya  mxr cat <message-id>"`.
     pub fn source_lines(&self) -> Vec<String> {
         let mut lines = Vec::new();
         for (heading, sources) in [

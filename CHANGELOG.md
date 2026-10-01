@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.47](https://github.com/planetaryescape/mxr/compare/v0.6.46...v0.6.47) (2026-10-01)
+
+
+### Bug Fixes
+
+* make star and unstar act on the whole conversation and undo exactly ([#270](https://github.com/planetaryescape/mxr/issues/270)) ([580f3d4](https://github.com/planetaryescape/mxr/commit/580f3d4a29cbf2b048ecf8f6ee3fbb1df5e09813))
+
+
+### Documentation
+
+* record the second independent rubric grade and real-mailbox timings ([#269](https://github.com/planetaryescape/mxr/issues/269)) ([68fac81](https://github.com/planetaryescape/mxr/commit/68fac81691bf0673676544f4d31dff127cf88adb))
+
 ## [0.6.46](https://github.com/planetaryescape/mxr/compare/v0.6.45...v0.6.46) (2026-10-01)
 
 

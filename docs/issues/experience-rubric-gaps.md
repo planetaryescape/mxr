@@ -18,17 +18,21 @@ on the user:
 4. **Real-mailbox scroll (D4).** Measure scrolling and key-to-paint against
    the real bridge, with gist-filled rows.
 5. **Speed gate coverage (B1).** Add `s` and cached-thread open, and assert
-   the intended change before accepting a sample.
+   the intended change before accepting a sample. Built in `feat/polish`;
+   awaiting a grade.
 6. **Real-model gists (A11).** Time to useful coverage and ask accuracy on
    representative conversations; browser journeys stub the model today.
 7. **Daemon stopped (B8).** Stop the daemon mid-session and assert cached
    reading and keys still work, then recover. Built in `feat/offline`
    (`daemon-stopped.spec`); awaiting a grade.
 8. **Undo matrix (B3).** Cover send and unsubscribe, and document what is
-   truly irreversible.
+   truly irreversible. Built in `feat/polish`; awaiting a grade. Open: `u`
+   after a star (`docs/issues/web-star-undo-gaps.md`).
 9. **Motion and typography audit (B2, B7).** Remove `transition-colors` in
    `Sidebar.tsx` and the literal 1500 ms duration in `app.css`; tighten
    `reading.spec` to 60–80 characters; record a 1440 and 390 px review.
+   Built in `feat/polish` (`docs/web-visual-review-2026-10-01.md`);
+   awaiting a grade. Open: Formatted HTML's measure.
 10. **Dogfooding (E2).** BK's own five working days, logged in `docs/`,
     before any section-A score can reach 3.
 

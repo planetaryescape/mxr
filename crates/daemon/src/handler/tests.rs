@@ -689,6 +689,7 @@ mod mutations_and_delivery;
 mod places;
 mod platform_and_export;
 mod routing_and_search;
+mod stars;
 mod thread_gists;
 
 /// The dispatch future holds every request arm's state inline. Past about a

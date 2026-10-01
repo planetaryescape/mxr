@@ -69,7 +69,7 @@ const isSingleMessage = (label: string) => !/messages in conversation/.test(labe
 /**
  * A verb on the inbox row under the cursor, from its key: the row leaves
  * (or changes state), the toast says so, and the table's undo path puts it
- * back as it was: `u`, or for a toggle the same key again.
+ * back as it was with `u`.
  */
 function rowVerb(
   verb: Verb,
@@ -91,12 +91,8 @@ function rowVerb(
     if (options.leaves) await expect(rowById(page, rowId)).toHaveCount(0);
     else await expect.poll(async () => rowStates(await rowLabel(page, rowId))).not.toEqual(before);
 
-    if (VERB_FEEDBACK[verb].undo === "toggle") {
-      for (const key of keys) await page.keyboard.press(key);
-    } else {
-      await page.keyboard.press("u");
-      await expectUndone(page);
-    }
+    await page.keyboard.press("u");
+    await expectUndone(page);
     await expect(rowById(page, rowId)).toBeVisible();
     await expect.poll(async () => rowStates(await rowLabel(page, rowId))).toEqual(before);
   };
@@ -198,18 +194,67 @@ async function typeBody(page: Page, text: string) {
   await page.keyboard.press("Escape");
 }
 
+interface Row {
+  id: string;
+  thread_id: string;
+  subject: string;
+  starred: boolean;
+  message_ids?: string[];
+}
+
+async function starredIds(page: Page, threadId: string): Promise<string[]> {
+  const thread = await bridge<{ messages: { id: string; starred: boolean }[] }>(
+    page,
+    `/api/v1/mail/threads/${encodeURIComponent(threadId)}`,
+  );
+  return thread.messages.filter((message) => message.starred).map((message) => message.id);
+}
+
+/**
+ * An inbox row in the first rows that is starred by a message outside the
+ * row's own list (the demo's "Launch checklist for
+ * Project Aurora": an inbox message and a sent reply, both starred).
+ */
+async function starredOutsideTheList(page: Page): Promise<Row> {
+  const inbox = await bridge<{ mailbox: { groups: { rows: Row[] }[] } }>(
+    page,
+    "/api/v1/mail/mailbox?lens_kind=inbox&view=threads&limit=25&offset=0",
+  );
+  for (const row of inbox.mailbox.groups.flatMap((group) => group.rows)) {
+    if (!row.starred) continue;
+    const listed = new Set(row.message_ids ?? [row.id]);
+    const starred = await starredIds(page, row.thread_id);
+    if (starred.some((id) => !listed.has(id))) return row;
+  }
+  throw new Error("the demo inbox has no conversation starred outside the list");
+}
+
 const JOURNEYS: Partial<Record<Verb, Journey>> = {
   archive: rowVerb("archive", ["e"], { leaves: true }),
   "read-and-archive": rowVerb("read-and-archive", ["m"], { leaves: true }),
   trash: rowVerb("trash", ["#"], { leaves: true }),
   spam: rowVerb("spam", ["!"], { leaves: true }),
   star: rowVerb("star", ["s"], { pick: (label) => !isStarred(label), leaves: false }),
-  // A single message: a conversation can be starred by a message outside
-  // this list, which the row's unstar doesn't reach (docs/issues).
-  unstar: rowVerb("unstar", ["s"], {
-    pick: (label) => isStarred(label) && isSingleMessage(label),
-    leaves: false,
-  }),
+  unstar: async (page) => {
+    // A conversation starred by a message outside the inbox too (a starred
+    // reply in Sent): the row's unstar clears both, and `u` brings both back.
+    const row = await starredOutsideTheList(page);
+    const before = await starredIds(page, row.thread_id);
+    await openList(page, "/m/inbox");
+    await mailList(page).focus();
+    const rowId = await cursorTo(page, (label) => label.includes(row.subject));
+    expect(isStarred(await rowLabel(page, rowId))).toBe(true);
+
+    await page.keyboard.press("s");
+    await expectToast(page, "unstar");
+    await expect.poll(async () => isStarred(await rowLabel(page, rowId))).toBe(false);
+    expect(await starredIds(page, row.thread_id)).toEqual([]);
+
+    await page.keyboard.press("u");
+    await expectUndone(page);
+    await expect.poll(async () => isStarred(await rowLabel(page, rowId))).toBe(true);
+    expect((await starredIds(page, row.thread_id)).sort()).toEqual(before.sort());
+  },
   read: rowVerb("read", ["I"], { pick: isUnread, leaves: false }),
   unread: rowVerb("unread", ["U"], { pick: (label) => !isUnread(label), leaves: false }),
   snooze: rowVerb("snooze", ["Z", "1"], { pick: isSingleMessage, leaves: true }),

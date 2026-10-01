@@ -58,6 +58,11 @@ pub(crate) struct MessageRowView {
     /// oldest first, so a thread-level action can target all of them.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) message_ids: Option<Vec<String>>,
+    /// Thread rows only: ids of every starred message in the thread, in or
+    /// out of the lens (a starred reply in Sent). `starred` is true when any
+    /// is, so unstarring the row clears exactly these.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) starred_message_ids: Option<Vec<String>>,
     /// Thread rows only: distinct senders in the thread, capped at
     /// `THREAD_ROW_PARTICIPANT_LIMIT`.
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -306,8 +306,8 @@ top level and the per-account outcome under a nested `result`:
 ```
 
 `result.mutation_id` is set by the undoable mutations (archive, trash, spam,
-read, and read-and-archive) and is what you pass to `mxr undo`. Star, label,
-and move return no `mutation_id`. When an undoable mutation lands but its undo
+read, read-and-archive, star, label and move) and is what you pass to
+`mxr undo`. When an undoable mutation lands but its undo
 entry could not be written, `mutation_id` is absent and
 `"undo_unavailable": true` takes its place.
 

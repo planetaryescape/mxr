@@ -16,6 +16,8 @@ pub(super) fn mutation_verb_past(req: &Request) -> &'static str {
             MutationCommand::Spam { .. } => "Marked as spam",
             MutationCommand::SetRead { read: true, .. } => "Marked read",
             MutationCommand::SetRead { read: false, .. } => "Marked unread",
+            MutationCommand::Star { starred: true, .. } => "Starred",
+            MutationCommand::Star { starred: false, .. } => "Unstarred",
             _ => "Done",
         }
     } else {

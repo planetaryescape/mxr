@@ -27,6 +27,11 @@ export interface MessageRowView {
   /** Thread rows: every message in the thread, so actions cover the whole
    * conversation. Absent on message rows. */
   message_ids?: string[] | null;
+  /**
+   * Thread rows: every starred message of the conversation, in the list or
+   * not (a starred reply in Sent). The row is starred when any is.
+   */
+  starred_message_ids?: string[] | null;
   /** Thread rows: up to five participants. */
   participants?: AddressView[] | null;
   attachment_id?: string | null;

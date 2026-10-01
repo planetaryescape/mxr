@@ -314,6 +314,7 @@ pub(crate) fn message_row_view(envelope: &Envelope) -> MessageRowView {
         has_attachments: envelope.has_attachments,
         message_count: None,
         message_ids: None,
+        starred_message_ids: None,
         participants: None,
         attachment_id: None,
         attachment_filename: None,

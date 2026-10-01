@@ -13,6 +13,12 @@ import { rowMessageIds } from "./pendingMailOps";
 export interface MailTarget {
   /** Every message the action covers (whole threads for thread rows). */
   messageIds: string[];
+  /**
+   * What unstarring the target changes: its messages plus any starred
+   * message of its conversations outside them (a starred reply in Sent
+   * stars the inbox row, so its unstar has to reach that reply).
+   */
+  unstarIds: string[];
   /** The rows or messages the user acted on, for previews and copy. */
   rows: MessageRowView[];
   /** Distinct conversations covered: a reader target is one, however many
@@ -32,8 +38,12 @@ export interface MailTarget {
 export function targetFromRows(rows: MessageRowView[], source: MailTarget["source"]): MailTarget {
   const threadIds = new Set(rows.map((row) => row.thread_id));
   const single = threadIds.size === 1 ? rows[0] : undefined;
+  const messageIds = [...new Set(rows.flatMap(rowMessageIds))];
   return {
-    messageIds: [...new Set(rows.flatMap(rowMessageIds))],
+    messageIds,
+    unstarIds: [
+      ...new Set([...messageIds, ...rows.flatMap((row) => row.starred_message_ids ?? [])]),
+    ],
     rows,
     conversations: threadIds.size,
     threadId: single?.thread_id,
@@ -48,8 +58,10 @@ export function targetFromRows(rows: MessageRowView[], source: MailTarget["sourc
 
 export function targetFromThread(data: ThreadResponse, messages = data.messages): MailTarget {
   const newest = messages.at(-1) ?? messages[0];
+  const messageIds = messages.map((message) => message.id);
   return {
-    messageIds: messages.map((message) => message.id),
+    messageIds,
+    unstarIds: messageIds,
     rows: messages,
     conversations: 1,
     threadId: data.thread.id,

@@ -198,8 +198,9 @@ each.
   later take a time in words ("fri 3", "in 2d") and show the exact time
   before you commit; see [time phrases](/reference/time-phrases/). Changes
   show at once. Undo reverses the last archive, trash, spam, read change,
-  snooze, move or label change for about a minute. Star has no undo; star
-  again to remove it.
+  star, snooze, move or label change for about a minute, putting back
+  exactly what was there before. Unstarring a conversation clears every
+  star in it, including a starred reply in Sent.
 - **Select.** Select rows one at a time, a range, everything, or all read,
   unread or starred mail. Trashing or marking several conversations as spam,
   or changing more than 20 messages, asks first and lists what will change.

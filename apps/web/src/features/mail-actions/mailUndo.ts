@@ -107,17 +107,40 @@ export function announceSuccess(
   const count = response.result?.succeeded ?? ids.length;
   const message = successMessage(action, count, payload);
   const mutationId = response.result?.mutation_id;
-  const jobUndoIds = response.result?.undo_ids ?? [];
-  const reverse = mutationId
-    ? () => performUndo(mutationId)
-    : jobUndoIds.length > 0
-      ? () => undoAll(jobUndoIds)
-      : action === "snooze"
-        ? () => wakeSnoozed(ids)
-        : null;
+  const reverse = daemonReverse(response) ?? (action === "snooze" ? () => wakeSnoozed(ids) : null);
   // Running an undo retires it, from the key or the toast, so it can't run
   // twice; it only clears itself, never a newer action's undo.
   return offerUndo(message, `mutation-${mutationId ?? ids.join(",")}`, reverse, claim, mutationId);
+}
+
+/** The daemon's undo for a response: its mutation id, or every job chunk's. */
+function daemonReverse(response: MutationResponse): (() => Promise<boolean>) | null {
+  const mutationId = response.result?.mutation_id;
+  const jobUndoIds = response.result?.undo_ids ?? [];
+  if (mutationId) return () => performUndo(mutationId);
+  return jobUndoIds.length > 0 ? () => undoAll(jobUndoIds) : null;
+}
+
+/**
+ * A mutation that failed part way can still have changed some messages (or
+ * may have, at the provider); the daemon keeps an undo for those. Hand the
+ * claimed slot to it so `u` undoes what changed, and return it for the
+ * failure toast. Null when the daemon kept none.
+ */
+export function keepPartialUndo(
+  response: MutationResponse,
+  claim: () => Promise<boolean>,
+): (() => Promise<boolean>) | null {
+  const reverse = daemonReverse(response);
+  if (!reverse) return null;
+  const undo = async () => {
+    useUndo.getState().retireUndo(undo);
+    return reverse();
+  };
+  if (useUndo.getState().lastUndo === claim) {
+    useUndo.getState().recordUndo(undo, response.result?.mutation_id ?? undefined);
+  }
+  return undo;
 }
 
 /**

@@ -15,8 +15,8 @@ import { useSelection } from "@/state/selectionStore";
 import { runAction } from "./mailActionRequests";
 import { JOB_THRESHOLD, jobCommand, runAsJob } from "./mailMutationJobs";
 import { invalidateMailQueries } from "./mailQueryInvalidation";
-import { announceSuccess, claimUndo } from "./mailUndo";
-import { announceFailure, assertCompleted } from "./mutationFailure";
+import { announceSuccess, claimUndo, keepPartialUndo } from "./mailUndo";
+import { announceFailure, assertCompleted, failedResponse } from "./mutationFailure";
 
 export type { MailAction, MailActionPayload };
 export { invalidateMailQueries } from "./mailQueryInvalidation";
@@ -73,8 +73,12 @@ export async function performMailAction(
     // Retire the projection first so the rows come back, then reconcile:
     // the server may have applied part of the change before failing.
     usePendingMailOps.getState().remove(opId);
-    claim?.settle(null);
-    announceFailure(action, error, options.payload);
+    // Part of it may have changed: the daemon's undo for that part stays on
+    // `u` and the toast.
+    const response = failedResponse(error);
+    const undo = claim && response ? keepPartialUndo(response, claim.run) : null;
+    claim?.settle(undo);
+    announceFailure(action, error, options.payload, undo);
     void invalidateMailQueries().catch(() => undefined);
     return { ok: false, error };
   } finally {

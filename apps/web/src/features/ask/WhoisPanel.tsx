@@ -10,7 +10,7 @@ import { fetchWhois } from "./api";
 import { LlmNotice } from "./LlmNotice";
 import { FactList, PageError, PageSkeleton } from "@/components/PageParts";
 import { useLlmStatus } from "@/features/llm/useLlmStatus";
-import { formatListDate } from "@/lib/format";
+import { formatWhen } from "@/lib/format";
 
 export interface WhoisPayload {
   entity: string;
@@ -73,8 +73,8 @@ export function WhoisPanel({ entity, accountId }: WhoisPayload) {
       <FactList
         columns={1}
         facts={[
-          ["First seen", info.first_seen_at ? formatListDate(info.first_seen_at) : "never"],
-          ["Last seen", info.last_seen_at ? formatListDate(info.last_seen_at) : "never"],
+          ["First seen", info.first_seen_at ? formatWhen(info.first_seen_at) : "never"],
+          ["Last seen", info.last_seen_at ? formatWhen(info.last_seen_at) : "never"],
         ]}
       />
       {info.topics.length > 0 ? (

@@ -13,7 +13,7 @@ import {
   RuledRow,
 } from "@/components/PageParts";
 import { Input } from "@/components/ui/input";
-import { formatListDate, plural } from "@/lib/format";
+import { formatWhen, plural } from "@/lib/format";
 
 export function ContactsDashboard() {
   const drill = useDrillToSearch();
@@ -98,7 +98,7 @@ export function ContactsDashboard() {
               <RuledRow
                 key={row.email}
                 title={row.display_name || row.email}
-                meta={`${row.email} · last heard ${formatListDate(row.last_inbound_at)}`}
+                meta={`${row.email} · last heard ${formatWhen(row.last_inbound_at)}`}
                 aside={plural(row.days_since_inbound, "day")}
                 onOpen={() => drill(`from:${row.email}`)}
                 openLabel={`Search mail from ${row.email}`}

@@ -5,7 +5,7 @@
  */
 
 import type { Desk, DeskLaneKind, DeskRow } from "./api";
-import { formatLongDate, plural } from "@/lib/format";
+import { formatLongDate, formatTime, formatWhen, plural, startOfDay } from "@/lib/format";
 
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;
@@ -61,25 +61,19 @@ export function deskHeadline(desk: Desk, now = new Date()): DeskHeadline {
   return { lead, counts, calm, sub: sub.length > 0 ? sub.join(" ") : null };
 }
 
-function startOfDay(date: Date): number {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-}
-
 function dayDelta(date: Date, now: Date): number {
   return Math.round((startOfDay(date) - startOfDay(now)) / (DAY * 1000));
 }
-
-const clock = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
 
 /** "18:40", "yesterday 18:40", "Thu 09:10", "12 Sep". */
 function sinceLabel(value: string, now: Date): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "a while";
   const delta = dayDelta(date, now);
-  if (delta === 0) return clock.format(date);
-  if (delta === -1) return `yesterday ${clock.format(date)}`;
+  if (delta === 0) return formatTime(date);
+  if (delta === -1) return `yesterday ${formatTime(date)}`;
   if (delta > -7) {
-    return `${date.toLocaleDateString(undefined, { weekday: "short" })} ${clock.format(date)}`;
+    return `${date.toLocaleDateString(undefined, { weekday: "short" })} ${formatTime(date)}`;
   }
   return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
@@ -93,35 +87,8 @@ export function shortDuration(seconds: number): string {
   return `${Math.floor(s / (7 * DAY))}w`;
 }
 
-/**
- * A calendar-style point in time: "now", "12m", "5h" today, "yesterday",
- * "Thu" this week, "12 Sep" before that; "today", "tomorrow" and "Mon" for
- * dates ahead.
- */
-export function whenLabel(value: string, now = new Date()): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const seconds = Math.round((now.getTime() - date.getTime()) / 1000);
-  const delta = dayDelta(date, now);
-  if (seconds >= 0) {
-    if (seconds < MINUTE) return "now";
-    if (delta === 0) return shortDuration(seconds);
-    if (delta === -1) return "yesterday";
-  } else {
-    if (delta === 0) return "today";
-    if (delta === 1) return "tomorrow";
-  }
-  if (Math.abs(delta) < 7) return date.toLocaleDateString(undefined, { weekday: "short" });
-  const sameYear = date.getFullYear() === now.getFullYear();
-  return date.toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    ...(sameYear ? {} : { year: "numeric" }),
-  });
-}
-
 export interface RowAge {
-  /** "2d", "yesterday", "Mon". */
+  /** "2d", "Yesterday", "Mon". */
   label: string;
   /** "usually 4h", when the person's pace is known. */
   usual: string | null;
@@ -142,11 +109,11 @@ export function rowAge(row: DeskRow, now = new Date()): RowAge {
   const since = row.since;
   const title = row.lane === "due" ? `Due ${formatLongDate(since)}` : formatLongDate(since);
   if (row.lane === "due") {
-    return { label: whenLabel(since, now), usual: null, late: Boolean(row.overdue), title };
+    return { label: formatWhen(since, now), usual: null, late: Boolean(row.overdue), title };
   }
   const asDuration = row.lane === "waiting" || usual !== null;
   return {
-    label: asDuration ? shortDuration(row.age_seconds) : whenLabel(since, now),
+    label: asDuration ? shortDuration(row.age_seconds) : formatWhen(since, now),
     usual: usual !== null ? `usually ${shortDuration(usual)}` : null,
     late: Boolean(row.overdue),
     title,

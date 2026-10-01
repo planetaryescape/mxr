@@ -17,7 +17,7 @@ import type { MessageRowView } from "./types";
 import { gistText, RowGistLine } from "@/features/gists/RowGistLine";
 import { useRowGist, type RowGist } from "@/features/gists/rowGists";
 import { notePointerUse } from "@/lib/actions/keyHints";
-import { formatListDate, initials, parseAddress, plural } from "@/lib/format";
+import { formatWhen, initials, parseAddress, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export type RowQuickAction = "archive" | "trash" | "toggleRead" | "toggleStar" | "snooze";
@@ -238,7 +238,7 @@ export const MailboxRow = memo(function MailboxRow({
                 row.unread ? "text-foreground" : "text-muted-foreground",
               )}
             >
-              {formatListDate(row.date) || row.date_label}
+              {formatWhen(row.date) || row.date_label}
             </time>
           </span>
           {readOnly ? null : (
@@ -339,7 +339,7 @@ function rowLabel(
     gist ? gistText(gist) : null,
     count ? `${plural(count, "message")} in conversation` : null,
     row.has_attachments ? "Has attachments" : null,
-    formatListDate(row.date),
+    formatWhen(row.date),
   ]
     .filter(Boolean)
     .join(", ");

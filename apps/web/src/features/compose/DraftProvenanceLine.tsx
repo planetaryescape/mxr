@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, ChevronDown } from "lucide-react";
 import { useState } from "react";
 
-import { formatListDate } from "@/lib/format";
+import { formatWhen } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   draftProvenanceLine,
@@ -88,7 +88,7 @@ function SourceList({
             >
               <span>{draftSourceLabel(source, kind)}</span>
               <time dateTime={source.date} className="font-mono tabular-nums">
-                {formatListDate(source.date)}
+                {formatWhen(source.date)}
               </time>
               <ArrowUpRight aria-hidden className="size-3" />
             </Link>

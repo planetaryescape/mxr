@@ -13,7 +13,7 @@ import {
   RuledList,
   RuledRow,
 } from "@/components/PageParts";
-import { formatListDate, plural } from "@/lib/format";
+import { formatWhen, plural } from "@/lib/format";
 
 type Perspective = "mine" | "theirs";
 
@@ -67,7 +67,7 @@ export function StaleDashboard({ range }: { range: AnalyticsRange }) {
             <RuledRow
               key={row.thread_id}
               title={row.latest_subject.trim() || "(no subject)"}
-              meta={`${row.counterparty_email} · last ${formatListDate(row.latest_date)}`}
+              meta={`${row.counterparty_email} · last ${formatWhen(row.latest_date)}`}
               aside={plural(row.days_stale, "day")}
               onOpen={() => openThread(row.thread_id)}
               openLabel={`Open ${row.latest_subject || "conversation"}`}

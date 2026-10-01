@@ -13,14 +13,7 @@ import {
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
 import type { AddressView, MessageBodyView, MessageRowView } from "@/features/mailbox/types";
-import {
-  formatListDate,
-  formatLongDate,
-  formatRelative,
-  initials,
-  parseAddress,
-  plural,
-} from "@/lib/format";
+import { formatWhen, formatLongDate, initials, parseAddress, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs, type ReaderView } from "@/state/uiPrefsStore";
@@ -112,7 +105,7 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
             title={message.date_full}
             className="font-mono text-2xs text-muted-foreground tabular-nums"
           >
-            {formatListDate(message.date)}
+            {formatWhen(message.date)}
           </time>
         </button>
       </section>
@@ -154,8 +147,7 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
             title={formatLongDate(message.date)}
             className="mr-1 whitespace-nowrap font-mono text-2xs text-muted-foreground tabular-nums"
           >
-            {formatListDate(message.date)}
-            <span className="hidden @xl:inline"> · {formatRelative(message.date)}</span>
+            {formatWhen(message.date)}
           </time>
           <Button
             variant="ghost"

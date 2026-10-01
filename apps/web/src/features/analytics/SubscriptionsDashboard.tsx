@@ -25,7 +25,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { formatListDate, plural } from "@/lib/format";
+import { formatWhen, plural } from "@/lib/format";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 type Sort = "low-open" | "volume" | "recent";
@@ -87,7 +87,7 @@ export function SubscriptionsDashboard() {
                 key={`${row.account_id ?? ""}:${row.sender_email}`}
                 title={row.sender_name || row.sender_email}
                 meta={`${plural(row.message_count, "message")} · ${openRateLabel(row)} opened · ${row.latest_subject ?? ""}`}
-                aside={formatListDate(row.latest_date)}
+                aside={formatWhen(row.latest_date)}
                 onOpen={() => drill(`from:${row.sender_email}`)}
                 openLabel={`Search mail from ${row.sender_email}`}
                 actions={

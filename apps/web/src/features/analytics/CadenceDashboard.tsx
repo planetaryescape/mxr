@@ -16,7 +16,7 @@ import {
 } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatListDate, formatRelative } from "@/lib/format";
+import { formatWhen, formatRelative } from "@/lib/format";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 /**
@@ -98,7 +98,7 @@ export function CadenceDashboard() {
               <RuledRow
                 key={row.email}
                 title={row.display_name || row.email}
-                meta={`${row.email} · usually every ${formatDays(row.expected_days)} · last ${row.last_contact_at ? formatListDate(row.last_contact_at) : "never"}`}
+                meta={`${row.email} · usually every ${formatDays(row.expected_days)} · last ${row.last_contact_at ? formatWhen(row.last_contact_at) : "never"}`}
                 aside={<span className="text-warning">{formatDays(row.drift_days)} late</span>}
                 onOpen={() => drill(`from:${row.email}`)}
                 openLabel={`Search mail from ${row.email}`}

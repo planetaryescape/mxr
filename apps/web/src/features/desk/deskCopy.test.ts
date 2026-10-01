@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
 
 import type { Desk, DeskLane, DeskRow } from "./api";
-import { deskHeadline, rowAge, rowPerson, shortDuration, whenLabel } from "./deskCopy";
+import { formatTime } from "@/lib/format";
+
+import { deskHeadline, rowAge, rowPerson, shortDuration } from "./deskCopy";
 
 // Saturday 26 September 2026, 10:00 local time.
 const NOW = new Date(2026, 8, 26, 10, 0, 0);
@@ -81,7 +83,7 @@ describe("row time", () => {
     expect(rowAge(row({}), NOW).label).toBe(thursday);
     expect(rowAge(row({ lane: "waiting", age_seconds: 5 * 86_400 }), NOW).label).toBe("5d");
     const yesterday = new Date(2026, 8, 25, 21, 0).toISOString();
-    expect(rowAge(row({ since: yesterday, age_seconds: 13 * 3600 }), NOW).label).toBe("yesterday");
+    expect(rowAge(row({ since: yesterday, age_seconds: 13 * 3600 }), NOW).label).toBe("Yesterday");
   });
 
   test("promises read as their due day and are late once it passes", () => {
@@ -93,8 +95,12 @@ describe("row time", () => {
     const monday = new Date(2026, 8, 28).toLocaleDateString(undefined, { weekday: "short" });
     expect(rowAge(due, NOW)).toMatchObject({ label: monday, late: false });
     expect(rowPerson(due)).toBe("to Maya Ortiz");
-    expect(whenLabel(new Date(2026, 8, 27, 9, 0).toISOString(), NOW)).toBe("tomorrow");
-    expect(whenLabel(new Date(2026, 8, 26, 18, 0).toISOString(), NOW)).toBe("today");
+    const tomorrow = row({ lane: "due", since: new Date(2026, 8, 27, 9, 0).toISOString() });
+    expect(rowAge(tomorrow, NOW).label).toBe("Tomorrow");
+    const tonight = new Date(2026, 8, 26, 18, 0);
+    expect(rowAge(row({ lane: "due", since: tonight.toISOString() }), NOW).label).toBe(
+      formatTime(tonight),
+    );
   });
 
   test("short durations step from minutes to weeks", () => {

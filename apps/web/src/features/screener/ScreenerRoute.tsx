@@ -25,7 +25,7 @@ import {
 import { fetchAccounts } from "@/features/accounts/api";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
-import { formatListDate, formatRelative, plural } from "@/lib/format";
+import { formatWhen, formatRelative, plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
 
 type Tab = "queue" | "decisions";
@@ -204,7 +204,7 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
             current={index === focused}
             title={entry.display_name || entry.sender_email}
             meta={`${entry.sender_email} · ${plural(entry.message_count, "message")} · ${entry.latest_subject}`}
-            aside={formatListDate(entry.latest_at)}
+            aside={formatWhen(entry.latest_at)}
             onOpen={() => setFocused(index)}
             openLabel={`Focus ${entry.sender_email}`}
             actions={DECISIONS.map(({ disposition, label, key }) => (

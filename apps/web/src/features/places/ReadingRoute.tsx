@@ -13,7 +13,7 @@ import { MessageContent } from "@/features/thread/MessageCard";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { notePointerUse } from "@/lib/actions/keyHints";
-import { formatLongDate, formatRelative, plural } from "@/lib/format";
+import { formatLongDate, formatWhen, plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
@@ -249,7 +249,7 @@ const Issue = memo(function Issue({
               title={formatLongDate(message.date)}
               className="font-mono text-2xs tabular-nums"
             >
-              {formatRelative(message.date)}
+              {formatWhen(message.date)}
             </time>
             {message.pinned ? (
               <span className="inline-flex items-center gap-1 text-primary">

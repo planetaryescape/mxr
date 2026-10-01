@@ -434,7 +434,7 @@ jobs:
     if: needs.changes.outputs.expensive == 'true'
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.94
+      - uses: dtolnay/rust-toolchain@1.120
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - run: cargo check --workspace --locked

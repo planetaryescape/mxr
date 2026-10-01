@@ -290,6 +290,7 @@ function FocusKeys({
     <div
       role="toolbar"
       aria-label="Move through the queue"
+      data-toast-keep-clear
       className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-t border-border px-3 py-2"
     >
       {keys.map(([command, key, label]) => (

@@ -66,6 +66,7 @@ export function BulkActionBar({
     <div
       role="toolbar"
       aria-label="Selected conversations"
+      data-toast-keep-clear
       className="absolute inset-x-3 bottom-3 z-10 flex flex-wrap items-center gap-1 rounded-lg border border-border-strong bg-popover p-1.5 shadow-xl"
     >
       <span className="px-2 text-[13px]">

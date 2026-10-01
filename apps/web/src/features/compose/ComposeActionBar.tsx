@@ -63,7 +63,7 @@ export function ComposeActionBar({
   suggestion,
 }: ComposeActionBarProps) {
   return (
-    <footer className="shrink-0 border-t border-border bg-card/30">
+    <footer data-toast-keep-clear className="shrink-0 border-t border-border bg-card/30">
       <div className="mx-auto flex min-h-14 w-full max-w-[860px] flex-wrap items-center gap-x-2 gap-y-1 px-5 py-2">
         <Button type="button" onClick={onSend} disabled={busy} className="gap-2">
           <Send className="size-4" />

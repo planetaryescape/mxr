@@ -72,7 +72,7 @@ export function SenderProfilePanel({ payload }: { payload: unknown }) {
               <a
                 key={message.message_id}
                 href={`${mailboxBase}/${message.thread_id}`}
-                className="block rounded border border-border/70 bg-background/50 px-2.5 py-2 text-xs outline-none transition hover:border-accent hover:bg-accent/10 focus-visible:ring-2 focus-visible:ring-ring"
+                className="block rounded border border-border/70 bg-background/50 px-2.5 py-2 text-xs outline-none hover:border-accent hover:bg-accent/10 focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">

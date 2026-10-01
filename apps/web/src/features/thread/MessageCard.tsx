@@ -86,10 +86,7 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
         data-message-id={message.id}
         data-focused={focused || undefined}
         data-collapsed="true"
-        className={cn(
-          "group relative border-b border-border/70 transition-colors",
-          focused && "bg-accent/60",
-        )}
+        className={cn("group relative border-b border-border/70", focused && "bg-accent/60")}
       >
         {focused ? (
           <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-primary" />

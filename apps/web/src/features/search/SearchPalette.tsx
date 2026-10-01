@@ -154,7 +154,7 @@ export function SearchPalette() {
                   role="option"
                   aria-selected={activeIndex === index}
                   className={cn(
-                    "grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-3 rounded-md border-l-2 px-3 py-2 text-left text-xs outline-none transition-colors",
+                    "grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-3 rounded-md border-l-2 px-3 py-2 text-left text-xs outline-none",
                     activeIndex === index
                       ? "border-l-primary bg-accent text-accent-foreground ring-1 ring-ring"
                       : "border-l-transparent hover:bg-muted/70",

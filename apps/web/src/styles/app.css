@@ -38,7 +38,7 @@
 }
 
 @utility pending-pulse {
-  animation: pending-pulse 1500ms var(--motion-ease) infinite;
+  animation: pending-pulse var(--motion-duration-pulse) var(--motion-ease) infinite;
 }
 
 /*
@@ -46,7 +46,7 @@
  * transition. Reduced motion keeps the seconds and drops the bar.
  */
 @utility countdown-drain {
-  animation: countdown-drain var(--countdown-duration, 10s) linear forwards;
+  animation: countdown-drain var(--countdown-duration) linear forwards;
   transform-origin: left;
 }
 

@@ -137,7 +137,7 @@ export function OnboardingRoute() {
                 role="radio"
                 aria-checked={provider === tile.id}
                 className={cn(
-                  "rounded-md border p-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                  "rounded-md border p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   provider === tile.id
                     ? "border-primary bg-primary-muted"
                     : "border-border hover:bg-muted/40",

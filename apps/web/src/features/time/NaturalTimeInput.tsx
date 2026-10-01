@@ -204,7 +204,7 @@ export function NaturalTimeInput({
                 data-choice-index={index}
                 onClick={() => state.setChoiceIndex(index)}
                 className={cn(
-                  "inline-flex h-7 items-center gap-1.5 rounded-md border px-2 font-mono text-xs tabular-nums transition-colors",
+                  "inline-flex h-7 items-center gap-1.5 rounded-md border px-2 font-mono text-xs tabular-nums",
                   checked
                     ? "border-primary bg-primary-muted text-foreground"
                     : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",

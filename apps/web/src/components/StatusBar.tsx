@@ -32,9 +32,9 @@ export function StatusBar() {
           </span>
           <span aria-hidden className="h-1 w-16 overflow-hidden rounded-full bg-muted">
             <span
-              className="block h-full bg-primary transition-[width]"
+              className="block h-full origin-left bg-primary transition-transform"
               style={{
-                width: `${sync.total > 0 ? Math.min(100, (sync.current / sync.total) * 100) : 5}%`,
+                transform: `scaleX(${sync.total > 0 ? Math.min(1, sync.current / sync.total) : 0.05})`,
               }}
             />
           </span>

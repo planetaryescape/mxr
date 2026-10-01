@@ -24,7 +24,7 @@ import { useReaderNav } from "@/features/mailbox/readerNav";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { notePointerUse } from "@/lib/actions/keyHints";
-import { formatListDate, formatRelative, plural } from "@/lib/format";
+import { formatLongDate, plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
@@ -43,6 +43,7 @@ import {
 } from "./placeVerbs";
 import { SweptClear } from "./SweptClear";
 import { usePlace } from "./usePlace";
+import { When } from "@/components/When";
 
 /** Messages listed per bundle when it opens, and per "more from" page. */
 const MESSAGES_PER_BUNDLE = 20;
@@ -381,13 +382,13 @@ const BundleRow = memo(function BundleRow({
         </span>
         <time
           dateTime={bundle.newest_at}
-          title={formatListDate(bundle.newest_at)}
+          title={formatLongDate(bundle.newest_at)}
           className="whitespace-nowrap font-mono text-2xs tabular-nums text-muted-foreground"
         >
           {bundle.pinned_count > 0 ? (
             <Pin aria-label={`${bundle.pinned_count} pinned`} className="mr-1.5 inline size-3" />
           ) : null}
-          {formatRelative(bundle.newest_at)}
+          <When value={bundle.newest_at} />
         </time>
         <span className="col-start-2 col-end-4 truncate text-[12px] text-muted-foreground/90">
           {whyHere(bundle.kind)}
@@ -437,7 +438,7 @@ const MessageRow = memo(function MessageRow({
           dateTime={message.date}
           className="whitespace-nowrap font-mono text-2xs tabular-nums text-muted-foreground"
         >
-          {formatListDate(message.date)}
+          <When value={message.date} />
         </time>
       </button>
       <button

@@ -1,75 +1,460 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { VERB_FEEDBACK, type Verb } from "../src/features/mail-actions/verbFeedback";
-import { cursorRowId, mailList, openList, rowById } from "./helpers/mail";
+import {
+  cursorRowId,
+  cursorTo,
+  mailList,
+  mailRows,
+  modKey,
+  openList,
+  rowById,
+  rowLabel,
+  rowStates,
+} from "./helpers/mail";
+import { bridge, openApp } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-/**
- * Every verb the keyboard runs on a row, with the way it is undone. The
- * toast's words come from the verb table, so the table and the app can't
- * disagree. Dialog verbs (labels, move) and place verbs (sweep, pin,
- * move sender) have their own journeys in labels.spec and places.spec.
- */
-const ROW_VERBS: { verb: Verb; keys: string[]; leaves: boolean }[] = [
-  { verb: "archive", keys: ["e"], leaves: true },
-  { verb: "read-and-archive", keys: ["m"], leaves: true },
-  { verb: "trash", keys: ["#"], leaves: true },
-  { verb: "spam", keys: ["!"], leaves: true },
-  { verb: "star", keys: ["s"], leaves: false },
-  { verb: "unread", keys: ["U"], leaves: false },
-  { verb: "snooze", keys: ["Z", "1"], leaves: true },
-];
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
 
-function lastToast(page: Page, text: string) {
-  return page.locator("[data-sonner-toast]").filter({ hasText: text }).last();
+/*
+ * The undo matrix (rubric B3): one journey per verb in the verb table. An
+ * undoable verb runs, its toast starts with the table's words, and its undo
+ * path restores what changed. An irreversible verb must say why in the
+ * table and confirm first; its journey checks the confirm. A verb added to
+ * the table without a journey fails below.
+ */
+
+type Journey = (page: Page) => Promise<void>;
+
+/** The newest toast whose title matches `words` (its buttons aren't part of the match). */
+function toast(page: Page, words: string | RegExp) {
+  const title = page.locator("[data-title]").filter({ hasText: words });
+  return page.locator("[data-sonner-toast]").filter({ has: title }).last();
 }
 
-test("each row verb says what it did in the table's words, and u undoes it", async ({ page }) => {
-  await openList(page, "/m/inbox");
-  await mailList(page).focus();
-  for (const { verb, keys, leaves } of ROW_VERBS) {
-    const entry = VERB_FEEDBACK[verb];
-    expect(["daemon-mutation", "wake"]).toContain(entry.undo);
-    // Snooze acts on messages; a conversation row with other messages
-    // stays in the inbox, so it takes a single-message row (as snooze.spec).
-    if (verb === "snooze") await cursorToSingleMessageRow(page);
-    const rowId = await cursorRowId(page);
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** The result toast for `verb`, in the table's words. */
+async function expectToast(page: Page, verb: Verb): Promise<void> {
+  const words = new RegExp(`^${escapeRegExp(VERB_FEEDBACK[verb].pastTense)}\\b`);
+  await expect(toast(page, words), verb).toBeVisible();
+}
+
+/** The verb's toast, its row gone, then `u` and the row back. */
+async function leavesThenUndoes(page: Page, verb: Verb, rowId: string): Promise<void> {
+  await expectToast(page, verb);
+  await expect(rowById(page, rowId)).toHaveCount(0);
+  await page.keyboard.press("u");
+  await expectUndone(page);
+  await expect(rowById(page, rowId)).toBeVisible();
+}
+
+/** The undo's own toast: "Undone", or "Snooze undone" for a wake. */
+async function expectUndone(page: Page): Promise<void> {
+  await expect(toast(page, /^(Snooze u|U)ndone$/)).toBeVisible();
+}
+
+const isStarred = (label: string) => rowStates(label).includes("Starred.");
+const isUnread = (label: string) => rowStates(label).includes("Unread.");
+// Snooze acts on messages; a conversation with other messages stays in the
+// inbox, so it takes a single-message row.
+const isSingleMessage = (label: string) => !/messages in conversation/.test(label);
+
+/**
+ * A verb on the inbox row under the cursor, from its key: the row leaves
+ * (or changes state), the toast says so, and the table's undo path puts it
+ * back as it was: `u`, or for a toggle the same key again.
+ */
+function rowVerb(
+  verb: Verb,
+  keys: string[],
+  options: { pick?: (label: string) => boolean; leaves: boolean },
+): Journey {
+  return async (page) => {
+    await openList(page, "/m/inbox");
+    await mailList(page).focus();
+    const rowId = await cursorTo(page, options.pick ?? (() => true));
+    const before = rowStates(await rowLabel(page, rowId));
     for (const key of keys) {
       await page.keyboard.press(key);
       // A dialog verb (snooze) takes its next key once the dialog is up.
       if (key === "Z")
         await expect(page.getByRole("dialog", { name: "Snooze until…" })).toBeVisible();
     }
-    await expect(lastToast(page, entry.pastTense), verb).toBeVisible();
-    if (leaves) await expect(rowById(page, rowId), verb).toHaveCount(0);
-    await page.keyboard.press("u");
-    await expect(rowById(page, rowId), verb).toBeVisible();
-    await expect(page.getByText(/^Undone$/).first(), verb).toBeVisible();
-  }
-});
+    await expectToast(page, verb);
+    if (options.leaves) await expect(rowById(page, rowId)).toHaveCount(0);
+    else await expect.poll(async () => rowStates(await rowLabel(page, rowId))).not.toEqual(before);
 
-test("reply later adds to the queue in the table's words, and the toast undoes it", async ({
-  page,
-}) => {
+    if (VERB_FEEDBACK[verb].undo === "toggle") {
+      for (const key of keys) await page.keyboard.press(key);
+    } else {
+      await page.keyboard.press("u");
+      await expectUndone(page);
+    }
+    await expect(rowById(page, rowId)).toBeVisible();
+    await expect.poll(async () => rowStates(await rowLabel(page, rowId))).toEqual(before);
+  };
+}
+
+function labelsDialog(page: Page) {
+  return page.getByRole("dialog", { name: "Labels" });
+}
+
+/** Toggle labels in the labels dialog, one by one, then apply. */
+async function changeLabels(page: Page, names: string[]): Promise<void> {
+  await page.keyboard.press("l");
+  const dialog = labelsDialog(page);
+  const input = dialog.getByPlaceholder("Find or create a label…");
+  await expect(input).toBeFocused();
+  for (const name of names) {
+    await input.fill(name);
+    await page.keyboard.press("Enter");
+    await expect(
+      dialog.getByRole("option", { name: new RegExp(`^${name}: .*changed$`) }),
+    ).toBeVisible();
+  }
+  await dialog.getByRole("button", { name: /^Apply/ }).click();
+  await expect(dialog).toHaveCount(0);
+}
+
+/** A conversation in the Hiring label's list: removing Hiring takes it out. */
+async function openHiringRow(page: Page): Promise<string> {
+  await openList(page, "/m/label/Hiring");
+  await mailList(page).focus();
+  return cursorRowId(page);
+}
+
+function labelChange(verb: Verb, names: string[]): Journey {
+  return async (page) => {
+    const rowId = await openHiringRow(page);
+    await changeLabels(page, names);
+    await leavesThenUndoes(page, verb, rowId);
+  };
+}
+
+interface Bundle {
+  account_id: string;
+  sender_email: string;
+  message_count: number;
+  messages: { message_id: string; pinned: boolean }[];
+}
+
+async function placeBundles(page: Page, slug: "reading" | "paper-trail"): Promise<Bundle[]> {
+  const place = await bridge<{ bundles: Bundle[] }>(
+    page,
+    `/api/v1/mail/places/${slug}?messages_per_bundle=50`,
+  );
+  return place.bundles;
+}
+
+/**
+ * Run `body` with a sender that has several inbox messages placed in Paper
+ * trail (the demo's automated senders have one each), then put it back.
+ */
+async function withPaperTrailSender(
+  page: Page,
+  body: (sender: string) => Promise<void>,
+): Promise<void> {
+  // The demo has one account; any Reading bundle names it.
+  const [reading] = await placeBundles(page, "reading");
+  if (!reading) throw new Error("the demo has no Reading bundle to take the account from");
+  const sender = { account_id: reading.account_id, sender_email: "ari@fieldkit.example" };
+  await bridge(page, "/api/v1/mail/senders/kind", { ...sender, kind: "paper_trail" });
+  try {
+    await body(sender.sender_email);
+  } finally {
+    await bridge(page, "/api/v1/mail/senders/kind", { ...sender, kind: null });
+  }
+}
+
+async function bundleCount(page: Page, sender: string): Promise<number | undefined> {
+  const bundles = await placeBundles(page, "paper-trail");
+  return bundles.find((bundle) => bundle.sender_email === sender)?.message_count;
+}
+
+async function openBundle(page: Page, sender: string) {
+  await openApp(page, "/paper-trail");
+  const row = page.locator(`[data-testid='place-bundle'][data-sender='${sender}']`);
+  await row.getByRole("button").click();
+  await expect(row.getByRole("button")).toHaveAttribute("aria-expanded", "true");
+  return row;
+}
+
+function composer(page: Page) {
+  return page.getByRole("dialog", { name: "New message" });
+}
+
+/** The composer body is CodeMirror in vim mode: insert, type, back to normal. */
+async function typeBody(page: Page, text: string) {
+  await composer(page).locator(".cm-content").click();
+  await page.keyboard.press("i");
+  await page.keyboard.type(text);
+  await page.keyboard.press("Escape");
+}
+
+const JOURNEYS: Partial<Record<Verb, Journey>> = {
+  archive: rowVerb("archive", ["e"], { leaves: true }),
+  "read-and-archive": rowVerb("read-and-archive", ["m"], { leaves: true }),
+  trash: rowVerb("trash", ["#"], { leaves: true }),
+  spam: rowVerb("spam", ["!"], { leaves: true }),
+  star: rowVerb("star", ["s"], { pick: (label) => !isStarred(label), leaves: false }),
+  // A single message: a conversation can be starred by a message outside
+  // this list, which the row's unstar doesn't reach (docs/issues).
+  unstar: rowVerb("unstar", ["s"], {
+    pick: (label) => isStarred(label) && isSingleMessage(label),
+    leaves: false,
+  }),
+  read: rowVerb("read", ["I"], { pick: isUnread, leaves: false }),
+  unread: rowVerb("unread", ["U"], { pick: (label) => !isUnread(label), leaves: false }),
+  snooze: rowVerb("snooze", ["Z", "1"], { pick: isSingleMessage, leaves: true }),
+
+  move: async (page) => {
+    await openList(page, "/m/inbox");
+    await mailList(page).focus();
+    const rowId = await cursorRowId(page);
+    await page.keyboard.press("v");
+    const dialog = page.getByRole("dialog", { name: "Move to" });
+    await dialog.getByPlaceholder("Destination label…").fill("Travel");
+    await dialog.getByRole("option", { name: "Travel" }).click();
+    await leavesThenUndoes(page, "move", rowId);
+  },
+
+  route: async (page) => {
+    // A label's list is a queue: route takes the row out of it into another.
+    const rowId = await openHiringRow(page);
+    await page.keyboard.press(`${await modKey(page)}+k`);
+    const palette = page.getByRole("dialog", { name: "Command palette" });
+    await palette.getByRole("combobox").fill("Route out of this queue");
+    await palette.getByRole("option", { name: /Route out of this queue/ }).click();
+    const dialog = page.getByRole("dialog", { name: "Route out of Hiring" });
+    await dialog.getByPlaceholder("Destination label…").fill("Travel");
+    await dialog.getByRole("option", { name: "Travel" }).click();
+    // A conversation of several messages previews the route first.
+    const confirm = page.getByRole("button", { name: /^Route / });
+    if (await confirm.isVisible()) await confirm.click();
+    await leavesThenUndoes(page, "route", rowId);
+  },
+
+  "label-add": async (page) => {
+    await openList(page, "/m/inbox");
+    await mailList(page).focus();
+    // A row without the Hiring chip (labels.spec may have added it to some).
+    let rowId = await cursorRowId(page);
+    for (let step = 0; step < 25; step += 1) {
+      if ((await rowById(page, rowId).getByText("Hiring", { exact: true }).count()) === 0) break;
+      await page.keyboard.press("j");
+      rowId = await cursorRowId(page);
+    }
+    const chip = rowById(page, rowId).getByText("Hiring", { exact: true });
+    await expect(chip).toHaveCount(0);
+    await changeLabels(page, ["Hiring"]);
+    await expectToast(page, "label-add");
+    await expect(chip).toBeVisible();
+    await page.keyboard.press("u");
+    await expectUndone(page);
+    await expect(chip).toHaveCount(0);
+  },
+  "label-remove": labelChange("label-remove", ["Hiring"]),
+  labels: labelChange("labels", ["Hiring", "Travel"]),
+
+  "reply-later": async (page) => {
+    await openList(page, "/m/inbox");
+    await mailList(page).focus();
+    const queued = async () =>
+      (await bridge<{ messages: unknown[] }>(page, "/api/v1/mail/reply-later")).messages.length;
+    const before = await queued();
+    // `b` asks when; Enter with no time is the plain reply later.
+    await page.keyboard.press("b");
+    await expect(page.getByRole("dialog", { name: "Reply later" })).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expectToast(page, "reply-later");
+    await expect.poll(queued).toBe(before + 1);
+    await toast(page, VERB_FEEDBACK["reply-later"].pastTense)
+      .getByRole("button", { name: "Undo" })
+      .click();
+    await expect.poll(queued).toBe(before);
+  },
+
+  "reply-later-at": async (page) => {
+    await openApp(page, "/desk?lane=owed");
+    await expect(mailRows(page).first()).toBeVisible();
+    const rowId = await cursorRowId(page);
+    await page.keyboard.press("b");
+    const dialog = page.getByRole("dialog", { name: "Reply later" });
+    await expect(dialog).toBeVisible();
+    await page.keyboard.type("in 2d");
+    await expect(dialog.getByRole("status")).toContainText(/· in 2 days$/);
+    await page.keyboard.press("Enter");
+    await leavesThenUndoes(page, "reply-later-at", rowId);
+  },
+
+  send: async (page) => {
+    test.setTimeout(90_000);
+    let sends = 0;
+    page.on("request", (request) => {
+      if (request.url().includes("/api/v1/mail/compose/session/send")) sends += 1;
+    });
+    const subject = `e2e-undo-send-${Date.now().toString(36)}`;
+    await openList(page, "/m/inbox");
+    await page.keyboard.press("c");
+    await composer(page).getByRole("combobox", { name: "To" }).fill("alice@example.com");
+    await composer(page).getByRole("textbox", { name: "Subject" }).fill(subject);
+    await typeBody(page, "Undo me inside the window");
+    const sendButton = composer(page).getByRole("button", { name: /^Send (⌘|Ctrl)/ });
+    await sendButton.click();
+
+    // Inside the window, Undo holds the send and the draft is still there.
+    const countdown = toast(page, /^Sending in \d+s/);
+    await expect(countdown).toBeVisible();
+    await countdown.getByRole("button", { name: "Undo" }).click();
+    await expect(page.getByText("Send cancelled")).toBeVisible();
+    await expect(composer(page).getByRole("textbox", { name: "Subject" })).toHaveValue(subject);
+    await expect(composer(page).locator(".cm-content")).toContainText("Undo me inside the window");
+
+    // Sent for real this time: only this send leaves, after its own window
+    // (which closes after the cancelled one's would have).
+    const sent = page.waitForResponse("**/api/v1/mail/compose/session/send", { timeout: 30_000 });
+    await sendButton.click();
+    expect((await sent).ok()).toBe(true);
+    await expectToast(page, "send");
+    expect(sends).toBe(1);
+  },
+
+  unsubscribe: async (page) => {
+    // Irreversible, so it must confirm first. Nothing reaches the daemon
+    // until the dialog is answered, and Esc answers no.
+    const requests: string[] = [];
+    await page.route("**/api/v1/mail/actions/unsubscribe", async (route) => {
+      requests.push(route.request().url());
+      await route.fulfill({ json: { ok: true } });
+    });
+    await openList(page, "/m/inbox");
+    await mailList(page).focus();
+    await page.keyboard.press("D");
+    const dialog = page.getByRole("dialog", { name: /^Unsubscribe from .+\?$/ });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText(/@/).first()).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    expect(requests).toEqual([]);
+
+    // Confirmed with u: one request, the table's words, and no Undo offered.
+    await page.keyboard.press("D");
+    await expect(dialog).toBeVisible();
+    await dialog.press("u");
+    await expect(dialog).toHaveCount(0);
+    await expectToast(page, "unsubscribe");
+    await expect(
+      toast(page, VERB_FEEDBACK.unsubscribe.pastTense).getByRole("button", { name: "Undo" }),
+    ).toHaveCount(0);
+    expect(requests).toHaveLength(1);
+  },
+
+  sweep: async (page) => {
+    await withPaperTrailSender(page, async (sender) => {
+      const total = (await bundleCount(page, sender))!;
+      expect(total).toBeGreaterThan(1);
+      await openBundle(page, sender);
+      await page.keyboard.press("S");
+      const dialog = page.getByTestId("sweep-dialog");
+      await expect(dialog).toContainText(`Archive ${total} message`);
+      await dialog.getByRole("button", { name: /^Archive/ }).click();
+      await expectToast(page, "sweep");
+      await expect.poll(() => bundleCount(page, sender), { timeout: 20_000 }).toBeUndefined();
+      await page.keyboard.press("u");
+      await expect.poll(() => bundleCount(page, sender), { timeout: 30_000 }).toBe(total);
+    });
+  },
+
+  "desk-done": async (page) => {
+    await openApp(page, "/desk");
+    await expect(mailRows(page).first()).toBeVisible();
+    await mailList(page).focus();
+    const rowId = await cursorRowId(page);
+    await page.keyboard.press("e");
+    await leavesThenUndoes(page, "desk-done", rowId);
+  },
+
+  pin: async (page) => {
+    await withPaperTrailSender(page, async (sender) => {
+      await openBundle(page, sender);
+      const message = page.getByTestId("place-message").first();
+      await message.getByRole("button", { name: "Pin" }).click();
+      await expectToast(page, "pin");
+      await expect(message).toHaveAttribute("data-pinned", "true");
+      // Its undo is the same control again.
+      await message.getByRole("button", { name: "Unpin" }).click();
+      await expect(toast(page, /^Unpinned$/)).toBeVisible();
+      await expect(message).not.toHaveAttribute("data-pinned", "true");
+    });
+  },
+
+  "move-sender": async (page) => {
+    const [bundle] = await placeBundles(page, "reading");
+    if (!bundle) throw new Error("the demo has no Reading bundle to move");
+    try {
+      await openApp(page, "/reading");
+      const issue = page.locator(
+        `[data-testid='reading-issue'][data-sender='${bundle.sender_email}']`,
+      );
+      await issue.first().click({ position: { x: 5, y: 5 } });
+      await page.keyboard.press("K");
+      await page.getByTestId("sender-kind-dialog").press("p");
+      await expectToast(page, "move-sender");
+      await expect(issue).toHaveCount(0);
+      await page.keyboard.press("u");
+      await expect(page.getByText(/is automatic again/).first()).toBeVisible();
+      await expect(issue.first()).toBeVisible();
+    } finally {
+      await bridge(page, "/api/v1/mail/senders/kind", {
+        account_id: bundle.account_id,
+        sender_email: bundle.sender_email,
+        kind: null,
+      });
+    }
+  },
+};
+
+for (const [verb, entry] of Object.entries(VERB_FEEDBACK) as [
+  Verb,
+  (typeof VERB_FEEDBACK)[Verb],
+][]) {
+  const kind = entry.undo === "none" ? "confirms first (irreversible)" : `undoes (${entry.undo})`;
+  test(`${verb}: says what it did in the table's words and ${kind}`, async ({ page }) => {
+    const journey = JOURNEYS[verb];
+    expect(journey, `${verb} is in the verb table but has no journey here`).toBeDefined();
+    if (entry.undo === "none") {
+      expect(entry.irreversible && entry.reason && entry.confirm, verb).toBeTruthy();
+    }
+    await journey!(page);
+  });
+}
+
+test("a bar that appears under a showing toast pushes the toast above it", async ({ page }) => {
   await openList(page, "/m/inbox");
   await mailList(page).focus();
-  // `b` asks when; Enter with no time is the plain reply later.
-  await page.keyboard.press("b");
-  await expect(page.getByRole("dialog", { name: "Reply later" })).toBeVisible();
-  await page.keyboard.press("Enter");
-  const toast = lastToast(page, VERB_FEEDBACK["reply-later"].pastTense);
-  await expect(toast).toBeVisible();
-  const queued = page.waitForResponse((response) => response.url().includes("reply-later"));
-  await toast.getByRole("button", { name: "Undo" }).click();
-  expect((await queued).ok()).toBe(true);
+  // A toast first (star, held so it stays as it is), then the bulk bar.
+  await page.route("**/api/v1/mail/mutations/star", (route) =>
+    route.fulfill({ json: { ok: true, result: { succeeded: 1, failed: 0, requested: 1 } } }),
+  );
+  await page.keyboard.press("s");
+  const shown = page.locator("[data-sonner-toast]").first();
+  await expect(shown).toBeVisible();
+  // Let the toast settle, so only the bar mounting can move it.
+  await page.waitForTimeout(800);
+  await page.keyboard.press("x");
+  const bar = page.getByRole("toolbar", { name: "Selected conversations" });
+  await expect(bar).toBeVisible();
+  await expect
+    .poll(async () => {
+      const [toastBox, barBox] = await Promise.all([shown.boundingBox(), bar.boundingBox()]);
+      return toastBox && barBox ? toastBox.y + toastBox.height <= barBox.y : false;
+    })
+    .toBe(true);
 });
-
-async function cursorToSingleMessageRow(page: Page): Promise<void> {
-  for (let step = 0; step < 15; step += 1) {
-    const name = (await rowById(page, await cursorRowId(page)).getAttribute("aria-label")) ?? "";
-    if (!/messages in conversation/.test(name)) return;
-    await page.keyboard.press("j");
-  }
-  throw new Error("no single-message conversation in the first rows");
-}

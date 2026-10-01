@@ -185,7 +185,7 @@ export function RecipientField({
           <div
             className={cn(
               "flex min-h-9 w-full flex-wrap items-center gap-1.5 rounded-md border border-border bg-input px-1.5 py-1",
-              "transition-colors focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-ring/30",
+              "focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-ring/30",
             )}
             onMouseDown={(event) => {
               // Clicking blank space focuses the input without stealing chip clicks.
@@ -216,7 +216,7 @@ export function RecipientField({
                   </span>
                   <button
                     type="button"
-                    className="shrink-0 rounded-full text-muted-foreground transition-colors hover:text-foreground"
+                    className="shrink-0 rounded-full text-muted-foreground hover:text-foreground"
                     onClick={() => removeAt(index)}
                     onKeyDown={(event) => {
                       if (event.key !== "Backspace" && event.key !== "Delete") return;

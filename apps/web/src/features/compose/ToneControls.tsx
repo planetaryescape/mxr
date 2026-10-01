@@ -64,7 +64,7 @@ export function ToneControls({
         <CollapsibleTrigger asChild>
           <button
             type="button"
-            className="group/adjust ml-auto flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground outline-none transition-colors hover:text-foreground"
+            className="group/adjust ml-auto flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground outline-none hover:text-foreground"
           >
             <SlidersHorizontal className="size-3" />
             <span>{overridden ? `${register} · ${length}` : "Adjust"}</span>

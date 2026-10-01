@@ -138,7 +138,9 @@ test("the list toggles between conversations and single messages", async ({ page
   await openList(page, "/m/inbox");
   const threaded = mailRows(page).filter({ hasText: /./ });
   await expect(
-    mailList(page).getByRole("option", { name: /messages in conversation/ }).first(),
+    mailList(page)
+      .getByRole("option", { name: /messages in conversation/ })
+      .first(),
   ).toBeVisible();
 
   await page.keyboard.press(`${await modKey(page)}+k`);
@@ -155,16 +157,16 @@ test("the list toggles between conversations and single messages", async ({ page
   await page.keyboard.type("Toggle threads");
   await page.keyboard.press("Enter");
   await expect(
-    mailList(page).getByRole("option", { name: /messages in conversation/ }).first(),
+    mailList(page)
+      .getByRole("option", { name: /messages in conversation/ })
+      .first(),
   ).toBeVisible();
 });
 
-test("reader text keeps a readable measure in a wide window", async ({ page }) => {
-  await page.setViewportSize({ width: 1920, height: 1000 });
-  await openFirstConversation(page);
-  await page.keyboard.press("R");
+/** Characters per line of the newest message's text: its width over the average letter. */
+async function charactersPerLine(page: Page): Promise<number> {
   const newest = reader(page).getByTestId("thread-message").last();
-  const perLine = await newest.evaluate((node) => {
+  return newest.evaluate((node) => {
     const paragraph = [...node.querySelectorAll<HTMLElement>(".whitespace-pre-wrap")].find(
       (el) => (el.textContent ?? "").length > 0,
     );
@@ -177,7 +179,23 @@ test("reader text keeps a readable measure in a wide window", async ({ page }) =
     probe.remove();
     return paragraph.getBoundingClientRect().width / charWidth;
   });
-  // Rubric 2.6: 60 to 80 characters, with a little slack for proportional type.
-  expect(perLine).toBeGreaterThan(55);
-  expect(perLine).toBeLessThan(90);
-});
+}
+
+for (const width of [1440, 1920]) {
+  test(`reader text keeps a 60 to 80 character measure at ${width} wide`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await openFirstConversation(page);
+    // Rubric B7: 60 to 80 characters, in Reader (proportional) and Plain (mono).
+    for (const view of ["Reader", "Plain"]) {
+      await reader(page).getByRole("radio", { name: view }).click();
+      await expect(reader(page).getByRole("radio", { name: view })).toBeChecked();
+      const perLine = await charactersPerLine(page);
+      test.info().annotations.push({
+        type: "measure",
+        description: `${width} ${view} ${perLine.toFixed(1)}`,
+      });
+      expect(perLine, view).toBeGreaterThanOrEqual(60);
+      expect(perLine, view).toBeLessThanOrEqual(80);
+    }
+  });
+}

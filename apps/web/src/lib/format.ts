@@ -11,6 +11,7 @@ export function plural(count: number, one: string, many = `${one}s`): string {
 }
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+const weekdayFormat = new Intl.DateTimeFormat(undefined, { weekday: "short" });
 const dayMonthFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 const fullDateFormat = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
@@ -36,17 +37,35 @@ export function startOfDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
+/** "4:26 PM" (or "16:26", by locale): a time of day, the same everywhere. */
+export function formatTime(value: Date): string {
+  return timeFormat.format(value);
+}
+
 /**
- * List-row date, mail-client style: time today, "Mon" this week, "Sep 3"
- * this year, "Sep 3, 2024" before that.
+ * When a message arrived (or a promise is due), worded the same in the
+ * list, the reader, the desk, places and focus mode:
+ *
+ * - "Just now" within a minute either way (clocks drift);
+ * - "12m" earlier this hour (as the desk's durations read), then the time
+ *   today ("4:26 PM");
+ * - "Yesterday", then the weekday ("Mon") within the week;
+ * - "Sep 3" this year, "Sep 3, 2024" before.
+ *
+ * Ahead of now (future-dated mail, a due date): the time today, then
+ * "Tomorrow", the weekday within the week, then the date.
  */
-export function formatListDate(value: string | Date | null | undefined, now = new Date()): string {
+export function formatWhen(value: string | Date | null | undefined, now = new Date()): string {
   const date = parse(value);
   if (!date) return "";
+  const seconds = Math.round((now.getTime() - date.getTime()) / 1000);
+  if (Math.abs(seconds) < 60) return "Just now";
   const days = Math.round((startOfDay(now) - startOfDay(date)) / 86_400_000);
-  if (days <= 0) return timeFormat.format(date);
+  if (days === 0)
+    return seconds > 0 && seconds < 3_600 ? `${Math.floor(seconds / 60)}m` : formatTime(date);
   if (days === 1) return "Yesterday";
-  if (days < 7) return date.toLocaleDateString(undefined, { weekday: "short" });
+  if (days === -1) return "Tomorrow";
+  if (Math.abs(days) < 7) return weekdayFormat.format(date);
   if (date.getFullYear() === now.getFullYear()) return dayMonthFormat.format(date);
   return fullDateFormat.format(date);
 }

@@ -10,6 +10,7 @@ import type { useNavigate } from "@tanstack/react-router";
 import { useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { toast } from "sonner";
 
+import { VERB_FEEDBACK } from "@/features/mail-actions/verbFeedback";
 import { archiveMessages } from "@/features/mailbox/api";
 import { detectComposePromises } from "@/features/promises/api";
 import { offerPromises } from "@/features/promises/promiseOffers";
@@ -364,7 +365,7 @@ export function useComposeSend({
         ...sendEvent,
         sentMessageId: response.message_id ?? undefined,
       });
-      toast.success("Message sent");
+      toast.success(VERB_FEEDBACK.send.pastTense);
       if (remind) await setReminderAfterSend(response.message_id ?? undefined, remind);
       if (archiveSourceId) {
         try {

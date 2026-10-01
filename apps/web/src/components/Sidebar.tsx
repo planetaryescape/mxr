@@ -460,7 +460,7 @@ function SidebarLink({
       aria-current={active ? "page" : undefined}
       aria-label={collapsed ? `${entry.label}${count ? `, ${count}` : ""}` : undefined}
       className={cn(
-        "group relative flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors",
+        "group relative flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px]",
         collapsed && "justify-center px-0",
         active
           ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"

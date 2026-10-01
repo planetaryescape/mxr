@@ -111,7 +111,7 @@ export function PageTabs<T extends string>({
           aria-selected={value === tab.id}
           onClick={() => onChange(tab.id)}
           className={cn(
-            "border-b-2 pb-2 pt-1 text-[13px] transition-colors",
+            "border-b-2 pb-2 pt-1 text-[13px]",
             value === tab.id
               ? "border-primary font-medium text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground",

@@ -140,7 +140,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
                     <button
                       key={suggestion.email}
                       type="button"
-                      className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-2xs text-foreground transition-colors hover:border-primary/50 hover:bg-muted"
+                      className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-2xs text-foreground hover:border-primary/50 hover:bg-muted"
                       title={suggestion.reason}
                       aria-label={`Add ${suggestion.email} to Cc`}
                       onClick={() => controller.addCc(suggestion.email)}

@@ -432,3 +432,38 @@ test("the desk's You owe lane opens focus mode on those replies", async ({ page 
   await pressSequence(page, "g", "F");
   await expect(page).toHaveURL(/\/focus\?lane=owed&from=%2Fdesk$/);
 });
+
+for (const [width, height] of [
+  [1440, 900],
+  [390, 844],
+] as const) {
+  test(`a toast never covers the queue's keys or Send at ${width} wide`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    const three = await queueOfThree(page);
+    await openApp(page, "/focus");
+    await expect(heading(page)).toHaveText(three[0]!.subject);
+    await expect(reply(page).locator(".cm-content")).toBeVisible();
+    await page.getByRole("button", { name: /Done, no reply needed/ }).click();
+    const toast = page.locator("[data-sonner-toast]").first();
+    await expect(toast).toBeVisible();
+
+    const keys = page.getByRole("toolbar", { name: "Move through the queue" });
+    const send = reply(page).getByRole("button", { name: /^Send/ }).first();
+    const overlaps = async () => {
+      const t = await toast.boundingBox();
+      const boxes = [await keys.boundingBox(), await send.boundingBox()];
+      return boxes.some(
+        (b) =>
+          t &&
+          b &&
+          t.x < b.x + b.width &&
+          b.x < t.x + t.width &&
+          t.y < b.y + b.height &&
+          b.y < t.y + t.height,
+      );
+    };
+    await expect.poll(overlaps).toBe(false);
+    // The covered button in the old layout: it still takes a click.
+    await page.getByRole("button", { name: /Done, no reply needed/ }).click({ trial: true });
+  });
+}

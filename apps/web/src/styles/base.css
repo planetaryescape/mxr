@@ -135,9 +135,9 @@
   }
 
   /*
-   * Reduced motion keeps fades and colour changes, which carry state, and
-   * drops movement. `data-motion` on <html> is resolved from the Motion
-   * setting and the OS preference (uiPrefsStore.applyMotionAttribute).
+   * Reduced motion keeps fades, which carry state, and drops movement.
+   * `data-motion` on <html> is resolved from the Motion setting and the OS
+   * preference (uiPrefsStore.applyMotionAttribute).
    * tw-animate's enter/exit keyframes read these variables, so zeroing them
    * turns every scale or slide into a plain fade.
    */
@@ -152,9 +152,7 @@
     --tw-exit-translate-y: 0 !important;
     --tw-enter-rotate: 0 !important;
     --tw-exit-rotate: 0 !important;
-    transition-property:
-      color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
-      opacity, box-shadow !important;
+    transition-property: opacity !important;
     scroll-behavior: auto !important;
   }
 
@@ -165,7 +163,7 @@
   :root[data-motion="reduced"] .animate-spin,
   :root[data-motion="reduced"] .animate-bounce,
   :root[data-motion="reduced"] .animate-ping {
-    animation: pending-pulse 1500ms var(--motion-ease) infinite !important;
+    animation: pending-pulse var(--motion-duration-pulse) var(--motion-ease) infinite !important;
   }
 
   /*

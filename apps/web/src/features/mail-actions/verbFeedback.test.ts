@@ -79,10 +79,21 @@ describe("verb feedback table", () => {
     expect(verb("move", { label: "Work" })).toBe("Moved to Work");
   });
 
-  it("only undo-less verbs skip undo, and they confirm first", () => {
+  it("marks undo-less verbs irreversible, with a reason, and they confirm first", () => {
     const unguarded = Object.entries(VERB_FEEDBACK)
-      .filter(([, entry]) => entry.undo === "none" && !entry.confirm)
+      .filter(
+        ([, entry]) =>
+          entry.undo === "none" && (!entry.irreversible || !entry.reason || !entry.confirm),
+      )
       .map(([name]) => name);
     expect(unguarded).toEqual([]);
+  });
+
+  it("words label changes from the table, naming the label", () => {
+    expect(verb("labels", { add: ["Hiring"] })).toBe("Labelled Hiring");
+    expect(verb("labels", { remove: ["Hiring"] })).toBe("Removed Hiring from");
+    expect(verb("labels", { add: ["Hiring"], remove: ["Travel"] })).toBe(
+      VERB_FEEDBACK.labels.pastTense,
+    );
   });
 });

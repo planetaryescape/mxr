@@ -29,7 +29,7 @@ export function ReplyField({
   if (composing) return null;
   return (
     <div className="px-5 pt-6" data-testid="reply-field">
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-surface/60 pr-2 transition-colors duration-fast hover:border-border-strong focus-within:border-primary/60">
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-surface/60 pr-2 hover:border-border-strong focus-within:border-primary/60">
         <button
           type="button"
           onClick={run("reply")}

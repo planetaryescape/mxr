@@ -15,7 +15,7 @@ import { PageError, PageSkeleton } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useLlmStatus } from "@/features/llm/useLlmStatus";
-import { formatListDate, plural } from "@/lib/format";
+import { formatWhen, plural } from "@/lib/format";
 
 export function AskArchivePanel() {
   const navigate = useNavigate();
@@ -109,7 +109,7 @@ export function AskArchivePanel() {
                           {citation.subject.trim() || "(no subject)"}
                         </span>
                         <span className="shrink-0 font-mono text-2xs text-muted-foreground">
-                          {formatListDate(citation.date)}
+                          {formatWhen(citation.date)}
                         </span>
                       </div>
                       <p className="mt-0.5 line-clamp-3 text-2xs text-muted-foreground">

@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import type { ComposeEditor } from "@/state/uiPrefsStore";
 import { DraftQualityBadges } from "./DraftQualityBadges";
 import type { DraftSuggestionResponse } from "./types";
+import { useToastKeepClear } from "@/components/ui/toastClearance";
 
 /** "Send and remind me if no reply in..." presets (TUI `n` parity). */
 const REMIND_PRESETS = [
@@ -62,8 +63,9 @@ export function ComposeActionBar({
   onEditorChange,
   suggestion,
 }: ComposeActionBarProps) {
+  const keepClear = useToastKeepClear();
   return (
-    <footer className="shrink-0 border-t border-border bg-card/30">
+    <footer ref={keepClear} className="shrink-0 border-t border-border bg-card/30">
       <div className="mx-auto flex min-h-14 w-full max-w-[860px] flex-wrap items-center gap-x-2 gap-y-1 px-5 py-2">
         <Button type="button" onClick={onSend} disabled={busy} className="gap-2">
           <Send className="size-4" />

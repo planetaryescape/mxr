@@ -19,9 +19,27 @@ test.afterEach(async ({ request }) => {
   }
 });
 
+/**
+ * Resolve every phrase as if it were Monday 10:00 local time next week, so
+ * "fri 3" is always four days out whatever day the suite runs (on a
+ * Thursday it would read "tomorrow"). Next week keeps the snooze in the
+ * future for the daemon. Only `now` is added; the real parser answers.
+ */
+async function pinResolveClockToNextMonday(page: Page): Promise<void> {
+  const monday = new Date();
+  monday.setDate(monday.getDate() + ((8 - monday.getDay()) % 7 || 7));
+  monday.setHours(10, 0, 0, 0);
+  await page.route("**/api/v1/mail/time/resolve?**", async (route) => {
+    const url = new URL(route.request().url());
+    url.searchParams.set("now", monday.toISOString());
+    await route.continue({ url: url.toString() });
+  });
+}
+
 test('"fri 3" offers 15:00 and 03:00, and the snooze stores the time the preview showed', async ({
   page,
 }) => {
+  await pinResolveClockToNextMonday(page);
   await openList(page, "/m/inbox");
   await cursorToSingleMessageRow(page);
   await page.keyboard.press("Enter");
@@ -41,7 +59,7 @@ test('"fri 3" offers 15:00 and 03:00, and the snooze stores the time the preview
   await expect(chips.nth(0)).toHaveAttribute("aria-checked", "true");
   await expect(dialog.locator("mark[data-understood]")).toHaveText("fri 3");
   const status = dialog.getByRole("status");
-  await expect(status).toContainText(/^Friday \d+ \w+, 15:00 · in \d+ days?$/);
+  await expect(status).toContainText(/^Friday \d+ \w+, 15:00 · in 4 days$/);
   // The am/pm was assumed, so the time is muted.
   await expect(status.locator("[data-assumed]")).toHaveText("15:00");
 

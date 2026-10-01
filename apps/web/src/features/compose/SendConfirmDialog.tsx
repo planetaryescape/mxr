@@ -162,7 +162,7 @@ export function SendConfirmDialog({
               <button
                 key={collaborator.email}
                 type="button"
-                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-foreground transition-colors hover:border-primary/50 hover:bg-muted"
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-foreground hover:border-primary/50 hover:bg-muted"
                 title={collaborator.reason}
                 aria-label={`Add ${collaborator.email} to Cc`}
                 onClick={() => onAddCc(collaborator.email)}

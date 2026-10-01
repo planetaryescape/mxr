@@ -17,8 +17,9 @@ import type { MessageRowView } from "./types";
 import { gistText, RowGistLine } from "@/features/gists/RowGistLine";
 import { useRowGist, type RowGist } from "@/features/gists/rowGists";
 import { notePointerUse } from "@/lib/actions/keyHints";
-import { formatListDate, initials, parseAddress, plural } from "@/lib/format";
+import { initials, parseAddress, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useWhen } from "@/components/When";
 
 export type RowQuickAction = "archive" | "trash" | "toggleRead" | "toggleStar" | "snooze";
 
@@ -67,6 +68,7 @@ export const MailboxRow = memo(function MailboxRow({
   const who = displaySender(row);
   // This row's own line: when it lands, only this row re-renders.
   const gist = useRowGist(row.thread_id);
+  const when = useWhen(row.date);
   const userLabels = (row.labels ?? []).filter((label) => label.kind === "user").slice(0, 2);
 
   const stop = (handler: () => void) => (event: MouseEvent) => {
@@ -79,7 +81,7 @@ export const MailboxRow = memo(function MailboxRow({
       id={domId}
       role="option"
       aria-selected={selected}
-      aria-label={rowLabel(row, who, count, gist)}
+      aria-label={rowLabel(row, who, count, gist, when)}
       onClick={(event) => {
         if (!readOnly && (event.metaKey || event.ctrlKey)) {
           onToggleSelection(row, false);
@@ -238,7 +240,7 @@ export const MailboxRow = memo(function MailboxRow({
                 row.unread ? "text-foreground" : "text-muted-foreground",
               )}
             >
-              {formatListDate(row.date) || row.date_label}
+              {when || row.date_label}
             </time>
           </span>
           {readOnly ? null : (
@@ -330,6 +332,7 @@ function rowLabel(
   who: string,
   count: number | null,
   gist: RowGist | undefined,
+  when: string,
 ): string {
   return [
     row.unread ? "Unread." : null,
@@ -339,7 +342,7 @@ function rowLabel(
     gist ? gistText(gist) : null,
     count ? `${plural(count, "message")} in conversation` : null,
     row.has_attachments ? "Has attachments" : null,
-    formatListDate(row.date),
+    when,
   ]
     .filter(Boolean)
     .join(", ");

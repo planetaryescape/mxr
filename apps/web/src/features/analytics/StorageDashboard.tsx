@@ -20,7 +20,7 @@ import {
   RuledRow,
 } from "@/components/PageParts";
 import { Input } from "@/components/ui/input";
-import { formatListDate, plural } from "@/lib/format";
+import { formatWhen, plural } from "@/lib/format";
 import { formatBytes } from "@/lib/utils";
 
 const GROUPS: { id: StorageGroupBy; label: string }[] = [
@@ -126,7 +126,7 @@ export function StorageDashboard({ range }: { range: AnalyticsRange }) {
               <RuledRow
                 key={row.message_id}
                 title={row.subject.trim() || "(no subject)"}
-                meta={`${row.from_email} · ${formatListDate(row.date)}`}
+                meta={`${row.from_email} · ${formatWhen(row.date)}`}
                 aside={formatBytes(row.size_bytes)}
                 onOpen={() => drill(`from:${row.from_email}`)}
                 openLabel={`Search mail from ${row.from_email}`}

@@ -96,7 +96,7 @@ function DraftRow({
 }) {
   const subject = draft.subject.trim() || "(no subject)";
   return (
-    <li className="flex items-center border-b border-border/60 pr-2 transition-colors hover:bg-muted/40">
+    <li className="flex items-center border-b border-border/60 pr-2 hover:bg-muted/40">
       <Link
         to="/compose/$draftId"
         params={{ draftId: draft.id }}

@@ -668,9 +668,9 @@ function GroupHeader({ group, airy }: { group: MessageGroupView; airy: boolean }
         airy ? "h-[40px] px-5 pb-1.5" : "h-[30px] border-b border-border/60 pb-1",
       )}
     >
-      <span>{group.label}</span>
+      <span className="shrink-0 whitespace-nowrap">{group.label}</span>
       {typeof group.count === "number" ? (
-        <span className="font-semibold tabular-nums text-primary">{group.count}</span>
+        <span className="shrink-0 font-semibold tabular-nums text-primary">{group.count}</span>
       ) : null}
       {action ? (
         // Mouse-only like `more`; its key (shown) works from anywhere.
@@ -678,10 +678,13 @@ function GroupHeader({ group, airy }: { group: MessageGroupView; airy: boolean }
           aria-hidden
           data-testid={`group-action-${group.id}`}
           onClick={() => void navigate({ href: action.href })}
-          className="ml-auto inline-flex cursor-pointer items-center gap-1.5 normal-case tracking-normal text-primary hover:underline"
+          className="ml-auto inline-flex min-w-0 cursor-pointer items-center gap-1.5 normal-case tracking-normal text-primary hover:underline"
         >
-          {action.label}
-          {action.keys ? <KeyChip className="h-4 px-1">{action.keys}</KeyChip> : null}
+          <span className="truncate">{action.label}</span>
+          {/* The header has one line: in a narrow list the key gives way first. */}
+          {action.keys ? (
+            <KeyChip className="hidden h-4 shrink-0 px-1 @sm:inline-flex">{action.keys}</KeyChip>
+          ) : null}
         </span>
       ) : null}
       {more ? (
@@ -691,7 +694,7 @@ function GroupHeader({ group, airy }: { group: MessageGroupView; airy: boolean }
           aria-hidden
           onClick={() => void navigate({ href: more.href })}
           className={cn(
-            "cursor-pointer normal-case tracking-normal hover:text-foreground",
+            "shrink-0 cursor-pointer whitespace-nowrap normal-case tracking-normal hover:text-foreground",
             !action && "ml-auto",
           )}
         >

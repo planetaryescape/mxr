@@ -4513,6 +4513,11 @@ async fn mailbox_thread_view_pages_whole_threads() {
         row_a["starred"], true,
         "any starred message stars the thread"
     );
+    assert_eq!(
+        row_a["starred_message_ids"],
+        serde_json::json!([a2.id.to_string()]),
+        "the star comes from the sent reply outside the lens, so unstar names it"
+    );
     assert_eq!(row_a["participants"].as_array().unwrap().len(), 3);
     assert_eq!(row_a["participants"][0]["email"], "alice@example.com");
     let label_names = |row: &serde_json::Value| -> Vec<String> {

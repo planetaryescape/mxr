@@ -132,6 +132,9 @@ pub struct FakeProvider {
     /// When set, label changes (`ModifyLabels`) fail and nothing else does,
     /// so a two-step mutation (mark read, then archive) fails half way.
     label_changes_fail: AtomicBool,
+    /// When set, every mutation of this one message fails, so a batch
+    /// fails part way: the messages before it change, the rest don't.
+    failing_message: Mutex<Option<String>>,
     page_size: usize,
 }
 
@@ -221,6 +224,7 @@ impl FakeProvider {
             idle_trigger: None,
             server_drafts_fail: AtomicBool::new(false),
             label_changes_fail: AtomicBool::new(false),
+            failing_message: Mutex::new(None),
             page_size: SYNC_PAGE_SIZE,
         }
     }
@@ -228,6 +232,16 @@ impl FakeProvider {
     /// Make every subsequent label change fail, or succeed again.
     pub fn fail_label_changes(&self, fail: bool) {
         self.label_changes_fail.store(fail, Ordering::SeqCst);
+    }
+
+    /// Make every mutation of the message with this provider id fail, or
+    /// (`None`) let them all succeed again.
+    pub fn fail_mutations_of(&self, provider_message_id: Option<&str>) {
+        *self
+            .failing_message
+            .lock()
+            .expect("fake provider failing_message mutex should not be poisoned") =
+            provider_message_id.map(str::to_string);
     }
 
     /// Make every subsequent server-draft write fail.
@@ -407,6 +421,14 @@ impl MailSyncProvider for FakeProvider {
             && self.label_changes_fail.load(Ordering::SeqCst)
         {
             return Err(MxrError::Provider("fake: label change failed".into()));
+        }
+        let failing = self
+            .failing_message
+            .lock()
+            .expect("fake provider failing_message mutex should not be poisoned")
+            .clone();
+        if failing.is_some_and(|id| mutation.provider_message_id() == id) {
+            return Err(MxrError::Provider("fake: mutation failed".into()));
         }
         let recorded = match mutation {
             Mutation::ModifyLabels {

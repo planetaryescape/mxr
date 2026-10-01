@@ -1777,6 +1777,53 @@ fn each_press_of_e_puts_away_one_row() {
     assert_eq!(app.mailbox.desk_page.row_count(), 2);
 }
 
+/// `s` on a conversation row does what the row shows: a starred row of
+/// several messages unstars them (it used to star them again), and an
+/// unstarred one stars them.
+#[test]
+fn star_on_a_conversation_row_toggles_what_it_shows() {
+    let mut app = App::new();
+    assert_eq!(app.mailbox.mail_list_mode, MailListMode::Threads);
+    let mut envelopes = make_test_envelopes(2);
+    let thread = envelopes[0].thread_id.clone();
+    envelopes[1].thread_id = thread;
+    for envelope in &mut envelopes {
+        envelope.flags.insert(MessageFlags::STARRED);
+    }
+    let ids: Vec<_> = envelopes.iter().map(|e| e.id.clone()).collect();
+    app.mailbox.envelopes = envelopes;
+    app.mailbox.selected_index = 0;
+
+    app.apply(Action::Star);
+    assert!(
+        matches!(
+            requested(&app).as_slice(),
+            [Request::Mutation { mutation: MutationCommand::Star { message_ids, starred: false }, .. }]
+                if message_ids.len() == 2 && ids.iter().all(|id| message_ids.contains(id))
+        ),
+        "a starred two-message row unstars, not stars again: {:?}",
+        requested(&app)
+    );
+
+    app.pending_mutation_queue.clear();
+    app.modals.pending_bulk_confirm = None;
+    for envelope in &mut app.mailbox.envelopes {
+        envelope.flags.remove(MessageFlags::STARRED);
+    }
+    app.apply(Action::Star);
+    assert!(
+        matches!(
+            requested(&app).as_slice(),
+            [Request::Mutation {
+                mutation: MutationCommand::Star { starred: true, .. },
+                ..
+            }]
+        ),
+        "{:?}",
+        requested(&app)
+    );
+}
+
 /// Trash on a desk row acts on that row's thread, never on mail the
 /// mailbox or reader showed before the desk opened.
 #[test]

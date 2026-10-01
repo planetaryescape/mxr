@@ -216,9 +216,13 @@ fn thread_row<'a>(
             .collect(),
     );
     row.unread = thread.unread_count > 0;
-    row.starred = envelopes
+    let starred_message_ids = envelopes
         .iter()
-        .any(|envelope| envelope.flags.contains(MessageFlags::STARRED));
+        .filter(|envelope| envelope.flags.contains(MessageFlags::STARRED))
+        .map(|envelope| envelope.id.to_string())
+        .collect::<Vec<_>>();
+    row.starred = !starred_message_ids.is_empty();
+    row.starred_message_ids = Some(starred_message_ids);
     row.has_attachments = envelopes.iter().any(|envelope| envelope.has_attachments);
     Some((latest.date, row, latest))
 }

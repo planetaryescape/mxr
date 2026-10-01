@@ -37,7 +37,7 @@ export type UndoPath =
   | "reverse-request"
   /** The undo-send window: nothing leaves until it closes. */
   | "send-window"
-  /** Doing it again reverses it (star, read, pin). */
+  /** Doing it again reverses it (pin). */
   | "toggle"
   /** Can't be undone by mxr; the entry says why, and the verb confirms first. */
   | "none";
@@ -110,17 +110,19 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     optimistic: "The star fills at once.",
     pastTense: "Starred",
     sound: null,
-    // The daemon keeps no undo for a star: it is its own inverse.
-    undo: "toggle",
+    // The daemon restores each message's own prior star, so starring a
+    // conversation with one starred message leaves that one starred.
+    undo: "daemon-mutation",
   },
   unstar: {
     actions: ["mail.star"],
     alsoFrom: "row button, reader header",
+    // A conversation's unstar clears every star in it, including messages
+    // the list doesn't show, so the row and the action agree.
     optimistic: "The star empties at once.",
     pastTense: "Unstarred",
     sound: null,
-    // The daemon keeps no undo for a star: it is its own inverse.
-    undo: "toggle",
+    undo: "daemon-mutation",
   },
   read: {
     actions: ["mail.mark-read"],

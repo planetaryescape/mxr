@@ -18,7 +18,7 @@ import type { MessageGroupView, MessageRowView } from "./types";
 import { requestRowGists, useGistEpoch } from "@/features/gists/rowGists";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
-import { createMailVerbs, type MailVerbHooks } from "@/features/mail-actions/mailVerbs";
+import { createMailVerbs, toggleStar, type MailVerbHooks } from "@/features/mail-actions/mailVerbs";
 import { rowMessageIds } from "@/features/mail-actions/pendingMailOps";
 import { targetFromRows, type MailTarget } from "@/features/mail-actions/target";
 import { SwipeLayer, useRowSwipe, type SwipeLayerHandle } from "@/features/swipe/RowSwipe";
@@ -498,7 +498,7 @@ export function MailboxList({
         void performMailAction(row.unread ? "read" : "unread", ids);
         break;
       case "toggleStar":
-        void performMailAction(row.starred ? "unstar" : "star", ids);
+        toggleStar(targetFromRows([row], "list"));
         break;
       case "snooze":
         openMailDialog({ kind: "snooze", target: targetFromRows([row], "list") });

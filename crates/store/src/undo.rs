@@ -18,6 +18,8 @@ pub enum UndoableMutationKind {
     Trash,
     Spam,
     SetRead,
+    /// Star or unstar: each message's own prior star, from its flags.
+    Star,
     ReadAndArchive,
     /// Move and label edits: restoring the prior label set reverses them.
     Labels,

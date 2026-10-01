@@ -720,7 +720,7 @@ async fn async_mutation_job_reports_progress_and_undo_ids_for_large_batch() {
 }
 
 #[tokio::test]
-async fn star_mutation_omits_mutation_id() {
+async fn star_mutation_returns_an_undo_id() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let id = sync_and_get_first_id(&state).await;
     let msg = IpcMessage {
@@ -733,9 +733,8 @@ async fn star_mutation_omits_mutation_id() {
     };
     let result = assert_mutation_succeeded(handle_request(&state, &msg).await.payload);
     assert!(
-        result.mutation_id.is_none(),
-        "Star must not return a mutation_id; got {:?}",
-        result.mutation_id
+        result.mutation_id.is_some(),
+        "a star is undoable, so it returns a mutation_id"
     );
 }
 

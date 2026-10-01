@@ -176,14 +176,18 @@ for motion), implement the command in the view's controller, done.
   so it cannot undo another action's effect, and a refetch mid-flight cannot
   make a row flicker back.
 - Thread rows carry `message_ids`, so an action covers the whole conversation
-  (TUI thread mode).
+  (TUI thread mode). A row is starred when any message in its conversation
+  is, including messages outside the lens (a starred reply in Sent); the row
+  names those in `starred_message_ids`, so its unstar (`MailTarget.unstarIds`)
+  reaches them too. Starring stars the listed messages.
 - Batches of 200 or more run as daemon mutation jobs with a progress toast;
   Undo reverses every chunk. Snooze undoes by waking the messages.
 - `u` (or `z`) undoes the newest action for 60 s. The daemon records undo for
-  archive, trash, spam, read changes, moves and label edits (moves and label
-  edits restore the prior label set); star has no undo entry because pressing
-  `s` again reverses it (`undoable_kind` in
-  `crates/daemon/src/handler/mutations.rs`).
+  archive, trash, spam, read changes, stars, moves and label edits (moves and
+  label edits restore the prior label set; a star restores each message's
+  own prior star, so undoing a conversation star leaves an already-starred
+  message starred). See `undoable_kind` in
+  `crates/daemon/src/handler/mutations.rs`.
 - Verbs (`mailVerbs.ts`) are written once and used by the list, the reader, the
   bulk bar and the palette. Trash or spam of several conversations, and any
   batch over 20 messages, confirm first with a list of what will change.

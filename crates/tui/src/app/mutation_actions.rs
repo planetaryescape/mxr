@@ -188,8 +188,12 @@ impl App {
             Action::Star => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {
-                    // For single selection, toggle. For multi, always star. A
-                    // desk row is one conversation: toggle its thread star.
+                    // One row toggles what it shows; a multi-selection always
+                    // stars. A desk row is one conversation: toggle its thread
+                    // star. A conversation row shows its newest message's star,
+                    // so a starred one unstars every listed message.
+                    let conversation_row = self.mailbox.selected_set.is_empty()
+                        && self.mailbox.mail_list_mode == MailListMode::Threads;
                     let starred = if let Some(row) = self
                         .desk_list_focused()
                         .then(|| self.selected_desk_row())
@@ -202,7 +206,7 @@ impl App {
                         .flatten()
                     {
                         !message.starred
-                    } else if ids.len() == 1 {
+                    } else if ids.len() == 1 || conversation_row {
                         if let Some(env) = self.context_envelope() {
                             !env.flags.contains(MessageFlags::STARRED)
                         } else {

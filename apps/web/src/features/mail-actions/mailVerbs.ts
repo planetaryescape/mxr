@@ -65,6 +65,18 @@ function single(target: MailTarget | null, what: string): MailTarget | null {
   return target;
 }
 
+/**
+ * Star or unstar as the target shows. One conversation toggles; a
+ * multi-selection always stars, as in the TUI.
+ */
+export function toggleStar(target: MailTarget): void {
+  if (target.conversations <= 1 && target.anyStarred) {
+    void performMailAction("unstar", target.unstarIds);
+  } else {
+    void performMailAction("star", target.messageIds);
+  }
+}
+
 export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
   const mutate = (action: MailAction) => () => {
     const requested = hooks.getTarget();
@@ -123,10 +135,7 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
     markUnread: mutate("unread"),
     toggleStar: () => {
       const target = hooks.getTarget();
-      if (!target) return;
-      // One conversation toggles; a multi-selection always stars, as in the TUI.
-      const action: MailAction = target.conversations <= 1 && target.anyStarred ? "unstar" : "star";
-      void performMailAction(action, target.messageIds);
+      if (target) toggleStar(target);
     },
     label: () => {
       const target = hooks.getTarget();

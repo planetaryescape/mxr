@@ -1231,9 +1231,11 @@ fn mutation_job_kind(cmd: &MutationCommand) -> &'static str {
 }
 
 /// Map a `MutationCommand` to the `UndoableMutationKind` used to drive
-/// the reverse op, or `None` if the mutation isn't reversible. Star is its
-/// own inverse (star again); a move or label edit can drop a message out
-/// of the view it was in, so those restore the prior label set.
+/// the reverse op, or `None` if the mutation isn't reversible. A move or
+/// label edit can drop a message out of the view it was in, so those
+/// restore the prior label set. A star restores each message's own prior
+/// star, not the inverse: starring a conversation where one message was
+/// already starred leaves that one starred on undo.
 fn undoable_kind(cmd: &MutationCommand) -> Option<UndoableMutationKind> {
     match cmd {
         MutationCommand::Archive { .. } => Some(UndoableMutationKind::Archive),
@@ -1249,7 +1251,7 @@ fn undoable_kind(cmd: &MutationCommand) -> Option<UndoableMutationKind> {
         MutationCommand::ModifyLabels { .. } | MutationCommand::Move { .. } => {
             Some(UndoableMutationKind::Labels)
         }
-        MutationCommand::Star { .. } => None,
+        MutationCommand::Star { .. } => Some(UndoableMutationKind::Star),
     }
 }
 
@@ -1399,6 +1401,28 @@ async fn restore_snapshot(
             ))
         })?;
 
+    // Undo runs under a fresh mutation_id (a retry of undo would be a
+    // distinct operation in the user's mind). Dedup against the reverse
+    // op's provider call.
+    let undo_mutation_id = uuid::Uuid::now_v7().to_string();
+
+    // A star changes no labels: put back only the star, and leave alone any
+    // label change made since (a sync, another client).
+    if kind == UndoableMutationKind::Star {
+        restore_flag(
+            state,
+            provider,
+            &undo_mutation_id,
+            snapshot,
+            current.flags,
+            mxr_core::MessageFlags::STARRED,
+        )
+        .await?;
+        return reindex_message_in_search(state, &snapshot.message_id)
+            .await
+            .map_err(SnapshotError::Other);
+    }
+
     let prior_labels: std::collections::HashSet<&str> = snapshot
         .prior_label_provider_ids
         .iter()
@@ -1435,11 +1459,6 @@ async fn restore_snapshot(
             }
         }
     }
-
-    // Undo runs under a fresh mutation_id (a retry of undo would be a
-    // distinct operation in the user's mind). Dedup against the reverse
-    // op's provider call.
-    let undo_mutation_id = uuid::Uuid::now_v7().to_string();
 
     if !to_add.is_empty() || !to_remove.is_empty() {
         provider
@@ -1479,46 +1498,15 @@ async fn restore_snapshot(
             | UndoableMutationKind::ReadAndArchive
             | UndoableMutationKind::DeskDone
     ) {
-        let prior_flags = mxr_core::MessageFlags::from_bits_truncate(snapshot.prior_flags_bits);
-        let prior_read = prior_flags.contains(mxr_core::MessageFlags::READ);
-        let current_read = current.flags.contains(mxr_core::MessageFlags::READ);
-        if prior_read != current_read || snapshot.uncertain {
-            // Suffix dedup key so this co-exists with the ModifyLabels
-            // call above when undoing a ReadAndArchive.
-            let read_dedup_key = format!("{}#read", snapshot.provider_id);
-            provider
-                .apply_mutation(
-                    &undo_mutation_id,
-                    &mxr_core::Mutation::SetRead {
-                        provider_message_id: snapshot.provider_id.clone(),
-                        read: prior_read,
-                    },
-                )
-                .await
-                .map_err(classify_provider_error)?;
-            let now = chrono::Utc::now().timestamp();
-            if let Err(error) = state
-                .store
-                .record_mutation_applied(
-                    &undo_mutation_id,
-                    &read_dedup_key,
-                    &snapshot.account_id,
-                    now,
-                )
-                .await
-            {
-                tracing::warn!(%error, "undo failed to record dedup row");
-            }
-            state
-                .store
-                .set_read(
-                    &snapshot.message_id,
-                    prior_read,
-                    mxr_core::EventSource::User,
-                )
-                .await
-                .map_err(|e| SnapshotError::Other(e.to_string()))?;
-        }
+        restore_flag(
+            state,
+            provider,
+            &undo_mutation_id,
+            snapshot,
+            current.flags,
+            mxr_core::MessageFlags::READ,
+        )
+        .await?;
     }
 
     // Refresh the Tantivy index so `mxr search label:inbox` (and friends)
@@ -1529,6 +1517,74 @@ async fn restore_snapshot(
         .map_err(SnapshotError::Other)?;
 
     Ok(())
+}
+
+/// Put one provider-routed flag (`READ` or `STARRED`) back as the snapshot
+/// had it, at the provider and locally. An uncertain snapshot sets it at the
+/// provider whatever the local copy shows: the change may have reached the
+/// provider without the local copy showing it.
+async fn restore_flag(
+    state: &AppState,
+    provider: &dyn mxr_core::MailSyncProvider,
+    undo_mutation_id: &str,
+    snapshot: &UndoEntrySnapshot,
+    current: MessageFlags,
+    flag: MessageFlags,
+) -> Result<(), SnapshotError> {
+    let prior = MessageFlags::from_bits_truncate(snapshot.prior_flags_bits).contains(flag);
+    if prior == current.contains(flag) && !snapshot.uncertain {
+        return Ok(());
+    }
+    let provider_message_id = snapshot.provider_id.clone();
+    let starred = flag == MessageFlags::STARRED;
+    // Suffixed dedup keys, so this co-exists with the same undo's label
+    // change (a ReadAndArchive undo makes both calls).
+    let (mutation, dedup_suffix) = if starred {
+        (
+            mxr_core::Mutation::SetStarred {
+                provider_message_id,
+                starred: prior,
+            },
+            "starred",
+        )
+    } else {
+        (
+            mxr_core::Mutation::SetRead {
+                provider_message_id,
+                read: prior,
+            },
+            "read",
+        )
+    };
+    provider
+        .apply_mutation(undo_mutation_id, &mutation)
+        .await
+        .map_err(classify_provider_error)?;
+    let now = chrono::Utc::now().timestamp();
+    if let Err(error) = state
+        .store
+        .record_mutation_applied(
+            undo_mutation_id,
+            &format!("{}#{dedup_suffix}", snapshot.provider_id),
+            &snapshot.account_id,
+            now,
+        )
+        .await
+    {
+        tracing::warn!(%error, "undo failed to record dedup row");
+    }
+    let stored = if starred {
+        state
+            .store
+            .set_starred(&snapshot.message_id, prior, mxr_core::EventSource::User)
+            .await
+    } else {
+        state
+            .store
+            .set_read(&snapshot.message_id, prior, mxr_core::EventSource::User)
+            .await
+    };
+    stored.map_err(|e| SnapshotError::Other(e.to_string()))
 }
 
 /// For a message whose mutation failed, possibly after the provider applied
@@ -1562,7 +1618,10 @@ fn uncertain_label_changes(
         // A move or label edit may have removed any of them.
         UndoableMutationKind::Labels => (prior.to_vec(), Vec::new()),
         // A deferral changes no message, so it has no snapshots to reverse.
-        UndoableMutationKind::SetRead | UndoableMutationKind::Deferral => (Vec::new(), Vec::new()),
+        // A star is restored before labels are looked at.
+        UndoableMutationKind::SetRead
+        | UndoableMutationKind::Star
+        | UndoableMutationKind::Deferral => (Vec::new(), Vec::new()),
     }
 }
 

@@ -235,12 +235,52 @@ describe("performMailAction", () => {
     expect(outcome.ok).toBe(false);
     expect(toast.success).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith(
-      "Archived failed",
+      "Archived 2 of 3 messages; the rest failed",
       expect.objectContaining({
         description: "Only 2 of 3 messages changed. Work: rate limited",
       }),
     );
     expect(usePendingMailOps.getState().ops).toEqual([]);
+    // The daemon kept no undo for it: none is offered.
+    expect(useUndo.getState().lastUndo).toBeNull();
+  });
+
+  test("a partial failure keeps the undo of what changed, on `u` and the toast", async () => {
+    api.archiveMessages.mockResolvedValue({
+      ok: true,
+      result: {
+        requested: 3,
+        succeeded: 1,
+        skipped: 1,
+        failed: 1,
+        mutation_id: "mut-part",
+        accounts: [
+          {
+            account_id: "acc-1",
+            account_name: "Work",
+            succeeded: 1,
+            skipped: 1,
+            failed: 1,
+            error: "rate limited",
+          },
+        ],
+      },
+    });
+    api.undoMutation.mockResolvedValue({ ok: true });
+
+    const outcome = await performMailAction("archive", ["a-1", "a-2", "b-1"]);
+
+    expect(outcome.ok).toBe(false);
+    const [title, options] = toast.error.mock.calls[0]!;
+    expect(title).toBe("Archived 1 of 3 messages; the rest failed");
+    expect(options?.description).toBe(
+      "Only 1 of 3 messages changed. Work: rate limited. Press u to undo what changed.",
+    );
+    expect(options?.action?.label).toBe("Undo");
+
+    await expect(useUndo.getState().lastUndo?.()).resolves.toBe(true);
+    expect(api.undoMutation).toHaveBeenCalledWith("mut-part");
+    expect(useUndo.getState().lastUndo).toBeNull();
   });
 
   test("an auth failure offers to re-authorize the account", async () => {

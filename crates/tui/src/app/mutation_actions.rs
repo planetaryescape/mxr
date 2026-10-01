@@ -206,7 +206,16 @@ impl App {
                         .flatten()
                     {
                         !message.starred
-                    } else if ids.len() == 1 || conversation_row {
+                    } else if conversation_row {
+                        // What the row shows (its newest message's star), not
+                        // an older message focused in the reader.
+                        let shown = if self.screen == Screen::Search {
+                            self.selected_search_envelope()
+                        } else {
+                            self.selected_envelope()
+                        };
+                        shown.is_none_or(|env| !env.flags.contains(MessageFlags::STARRED))
+                    } else if ids.len() == 1 {
                         if let Some(env) = self.context_envelope() {
                             !env.flags.contains(MessageFlags::STARRED)
                         } else {

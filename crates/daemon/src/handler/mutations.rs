@@ -1522,7 +1522,8 @@ async fn restore_snapshot(
 /// Put one provider-routed flag (`READ` or `STARRED`) back as the snapshot
 /// had it, at the provider and locally. An uncertain snapshot sets it at the
 /// provider whatever the local copy shows: the change may have reached the
-/// provider without the local copy showing it.
+/// provider without the local copy showing it. Setting a flag is idempotent,
+/// so a repeat (a retried undo) is harmless.
 async fn restore_flag(
     state: &AppState,
     provider: &dyn mxr_core::MailSyncProvider,

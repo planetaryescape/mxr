@@ -67,7 +67,9 @@ function single(target: MailTarget | null, what: string): MailTarget | null {
 
 /**
  * Star or unstar as the target shows. One conversation toggles; a
- * multi-selection always stars, as in the TUI.
+ * multi-selection always stars, as in the TUI. No preview, even when the
+ * unstar reaches starred messages outside the list: it is one conversation,
+ * not a batch, and `u` undoes it (the CLI's `--dry-run` previews batches).
  */
 export function toggleStar(target: MailTarget): void {
   if (target.conversations <= 1 && target.anyStarred) {

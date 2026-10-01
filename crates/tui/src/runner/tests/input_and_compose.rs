@@ -1824,6 +1824,43 @@ fn star_on_a_conversation_row_toggles_what_it_shows() {
     );
 }
 
+/// The row shows its newest message's star: with an older, unstarred
+/// message focused in the reader, `s` still unstars the starred row.
+#[test]
+fn star_follows_the_row_not_an_older_focused_message() {
+    let mut app = App::new();
+    let mut envelopes = make_test_envelopes(2);
+    let thread = envelopes[0].thread_id.clone();
+    envelopes[1].thread_id = thread;
+    let now = chrono::Utc::now();
+    envelopes[0].date = now - chrono::Duration::days(2);
+    envelopes[0].flags.remove(MessageFlags::STARRED);
+    envelopes[1].date = now - chrono::Duration::hours(1);
+    envelopes[1].flags.insert(MessageFlags::STARRED);
+    app.mailbox.envelopes = envelopes.clone();
+    app.mailbox.selected_index = 0;
+    // The reader shows the conversation with the older message focused.
+    app.mailbox.viewed_thread_messages = envelopes.clone();
+    app.mailbox.thread_selected_index = 0;
+    assert_eq!(
+        app.context_envelope().map(|e| &e.id),
+        Some(&envelopes[0].id)
+    );
+
+    app.apply(Action::Star);
+    assert!(
+        matches!(
+            requested(&app).as_slice(),
+            [Request::Mutation {
+                mutation: MutationCommand::Star { starred: false, .. },
+                ..
+            }]
+        ),
+        "the row shows a star, so s unstars: {:?}",
+        requested(&app)
+    );
+}
+
 /// Trash on a desk row acts on that row's thread, never on mail the
 /// mailbox or reader showed before the desk opened.
 #[test]

@@ -45,6 +45,11 @@ function describeFailure(response: MutationResponse, requestedFallback: number):
   return accountErrors.length > 0 ? `${summary}. ${accountErrors.join("; ")}` : `${summary}.`;
 }
 
+/** The daemon's answer behind a partial or failed mutation, if there was one. */
+export function failedResponse(error: Error): MutationResponse | null {
+  return error instanceof MutationFailureError ? error.response : null;
+}
+
 const AUTH_RECOVERY_ERROR =
   /oauth|auth|token|invalid_client|invalid_grant|no sync provider configured|no sync-capable accounts configured|account unavailable/i;
 
@@ -57,22 +62,39 @@ function reauthableAccount(error: Error): AccountMutationResult | null {
   );
 }
 
+/**
+ * Say it failed, or partly failed when some messages changed. With `undo`
+ * (the daemon kept one for what changed), the toast offers it, as `u` does.
+ */
 export function announceFailure(
   action: MailAction,
   error: Error,
   payload?: MailActionPayload,
+  undo?: (() => Promise<boolean>) | null,
 ): void {
   const account = reauthableAccount(error);
-  toast.error(`${verb(action, payload)} failed`, {
-    description: error.message,
-    action: account
-      ? {
-          label: `Re-authorize ${account.account_name}`,
-          onClick: () => {
-            requestAccountReauth(account.account_id);
-            getRuntimeNavigate().navigate(`/accounts/${encodeURIComponent(account.account_id)}`);
-          },
-        }
-      : undefined,
+  const result = failedResponse(error)?.result;
+  const done = verb(action, payload);
+  // "Archived 2 of 3 messages; the rest failed", or "Archived failed".
+  const title =
+    result && result.succeeded > 0
+      ? `${done} ${result.succeeded} of ${plural(result.requested, "message")}; the rest failed`
+      : `${done} failed`;
+  toast.error(title, {
+    description: undo
+      ? `${error.message.replace(/\.?$/, ".")} Press u to undo what changed.`
+      : error.message,
+    duration: undo ? 60_000 : undefined,
+    action: undo
+      ? { label: "Undo", onClick: () => void undo() }
+      : account
+        ? {
+            label: `Re-authorize ${account.account_name}`,
+            onClick: () => {
+              requestAccountReauth(account.account_id);
+              getRuntimeNavigate().navigate(`/accounts/${encodeURIComponent(account.account_id)}`);
+            },
+          }
+        : undefined,
   });
 }

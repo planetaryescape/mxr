@@ -100,7 +100,7 @@ and each measurement is recorded with its date and the mailbox size.
 | D1 | **Desk compose.** `GetDesk` for all accounts. | < 300 ms warm | `time mxr desk --format json` on the real install, second run. |
 | D2 | **Owed replies.** `ListOwedReplies`. | < 1 s warm | `time mxr owed --format json`, second run. |
 | D3 | **Places.** Reading and Paper trail lists. | < 100 ms warm | `mxr reading` / `mxr paper-trail` timings from the daemon log (`place listed elapsed_ms`). |
-| D4 | **List scroll.** A real inbox scrolled in the web app. | Within the large-list gate (60k list blocks per step) and key-to-paint p95 < 50 ms | Run `large-list.spec`'s measurement against the real bridge, or a recorded session with the same probe. |
+| D4 | **List scroll.** A real inbox scrolled in the web app. | Scroll-fling frame p95 within one to two frames (< 34 ms) and key-to-paint p95 < 50 ms on the production build | A read-only session against the real install (all non-GET requests blocked): page in at least 3,000 rows of All Mail, fling through them, and press `j`/`k`. The V8 block count is a dev-build regression gate (`large-list.spec`, synthetic rows) and can't be taken on the production build a real install serves. |
 | D5 | **New SQL.** Every query a rung adds. | Recorded, no regression past the budgets above | `sqlite3` read-only (`?mode=ro`) on the real DB: counts and timings only, no content. |
 
 ## E. Independent grading
@@ -219,6 +219,53 @@ are proposals until an independent reviewer grades them. A5 stays capped at
 |---|---|---|
 | A5 | 2 | `deferral.spec`: `b` on a You owe row, typed "in 2d", shows the resolved time before Enter, sends that instant (not the words), the toast names the same time, the row leaves the desk and `u` brings it back; `b` on a Waiting on row, "in 3d", says it comes back only if nobody replies and the toast's Undo restores it; a time set a few seconds out brings the conversation back to You owe ("back from reply later") and the reply queue after a daemon restart. Daemon tests with a moved clock (`handler/tests/deferral.rs`): each kind returns at its time, is announced exactly once across a second tick and a restarted store (`message_flags` restart test), a reply cancels the wait, Done cancels a pending time and undo restores it. TUI: `b` opens a prompt with the shared time preview (`mutation_behavior.rs`, `input_and_compose.rs`). CLI: `mxr desk later THREAD... --at TIME --dry-run`. |
 | B5 | 2 | Adds the reply-later and waiting-on journeys above to `natural-time.spec`'s snooze journey: every deferral field previews the resolved time and stores the previewed instant. |
+
+### Real-mailbox records (read-only, counts and timings only)
+
+| Date | Version | Mailbox | Measure | Result |
+|---|---|---|---|---|
+| 2026-09-30 | v0.6.43 | about 110,000 messages | `mxr owed --format json`, warm, three runs | 0.28 s, 0.28 s, 0.21 s (was 1.0 s on v0.6.36) |
+| 2026-09-30 | v0.6.44 | 15 desk people rows, local gemma4 | Gist coverage after `--generate` | 5/15 at 30 s, 13/15 at 45 s, 15/15 at 60 s |
+| 2026-10-01 | v0.6.46 | All Mail, about 110,000 messages | Scroll fling over about 3,240 paged rows (28 rendered), three runs at load average about 10; 0 non-GET requests attempted | Frame p95 17.6 to 17.9 ms; `j` and `k` key-to-paint p95 about 17 ms |
+
+New SQL timed read-only on the same store (D5):
+
+| Change | Query | Result |
+|---|---|---|
+| v0.6.36 desk | All desk SQL for the largest account | 18.6 ms total |
+| v0.6.36 owed fix | Owed candidates with indexed contacts and screener joins | 0.35 s for 88,649 candidates (was over 150 s) |
+| v0.6.38 places | Place listing per account | 2.2 ms |
+| v0.6.43 owed ranking | Ranking, sort and limit in SQL (`idx_messages_owed`) | 0.19 s in-process on a store copy |
+| v0.6.44 deferral | Reminder claim guard; possible-reply lookup (`idx_reply_pairs_parent`) | 0.8 ms; 0.8 to 2.3 ms per due reminder |
+| v0.6.44 provenance | 40-fingerprint lookup (scratch copy at the 5,000-row cap) | 0.03 to 0.09 ms |
+| v0.6.42 gists | Cache lookups for 40 conversations | 0.5 to 12 ms |
+
+### Independent grade (2026-10-01)
+
+Regraded read-only by Codex (`gpt-6-sol`) at `a0f2d0e9` (v0.6.46), under the
+same rules as the 2026-09-30 grade. The real-mailbox records above were
+accepted as dated records and flagged as unverified by the grader.
+
+**Verdict under v2: fail.**
+- These are below 2: C3, D4 (graded before its check was reworded for the
+  production build) and E2.
+- B3 is below its required 3, because conversation unstar can leave the
+  star set (`docs/issues/web-star-undo-gaps.md`).
+- E2 caps all of section A at 2.
+
+| # | 2026-09-30 | 2026-10-01 | What changed |
+|---|---:|---:|---|
+| A5 | 1 | 2 | Timed reply later and waiting-on have journeys, including return after a restart. |
+| B1 | 2 | 3 | `s` and cached open are gated, every sample must paint its change, and the gate runs on a production build in CI. |
+| B2 | 2 | 3 | The flagged transitions are gone, and `check-motion` enforces the rule in lint. |
+| B7 | 1 | 2 | `reading.spec` holds 60 to 80 characters, and a dated visual review is recorded. Formatted HTML still runs wider. |
+| B8 | 1 | 2 | `daemon-stopped.spec` covers cached reading, refused mutations, kept drafts and recovery. |
+| C1, C2 | 1 | 2 | Draft provenance and sources, with daemon tests that disclosure matches what was sent. |
+| D2 | 1 | 2 | Owed under 1 s on the real install. |
+| D4 | 0 | 1 | Real scroll recorded; the block count isn't available on a production build (the check is now reworded). |
+| E1 | 1 | 2 | This independent grade. |
+
+Every other criterion is unchanged from the 2026-09-30 grade.
 
 The parity floor in `docs/web-app-rubric.md` still holds: the suites it cites
 (`triage`, `reading`, `reader`, `search`, `labels`, `snooze`, `responsive`,

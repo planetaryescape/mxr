@@ -39,10 +39,10 @@ export type UndoPath =
   | "send-window"
   /** Doing it again reverses it (star, read, pin). */
   | "toggle"
-  /** Can't be undone by mxr; the dialog previews it first. */
+  /** Can't be undone by mxr; the entry says why, and the verb confirms first. */
   | "none";
 
-export interface VerbFeedback {
+interface VerbParts {
   /** Registry actions that run it; each is a key, and a button where one shows. */
   actions: readonly string[];
   /** Other ways in, in words (buttons, swipes, dialogs). */
@@ -52,10 +52,18 @@ export interface VerbFeedback {
   /** Past tense for the result toast: "Archived 3 messages". */
   pastTense: string;
   sound: SoundEvent | null;
-  undo: UndoPath;
   /** When it asks before acting. */
   confirm?: string;
 }
+
+/**
+ * A verb either has a way back, or is marked irreversible with the reason
+ * and always confirms first. `verbs.spec` runs the undo journey for the
+ * first kind and the confirm journey for the second.
+ */
+export type VerbFeedback =
+  | (VerbParts & { undo: Exclude<UndoPath, "none">; irreversible?: never })
+  | (VerbParts & { undo: "none"; irreversible: true; reason: string; confirm: string });
 
 const SWIPE = "swipe on a touch screen";
 
@@ -102,7 +110,8 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     optimistic: "The star fills at once.",
     pastTense: "Starred",
     sound: null,
-    undo: "daemon-mutation",
+    // The daemon keeps no undo for a star: it is its own inverse.
+    undo: "toggle",
   },
   unstar: {
     actions: ["mail.star"],
@@ -110,7 +119,8 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     optimistic: "The star empties at once.",
     pastTense: "Unstarred",
     sound: null,
-    undo: "daemon-mutation",
+    // The daemon keeps no undo for a star: it is its own inverse.
+    undo: "toggle",
   },
   read: {
     actions: ["mail.mark-read"],
@@ -156,7 +166,8 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     actions: ["mail.label"],
     alsoFrom: "the labels dialog",
     optimistic: "The chip goes; the rows leave that label's list.",
-    pastTense: "Label removed",
+    // With the label: "Removed Hiring from 3 messages".
+    pastTense: "Removed",
     sound: null,
     undo: "daemon-mutation",
   },
@@ -197,7 +208,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     actions: ["focus.send", "focus.remind"],
     alsoFrom: "the Send button, ⌘↵ in the composer",
     optimistic: "The composer closes and a countdown toast holds the send.",
-    pastTense: "Sent",
+    pastTense: "Message sent",
     sound: "sent",
     undo: "send-window",
   },
@@ -208,6 +219,9 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     pastTense: "Unsubscribed from",
     sound: null,
     undo: "none",
+    irreversible: true,
+    reason:
+      "The sender acts on the request (a one-click link, an email or their page), and mxr can't take it back. Unsubscribe and archive can undo the archive part.",
     confirm: "Always: the dialog names the sender and how they are asked.",
   },
   sweep: {

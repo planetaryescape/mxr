@@ -51,10 +51,30 @@ export function rowById(page: Page, rowId: string): Locator {
  * "Unread., Starred., Maya, Alex, Subject, …" becomes "Maya, Alex, Subject".
  */
 export function stableRowName(ariaLabel: string): string {
-  const parts = ariaLabel
-    .split(", ")
-    .filter((part) => part !== "Unread." && part !== "Starred.");
-  return parts.slice(0, -1).filter((part) => !/in conversation$|^Has attachments$/.test(part)).join(", ");
+  const parts = ariaLabel.split(", ").filter((part) => part !== "Unread." && part !== "Starred.");
+  return parts
+    .slice(0, -1)
+    .filter((part) => !/in conversation$|^Has attachments$/.test(part))
+    .join(", ");
+}
+
+/** The read and star states a row's accessible name opens with ("Unread.", "Starred."). */
+export function rowStates(label: string): string[] {
+  return label.split(", ").filter((part) => part === "Unread." || part === "Starred.");
+}
+
+export async function rowLabel(page: Page, rowId: string): Promise<string> {
+  return (await rowById(page, rowId).getAttribute("aria-label")) ?? "";
+}
+
+/** Move the cursor down to the first row whose accessible name passes `test`. */
+export async function cursorTo(page: Page, test: (label: string) => boolean): Promise<string> {
+  for (let step = 0; step < 25; step += 1) {
+    const id = await cursorRowId(page);
+    if (test(await rowLabel(page, id))) return id;
+    await page.keyboard.press("j");
+  }
+  throw new Error("no matching row in the first rows");
 }
 
 /** Press keys one after another, as a person typing a chord would. */

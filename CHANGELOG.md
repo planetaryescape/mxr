@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.46](https://github.com/planetaryescape/mxr/compare/v0.6.45...v0.6.46) (2026-10-01)
+
+
+### Bug Fixes
+
+* time star and cached opens, undo every verb, and hold motion and dates to one standard ([#267](https://github.com/planetaryescape/mxr/issues/267)) ([7ec4500](https://github.com/planetaryescape/mxr/commit/7ec4500ecaab48deae1c58e978ef934182e0962c))
+
 ## [0.6.45](https://github.com/planetaryescape/mxr/compare/v0.6.44...v0.6.45) (2026-09-30)
 
 

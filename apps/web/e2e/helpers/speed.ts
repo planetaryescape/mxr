@@ -1,9 +1,9 @@
 import type { Page } from "@playwright/test";
 
 /**
- * Keydown-to-paint budget at p95 (rubric B1): 50 ms. Measured against the
- * Vite dev build, whose React is several times slower than production, and
- * quantized to frames (about 16 ms on a 60 Hz headless run), so a local run
+ * Keydown-to-paint budget at p95 (rubric B1): 50 ms. Measured against a
+ * production build (playwright.perf.config.ts, `npm run e2e:perf`), the
+ * React users run, and quantized to frames (about 16 ms on a 60 Hz headless run), so a local run
  * sits near one frame. A slower CI runner can raise the bar through
  * MXR_KEY_TO_PAINT_BUDGET_MS, which keeps the change visible in the
  * workflow rather than in a loosened assertion here.

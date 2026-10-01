@@ -17,6 +17,10 @@ const appPort = Number(process.env.MXR_E2E_APP_PORT ?? "5173");
 const appUrl = `http://127.0.0.1:${appPort}`;
 const token = process.env.MXR_E2E_BRIDGE_TOKEN ?? "mxr-e2e-token";
 const once = process.argv.includes("--once");
+// "preview" serves a production build (vite build, then vite preview, still
+// proxying /api to the e2e bridge). The speed gate runs there: React's
+// development build adds work that users never pay for.
+const appMode = process.env.MXR_E2E_APP_MODE === "preview" ? "preview" : "dev";
 
 let daemon;
 let vite;
@@ -196,15 +200,18 @@ function respondJson(res, body, status = 200) {
 }
 
 function startVite() {
-  return spawn(
-    "npm",
-    ["run", "dev", "--", "--host", "127.0.0.1", "--port", String(appPort), "--strictPort"],
-    {
-      cwd: appDir,
-      env: { ...process.env, MXR_BRIDGE_URL: bridgeUrl },
-      stdio: "inherit",
-    },
-  );
+  const env = { ...process.env, MXR_BRIDGE_URL: bridgeUrl };
+  const serve = ["--host", "127.0.0.1", "--port", String(appPort), "--strictPort"];
+  if (appMode === "dev") {
+    return spawn("npm", ["run", "dev", "--", ...serve], { cwd: appDir, env, stdio: "inherit" });
+  }
+  // vite preview's proxy defaults to the dev server's, so /api still
+  // reaches this bridge.
+  return spawn("sh", ["-c", `npx vite build && npx vite preview ${serve.join(" ")}`], {
+    cwd: appDir,
+    env,
+    stdio: "inherit",
+  });
 }
 
 async function waitForHealth() {
@@ -224,7 +231,8 @@ async function waitForApp() {
       const response = await fetch(appUrl);
       if (!response.ok) throw new Error(`app ${response.status}`);
       const html = await response.text();
-      if (!html.includes("/src/main.tsx")) throw new Error("vite app not ready");
+      const ready = appMode === "dev" ? html.includes("/src/main.tsx") : html.includes("/assets/");
+      if (!ready) throw new Error("vite app not ready");
     },
     45_000,
     "vite app",

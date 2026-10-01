@@ -5,6 +5,8 @@ const appUrl = `http://127.0.0.1:${process.env.MXR_E2E_APP_PORT ?? "5173"}`;
 
 export default defineConfig({
   testDir: "./e2e",
+  // The speed gate runs against a production build: playwright.perf.config.ts.
+  testIgnore: ["**/speed.spec.ts"],
   fullyParallel: true,
   retries: process.env.CI ? 2 : 0,
   workers: 1,

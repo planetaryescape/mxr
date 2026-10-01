@@ -54,14 +54,17 @@ describe("desk headline", () => {
   });
 
   test("a clear desk is calm and specific, never scolding", () => {
+    const lastFromPeople = new Date(2026, 8, 25, 18, 40);
     const clear = deskHeadline(
-      { ...desk({}), last_from_people_at: new Date(2026, 8, 25, 18, 40).toISOString() },
+      { ...desk({}), last_from_people_at: lastFromPeople.toISOString() },
       NOW,
     );
     expect(clear.counts).toEqual([]);
     expect(clear.calm).toBe("Nothing needs you right now.");
-    // The clock follows the viewer's locale (18:40 or 06:40 PM).
-    expect(clear.sub).toMatch(/^Nothing new from people since yesterday \d{2}:40( PM)?\.$/);
+    // The clock follows the viewer's locale (18:40 or 6:40 PM).
+    expect(clear.sub).toBe(
+      `Nothing new from people since yesterday ${formatTime(lastFromPeople)}.`,
+    );
     expect(deskHeadline(desk({ waiting: 2 }), NOW).calm).toBe("No replies owed.");
   });
 

@@ -26,6 +26,7 @@ import { getActiveQueryClient } from "@/lib/queryClient";
 import { FocusFinish } from "./FocusFinish";
 import { FocusThread } from "./FocusThread";
 import { focusReplyIntent, useFocusSession } from "./useFocusSession";
+import { useToastKeepClear } from "@/components/ui/toastClearance";
 
 export function FocusRoute({ from, lane }: { from?: string; lane?: "owed" }) {
   const navigate = useNavigate();
@@ -278,6 +279,7 @@ function FocusKeys({
   disabled: boolean;
   run: (command: "send" | "skip" | "done" | "snooze" | "remind" | "draft") => void;
 }) {
+  const keepClear = useToastKeepClear();
   const keys = [
     ["send", "⌘↵", "Send and next"],
     ["skip", "s", "Skip"],
@@ -290,7 +292,7 @@ function FocusKeys({
     <div
       role="toolbar"
       aria-label="Move through the queue"
-      data-toast-keep-clear
+      ref={keepClear}
       className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-t border-border px-3 py-2"
     >
       {keys.map(([command, key, label]) => (

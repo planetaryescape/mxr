@@ -190,12 +190,10 @@ for (const width of [1440, 1920]) {
       await reader(page).getByRole("radio", { name: view }).click();
       await expect(reader(page).getByRole("radio", { name: view })).toBeChecked();
       const perLine = await charactersPerLine(page);
-      test
-        .info()
-        .annotations.push({
-          type: "measure",
-          description: `${width} ${view} ${perLine.toFixed(1)}`,
-        });
+      test.info().annotations.push({
+        type: "measure",
+        description: `${width} ${view} ${perLine.toFixed(1)}`,
+      });
       expect(perLine, view).toBeGreaterThanOrEqual(60);
       expect(perLine, view).toBeLessThanOrEqual(80);
     }

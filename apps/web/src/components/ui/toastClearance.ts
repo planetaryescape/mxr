@@ -1,13 +1,14 @@
 /*
  * Toasts never cover a primary action. Bars that hold one (focus mode's
- * queue keys, the composer's Send row, the bulk bar) carry
- * `data-toast-keep-clear`; while a toast is showing, the toast stack is
- * lifted above any such bar it would overlap. The lift is a CSS variable on
- * <html> that the Toaster's offsets read, so nothing re-renders, and the
- * work only runs while a toast is on screen.
+ * queue keys, the composer's Send row, the bulk bar) register through
+ * `useToastKeepClear`; while a toast is showing, the toast stack is lifted
+ * above any such bar it would overlap. The lift is a CSS variable on <html>
+ * that the Toaster's offsets read, so nothing re-renders. With no toast on
+ * screen nothing is observed or measured: a bar mounting only joins a set.
  */
 
-const KEEP_CLEAR_SELECTOR = "[data-toast-keep-clear]";
+import { useCallback, type RefCallback } from "react";
+
 const LIFT_VAR = "--toast-clear-bottom";
 const GAP = 8;
 
@@ -49,6 +50,26 @@ export function toastLift(
   return lift;
 }
 
+/** Bars a toast must not cover, and the watcher to tell while a toast shows. */
+const keepClear = new Set<HTMLElement>();
+let onKeepClearChange: ((element: HTMLElement, added: boolean) => void) | null = null;
+
+/**
+ * A ref callback for a bar holding a primary action: a toast never covers
+ * it, including a bar that mounts or resizes while the toast is up.
+ */
+export function useToastKeepClear(): RefCallback<HTMLElement> {
+  return useCallback((element: HTMLElement | null) => {
+    if (!element) return;
+    keepClear.add(element);
+    onKeepClearChange?.(element, true);
+    return () => {
+      keepClear.delete(element);
+      onKeepClearChange?.(element, false);
+    };
+  }, []);
+}
+
 /** The toaster's resting bottom offsets, as passed to sonner (desktop, and at most 600 wide). */
 export interface ToastOffsets {
   bottom: number;
@@ -73,12 +94,27 @@ export function watchToastClearance(container: HTMLElement, offsets: ToastOffset
     else root.style.setProperty(LIFT_VAR, value);
   };
 
+  // Bars resizing (a bulk bar wrapping) or mounting while a toast shows.
+  let bars: ResizeObserver | null = null;
   const listen = (on: boolean) => {
     if (on === listening) return;
     listening = on;
     const method = on ? "addEventListener" : "removeEventListener";
     window[method]("resize", schedule);
     window[method]("scroll", schedule, { capture: true });
+    if (on) {
+      bars = new ResizeObserver(schedule);
+      for (const element of keepClear) bars.observe(element);
+      onKeepClearChange = (element, added) => {
+        if (added) bars?.observe(element);
+        else bars?.unobserve(element);
+        schedule();
+      };
+    } else {
+      bars?.disconnect();
+      bars = null;
+      onKeepClearChange = null;
+    }
   };
 
   const measure = () => {
@@ -88,7 +124,7 @@ export function watchToastClearance(container: HTMLElement, offsets: ToastOffset
       write(null);
       return;
     }
-    const obstacles = [...document.querySelectorAll<HTMLElement>(KEEP_CLEAR_SELECTOR)]
+    const obstacles = [...keepClear]
       .map((element) => element.getBoundingClientRect())
       .filter((box) => box.width > 0 && box.height > 0);
     const stack = front.getBoundingClientRect();

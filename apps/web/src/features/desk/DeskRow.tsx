@@ -8,6 +8,7 @@ import { useRowGist } from "@/features/gists/rowGists";
 import type { RowRenderState } from "@/features/mailbox/MailboxList";
 import type { MessageRowView } from "@/features/mailbox/types";
 import { cn } from "@/lib/utils";
+import { useClockLabel } from "@/lib/minuteClock";
 
 type DeskRowProps = RowRenderState & {
   row: MessageRowView;
@@ -45,7 +46,8 @@ export const DeskRow = memo(function DeskRow({
   ...state
 }: DeskRowProps) {
   const who = rowPerson(desk);
-  const age = rowAge(desk);
+  // The label is kept current; the rest of the age doesn't change on its own.
+  const age = { ...rowAge(desk), label: useClockLabel((now) => rowAge(desk, now).label) };
   const subject = desk.subject.trim();
   // This row's own gist: when it lands, only this row re-renders.
   const gist = useRowGist(desk.thread_id);

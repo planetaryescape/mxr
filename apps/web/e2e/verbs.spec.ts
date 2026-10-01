@@ -435,3 +435,26 @@ for (const [verb, entry] of Object.entries(VERB_FEEDBACK) as [
     await journey!(page);
   });
 }
+
+test("a bar that appears under a showing toast pushes the toast above it", async ({ page }) => {
+  await openList(page, "/m/inbox");
+  await mailList(page).focus();
+  // A toast first (star, held so it stays as it is), then the bulk bar.
+  await page.route("**/api/v1/mail/mutations/star", (route) =>
+    route.fulfill({ json: { ok: true, result: { succeeded: 1, failed: 0, requested: 1 } } }),
+  );
+  await page.keyboard.press("s");
+  const shown = page.locator("[data-sonner-toast]").first();
+  await expect(shown).toBeVisible();
+  // Let the toast settle, so only the bar mounting can move it.
+  await page.waitForTimeout(800);
+  await page.keyboard.press("x");
+  const bar = page.getByRole("toolbar", { name: "Selected conversations" });
+  await expect(bar).toBeVisible();
+  await expect
+    .poll(async () => {
+      const [toastBox, barBox] = await Promise.all([shown.boundingBox(), bar.boundingBox()]);
+      return toastBox && barBox ? toastBox.y + toastBox.height <= barBox.y : false;
+    })
+    .toBe(true);
+});

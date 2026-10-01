@@ -13,7 +13,7 @@ import { MessageContent } from "@/features/thread/MessageCard";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { notePointerUse } from "@/lib/actions/keyHints";
-import { formatLongDate, formatWhen, plural } from "@/lib/format";
+import { formatLongDate, plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
@@ -32,6 +32,7 @@ import {
 } from "./placeVerbs";
 import { SweptClear } from "./SweptClear";
 import { usePlace } from "./usePlace";
+import { When } from "@/components/When";
 
 /** Issues fetched per sender; the feed shows the newest across senders. */
 const ISSUES_PER_SENDER = 20;
@@ -249,7 +250,7 @@ const Issue = memo(function Issue({
               title={formatLongDate(message.date)}
               className="font-mono text-2xs tabular-nums"
             >
-              {formatWhen(message.date)}
+              <When value={message.date} />
             </time>
             {message.pinned ? (
               <span className="inline-flex items-center gap-1 text-primary">

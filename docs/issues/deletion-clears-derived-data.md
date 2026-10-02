@@ -1,9 +1,74 @@
 # Deleting an email leaves vectors, gists, commitments and files behind
 
-Status: logged, not fixed. Audited at `37f6ff61` (branch `docs/email-modes`,
-based on `origin/main` `3da0c119`). BK's real DB has 0 orphan semantic
-chunks, so the SQLite cascade works today; the gaps are everything the
-cascade cannot reach.
+Status: fixes 1 to 5 done on branch `fix/delete-derived` (based on
+`origin/main` `3da0c119`); fix 6 done for IMAP `UIDVALIDITY`, not for Gmail
+history expiry. Fix 7 (secure delete) not started. Audited at `37f6ff61`
+(branch `docs/email-modes`). BK's real DB has 0 orphan semantic chunks, so
+the SQLite cascade works today; the gaps were everything the cascade cannot
+reach.
+
+## Where each fix stands
+
+| Fix | State | Where |
+|---|---|---|
+| 1. Semantic forget | Done. `SemanticServiceHandle::forget_messages` drops the deleted messages' chunk mappings from every loaded index at once, drops queued ingests for them, marks the profile dirty so the rebuild drops the vectors, and strips them from a build that was running when they were forgotten | `crates/semantic/src/lib.rs` (`forget_messages`, `forget_in_index`, `forgotten_during_build`), `service.rs` |
+| 2. Sync reports deletes | Done. `SyncOutcome` carries `deleted_message_ids`, `deleted_counterparties`, and the threads the delete changed (emptied ones as tombstones). The daemon runs a delete fan-out outside `count > 0`: semantic forget, attachment cleanup, contacts refresh, relationship re-enqueue of the counterparties. Account purge forgets its messages too | `crates/sync/src/engine.rs`, `crates/daemon/src/loops.rs` (`post_delete_fanout`), `crates/daemon/src/message_deletion.rs` |
+| 3. Attachment files | Done. `<attachment_dir>/<id>/` and `<attachment_dir>/_html_assets/<id>/` are removed after the delete commits; I/O errors are logged | `crates/daemon/src/message_deletion.rs` |
+| 4. Transactional delete | Done without a migration. `delete_messages_and_derived` replaces `delete_messages_by_provider_ids`; the derived tables are keyed by thread, contact or JSON, which a foreign key cannot follow, so one transaction clears them explicitly. The rule-applied event now carries its `message_id`. Contacts with no mail left are pruned on refresh, with their relationship summary and style | `crates/store/src/message_deletion.rs`, `crates/store/src/contacts.rs` |
+| 5. Trash and Spam out by default | Done. Semantic hits in Trash or Spam are dropped unless the query has a positive `in:trash`, `in:spam`, `in:anywhere` or the label. `mxr ask` never sends them to the model; the decision log rebuild skips threads with only Trash or Spam mail. Thread gist batches and delivery scans already skipped them | `crates/daemon/src/handler/diagnostics/search_execute.rs`, `archive_ask.rs`, `decisions_extract.rs` |
+| 6. Reconcile after full resync | IMAP `UIDVALIDITY`: done. Gmail history expiry: not done, see below | `crates/provider-imap/src/lib.rs` |
+| Schema test | Done. Fails for any table that refers to messages (a foreign key, a `*message_id*`, `*msg_id*` or `thread_id` column) with neither a cascading foreign key nor an entry in `MESSAGE_DELETION_RULES` | `crates/store/src/message_deletion.rs` |
+
+### Decisions BK made
+
+- Trash keeps vectors. Removal is tied to the local row delete, which
+  Gmail's 30-day expunge already triggers.
+- Trash and Spam are excluded from semantic results and from model work by
+  default. Explicit `in:trash` and `in:spam` queries still find them,
+  matching Gmail search.
+- Derived text-bearing caches go with the email: thread gists and recipient
+  briefings (`context_briefings`), `thread_summaries`, `decision_log` rows
+  and `contact_commitments` sourced only from deleted messages, `deliveries`
+  that lost all sources, relationship summaries of contacts with no mail
+  left, and attachment files on disk.
+- A user-created or user-edited to-do (blueprint 22, no table yet) survives
+  its source's deletion but drops the text it copied from the email. The
+  `todos` row in the blueprint 22 table below needs this rule when the
+  table ships: detected to-dos cascade with their source; user-made or
+  user-edited ones null `title`, `due_words`, `action_url` and `reason`
+  copied from the email and keep the user's own text.
+
+### Gmail history expiry stays unreconciled
+
+A full Gmail resync after `SyncCursorExpired` reports no deletions, so mail
+deleted on Gmail while mxr was offline past the history window stays local.
+A set difference against the server is not safe to automate yet:
+
+- `messages.list` without `includeSpamTrash` omits Trash and Spam, which
+  delta sync does store. A listing with the default would delete them all.
+- The initial sync pages across many daemon passes (`GmailBackfill`
+  cursor) and can span restarts, so the ids it saw are not in one place;
+  recording them needs persisted state.
+- Mail that arrives while a listing runs is stored locally but missing
+  from the listing. Only rows stored before the listing began may be
+  candidates.
+- Gmail over IMAP (All Mail) never reports deletions at all
+  (`crates/provider-imap/src/lib.rs`, the Gmail All Mail branch returns
+  `deleted_provider_ids: vec![]`), a wider gap than expiry.
+
+The next step is a dry-run report: a provider method that lists every
+provider id (`includeSpamTrash=true`, ids only), a daemon request that
+diffs it against local rows stored before the listing started, and a CLI
+surface printing counts and samples, with no delete path until the counts
+have been checked on a real mailbox.
+
+### Still open
+
+- `user_activity` draft rows can carry a reply's subject (up to 200
+  chars) and are kept until tier retention.
+- SQLite free pages and WAL keep deleted text until reused (fix 7).
+- On IMAP, `mxr trash` is a MOVE: the source row is deleted with its
+  vectors and the Trash copy is a new message that is embedded again.
 
 ## Two code paths delete messages, and neither tells the semantic engine
 
@@ -109,11 +174,8 @@ delete gets the right moment without a separate trash rule. Clearing
 vectors on trash would make untrash need a re-embed and would make a trashed
 message unsearchable while it is still in the user's mailbox.
 
-One open question for BK: should trashed and spam mail be excluded from
-semantic results and from model work (gists, briefings, mode
-classification) by default? I found no default trash filter in
-`search_execute.rs`. That is a relevance choice, separate from the
-deletion invariant.
+BK decided: yes, by default, with explicit `in:trash` and `in:spam` still
+finding them (see "Decisions BK made" above).
 
 ## Fixes, smallest first
 

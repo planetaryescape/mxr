@@ -1092,12 +1092,18 @@ impl ImapProvider {
         // legacy cursor) must issue `UID SEARCH ALL` and diff against the UIDs
         // we believed lived in this mailbox last sync (1..old.uid_next-1). The
         // extra search is cheap and dedup-safe.
-        if !qresync_used
-            && mailbox_info.uid_validity
-                == old_mailbox
-                    .as_ref()
-                    .map_or(mailbox_info.uid_validity, |c| c.uid_validity)
-        {
+        //
+        // A UIDVALIDITY change takes the same diff. Every old UID is void, the
+        // folder is refetched from `1:*` under the same `folder:uid` ids, and
+        // an old row whose UID the server no longer has would otherwise stay
+        // forever. QRESYNC sends no VANISHED across a validity change, so it
+        // does not cover this case. `UID SEARCH ALL` answers in full or fails
+        // the folder's sync, so a partial listing never deletes anything.
+        let uid_validity_changed = old_mailbox
+            .as_ref()
+            .is_some_and(|old| old.uid_validity != mailbox_info.uid_validity);
+        let mut vanished_uids: Vec<u32> = Vec::new();
+        if !qresync_used || uid_validity_changed {
             if let Some(old) = old_mailbox.as_ref() {
                 if old.uid_next > 1 {
                     let server_uids: HashSet<u32> = session
@@ -1106,12 +1112,8 @@ impl ImapProvider {
                         .map_err(mxr_core::error::MxrError::from)?
                         .into_iter()
                         .collect();
-                    for uid in 1..old.uid_next {
-                        if !server_uids.contains(&uid) {
-                            deleted_provider_ids
-                                .push(folders::format_provider_id(&folder.name, uid));
-                        }
-                    }
+                    vanished_uids
+                        .extend((1..old.uid_next).filter(|uid| !server_uids.contains(uid)));
                 }
             }
         }
@@ -1177,6 +1179,25 @@ impl ImapProvider {
                 .await?;
         }
         Self::floor_uid_next_to_failed(&mut mailbox, min_failed_uid);
+
+        // After a validity reset new mail takes low UIDs, so a message that
+        // arrived between the search and the fetch can sit inside the old
+        // range: fetched, yet missing from the search. The engine applies
+        // deletes after upserts, so it would be deleted straight away and,
+        // with UIDNEXT already past it, never fetched again.
+        vanished_uids.retain(|uid| !seen_uids.contains(uid));
+        if uid_validity_changed && !vanished_uids.is_empty() {
+            tracing::warn!(
+                mailbox = %folder.name,
+                vanished = vanished_uids.len(),
+                "UIDVALIDITY changed; removing local mail the server no longer has"
+            );
+        }
+        deleted_provider_ids.extend(
+            vanished_uids
+                .into_iter()
+                .map(|uid| folders::format_provider_id(&folder.name, uid)),
+        );
 
         let _ = session.logout().await;
         Ok(DeltaFolderSyncResult {
@@ -2696,6 +2717,56 @@ mod tests {
         assert_eq!(batch.upserted[0].envelope.subject, "After reset");
 
         assert_eq!(decoded_imap_inbox(&batch.next_cursor).uid_validity, 2);
+    }
+
+    /// After a UIDVALIDITY change the folder is refetched under the same
+    /// `folder:uid` ids; old rows whose UID the server no longer has are
+    /// reported deleted instead of lingering forever.
+    #[tokio::test]
+    async fn uid_validity_change_deletes_old_uids_the_server_no_longer_has() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(2, 3, 2),
+            vec![vec![
+                make_fetched_message(1, "First", "alice@example.com"),
+                make_fetched_message(2, "Second", "bob@example.com"),
+            ]],
+            vec![],
+        )
+        .with_uid_search("INBOX", vec![1, 2]);
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let batch = provider.sync_messages(&imap_cursor(1, 6)).await.unwrap();
+
+        assert_eq!(batch.upserted.len(), 2);
+        assert_eq!(
+            batch.deleted_provider_ids,
+            vec!["INBOX:3", "INBOX:4", "INBOX:5"]
+        );
+    }
+
+    /// Mail that lands between the search and the fetch after a validity
+    /// reset takes a low UID inside the old range. It was fetched, so it must
+    /// not also be reported deleted: the engine would drop it straight after
+    /// the upsert, and UIDNEXT has already moved past it.
+    #[tokio::test]
+    async fn uid_validity_change_never_deletes_a_message_it_just_fetched() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(2, 3, 2),
+            vec![vec![
+                make_fetched_message(1, "First", "alice@example.com"),
+                make_fetched_message(2, "Arrived mid-sync", "bob@example.com"),
+            ]],
+            vec![],
+        )
+        .with_uid_search("INBOX", vec![1]);
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let batch = provider.sync_messages(&imap_cursor(1, 4)).await.unwrap();
+
+        assert_eq!(batch.upserted.len(), 2);
+        assert_eq!(batch.deleted_provider_ids, vec!["INBOX:3"]);
     }
 
     #[tokio::test]

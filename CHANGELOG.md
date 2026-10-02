@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.48](https://github.com/planetaryescape/mxr/compare/v0.6.47...v0.6.48) (2026-10-02)
+
+
+### Features
+
+* owed equals the desk's You owe lane; Allow makes a person, not a conversation ([#275](https://github.com/planetaryescape/mxr/issues/275)) ([bc9fe58](https://github.com/planetaryescape/mxr/commit/bc9fe5814c1bbaae421c285e6b5dff7b20d60023))
+
+
+### Bug Fixes
+
+* polish from the v0.6.47 product tour ([#274](https://github.com/planetaryescape/mxr/issues/274)) ([1787925](https://github.com/planetaryescape/mxr/commit/1787925327beb7c17a630e489d80e4bdf6702c2b))
+
 ## [0.6.47](https://github.com/planetaryescape/mxr/compare/v0.6.46...v0.6.47) (2026-10-01)
 
 

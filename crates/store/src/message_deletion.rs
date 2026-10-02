@@ -610,8 +610,8 @@ mod tests {
             .delete_messages_and_derived(&account.id, &["from-alice".to_string()])
             .await
             .unwrap();
-        // A later second, so the prune can tell this run's rows apart.
-        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+        // In the same second as the first refresh: the prune must not
+        // depend on timestamps telling runs apart.
         store.refresh_contacts().await.unwrap();
 
         let bob = set(&["bob@example.com"]);
@@ -662,6 +662,60 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    /// The refresh nominates contacts from an aggregate snapshot. Mail that
+    /// lands between the snapshot and the prune makes the contact live again,
+    /// and the prune must see that mail, not the snapshot.
+    #[tokio::test]
+    async fn a_contact_whose_mail_arrived_after_the_snapshot_is_kept() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let acct = account.id.as_str();
+        for email in ["bob@example.com", "carol@example.com"] {
+            exec(
+                &store,
+                "INSERT INTO contacts (account_id, email, first_seen_at, last_seen_at,
+                     refreshed_at)
+                 VALUES (?, ?, 0, 0, 0)",
+                &[&acct, email],
+            )
+            .await;
+            exec(
+                &store,
+                "INSERT INTO contact_relationship_summary (account_id, email, text, model,
+                     computed_at, source_hash)
+                 VALUES (?, ?, 'summary', 'm', 0, 'h')",
+                &[&acct, email],
+            )
+            .await;
+        }
+        // Both were missing from a snapshot; Bob's mail arrived after it.
+        inbound(
+            &store,
+            &account.id,
+            "late",
+            &ThreadId::new(),
+            "Bob@Example.com",
+        )
+        .await;
+
+        let pruned = store
+            .prune_contacts_without_mail(&[
+                (acct.clone(), "bob@example.com".to_string()),
+                (acct.clone(), "carol@example.com".to_string()),
+            ])
+            .await
+            .unwrap();
+
+        assert_eq!(pruned, 1);
+        let bob = set(&["bob@example.com"]);
+        assert_eq!(ids(&store, "SELECT email FROM contacts").await, bob);
+        assert_eq!(
+            ids(&store, "SELECT email FROM contact_relationship_summary").await,
+            bob
+        );
     }
 
     #[tokio::test]

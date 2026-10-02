@@ -45,7 +45,6 @@ impl super::Store {
     /// second.
     pub async fn refresh_contacts(&self) -> Result<u32, sqlx::Error> {
         const CHUNK_SIZE: usize = 500;
-        let _one_refresh_at_a_time = self.contacts_refresh.lock().await;
 
         let started_at = Instant::now();
         let now_unix = chrono::Utc::now().timestamp();
@@ -223,32 +222,81 @@ impl super::Store {
             tokio::task::yield_now().await;
         }
 
-        // Every contact the aggregate produced now carries this run's
-        // timestamp, so an older one has no mail left. It goes, with what was
-        // computed about the person from that mail: the relationship summary
-        // is model-written text drawn from it.
-        let mut tx = self.writer().begin().await?;
-        for statement in [
-            r#"DELETE FROM contact_relationship_summary WHERE EXISTS (
-                   SELECT 1 FROM contacts
-                   WHERE contacts.refreshed_at < ?1
-                     AND contacts.account_id = contact_relationship_summary.account_id
-                     AND contact_relationship_summary.email = contacts.email)"#,
-            r#"DELETE FROM contact_style WHERE EXISTS (
-                   SELECT 1 FROM contacts
-                   WHERE contacts.refreshed_at < ?1
-                     AND contacts.account_id = contact_style.account_id
-                     AND contact_style.email = contacts.email)"#,
-            "DELETE FROM contacts WHERE refreshed_at < ?1",
-        ] {
-            sqlx::query(statement)
-                .bind(now_unix)
-                .execute(&mut *tx)
+        // A stored contact the aggregate did not produce may have no mail
+        // left. The aggregate is a snapshot, though: mail that arrived since
+        // can make it a live contact again, so the snapshot only nominates
+        // and the prune decides against the messages table itself.
+        let produced = aggregated
+            .iter()
+            .map(|row| (row.account_id.as_str(), row.email.as_str()))
+            .collect::<std::collections::HashSet<_>>();
+        let stored: Vec<(String, String)> =
+            sqlx::query_as("SELECT account_id, email FROM contacts")
+                .fetch_all(self.reader())
                 .await?;
-        }
-        tx.commit().await?;
+        let candidates = stored
+            .into_iter()
+            .filter(|(account_id, email)| {
+                !produced.contains(&(account_id.as_str(), email.as_str()))
+            })
+            .collect::<Vec<_>>();
+        self.prune_contacts_without_mail(&candidates).await?;
         trace_query("contacts.refresh", started_at, affected as usize);
         Ok(affected)
+    }
+
+    /// Deletes each candidate contact that has no mail at all, with what
+    /// was computed about the person from that mail (the relationship
+    /// summary is model-written text drawn from it, the style its metrics).
+    ///
+    /// The check runs in the delete's own write transaction. The writer is
+    /// the only connection that stores mail, so no message can land between
+    /// the check and the delete. Any message from or to the address counts,
+    /// whatever its direction: keeping a contact is the safe mistake.
+    pub(crate) async fn prune_contacts_without_mail(
+        &self,
+        candidates: &[(String, String)],
+    ) -> Result<u64, sqlx::Error> {
+        if candidates.is_empty() {
+            return Ok(0);
+        }
+        let mut pruned = 0;
+        let mut tx = self.writer().begin().await?;
+        for (account_id, email) in candidates {
+            let has_mail: bool = sqlx::query_scalar(
+                r#"SELECT EXISTS (
+                       SELECT 1 FROM messages m
+                       WHERE m.account_id = ?1
+                         AND (LOWER(m.from_email) = LOWER(?2)
+                           OR EXISTS (SELECT 1 FROM json_each(m.to_addrs) a
+                                      WHERE LOWER(json_extract(a.value, '$.email')) = LOWER(?2))
+                           OR EXISTS (SELECT 1 FROM json_each(m.cc_addrs) a
+                                      WHERE LOWER(json_extract(a.value, '$.email')) = LOWER(?2))
+                           OR EXISTS (SELECT 1 FROM json_each(m.bcc_addrs) a
+                                      WHERE LOWER(json_extract(a.value, '$.email')) = LOWER(?2))))"#,
+            )
+            .bind(account_id)
+            .bind(email)
+            .fetch_one(&mut *tx)
+            .await?;
+            if has_mail {
+                continue;
+            }
+            for statement in [
+                "DELETE FROM contact_relationship_summary WHERE account_id = ?1 AND email = ?2",
+                "DELETE FROM contact_style WHERE account_id = ?1 AND email = ?2",
+                "DELETE FROM contacts WHERE account_id = ?1 AND email = ?2",
+            ] {
+                sqlx::query(statement)
+                    .bind(account_id)
+                    .bind(email)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+            pruned += 1;
+        }
+        tx.commit().await?;
+        Ok(pruned)
     }
 
     pub async fn list_contact_asymmetry(

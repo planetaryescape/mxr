@@ -62,22 +62,37 @@ diffs it against local rows stored before the listing started, and a CLI
 surface printing counts and samples, with no delete path until the counts
 have been checked on a real mailbox.
 
+### Review follow-ups (Codex review of this branch)
+
+- Cleanup outside SQLite is recorded in `pending_message_forgets` in the
+  delete's own transaction (and by account purge), and drained after
+  every delete and at daemon start, so a failed pass or a crash no longer
+  leaks semantic entries or attachment files.
+- A reissued IMAP UID (after `UIDVALIDITY` changes) is compared with the
+  stored row by Message-ID, or by date, sender and subject; a different
+  email replaces the row and its derived data under a new id, and the
+  same email keeps its row and local state. Gmail All Mail is covered for
+  delta passes; a validity change in the middle of an All Mail backfill
+  restarts the backfill without that check.
+- Contacts are pruned only when no message from or to the address exists,
+  checked in the prune's write transaction; the aggregate only nominates.
+- The relationship summaries of everyone a delete touches are dropped and
+  rebuilt from the remaining mail.
+- Thread gists and thread briefings refuse to write when a message they
+  were built from was deleted during the model call. `thread_summaries`
+  (`mxr summarize`) has the same race and is not guarded yet.
+- Whole-thread model input leaves Trash and Spam messages out unless the
+  whole thread is in them; drafting keeps the message being answered.
+- Decision evidence is indexed in `decision_evidence` (migration 57).
+- Lexical search and counts leave Trash and Spam out unless the query
+  asks for them, as Gmail does. The Tantivy fallback for queries the
+  parser rejects does not apply the default.
+
 ### Still open
 
 - `user_activity` draft rows can carry a reply's subject (up to 200
   chars) and are kept until tier retention.
 - SQLite free pages and WAL keep deleted text until reused (fix 7).
-- If a sync pass fails after its delete commits (a later label change,
-  the lexical commit or the cursor write errors), the pass returns an error
-  and the delete fan-out never runs; a daemon crash before the detached
-  fan-out has the same effect. The semantic entries go at the next rebuild
-  or restart, but the attachment directories stay. A sweep of directories
-  with no message row would catch both, but `attachment_dir` is
-  user-configurable and deleting UUID-named directories the store does
-  not know is not safe enough to automate without a marker file.
-- After a `UIDVALIDITY` change, an old UID the server reuses for a
-  different message is overwritten in place under the same `folder:uid`
-  and keeps the old message's per-message rows.
 - On IMAP, `mxr trash` is a MOVE: the source row is deleted with its
   vectors and the Trash copy is a new message that is embedded again.
 

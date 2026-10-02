@@ -36,47 +36,55 @@ const ROUTES = [
   "/onboarding",
 ];
 
-for (const path of ROUTES) {
-  test(`axe: no serious or critical violations on ${path}`, async ({ page }) => {
-    await openApp(page, path);
-    await expect(page.locator("#main")).toBeVisible();
-    await page.waitForLoadState("networkidle");
-    expect(await blockingViolations(page)).toEqual([]);
+// No theme is saved, so the app follows the browser's scheme: dark gives
+// midnight, light gives light. Both ship as defaults, so both are checked.
+for (const colorScheme of ["dark", "light"] as const) {
+  test.describe(`${colorScheme} scheme`, () => {
+    test.use({ colorScheme });
+
+    for (const path of ROUTES) {
+      test(`axe: no serious or critical violations on ${path}`, async ({ page }) => {
+        await openApp(page, path);
+        await expect(page.locator("#main")).toBeVisible();
+        await page.waitForLoadState("networkidle");
+        expect(await blockingViolations(page)).toEqual([]);
+      });
+    }
+
+    test("axe: open thread", async ({ page }) => {
+      await openList(page, "/m/inbox");
+      await page.keyboard.press("Enter");
+      await expect(reader(page)).toBeVisible();
+      await page.waitForLoadState("networkidle");
+      expect(await blockingViolations(page)).toEqual([]);
+    });
+
+    test("axe: labels dialog", async ({ page }) => {
+      await openList(page, "/m/inbox");
+      await page.keyboard.press("l");
+      await expect(page.getByRole("dialog", { name: "Labels" })).toBeVisible();
+      expect(await blockingViolations(page)).toEqual([]);
+    });
+
+    test("axe: keyboard help", async ({ page }) => {
+      await openList(page, "/m/inbox");
+      await page.keyboard.press("?");
+      await expect(page.getByRole("dialog", { name: "Keyboard" })).toBeVisible();
+      expect(await blockingViolations(page)).toEqual([]);
+    });
+
+    test("axe: compose overlay", async ({ page }) => {
+      await openList(page, "/m/inbox");
+      await page.keyboard.press("c");
+      const composer = page.getByRole("dialog", { name: "New message" });
+      // Let the lazy CodeMirror editor mount and label itself before scanning.
+      await expect(
+        composer.getByRole("group", { name: "Message body" }).locator(".cm-content"),
+      ).toBeVisible();
+      expect(await blockingViolations(page)).toEqual([]);
+    });
   });
 }
-
-test("axe: open thread", async ({ page }) => {
-  await openList(page, "/m/inbox");
-  await page.keyboard.press("Enter");
-  await expect(reader(page)).toBeVisible();
-  await page.waitForLoadState("networkidle");
-  expect(await blockingViolations(page)).toEqual([]);
-});
-
-test("axe: labels dialog", async ({ page }) => {
-  await openList(page, "/m/inbox");
-  await page.keyboard.press("l");
-  await expect(page.getByRole("dialog", { name: "Labels" })).toBeVisible();
-  expect(await blockingViolations(page)).toEqual([]);
-});
-
-test("axe: keyboard help", async ({ page }) => {
-  await openList(page, "/m/inbox");
-  await page.keyboard.press("?");
-  await expect(page.getByRole("dialog", { name: "Keyboard" })).toBeVisible();
-  expect(await blockingViolations(page)).toEqual([]);
-});
-
-test("axe: compose overlay", async ({ page }) => {
-  await openList(page, "/m/inbox");
-  await page.keyboard.press("c");
-  const composer = page.getByRole("dialog", { name: "New message" });
-  // Let the lazy CodeMirror editor mount and label itself before scanning.
-  await expect(
-    composer.getByRole("group", { name: "Message body" }).locator(".cm-content"),
-  ).toBeVisible();
-  expect(await blockingViolations(page)).toEqual([]);
-});
 
 test("every visible button has an accessible name", async ({ page }) => {
   await openList(page, "/m/inbox");

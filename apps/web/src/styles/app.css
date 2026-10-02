@@ -300,6 +300,20 @@ svg.low-tide {
 }
 
 /*
+ * Avatar initials on a tint of their hue (see components/avatarTone.ts).
+ * On light themes the hue alone is too pale for 11px text on its own tint,
+ * so the ink is pulled toward the foreground.
+ */
+.avatar-tone {
+  background-color: color-mix(in oklab, var(--tone) 20%, transparent);
+  color: var(--tone);
+}
+
+[data-scheme="light"] .avatar-tone {
+  color: color-mix(in oklab, var(--tone) 55%, var(--foreground));
+}
+
+/*
  * Touch swipe: the colour under a moving row names the pending action. It
  * reads as a hint until the throw is far enough to commit, then firms up.
  */

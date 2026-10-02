@@ -391,7 +391,7 @@ const BundleRow = memo(function BundleRow({
           ) : null}
           <When value={bundle.newest_at} />
         </time>
-        <span className="col-start-2 col-end-4 truncate text-[12px] text-muted-foreground/90">
+        <span className="col-start-2 col-end-4 truncate text-[12px] text-muted-foreground">
           {whyHere(bundle.kind)}
         </span>
       </button>

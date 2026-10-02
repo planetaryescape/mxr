@@ -373,6 +373,31 @@ impl super::Store {
         Ok(gave_up)
     }
 
+    /// Which of these message ids name a stored message. An IMAP id is
+    /// derived from account, folder and UID, so a deleted message's id can
+    /// come back for a new message; cleanup owed to the old one must not
+    /// touch it.
+    pub async fn existing_message_ids(
+        &self,
+        message_ids: &[MessageId],
+    ) -> Result<std::collections::HashSet<MessageId>, sqlx::Error> {
+        let mut existing = std::collections::HashSet::new();
+        for chunk in message_ids.chunks(crate::SQLITE_BIND_CHUNK) {
+            let sql = format!(
+                "SELECT id FROM messages WHERE id IN ({})",
+                vec!["?"; chunk.len()].join(", ")
+            );
+            let mut query = sqlx::query_scalar::<_, String>(sqlx::AssertSqlSafe(sql));
+            for id in chunk {
+                query = query.bind(id.as_str());
+            }
+            for id in query.fetch_all(self.reader()).await? {
+                existing.insert(decode_id(&id)?);
+            }
+        }
+        Ok(existing)
+    }
+
     /// Marks the cleanup of these deleted messages as done.
     pub async fn clear_pending_message_forgets(
         &self,

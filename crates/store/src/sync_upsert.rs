@@ -81,6 +81,13 @@ impl super::Store {
                     upsert_envelope_tx(&mut tx, &upsert.envelope, upsert.direction).await?;
                 vacated_threads.extend(stored.vacated_thread_id);
                 upsert.retarget(stored.id);
+                // A message whose id was deleted before (an IMAP UID reused
+                // under the same folder) is live again: cleanup owed to the
+                // old message must not reach its files or index entries.
+                sqlx::query("DELETE FROM pending_message_forgets WHERE message_id = ?")
+                    .bind(upsert.envelope.id.as_str())
+                    .execute(&mut *tx)
+                    .await?;
                 insert_body_tx(&mut tx, &upsert.body).await?;
                 replace_message_labels_tx(&mut tx, &upsert.envelope.id, &upsert.label_ids).await?;
                 replace_message_keywords_tx(
@@ -183,6 +190,39 @@ mod tests {
             body,
             label_ids,
         }
+    }
+
+    /// A synced message whose id was deleted earlier (an IMAP UID reused
+    /// under the same folder) is live again, so the cleanup owed to the
+    /// deleted message is dropped with the upsert.
+    #[tokio::test]
+    async fn a_synced_message_cancels_cleanup_owed_to_its_id() {
+        let account = test_account();
+        let store = Store::in_memory().await.unwrap();
+        store.insert_account(&account).await.unwrap();
+        store
+            .apply_sync_upserts(&mut [upsert(&account, 1, vec![])])
+            .await
+            .unwrap();
+        store
+            .delete_messages_and_derived(&account.id, &["m-1".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(
+            store.list_pending_message_forgets(10).await.unwrap().len(),
+            1
+        );
+
+        store
+            .apply_sync_upserts(&mut [upsert(&account, 1, vec![])])
+            .await
+            .unwrap();
+
+        assert!(store
+            .list_pending_message_forgets(10)
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     /// The batched path must leave exactly the rows the per-message store

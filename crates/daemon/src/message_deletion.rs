@@ -35,7 +35,9 @@ pub(crate) async fn drain_pending_forgets(state: &AppState) {
         if message_ids.is_empty() {
             return;
         }
-        let failed = forget_deleted_messages(state, &message_ids).await;
+        let Some(failed) = forget_deleted_messages(state, &message_ids).await else {
+            return;
+        };
         let cleared = message_ids
             .iter()
             .filter(|id| !failed.contains(*id))
@@ -84,22 +86,41 @@ pub(crate) async fn drain_pending_forgets_periodically(state: std::sync::Arc<App
 }
 
 /// Drops deleted messages from the semantic index and removes their
-/// attachment files. Returns the messages whose files could not be removed.
-/// A semantic failure is logged and not retried: the index is rebuilt from
-/// the store, which no longer holds the messages, on the next rebuild or
-/// restart.
+/// attachment files. Returns the messages whose files could not be removed,
+/// or `None` when the store could not be read and nothing was done.
+///
+/// An id that names a stored message again (an IMAP UID reused for a new
+/// message) is skipped and counts as done: its files and index entries are
+/// the new message's. A semantic failure is logged and not retried: the
+/// index is rebuilt from the store, which no longer holds the messages, on
+/// the next rebuild or restart.
 async fn forget_deleted_messages(
     state: &AppState,
     message_ids: &[MessageId],
-) -> HashSet<MessageId> {
-    if let Err(error) = state.semantic.forget_messages(message_ids).await {
+) -> Option<HashSet<MessageId>> {
+    let live = match state.store.existing_message_ids(message_ids).await {
+        Ok(live) => live,
+        Err(error) => {
+            tracing::warn!(%error, "could not check deleted messages before their cleanup");
+            return None;
+        }
+    };
+    let gone = message_ids
+        .iter()
+        .filter(|id| !live.contains(*id))
+        .cloned()
+        .collect::<Vec<_>>();
+    if gone.is_empty() {
+        return Some(HashSet::new());
+    }
+    if let Err(error) = state.semantic.forget_messages(&gone).await {
         tracing::warn!(
-            messages = message_ids.len(),
+            messages = gone.len(),
             %error,
             "semantic index could not forget deleted messages"
         );
     }
-    remove_attachment_files(&state.attachment_dir(), message_ids).await
+    Some(remove_attachment_files(&state.attachment_dir(), &gone).await)
 }
 
 /// Removes the per-message directories the daemon writes under the
@@ -210,6 +231,45 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    /// A cleanup owed to a deleted message must not touch a new message that
+    /// took the same id (an IMAP UID reused under the same folder): its
+    /// files stay and the stale cleanup is dropped.
+    #[tokio::test]
+    async fn a_cleanup_owed_to_an_id_that_came_back_leaves_the_new_message_alone() {
+        let state = AppState::in_memory().await.unwrap();
+        let attachments = tempfile::tempdir().unwrap();
+        state.set_attachment_dir_for_tests(attachments.path().to_path_buf());
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let reused = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .provider_id("INBOX:1")
+            .build();
+        state.store.upsert_envelope(&reused).await.unwrap();
+        state
+            .store
+            .delete_messages_and_derived(&account_id, &["INBOX:1".to_string()])
+            .await
+            .unwrap();
+        // The new message under the same id arrives through a path that does
+        // not clear the owed cleanup, and downloads an attachment.
+        state.store.upsert_envelope(&reused).await.unwrap();
+        let files = attachments.path().join(reused.id.as_str());
+        std::fs::create_dir_all(&files).unwrap();
+        std::fs::write(files.join("new.pdf"), b"pdf").unwrap();
+
+        drain_pending_forgets(&state).await;
+
+        assert!(
+            files.join("new.pdf").exists(),
+            "the new message's file was removed"
+        );
+        let owed: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pending_message_forgets")
+            .fetch_one(state.store.reader())
+            .await
+            .unwrap();
+        assert_eq!(owed, 0, "the stale cleanup stayed owed");
     }
 
     /// A permission error leaves the files and the owed cleanup in place;

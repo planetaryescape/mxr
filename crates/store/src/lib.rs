@@ -45,6 +45,7 @@ mod rules;
 mod scheduled_sends;
 mod screener;
 mod search;
+mod search_reindex_pending;
 mod semantic;
 mod send_time;
 mod sender_profile;

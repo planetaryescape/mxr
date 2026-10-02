@@ -150,6 +150,7 @@ exclude = [
     "examples/adapter-skeleton",
     "examples/transport-skeleton",
     "fuzz",
+    "vendor/hnsw_rs",
 ]
 
 [workspace.package]
@@ -504,3 +505,10 @@ debug = "line-tables-only"
 
 [lints]
 workspace = true
+
+# hnsw_rs 0.3.4 drops layer-0 back-links for any chunk drawn at level >= 1, so
+# semantic search never returns those chunks (about 1% of a 5,000-vector index).
+# The vendored copy applies upstream's fix; see vendor/hnsw_rs/Cargo.toml.
+[patch.crates-io]
+hnsw_rs = { path = "vendor/hnsw_rs" }
+

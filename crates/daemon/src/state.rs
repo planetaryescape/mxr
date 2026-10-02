@@ -423,6 +423,11 @@ pub struct AppState {
     pub(crate) gist_queue: crate::handler::thread_gists::GistQueue,
     runtime: RwLock<ProviderRuntime>,
     provider_operation_locks: ParkingMutex<HashMap<AccountId, Arc<TokioMutex<()>>>>,
+    /// Held by a mutation's search reindex from its store reads through its
+    /// commit, so the last commit always comes from the freshest read. Holds
+    /// the ids a reindex skipped and could not mark in the store either, for
+    /// the next reindex to retry.
+    pub(crate) search_reindex: TokioMutex<HashSet<mxr_core::MessageId>>,
     sync_loop_accounts: ParkingMutex<HashSet<AccountId>>,
     /// Phase 3.1: tracks which accounts already have an IDLE watcher
     /// loop spawned. Mirrors `sync_loop_accounts` so a config reload
@@ -719,6 +724,7 @@ impl AppState {
                 default_send_provider: provider_setup.default_send_provider,
             }),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
+            search_reindex: TokioMutex::new(HashSet::new()),
             sync_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_notifies: ParkingMutex::new(HashMap::new()),
@@ -1842,6 +1848,7 @@ impl AppState {
                 default_send_provider: send_provider,
             }),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
+            search_reindex: TokioMutex::new(HashSet::new()),
             sync_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_notifies: ParkingMutex::new(HashMap::new()),
@@ -1915,6 +1922,7 @@ impl AppState {
                 default_send_provider: None,
             }),
             provider_operation_locks: ParkingMutex::new(HashMap::new()),
+            search_reindex: TokioMutex::new(HashSet::new()),
             sync_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_loop_accounts: ParkingMutex::new(HashSet::new()),
             idle_notifies: ParkingMutex::new(HashMap::new()),
@@ -2014,6 +2022,7 @@ impl AppState {
                     default_send_provider: send_provider,
                 }),
                 provider_operation_locks: ParkingMutex::new(HashMap::new()),
+                search_reindex: TokioMutex::new(HashSet::new()),
                 sync_loop_accounts: ParkingMutex::new(HashSet::new()),
                 idle_loop_accounts: ParkingMutex::new(HashSet::new()),
                 idle_notifies: ParkingMutex::new(HashMap::new()),

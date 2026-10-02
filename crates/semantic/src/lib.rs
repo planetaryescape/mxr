@@ -3368,6 +3368,40 @@ mod tests {
         );
     }
 
+    /// hnsw_rs 0.3.4 linked a chunk drawn at level >= 1 back from its
+    /// neighbours only on that top level, never on layer 0, so search could
+    /// not reach it. Each build draws levels at random, about 1 in 16 chunks
+    /// lands above layer 0, and 200 two-chunk builds missed one with
+    /// near-certainty before the vendored fix.
+    #[test]
+    fn every_indexed_chunk_is_reachable_whatever_level_it_draws() {
+        for _ in 0..200 {
+            let (tx, rx) = tokio::sync::mpsc::channel::<IndexRowBatch>(2);
+            let rows = [[1.0_f32, 0.0], [0.8, 0.6]]
+                .iter()
+                .map(|vector| SemanticIndexRow {
+                    chunk_id: SemanticChunkId::new(),
+                    message_id: MessageId::new(),
+                    source_kind: SemanticChunkSourceKind::Body,
+                    snippet: "chunk".into(),
+                    vector: f32s_to_blob(vector),
+                })
+                .collect();
+            tx.try_send(IndexRowBatch::Page(rows)).unwrap();
+            tx.try_send(IndexRowBatch::Done).unwrap();
+            let index = build_semantic_index(rx, 0).unwrap();
+
+            let mut found = index
+                .hnsw
+                .search(&[1.0, 0.0], SEARCH_EF, SEARCH_EF)
+                .into_iter()
+                .map(|neighbour| neighbour.d_id)
+                .collect::<Vec<_>>();
+            found.sort_unstable();
+            assert_eq!(found, vec![0, 1]);
+        }
+    }
+
     /// The ANN rebuild runs on a blocking thread, so a stale index has to keep
     /// answering searches until the new one is swapped in — otherwise a 100k
     /// vector rebuild would hide search for its whole duration.

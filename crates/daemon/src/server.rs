@@ -1845,6 +1845,9 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
         .await?;
     }
 
+    // The count check above cannot see a stale entry, only a missing one.
+    crate::handler::drain_search_reindex_pending(&state).await;
+
     if state.warm_lexical_search(true).await? {
         tracing::info!("Lexical search index warmed");
     }
@@ -2730,6 +2733,68 @@ mod tests {
             .await
             .expect("search after reindex");
         assert_eq!(results.results.len(), 1);
+    }
+
+    /// A stale entry leaves the document count unchanged, so only the
+    /// pending-reindex marks can bring startup to it.
+    #[tokio::test]
+    async fn startup_maintenance_reindexes_messages_marked_stale() {
+        let state = Arc::new(AppState::in_memory().await.expect("state"));
+        let stale = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(state.default_account_id())
+            .subject("staleword subject")
+            .build();
+        state
+            .search
+            .apply_batch(mxr_search::SearchUpdateBatch {
+                entries: vec![mxr_search::SearchIndexEntry {
+                    envelope: stale.clone(),
+                    body: None,
+                    reply_later: false,
+                }],
+                removed_message_ids: Vec::new(),
+            })
+            .await
+            .expect("index stale envelope");
+        let fresh = Envelope {
+            subject: "freshword subject".into(),
+            ..stale
+        };
+        state
+            .store
+            .upsert_envelope(&fresh)
+            .await
+            .expect("insert envelope");
+        state
+            .store
+            .mark_search_reindex_pending(std::slice::from_ref(&fresh.id))
+            .await
+            .expect("mark pending");
+
+        spawn_startup_maintenance(state.clone())
+            .await
+            .expect("join maintenance task");
+
+        let hits = |query: &'static str| {
+            let state = state.clone();
+            async move {
+                state
+                    .search
+                    .search(query, 10, 0, mxr_core::types::SortOrder::DateDesc)
+                    .await
+                    .expect("search")
+                    .results
+                    .len()
+            }
+        };
+        assert_eq!(hits("freshword").await, 1);
+        assert_eq!(hits("staleword").await, 0);
+        assert!(state
+            .store
+            .list_search_reindex_pending(10)
+            .await
+            .expect("list pending")
+            .is_empty());
     }
 
     #[tokio::test]

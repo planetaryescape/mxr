@@ -143,15 +143,50 @@ impl QueryBuilder {
         Box::new(TermQuery::new(term, IndexRecordOption::Basic))
     }
 
-    fn build_text_query(&self, text: &str) -> Box<dyn Query> {
-        let fields_boosts: Vec<(Field, f32)> = vec![
+    fn text_fields_boosts(&self) -> Vec<(Field, f32)> {
+        vec![
             (self.subject, 3.0),
             (self.from_name, 2.0),
             (self.from_email, 2.0),
             (self.snippet, 1.0),
             (self.body_text, 0.5),
             (self.attachment_filenames, 0.75),
-        ];
+        ]
+    }
+
+    /// Any of the words in free prose (a draft, a question), ranked by
+    /// relevance. Prose is not query syntax: "Re: ..." or "foo: bar" must
+    /// not parse as a field filter. Words are tokenized like bare `Text`
+    /// terms, deduplicated and capped at `max_words`, so a long paragraph
+    /// stays one flat, bounded OR. `None` when the text has no words.
+    pub fn build_any_words(&self, text: &str, max_words: usize) -> Option<Box<dyn Query>> {
+        let fields_boosts = self.text_fields_boosts();
+        let mut words: Vec<String> = Vec::new();
+        for token in tokenize_text_value(text) {
+            if words.len() == max_words {
+                break;
+            }
+            if !words.contains(&token) {
+                words.push(token);
+            }
+        }
+        if words.is_empty() {
+            return None;
+        }
+        let clauses = words
+            .iter()
+            .map(|word| {
+                (
+                    Occur::Should,
+                    self.build_text_token_query(&fields_boosts, word),
+                )
+            })
+            .collect();
+        Some(Box::new(BooleanQuery::new(clauses)))
+    }
+
+    fn build_text_query(&self, text: &str) -> Box<dyn Query> {
+        let fields_boosts = self.text_fields_boosts();
 
         let tokens = tokenize_text_value(text);
         if tokens.is_empty() {
@@ -732,6 +767,21 @@ mod tests {
         let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
         assert_eq!(results.results.len(), 1);
         assert_eq!(results.results[0].message_id, envelopes[0].id.as_str());
+    }
+
+    #[test]
+    fn any_words_reads_prose_as_words_not_query_syntax() {
+        let (idx, envelopes) = build_test_index();
+        let schema = MxrSchema::build();
+        let qb = QueryBuilder::new(&schema);
+
+        let query = qb
+            .build_any_words("Re: Deployment plan? foo: bar (draft) -minus", 32)
+            .unwrap();
+        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results[0].message_id, envelopes[0].id.as_str());
+
+        assert!(qb.build_any_words(" :: -- ", 32).is_none());
     }
 
     #[test]

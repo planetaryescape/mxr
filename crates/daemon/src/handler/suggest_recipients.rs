@@ -12,18 +12,22 @@ use mxr_core::id::AccountId;
 use mxr_core::types::Draft;
 use mxr_core::SortOrder;
 use mxr_protocol::{ResponseData, SuggestedRecipientData};
-use mxr_search::{MxrSchema, QueryBuilder, QueryNode};
+use mxr_search::{MxrSchema, QueryBuilder};
 use std::collections::{HashMap, HashSet};
 
 const MIN_SUPPORT_THREADS: usize = 3;
+/// Enough words to name a topic; a long first paragraph adds noise, not signal.
+const MAX_TOPIC_WORDS: usize = 32;
 
 pub(crate) async fn suggest(state: &AppState, draft: &Draft, limit: usize) -> super::HandlerResult {
-    let Some(topic) = topic_query(draft) else {
+    // Draft text is prose, not query syntax: search it as plain words.
+    let Some(query) =
+        QueryBuilder::new(&MxrSchema::build()).build_any_words(&topic_text(draft), MAX_TOPIC_WORDS)
+    else {
         return Ok(ResponseData::SuggestedCollaborators {
             suggestions: vec![],
         });
     };
-    let query = QueryBuilder::new(&MxrSchema::build()).build(&topic);
     let page = state
         .search
         .search_ast(query, 50, 0, SortOrder::Relevance)
@@ -103,23 +107,12 @@ struct Aggregate {
     display_name: Option<String>,
 }
 
-/// Subject and first paragraph as an OR of plain words. Built as an
-/// AST rather than a query string because draft text is prose, not
-/// query syntax: "Re: ..." or any "word: ..." would otherwise parse
-/// as a field filter and fail the whole request.
-fn topic_query(draft: &Draft) -> Option<QueryNode> {
+/// Words that pick out topic-similar threads: the subject and the first
+/// paragraph of the draft.
+fn topic_text(draft: &Draft) -> String {
     let analysis_text = draft.content.analysis_text();
     let first_para = analysis_text.split("\n\n").next().unwrap_or("");
-    let mut seen = HashSet::new();
-    draft
-        .subject
-        .split(|c: char| !c.is_alphanumeric())
-        .chain(first_para.split(|c: char| !c.is_alphanumeric()))
-        .filter(|word| !word.is_empty())
-        .map(str::to_lowercase)
-        .filter(|word| seen.insert(word.clone()))
-        .map(QueryNode::Text)
-        .reduce(|left, right| QueryNode::Or(Box::new(left), Box::new(right)))
+    format!("{} {first_para}", draft.subject)
 }
 
 async fn self_addresses_for(state: &AppState, account_id: &AccountId) -> HashSet<String> {

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.50](https://github.com/planetaryescape/mxr/compare/v0.6.49...v0.6.50) (2026-10-02)
+
+
+### Bug Fixes
+
+* compare the tagged name value in the release-please lock rule ([#281](https://github.com/planetaryescape/mxr/issues/281)) ([c02ed3c](https://github.com/planetaryescape/mxr/commit/c02ed3cd2cf64bca6515b1e897b578c69ac01e3d))
+* keep release-please off the vendored hnsw_rs version ([#279](https://github.com/planetaryescape/mxr/issues/279)) ([0dfbf53](https://github.com/planetaryescape/mxr/commit/0dfbf53da08f41dd407a6151eb2e5449382e86e4))
+
 ## [0.6.49](https://github.com/planetaryescape/mxr/compare/v0.6.48...v0.6.49) (2026-10-02)
 
 

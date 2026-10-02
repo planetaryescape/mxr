@@ -185,12 +185,15 @@ pub(crate) async fn extract_thread(
             extracted_at: now,
             source_hash,
         };
-        state
+        // Refused when a cited message was deleted while the model ran.
+        if state
             .store
-            .upsert_decision(&entry)
+            .upsert_extracted_decision(&entry)
             .await
-            .map_err(|e| e.to_string())?;
-        written += 1;
+            .map_err(|e| e.to_string())?
+        {
+            written += 1;
+        }
     }
     Ok(written)
 }

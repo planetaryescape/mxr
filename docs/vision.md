@@ -18,7 +18,7 @@ code. The design and its phases are in
 choices are D107 to D114 in
 [blueprint/15-decision-log.md](blueprint/15-decision-log.md).
 
-Almost none of that has shipped. v0.6.47 has the desk, Reading and Paper
+Almost none of that has shipped. Today mxr has the desk, Reading and Paper
 trail, the screener, promises and deliveries. The delight-plan principles
 below still govern how features get built: daemon first, CLI first, local
 first, exactness before cleverness.

@@ -12,7 +12,7 @@ actions for each: reply, archive, label.
 
 mxr's plan is to treat email as five apps that share one inbox, called
 modes. Each mode has its own view, its own unit on screen and its own
-verbs. Most of this is not built yet. In v0.6.47 you get the desk, Reading,
+verbs. Most of this is not built yet. Today you get the desk, Reading,
 Paper trail, the screener, promises and deliveries, and each of those
 already does part of one mode's job.
 
@@ -160,7 +160,7 @@ mxr semantic status
 
 ## What you can use today, mode by mode
 
-| Mode | Status in v0.6.47 | Shipped features that already serve it | Planned |
+| Mode | Status today | Shipped features that already serve it | Planned |
 |---|---|---|---|
 | Now | Partly built, as the desk | [The desk](/guides/desk/): You owe, Due, Waiting on and New from people lanes (`mxr desk`), with low tide when it's clear | Four fixed sections across the modes, at most ten items (phase 2) |
 | Messages | Not built as a mode | [Owed replies](/guides/forgotten-work/) (`mxr owed`), [Focus & reply](/guides/focus-and-reply/), the reply queue (`mxr replies`), [sender view](/guides/sender-view/), gists that say what a person asks | People as rows with their topics inside, Got it, thread-aware quote stripping (phase 3) |

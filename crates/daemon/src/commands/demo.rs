@@ -973,6 +973,20 @@ async fn seed_demo_todos(client: &mut IpcClient) -> anyhow::Result<()> {
         "fake",
         &mxr_provider_fake::fixtures::todo_demo_promise_provider_id(),
     );
+    // The hand-written 50-message showcase has no To do mail.
+    let exists = matches!(
+        client
+            .request(Request::GetEnvelope {
+                message_id: message_id.clone(),
+            })
+            .await?,
+        Response::Ok {
+            data: ResponseData::Envelope { .. },
+        }
+    );
+    if !exists {
+        return Ok(());
+    }
     for state in [
         TodoStateData::Open,
         TodoStateData::Done,

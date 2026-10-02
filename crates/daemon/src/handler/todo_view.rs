@@ -357,8 +357,14 @@ pub(super) fn start_of_week<Tz: TimeZone>(now: DateTime<Utc>, tz: &Tz) -> DateTi
     mxr_todo::timing::start_of_day(monday, tz, 0)
 }
 
-/// "3 things need you. Pay council tax first, act by Wed."
-pub(super) fn headline<Tz: TimeZone>(count: usize, first: Option<&TodoRecord>, tz: &Tz) -> String
+/// "3 things need you. Pay council tax first, act by Wed." The act-by part
+/// only when it's still ahead: a failed payment's is already now.
+pub(super) fn headline<Tz: TimeZone>(
+    count: usize,
+    first: Option<&TodoRecord>,
+    now: DateTime<Utc>,
+    tz: &Tz,
+) -> String
 where
     Tz::Offset: std::fmt::Display,
 {
@@ -367,6 +373,7 @@ where
     };
     let act_by = first
         .act_by_at
+        .filter(|at| *at > now)
         .map(|at| at.with_timezone(tz).format(", act by %a").to_string())
         .unwrap_or_default();
     if count == 1 {
@@ -404,18 +411,24 @@ fn lower_first(value: &str) -> String {
     }
 }
 
-/// "past invites": what the catch-up line calls a kind found already over.
-pub(super) fn already_over_label(kind: &str) -> &'static str {
-    match kind {
-        "bill" => "old bills",
-        "payment_failed" => "old payment problems",
-        "renewal" => "past renewals",
-        "document" => "past document renewals",
-        "rsvp" => "past invites",
-        "verify" => "expired links",
-        "sign" => "old signing requests",
-        "promise" => "older promises",
-        _ => "past to-dos",
+/// "1 past invite", "50 past invites": a kind the first run found already
+/// over, for the catch-up's line.
+pub(super) fn already_over_label(kind: &str, count: i64) -> String {
+    let (one, many) = match kind {
+        "bill" => ("old bill", "old bills"),
+        "payment_failed" => ("old payment problem", "old payment problems"),
+        "renewal" => ("past renewal", "past renewals"),
+        "document" => ("past document renewal", "past document renewals"),
+        "rsvp" => ("past invite", "past invites"),
+        "verify" => ("expired link", "expired links"),
+        "sign" => ("old signing request", "old signing requests"),
+        "promise" => ("older promise", "older promises"),
+        _ => ("past to-do", "past to-dos"),
+    };
+    if count == 1 {
+        one.to_string()
+    } else {
+        many.to_string()
     }
 }
 
@@ -555,7 +568,7 @@ mod tests {
             "Nothing needs you. Next: renew car insurance shows up Mon 12 Oct."
         );
         assert_eq!(
-            headline(1, bands.first_now.as_ref(), &London),
+            headline(1, bands.first_now.as_ref(), now, &London),
             "1 thing needs you. Pay council tax, act by Wed."
         );
     }

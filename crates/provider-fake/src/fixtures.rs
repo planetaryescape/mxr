@@ -8,6 +8,8 @@ mod todo_demo;
 /// The provider id of the demo's sent message that promises the signed
 /// engagement form, which `mxr demo` keeps as an undated promise. Seeded
 /// messages are numbered from 1: the shipping mail, then the To do mail.
+/// Only the generated demo carries the To do mail; the hand-written
+/// 50-message showcase keeps its own mix.
 pub fn todo_demo_promise_provider_id() -> String {
     format!(
         "demo-msg-{}",
@@ -1598,11 +1600,6 @@ fn push_delivery_demo_threads(
         envelopes.push(envelope);
         *msg_num += 1;
     }
-    for (envelope, body) in todo_demo::todo_demo_messages(account_id, self_addr, now, *msg_num) {
-        bodies.insert(envelope.provider_id.clone(), body);
-        envelopes.push(envelope);
-        *msg_num += 1;
-    }
 }
 
 /// Materialising variant of [`build_demo_msg`] for the curated dataset.
@@ -2047,6 +2044,31 @@ mod tests {
         assert!(counterparties.contains("shipment-tracking@amazon.com"));
         assert!(counterparties.contains("mcinfo@ups.com"));
         assert!(counterparties.contains("auto-reply@usps.com"));
+    }
+
+    #[test]
+    fn generated_demo_carries_the_to_do_mail_and_names_the_promise() {
+        let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
+        let stream = DemoFixtureStream::new(&account_id, 500);
+        let seeded = stream.page(0, 12);
+        let subjects: Vec<&str> = seeded.iter().map(|(env, _)| env.subject.as_str()).collect();
+        assert!(subjects.contains(&"Your council tax bill"));
+        assert!(subjects.contains(&"We can't process your payment"));
+        let (bill, body) = seeded
+            .iter()
+            .find(|(env, _)| env.subject == "Your council tax bill")
+            .expect("the bill");
+        assert!(body
+            .text_html
+            .as_deref()
+            .is_some_and(|html| html.contains("\"Invoice\"")));
+        assert!(body.metadata.auth_results[0].contains("dmarc=pass"));
+        assert!(bill.date < Utc::now());
+        let (promise, _) = stream
+            .find(&todo_demo_promise_provider_id())
+            .expect("the promise message");
+        assert!(promise.flags.contains(MessageFlags::SENT));
+        assert!(promise.subject.contains("Engagement form"));
     }
 
     #[test]

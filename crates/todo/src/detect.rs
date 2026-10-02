@@ -383,29 +383,37 @@ impl Context<'_> {
         detection.amount = amount;
     }
 
-    fn set_link(&self, detection: &mut Detection, url: Option<String>) {
-        let link = url
-            .and_then(|url| {
-                let host = url::Url::parse(&url).ok()?.host_str()?.to_ascii_lowercase();
-                Some(LinkCandidate {
-                    url,
-                    anchor: String::new(),
-                    host,
-                })
+    /// The one link: the markup's own when it names one, else the link
+    /// whose words match the verb.
+    fn set_link(&self, detection: &mut Detection, markup_url: Option<String>) {
+        let from_markup = markup_url.and_then(|url| {
+            let host = url::Url::parse(&url).ok()?.host_str()?.to_ascii_lowercase();
+            Some(LinkCandidate {
+                url,
+                anchor: String::new(),
+                host,
             })
-            .or_else(|| pick_link(self.input.body_html, self.input.body_text, detection.kind));
-        if let Some(link) = &link {
-            let evidence = if link.anchor.is_empty() {
-                "the link in the markup".to_string()
-            } else {
-                format!("the link \"{}\"", clip(&link.anchor, 60))
-            };
-            detection.fields.set(
-                "action_url",
-                FieldProvenance::with_evidence(FieldSource::Rule, evidence),
-            );
+        });
+        let provenance = match &from_markup {
+            Some(_) => FieldProvenance::with_evidence(FieldSource::Schema, "the markup's url"),
+            None => {
+                let Some(link) =
+                    pick_link(self.input.body_html, self.input.body_text, detection.kind)
+                else {
+                    return;
+                };
+                let provenance = FieldProvenance::with_evidence(
+                    FieldSource::Rule,
+                    format!("the link \"{}\"", clip(&link.anchor, 60)),
+                );
+                detection.link = Some(link);
+                provenance
+            }
+        };
+        if from_markup.is_some() {
+            detection.link = from_markup;
         }
-        detection.link = link;
+        detection.fields.set("action_url", provenance);
     }
 
     fn schema_todo<Tz>(&self, todo: SchemaTodo, tz: &Tz, anchor: &DateTime<Tz>) -> Detection
@@ -433,14 +441,18 @@ impl Context<'_> {
                 due_text,
                 url,
             } => {
-                let thing = bill_thing(self.input.subject)
-                    .or_else(|| description.as_deref().and_then(bill_thing))
-                    .or_else(|| {
-                        description
-                            .as_deref()
-                            .filter(|d| short_phrase(d))
-                            .map(lower_first)
-                    });
+                let (thing, title_from) = match bill_thing(self.input.subject) {
+                    Some(thing) => (Some(thing), "the subject"),
+                    None => (
+                        description.as_deref().and_then(bill_thing).or_else(|| {
+                            description
+                                .as_deref()
+                                .filter(|d| short_phrase(d))
+                                .map(lower_first)
+                        }),
+                        "Invoice.description",
+                    ),
+                };
                 let party = provider.clone().unwrap_or_else(|| self.party());
                 let title = format!("Pay {}", thing.clone().unwrap_or_else(|| party.clone()));
                 let evidence = format!("Invoice from {party}");
@@ -451,6 +463,12 @@ impl Context<'_> {
                     Origin::Schema,
                     &evidence,
                 );
+                if thing.is_some() {
+                    detection.fields.set(
+                        "title",
+                        FieldProvenance::with_evidence(FieldSource::Rule, title_from),
+                    );
+                }
                 if let Some(provider) = provider {
                     detection.counterparty = Some(provider);
                     detection.fields.set(
@@ -471,9 +489,9 @@ impl Context<'_> {
                 }
                 match schema_due(due, due_text) {
                     Some(due) => {
-                        let words = due.words.clone();
+                        let day = due.at.with_timezone(tz).format("%-d %B %Y").to_string();
                         self.set_due(&mut detection, Some(due), FieldSource::Schema);
-                        detection.reason = format!("Invoice due {words} (schema.org)");
+                        detection.reason = format!("an invoice due {day} (schema.org)");
                     }
                     None => {
                         let due = self.due(

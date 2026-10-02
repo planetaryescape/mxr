@@ -566,17 +566,18 @@ fn why_text(todo: &TodoData) -> String {
         let evidence = field
             .evidence
             .as_deref()
-            .map(|evidence| format!(": \"{evidence}\""))
+            .map(|evidence| format!(": {evidence}"))
             .unwrap_or_default();
         let unchecked = if field.checked {
             ""
         } else {
-            " (unchecked: confirm it with `mxr todo edit`)"
+            "\n                  unchecked: confirm it with `mxr todo edit`"
         };
         let _ = writeln!(
             out,
-            "  {:<15} from {}{evidence}{unchecked}",
+            "  {:<14} {:<24} from {}{evidence}{unchecked}",
             field_label(&field.field),
+            field_value(todo, &field.field),
             field.source_label
         );
     }
@@ -603,6 +604,38 @@ fn why_text(todo: &TodoData) -> String {
         out.push_str("\nYou made or changed this to-do, so it never expires.\n");
     }
     out
+}
+
+/// The field's value as the row shows it.
+fn field_value(todo: &TodoData, field: &str) -> String {
+    let day = |at: Option<chrono::DateTime<chrono::Utc>>| {
+        at.map(|at| {
+            at.with_timezone(&chrono::Local)
+                .format("%a %-d %b")
+                .to_string()
+        })
+        .unwrap_or_default()
+    };
+    match field {
+        "title" => todo.title.clone(),
+        "kind" => todo.kind.clone(),
+        "counterparty" => todo.counterparty.clone().unwrap_or_default(),
+        "amount" => todo
+            .amount
+            .as_ref()
+            .map(|amount| amount.display.clone())
+            .unwrap_or_default(),
+        "due_at" => day(todo.due_at),
+        "act_by_at" => day(todo.act_by_at),
+        "surface_at" => day(todo.surface_at),
+        "relevant_until" => day(todo.relevant_until),
+        "action_url" => todo
+            .action
+            .as_ref()
+            .and_then(|action| action.domain.clone())
+            .unwrap_or_default(),
+        _ => String::new(),
+    }
 }
 
 fn field_label(field: &str) -> &str {

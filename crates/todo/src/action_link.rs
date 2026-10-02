@@ -164,7 +164,7 @@ pub fn pick_link(html: Option<&str>, text: &str, kind: TodoKind) -> Option<LinkC
     }
     for found in BARE_URL.find_iter(text) {
         let from = floor_char_boundary(text, found.start().saturating_sub(NEARBY));
-        let before = text[from..found.start()].trim().to_string();
+        let before = last_clause(&text[from..found.start()]);
         let score = if verb.is_match(&before) {
             2
         } else {
@@ -173,6 +173,16 @@ pub fn pick_link(html: Option<&str>, text: &str, kind: TodoKind) -> Option<LinkC
         consider(score, found.as_str(), before);
     }
     best.map(|(_, candidate)| candidate)
+}
+
+/// The words just before a bare URL, from the last sentence break: "Update
+/// your payment details to keep listening".
+fn last_clause(before: &str) -> String {
+    let clause = before
+        .rsplit(['.', '\n', '!', '?'])
+        .find(|part| !part.trim().is_empty())
+        .unwrap_or(before);
+    clause.trim().trim_end_matches(':').trim().to_string()
 }
 
 fn floor_char_boundary(text: &str, mut index: usize) -> usize {

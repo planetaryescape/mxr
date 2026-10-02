@@ -172,7 +172,7 @@ pub(super) async fn runway_at(
             .await?
             == 0;
     let bands = bands(records, now, &Local);
-    let headline = headline(bands.now.len(), bands.first_now.as_ref(), &Local);
+    let headline = headline(bands.now.len(), bands.first_now.as_ref(), now, &Local);
     let empty_state = bands
         .now
         .is_empty()
@@ -266,7 +266,7 @@ pub(super) async fn get_catchup(state: &AppState, account_id: Option<&AccountId>
         .await?
         .into_iter()
         .map(|(kind, count)| TodoKindCountData {
-            label: already_over_label(&kind).to_string(),
+            label: already_over_label(&kind, count),
             kind,
             count: u32::try_from(count).unwrap_or(u32::MAX),
         })

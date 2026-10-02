@@ -96,8 +96,7 @@ async fn main() -> anyhow::Result<()> {
             "Past window in Now (must be 0)",
             "state = 'open' AND COALESCE(catchup, '') <> 'pending'
              AND COALESCE(scheduled_for, surface_at) <= ?1
-             AND relevant_until IS NOT NULL AND relevant_until < ?1
-             AND kind NOT IN ('bill', 'payment_failed', 'promise')",
+             AND relevant_until IS NOT NULL AND relevant_until < ?1",
         ),
     ];
     println!("\nband | kind | count");

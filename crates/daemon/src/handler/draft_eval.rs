@@ -72,7 +72,11 @@ async fn replay(
         placeholders: 0,
         error: None,
     };
-    let envelopes: Vec<_> = match state.store.get_thread_envelopes(&sample.thread_id).await {
+    let envelopes: Vec<_> = match state
+        .store
+        .get_thread_envelopes_for_model(&sample.thread_id)
+        .await
+    {
         Ok(envelopes) => envelopes
             .into_iter()
             .filter(|envelope| envelope.date < sample.replied_at)

@@ -64,7 +64,7 @@ pub(crate) async fn extract_thread(
 ) -> Result<usize, String> {
     let envelopes = state
         .store
-        .get_thread_envelopes(thread_id)
+        .get_thread_envelopes_for_model(thread_id)
         .await
         .map_err(|e| e.to_string())?;
     if envelopes.is_empty() {
@@ -564,6 +564,33 @@ mod tests {
             summary.skipped
         );
         assert_eq!(summary.errors, 0);
+    }
+
+    /// One trashed message in a live thread stays out of the transcript, so
+    /// the model cannot cite it and no decision rests on it.
+    #[tokio::test]
+    async fn extract_thread_leaves_a_trashed_message_out_of_the_transcript() {
+        let canned_for = |id: &MessageId| {
+            format!(
+                r#"{{"decisions":[{{"decision":"Use Postgres","evidence_msg_ids":["{id}"]}}]}}"#
+            )
+        };
+        let (state, account, thread, ids, _) = fixture(r#"{"decisions":[]}"#).await;
+        state
+            .store
+            .move_to_trash(&ids[0], mxr_core::types::EventSource::User)
+            .await
+            .unwrap();
+        let stub = Arc::new(CannedLlm {
+            body: Mutex::new(canned_for(&ids[0])),
+            calls: Mutex::new(0),
+        });
+        state.llm.replace(stub.clone());
+
+        let n = extract_thread(&state, &account, &thread).await.unwrap();
+
+        assert_eq!(n, 0, "a decision citing the trashed message was stored");
+        assert_eq!(*stub.calls.lock().unwrap(), 1, "the live messages still go");
     }
 
     #[tokio::test]

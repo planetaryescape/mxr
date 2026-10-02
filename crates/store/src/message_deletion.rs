@@ -718,6 +718,59 @@ mod tests {
         );
     }
 
+    /// A model reading a thread with one live and one trashed message reads
+    /// only the live one; a thread that is all Trash is an explicit choice
+    /// and comes back whole.
+    #[tokio::test]
+    async fn the_model_view_of_a_thread_leaves_out_trash_and_spam() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let mixed = ThreadId::new();
+        let live = inbound(&store, &account.id, "live", &mixed, "a@example.com").await;
+        let trashed = inbound(&store, &account.id, "trashed", &mixed, "b@example.com").await;
+        store
+            .move_to_trash(&trashed, mxr_core::types::EventSource::User)
+            .await
+            .unwrap();
+        let all_trash = ThreadId::new();
+        let only = inbound(&store, &account.id, "only", &all_trash, "c@example.com").await;
+        store
+            .move_to_trash(&only, mxr_core::types::EventSource::User)
+            .await
+            .unwrap();
+
+        let ids_of = |envelopes: Vec<mxr_core::types::Envelope>| {
+            envelopes
+                .into_iter()
+                .map(|envelope| envelope.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            ids_of(store.get_thread_envelopes_for_model(&mixed).await.unwrap()),
+            vec![live]
+        );
+        assert_eq!(
+            ids_of(
+                store
+                    .get_thread_envelopes_for_model(&all_trash)
+                    .await
+                    .unwrap()
+            ),
+            vec![only]
+        );
+
+        // The relationship summary's samples follow the same rule.
+        let samples = store
+            .recent_contact_messages(&account.id, "b@example.com", 10)
+            .await
+            .unwrap();
+        assert!(
+            samples.is_empty(),
+            "trashed mail reached the summary samples"
+        );
+    }
+
     #[tokio::test]
     async fn deleting_ids_the_store_does_not_hold_changes_nothing() {
         let store = Store::in_memory().await.unwrap();

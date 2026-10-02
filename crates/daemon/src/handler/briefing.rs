@@ -38,7 +38,10 @@ pub(crate) async fn get_thread_briefing(
     thread_id: &ThreadId,
     refresh: bool,
 ) -> super::HandlerResult {
-    let envelopes = state.store.get_thread_envelopes(thread_id).await?;
+    let envelopes = state
+        .store
+        .get_thread_envelopes_for_model(thread_id)
+        .await?;
     if envelopes.is_empty() {
         return Err(format!("thread {thread_id} not found").into());
     }

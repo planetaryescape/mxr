@@ -45,7 +45,7 @@ pub(crate) async fn check_answer_coverage(
     draft: &Draft,
     thread_id: &mxr_core::ThreadId,
 ) -> Vec<DraftSafetyIssue> {
-    let envelopes = match state.store.get_thread_envelopes(thread_id).await {
+    let envelopes = match state.store.get_thread_envelopes_for_model(thread_id).await {
         Ok(rows) if !rows.is_empty() => rows,
         Ok(_) => return Vec::new(),
         Err(e) => {

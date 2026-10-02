@@ -137,6 +137,18 @@ impl super::Store {
     }
 }
 
+/// `alias`'s message is outside Trash and Spam, by flag and by label: the
+/// mail background model work may read. The flag mask is a constant, so it
+/// is written into the SQL rather than bound.
+pub(crate) fn live_mail_sql(alias: &str) -> String {
+    format!(
+        "({alias}.flags & {flags}) = 0 AND NOT EXISTS (
+            SELECT 1 FROM message_labels lml JOIN labels ll ON ll.id = lml.label_id
+            WHERE lml.message_id = {alias}.id AND ll.provider_id IN ('TRASH', 'SPAM'))",
+        flags = hidden_flags()
+    )
+}
+
 fn hidden_flags() -> i64 {
     i64::from((MessageFlags::TRASH | MessageFlags::SPAM).bits())
 }

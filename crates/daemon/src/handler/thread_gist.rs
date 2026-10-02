@@ -130,7 +130,10 @@ pub(super) async fn thread_envelopes(
     state: &AppState,
     thread_id: &ThreadId,
 ) -> Result<Vec<Envelope>, HandlerError> {
-    let mut envelopes = state.store.get_thread_envelopes(thread_id).await?;
+    let mut envelopes = state
+        .store
+        .get_thread_envelopes_for_model(thread_id)
+        .await?;
     envelopes.sort_by_key(|envelope| envelope.date);
     Ok(envelopes)
 }

@@ -12,20 +12,21 @@ use mxr_core::id::AccountId;
 use mxr_core::types::Draft;
 use mxr_core::SortOrder;
 use mxr_protocol::{ResponseData, SuggestedRecipientData};
+use mxr_search::{MxrSchema, QueryBuilder, QueryNode};
 use std::collections::{HashMap, HashSet};
 
 const MIN_SUPPORT_THREADS: usize = 3;
 
 pub(crate) async fn suggest(state: &AppState, draft: &Draft, limit: usize) -> super::HandlerResult {
-    let query = topic_query(draft);
-    if query.trim().is_empty() {
+    let Some(topic) = topic_query(draft) else {
         return Ok(ResponseData::SuggestedCollaborators {
             suggestions: vec![],
         });
-    }
+    };
+    let query = QueryBuilder::new(&MxrSchema::build()).build(&topic);
     let page = state
         .search
-        .search(&query, 50, 0, SortOrder::Relevance)
+        .search_ast(query, 50, 0, SortOrder::Relevance)
         .await?;
 
     let self_addresses = self_addresses_for(state, &draft.account_id).await;
@@ -102,17 +103,23 @@ struct Aggregate {
     display_name: Option<String>,
 }
 
-fn topic_query(draft: &Draft) -> String {
-    let first_para = draft
-        .content
-        .analysis_text()
-        .split("\n\n")
-        .next()
-        .unwrap_or("")
-        .replace('\n', " ");
-    format!("{} {}", draft.subject.trim(), first_para.trim())
-        .trim()
-        .to_string()
+/// Subject and first paragraph as an OR of plain words. Built as an
+/// AST rather than a query string because draft text is prose, not
+/// query syntax: "Re: ..." or any "word: ..." would otherwise parse
+/// as a field filter and fail the whole request.
+fn topic_query(draft: &Draft) -> Option<QueryNode> {
+    let analysis_text = draft.content.analysis_text();
+    let first_para = analysis_text.split("\n\n").next().unwrap_or("");
+    let mut seen = HashSet::new();
+    draft
+        .subject
+        .split(|c: char| !c.is_alphanumeric())
+        .chain(first_para.split(|c: char| !c.is_alphanumeric()))
+        .filter(|word| !word.is_empty())
+        .map(str::to_lowercase)
+        .filter(|word| seen.insert(word.clone()))
+        .map(QueryNode::Text)
+        .reduce(|left, right| QueryNode::Or(Box::new(left), Box::new(right)))
 }
 
 async fn self_addresses_for(state: &AppState, account_id: &AccountId) -> HashSet<String> {
@@ -326,6 +333,41 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn reply_subject_and_colon_body_do_not_break_the_search() {
+        let (state, account) = fixture().await;
+        for _ in 0..3 {
+            let thread = ThreadId::new();
+            let env = envelope(
+                &account,
+                &thread,
+                EnvelopeFixture {
+                    from: "alice@example.com",
+                    to: vec!["user@example.com", "bob@example.com"],
+                    cc: vec![],
+                    bcc: vec![],
+                    subject: "Contract renewal",
+                    body: "contract renewal terms",
+                },
+            );
+            index(&state, &env, "contract renewal terms").await;
+        }
+        let d = draft(
+            &account,
+            "Re: Contract renewal",
+            "foo: bar (draft) \"quoted AND -minus\" +plus",
+            vec!["alice@example.com"],
+        );
+        let resp = suggest(&state, &d, 5).await.unwrap();
+        let ResponseData::SuggestedCollaborators { suggestions } = resp else {
+            panic!("unexpected: {resp:?}");
+        };
+        assert!(
+            suggestions.iter().any(|s| s.email == "bob@example.com"),
+            "bob expected, got {suggestions:?}"
+        );
     }
 
     #[tokio::test]

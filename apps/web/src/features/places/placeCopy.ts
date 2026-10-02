@@ -101,8 +101,10 @@ export function sweepConfirmLabel(preview: SweepPreview, wholePlace: boolean): s
  * what stays, and how to get it back.
  */
 export function sweepNote(preview: SweepPreview, shownHere?: number): string {
+  // With nothing open on screen there is no "here" to compare against; the
+  // title already says how many the sweep archives.
   const reach =
-    shownHere !== undefined && shownHere < preview.count
+    shownHere !== undefined && shownHere > 0 && shownHere < preview.count
       ? `Archives ${plural(preview.count, "message")}, ${shownHere.toLocaleString()} shown here. `
       : "";
   const stays =

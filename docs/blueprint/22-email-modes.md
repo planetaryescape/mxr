@@ -226,7 +226,7 @@ candidates, when its pick fails the verbatim check, or when the user
 marks a field wrong; the escalated answer is cached like any other and its
 provenance chip names the stronger model. Model names are config defaults
 the user can change, never hard-coded: on OpenAI today that is GPT-6 Luna
-for the smart tier and GPT-6.1 Sol or GPT-6 Astra (the flagship) for
+for the smart tier and GPT-6.1 Sol (GPT-6 Astra available in config) for
 `escalate`, per the OpenAI models page on 2026-10-02.
 
 ## Every view follows the same trust rules
@@ -1342,36 +1342,45 @@ provenance on every model-placed item.
   makes each one a third of a section. That is why the eval harness lands
   in phase 2.
 
-## Unresolved questions
+## Decisions made on BK's behalf
 
-Research settled what the earlier draft asked (rows per person, archive on
-last done, Screener, one To do list, lead times, digest cadence). What is
-left is a values call, or needs BK's real mail.
+BK asked on 2026-10-02 for these to be decided for him ("review and decide
+for me, I just want a working app"). Each follows the research and the
+rules above; D117 records them.
 
-- How strict is the pay-link gate: DMARC plus domain match, also require
-  earlier mail from that domain, or never show a one-click money button?
-- Should To do's Monday headline show a weekly money total ("£554 out this
-  week"), or does it read as financial advice?
-- Archive on last done is on by default on product precedent (Superhuman,
-  Shortwave), not a study. Keep it on for you?
-- Where do Reading highlights go: Archive search, a Markdown export, or
-  Obsidian?
-- What false-positive bar must To do meet before it gets a rail badge?
-  todo.md suggests under one false to-do a week on your mail.
-- Should person merge across addresses be automatic on exact name plus
-  "you've written to both", or manual only?
-- Is one key (`.`) right for Got it, which sends mail after a countdown, or
-  should it be a chord?
-- Reading's engagement tracking (dwell, scroll) is local and powers ranking
-  and unsubscribe evidence. On by default, and separate from
-  `MXR_ACTIVITY`?
-- Which records count for your taxes, and should Archive ever suggest
-  deleting old statements?
-- Should a detected promise ("I'll send it Friday") expire like a detected
-  bill, or is anything you said to a person exempt, like a to-do you made?
-- Is a 14-day catch-up right for you, or should the first run ask you to
-  pick the window, as Get Me To Zero does?
-- "3 expired since you last looked": keep the line, or expire silently
-  with the Expired list one key away?
-- Should a bill past due plus 14 days expire, or stay as "was due" until
-  you act, accepting the pile?
+- **Pay-link gate.** A one-click pay button needs three things: DMARC pass,
+  the link's registrable domain matching the sender's, and earlier mail
+  from that domain. Anything else shows "Open email to pay".
+- **No weekly money total.** Per-item amounts only. A running total reads
+  as financial advice and adds worry without an action.
+- **Archive on last done.** Stays on by default. Toasts say which happened,
+  and `modes.archive_on_last_done` turns it off.
+- **Reading highlights.** They go to Archive search and a Markdown export.
+  Obsidian waits until someone asks.
+- **To do badge.** To do earns a rail badge only below one false to-do a
+  week on BK's mail, measured by `mxr modes eval`.
+- **Person merge.** Manual only. mxr suggests a merge when the names match
+  exactly and you've written to both addresses, but never merges on its own.
+- **Got it.** Stays on `.`, with the preview and the send countdown that
+  can be undone.
+- **Reading engagement tracking.** On by default and local, and switched
+  off by the same `MXR_ACTIVITY=off`, so there is one privacy switch.
+- **Records for taxes.** Invoices, receipts and statements go into the
+  export. Archive never suggests deleting old statements.
+- **Promises you made.** These never expire silently. Undated ones go
+  through the one catch-up; dated ones stay "was due" until you act.
+- **Catch-up window.** The first run asks once, defaulting to 14 days.
+- **Expiry.** The "N expired since you last looked" line stays, with the
+  Expired list one key away.
+- **Bills past due.** They stay "was due" until you act; they don't expire.
+- **Escalation model.** The default on OpenAI is GPT-6.1 Sol, the model
+  OpenAI pitches as balancing intelligence and cost. GPT-6 Astra stays
+  available in config.
+- **TypeSafe Jev.** Not used. Its DPA covers only the customer and the
+  customer's users, not third parties in mail.
+- **Index recipes.** They stay in code as a versioned table and are not
+  user config.
+- **Gmail mail deleted while offline.** Deferred until after phase 1. The
+  design is in `docs/issues/deletion-clears-derived-data.md`.
+- **Sign in with ChatGPT SDK.** Not built. See
+  `docs/extractable-crates/14-chatgpt-sign-in-sdk.md`.

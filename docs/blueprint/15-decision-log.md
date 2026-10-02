@@ -834,3 +834,21 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 **Why**: BK, 2026-10-02: "when we do the first classification I imagine there'll be tonnes of incoming todos and all that of old things." His store has 1,842 open promises, 93% undated, 90 of them from the last 14 days; as specified, `ListTodos` would open with all of them. Every product that handles a backlog bounds the window (HEY Screener 90 days, Superhuman a chosen time frame, Sunsama four days), saves what matters by a cheap signal, and makes the bulk action reversible; Todoist's own writer abandoned the app at around 50 overdue tasks. Over 90% of email replies come within a day (Kooti et al., WWW 2015), so an undated item older than two weeks is rarely still live. Model output on mail past its window would be discarded, so spending it there is waste; 90 days on BK's store is 4,605 messages against 110,285. Linear skips already-imported issues on re-import, the precedent for re-runs never re-flooding.
 
 **Trade-offs accepted**: A live undated item older than 14 days is missed until a new message revives it or the user restores it from the Expired list. The IMAP adapter must page newest first, since its initial sync fetches ascending UIDs and returns the folder in one batch today. The cap of 25 is judgement, and on BK's mail undated promise precision decides whether the catch-up fits under it.
+
+## D117: The open modes questions are decided, so building can start
+
+**Chosen**: The values calls left in blueprint 22 are decided as listed in its "Decisions made on BK's behalf" section.
+- **Money and links:** a strict pay-link gate, and no weekly money total.
+- **Archive and Reading:** archive on last done stays on; highlights go to Archive search and a Markdown export.
+- **Accuracy and identity:** a measured bar for the To do badge, and manual person merge with suggestions.
+- **Interaction and privacy:** Got it stays on `.`; Reading engagement tracking is governed by `MXR_ACTIVITY`.
+- **Expiry and first run:** promises and bills never expire silently; the catch-up window is asked once, defaulting to 14 days; the expired line stays.
+- **Models and indexing:** GPT-6.1 Sol as the default escalation model, no TypeSafe Jev, and index recipes in code.
+- **Deferred or declined:** Gmail offline deletion is deferred, and the Sign in with ChatGPT SDK is not built.
+
+**Considered**: Leaving them open for BK.
+
+**Why**: BK, 2026-10-02: "review and decide for me, I just want a working app." Each choice follows the research notes. Where they were silent, it takes the option that keeps data and asks less of the user.
+
+**Trade-offs accepted**: Several defaults (the badge bar, the 14-day catch-up, Sol) are judgement calls that later use may overturn; each is a config value or one line in the plan.
+

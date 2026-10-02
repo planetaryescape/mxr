@@ -117,7 +117,7 @@ where
                 value
             }
         };
-        summary.add(&classify(store, cfg, row, run_in_progress).await?);
+        summary.add(&classify_or_skip(store, cfg, row, run_in_progress).await);
     }
     if summary.catchup > 0 {
         summary.catchup_overflow += store.trim_todo_catchup(cfg.catchup_max, cfg.now).await?;
@@ -186,7 +186,7 @@ where
         let cursor = (last.date, last.id.clone());
         let mut page_summary = PassSummary::default();
         for row in &page {
-            page_summary.add(&classify(store, cfg, row, true).await?);
+            page_summary.add(&classify_or_skip(store, cfg, row, true).await);
         }
         if page_summary.catchup > 0 {
             page_summary.catchup_overflow +=
@@ -205,6 +205,30 @@ where
         reached: run.cursor.map(|(date, _)| date),
         summary,
     })
+}
+
+/// [`classify`], logging a failure and moving on, so one unreadable message
+/// can't stall the first run or the post-sync scan.
+async fn classify_or_skip<Tz>(
+    store: &Store,
+    cfg: &PassConfig<Tz>,
+    row: &TodoScanRow,
+    run_in_progress: bool,
+) -> PassSummary
+where
+    Tz: TimeZone,
+    Tz::Offset: std::fmt::Display,
+{
+    match classify(store, cfg, row, run_in_progress).await {
+        Ok(summary) => summary,
+        Err(error) => {
+            tracing::warn!(message = %row.id, %error, "to-do classification skipped a message");
+            PassSummary {
+                scanned: 1,
+                ..PassSummary::default()
+            }
+        }
+    }
 }
 
 /// Read one message and write what it holds: a to-do, or a confirmation

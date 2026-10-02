@@ -88,7 +88,8 @@ pub(crate) async fn tick(
         if !account.enabled {
             continue;
         }
-        let progress = pass::run_first_run(
+        // One account's failure never stops the others or the sweep.
+        let progress = match pass::run_first_run(
             &state.store,
             &cfg,
             &account.id,
@@ -96,7 +97,13 @@ pub(crate) async fn tick(
             FIRST_RUN_PAGES_PER_TICK,
         )
         .await
-        .map_err(|error| error.to_string())?;
+        {
+            Ok(progress) => progress,
+            Err(error) => {
+                tracing::warn!(account = %account.id, %error, "to-do first run failed");
+                continue;
+            }
+        };
         running |= !progress.complete;
         if progress.summary.created > 0 {
             tracing::info!(
@@ -111,10 +118,14 @@ pub(crate) async fn tick(
         }
         let fingerprint = state.store.promise_fingerprint(&account.id).await?;
         if promise_fingerprints.get(&account.id) != Some(&fingerprint) {
-            pass::sync_promises(&state.store, &cfg, &account.id, !progress.complete)
-                .await
-                .map_err(|error| error.to_string())?;
-            promise_fingerprints.insert(account.id.clone(), fingerprint);
+            match pass::sync_promises(&state.store, &cfg, &account.id, !progress.complete).await {
+                Ok(_) => {
+                    promise_fingerprints.insert(account.id.clone(), fingerprint);
+                }
+                Err(error) => {
+                    tracing::warn!(account = %account.id, %error, "to-do promise mirror failed");
+                }
+            }
         }
     }
     let swept = pass::sweep(&state.store, now)
@@ -156,13 +167,16 @@ pub(super) async fn runway_at(
         .list_runway_todos(account_id, start_of_week(now, &Local))
         .await?;
     let catchup_count = state.store.count_catchup_todos(account_id).await?;
-    let last_seen = state.store.mode_last_viewed(MODE).await?;
+    // Seen per scope: opening one account's To do leaves the others' counts.
+    let seen_key =
+        account_id.map_or_else(|| MODE.to_string(), |account| format!("{MODE}:{account}"));
+    let last_seen = state.store.mode_last_viewed(&seen_key).await?;
     let expired_since = state
         .store
         .count_todos_expired_since(account_id, last_seen.unwrap_or(DateTime::UNIX_EPOCH))
         .await?;
     if mark_seen {
-        state.store.set_mode_viewed(MODE, now).await?;
+        state.store.set_mode_viewed(&seen_key, now).await?;
     }
     let never_had_any = records.is_empty()
         && catchup_count == 0
@@ -391,6 +405,12 @@ fn simulate_state(mut record: TodoRecord, to: TodoState, now: DateTime<Utc>) -> 
             record.dismissed_at = None;
             record.expired_at = None;
             record.user_edited = true;
+            if matches!(
+                record.catchup,
+                Some(TodoCatchup::LetGo | TodoCatchup::Overflow)
+            ) {
+                record.catchup = Some(TodoCatchup::Kept);
+            }
         }
     }
     record
@@ -731,8 +751,11 @@ pub(super) async fn set_catchup(
     dry_run: bool,
 ) -> HandlerResult {
     let now = Utc::now();
+    // The account the request is scoped to bounds the ids it may touch.
     let pending = |record: &TodoRecord| {
-        record.state == TodoState::Open && record.catchup == Some(TodoCatchup::Pending)
+        record.state == TodoState::Open
+            && record.catchup == Some(TodoCatchup::Pending)
+            && account_id.is_none_or(|account| record.account_id == *account)
     };
     let (keep, (selected, unchanged)) = match decision {
         TodoCatchupDecisionData::Keep { todo_ids } => {

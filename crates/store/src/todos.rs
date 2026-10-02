@@ -298,6 +298,7 @@ impl super::Store {
                     OR (excluded.source_date = todos.source_date
                         AND excluded.source_message_id IS todos.source_message_id))
                AND (todos.source_message_id IS NOT excluded.source_message_id
+                    OR todos.due_at IS NOT excluded.due_at
                     OR todos.rules_version <> excluded.rules_version
                     OR todos.field_sources <> excluded.field_sources)
              RETURNING id, state"
@@ -672,7 +673,8 @@ impl super::Store {
                 kind = ?2, verb = ?3, title = ?4, counterparty = ?5, amount_minor = ?6,
                 currency = ?7, due_at = ?8, due_words = ?9, act_by_at = ?10, surface_at = ?11,
                 relevant_until = ?12, window_source = ?13, field_sources = ?14,
-                scheduled_for = ?15, user_edited = 1, updated_at = ?16
+                scheduled_for = ?15, user_edited = 1, updated_at = ?16,
+                surfaced_at = CASE WHEN surface_at IS ?11 THEN surfaced_at ELSE NULL END
              WHERE id = ?1",
         )
         .bind(&record.id)

@@ -770,3 +770,42 @@ async fn an_empty_to_do_explains_what_lands_here() {
     );
     assert_eq!(today.header, mxr_protocol::todo_copy::HEADER);
 }
+
+#[tokio::test]
+async fn a_catch_up_decision_scoped_to_one_account_never_touches_another() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    let id = put(
+        &fx,
+        Mail::new(
+            ("Priya Shah via DocuSign", "dse@docusign.net"),
+            "Please DocuSign: Engagement letter",
+            "Please review and sign.",
+            now - Duration::hours(3),
+        ),
+    )
+    .await;
+    scan(&fx, &[id], now).await;
+    let ResponseData::TodoCatchup { catchup } =
+        request(&fx, Request::GetTodoCatchup { account_id: None }).await
+    else {
+        panic!()
+    };
+    let other = mxr_core::AccountId::new();
+    let ResponseData::TodoChange { change } = request(
+        &fx,
+        Request::SetTodoCatchup {
+            account_id: Some(other),
+            decision: TodoCatchupDecisionData::LetGo {
+                todo_ids: vec![catchup.todos[0].id.clone()],
+            },
+            dry_run: false,
+        },
+    )
+    .await
+    else {
+        panic!()
+    };
+    assert!(change.changed.is_empty());
+    assert_eq!(runway(&fx, now).await.catchup_count, 1);
+}

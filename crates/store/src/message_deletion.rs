@@ -218,7 +218,8 @@ impl super::Store {
             // the email; the foreign keys then clear its pointers to it.
             concat!(
                 "DELETE FROM todos WHERE account_id = ?1
-                   AND source_message_id IN (SELECT id FROM temp.mxr_deleting) AND ",
+                   AND source_message_id IN (SELECT id FROM temp.mxr_deleting)
+                   AND scheduled_for IS NULL AND ",
                 todo_untouched_sql!("")
             ),
             "UPDATE todos SET due_words = NULL, action_url = NULL, action_gate = NULL,

@@ -417,3 +417,69 @@ async fn a_prefix_finds_the_row_literally() {
         .unwrap()
         .is_empty());
 }
+
+#[tokio::test]
+async fn a_scheduled_row_survives_its_emails_deletion_and_an_edit_announces_again() {
+    let fx = Fx::new().await;
+    let source = fx.message("bill", at(0)).await;
+    fx.store
+        .upsert_detected_todo(&fx.record("t1", &source, at(0)))
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.store.claim_surfaced_todos(at(100)).await.unwrap(),
+        vec!["t1".to_string()]
+    );
+
+    let mut edited = fx.store.get_todo("t1").await.unwrap().unwrap();
+    edited.surface_at = Some(at(150));
+    fx.store
+        .update_todo_by_user(&edited, at(101))
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.store.get_todo("t1").await.unwrap().unwrap().surfaced_at,
+        None
+    );
+
+    let other = fx.message("other", at(1)).await;
+    let mut scheduled = fx.record("t2", &other, at(1));
+    scheduled.dedup_key = "scheduled".into();
+    fx.store.upsert_detected_todo(&scheduled).await.unwrap();
+    fx.store
+        .schedule_todo("t2", Some(at(200)), at(2))
+        .await
+        .unwrap();
+    fx.store
+        .delete_messages_and_derived(&fx.account, &["other".to_string()])
+        .await
+        .unwrap();
+    let kept = fx
+        .store
+        .get_todo("t2")
+        .await
+        .unwrap()
+        .expect("a scheduled row is the user's");
+    assert_eq!(kept.source_message_id, None);
+    assert_eq!(kept.due_words, None);
+}
+
+#[tokio::test]
+async fn a_new_due_date_on_the_same_evidence_updates_the_row() {
+    let fx = Fx::new().await;
+    let source = fx.message("promise", at(0)).await;
+    fx.store
+        .upsert_detected_todo(&fx.record("t1", &source, at(0)))
+        .await
+        .unwrap();
+    let mut moved = fx.record("t2", &source, at(0));
+    moved.due_at = Some(at(300));
+    assert!(matches!(
+        fx.store.upsert_detected_todo(&moved).await.unwrap(),
+        TodoUpsert::Updated { .. }
+    ));
+    assert_eq!(
+        fx.store.get_todo("t1").await.unwrap().unwrap().due_at,
+        Some(at(300))
+    );
+}

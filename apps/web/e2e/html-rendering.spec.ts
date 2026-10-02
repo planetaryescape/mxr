@@ -2,6 +2,10 @@ import { expect, test } from "@playwright/test";
 
 import { openApp } from "./helpers/state";
 
+// The white-panel check below is about the dark reader; on a light theme a
+// white panel is expected.
+test.use({ colorScheme: "dark" });
+
 test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
   const row = {
     id: "msg-html",

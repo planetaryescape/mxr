@@ -30,6 +30,11 @@ import { useScopeController } from "@/lib/keys/controllers";
 
 type Tab = "queue" | "decisions";
 
+// A red button on every row turns the page into a column of red: Deny reads
+// neutral until it is the one being pointed at or focused.
+const DENY_CLASS =
+  "hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive/40 focus-visible:text-destructive focus-visible:ring-destructive/20 dark:hover:bg-destructive/20 dark:focus-visible:ring-destructive/40";
+
 /** Button order and key hints mirror `screenerActions` (a, d, f, p). */
 const DECISIONS: { disposition: ScreenerDisposition; label: string; key: string }[] = [
   { disposition: "allow", label: "Allow", key: "a" },
@@ -210,7 +215,8 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
             actions={DECISIONS.map(({ disposition, label, key }) => (
               <Button
                 key={disposition}
-                variant={disposition === "deny" ? "destructive" : "outline"}
+                variant="outline"
+                className={disposition === "deny" ? DENY_CLASS : undefined}
                 size="xs"
                 disabled={decide.isPending}
                 onClick={() => decide.mutate({ entry, disposition })}

@@ -14,6 +14,7 @@ import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
 import type { AddressView, MessageBodyView, MessageRowView } from "@/features/mailbox/types";
 import { formatLongDate, initials, parseAddress, plural } from "@/lib/format";
+import { avatarTone } from "@/components/avatarTone";
 import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs, type ReaderView } from "@/state/uiPrefsStore";
@@ -422,24 +423,14 @@ function MessageMenu({
   );
 }
 
-const AVATAR_TONES = [
-  "bg-chart-1/20 text-chart-1",
-  "bg-chart-2/20 text-chart-2",
-  "bg-chart-3/20 text-chart-3",
-  "bg-chart-4/20 text-chart-4",
-  "bg-chart-5/20 text-chart-5",
-  "bg-chart-6/20 text-chart-6",
-];
-
 function Avatar({ name, small = false }: { name: string; small?: boolean }) {
-  const hash = [...name].reduce((acc, char) => (acc * 31 + char.charCodeAt(0)) >>> 0, 7);
   return (
     <span
       aria-hidden
       className={cn(
         "grid shrink-0 place-items-center rounded-full font-mono font-semibold",
         small ? "size-7 text-[11px]" : "size-8 text-[12px]",
-        AVATAR_TONES[hash % AVATAR_TONES.length],
+        avatarTone(name),
       )}
     >
       {initials(name)}

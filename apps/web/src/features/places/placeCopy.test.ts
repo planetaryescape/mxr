@@ -124,6 +124,7 @@ describe("copy", () => {
       /^Archives 143 messages, 20 shown here\. /,
     );
     expect(sweepNote(preview(), 13)).not.toMatch(/shown here/);
+    expect(sweepNote(preview({ count: 3, pinned_excluded: 0 }), 0)).toMatch(/^Only what/);
   });
 
   test("an expired preview is told apart from other failures", () => {

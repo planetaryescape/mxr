@@ -12,6 +12,8 @@ use tantivy::schema::{Field, IndexRecordOption};
 use tantivy::Term;
 
 pub struct QueryBuilder {
+    /// [`MxrSchema::default_text_fields`], which prose queries search.
+    prose_fields: Vec<(Field, f32)>,
     account_id: Field,
     subject: Field,
     from_name: Field,
@@ -45,9 +47,14 @@ pub struct QueryBuilder {
     size_bytes: Field,
 }
 
+/// Enough words to name a topic or a question; past this a long
+/// paragraph adds noise to the ranking, not signal.
+pub const MAX_PROSE_WORDS: usize = 32;
+
 impl QueryBuilder {
     pub fn new(schema: &MxrSchema) -> Self {
         Self {
+            prose_fields: schema.default_text_fields(),
             account_id: schema.account_id,
             subject: schema.subject,
             from_name: schema.from_name,
@@ -143,15 +150,52 @@ impl QueryBuilder {
         Box::new(TermQuery::new(term, IndexRecordOption::Basic))
     }
 
-    fn build_text_query(&self, text: &str) -> Box<dyn Query> {
-        let fields_boosts: Vec<(Field, f32)> = vec![
+    fn text_fields_boosts(&self) -> Vec<(Field, f32)> {
+        vec![
             (self.subject, 3.0),
             (self.from_name, 2.0),
             (self.from_email, 2.0),
             (self.snippet, 1.0),
             (self.body_text, 0.5),
             (self.attachment_filenames, 0.75),
-        ];
+        ]
+    }
+
+    /// Any of the words in free prose (a draft, a question, a subject),
+    /// ranked by relevance. Prose is not query syntax: "Re: ..." or
+    /// "foo: bar" must not parse as a field filter. It searches the same
+    /// fields as the default string search, and stays one flat, bounded
+    /// OR however long the text (see `prose_words`). `None` when the
+    /// text has no words.
+    pub fn build_any_words(&self, text: &str) -> Option<Box<dyn Query>> {
+        let clauses: Vec<_> = prose_words(text)
+            .iter()
+            .map(|word| (Occur::Should, self.build_prose_word(word)))
+            .collect();
+        (!clauses.is_empty()).then(|| Box::new(BooleanQuery::new(clauses)) as Box<dyn Query>)
+    }
+
+    /// Every word of free prose, within a structured `filter` (sender,
+    /// dates): a question narrowed to one sender keeps all its words, so
+    /// mail that mentions only one of them cannot crowd out the answer.
+    /// Words are read as in [`Self::build_any_words`], never as query
+    /// syntax. With no words in `text`, the filter alone.
+    pub fn build_all_words_where(&self, text: &str, filter: &QueryNode) -> Box<dyn Query> {
+        let mut clauses = vec![(Occur::Must, self.build(filter))];
+        clauses.extend(
+            prose_words(text)
+                .iter()
+                .map(|word| (Occur::Must, self.build_prose_word(word))),
+        );
+        Box::new(BooleanQuery::new(clauses))
+    }
+
+    fn build_prose_word(&self, word: &str) -> Box<dyn Query> {
+        self.build_text_token_query(&self.prose_fields, word)
+    }
+
+    fn build_text_query(&self, text: &str) -> Box<dyn Query> {
+        let fields_boosts = self.text_fields_boosts();
 
         let tokens = tokenize_text_value(text);
         if tokens.is_empty() {
@@ -572,6 +616,21 @@ fn resolve_date(date_val: &DateValue) -> NaiveDate {
     }
 }
 
+/// Prose tokenized like bare `Text` terms, deduplicated, and capped at
+/// [`MAX_PROSE_WORDS`] so a long paragraph stays a bounded query.
+fn prose_words(text: &str) -> Vec<String> {
+    let mut words: Vec<String> = Vec::new();
+    for token in tokenize_text_value(text) {
+        if words.len() == MAX_PROSE_WORDS {
+            break;
+        }
+        if !words.contains(&token) {
+            words.push(token);
+        }
+    }
+    words
+}
+
 fn tokenize_text_value(value: &str) -> Vec<String> {
     value
         .split(|ch: char| !ch.is_alphanumeric())
@@ -732,6 +791,108 @@ mod tests {
         let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
         assert_eq!(results.results.len(), 1);
         assert_eq!(results.results[0].message_id, envelopes[0].id.as_str());
+    }
+
+    #[test]
+    fn any_words_reads_prose_as_words_not_query_syntax() {
+        let (idx, envelopes) = build_test_index();
+        let schema = MxrSchema::build();
+        let qb = QueryBuilder::new(&schema);
+
+        let query = qb
+            .build_any_words("Re: Deployment plan? foo: bar (draft) -minus")
+            .unwrap();
+        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results[0].message_id, envelopes[0].id.as_str());
+
+        assert!(qb.build_any_words(" :: -- ").is_none());
+    }
+
+    #[test]
+    fn all_words_where_requires_the_filter_and_every_word() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let from_alice = |subject: &str| {
+            make_test_envelope(
+                subject,
+                "alice@example.com",
+                "Alice",
+                MessageFlags::READ,
+                false,
+            )
+        };
+        // Competing mail from the same sender with only one of the words.
+        let only_terms = from_alice("Terms of service update");
+        let only_acme = from_alice("ACME newsletter");
+        let answer = from_alice("ACME acquisition terms");
+        let other_sender = make_test_envelope(
+            "ACME acquisition terms",
+            "bob@example.com",
+            "Bob",
+            MessageFlags::READ,
+            false,
+        );
+        for env in [&only_terms, &only_acme, &answer, &other_sender] {
+            idx.index_envelope(env).unwrap();
+        }
+        idx.commit().unwrap();
+
+        let schema = MxrSchema::build();
+        let qb = QueryBuilder::new(&schema);
+        let from = parse_query("from:alice@example.com").unwrap();
+
+        let query = qb.build_all_words_where("ACME acquisition: terms?", &from);
+        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
+        let ids: Vec<&str> = results
+            .results
+            .iter()
+            .map(|r| r.message_id.as_str())
+            .collect();
+        assert_eq!(ids, vec![answer.id.as_str()]);
+
+        // No words: the filter alone.
+        let query = qb.build_all_words_where("?", &from);
+        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results.len(), 3);
+    }
+
+    #[test]
+    fn any_words_finds_attachment_types_in_content_hints() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let env = make_test_envelope(
+            "Q3 numbers",
+            "alice@example.com",
+            "Alice",
+            MessageFlags::READ,
+            true,
+        );
+        let body = MessageBody {
+            message_id: env.id.clone(),
+            text_plain: Some("see attached".into()),
+            text_html: None,
+            attachments: vec![AttachmentMeta {
+                id: mxr_core::id::AttachmentId::new(),
+                message_id: env.id.clone(),
+                filename: "q3.xlsx".into(),
+                mime_type: "application/vnd.ms-excel.spreadsheet".into(),
+                disposition: AttachmentDisposition::Attachment,
+                content_id: None,
+                content_location: None,
+                size_bytes: 1,
+                local_path: None,
+                provider_id: "att-1".into(),
+            }],
+            fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata::default(),
+        };
+        idx.index_body(&env, &body).unwrap();
+        idx.commit().unwrap();
+
+        let schema = MxrSchema::build();
+        let qb = QueryBuilder::new(&schema);
+        let query = qb.build_any_words("Re: the spreadsheet?").unwrap();
+        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results.len(), 1);
+        assert_eq!(results.results[0].message_id, env.id.as_str());
     }
 
     #[test]

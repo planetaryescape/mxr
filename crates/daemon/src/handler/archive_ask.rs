@@ -263,25 +263,30 @@ async fn retrieve_candidates(
         matches!(requested, ArchiveAskMode::Semantic | ArchiveAskMode::Hybrid) && semantic_enabled;
 
     let lexical_ids: Vec<mxr_core::MessageId> = if want_lexical {
-        let query = lexical_query_with_filters(question, filters);
-        let page = if has_structured_filters(filters) {
-            let query = mxr_search::build_query(&query).map_err(|e| e.to_string())?;
-            state
+        // The question is prose, searched as plain words; only the
+        // structured filters go through the query parser. Narrowed by a
+        // filter, every word must match, so mail with one stray word
+        // cannot fill the candidate pool.
+        let builder = mxr_search::QueryBuilder::new(&mxr_search::MxrSchema::build());
+        let query = match structured_filter_query(filters) {
+            Some(filter) => {
+                let filter = mxr_search::parse_query(&filter).map_err(|e| e.to_string())?;
+                Some(builder.build_all_words_where(question, &filter))
+            }
+            None => builder.build_any_words(question),
+        };
+        match query {
+            Some(query) => state
                 .search
                 .search_ast(query, pool_size, 0, SortOrder::Relevance)
                 .await
                 .map_err(|e| e.to_string())?
-        } else {
-            state
-                .search
-                .search(&query, pool_size, 0, SortOrder::Relevance)
-                .await
-                .map_err(|e| e.to_string())?
-        };
-        page.results
-            .iter()
-            .filter_map(|h| h.message_id.parse().ok())
-            .collect()
+                .results
+                .iter()
+                .filter_map(|h| h.message_id.parse().ok())
+                .collect(),
+            None => Vec::new(),
+        }
     } else {
         Vec::new()
     };
@@ -329,18 +334,10 @@ async fn retrieve_candidates(
     Ok((merged, executed_mode))
 }
 
-fn has_structured_filters(filters: &ArchiveAskFiltersData) -> bool {
-    filters
-        .from
-        .as_deref()
-        .is_some_and(|v| !v.trim().is_empty())
-        || filters.to.as_deref().is_some_and(|v| !v.trim().is_empty())
-        || filters.after.is_some()
-        || filters.before.is_some()
-}
-
-fn lexical_query_with_filters(question: &str, filters: &ArchiveAskFiltersData) -> String {
-    let mut parts = vec![question.trim().to_string()];
+/// The sender, recipient and date filters as query syntax, or `None`
+/// when there are none.
+fn structured_filter_query(filters: &ArchiveAskFiltersData) -> Option<String> {
+    let mut parts = Vec::new();
     if let Some(from) = filters.from.as_deref().filter(|v| !v.trim().is_empty()) {
         parts.push(format!("from:{}", quote_query_value(from)));
     }
@@ -353,8 +350,7 @@ fn lexical_query_with_filters(question: &str, filters: &ArchiveAskFiltersData) -
     if let Some(before) = filters.before {
         parts.push(format!("before:{}", before.format("%Y-%m-%d")));
     }
-    parts.retain(|part| !part.trim().is_empty());
-    parts.join(" ")
+    (!parts.is_empty()).then(|| parts.join(" "))
 }
 
 fn quote_query_value(value: &str) -> String {
@@ -661,6 +657,140 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    /// A question is prose, not query syntax: "status:" or "(...)" must
+    /// not parse as a field, with or without structured filters.
+    #[tokio::test]
+    async fn question_with_colons_is_searched_as_words() {
+        for from in [None, Some("alice@example.com".to_string())] {
+            let (state, account_id, ids) = fixture(Arc::new(CannedLlm {
+                body: String::new(),
+                last_user: Mutex::new(String::new()),
+            }))
+            .await;
+            state.llm.replace(Arc::new(CannedLlm {
+                body: format!(
+                    r#"{{"answer":"Status updated.","citations":[{{"msg_id":"{}","quote":"status update"}}]}}"#,
+                    ids[0]
+                ),
+                last_user: Mutex::new(String::new()),
+            }));
+
+            let resp = ask(
+                &state,
+                "status: update? (status: update)",
+                &ArchiveAskFiltersData {
+                    account_id: Some(account_id),
+                    from: from.clone(),
+                    ..Default::default()
+                },
+                5,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("from={from:?}: {e:?}"));
+            let ResponseData::ArchiveAnswer { answer } = resp else {
+                panic!("unexpected response");
+            };
+            assert_eq!(answer.citations.len(), 1, "from={from:?}");
+            assert_eq!(answer.citations[0].message_id, ids[0]);
+        }
+    }
+
+    /// Narrowed to one sender, a question keeps every word: mail from that
+    /// sender that only says "terms" a lot must not crowd the answer out
+    /// of the bounded candidate pool.
+    #[tokio::test]
+    async fn filtered_question_requires_every_word() {
+        let (state, _) = crate::state::AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+
+        let mut entries = Vec::new();
+        let mut add = |env: Envelope, text: &str| {
+            let body = MessageBody {
+                message_id: env.id.clone(),
+                text_plain: Some(text.into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+                metadata: MessageMetadata::default(),
+            };
+            entries.push((env, body));
+        };
+        // Each competitor leans hard on one of the words, in the subject
+        // where it scores most; the answer has all three once, in a long
+        // body. Ranked by any one word, the competitors fill the pool.
+        let words = ["acme", "acquisition", "terms"];
+        for i in 0..12 {
+            let word = words[i % words.len()];
+            add(
+                envelope(
+                    &account_id,
+                    "alice@example.com",
+                    &format!("{word} {word} {word}"),
+                    i as i64,
+                ),
+                &format!("{word} {word} {word} {word}"),
+            );
+        }
+        let answer = envelope(&account_id, "alice@example.com", "Deal notes", 20);
+        add(
+            answer.clone(),
+            &format!(
+                "{}The ACME acquisition terms are final. {}",
+                "Notes from the call. ".repeat(20),
+                "More notes follow. ".repeat(20)
+            ),
+        );
+        let mut batch = Vec::new();
+        for (env, body) in entries {
+            state
+                .store
+                .upsert_envelope_with_direction(&env, MessageDirection::Inbound)
+                .await
+                .unwrap();
+            state.store.insert_body(&body).await.unwrap();
+            batch.push(SearchIndexEntry {
+                envelope: env,
+                body: Some(body),
+                reply_later: false,
+            });
+        }
+        state
+            .search
+            .apply_batch(SearchUpdateBatch {
+                entries: batch,
+                removed_message_ids: vec![],
+            })
+            .await
+            .unwrap();
+        state.search.commit().await.unwrap();
+        state.llm.replace(Arc::new(CannedLlm {
+            body: format!(
+                r#"{{"answer":"The terms are final.","citations":[{{"msg_id":"{}","quote":"terms are final"}}]}}"#,
+                answer.id
+            ),
+            last_user: Mutex::new(String::new()),
+        }));
+
+        let resp = ask(
+            &state,
+            "ACME: acquisition terms?",
+            &ArchiveAskFiltersData {
+                account_id: Some(account_id),
+                from: Some("alice@example.com".into()),
+                ..Default::default()
+            },
+            1,
+        )
+        .await
+        .unwrap();
+        let ResponseData::ArchiveAnswer { answer: got } = resp else {
+            panic!("unexpected response");
+        };
+        assert_eq!(got.citations.len(), 1);
+        assert_eq!(got.citations[0].message_id, answer.id);
     }
 
     #[tokio::test]

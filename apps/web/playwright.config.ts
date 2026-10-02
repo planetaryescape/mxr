@@ -13,6 +13,9 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL: appUrl,
+    // The theme follows the OS until one is picked; the suite was written
+    // against the dark default, so the browser reports a dark scheme.
+    colorScheme: "dark",
     trace: "on-first-retry",
     // Local escape hatch when the pinned Playwright browser isn't downloaded.
     launchOptions: process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {},

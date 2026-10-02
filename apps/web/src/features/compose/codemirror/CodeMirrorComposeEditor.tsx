@@ -38,17 +38,33 @@ const tokenTheme = EditorView.theme({
     maxWidth: "720px",
     padding: "20px 24px 56px 24px",
     fontFamily: "var(--font-mono)",
-    caretColor: "var(--primary)",
+    caretColor: "var(--foreground)",
   },
   // Line numbers mean nothing in an email; the vim status line is enough.
   ".cm-gutters": { display: "none" },
-  ".cm-activeLine": { backgroundColor: "color-mix(in oklch, var(--muted) 55%, transparent)" },
-  ".cm-cursor": { borderLeftColor: "var(--primary)" },
+  // Mixed in oklab: oklch takes transparent's missing hue as 0, which tints
+  // the line pink and reads as a validation error.
+  ".cm-activeLine": { backgroundColor: "color-mix(in oklab, var(--muted) 55%, transparent)" },
+  ".cm-cursor": { borderLeftColor: "var(--foreground)" },
   "&.cm-focused": { outline: "none" },
   ".cm-selectionBackground": {
-    backgroundColor: "color-mix(in oklch, var(--primary) 24%, transparent) !important",
+    backgroundColor: "color-mix(in oklab, var(--primary) 24%, transparent) !important",
   },
 });
+
+// The vim block cursor ships hard-coded red at the highest precedence; only
+// a theme at that precedence replaces it with the theme's own ink.
+const vimCursorTheme = Prec.highest(
+  EditorView.theme({
+    ".cm-fat-cursor": {
+      background: "color-mix(in oklab, var(--foreground) 35%, transparent)",
+    },
+    "&:not(.cm-focused) .cm-fat-cursor": {
+      background: "none",
+      outline: "solid 1px color-mix(in oklab, var(--foreground) 45%, transparent)",
+    },
+  }),
+);
 
 export function CodeMirrorComposeEditor({
   value,
@@ -108,6 +124,8 @@ export function CodeMirrorComposeEditor({
           ),
           basicSetup,
           markdown(),
+          // Ahead of vim(): between equal precedences the earlier theme wins.
+          vimCursorTheme,
           vim(),
           tokenTheme,
           keymap.of([

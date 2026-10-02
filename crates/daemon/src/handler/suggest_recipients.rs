@@ -12,20 +12,22 @@ use mxr_core::id::AccountId;
 use mxr_core::types::Draft;
 use mxr_core::SortOrder;
 use mxr_protocol::{ResponseData, SuggestedRecipientData};
+use mxr_search::{MxrSchema, QueryBuilder};
 use std::collections::{HashMap, HashSet};
 
 const MIN_SUPPORT_THREADS: usize = 3;
 
 pub(crate) async fn suggest(state: &AppState, draft: &Draft, limit: usize) -> super::HandlerResult {
-    let query = topic_query(draft);
-    if query.trim().is_empty() {
+    // Draft text is prose, not query syntax: search it as plain words.
+    let Some(query) = QueryBuilder::new(&MxrSchema::build()).build_any_words(&topic_text(draft))
+    else {
         return Ok(ResponseData::SuggestedCollaborators {
             suggestions: vec![],
         });
-    }
+    };
     let page = state
         .search
-        .search(&query, 50, 0, SortOrder::Relevance)
+        .search_ast(query, 50, 0, SortOrder::Relevance)
         .await?;
 
     let self_addresses = self_addresses_for(state, &draft.account_id).await;
@@ -102,17 +104,12 @@ struct Aggregate {
     display_name: Option<String>,
 }
 
-fn topic_query(draft: &Draft) -> String {
-    let first_para = draft
-        .content
-        .analysis_text()
-        .split("\n\n")
-        .next()
-        .unwrap_or("")
-        .replace('\n', " ");
-    format!("{} {}", draft.subject.trim(), first_para.trim())
-        .trim()
-        .to_string()
+/// Words that pick out topic-similar threads: the subject and the first
+/// paragraph of the draft.
+fn topic_text(draft: &Draft) -> String {
+    let analysis_text = draft.content.analysis_text();
+    let first_para = analysis_text.split("\n\n").next().unwrap_or("");
+    format!("{} {first_para}", draft.subject)
 }
 
 async fn self_addresses_for(state: &AppState, account_id: &AccountId) -> HashSet<String> {
@@ -326,6 +323,41 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn reply_subject_and_colon_body_do_not_break_the_search() {
+        let (state, account) = fixture().await;
+        for _ in 0..3 {
+            let thread = ThreadId::new();
+            let env = envelope(
+                &account,
+                &thread,
+                EnvelopeFixture {
+                    from: "alice@example.com",
+                    to: vec!["user@example.com", "bob@example.com"],
+                    cc: vec![],
+                    bcc: vec![],
+                    subject: "Contract renewal",
+                    body: "contract renewal terms",
+                },
+            );
+            index(&state, &env, "contract renewal terms").await;
+        }
+        let d = draft(
+            &account,
+            "Re: Contract renewal",
+            "foo: bar (draft) \"quoted AND -minus\" +plus",
+            vec!["alice@example.com"],
+        );
+        let resp = suggest(&state, &d, 5).await.unwrap();
+        let ResponseData::SuggestedCollaborators { suggestions } = resp else {
+            panic!("unexpected: {resp:?}");
+        };
+        assert!(
+            suggestions.iter().any(|s| s.email == "bob@example.com"),
+            "bob expected, got {suggestions:?}"
+        );
     }
 
     #[tokio::test]

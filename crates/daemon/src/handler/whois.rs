@@ -10,6 +10,7 @@ use crate::state::AppState;
 use mxr_core::id::AccountId;
 use mxr_core::SortOrder;
 use mxr_protocol::{EntityCandidateData, EntityExplanationData, ResponseData, WhoisCitationData};
+use mxr_search::{MxrSchema, QueryBuilder};
 use std::collections::HashMap;
 
 const MAX_CANDIDATES: usize = 5;
@@ -29,12 +30,20 @@ pub(crate) async fn explain(
         return explain_email(state, account_id, trimmed).await;
     }
 
-    let page = state
-        .search
-        .search(trimmed, 30, 0, SortOrder::Relevance)
-        .await?;
+    // A name or a term, typed as words rather than query syntax: a colon
+    // in it must not turn it into a field filter.
+    let hits = match QueryBuilder::new(&MxrSchema::build()).build_any_words(trimmed) {
+        Some(query) => {
+            state
+                .search
+                .search_ast(query, 30, 0, SortOrder::Relevance)
+                .await?
+                .results
+        }
+        None => Vec::new(),
+    };
 
-    if page.results.is_empty() {
+    if hits.is_empty() {
         return Ok(ResponseData::EntityExplanation {
             entity: EntityExplanationData {
                 canonical_name: trimmed.into(),
@@ -54,7 +63,7 @@ pub(crate) async fn explain(
     let mut by_sender: HashMap<String, EntityCandidateData> = HashMap::new();
     let mut first_seen: Option<chrono::DateTime<chrono::Utc>> = None;
     let mut last_seen: Option<chrono::DateTime<chrono::Utc>> = None;
-    for hit in page.results.iter().take(limit) {
+    for hit in hits.iter().take(limit) {
         let id: mxr_core::MessageId = match hit.message_id.parse() {
             Ok(v) => v,
             Err(_) => continue,
@@ -308,6 +317,30 @@ mod tests {
         let id = e.id.to_string();
         index(&state, &e, "apollo details").await;
         let resp = explain(&state, &account, "Project Apollo", 10)
+            .await
+            .unwrap();
+        let ResponseData::EntityExplanation { entity } = resp else {
+            panic!("unexpected")
+        };
+        assert!(
+            entity.citations.iter().any(|c| c.msg_id == id),
+            "expected citation, got {:?}",
+            entity.citations
+        );
+    }
+
+    #[tokio::test]
+    async fn term_with_a_colon_is_searched_as_words() {
+        let (state, account) = fixture().await;
+        let e = env(
+            &account,
+            "alice@example.com",
+            "Project Apollo update",
+            "apollo details",
+        );
+        let id = e.id.to_string();
+        index(&state, &e, "apollo details").await;
+        let resp = explain(&state, &account, "Project: Apollo", 10)
             .await
             .unwrap();
         let ResponseData::EntityExplanation { entity } = resp else {

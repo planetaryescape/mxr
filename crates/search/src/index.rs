@@ -420,22 +420,14 @@ impl SearchIndex {
     ) -> Result<SearchPage, MxrError> {
         let s = &self.schema;
 
+        let fields = s.default_text_fields();
         let mut query_parser = QueryParser::for_index(
             &self.index,
-            vec![
-                s.subject,
-                s.from_name,
-                s.snippet,
-                s.body_text,
-                s.attachment_filenames,
-                s.content_hints,
-            ],
+            fields.iter().map(|(field, _)| *field).collect(),
         );
-        query_parser.set_field_boost(s.subject, 3.0);
-        query_parser.set_field_boost(s.from_name, 2.0);
-        query_parser.set_field_boost(s.snippet, 1.0);
-        query_parser.set_field_boost(s.body_text, 0.5);
-        query_parser.set_field_boost(s.attachment_filenames, 0.75);
+        for (field, boost) in fields {
+            query_parser.set_field_boost(field, boost);
+        }
 
         let query = query_parser
             .parse_query(query_str)

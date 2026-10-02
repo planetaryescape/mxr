@@ -154,7 +154,8 @@ export function useComposeSession(
     setDraft(next);
     setDirty(changed);
     setSaveError(null);
-    setLastSavedAt(new Date());
+    // Loading a session is not a save: nothing is claimed until one lands.
+    setLastSavedAt(null);
     lastSavedFingerprintRef.current = changed
       ? draftFingerprint(baseDraft)
       : draftFingerprint(next);
@@ -177,13 +178,7 @@ export function useComposeSession(
 
   const collaboratorSuggestions = useCollaboratorSuggestions(draft);
   const { runtimeAccounts, selectedAccount, accountAddresses } = useSenderAccounts(draft);
-  const saveStatus = autosave.saving
-    ? "Saving…"
-    : dirty
-      ? "Unsaved changes"
-      : lastSavedAt
-        ? savedLabel(lastSavedAt)
-        : "Not saved yet";
+  const saveStatus = saveStatusLabel({ saving: autosave.saving, dirty, lastSavedAt });
   const visibleIssues = !draft
     ? []
     : sendAttempted
@@ -437,6 +432,24 @@ export function useComposeSession(
 
     ...assist,
   };
+}
+
+/**
+ * What the action bar says about saving. An untouched draft says nothing:
+ * there is no work to be saved or lost yet.
+ */
+export function saveStatusLabel({
+  saving,
+  dirty,
+  lastSavedAt,
+}: {
+  saving: boolean;
+  dirty: boolean;
+  lastSavedAt: Date | null;
+}): string {
+  if (saving) return "Saving…";
+  if (dirty) return "Unsaved changes";
+  return lastSavedAt ? savedLabel(lastSavedAt) : "";
 }
 
 /** "Saved just now" for the first minute (never "Saved 0s ago"), then "Saved 4m ago". */

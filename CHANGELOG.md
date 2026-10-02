@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.49](https://github.com/planetaryescape/mxr/compare/v0.6.48...v0.6.49) (2026-10-02)
+
+
+### Bug Fixes
+
+* semantic search reaches every chunk; batch mutations reindex once ([#277](https://github.com/planetaryescape/mxr/issues/277)) ([75db2c9](https://github.com/planetaryescape/mxr/commit/75db2c92e055cd1e6884be3c5c6554a109c9c5d1))
+
 ## [0.6.48](https://github.com/planetaryescape/mxr/compare/v0.6.47...v0.6.48) (2026-10-02)
 
 

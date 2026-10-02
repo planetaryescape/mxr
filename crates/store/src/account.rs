@@ -270,12 +270,24 @@ impl super::Store {
         Ok(())
     }
 
+    /// Deletes the account and, by cascade, all of its mail. The mail is
+    /// recorded in `pending_message_forgets` in the same transaction, for
+    /// the daemon to clear what lives outside SQLite.
     pub async fn delete_account(&self, id: &AccountId) -> Result<u64, sqlx::Error> {
         let id_str = id.as_str();
+        let mut tx = self.writer().begin().await?;
+        sqlx::query(
+            "INSERT OR IGNORE INTO pending_message_forgets (message_id, account_id, deleted_at)
+             SELECT id, account_id, unixepoch() FROM messages WHERE account_id = ?1",
+        )
+        .bind(&id_str)
+        .execute(&mut *tx)
+        .await?;
         let result = sqlx::query("DELETE FROM accounts WHERE id = ?1")
-            .bind(id_str)
-            .execute(self.writer())
+            .bind(&id_str)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(result.rows_affected())
     }
 }

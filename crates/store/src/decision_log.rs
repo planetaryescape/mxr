@@ -28,6 +28,10 @@ pub struct DecisionLogEntry {
 
 impl super::Store {
     /// Idempotent upsert keyed on stable decision id.
+    ///
+    /// Also records which stored messages the decision cites, so a message
+    /// delete can find it through an index instead of parsing every
+    /// decision's evidence JSON while holding the writer.
     pub async fn upsert_decision(&self, entry: &DecisionLogEntry) -> Result<(), sqlx::Error> {
         let evidence_json = serde_json::to_string(
             &entry
@@ -37,6 +41,7 @@ impl super::Store {
                 .collect::<Vec<_>>(),
         )
         .unwrap_or_else(|_| "[]".into());
+        let mut tx = self.writer().begin().await?;
         sqlx::query(
             r#"INSERT INTO decision_log
                (id, account_id, thread_id, topic, decision, rationale,
@@ -63,8 +68,21 @@ impl super::Store {
         .bind(entry.decided_at.map(|v| v.timestamp()))
         .bind(entry.extracted_at.timestamp())
         .bind(&entry.source_hash)
-        .execute(self.writer())
+        .execute(&mut *tx)
         .await?;
+        sqlx::query("DELETE FROM decision_evidence WHERE decision_id = ?")
+            .bind(&entry.id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            "INSERT OR IGNORE INTO decision_evidence (decision_id, message_id)
+             SELECT ?1, value FROM json_each(?2) WHERE value IN (SELECT id FROM messages)",
+        )
+        .bind(&entry.id)
+        .bind(&evidence_json)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
         Ok(())
     }
 

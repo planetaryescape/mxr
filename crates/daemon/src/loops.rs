@@ -1203,7 +1203,7 @@ async fn post_delete_fanout(
         deleted = deleted.message_ids.len(),
         "clearing derived data of deleted messages"
     );
-    crate::message_deletion::forget_deleted_messages(&state, &deleted.message_ids).await;
+    crate::message_deletion::drain_pending_forgets(&state).await;
     if let Err(error) = state
         .contacts_refresh
         .enqueue_accounts(std::slice::from_ref(&account_id))

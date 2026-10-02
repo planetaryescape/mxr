@@ -55,6 +55,12 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
     ),
     ("contact_style", MessageDeletionRule::ClearedWithContact),
     (
+        "pending_message_forgets",
+        MessageDeletionRule::KeptNoText(
+            "ids of deleted messages awaiting cleanup outside SQLite; the daemon drains it",
+        ),
+    ),
+    (
         "drafts",
         MessageDeletionRule::KeptUserMade(
             "the user's own writing; `message_id_header` is the draft's own header",
@@ -183,22 +189,25 @@ impl super::Store {
                SELECT DISTINCT delivery_id AS id FROM delivery_messages
                WHERE message_id IN (SELECT id FROM temp.mxr_deleting)",
             "CREATE TEMP TABLE mxr_deleting_decisions AS
-               SELECT DISTINCT decision_log.id AS id
-               FROM decision_log, json_each(decision_log.evidence_msg_ids) AS evidence
-               WHERE decision_log.account_id = ?1
-                 AND evidence.value IN (SELECT id FROM temp.mxr_deleting)",
+               SELECT DISTINCT decision_id AS id FROM decision_evidence
+               WHERE message_id IN (SELECT id FROM temp.mxr_deleting)",
+            // Recorded with the delete so the cleanup outside SQLite
+            // survives a failed pass or a crash before the daemon runs it.
+            "INSERT OR IGNORE INTO pending_message_forgets (message_id, account_id, deleted_at)
+               SELECT id, ?1, unixepoch() FROM temp.mxr_deleting",
             "DELETE FROM messages WHERE id IN (SELECT id FROM temp.mxr_deleting)",
             "DELETE FROM deliveries
                WHERE id IN (SELECT id FROM temp.mxr_deleting_deliveries)
                  AND NOT EXISTS (
                      SELECT 1 FROM delivery_messages
                      WHERE delivery_messages.delivery_id = deliveries.id)",
-            // A decision survives while any of its evidence is still here.
+            // A decision survives while any of its evidence is still here;
+            // the message delete cascaded the rows of the evidence that went.
             "DELETE FROM decision_log
                WHERE id IN (SELECT id FROM temp.mxr_deleting_decisions)
                  AND NOT EXISTS (
-                     SELECT 1 FROM json_each(decision_log.evidence_msg_ids) AS evidence
-                     JOIN messages ON messages.id = evidence.value)",
+                     SELECT 1 FROM decision_evidence
+                     WHERE decision_evidence.decision_id = decision_log.id)",
             "DELETE FROM desk_dismissals WHERE account_id = ?1
                AND thread_id IN (SELECT thread_id FROM temp.mxr_deleting)
                AND NOT EXISTS (
@@ -223,6 +232,45 @@ impl super::Store {
             thread_ids,
             counterparties,
         })
+    }
+}
+
+impl super::Store {
+    /// Deleted messages whose cleanup outside SQLite (semantic index,
+    /// attachment files) has not been confirmed yet, oldest first.
+    pub async fn list_pending_message_forgets(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<MessageId>, sqlx::Error> {
+        sqlx::query_scalar::<_, String>(
+            "SELECT message_id FROM pending_message_forgets
+             ORDER BY deleted_at, message_id LIMIT ?",
+        )
+        .bind(i64::from(limit))
+        .fetch_all(self.reader())
+        .await?
+        .iter()
+        .map(|id| decode_id(id))
+        .collect()
+    }
+
+    /// Marks the cleanup of these deleted messages as done.
+    pub async fn clear_pending_message_forgets(
+        &self,
+        message_ids: &[MessageId],
+    ) -> Result<(), sqlx::Error> {
+        for chunk in message_ids.chunks(crate::SQLITE_BIND_CHUNK) {
+            let sql = format!(
+                "DELETE FROM pending_message_forgets WHERE message_id IN ({})",
+                vec!["?"; chunk.len()].join(", ")
+            );
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(sql));
+            for id in chunk {
+                query = query.bind(id.as_str());
+            }
+            query.execute(self.writer()).await?;
+        }
+        Ok(())
     }
 }
 
@@ -346,22 +394,29 @@ mod tests {
             .await;
         }
         for (id, thread, evidence) in [
-            ("decision-gone", a.clone(), format!(r#"["{gone_s}"]"#)),
+            ("decision-gone", &thread_a, vec![gone.clone()]),
             (
                 "decision-mixed",
-                a.clone(),
-                format!(r#"["{gone_s}","{kept_s}"]"#),
+                &thread_a,
+                vec![gone.clone(), kept.clone()],
             ),
-            ("decision-b", b.clone(), format!(r#"["{gone_b_s}"]"#)),
+            ("decision-b", &thread_b, vec![gone_b.clone()]),
         ] {
-            exec(
-                &store,
-                "INSERT INTO decision_log (id, account_id, thread_id, decision, evidence_msg_ids,
-                     extracted_at, source_hash)
-                 VALUES (?, ?, ?, 'ship friday', ?, 0, 'h')",
-                &[id, &acct, &thread, &evidence],
-            )
-            .await;
+            store
+                .upsert_decision(&crate::DecisionLogEntry {
+                    id: id.to_string(),
+                    account_id: account.id.clone(),
+                    thread_id: thread.clone(),
+                    topic: None,
+                    decision: "ship friday".to_string(),
+                    rationale: None,
+                    evidence_msg_ids: evidence,
+                    decided_at: None,
+                    extracted_at: chrono::Utc::now(),
+                    source_hash: "h".to_string(),
+                })
+                .await
+                .unwrap();
         }
         for (id, evidence) in [("commit-gone", &gone_s), ("commit-kept", &kept_s)] {
             exec(
@@ -546,6 +601,47 @@ mod tests {
         assert_eq!(ids(&store, "SELECT email FROM contact_style").await, bob);
     }
 
+    /// The cleanup outside SQLite is owed from the moment the delete
+    /// commits, whatever happens to the sync pass after it.
+    #[tokio::test]
+    async fn the_delete_records_its_cleanup_until_it_is_cleared() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let gone = inbound(
+            &store,
+            &account.id,
+            "gone",
+            &ThreadId::new(),
+            "a@example.com",
+        )
+        .await;
+        inbound(
+            &store,
+            &account.id,
+            "kept",
+            &ThreadId::new(),
+            "a@example.com",
+        )
+        .await;
+
+        store
+            .delete_messages_and_derived(&account.id, &["gone".to_string()])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            store.list_pending_message_forgets(100).await.unwrap(),
+            vec![gone.clone()]
+        );
+        store.clear_pending_message_forgets(&[gone]).await.unwrap();
+        assert!(store
+            .list_pending_message_forgets(100)
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
     #[tokio::test]
     async fn deleting_ids_the_store_does_not_hold_changes_nothing() {
         let store = Store::in_memory().await.unwrap();
@@ -572,16 +668,24 @@ mod tests {
         );
     }
 
-    /// The delete runs this lookup while holding the writer; a full scan of
-    /// the event log there stalls every other write. (The commitments lookup
-    /// is already covered by the table's unique index on the account.)
+    /// The delete runs these lookups while holding the writer; a full scan
+    /// of the event log or a JSON parse of every decision there stalls every
+    /// other write. (The commitments lookup is already covered by the
+    /// table's unique index on the account.)
     #[tokio::test]
-    async fn the_event_log_delete_uses_an_index() {
+    async fn the_delete_lookups_use_an_index() {
         let store = Store::in_memory().await.unwrap();
-        for (sql, index) in [(
-            "EXPLAIN QUERY PLAN SELECT 1 FROM event_log WHERE message_id IN ('a', 'b')",
-            "idx_event_log_message",
-        )] {
+        for (sql, index) in [
+            (
+                "EXPLAIN QUERY PLAN SELECT 1 FROM event_log WHERE message_id IN ('a', 'b')",
+                "idx_event_log_message",
+            ),
+            (
+                "EXPLAIN QUERY PLAN SELECT decision_id FROM decision_evidence
+                 WHERE message_id IN ('a', 'b')",
+                "idx_decision_evidence_message",
+            ),
+        ] {
             let plan = sqlx::query(sqlx::AssertSqlSafe(sql))
                 .fetch_all(store.reader())
                 .await

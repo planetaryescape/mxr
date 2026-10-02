@@ -211,6 +211,14 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         // behind; clear it before any loop can read it as "already syncing".
         loops::reconcile_interrupted_syncs(&state).await;
 
+        // Cleanup a previous daemon owed for deleted mail (it failed or died
+        // between the delete and the cleanup). Off the startup path: it only
+        // touches files and the semantic worker.
+        let forget_state = state.clone();
+        tokio::spawn(async move {
+            crate::message_deletion::drain_pending_forgets(&forget_state).await;
+        });
+
         // Spawn background loops
         loops::spawn_sync_loops(state.clone());
         let startup_handle = spawn_startup_maintenance(state.clone());

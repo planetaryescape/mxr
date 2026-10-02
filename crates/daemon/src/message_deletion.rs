@@ -2,22 +2,53 @@
 //!
 //! The store delete takes every row derived from a message with it. Two
 //! things it cannot reach: the semantic engine's in-memory index and the
-//! files the daemon wrote for the message. Every path that deletes messages
-//! (sync, account purge) calls [`forget_deleted_messages`] after its delete
-//! commits.
+//! files the daemon wrote for the message. The delete records each message
+//! in `pending_message_forgets` in its own transaction; [`drain_pending_forgets`]
+//! clears those and is run after every delete and once at startup, so a
+//! failed sync pass or a crash in between leaves the work owed, not lost.
 
 use crate::state::AppState;
 use mxr_core::id::MessageId;
 use std::collections::HashSet;
 use std::path::Path;
 
-/// Drops deleted messages from the semantic index and removes their
-/// attachment files. Failures are logged, not returned: the rows are already
-/// gone, and a leftover is retried by nothing, so the log is the record.
-pub(crate) async fn forget_deleted_messages(state: &AppState, message_ids: &[MessageId]) {
-    if message_ids.is_empty() {
-        return;
+/// Deleted messages cleared per round, bounding one round's work.
+const DRAIN_BATCH: u32 = 1_000;
+
+/// Clears every deleted message still owed its cleanup outside SQLite.
+pub(crate) async fn drain_pending_forgets(state: &AppState) {
+    loop {
+        let message_ids = match state.store.list_pending_message_forgets(DRAIN_BATCH).await {
+            Ok(ids) => ids,
+            Err(error) => {
+                tracing::warn!(%error, "could not read deleted messages owed cleanup");
+                return;
+            }
+        };
+        if message_ids.is_empty() {
+            return;
+        }
+        forget_deleted_messages(state, &message_ids).await;
+        if let Err(error) = state
+            .store
+            .clear_pending_message_forgets(&message_ids)
+            .await
+        {
+            // Left recorded; the next drain repeats the (idempotent) work.
+            tracing::warn!(%error, "could not mark deleted messages cleared");
+            return;
+        }
+        if message_ids.len() < DRAIN_BATCH as usize {
+            return;
+        }
     }
+}
+
+/// Drops deleted messages from the semantic index and removes their
+/// attachment files. A semantic failure is logged and not retried: the
+/// index is rebuilt from the store, which no longer holds the messages, on
+/// the next rebuild or restart.
+async fn forget_deleted_messages(state: &AppState, message_ids: &[MessageId]) {
     if let Err(error) = state.semantic.forget_messages(message_ids).await {
         tracing::warn!(
             messages = message_ids.len(),
@@ -76,6 +107,40 @@ async fn remove_attachment_files(attachment_dir: &Path, message_ids: &[MessageId
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A delete whose sync pass failed afterwards, or whose daemon died
+    /// before the fan-out ran, still has its files cleared by the next drain.
+    #[tokio::test]
+    async fn a_drain_clears_files_owed_by_an_earlier_delete() {
+        let state = AppState::in_memory().await.unwrap();
+        let attachments = tempfile::tempdir().unwrap();
+        state.set_attachment_dir_for_tests(attachments.path().to_path_buf());
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let gone = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .provider_id("gone")
+            .build();
+        state.store.upsert_envelope(&gone).await.unwrap();
+        let files = attachments.path().join(gone.id.as_str());
+        std::fs::create_dir_all(&files).unwrap();
+        // The delete commits; nothing runs the fan-out.
+        state
+            .store
+            .delete_messages_and_derived(&account_id, &["gone".to_string()])
+            .await
+            .unwrap();
+        assert!(files.exists());
+
+        drain_pending_forgets(&state).await;
+
+        assert!(!files.exists());
+        assert!(state
+            .store
+            .list_pending_message_forgets(10)
+            .await
+            .unwrap()
+            .is_empty());
+    }
 
     #[tokio::test]
     async fn removes_both_file_dirs_of_deleted_messages_and_nothing_else() {

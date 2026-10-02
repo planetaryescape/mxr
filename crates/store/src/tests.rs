@@ -71,6 +71,11 @@ async fn delete_account_cascades_owned_messages() {
         .await
         .unwrap()
         .is_empty());
+    assert_eq!(
+        store.list_pending_message_forgets(10).await.unwrap(),
+        vec![env.id],
+        "the purged mail's files and index entries are still owed their cleanup"
+    );
 }
 
 #[tokio::test]

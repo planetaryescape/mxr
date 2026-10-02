@@ -333,7 +333,7 @@ pub(super) async fn remove_account_config(
                 Ok(_) => {
                     // The account cascade cleared every row; the semantic
                     // index and attachment files sit outside SQLite.
-                    crate::message_deletion::forget_deleted_messages(state, &message_ids).await;
+                    crate::message_deletion::drain_pending_forgets(state).await;
                     Ok(())
                 }
                 Err(error) => Err(error.to_string()),

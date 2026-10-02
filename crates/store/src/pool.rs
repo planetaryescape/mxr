@@ -953,10 +953,8 @@ const MIGRATIONS: &[Migration] = &[
     },
     Migration {
         version: 57,
-        name: "deletion_lookup_indexes",
-        kind: MigrationKind::Sql(include_str!(
-            "../migrations/057_deletion_lookup_indexes.sql"
-        )),
+        name: "message_deletion",
+        kind: MigrationKind::Sql(include_str!("../migrations/057_message_deletion.sql")),
     },
 ];
 

@@ -185,8 +185,9 @@ Failure modes worth remembering:
 
 ### Owed-reply lens
 
-`mxr owed` / `is:owed-reply` (with `is:owed_reply`, `is:owed` aliases).
-Currently computed on demand from `messages`, `reply_pairs`,
+`mxr owed --all` / `is:owed-reply` (with `is:owed_reply`, `is:owed` aliases).
+Plain `mxr owed` is the desk's You owe lane instead (D103). The raw set is
+computed on demand from `messages`, `reply_pairs`,
 `contacts.cadence_days_p50`, `message_flags`, and `screener_decisions`. We
 chose not to materialize because the query is bounded and analytics rebuild
 already maintains the inputs. The trigger to materialize would be either

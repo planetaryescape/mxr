@@ -272,9 +272,9 @@ draft above the quoted message. [How drafts are written](/guides/llm-features/).
 ### Triage queues
 
 The reply queue (reply later adds to it) is one of the sidebar's places. The other
-queues the TUI shows as lenses live under **More**: owed replies (every
-conversation where someone is waiting on you, archived or not, most overdue
-first), invites and subscriptions. On the reply queue each row has a
+queues the TUI shows as lenses live under **More**: owed replies (the desk's
+You owe lane in full: people you have written to waiting on you, most
+overdue first), invites and subscriptions. On the reply queue each row has a
 **Done** button that takes it out of the queue. [Focus & reply](/guides/focus-and-reply/)
 which works through owed replies and the reply queue one conversation at a
 time.

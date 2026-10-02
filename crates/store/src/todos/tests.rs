@@ -483,3 +483,25 @@ async fn a_new_due_date_on_the_same_evidence_updates_the_row() {
         Some(at(300))
     );
 }
+
+#[tokio::test]
+async fn newer_evidence_never_clears_the_date_you_chose() {
+    let fx = Fx::new().await;
+    let first = fx.message("first", at(0)).await;
+    let reminder = fx.message("reminder", at(48)).await;
+    fx.store
+        .upsert_detected_todo(&fx.record("t1", &first, at(0)))
+        .await
+        .unwrap();
+    fx.store
+        .schedule_todo("t1", Some(at(400)), at(1))
+        .await
+        .unwrap();
+    let mut newer = fx.record("t2", &reminder, at(48));
+    newer.amount_minor = Some(15000);
+    newer.updated_at = at(48);
+    fx.store.upsert_detected_todo(&newer).await.unwrap();
+    let row = fx.store.get_todo("t1").await.unwrap().unwrap();
+    assert_eq!(row.scheduled_for, Some(at(400)));
+    assert_eq!(row.amount_minor, Some(15000), "the facts still update");
+}

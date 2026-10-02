@@ -286,11 +286,6 @@ impl super::Store {
                 state = CASE WHEN {REOPENS} THEN 'open' ELSE todos.state END,
                 expired_at = CASE WHEN {REOPENS} THEN NULL ELSE todos.expired_at END,
                 expired_at_birth = CASE WHEN {REOPENS} THEN 0 ELSE todos.expired_at_birth END,
-                -- News in the conversation brings a scheduled row back early.
-                scheduled_for = CASE
-                    WHEN todos.source_message_id IS NOT excluded.source_message_id
-                         AND todos.scheduled_for > excluded.updated_at THEN NULL
-                    ELSE todos.scheduled_for END,
                 updated_at = excluded.updated_at
              WHERE {UNTOUCHED_EXISTING}
                AND (todos.source_date IS NULL

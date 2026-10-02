@@ -1371,7 +1371,9 @@ body {
 }
 
 @media (max-width: 880px) {
-  .duplex-grid { grid-template-columns: 1fr; }
+  /* minmax(0, …): the bridge's row of mechanism names would otherwise set
+     the track's minimum width and push the page wider than a phone. */
+  .duplex-grid { grid-template-columns: minmax(0, 1fr); }
   .duplex-side:first-child, .duplex-side:last-child {
     border-left: 0; border-right: 0;
   }
@@ -1382,6 +1384,7 @@ body {
     padding-block: 0.85rem;
   }
   .duplex-mech-line { transform: rotate(90deg); }
+  .duplex-mech { white-space: normal; flex: 1 1 0; min-width: 0; }
 }
 
 /* ==========================================================

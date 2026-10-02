@@ -186,6 +186,36 @@ local LLM server, so a cloud-only user still gets semantic search without
 installing anything. Cloud embeddings are not planned; they would send the
 whole mailbox to a provider and re-embed it on every model change.
 
+### Each model task gets the tool that fits it, which is often no model
+
+The fit review in [model-fit.md](../research/model-fit.md) assigns every
+model task in this plan a tool by fit, not by cost (BK, 2026-10-02: use
+things for what they are suited for). Code alone handles the Got it
+acknowledgement (a template from the user's own greeting and sign-off),
+unsubscribe evidence, Messages ranking, conversation shape and quote
+stripping. Where a model judges, code finds the candidates first and the
+model selects among them, or answers "none": the amount and deadline among
+values found by regex, schema.org and `natural_time`; the request sentence
+for "what they asked"; whether a receipt confirms a to-do. Selection keeps
+quotes verbatim by construction. Gists, to-do titles, Updates facts and
+`mxr ask` generate text and stay on the tiers above; thread gists run on
+the smart tier, and its "ask" replaces the existing gist ask rather than
+duplicating it.
+
+Auto-actions (completing a to-do on a receipt, an update breaking through
+to To do, rendering a model-placed item as checked) ship as suggestions
+the user confirms with one key until the eval shows a measured threshold
+on the user's own mail. System One models (TypeSafe Jev and the local
+models that speak its API) are a candidate in that eval, not a
+dependency: Jev is cloud-only and its DPA covers only the customer and the
+customer's users, not third parties in mail, so it does not meet the
+processor rule as published; a second local daemon is never required. GPT-6
+Luna is a reasonable cloud smart-tier model under API terms, but its
+stated confidence is not used for thresholds. The OpenAI Decisions API is
+in limited preview with no docs or terms; revisit when it has both.
+`OpenAiCompatibleProvider` gains JSON-schema structured output regardless,
+since selection tasks need it.
+
 ## Every view follows the same trust rules
 
 - **Model text is italic and names its model.** Apple paused notification

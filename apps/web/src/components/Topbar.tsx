@@ -10,6 +10,7 @@ import { lensesFromShell, resolveLens } from "@/features/mailbox/lenses";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
 import { fetchThread } from "@/features/mailbox/api";
 import { formatChord } from "@/lib/keys/chord";
+import { cn } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
 
 interface Crumb {
@@ -129,14 +130,17 @@ export function Topbar() {
       <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1 text-[13px]">
         {crumbs.map((crumb, index) => {
           const last = index === crumbs.length - 1;
+          // Only the last crumb gives way on a narrow bar: a parent crumb
+          // that shrinks slides under its neighbour instead of truncating.
+          const fit = last ? "min-w-0" : "max-w-[40%] shrink-0";
           return (
             // oxlint-disable-next-line react/no-array-index-key -- crumbs are positional
-            <span key={`${crumb.label}-${index}`} className="flex min-w-0 items-center gap-1">
+            <span key={`${crumb.label}-${index}`} className={cn("flex items-center gap-1", fit)}>
               {index > 0 ? <ChevronRight className="size-3.5 shrink-0 text-faint" /> : null}
               {crumb.to && !last ? (
                 <Link
                   to={crumb.to}
-                  className="shrink-0 truncate text-muted-foreground hover:text-foreground"
+                  className="min-w-0 truncate text-muted-foreground hover:text-foreground"
                 >
                   {crumb.label}
                 </Link>

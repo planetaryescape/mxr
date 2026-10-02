@@ -10,7 +10,7 @@ runway, Updates shows a briefing by source, Reading shows readable items,
 and Archive shows records. None of them shows a list of subject lines.
 
 Code references are at `3da0c119` (v0.6.47) unless marked. Settled choices
-are D107 to D116 in [15-decision-log.md](15-decision-log.md); D112 amends
+are D107 to D118 in [15-decision-log.md](15-decision-log.md); D112 amends
 D110's digest cadence. Rubric v3 in `docs/web-app-experience-rubric.md`
 grades the work.
 
@@ -26,7 +26,9 @@ mockups and open risks:
 [now-and-handoff.md](../research/email-modes/now-and-handoff.md) (Now, one
 email in many modes, handoff, navigation, archive on last done, Screener),
 [relevance-and-backfill.md](../research/email-modes/relevance-and-backfill.md)
-(relevancy windows and the first run)
+(relevancy windows and the first run),
+[teaching-in-place.md](../research/email-modes/teaching-in-place.md)
+(teaching the model without a tour)
 and [chatgpt-sign-in.md](../research/chatgpt-sign-in.md) (the cloud
 credential). Where a note and this plan disagree, this plan wins and says
 why below.
@@ -712,6 +714,233 @@ Where the research notes disagreed, the reason for the choice:
   `g q`, `g w` and `g o` open Messages filters. `g m`, `g x` and `g e` are
   unbound in both keymaps.
 
+## The app teaches itself in place, with no tour
+
+The modes ask people to drop habits that work in every other mail client,
+so mxr has to explain itself a lot. It does that where each thing is used,
+in the words of that mode, and never in a tour (D118). The research is
+[teaching-in-place.md](../research/email-modes/teaching-in-place.md). In
+short: NN/g found tutorials interrupt, don't improve task performance and
+are quickly forgotten, and recommends help that arrives when the user
+needs it; Carroll's minimal manual and its replication (Lazonder and van
+der Meij, 1993) found short task-attached instruction teaches faster than
+complete instruction; and explaining each of a classifier's decisions
+raised users' understanding of it by 52% (Kulesza et al., IUI 2015). Fu
+and Gray (2004) found experienced users keep generic habits that work, so
+the moment to teach is when a Gmail habit meets a mode rule.
+
+### Every mode ships six teaching surfaces
+
+1. **A header line** under the mode's name, always visible: what the mode
+   is for in under 12 words, including its verb.
+2. **Two empty states.** "Never had any" teaches the job, what lands here
+   and how something gets here (including `t`). "Clear for now" states the
+   fact and when the next thing arrives, as the end states in the first
+   table say.
+3. **One first-encounter card**, shown at the top of the mode the first
+   time it has items: one or two sentences and one line of keys with their
+   verbs. It closes on `Esc` or its close button, and retires on its own
+   the first time the user performs the mode's main verb, because a tip
+   about something already used is noise (Apple HIG). It never returns.
+   The daemon stores the seen state per profile, so closing it in the web
+   app also retires it in the TUI.
+4. **A why line on every item**, as "Every item says why" requires, plus a
+   what-next fragment where the mode has a rhythm ("In the 16:30 digest",
+   "Fades Sunday unless you keep it"). It names its evidence and its
+   source (rule, you, or the model by name) and is never vague, because a
+   low-soundness explanation costs trust (Kulesza et al., VL/HCC 2013).
+5. **`?` leads with the mode.** The help that `?` opens today (web
+   `HelpDialog.tsx`, TUI `Help`) starts with the mode's header, its card
+   text, one line on what lands here, and links to the glossary and the
+   mode's guide page, then the keys. This is how a closed card is found
+   again; there is no separate tips page.
+6. **Keys with their verbs at the point of use**: the footer, tooltips and
+   the palette show "e done here", never a bare key. Tooltips start with a
+   verb and stay under 75 characters (Apple HIG). Superhuman and Raycast
+   teach keys this way: the shortcut sits beside the action.
+
+Across modes, handoff toasts name the destination and the undo (see
+"Handoff names where the item went"). Archive the mode and archive the
+Gmail action share a word, so toasts keep them apart every time: "Filed in
+Archive" for a record, "Archived in Gmail" for the provider action, with
+the user's own provider named.
+
+The copy lives in one typed table in the daemon, served by `GetModeGuide`
+and printed by `mxr modes explain [MODE] --format json`, so web, TUI, CLI
+and agents use the same words and one test checks them. Empty `mxr todo`,
+`mxr updates` and the other mode commands print the empty-state line.
+`SetModeGuideSeen { mode }` records a retired card.
+
+### Copy for each mode
+
+Drafts in BK's voice: plain, specific, no hype, and no "AI". The examples
+use the demo mailbox. Dates and counts are filled in by code.
+
+**Now**
+
+- Header: "The few things that need you now, from every mode."
+- Never had any: "Now fills in as mxr sorts your mail, newest first.
+  People waiting on you, things due soon and the latest updates show
+  here."
+- Clear for now: "Clear. The next to-do surfaces Mon 09:00."
+- Card: "Now shows at most ten things: people waiting on you, things due
+  soon, the latest updates and, after 17:00, one thing to read. Acting on
+  a row here does it in that row's own mode."
+  Keys: `Enter` open in its mode · `e` done here · `?` what is this
+- Why line: names the mode and the reason. "From To do: act by Wed 7 ·
+  due Fri 9." "From Messages: Maya asked you something 22h ago."
+
+**Messages**
+
+- Header: "People you talk with, one row each. Reply or mark done."
+- Never had any: "When someone writes to you and you've written to them,
+  they show up here, one row per person, with what they asked you."
+- Clear for now: "Nobody is waiting on you." Up to three people whose usual
+  pace lapsed follow as facts: "Ari usually writes every week. Last: 19
+  days ago."
+- Card: "Each row is a person, not an email, with your conversations
+  inside as topics. The quoted line is what they asked; the row leaves
+  Your turn when you reply or press `.` for got it."
+  Keys: `r` reply · `.` got it · `e` done here · `t` make it a to-do
+- Why line: "Here because: Samir asked you a question, and you write to
+  him often (rule)."
+
+**To do**
+
+- Header: "Things email asked you to do, ordered by when to act."
+- Never had any: "When an email asks you to pay, sign, reply by a date or
+  confirm something, it shows up here as one line: what to do and when to
+  act. Press `t` on any email to add one yourself."
+- Clear for now: "Nothing needs you. Next: renew car insurance shows up Mon
+  19 Oct."
+- Card: "Each row is one thing to do, written as what to do, not the
+  email's subject. Act by the first date; the bar fills from when it
+  showed up to when it's due, and Enter does what the button says."
+  Keys: `Enter` do it · `e` tick off · `Z` schedule · `X` not a to-do
+- Why line: "Here because: \"payment due 9 October\" (rule). Once you pay,
+  the receipt files itself in Archive."
+
+**Updates**
+
+- Header: "Notifications gathered twice a day. Read the digest, then let go."
+- Never had any: "Notifications from services and apps land here and are
+  gathered into a digest at 08:00 and 16:30. Anything that needs you, like
+  a failed payment, goes straight to To do."
+- Clear for now: "Nothing new since 08:00. Next digest at 16:30."
+- Card: "Updates gathers notifications into a digest at 08:00 and 16:30,
+  one line per source, like your bank or GitHub, with what changed first. Anything that needs you
+  goes to To do at once, so you can read this and let it go."
+  Keys: `A` let go of digest · `e` let go of this source · `t` this needs
+  me · `K` tune a source
+- Why line: "Here because: automated sender, not a person (rule). In the
+  16:30 digest."
+
+**Reading**
+
+- Header: "Newsletters you chose, as an edition. Read when you like."
+- Never had any: "Newsletters and posts you subscribed to land here, with
+  the ones you read most first. Nothing here is owed: there's no unread
+  count, and items fade unless you keep them."
+- Clear for now: "Nothing new since Tuesday. Later has 4 things saved."
+- Card: "Reading is an edition of the newsletters you chose, with the
+  sources you read most first. Nothing here is owed: items fade after a
+  while unless you press `b` to keep them for later."
+  Keys: `Enter` read · `b` later · `e` let go · `D` unsubscribe
+- Why line: "Here because: you subscribed, and it has an unsubscribe link
+  (rule). Fades Sunday unless you keep it."
+
+**Archive**
+
+- Header: "Receipts, orders, bookings and documents. Ask for what you need."
+- Never had any: "Receipts, orders, bookings, bills and documents are filed
+  here as records, one card per thing, not per email. Type what you
+  remember, like \"lisbon booking\", and it answers with the field."
+- Clear for now: none. Records stay. A query with no record match says so
+  and falls back: "No record matches \"lisbon booking\". Searching all
+  mail instead."
+- Card: "Archive keeps records built from your mail: one card per order,
+  trip or bill, and it answers in the field you asked for, like a booking
+  reference. Archiving an email in Gmail is a different thing, and the
+  toast always says which one happened."
+  Keys: `/` ask · `y` copy reference · `Enter` open document · `o` the
+  email
+- Why line: "Here because: order confirmation with schema.org markup
+  (checked). Return window closes Fri 12."
+
+**Inbox** (a lens, not a mode) gets a header only: "Everything, newest
+first. The modes hold the same mail, sorted."
+
+### The first run is the moment the whole model is explained
+
+The first run is the one time mxr shows all five modes together, because
+the user is waiting anyway and their own mail is the example. Twitter's
+sign-up rose 29% when it showed people content to follow before a blank
+feed (Wroblewski, 2010), and Apple's HIG says to teach through doing.
+This builds on "The first run classifies newest first" and adds no step.
+
+1. While the first slice sorts, Now shows "Sorting your mail, newest
+   first. Now fills in within a few minutes." with the progress line, and
+   below it each mode's header line with a count as it fills.
+2. When the first slice is done, one card replaces that list:
+
+   ```text
+   Your last two weeks, sorted
+   Messages   14 people, 3 waiting on you        People you talk with
+   To do       6 things, 2 to act on this week   What email asked you to do
+   Updates    31 updates from 12 sources         Notifications, twice a day
+   Reading     9 issues from 7 newsletters       Newsletters, when you like
+   Archive   412 records                         Receipts, orders, bookings
+   Already over, so not shown: 50 past invites, 63 quiet parcels.
+   Enter open a mode   e close   ? what is this
+   ```
+
+   Enter on a row opens that mode, where its own card appears. The
+   catch-up card follows ("Catch up: 12 things from the last two weeks
+   might still need you"), and keeping or letting go of each row teaches
+   the two verbs every mode shares. The one question the first run asks,
+   the catch-up window (D117), sits on this card with 14 days filled in.
+3. The card closes on `e` and never returns; `mxr modes first-run
+   --status` repeats the counts.
+4. Before any account is added, the empty Now offers the demo: "Want to
+   look around first? `mxr demo` opens a sample mailbox. Nothing you do
+   there touches your mail." Like Linear's demo workspace, it's offered,
+   never required.
+
+### Teaching surfaces are part of each phase's definition of done
+
+A phase is not done until its mode's header line, both empty states, the
+first-encounter card, why and what-next lines, `?` content, toasts and key
+hints ship in web, TUI and CLI with the copy above, or with revised copy
+recorded here. Phase 1 builds the mechanism with To do (`GetModeGuide`,
+`SetModeGuideSeen`, `mxr modes explain`, the copy test). Phase 2 adds Now,
+the first-run card and `?` leading with the mode on every screen. Each
+later phase fills in its own mode's copy.
+
+- **Tests:** a `mode_guide` table test (every mode has a header under 12
+  words, a card of at most two sentences, no "AI", "smart", "magic" or
+  exclamation marks, and every key in a card's key line bound to that
+  verb in that mode's keymap scope); a CLI JSON snapshot of `mxr modes
+  explain`; `e2e/teaching.spec.ts` (the card shows once, not after reload,
+  not in the other client once closed, and retires on the mode's verb;
+  both empty states render; `?` starts with the mode; no multi-step
+  overlay exists).
+- **Check:** the five-second check below, recorded in
+  `docs/dogfooding-log.md`.
+
+### Rubric v3 grades teaching with a five-second check, and fails a tour
+
+X13 in `docs/web-app-experience-rubric.md`: a new user can say what each
+mode is for after one visit, and no tour exists. The check, in the
+style of a five-second test (Lyssna's guide: brief exposure, then recall):
+at least three people who have not used mxr each open every mode once in
+`mxr demo`, with the card showing and no explanation from anyone, for up
+to 30 seconds. With the screen hidden, they answer "What is this screen
+for?" and "What would you do with a row here?". A mode passes when at
+least two of three name its job in their own words and its main verb. A
+five-second test measures first impressions, not use, so it is a floor;
+the dogfooding log covers use. A multi-step tour, chained coach marks, a
+tips feed or a notification advertising a feature fails X13 outright.
+
 ## Conflicts the research left, and what this plan chose
 
 | Topic | The notes said | Chosen | Why |
@@ -1030,7 +1259,10 @@ done until they are (rubric v3, X11). Every phase also:
   OpenAPI dump for the commands and routes it adds;
 - keeps an old URL working with a redirect when it replaces a page;
 - checks every new claim against the code at the release commit and runs
-  `npm run build` in `site/`.
+  `npm run build` in `site/`;
+- ships its mode's teaching surfaces and copy ("The app teaches itself in
+  place, with no tour"), and records the five-second check (rubric v3,
+  X13).
 
 [docs/site-modes-inventory.md](../site-modes-inventory.md) lists every
 site page and repo doc with the phase that changes it, and the sidebar to
@@ -1338,6 +1570,13 @@ provenance on every model-placed item.
   expired-at-birth and catch-up counts on BK's mail, restores from the
   Expired list (a restore means the window was too short), and any
   moment BK sees something stale.
+- **Teaching in place is enough for a new model of email.** The evidence
+  is about tours versus contextual help in general, not about email
+  modes. Learn from the five-second check per mode (X13) and from any
+  moment in `docs/dogfooding-log.md` where someone opened `?` to
+  understand a mode or used a Gmail habit that the mode doesn't support.
+  If a mode fails the check twice, rewrite its header and card before
+  adding any new surface.
 - **Classifier errors are what users see first**, and Now's cap of three
   makes each one a third of a section. That is why the eval harness lands
   in phase 2.
@@ -1382,5 +1621,8 @@ rules above; D117 records them.
   user config.
 - **Gmail mail deleted while offline.** Deferred until after phase 1. The
   design is in `docs/issues/deletion-clears-derived-data.md`.
+- **`mxr demo` on first run.** Offered only when no account is set up yet. A real mailbox goes straight to its own first run.
+- **Dismissed teaching cards.** The daemon stores dismissals, so a card dismissed in the web app stays dismissed in the TUI.
+- **Who takes the five-second check.** BK and two people new to mxr, during dogfooding. Until they have, the independent grader runs it on the demo mailbox.
 - **Sign in with ChatGPT SDK.** Not built. See
   `docs/extractable-crates/14-chatgpt-sign-in-sdk.md`.

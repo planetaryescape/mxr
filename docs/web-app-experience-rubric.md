@@ -9,7 +9,8 @@ shape (fail if it renders a list of subject lines), plus digest cadence,
 lead-time accuracy, field provenance, one key map, model tiers and a
 retrieval eval. Revised again the same day: X12 (stale items never show;
 the first run surfaces at most 10 to-dos plus a catch-up of at most 25),
-from D115 and D116. v2's sections stay below as history, and the criteria v3
+from D115 and D116; and X13 (the app teaches itself in place, graded with a
+five-second check, and no tour), from D118. v2's sections stay below as history, and the criteria v3
 carries over keep their v2 numbers. v2 (2026-09-30): adds A11 triage at a glance, A12 one
 vocabulary across clients, section D (budgets measured on a real mailbox)
 and section E (independent grading and a dogfooding log). v1 (2026-09-28):
@@ -169,6 +170,7 @@ recipe ships only when it is at least as good as today's chunking.
 | X10 | **Search finds what each mode cares about.** The per-mode index recipes match or beat today's chunking on the retrieval eval (top-5 hit rate on BK's known-item queries, counts only) before they replace it. | The retrieval eval's counts, recorded below. |
 | X11 | **Docs and READMEs match what ships.** Each phase updates the site pages and repo docs on its Docs line in 22 in the same release; no page describes a mode behaviour that hasn't shipped, and planned parts are marked planned. | The phase's Docs line checked off page by page; `npm run build` in `site/` passes; each new claim names the code it was checked against. |
 | X12 | **Stale items never show, and the first run doesn't flood.** No item past its `relevant_until` appears in Now, To do's Now band or an Updates cut, on a moved clock or on real mail; a to-do the user made or edited never expires; expiry is one "N expired since you last looked" line with restore, never a badge, and never archives at the provider. On BK's real mail the first run puts at most 10 to-dos in To do's Now band and at most 25 in the catch-up batch, and a re-run after a rule change surfaces nothing already surfaced or expired. | `handler/tests/first_run.rs` and `handler/tests/now.rs` with a moved clock; `relevance_window` table tests; first-run counts on BK's mail (surfaced, catch-up, expired at birth per kind) recorded below. |
+| X13 | **The app teaches itself in place, with no tour.** Every mode has its header line (under 12 words, naming its job and verb), both empty states, a first-encounter card that shows once and retires on dismiss or on the mode's verb, a why line on every item, `?` leading with the mode, and keys shown with their verbs, all with the copy in [22](blueprint/22-email-modes.md). A new user can say what each mode is for after one visit. No multi-step tour, chained coach marks, tips feed or feature notification exists. | `mode_guide` table test and `e2e/teaching.spec.ts`; the five-second check: at least three people who have not used mxr open each mode once in `mxr demo` for up to 30 seconds with no explanation, then, with the screen hidden, say what it is for and what they would do with a row. A mode passes when at least two of three name its job and main verb. Results recorded below and in `docs/dogfooding-log.md`. |
 
 ### Carried over from v2
 
@@ -202,6 +204,12 @@ First run (X12), counts only:
 | Date | Version | Messages | Classified first slice | Surfaced in To do Now | Catch-up rows | Expired at birth | Past-window items shown |
 |---|---|---:|---:|---:|---:|---:|---:|
 | | | | | | | | |
+
+Five-second check (X13), per mode:
+
+| Date | Version | People | Mode | Job named | Verb named | Words people used |
+|---|---|---:|---|---:|---:|---|
+| | | | | | | |
 
 Retrieval eval, top-5 hit rate per mode:
 

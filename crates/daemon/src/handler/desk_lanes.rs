@@ -414,7 +414,14 @@ fn thread_row(
         };
         (DeskLaneKind::Owed, reason, Some(PaceDirection::Mine))
     } else {
-        if inbound.date < now - Duration::days(RECENT_DAYS) {
+        // A sender you allowed stays as long as the window would keep them
+        // in You owe; Allow took them out of there, not off the desk (D104).
+        let days = if inputs.decision(email) == Some(ScreenerDisposition::Allow) {
+            DESK_WINDOW_DAYS
+        } else {
+            RECENT_DAYS
+        };
+        if inbound.date < now - Duration::days(days) {
             return None;
         }
         let seen = contact
@@ -837,6 +844,25 @@ mod tests {
         assert_eq!(new.row.lane, DeskLaneKind::PeopleNew);
         assert_eq!(new.row.reason, "first message from them");
         assert_eq!(lane_of(&lanes, &replied), Some(DeskLaneKind::Owed));
+    }
+
+    #[test]
+    fn an_allowed_sender_waiting_two_weeks_is_still_new_from_people() {
+        let allowed = ThreadId::new();
+        let stranger = ThreadId::new();
+        let messages = vec![
+            message(&allowed, "ops@studio.example", ME, 15 * 24),
+            message(&stranger, "theo@example.com", ME, 15 * 24),
+        ];
+        let screener =
+            HashMap::from([("ops@studio.example".to_string(), ScreenerDisposition::Allow)]);
+        let lanes = lanes_with_screener(&messages, &[], screener);
+        assert_eq!(lane_of(&lanes, &allowed), Some(DeskLaneKind::PeopleNew));
+        assert_eq!(
+            lane_of(&lanes, &stranger),
+            None,
+            "only a week for strangers"
+        );
     }
 
     #[test]

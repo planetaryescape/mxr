@@ -24,13 +24,14 @@ commitments and cadence watches. No language model decides what goes where.
 | You owe | `owed` | Someone you are in conversation with wrote last and you have not replied. | Furthest past your usual reply time first. |
 | Due | `due` | A promise you made is due within 7 days, or overdue by up to 30 days. | By due date. |
 | Waiting on | `waiting` | You wrote last, at least 12 hours ago, and they have not answered. A watched contact who has gone quiet longer than their [cadence](/guides/timing-and-cadence/) joins too. A time set with [`mxr desk later`](#later) that passed with no reply brings it back, however old. | Furthest past their usual reply time first. |
-| New from people | `people_new` | A person you have not written to before wrote in the last 7 days. | Newest first. |
+| New from people | `people_new` | A person you have not written to before wrote in the last 7 days, or in the last 30 days if you allowed them in the screener. | Newest first. |
 
 - "In conversation with" means you have written to them: you sent mail to
   them before (To, Cc or Bcc), or replied in that conversation. Allowing a
   sender in the [screener](/guides/triage-flow/) makes their mail count as
   from a person, but not as a conversation. An allowed sender you have never
-  written to lands in New from people until you reply.
+  written to lands in New from people until you reply, for as long as the
+  desk looks back (30 days).
 - [`mxr owed`](/reference/cli/owed/) and the web app's Owed page list the
   whole You owe lane for one account, in the same order. `mxr owed --all`
   lists every conversation whose latest inbound message has no later reply

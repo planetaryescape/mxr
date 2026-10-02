@@ -719,8 +719,8 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 
 **Chosen**:
 - Being "in conversation" requires an actual exchange: you sent mail to them (To, Cc or Bcc, per the window or the contacts table), or you replied in that conversation. A screener Allow alone no longer counts.
-- An allowed sender is still a person (`mail_kind::classify`), so their mail from someone you have never written to lands in New from people, and moves to You owe once you write.
-- The Screener is for strangers: anyone you have written to is never screened. The screener queue and the desk's screener count both leave out senders you have sent mail to.
+- An allowed sender is still a person (`mail_kind::classify`), so their mail from someone you have never written to lands in New from people, and moves to You owe once you write. New from people keeps an allowed sender's mail for the desk's whole 30-day window, not only the 7 days it gives strangers, so Allow never takes a conversation off the desk.
+- The Screener is for strangers: anyone you have written to is never screened. The screener queue and the desk's screener count both leave out senders you have sent mail to (To, Cc or Bcc), where sent mail follows the desk's rule: stored as outbound, or of unknown direction from one of the account's own addresses.
 
 **Considered**: Keeping Allow as an exchange; a separate "trusted" disposition.
 

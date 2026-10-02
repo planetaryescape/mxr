@@ -10,7 +10,7 @@ runway, Updates shows a briefing by source, Reading shows readable items,
 and Archive shows records. None of them shows a list of subject lines.
 
 Code references are at `3da0c119` (v0.6.47) unless marked. Settled choices
-are D107 to D114 in [15-decision-log.md](15-decision-log.md); D112 amends
+are D107 to D116 in [15-decision-log.md](15-decision-log.md); D112 amends
 D110's digest cadence. Rubric v3 in `docs/web-app-experience-rubric.md`
 grades the work.
 
@@ -24,7 +24,9 @@ mockups and open risks:
 [reading.md](../research/email-modes/reading.md),
 [archive.md](../research/email-modes/archive.md),
 [now-and-handoff.md](../research/email-modes/now-and-handoff.md) (Now, one
-email in many modes, handoff, navigation, archive on last done, Screener)
+email in many modes, handoff, navigation, archive on last done, Screener),
+[relevance-and-backfill.md](../research/email-modes/relevance-and-backfill.md)
+(relevancy windows and the first run)
 and [chatgpt-sign-in.md](../research/chatgpt-sign-in.md) (the cloud
 credential). Where a note and this plan disagree, this plan wins and says
 why below.
@@ -750,7 +752,10 @@ CREATE TABLE todos (
     action_url        TEXT,
     action_domain     TEXT,                   -- registrable domain, shown before Enter
     action_trusted    INTEGER NOT NULL DEFAULT 0, -- DMARC pass and domain match: gates the button
-    state             TEXT NOT NULL CHECK (state IN ('open', 'done', 'dismissed')),
+    relevant_until    INTEGER,                -- the window's end; NULL when open-ended
+    window_source     TEXT,                   -- schema | ics | rule | default | user
+    state             TEXT NOT NULL CHECK (state IN ('open', 'done', 'dismissed', 'expired')),
+    expired_at        INTEGER,                -- set once; restore clears it
     done_message_id   TEXT,                   -- the confirmation that completed it, if any
     origin            TEXT NOT NULL CHECK (origin IN ('rule', 'schema', 'model', 'handoff', 'manual')),
     reason            TEXT NOT NULL,
@@ -785,7 +790,9 @@ hash), `mode_corrections (account_id, scope, key, mode, verdict,
 decided_at)` with `scope` in `message | sender`, and `mode_done
 (account_id, thread_id, mode, through_seq, through_count, done_at)` on the
 `DeskDismissal::covers` watermark. Per-mode stores are specified in the
-research notes: `update_facts` and `update_sources` (updates.md §4),
+research notes, and each item store carries `relevant_until`,
+`window_source` and its claim column (see "Items have a relevancy
+window"): `update_facts` and `update_sources` (updates.md §4),
 `reading_items`, `reading_state` and `reading_articles` (reading.md §4),
 `records` with its field, message and group tables (archive.md §4), and a
 small `people` identity layer (messages.md §5). Activity records carry ids
@@ -831,6 +838,158 @@ schema.org dates come first, then the account's locale, then the row asks.
 Lead times are config per kind and per sender through `K` ("Remind me 2
 weeks earlier for Admiral"). The sources are mostly UK; other defaults are
 open.
+
+## Items have a relevancy window, and the first run uses it
+
+A lead time says when an item starts to matter; a relevancy window also
+says when it stops. Stale items and the first-run flood are one problem:
+a notification for an event that already ended, and three years of old
+to-dos on day one, are both items shown after their window closed. The
+research is [relevance-and-backfill.md](../research/email-modes/relevance-and-backfill.md).
+Settled as D115 and D116.
+
+BK's real store shows both (read-only counts, 2026-10-02): 83 deliveries
+listed as active, 63 of them with no event for over 30 days, because the
+active list has no age bound (`DeliveryListFilter::Active` in
+`crates/store/src/deliveries.rs`); 50 unanswered RSVP requests, every one
+for an event already over; and 1,842 open promises the user made, 93%
+undated and 1,447 from mail older than 30 days. As `ListTodos` is
+specified above, To do would open with all of them. Windows clear the
+dated ones. The undated residue needs a bounded catch-up, and is the
+larger part.
+
+### Every item carries the window its content implies
+
+Each mode item gets `relevant_from` and `relevant_until`, plus a
+`window_source` (`schema`, `ics`, `rule`, `default` or `user`); a to-do's
+`relevant_from` is its `surface_at`. The end
+comes from code, never from a model: schema.org (`Event.endDate`,
+`Offer.validThrough`, `ParcelDelivery.expectedArrivalUntil`,
+`Invoice.paymentDueDate`), ICS `DTEND` (`calendar_invites.ends_at`), Gmail's
+`DiscountOffer.availabilityEnds`, or quoted words resolved by
+`natural_time` ("expires in 10 minutes", "sale ends Sunday"). A model may
+only pick among dates code found (D111). This is what Wallet passes
+(`expirationDate`, `relevantDates`), Live Activities (`staleDate`),
+Android (`setTimeoutAfter`) and Gmail's deal annotations already do;
+iOS notifications carry no end time and leave removal to each app, which
+is why a past calendar alert lingers.
+
+| Kind | Relevant from | Relevant until | End comes from | After the window |
+|---|---|---|---|---|
+| Event or invite | arrival | event end; no end: start plus 1 hour | ICS `DTEND`, `Event.endDate` | RSVP to-do expires; Archive keeps the event only if accepted |
+| One-time code | arrival | stated lifetime, else 10 minutes | quoted words; NIST SP 800-63B's 10-minute maximum | let go; never a record |
+| Verify or confirm link | arrival | stated expiry, else 3 days | quoted words; Django's default | let go; never a record |
+| Sign-in or security alert | arrival | 2 days | judgement | let go; stays in Inbox and search |
+| Delivery | first email | delivered plus 1 day; "went quiet" 7 days past `expectedArrivalUntil`, or 14 days without an event when there's no ETA | carrier status, schema.org | delivered: order record in Archive; quiet: one "went quiet" line in the next cut, then let go |
+| Bill | `surface_at` | due plus 14 days | `Invoice.paymentDueDate`, due words | expires; a reminder or final notice reopens the row by `dedup_key`; paid: record |
+| Renewal | `surface_at` | renewal date plus 3 days | due words, schema.org | expires; the confirmation is a record |
+| RSVP | arrival | reply-by date, else event start | due words, ICS | expires |
+| Sale or offer | arrival or `validFrom` | `validThrough` or `availabilityEnds`, else 7 days | schema.org, Gmail annotations, words | let go; never a record |
+| Newsletter issue | arrival | Reading's fade: twice the source's median interval, 2 to 14 days | the Reading rule above | `mode_done` for Reading; Later never expires silently |
+| Promise you made | evidence date | dated: the date plus 7 days; undated: none | `by_when`, due words | dated: expires; undated: decays like owed, and the first run's catch-up applies |
+| Person message | arrival | none: messages don't expire | | Your turn decays to Quiet after max(3 times their cadence, 7 days), capped at 30 days |
+| Record | | none: records don't expire | | its "coming up" moment has its own window (return window close, trip end) |
+
+Defaults without a source (sign-in 2 days, offer 7 days, the grace
+periods) are judgement and configurable per kind and per sender through
+`K`, like lead times. The bill's 14-day grace exists because a missed bill
+keeps mattering until the biller says otherwise, and the biller's next
+email reopens it.
+
+### Expiry lets go in its mode, files records, and never drops what you made
+
+- **To do.** Past `relevant_until`, a detected row moves to `state =
+  'expired'` with `expired_at`, leaves the Now band and Coming up, and is
+  one key from restore. A row the user made or touched never expires:
+  `origin` of `manual` or `handoff`, any `field_sources` value of `user`,
+  or a `scheduled_for` date. It stays as "was due Fri" until the user
+  acts, as Sunsama exempts edited recurring tasks from rollover removal.
+- **Updates.** A fact past its window drops out of any cut not yet shown
+  and never breaks through to To do; an OTP that syncs after its 10
+  minutes never surfaces. Trackers end as above.
+- **Now.** Hard rule: nothing past `relevant_until` enters Now, and
+  `GetNow` filters on it in the daemon, so every client agrees.
+- **Archive.** Expiry never removes a record. Record-worthy items (an
+  accepted event, a delivered order, a paid bill) file themselves, as they
+  do on tick-off.
+- **Messages.** Nothing expires; the turn decays (Kooti et al., WWW 2015:
+  over 90% of replies come within a day, half within 47 minutes).
+- **Provider.** Expiry is local. It writes mode state and never archives
+  in Gmail; provider archive stays tied to a user action with its toast
+  or preview (D098), so a background job never moves mail unseen.
+
+Visibility is one quiet line, not a badge: "3 expired since you last
+looked" at the foot of To do and Updates when the count is above zero,
+opening an Expired list with restore (`u` or Enter). That is Sunsama's "N
+Tasks moved to archive" and Wallet's Expired list, which hides expired
+passes, keeps them and allows unhide. "Since you last looked" needs one
+timestamp per mode, set when the mode is opened. Now never mentions
+expiry. `mxr todo list --expired` and `mxr updates --expired` list the
+same set in JSON.
+
+### The first run classifies newest first and lets windows clear history
+
+1. **Newest first.** Classification reads a queue ordered by message date,
+   not by sync order: IMAP's initial sync fetches ascending UIDs, oldest
+   first, and returns the folder in one batch
+   (`crates/provider-imap/src/lib.rs`), and Gmail's list order is
+   undocumented. The IMAP adapter pages newest first so a first IMAP sync
+   shows something before the whole folder lands. The first slice, the
+   last 14 days (917 messages on BK's store), runs through rules and the
+   fast tier before anything else, so Now has People, Due soon and the
+   Updates card within minutes.
+2. **History in the background, with progress.** Newest to oldest,
+   resumable, after the first slice: "Sorting your history: 2023, 61%" on
+   Now and in `mxr modes first-run --status --format json`.
+3. **Windows apply during classification.** An item whose window already
+   closed is written expired at birth: `expired_at` set, `surfaced_at`
+   never set, not counted in "expired since you last looked". One line
+   after the run says what windows cleared: "50 past invites and 63 quiet
+   parcels were already over." Detectors that create rows today (the
+   delivery scan in `post_sync_fanout`, which runs on backfill pages too)
+   apply windows on backfill pages as well.
+4. **One bounded catch-up for the undated residue.** Open-ended items
+   (undated to-dos and promises, owed replies) whose evidence is from the
+   last 14 days form one batch, shown once on Now and in To do: "Catch up:
+   12 things from the last two weeks might still need you." Each row is
+   kept or let go with one key; "let go of all" previews first and the
+   preview equals the commit, with undo (`SetCatchUp { dry_run }`, `mxr
+   modes catch-up --dry-run`). It shows at most 25 rows, by act-by, then
+   closeness; the rest join the Expired list with a count. Older
+   open-ended items are expired at birth with the reason "older than your
+   catch-up window". Fourteen days follows reply decay (Kooti) and sits
+   inside Superhuman's one-month suggestion and the five weeks of mail
+   Fred Wilson declared bankrupt in 2010; 25 is half the roughly 50
+   overdue tasks at which Todoist's own writer stopped opening the app.
+5. **Hard rule.** Nothing past its window enters Now, on the first run or
+   after it, and on the first run nothing open-ended older than the
+   catch-up window does either.
+6. **History beyond 90 days is rules only.** Model output on old to-dos
+   and updates would almost all be expired at birth, so the fast tier
+   runs on the last 90 days (4,605 messages on BK's store) and rules,
+   schema.org and sender labels run on everything, because records never
+   expire. Arithmetic, not measured: at an assumed 600 input tokens a
+   message, all 110,285 would be about 66 million tokens; the 90-day slice
+   is about 2.8 million. Smart-tier record fields for older mail run
+   lazily, when Archive opens or answers about that record. The horizon
+   is config (`modes.model_history_days`, default 90).
+7. **Re-runs never re-flood.** Every item keeps a stable claim: a to-do
+   by `dedup_key` with `surfaced_at` and `expired_at`, an update fact by
+   its breakthrough claim. A new rule, prompt or recipe version
+   re-evaluates fields but never clears a claim, an expiry or a
+   correction, and new items it finds in old mail pass the same window
+   and catch-up cap, so a rule change produces at most one more catch-up
+   batch, never a flood. Linear skips already-imported issues on re-import
+   for the same reason.
+
+The check on BK's real mailbox, counts only: the first run puts at most
+10 to-dos in To do's Now band and at most 25 in the catch-up, and zero
+items past their window appear in Now, To do's Now band or an Updates
+cut. The run records expired-at-birth counts per kind against today's
+baseline (83 active parcels with 63 quiet, 50 past RSVPs, 1,842 open
+promises with 90 from the last 14 days). That 90 is the warning: undated
+promise precision, not the window logic, decides whether the catch-up
+fits under 25.
 
 ## How the modes map onto what exists today
 
@@ -902,9 +1061,16 @@ due phrases, direct debit, failed collection); `schema_org.rs` extended to
 `Invoice` (`totalPaymentDue`, `paymentDueDate`, `provider`) and
 `*Reservation`; the lead-time table with act-by in working days; the action
 link picker with the DMARC and domain gate; confirmation matching; promises
-merged in `ListTodos`; `CreateTodo`, `UpdateTodo`, `SetTodoDone {
-dry_run }`; `mxr todo` (`list`, `add --from MESSAGE --due PHRASE`, `done`,
-`schedule`, `edit`, `undo`, all `--format json`); the web view with bands,
+merged in `ListTodos`; relevancy windows for bill, renewal, RSVP,
+verify, code and promise rows, the `expired` state and the "expired since
+you last looked" line with restore; the first run for To do (a dated
+newest-first classification queue, expired at birth, the 14-day catch-up
+capped at 25 with `SetCatchUp { dry_run }`, stable claims across
+re-runs), with old promises entering To do only through it; `CreateTodo`,
+`UpdateTodo`, `SetTodoDone { dry_run }`; `mxr todo` (`list`, `add --from
+MESSAGE --due PHRASE`, `done`, `schedule`, `edit`, `undo`, `list
+--expired`, all `--format json`), `mxr modes first-run --status` and `mxr
+modes catch-up --dry-run`; the web view with bands,
 runway bars, one labelled button and the field panel; the TUI lens with the
 link domain in the footer; a To do rail entry; the desk's Due lane on
 act-by; `t` from a conversation. Models: `llm.tiers.fast` and
@@ -921,9 +1087,13 @@ chunking.
   · due Fri 9" with "Pay on camden.gov.uk"; a lookalike-domain copy shows
   "Open email to pay" and the raw domain; the receipt turns it into "Looks
   done"; a bill due in five days appears on the desk three days before,
-  once, across a restart. On BK's real mail `mxr todo --format json` lists
+  once, across a restart; an RSVP for an event that ended yesterday is
+  never in To do. On BK's real mail `mxr todo --format json` lists
   his bills and renewals, and he records counts of right, wrong and missed,
-  plus the extraction eval's local and cloud field counts.
+  plus the extraction eval's local and cloud field counts. The first run
+  on his mail puts at most 10 to-dos in the Now band and at most 25 in the
+  catch-up, none past its window, and records expired-at-birth counts per
+  kind (rubric X12).
 - **Docs:** site: new `guides/todo.md` and its sidebar entry;
   `guides/email-modes.md`, `guides/glossary.md`, `guides/forgotten-work.md`
   (promises become To do rows), `guides/desk.md` (the Due lane on act-by),
@@ -945,8 +1115,14 @@ chunking.
   `todo_detect` fixtures per verb, due phrase and doc type; `schema_org`
   Invoice fixtures; `action_link` gate fixtures (DMARC fail, lookalike,
   redirect wrapper, prior-mail domain); `lead_time` tests per kind;
-  `todo_complete` matcher tests; `handler/tests/todo.rs` with a moved
-  clock; CLI JSON snapshot; `e2e/todo.spec.ts`; TUI lens test;
+  `todo_complete` matcher tests; `relevance_window` table tests per kind
+  (ICS `DTEND`, `Invoice.paymentDueDate` plus grace, "code expires in 10
+  minutes" and the 10-minute default, user-touched rows never expiring);
+  `handler/tests/first_run.rs` with two years of fixture mail on a moved
+  clock (newest slice first, nothing surfaced past its window, catch-up at
+  most 25, preview equals commit, a re-run after a rule version bump
+  surfaces nothing already expired or surfaced); `handler/tests/todo.rs`
+  with a moved clock; CLI JSON snapshot; `e2e/todo.spec.ts`; TUI lens test;
   `index_recipe` tests (one embedding per distinct chunk text).
 
 ### Phase 2: Now, the rail, membership, per-mode done and the eval harness
@@ -955,7 +1131,8 @@ chunking.
 `ListModeItems`, `GetModeMembership`, `SetModeCorrection`, `SetModeDone {
 dry_run }`, `GetNow`; `mxr modes`, `mxr why`, `mxr now`; the desktop rail,
 mobile tabs and TUI sidebar with the new `g` keys and `K` menu; Now's four
-capped sections; the identity anchor and "Also in"; archive on last done
+capped sections with the relevancy filter in `GetNow`, the first-run
+progress line and the catch-up card; the identity anchor and "Also in"; archive on last done
 with its toasts and setting; the Screener as an inline question; `mxr
 modes eval` in rules-only mode, so accuracy is measured before any model.
 Index: the baseline at sync, version stamps, stale-only reindex and the
@@ -965,8 +1142,9 @@ mode filter on search.
   in To do or Updates, says why, and is never in People. The landlord's
   email is in Messages and To do; `e` in Messages toasts "Done in
   Messages. Still in To do" and Gmail keeps it; ticking off the to-do
-  toasts "Archived in Gmail". Now never shows more than ten items. `mxr
-  modes eval --sample 200` prints rules-only counts on BK's mail.
+  toasts "Archived in Gmail". Now never shows more than ten items, and
+  never an item past `relevant_until`. `mxr modes eval --sample 200`
+  prints rules-only counts on BK's mail.
 - **Docs:** site: `guides/now.md` replaces `guides/desk.md` and
   `reference/now-and-modes.md` replaces `reference/desk-and-places.md`, both
   with redirects; the sidebar reorganised by mode (inventory);
@@ -987,7 +1165,8 @@ mode filter on search.
   `docs/reference/tui-keymap.json`.
 - **Tests:** `mode_membership` unit tests; `handler/tests/modes.rs`
   (preview equals commit, archive only when the last mode lets go, setting
-  off); `handler/tests/now.rs` (caps, more counts); `e2e/now.spec.ts`;
+  off, expiry never archives in the provider); `handler/tests/now.rs`
+  (caps, more counts, nothing past its window on a moved clock); `e2e/now.spec.ts`;
   `e2e/modes.spec.ts`; `keymapParity.test.ts` with the mode scopes.
 
 ### Phase 3: Messages as people with topics
@@ -1023,14 +1202,19 @@ person and topic prefix, plus the gist).
 
 `update_facts` (source, template, fact, numbers, code deltas, signal),
 `update_sources` tuning, digest cuts with leftovers folding, `needs_you`
-breakthrough, deliveries as trackers, `GetUpdatesDigest { cut }`, `mxr
+breakthrough, deliveries as trackers, relevancy windows for codes,
+sign-in alerts, offers and deliveries (a parcel with no event goes quiet
+instead of staying active forever, fixing the unbounded active list),
+`--expired` on `mxr updates`, `GetUpdatesDigest { cut }`, `mxr
 updates` (`--cut`, `let-go --dry-run`, `tune`), the web briefing, Now's
 card and the TUI lens. Index: one fact chunk per message, deduplicated by
 template.
 
 - **Check:** a day of demo notifications is two briefings of source lines;
   four parcel emails are one track; let go of a cut acts on exactly the
-  previewed set and leaves what To do holds.
+  previewed set and leaves what To do holds; a one-time code synced after
+  its 10 minutes never appears; on BK's mail the 63 quiet parcels are not
+  active.
 - **Docs:** site: new `guides/updates.md` and its sidebar group;
   `guides/reading-and-paper-trail.md` (notifications leave Paper trail),
   `guides/deliveries.md` (trackers), `guides/now.md` (the Updates card),
@@ -1043,7 +1227,8 @@ template.
 - **Tests:** `template_key` fixtures from real automated senders (split and
   merge cases); delta tests (none across units or templates);
   `handler/tests/updates.rs` (cut boundaries, fold, preview equals commit,
-  badge stays zero); `e2e/updates.spec.ts`.
+  badge stays zero, expired facts never in a cut or a breakthrough);
+  delivery quiet-window tests; `e2e/updates.spec.ts`.
 
 ### Phase 5: Reading as an edition, a reader and a shelf
 
@@ -1106,7 +1291,9 @@ to BM25.
 ### Phase 7: Fast-tier classification for what rules can't tell, measured
 
 The `ModeAspects` feature on the fast tier, the loopback-only rule with the
-user's explicit cloud opt-in and API key, the `mode_aspects` cache,
+user's explicit cloud opt-in and API key, the 90-day model horizon over
+history (`modes.model_history_days`) with rules only beyond it, the
+`mode_aspects` cache,
 shortlist prefilter, quote and due-word checks, and italics plus model
 provenance on every model-placed item.
 
@@ -1145,6 +1332,12 @@ provenance on every model-placed item.
   counts.
 - **Per-mode index recipes** may not beat today's chunking. The retrieval
   eval decides per mode before switching.
+- **Relevancy windows and the catch-up numbers** (sign-in 2 days, offer 7
+  days, bill grace 14 days, a 14-day catch-up capped at 25) are judgement
+  built from product precedent, not a study. Learn from the first run's
+  expired-at-birth and catch-up counts on BK's mail, restores from the
+  Expired list (a restore means the window was too short), and any
+  moment BK sees something stale.
 - **Classifier errors are what users see first**, and Now's cap of three
   makes each one a third of a section. That is why the eval harness lands
   in phase 2.
@@ -1174,3 +1367,11 @@ left is a values call, or needs BK's real mail.
   `MXR_ACTIVITY`?
 - Which records count for your taxes, and should Archive ever suggest
   deleting old statements?
+- Should a detected promise ("I'll send it Friday") expire like a detected
+  bill, or is anything you said to a person exempt, like a to-do you made?
+- Is a 14-day catch-up right for you, or should the first run ask you to
+  pick the window, as Get Me To Zero does?
+- "3 expired since you last looked": keep the line, or expire silently
+  with the Expired list one key away?
+- Should a bill past due plus 14 days expire, or stay as "was due" until
+  you act, accepting the pile?

@@ -1,4 +1,4 @@
-# mxr — Technical Blueprint
+# mxr: Technical Blueprint
 
 > A local-first, open-source, keyboard-native email client for terminal users, built around a daemon, a clean provider-agnostic model, and a programmable core.
 
@@ -28,11 +28,12 @@
 | 18b | [Bug Reporting](18-bug-reporting.md) | `mxr bug-report` command, log sanitization, log retention, diagnostic capture workflow (D072-D074) |
 | 20 | [Transports](20-transports.md) | Transport-adapter system: frozen protocol + byte-stream adapters + HTTP gateway, trait reference, per-transport security policy, the token gate, the community adapter kit + conformance, and the backlog (D052-D057) |
 | 21 | [Web Experience](21-web-experience.md) | The desk model, what shipped v0.6.34 to v0.6.42, standards every web change keeps, and the ordered plan to pass the experience rubric (D095-D102) |
-| 22 | [Email Modes](22-email-modes.md) | Email as five modes (Messages, To do, Updates, Reading, Archive), multi-mode membership and handoff, rules-first classification with the user's own model, to-do deadlines, and the phased plan (D107-D111) |
-| — | [Internal Model Audit](internal-model-audit.md) | Keep/document/tighten/adjust judgment on the current provider-agnostic mail model |
-| — | [IPC Audit](ipc-audit.md) | Current protocol inventory classified into `core-mail`, `mxr-platform`, `admin-maintenance`, and `client-specific` |
-| — | [Sync / Index Lifecycle Audit](sync-index-lifecycle-audit.md) | Code-truth audit of sync guarantees, lexical freshness, semantic chunk persistence, and repair behavior |
-| — | [Semantic Search Audit](semantic-search-audit.md) | Code-truth audit of semantic ingestion, profiles, OCR removal, and hybrid query semantics |
+| 22 | [Email Modes](22-email-modes.md) | Email as five modes (Messages, To do, Updates, Reading, Archive), each with its own view shape, key map, index recipe and model tier; multi-mode membership and handoff; rules-first classification; to-do lead times; and the phased plan (D107-D114) |
+| 22r | Email modes research | One note per mode with sources, mockups and risks: [messages](../research/email-modes/messages.md), [to do](../research/email-modes/todo.md), [updates](../research/email-modes/updates.md), [reading](../research/email-modes/reading.md), [archive](../research/email-modes/archive.md), [now and handoff](../research/email-modes/now-and-handoff.md), plus [sign in with ChatGPT](../research/chatgpt-sign-in.md) |
+|  | [Internal Model Audit](internal-model-audit.md) | Keep/document/tighten/adjust judgment on the current provider-agnostic mail model |
+|  | [IPC Audit](ipc-audit.md) | Current protocol inventory classified into `core-mail`, `mxr-platform`, `admin-maintenance`, and `client-specific` |
+|  | [Sync / Index Lifecycle Audit](sync-index-lifecycle-audit.md) | Code-truth audit of sync guarantees, lexical freshness, semantic chunk persistence, and repair behavior |
+|  | [Semantic Search Audit](semantic-search-audit.md) | Code-truth audit of semantic ingestion, profiles, OCR removal, and hybrid query semantics |
 
 ## For coding agents
 
@@ -46,7 +47,7 @@ When blueprint docs conflict with the current repo, prefer code as source of tru
 
 | Component | Technology | Crate |
 |---|---|---|
-| Language | Rust | — |
+| Language | Rust | |
 | Async runtime | Tokio | `tokio` |
 | Database | SQLite | `sqlx` |
 | Search engine | Tantivy | `tantivy` |

@@ -767,7 +767,7 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 
 ## D110: The desk is a cross-mode now view, not a sixth place
 
-**Chosen**: The desk shows people you owe a reply (from Messages), to-dos and promises due soon (from To do), and one Updates digest a day. It holds no item of its own: acting on a row acts in the row's mode. New from people moves into Messages.
+**Chosen**: The desk shows people you owe a reply (from Messages), to-dos and promises due soon (from To do), and one Updates digest a day (amended by D112: two cuts a day, with the latest as one card). It holds no item of its own: acting on a row acts in the row's mode. New from people moves into Messages.
 
 **Considered**: Retiring the desk in favour of opening on Messages; keeping New from people on the desk.
 
@@ -784,3 +784,33 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 **Why**: D097 kept kinds rule-based because users abandon opaque categories they can't fix, and that stays true for the sender's base mode. But sender rules can't see that one message from a person is a sign-in alert, or that a billing email has a deadline; those are message-level facts. Layering keeps every placement explainable and correctable, keeps working with AI off (the default), and keeps mail on the user's machine unless they configured otherwise (`GistPolicy::pin`, `llm_endpoint_is_local`, `relationship_data_allowed`).
 
 **Trade-offs accepted**: This amends D097 and the "no automatic LLM classification" line in `21-web-experience.md` for message aspects only. A local model is slower and less accurate than a hosted one, so accuracy is measured on BK's real mail (counts only) before model placement counts toward the rubric.
+
+## D112: Each mode shows an email its own way, not as a list of subject lines
+
+**Chosen**: Each mode has its own unit, extracted data, up-front actions, rhythm and end state, set by the research in `docs/research/email-modes/`: Messages shows a person with topics inside (group threads keyed by thread, CC-only threads in Updates); To do shows an instruction (verb plus object) on a runway to its act-by date with one labelled button; Updates shows a briefing by source in two fixed cuts a day (08:00, 16:30), with Now showing the latest cut as one card; Reading shows readable items in an edition with a Later shelf; Archive shows records under an answer box. One key map covers Now and every mode, with `e` as done here everywhere. This amends D110's "one Updates digest a day". The full design is [22-email-modes.md](22-email-modes.md).
+
+**Considered**: Five modes that each list emails with the same row (sender, subject, snippet) and only differ by membership; one digest a day.
+
+**Why**: BK: "otherwise we'll end up with 5 good categorizations that just show lists again like traditional emails." Taskmaster found a marker that says "something to do" without saying what did not help planning; HEY, Shortwave and SaneBox fold notifications to one row per source; refinding studies favour records found by search over messages filed by hand. Fitz, Kushlev et al. found a few fixed batches a day helped where hourly did nothing, and a parcel update is stale by the next morning.
+
+**Trade-offs accepted**: Five views and their extractors are more code than five filters, and each view's quality depends on extraction accuracy, which is measured on BK's real mail (rubric v3) before the shape counts as done.
+
+## D113: Each mode indexes the part of the email it cares about
+
+**Chosen**: Content units are extracted once per message (new text without quotes and signatures, article or link sections, record fields, attachment text, the gist). A typed, versioned recipe per mode in `crates/semantic` picks units, windowing and a context prefix: Messages indexes each message's new text prefixed with person and topic, plus the gist; To do one instruction chunk plus the body; Updates one fact chunk per message, deduplicated by template; Reading section-aware chunks and link items, embedded lazily; Archive a field chunk plus PDF text, leaving identifiers to BM25. Chunks are tagged with every mode they serve, embeddings are keyed by a hash of the chunk text, a baseline (header plus new text) is indexed at sync and enriched after classification, and messages carry recipe and classification versions so only stale ones reindex through the resumable index job. One embedding model and one ANN index per profile stay; search gains a mode filter beside `allowed_source_kinds`.
+
+**Considered**: Keeping one recipe for all mail (`build_chunks`: a header chunk plus 120-word windows with 30-word overlap); a separate index per mode; recipes as user config from the start.
+
+**Why**: One recipe re-embeds quoted history in every reply, splits a record's fields across windows, and spends embedding work on newsletters that are never read. Keying embeddings by text means a message in several modes costs one embedding per distinct chunk. A table in code can be versioned and tested; config can follow once the recipes settle.
+
+**Trade-offs accepted**: Two passes per message (baseline, then enrichment) and a version stamp to track. Each recipe replaces today's chunking only when a local retrieval eval on BK's mail (top-5 hit rate, counts only) shows it at least as good.
+
+## D114: Model work runs in a fast tier and a smart tier
+
+**Chosen**: Bulk, low-nuance work (mode classification, Updates facts, baseline index extras) runs on the fast tier, the local model by default. Nuanced extraction (To do fields, Archive record fields, Messages' ask) runs on the smart tier: the user's cloud model when they configured one with their own API key, otherwise local with the fields marked unchecked. Only mail already classified into that mode reaches the smart tier. Config is `llm.tiers.fast` and `llm.tiers.smart`, each an `LlmOverrideConfig` inheriting from `[llm]`, with a fixed feature-to-tier table in code; `llm.overrides` stays for the features it covers today, with precedence override, then tier, then base. Each tier is pinned per request as `GistPolicy::pin` does; a cloud tier needs an API key, and enabling it names the tier and what it sends. Amounts and dates must appear verbatim and are checked in code, dates go through `natural_time`, the provenance chip names the model, and results are cached by content hash. Sign in with ChatGPT is parked until OpenAI publishes data terms for plan usage (`docs/issues/chatgpt-plan-usage-data-terms.md`).
+
+**Considered**: One model for everything; a per-feature override for each new mode feature; Sign in with ChatGPT as the cloud credential.
+
+**Why**: BK decided this on 2026-10-02. Classification reads every message, so it belongs on a local model; extraction of amounts, deadlines and links is where a stronger model pays, and restricting it to mail already in To do, Archive or Messages keeps the cloud's share small and bounded. A fixed table keeps the privacy story explainable; per-feature overrides for every new feature would multiply settings nobody tunes.
+
+**Trade-offs accepted**: Users without a cloud model get local extraction with more unchecked fields. The default tier per task is not fixed in advance: `mxr modes eval --extract` compares local and cloud on the user's own mail and records counts, not content.

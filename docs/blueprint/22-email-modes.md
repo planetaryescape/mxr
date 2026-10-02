@@ -1,233 +1,681 @@
-# 22. Email is five apps: Messages, To do, Updates, Reading, Archive
+# 22. Email is five apps, and each one shows an email its own way
 
-Email is five apps sharing one inbox, and you can tell because each has its
-own action. mxr should give each one its own mode, place every message in
-the modes it belongs to, say why, and let the user correct it. This
-document is the product model, how it maps onto what exists at `3da0c119`
-(v0.6.47), the data model, the classifier and its accuracy check, the
-deadline rules, and a phased plan. Settled choices are D107 to D111 in
-[15-decision-log.md](15-decision-log.md). The rubric that grades the work
-is v3 in `docs/web-app-experience-rubric.md`.
+Email is five apps sharing one inbox: Messages, To do, Updates, Reading and
+Archive. Sorting mail into five lists would give five good categorisations
+that still look like a mail client. An email is data, so each mode decides
+what unit it shows, what it pulls out of the message, which actions sit up
+front, when the user is finished, and even which part of the email it
+indexes for search. Messages shows people, To do shows instructions on a
+runway, Updates shows a briefing by source, Reading shows readable items,
+and Archive shows records. None of them shows a list of subject lines.
 
-## The five modes each have their own verb
+Code references are at `3da0c119` (v0.6.47) unless marked. Settled choices
+are D107 to D114 in [15-decision-log.md](15-decision-log.md); D112 amends
+D110's digest cadence. Rubric v3 in `docs/web-app-experience-rubric.md`
+grades the work.
 
-| Mode | What lands there | The verb | Rhythm |
+## Research
+
+Each mode's shape comes from a research note with sources, mobile and TUI
+mockups and open risks:
+[messages.md](../research/email-modes/messages.md),
+[todo.md](../research/email-modes/todo.md),
+[updates.md](../research/email-modes/updates.md),
+[reading.md](../research/email-modes/reading.md),
+[archive.md](../research/email-modes/archive.md),
+[now-and-handoff.md](../research/email-modes/now-and-handoff.md) (Now, one
+email in many modes, handoff, navigation, archive on last done, Screener)
+and [chatgpt-sign-in.md](../research/chatgpt-sign-in.md) (the cloud
+credential). Where a note and this plan disagree, this plan wins and says
+why below.
+
+## Each mode has its own unit, verb, rhythm and end state
+
+| Mode | Unit on screen | Verb up front | Rhythm | End state |
+|---|---|---|---|---|
+| Now | At most ten items in four fixed sections | Act in the item's mode | Opened first, each session | "Clear. The next to-do surfaces Mon 09:00." |
+| Messages | A person, with their topics (threads) inside | Reply, got it, done here | On arrival, two or three visits a day | "Nobody is waiting on you." |
+| To do | An instruction (verb + object) on a runway to its act-by date | Do it (one labelled button), tick off | Once a morning, a weekly look ahead on Mondays | "Nothing needs you. Next: renew car insurance shows up Mon 19 Oct." |
+| Updates | A source line in a briefing; a tracker for things with state | Let go of the digest | Two fixed cuts a day (08:00, 16:30) | "Nothing new since 08:00. Next digest at 16:30." |
+| Reading | A readable item (an issue, or each link in a digest) | Read, later, let go | When the user chooses; no notifications | "Nothing new since Tuesday. Later has 4 things saved." |
+| Archive | A record (receipt, order, booking, invoice, trip) | Ask, copy, open the document | On demand, plus "coming up" when a record's date nears | None: records stay |
+
+Inbox stays as the everything view in arrival order. It is a lens, not a
+mode, and holds nothing the modes don't. The split matches what field
+studies found email doing: Whittaker and Sidner (CHI 1996) named task
+management, personal archiving and asynchronous communication as the jobs
+one list does badly (now-and-handoff.md, first section).
+
+## One email lives in several modes, each showing its own aspect
+
+The landlord writes "please sign and send it back by 15 Oct. Are you
+around Thursday?" with the lease attached. Messages shows Sam Okafor with
+"are you around Thursday?" highlighted as the ask. To do shows "Sign lease
+renewal, act by Mon 13 · due Wed 15" with Sam as context. Archive shows
+"Lease renewal 2026-27, PDF" once it's signed.
+
+Every view keeps an identity anchor (the sender's avatar and the thread
+subject in a muted line), and an "Also in" line names the other modes
+holding the item: "Also in To do: sign by Wed 15 Oct", with `g` plus the
+mode's letter as the jump. This is OOUX's rule that an object keeps its
+core properties wherever it appears (now-and-handoff.md §B). Nothing in the
+literature tests one email in several views directly, so it is a design
+bet (see "Design bets").
+
+## Handoff names where the item went
+
+Each mode keeps its own done state on the `desk_dismissals` watermark
+(`051_desk_dismissals.sql`), so done in one mode never clears another and a
+new message brings the thread back to that mode only (now-and-handoff.md
+§C).
+
+| From | Key | What happens | Toast |
 |---|---|---|---|
-| Messages | Conversations with the few people you care about, in the mould of iMessage or WhatsApp | Reply, or start a conversation | As they arrive, ranked by person |
-| To do | Admin that needs you: pay, renew, verify, sign, book | Do it, schedule it, tick it off | By deadline, surfaced ahead of it |
-| Updates | Notifications: a sign-up happened, your week on some app. Not a conversation, not a to-do | Glance and let go | Batched, once a day |
-| Reading | Things you asked to receive: newsletters, digests, posts | Read now or later (the email or the link it points to), or unsubscribe | When you choose to read |
-| Archive | Receipts, confirmations, records | File it, then find it by search and use it | On demand |
+| Any mode | `e` | Done here; provider archive only when no other mode holds the thread | "Done in Messages. Still in To do (due Wed)." or "Done. Archived in Gmail." |
+| Messages, Updates, Reading, Archive | `t` | A to-do prefilled from the ask and due words, in a one-line inline editor | "Added to To do: Sign lease renewal, act by Mon 13. g x" |
+| To do | `e` | Tick off; the source's record is filed in Archive with no prompt | "Ticked off. Filed in Archive." |
+| Updates | on arrival | A `needs_you` signal (new sign-in, failed payment, delivery exception) goes to To do at once and stays in the next digest marked "already in To do" | none |
+| Any mode | `T` | Pass to another mode, from a menu | names the destination |
 
-Inbox stays as the everything view, in arrival order. It is a lens, not a
-mode, and holds nothing the modes don't.
+The destination's rail count ticks up (120 ms) and the item carries "Just
+now, from Messages" until the user leaves that mode. NN/g's guidance to
+prefer undo over confirmation for routine actions is why none of these
+asks first; `u` undoes each.
 
-The desk becomes the cross-mode "now" view: people you owe a reply, to-dos
-due soon, and one Updates digest a day. It is home, but it isn't a sixth
-place. Everything on it lives in a mode, and acting on it acts in that mode.
-
-## One email can live in several modes
-
-Each mode looks at a different aspect of a message:
-
-| Aspect | Mode | Example from one email |
-|---|---|---|
-| The conversation | Messages | Your accountant writes "Can you send the signed form by Friday?" |
-| The task and its deadline | To do | "Sign and return the form, due Friday" |
-| The fact | Updates | "Your tax return was filed" |
-| The article | Reading | The link to the guide they attached |
-| The record | Archive | The filed return, findable next April |
-
-The accountant's email is in Messages (reply to her) and To do (sign the
-form by Friday) at once. This is a property to design for, not a conflict
-to resolve. A mode shows the aspect it cares about: To do shows "Sign the
-form, due Fri" with the sender as context, while Messages shows the
-conversation with the ask highlighted.
-
-## Handoff passes the item to the next mode without clearing the others
-
-Handoff works like passing a file to another department. When one mode is
-done with an item, the user can pass it on, and the next mode picks up its
-own aspect:
-
-- After replying in Messages, "move to To do" (`t`) creates a to-do from
-  the conversation, prefilled from the ask and any due words, and marks the
-  conversation done in Messages.
-- From Updates, "this needs me" creates a to-do from a notification ("Your
-  card expires next month").
-- Ticking off a to-do offers to file the source email in Archive.
-- From Reading, "later" keeps the article in Reading's later list.
-
-Done in one mode does not clear the email from another. Each mode keeps its
-own done state. The provider archive (removing INBOX) happens only when the
-last mode that holds the message lets it go, so archiving the reply in
-Messages never loses the open to-do, and Inbox (everything) still shows
-mail that some mode is holding.
+The provider archive happens when the last mode lets go, by default. The
+toast says which happened every time, and Inbox shows a "held by To do"
+chip on mail a mode still holds. `modes.archive_on_last_done` (default
+`true`) turns it off, after which archive is the palette's "Archive in
+Gmail". This is the Superhuman and Shortwave "done is archive" model
+applied per mode; Gmail categories never archive, and HEY doesn't need to
+because it owns the mailbox (now-and-handoff.md §F).
 
 ## Classification is rules first, then the user's model, and every item says why
 
-Placement runs in three layers, cheapest and most explainable first. The
-user's correction beats all of them.
-
-1. **Sender rules (exist today).** `mail_kind::classify` in
-   `crates/daemon/src/handler/mail_kind.rs` places a sender as Person,
-   List or Automated from delivery and invite signals, address hints
-   (`notifications@`, `newsletter@`, `alerts.` subdomains, no-reply local
-   parts), `List-Id`, `List-Unsubscribe` and the contacts table's
-   `is_list_sender`, and returns the rule as a human reason. A screener
-   disposition for the sender (`crates/store/src/screener.rs`) wins over
-   every rule. The base mode follows:
-
-   | Sender kind | Screener disposition | Base mode |
-   |---|---|---|
-   | Person | Allow | Messages |
-   | List | Feed | Reading |
-   | Automated | PaperTrail | Updates, and Archive when the message is a record |
-   | Denied | Deny | No mode. Still in Inbox and search |
-
-2. **Message rules (new).** Deterministic detectors per aspect, in the
-   pattern of `mxr_deliveries::detect` (`crates/deliveries/src/lib.rs`):
-   local heuristics and schema.org data decide clear cases and shortlist
-   unclear ones. A to-do detector looks for admin verbs with an object
-   (pay, renew, verify, sign, book, confirm, RSVP, "action required"),
-   due phrases ("due", "expires", "by", "before", "until") and schema.org
-   `Invoice.paymentDueDate`, `Reservation` and `Event` dates. A record
-   detector looks for receipts, invoices, order and booking confirmations,
-   and rows already in `deliveries`. A calendar invite with no reply is a
-   to-do ("RSVP"). These add aspects; they never remove the base mode.
-
+1. **Sender rules (exist today).** `mail_kind::classify`
+   (`crates/daemon/src/handler/mail_kind.rs`) places a sender as Person,
+   List or Automated and returns the rule as a reason; a screener
+   disposition wins over every rule. Person is Messages, List is Reading,
+   Automated is Updates (and Archive when the message is a record), Deny
+   is no mode.
+2. **Message rules (new).** Deterministic detectors in the pattern of
+   `mxr_deliveries::detect`: admin verbs with an object, due phrases,
+   schema.org `Invoice`, `Order` and `*Reservation`, receipts, unanswered
+   invites, and a thread shape rule (one-to-one, group, copied). They add
+   aspects and never remove the base mode.
 3. **The user's model (new).** Shortlisted messages go to the configured
-   model for what rules can't tell: is there a task, what is it, what are
-   the due words, is this a notification. The model copies the due words,
-   the daemon checks they appear in the text and resolves them with
-   `mxr_core::natural_time` in the user's zone, so the date is the
-   parser's, not the model's. `crates/daemon/src/handler/promises.rs`
-   already works this way for promises in sent mail. Answers are cached per
-   message, prompt version and content hash, as `triage_cache` does
-   (`crates/store/migrations/044_triage_cache.sql`). With no model, layers
-   1 and 2 still place everything.
+   model for what rules can't tell. The model copies due words and
+   numbers; the daemon checks they appear verbatim and resolves dates with
+   `mxr_core::natural_time`, as `handler/promises.rs` does. Answers are
+   cached by prompt version and content hash, as `triage_cache` does. With
+   no model, layers 1 and 2 still place everything.
 
-Every item in every mode carries a reason: "Here because: you marked this
-sender as a person", "Here because: asks you to renew, due 14 Oct (local
-model)". `mxr why <message>` lists every mode a message is in, with the
-reason and the source (your decision, a rule, or a named model).
-
-### Corrections work per email and per sender
-
-- **Per email:** "not a to-do", "this is a to-do", "move to Updates". Stored
-  per message, so a re-run of the classifier can't undo it.
-- **Per sender:** the existing screener dispositions set the base mode.
-  A new per-sender aspect override covers "never make to-dos from this
-  sender" and "always file this sender in Archive".
-
-The correction is one key, its effect shows at once, and future mail from
-the sender follows the per-sender rule.
+Every item carries a reason ("Here because: asks you to renew, due 14 Oct
+(local model)"), and `mxr why <message>` lists every mode with its reason
+and source. Corrections are one key: `X` for "doesn't belong here" (this
+email) and `K` for the sender's mode and per-sender settings, stored so a
+re-run can't undo them.
 
 ### Email content goes only to the user's configured model
 
-The privacy rules already in the daemon carry over unchanged:
+The daemon's privacy rules carry over: AI is off by default with a local
+Ollama default (`LlmConfig::default`); each request pins one provider
+(`GistPolicy::pin`); locality comes from the pinned endpoint
+(`llm_endpoint_is_local`, backed by `mxr_llm::is_loopback_endpoint`); mail
+beyond the message at hand goes to a cloud endpoint only with
+`llm.allow_cloud_relationship_data`; mail is wrapped as untrusted data
+(`wrap_untrusted_mail`). Background classification adds one stricter
+rule, because it reads every incoming message: it runs only against a
+loopback endpoint unless the user points the fast tier (below) at a cloud
+endpoint and sets `allow_cloud_background_classification = true`. A cloud
+model configured for drafting never silently starts classifying all mail.
 
-- AI is off by default, and the default endpoint is a local Ollama
-  (`LlmConfig::default` in `crates/config/src/types.rs`: `enabled: false`,
-  `base_url: "http://localhost:11434/v1"`).
-- Each request pins one provider, and what the prompt may carry, the call
-  and the disclosure all follow that one endpoint (`GistPolicy::pin` in
-  `crates/daemon/src/handler/thread_gist.rs`).
-- Locality comes from the pinned endpoint (`llm_endpoint_is_local` in
-  `crates/daemon/src/state.rs`, backed by `mxr_llm::is_loopback_endpoint`
-  in `crates/llm/src/endpoint.rs`).
-- Mail beyond the message at hand goes to a cloud endpoint only with
-  `llm.allow_cloud_relationship_data` (`relationship_data_allowed`).
-- Mail is wrapped as untrusted data in the prompt (`wrap_untrusted_mail`,
-  `guarded_system_prompt`).
+BK decided on 2026-10-02 that background classification may use a cloud
+model when the user chooses it, with the user's own credential; mxr ships
+no key and runs no relay. The supported cloud path is the user's own API
+key. Sign in with ChatGPT (launched at OpenAI DevDay on 2026-09-29) is
+parked. OpenAI publishes no data terms or DPA for plan usage on Plus or
+Pro, so it fails the rule that third parties' mail goes only to a processor
+whose terms cover it. It also fits background work badly: it spends the
+user's shared Codex allowance, rejects `max_output_tokens`, and its 429
+gives no reset time ([chatgpt-sign-in.md](../research/chatgpt-sign-in.md),
+[docs/issues/chatgpt-plan-usage-data-terms.md](../issues/chatgpt-plan-usage-data-terms.md)).
+Revisit if OpenAI publishes API-equivalent terms, and then for on-demand
+features first.
 
-Mode classification adds one stricter rule, because unlike a gist (people
-only, on view) it would read every incoming message in the background:
-background aspect detection runs only against a loopback endpoint unless
-the user sets an explicit, feature-specific opt-in
-(`llm.overrides.mode_aspects` pointing at a cloud endpoint plus a
-`allow_cloud_background_classification = true` flag). A cloud model the
-user configured for drafting never silently starts classifying all mail.
+### Model work runs in two tiers, and only mail already in a mode reaches the smart one
 
-## How the modes map onto what exists today
+BK decided this on 2026-10-02 (D114).
 
-All of these are at `3da0c119`.
+| Tier | Work | Endpoint | Volume |
+|---|---|---|---|
+| Fast | Mode classification, Updates facts for generic subjects, the baseline index extras | The local model by default | Every incoming message |
+| Smart | To do fields (verb and object, payee, amount, deadline, act-by, the action link), Archive record fields, Messages' "what they asked" | The user's cloud model when they configured one with their own API key; otherwise local | Only mail already classified into that mode, a small, bounded share |
 
-| Exists today | Where | Becomes |
+Without a cloud model the smart tier runs locally and marks its fields
+unchecked. Config is two named tiers, `llm.tiers.fast` and
+`llm.tiers.smart`, each an `LlmOverrideConfig` (the struct `llm.overrides`
+uses today in `crates/config/src/types.rs`, inheriting unset fields from
+`[llm]` through `LlmConfig::effective_override`), plus a fixed
+feature-to-tier table in code. `llm.overrides` stays for the 14 features
+it covers today, so no existing config breaks; precedence is per-feature
+override, then tier, then base. The new mode features get no per-feature
+override.
+
+Each tier is pinned per request, as `GistPolicy::pin` does. A non-loopback
+tier must name an API key (`api_key_env`), which keeps cloud work under API
+data terms. Turning a cloud tier on names the tier and shows what it sends
+("smart tier: the text of emails in To do and Archive"). Whichever tier
+ran, the same guardrails hold: every amount and date appears verbatim in
+the email, checked in code like the gist's quote check (`thread_gist.rs`);
+dates are normalised by `natural_time`; the provenance chip names the
+model; results are cached by message content hash, so each email is
+extracted once. The default tier per task is settled by the local versus cloud
+extraction eval (`mxr modes eval --extract`), which the user runs on
+their own mail with their own key; the rubric records counts, not content.
+
+## Every view follows the same trust rules
+
+- **Model text is italic and names its model.** Apple paused notification
+  summaries for news in iOS 18.3 after one put a false claim under the
+  BBC's name, then italicised every summary (TechCrunch, Jan 2025;
+  updates.md §3). In mxr any sentence a model wrote is italic, says
+  "summary by <model>" on hover, and the verbatim text is one key away
+  (`o`). `K` can set a source to "never summarise".
+- **A model summarises one message at a time.** Counts, latest state and
+  totals across messages are code. Apple's errors came from merging
+  several notifications into one sentence.
+- **Numbers are quoted, deltas are computed.** Every number shown appears
+  verbatim in its message. A delta ("up 12% on last week") is computed by
+  code against the previous message of the same template, only when both
+  values were quoted and the units match (updates.md §4, §7).
+- **Every extracted field shows its provenance.** Schema.org, rule, model
+  or "you", on hover and in JSON. An unchecked money or date field carries
+  an open dot. Expensify and Paperless both report wrong dates and totals
+  from extraction (archive.md §3).
+- **One-click money links are gated.** A "Pay on camden.gov.uk" button
+  appears only when DMARC passes for the sender's domain (`auth_results`
+  in `crates/mail-parse/src/lib.rs`) and the link's registrable domain
+  matches the sender's or one seen in earlier authenticated mail from
+  them. Otherwise the row says "Open email to pay" and shows the raw
+  domain. The domain is always visible before Enter, and the TUI footer
+  prints it (todo.md §5, §9). How strict the gate is stays BK's call.
+- **Badges count work only:** Now, and To do's Now band.
+
+## Now shows at most ten things in four fixed sections
+
+Now replaces the desk. Sections never reorder: People (Your turn, from
+Messages), Due soon (To do's Now band, by act-by), the latest Updates cut
+as one card, and one Reading pick from 17:00 (Things' This Evening). Each
+shows at most three items, then "and 9 more in Messages". Empty sections
+disappear; when all are empty the low tide scene (`LowTide.tsx`) plays
+with the time the next thing arrives. A long You owe becomes one line:
+"11 people are waiting. Three are close; start there." (Sunsama's workload
+warning; Cowan's four-chunk working memory; now-and-handoff.md §A.)
+
+```text
++----------+---------------------------------------------------------------+
+| Now    3 |  Friday afternoon. 3 people, 2 things to act on.              |
+| Messages |  PEOPLE                                     all 11 in Messages |
+| To do  2 |  Maya Ortiz     "Can you send the launch checklist?"   22h    |
+| Updates  |  Sam (landlord) "Are you around Thursday?"              3h    |
+| Reading  |  Iris Chen      "Does the incident note read right?"    1d    |
+| Archive  |  DUE SOON                                     all 4 in To do  |
+|----------|  Pay council tax  £142.00    act by Wed 7 · due Fri 9        |
+| Inbox    |  Sign lease renewal          act by Mon 13 · due Wed 15  Sam  |
+| More  >  |  UPDATES  since 08:00 ----------------------------------------|
+|          |  2 changed, 1 new sign-in. 23 routine from 9 sources.        |
+|          |  ! New sign-in to Google, Chrome on Windows   (in To do)      |
+|          |  [Open  g u]                     [Let go of this digest  A]  |
+|          |  Not now: Reading 6 this week                                 |
++----------+---------------------------------------------------------------+
+  r reply  e done here  t to do  Enter open in its mode  A let go of digest
+```
+
+`GetNow` returns the four sections with caps and "more" counts in one
+response, so web, TUI and `mxr now --format json` agree; the cap lives in
+the daemon, and People shares one owed rule with Messages.
+
+## Messages shows people, with their conversations as topics inside
+
+**Unit.** One row per person; each one-to-one thread is a topic inside
+them. A group thread (two or more other humans who took part) is its own
+row keyed by `thread_id`, never by participant set, because CC lists
+change on almost every reply and Slack and iMessage split a group whenever
+someone is added. A CC-only thread you never wrote in, or one with more
+than about 10 recipients, goes to Updates (messages.md §4). Importance
+attaches to people: reciprocity, recency and longevity predicted contact
+importance (Whittaker, Jones and Terveen, CSCW 2002), and SNARF's
+per-correspondent sorting improved triage in the field (Fisher et al.).
+
+**Extracted** (messages.md §5): the person, merged across addresses; a
+closeness band from `contacts`; whose turn (`owed_replies.rs`); their pace
+from `reply_pairs` ("usually 47m"; Tyler and Tang, ECSCW 2003); what they
+said with quotes and signatures removed; the ask quoted verbatim; due
+words; attachments; incoming Gmail reactions as a mark on the message.
+Quote stripping moves into `crates/reader` with thread-aware matching
+against earlier messages, because a `>` prefix finds under 10% of reply
+lines in business mail (Lampert, Dale and Paris, EMNLP 2009) and the HTML
+quote markers live only in the web today (`htmlQuote.ts`).
+
+```text
++-----------+------------------------------+----------------------------------------------+
+| Messages  | YOUR TURN                    | Samir Patel            close · usually 47m   |
+|           | Samir Patel           16h *  | You've written 48 times since 2023.          |
+|           |   "Can you take a look and   |----------------------------------------------|
+|           |    reply with the next..."   | TOPICS  Contract renewal     your turn · 16h |
+|           | Jon Bell               8h *  |         Launch checklist     waiting · 1d    |
+|           |   "Does the pricing copy..." |         with Ruth: Pricing   quiet · 3d      |
+|           | Samir, Ruth            2d *  |----------------------------------------------|
+|           |   Contract renewal           | Samir · Yesterday 18:02                      |
+|           | PINNED  Maya · Ari           | Can you take a look and reply with           |
+|           | RECENT                       | [the next concrete step?]   <- the ask       |
+|           | Iris Chen        Yesterday   | Read all 6 paragraphs  runbook.pdf           |
+|           |   You: "Thanks, on it."      |                     trimmed: quote, sig      |
+|           | QUIET (12)              >    |               You · 18:40  Thanks, looking.  |
+|           |                              | Reply to Samir · Contract renewal   [ ] all  |
++-----------+------------------------------+----------------------------------------------+
+  Mod+Enter send, next   . got it   e done here   t to do   b reply later   c new topic
+```
+
+**View and actions.** Length decides shape, not the medium: three lines or
+fewer render compactly like chat, longer ones as a letter block with "Read
+all N paragraphs". No bubbles around letters, because Spike's are the
+format most often called unprofessional for formal mail. Removed text is
+marked ("trimmed: quote, sig") with the original on `o`. The composer is
+always there, addressed. Got it (`.`) sends a short acknowledgement in
+your voice after a visible countdown, instead of reactions, which degrade
+into extra email on other clients. Archive, label and move are not on the
+surface.
+
+**Rhythm, end state, in and out.** On arrival from close people, two or
+three short visits a day. Empty Your turn says "Nobody is waiting on you"
+and lists up to three people whose usual cadence lapsed, as a fact, never a
+nudge (Gmail's Nudges are mostly written about as something to switch
+off). Enters by a Person base mode, a message you send, or a correction.
+Leaves Your turn on reply or Got it, leaves Messages on done here until
+they write again, and `t` leaves a "to-do: sign the form, due Fri" chip on
+the topic.
+
+**Not a list of emails.** The row is a person, ordered by band, then turn,
+then time; the preview is their ask; the subject is a topic label; the
+state is the turn, not read or unread.
+
+## To do shows instructions on a runway, not emails with flags
+
+**Unit.** One row per thing to do, titled verb plus object ("Pay council
+tax"), never the sender's subject. Bellotti et al.'s Taskmaster (CHI 2003)
+found that a marker saying "something to do" without saying what "did not
+help much in planning", and its warning bar was the best-rated feature
+(4.4 of 5). Promises (`contact_commitments`) and requests from people share
+the list with a `kind`, showing the person ("you promised", "Priya
+asked"); `ListTodos` merges both tables (todo.md §7).
+
+**Extracted** (todo.md §4): verb, object, counterparty, amount and
+currency (schema.org `Invoice.totalPaymentDue` first), `due_at` with its
+verbatim due words, `act_by` and `surface_at` from the lead-time table, one
+action link with its registrable domain, trust (DMARC plus prior mail),
+reason, origin, and the completion signal. Three dates stay apart, as in
+Things, Todoist (deadlines as a separate field since January 2025) and
+OmniFocus: when it's due, when you must act, and when you chose to do it.
+
+```text
++--------+-------------------------------------------------------------------------------+
+| To do 3|  3 things need you this week. Council tax first, act by Wed.  [ Do this week ]|
+|        |  NOW                                                                          |
+|        |  Pay council tax             Camden Council   £142.00                         |
+|        |    [######----]  act by Wed 7 · due Fri 9        [ Pay on camden.gov.uk  ↵ ]  |
+|        |    from Camden Council, 28 Sep · Here because: "payment due 9 October" (rule) |
+|        |  Send the signed engagement form   Priya Shah (you promised)                  |
+|        |    [########--]  act by Thu 8 · due Fri 9        [ Reply to Priya        ↵ ]  |
+|        |  Verify your new sign-in email   Octopus Energy                               |
+|        |    link expires today 18:00                      [ Verify on octopus...  ↵ ]  |
+|        |  COMING UP                                                                    |
+|        |  wk of 12 Oct  RSVP Sam's leaving drinks            shows up Mon 12 · Thu 15  |
+|        |  wk of 19 Oct  Renew car insurance  Admiral £412    shows up Mon 19 · due 26  |
+|        |  WHENEVER  2 >                      DONE THIS WEEK  4 >                       |
+|        |  ↵ do it   e done   Z schedule   , edit   X not a to-do   o open email        |
++--------+-------------------------------------------------------------------------------+
+```
+
+**View and actions.** Four bands: Now (`surface_at <= now`, by act-by),
+Coming up (30 days by week, dimmed, "shows up Mon 12"), Whenever
+(collapsed) and one "Done this week" line. The runway bar fills from
+surface date to deadline in the accent colour, never red; past the deadline
+it reads "was due Fri" (D101). Selecting a row opens a side panel of
+editable field chips, each with its source sentence. Enter does the one
+thing: opens the gated link, starts the reply, or answers the RSVP.
+"Do this week" (`g F`) steps through Now like Focus & reply. Returning to
+the window within 10 minutes of Enter on a link asks "Done?" with `e`. A
+bill collected by direct debit or card on file is an Update, as Monzo
+shows scheduled payments, but a failed collection is always a to-do.
+
+**Rhythm, end state, in and out.** To-dos surface once, at the start of
+working hours on their surface day (the `surfaced_at` claim); only expiring
+verify links surface at once; Mondays the headline looks at the week. The
+empty state names the next thing and when it shows up. Enters by rule
+detection in `post_sync_fanout`, the model (phase 7), handoff, or a
+promise. A new message in the thread updates the row by dedup key and
+brings a scheduled row back early, as Linear's snooze does. Leaves by `e`,
+`X`, or the world: a matching confirmation makes the row "Looks done:
+payment received 3 Oct". RSVP completes when
+`calendar_invites.current_partstat` is set; a strong pay match (same
+domain, same amount or reference, a receipt word) completes with a day of
+undo; the rest only offer.
+
+**Not a list of emails.** The row is the task, ordered by when you must
+act; a bill, its reminder and its receipt are one row that updates and then
+completes; each row has one button labelled with its verb and destination.
+
+## Updates is a briefing by source, read twice a day and let go in one key
+
+**Unit.** A source line: everything one source sent since the last cut,
+folded to its latest fact per template, its numbers and its strongest
+signal. Things with a lifecycle (parcel, build, incident) are trackers
+showing where they are now, as Live Activities do. HEY Bundles, Shortwave
+bundles, SaneBox digests and Android's Notification Organizer all converge
+on one row per source (updates.md §2).
+
+**Extracted** (updates.md §4): `source_key`, `template_key` (subject with
+numbers, IDs and names masked, no model), a one-sentence `fact` (cleaned
+subject first, model only for generic subjects), quoted `numbers`, a
+code-computed `delta`, `state` for trackers (`deliveries` already does
+this), `signal` (`routine`, `changed`, `new_source`, `anomaly`,
+`needs_you`), one link, and provenance per field.
+
+```text
++ Updates ----------------------------------------------------------------------------+
+| This morning's digest · 08:00 · 31 updates from 12 sources    [Let go of all  A]    |
+| NEEDS A LOOK                                                                        |
+| ! Google        New sign-in from Chrome on Windows, Lisbon, 06:12   already in To do |
+| ! Stripe        Payout of R 4,210.00 failed: bank declined          [This needs me t]|
+| CHANGED                                                                             |
+| Bookshop        Parcel  ordered - shipped - (*) out for delivery - delivered        |
+|                 Arriving today by 18:00 · DHL · 3 emails                  [Track  L]|
+| GitHub acme/api Build failing on main since 11:02 · 3 runs · was green 2 days       |
+| Strava          Your week: 3 runs, 21.3 km  up 12% on last week                     |
+| ROUTINE                                                                             |
+|   Vercel        7 deploys succeeded · latest 07:41 acme-web                 7       |
+|   Uptime Robot  All monitors up · 1 blip 02:14 (40s)                        6       |
+|   + 4 quieter sources                                                       8       |
+| - arriving for 16:30 ------------------------------------------------- 4 so far -  |
++-------------------------------------------------------------------------------------+
+  A let go of digest  e let go of source  t this needs me  K tune source  L link  o email
+```
+
+**View and actions.** Three sections by signal, not date: Needs a look,
+Changed, Routine. No timestamps unless the time is the fact, no unread
+state, badge or sound. Google's SRE book is the model: only actionable
+alerts may interrupt, the rest belongs on a dashboard that shows state. `A`
+lets go of the cut with a dry-run preview ("Let go of 31 updates from 12
+sources; 2 also in To do stay there"), `e` lets go of one source, `t` hands
+to To do, `K` tunes a source (mute, changes only, breakthrough, never
+summarise).
+
+**Rhythm.** Two fixed cuts, 08:00 and 16:30 in the user's zone,
+configurable from one to four, plus a quiet "since 08:00" strip. Fitz,
+Kushlev et al. (Computers in Human Behavior 2019, n = 237) found three
+fixed batches a day improved attention and mood, hourly batching did
+nothing, and no delivery raised anxiety; two is the extrapolation for
+slower email. Mark et al. (CHI 2016) found batching helped rated
+productivity but not stress, so mxr markets this as attention, not calm.
+The cut is a stable set, so let go acts on exactly what the preview listed.
+Leftovers fold into the next cut instead of stacking.
+
+**In and out.** Enters by an Automated base mode or a copied thread;
+`needs_you` breaks through to To do on arrival. Leaves by let go. Trackers
+that end well leave on their own (a delivered parcel goes to Archive); bad
+endings move to Needs a look. After eight digests let go without opening
+a source, mxr asks once whether to mute it.
+
+**Not a list of emails.** Thirty-one emails from twelve senders are twelve
+lines, mostly folded; four parcel emails are one track; the text is the
+fact; numbers come compared; replying isn't offered.
+
+## Reading is a front page you visit, not a pile you owe
+
+**Unit.** A readable item: a single-essay issue, each link item in a
+digest, or the article a teaser points to. Readwise Reader keeps pushed
+content (Feed: Unseen, Seen) apart from chosen content (Library); here the
+edition is the feed and Later is the shelf (reading.md §2).
+
+**Extracted** (reading.md §4), rule-based in `post_sync_fanout` with no
+model and no network: source, cleaned headline, standfirst, shape
+(`single`, `digest`, `teaser`, `notice`), main link and digest items with
+unwrapped URLs, minutes (238 wpm, adjusted from finished items), cadence,
+and local engagement (opened, finished).
+
+```text
++------+---------------------------------------------------------------------+
+| Read |  Reading                                   Later 4   Sources        |
+|      |  SINCE YOU WERE LAST HERE                                           |
+|      |  +---------------------------------------------------------------+  |
+|      |  | The quiet death of the three-pane layout                      |  |
+|      |  | Long Reads Weekly  ·  14 min  ·  you read 9 of 10             |  |
+|      |  | Why every RSS reader since 2002 shipped the same window...    |  |
+|      |  |                          [↵] read   [b] later   [e] let go   |  |
+|      |  +---------------------------------------------------------------+  |
+|      |  SQLite Notes · weekly digest · 6 links                    4 min    |
+|      |    > Local-first mail is having a moment        demo.mxr.local      |
+|      |    > SQLite 3.51 release notes                  sqlite.org          |
+|      |    + 4 more                                                         |
+|      |  ------------------- you left off here --------------------------   |
+|      |  EARLIER THIS WEEK                                                  |
+|      |  Platform Weekly · Shipping a sync engine in 2026         9 min     |
+|      |  FADING  (goes on Sunday, unless you keep it)                       |
+|      |  Growth Digest · you opened 0 of the last 11       [D] unsubscribe  |
++------+---------------------------------------------------------------------+
+```
+
+**View and actions.** Three time bands ranked inside by how much you read
+each source; a new source gets one lead slot for its first three issues.
+No counts except Later, as Reeder dropped unread counts for a synced
+position. NN/g found users fully read 19% of newsletters and spent 51
+seconds on one, so the edition is a scan surface (headline, source,
+minutes, standfirst) and the rare full read gets a 66-character reader
+column (Butterick: 45 to 90). `R` shows the sender's layout, remembered per
+source. Enter reads, `L` fetches the linked article (only on that key,
+naming the domain it contacts), `b` puts it on Later, `e` lets go, `D`
+unsubscribes with evidence ("You opened 0 of the last 11 issues") through
+the existing `UnsubscribePurge { dry_run }`. No reply, forward or labels.
+
+**Rhythm, end state, in and out.** Pull only. Each source's items fade
+after twice its median interval, clamped to 2 to 14 days, through a
+visible Fading band (Current's half-life; Feedly marks items read after 31
+days). Expiry writes `mode_done`, nothing is deleted, and Later never
+expires silently; items over 30 days ask once, "Still want it?". The empty
+state says you are current.
+
+**Not a list of emails.** A digest is many items and a teaser is its
+article; the title is the headline; order is by your reading; opening gives
+a book page, not a 600px template; unsubscribe is a key with evidence.
+
+## Archive is a filing cabinet you ask questions of
+
+**Unit.** A record, built from one or more emails: an order's
+confirmation, dispatch and delivery are one row, a trip's bookings are one
+trip, a year of bills is a series, as TripIt and Gmail's Purchases view
+show (archive.md §2).
+
+**Extracted** (archive.md §4): kind, issuer, issued date (the
+transaction's, not arrival), amount and currency, reference, title, span,
+good-until, documents, source messages, group, provenance per field, and a
+`checked` flag that is true only when every money and date field came from
+schema.org or the user. Schema.org first, then per-issuer templates learned
+from confirmed records (most business-to-consumer mail is templated: Sheng
+et al., KDD 2018, on Google's Juicer), then labelled-line rules, then a
+model that may only choose among strings that appear verbatim.
+
+```text
++----------+------------------------------------------------------------------+
+| Archive  |  / What are you looking for?   "lisbon booking"                  |
+|          |  ANSWER                                                          |
+|          |  Booking ref  K7QX2M                                [y] copy     |
+|          |  TAP Air Portugal · LHR -> LIS · Thu 12 Jun 2025 07:40           |
+|          |  Part of trip "Lisbon, June 2025" (flight, hotel, 2 tickets)     |
+|          |  from schema.org markup · checked     [↵] e-ticket.pdf  [o] email|
+|          |  Kind: All  Receipts  Orders  Trips  Bills  Documents   [g f]    |
+|          |  2025 · MARCH                                      3 · £1,412.40 |
+|          |  03 Mar  Dell           XPS 14 laptop     £1,249.00  402-118  PDF|
+|          |          ordered · shipped · delivered 7 Mar · warranty to 2027  |
+|          |  11 Mar  Octopus Energy Bill, Feb         £  128.40  A-99312  PDF|
+|          |  28 Mar  Apple          iCloud+ 200GB     £    2.99  MSXK21   -  |
+|          |                                    amount unchecked (model) o    |
++----------+------------------------------------------------------------------+
+  / ask  ↵ document  y copy ref  Y copy amount  o email  p issuer  [ ] year  E export
+```
+
+**View and actions.** The answer box is the default focus. A query that
+matches a record field returns the field, with no model; only then does it
+fall back to `mxr ask` (citation-checked today) and to mail search, saying
+so. Below, a ledger by month with counts and totals, because date was by
+far the most common sort in Stuff I've Seen (Dumais et al., SIGIR 2003);
+the issuer page (`p`) is the orienteering step people take even when they
+know what they want (Teevan et al., CHI 2004). `E` exports CSV plus PDFs
+with a dry-run preview, `,` fixes a field or marks the card checked, `X`
+says not a record, `t` hands to To do ("claim warranty").
+
+**Rhythm, end state, in and out.** On demand, no badge. A record with a
+moment (a trip in 72 hours, a ticket today, a return window closing in 3
+days) shows in a "Coming up" strip and one line on Now, as Wallet passes
+surface by date. Records enter from the detector, a delivered parcel, a
+ticked-off to-do, `T` from Messages (a dry-run card), or "always file this
+sender"; they never leave, only get dismissed. The user never files one
+message at a time: Whittaker et al. (CHI 2011, 345 users, 85,000
+refinding actions) found folder access took 58.8 seconds against 17.2 for
+search and did not raise success.
+
+**Not a list of emails.** The row shows the fields you came for; the date
+is the transaction's; the primary action is copy or open the document; a
+query returns an answer card.
+
+## Each mode indexes the part of the email it cares about
+
+Semantic search has one recipe for every message today. `build_chunks`
+(`crates/semantic/src/lib.rs`, line 1655 at `bdf997c4`) makes a header
+chunk (subject, sender, recipients, snippet), body chunks from
+`mxr_reader::clean` output in 120-word windows with 30-word overlap
+(`chunk_text`), and for each attachment a filename and type chunk plus
+text windows. Chunks are keyed by `(message_id, source_kind, ordinal)` and
+embeddings by `(chunk_id, profile_id)` (`004_semantic_search.sql`), so the
+same text in two messages embeds twice, and the only filter is
+`allowed_source_kinds`.
+
+Each mode should index what it shows. Content units are pulled out once
+per message: new text (quotes and signatures removed by the thread-aware
+matcher), article or link sections, extracted record fields, attachment
+text, and the gist when one exists. A per-mode recipe then picks units,
+windowing and a context prefix. A chunk is tagged with every mode it
+serves (many-to-many), and embeddings are keyed by a hash of the chunk
+text, so identical text embeds once even when the email is in several
+modes.
+
+| Mode | Recipe | Why |
 |---|---|---|
-| Desk lanes You owe, Due, Waiting on, New from people | `crates/daemon/src/handler/desk_lanes.rs`, `desk.rs` | The cross-mode now view: You owe (from Messages), Due soon (to-dos and promises), one Updates digest card. New from people moves into Messages |
-| Reply queue (`reply-queue` route, reply-later flag in `message_flags`) | `apps/web/src/routes/reply-queue.tsx`, `crates/store/src/message_flags.rs` | A filter in Messages ("Reply later"). The flag and its timed return (`056_reply_later_due.sql`) stay as they are |
-| Owed replies page (`ListOwedReplies`, `mxr owed`) | `apps/web/src/routes/owed.tsx`, `crates/store/src/owed_replies.rs` | Messages' "You owe" filter. One owed rule for desk and Messages, so the counts match |
-| Waiting on (desk lane, `g w`) | `desk_lanes.rs` | A Messages filter, and still a desk lane when a wait passes its time |
-| Snoozed | `apps/web/src/routes/snoozed.tsx`, `crates/store/src/snooze.rs` | A state, not a place: each mode shows its own snoozed count and list. The cross-mode Snoozed list moves under More |
-| Paper trail | `crates/daemon/src/handler/places.rs`, `MailPlaceData::PaperTrail` | Split: recent notifications go to Updates, records go to Archive. `/paper-trail` redirects to Updates |
-| Reading | `places.rs`, `MailPlaceData::Reading` | Reading mode, plus a later list and the existing unsubscribe |
-| Screener | `crates/store/src/screener.rs`, `handler/screener.rs` | A question about which mode a new sender belongs to, asked only when rules can't tell. Off the rail; the desk mentions it when someone waits |
-| Promises (Due lane, `contact_commitments`) | `crates/store/migrations/024_contact_commitments.sql`, `handler/promises.rs` | Your promises are to-dos too. To do lists them alongside detected admin, from their own table |
-| Deliveries | `crates/deliveries`, `042_deliveries.sql` | Updates while in transit, Archive once delivered |
-| Invites | `apps/web/src/routes/invites.tsx` | To do while unanswered ("RSVP by"), Archive after |
-| Subscriptions | `apps/web/src/routes/subscriptions.tsx` | Reading's manage view |
-| `mxr triage` (Action, FYI, Routine) | `crates/daemon/src/handler/triage.rs` | Superseded by mode aspects once phase 5 ships; kept until then |
+| Messages | Each message's new text, prefixed with the person and topic ("Samir Patel · Contract renewal"), plus the gist. Quoted history is not re-indexed | Contextual retrieval: the prefix carries who and what, which a 120-word window loses |
+| To do | One instruction chunk ("Pay council tax, Camden Council, £142, due 9 Oct") plus the body | Amounts and dates are answered by SQL over `todos`, not vectors |
+| Updates | One fact chunk per message, deduplicated by `template_key` | Fifty "build passed" mails are one meaning |
+| Reading | Larger, section-aware chunks, one per digest link item, plus fetched article text; embedded lazily, when read or for sources the user reads | Most issues are never read (NN/g), so eager embedding wastes the most work here |
+| Archive | One field chunk plus PDF text | Exact identifiers (references, order numbers) stay on BM25 in hybrid search |
 
-The judge's tour on the demo data shows why the current rail isn't enough.
-The web rail is Desk, Inbox, Reply queue, Waiting on, Snoozed, Reading,
-Paper trail and Screener, then More, Labels and Tools
-(`apps/web/src/components/Sidebar.tsx`), which is a folder list organised
-by mail mechanics. "Action required: unusual sign-in attempt" sits in You
-owe and "Build failed on release branch" in New from people, because a
-person-looking sender makes every message a conversation. Desk lanes sort
-by age and pace (`sort_lane` in `desk_lanes.rs`), not by who the person is.
-The screener queue lists every inbound sender without a decision
-(`list_screener_queue`), so 27 senders wait in a demo mailbox. A fix for
-that last one is in flight on another branch: anyone you've written to is
-never screened.
+A baseline (header plus new text) is indexed at sync, so search works at
+once; the recipe enriches it after classification. Each message is stamped
+with its recipe version and classification version, and only stale
+messages reindex, through the existing resumable `SemanticIndexJob`. There
+stays one embedding model and one ANN (`hnsw_rs`) index per profile;
+search gains a mode filter beside `allowed_source_kinds`. Recipes start as
+a typed, versioned table in `crates/semantic`, not user config, so lifting
+them into config later stays possible. Before switching, a local retrieval
+eval on BK's real mail reports top-5 hit rate (counts only) for today's
+chunking and for the recipes. Each mode's recipe ships in that mode's
+phase (D113).
 
-## What changes per client
+## One key map across Now and the modes
 
-The CLI-first contract holds (`AGENTS.md`): every mode is daemon IPC plus
-CLI JSON first, then TUI, web and MCP. Nothing here is web-only.
+Checked against `docs/reference/tui-keymap.json` and the web registry
+(`apps/web/src/lib/actions/`, `features/mail-actions/verbActions.ts`,
+`features/places/actions.ts`, `features/focus/actions.ts`) at `bdf997c4`.
+Modes get their own scope in both clients, as `place` has today, and
+`keymapParity.test.ts` holds web and TUI to the same table.
 
-**Daemon and protocol.** New requests: `ListModeItems { mode, filter,
-account, cursor }`, `GetModeMembership { message_id }` (backs `mxr why`),
-`SetModeCorrection { scope: Message | Sender, ... }`, `ListTodos`,
-`CreateTodo { from_message, title, due_at }`, `UpdateTodo { state,
-scheduled_for, due_at }`, `SetModeDone { mode, thread_ids, dry_run }`,
-and `GetUpdatesDigest { day }`. New events: `TodoSurfaced` (lead time
-reached) and `ModeAspectsReady`. Batch moves and batch done return a
-preview token on `dry_run`, and the commit acts only on what the preview
-listed (D098).
+| Key | Meaning wherever it applies | Now | Msgs | To do | Upd | Read | Arch | Meaning today |
+|---|---|:-:|:-:|:-:|:-:|:-:|:-:|---|
+| `Enter` | The mode's primary verb: open person, do it, expand source, read, open document | yes | yes | yes | yes | yes | yes | Open |
+| `e` | Done here (tick off in To do, let go in Updates and Reading) | yes | yes | yes | yes | yes | | Archive; Done on desk and in focus |
+| `A` | Let go of everything in view, with dry-run preview | card | | | yes | yes | | Sweep place; attachments (list) |
+| `t` | Make a to-do from this | yes | yes | | yes | yes | yes | unbound |
+| `T` | Pass to another mode (menu) | yes | yes | yes | yes | yes | yes | unbound |
+| `X` | Not this mode, for this email | yes | yes | yes | yes | yes | yes | web reader expand all |
+| `K` | This sender here: mode, never/always, lead time, mute, changes only, never summarise | yes | yes | yes | yes | yes | yes | Sender kind menu (place) |
+| `o` | Open the email itself, as sent | yes | yes | yes | yes | yes | yes | Open (list alias) |
+| `r` / `a` | Reply / reply all | yes | yes | | | | | same |
+| `.` | Got it: a short acknowledgement after a countdown | | yes | | | | | unbound |
+| `b` | Later: reply later, or the Later shelf | | yes | | | yes | | Reply later |
+| `Z` | Not now: snooze, or schedule in To do | yes | yes | yes | | | | Snooze |
+| `,` | Edit extracted fields; mark a record checked | | | yes | | | yes | unbound |
+| `L` | Open the item's link: tracker page, linked article | | | | yes | yes | | Links |
+| `D` | Unsubscribe, with evidence and preview | | | | | yes | | Unsubscribe |
+| `R` | Original layout or cleaned | | | | | yes | | Reader mode (TUI) |
+| `y` / `Y` | Copy reference / amount | | | | | | yes | Summarize (TUI) |
+| `p` | This person's or issuer's page | | yes | | | | yes | Sender view; pin (place) |
+| `s` | Pin a person (star) | | yes | | | | | Star |
+| `c` | Compose; in Messages a new topic with this person | yes | yes | | | | | Compose |
+| `>` | Quote the selection into the reply | | yes | | | | | More senders (place) |
+| `[` / `]` | Previous / next group: topic, year | | yes | | | | yes | Collapse / expand (sidebar) |
+| `Mod+Enter` | Send, then the next person whose turn it is | | yes | | | | | Focus send |
+| `g F` | Step through the Now band | | yes | yes | | | | Focus & reply |
+| `/`, `g f`, `x`, `u`, `?` | Search (Archive's ask box), filter (facets), select, undo, help | yes | yes | yes | yes | yes | yes | same |
+| `g h` `g m` `g x` `g u` `g r` `g e` `g i` | Now, Messages, To do, Updates, Reading, Archive, Inbox | | | | | | | `g u` was Subscriptions |
 
-**CLI.** `mxr modes` (counts per mode), `mxr messages`, `mxr todo` (`list`,
-`add --from MESSAGE --due PHRASE`, `done`, `schedule`, `undo`), `mxr
-updates` (today's digest, `let-go --dry-run`), `mxr reading` (exists),
-`mxr records` (Archive mode; `mxr archive` is already the archive verb),
-`mxr mode set MESSAGE --mode updates [--sender]` for corrections, and
-`mxr why` extended to list every mode. All take `--format json`.
+Where the research notes disagreed, the reason for the choice:
 
-**TUI.** The sidebar (`crates/tui/src/ui/sidebar.rs`) gets the five modes
-and Inbox. To do gets its own lens beside `desk_lens.rs` and
-`place_lens.rs`. The same keys as the web, enforced by
-`keymapParity.test.ts`.
+- `e` is done here everywhere, including tick-off: it is already Done on
+  the desk (`deskDone.ts`) and in focus (`focus.done`).
+- Let go of all is `A`, not `L` (updates.md): `A` is Sweep all with a
+  dry-run preview in the place keymap, and Paper trail becomes Updates;
+  `L` opens links in list, place and reader in both clients.
+- `x` stays select everywhere, because batch done needs it. todo.md read
+  it as "screened out", which is only the letter inside the `K` menu
+  (`placeCopy.ts`); updates.md used it for "let go of source". Dismissal
+  moved to `X`, let go of a source to `e`.
+- Later is `b` (FlagReplyLater today), not `l` (Apply label, reading.md)
+  or `Z` (messages.md); `Z` stays snooze.
+- Unsubscribe is `D` in both clients, not `U` (Mark unread, reading.md).
+- Archive's research keys collided with global ones: `c` (compose) became
+  `,`, `f` (forward) became `g f`, `x` (select) became `E` (export), `v`
+  (move) folded into `,`, `g i` (Inbox) became `p`, `d` (screener deny)
+  became `X`, and `e` (done) became `o`.
+- Updates' `m` (mark read and archive) and `c` (compose) moved into the
+  `K` menu, whose option letters become the `g` letters (`m`, `x`, `u`,
+  `r`, `e`, and `d` to screen out).
+- No "why" key: `?` is help in both clients, every row shows its reason
+  line, and the TUI footer shows the selected row's reason and link domain.
+- `v` (move) is not reused for "view original" (messages.md, updates.md,
+  reading.md); `o` opens the email as sent everywhere.
+- `g u` moves from Subscriptions to Updates, with the old binding in
+  `retiredAliases` as `g R` and `g P` were; `g p` redirects to Updates;
+  `g q`, `g w` and `g o` open Messages filters. `g m`, `g x` and `g e` are
+  unbound in both keymaps.
 
-**Web.** The rail becomes Now (the desk, home), Messages, To do, Updates,
-Reading, Archive, then Inbox. Reply queue, Waiting on and Owed become
-filters in Messages; Snoozed, Screener, Invites, Deliveries and
-Subscriptions move under More or into their mode. Badges still count only
-work: Now and To do (due soon).
+## Conflicts the research left, and what this plan chose
 
-**MCP.** Tools for `mxr_list_mode`, `mxr_todos` and `mxr_mode_membership`
-beside the existing `mxr_list_place` (`crates/mcp/src/lib.rs`), with
-mutations through the existing preview path.
+| Topic | The notes said | Chosen | Why |
+|---|---|---|---|
+| Updates cadence | Old draft: once a day. updates.md: two cuts. now-and-handoff.md: one card on Now | Two cuts (08:00, 16:30), 1 to 4 configurable; Now shows the latest cut as one card | Fitz et al.: a few fixed batches helped; a parcel out for delivery at 10:00 is stale by morning. Amends D110 (D112) |
+| Ticked-off to-do and Archive | todo.md, archive.md: offer "File in Archive". now-and-handoff.md: no prompt | No prompt; toast with undo | Whittaker 2011: filing effort is wasted; Archive files records itself anyway |
+| Due soon order on Now | now-and-handoff.md: by `due_at`. todo.md: by act-by | Act-by first, due second, everywhere | A passport due in January needs action in November |
+| Mobile navigation | reading.md: six tabs. now-and-handoff.md: five | Now, Messages, To do, Reading, Find (Archive + search + Inbox); Updates through Now's card | Apple HIG and Material 3 cap a tab bar at five; Updates is visited twice a day |
+| Lead times | Old draft: renew 7 days, documents 30 | todo.md's table (below) | HMPO advises up to 10 weeks; renewals need time to compare quotes |
+| Group threads | Old draft: groups as their own rows | Keyed by `thread_id`; CC-only goes to Updates | Slack and iMessage split groups when members change |
+| Screener | Old draft: off the rail | Off the rail; a first-time sender's row carries one inline question; `/screener` under More as history | HEY's queue is heavy early and light later; mxr never withholds mail, so a gate duplicates the classifier |
+| Promises and admin | Old draft asked one list or two | One list with a `kind`; promises first on equal act-by | Two deadline lists make the user merge them; Taskmaster and Viva show the person matters |
 
-## Data model: to-dos get their own table; membership is computed
+## Data the modes need
 
-To-dos are stored in their own table, not derived from mail on every read.
-A to-do has a life of its own: it outlives the email being archived, it can
-be created by hand from a conversation, it gets scheduled and ticked off,
-and its due date may be corrected by the user. None of that is a property
-of the message. `deliveries` (`042_deliveries.sql`) and
-`contact_commitments` already set the pattern: a detected row, provenance
-back to the message, and non-destructive resolve and dismiss.
+To-dos get their own table: a to-do outlives its email, can be made by
+hand, and gets scheduled, ticked off and corrected. `deliveries` and
+`contact_commitments` set the pattern (a detected row, provenance back to
+the message, non-destructive resolve and dismiss).
 
 ```sql
 CREATE TABLE todos (
@@ -235,222 +683,313 @@ CREATE TABLE todos (
     account_id        TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     thread_id         TEXT NOT NULL,
     source_message_id TEXT NOT NULL,
-    title             TEXT NOT NULL,          -- "Renew passport"
-    verb              TEXT,                   -- pay | renew | verify | sign | book | rsvp | other
-    due_at            INTEGER,                -- UTC instant; NULL when there is no deadline
-    due_words         TEXT,                   -- the phrase found in the message, verbatim
-    surface_at        INTEGER,                -- due_at minus lead time, at the user's morning hour
-    scheduled_for     INTEGER,                -- "do it on Tuesday"
+    title             TEXT NOT NULL,          -- verb + object: "Pay council tax"
+    verb              TEXT NOT NULL,          -- pay | renew | verify | sign | book | rsvp | return | other
+    doc_type          TEXT,                   -- bill_link | bill_bank | renewal | passport | lease | ...
+    counterparty      TEXT,
+    amount_minor      INTEGER,
+    currency          TEXT,
+    due_at            INTEGER,                -- the outside deadline; NULL when none
+    due_words         TEXT,                   -- verbatim phrase from the message
+    act_by_at         INTEGER,                -- due minus notice or processing time
+    surface_at        INTEGER,                -- act_by minus lead time, at the start of working hours
+    scheduled_for     INTEGER,                -- the user's When date
+    action_url        TEXT,
+    action_domain     TEXT,                   -- registrable domain, shown before Enter
+    action_trusted    INTEGER NOT NULL DEFAULT 0, -- DMARC pass and domain match: gates the button
     state             TEXT NOT NULL CHECK (state IN ('open', 'done', 'dismissed')),
-    origin            TEXT NOT NULL CHECK (origin IN ('rule', 'model', 'handoff', 'manual')),
-    reason            TEXT NOT NULL,          -- shown as "Here because: ..."
-    model             TEXT,                   -- set when origin = 'model'
+    done_message_id   TEXT,                   -- the confirmation that completed it, if any
+    origin            TEXT NOT NULL CHECK (origin IN ('rule', 'schema', 'model', 'handoff', 'manual')),
+    reason            TEXT NOT NULL,
+    field_sources     TEXT NOT NULL,          -- JSON: field -> schema | rule | model | user
+    model             TEXT,
     surfaced_at       INTEGER,                -- claim guard: announced once
-    dedup_key         TEXT NOT NULL,          -- account + thread + verb + normalised title
+    dedup_key         TEXT NOT NULL,          -- account + thread + verb + normalised object
     created_at        INTEGER NOT NULL,
     updated_at        INTEGER NOT NULL,
     done_at           INTEGER,
     UNIQUE (account_id, dedup_key)
 );
-CREATE INDEX idx_todos_surface ON todos (surface_at) WHERE state = 'open' AND surfaced_at IS NULL;
 ```
 
 Upserts use `ON CONFLICT(account_id, dedup_key)`, never `INSERT OR
-REPLACE`. A later email in the same thread ("reminder: your renewal is due
-in 3 days") updates the row instead of adding one. The surfacing claim
-follows `reply_later_returned_at` (`056_reply_later_due.sql`): the wake
-loop sets `surfaced_at` in the same UPDATE that finds the row, so a to-do
-is announced exactly once across restarts.
+REPLACE`. The wake loop sets `surfaced_at` in the same UPDATE that finds
+the row, as `reply_later_returned_at` does (`056_reply_later_due.sql`), so
+a to-do is announced once across restarts.
 
-Mode membership is computed, not stored. Places already work this way:
-Reading and Paper trail are views over the inbox, classified at read time
-(D097). Membership is a pure function of the message, its sender
-classification, its stored aspects and the user's corrections:
+Mode membership is computed, not stored, as places are today (D097):
 
 ```text
-modes(message) = base_mode(sender)                       -- mail_kind + screener
-               + aspects(message)                        -- message rules + cached model answers
+modes(message) = base_mode(sender)          -- mail_kind + screener
+               + aspects(message)           -- message rules + cached model answers
                + open todo rows for the thread
                - corrections(message)
-               - modes the user marked done (through the thread's watermark)
+               - modes marked done (through the thread's watermark)
 ```
 
-Three small stores feed it:
-
-- `mode_aspects (message_id, prompt_version, content_hash, task_json,
-  is_notice, is_record, model, generated_at)`: the model cache.
-- `mode_corrections (account_id, scope, key, mode, verdict, decided_at)`:
-  per message and per sender, where `scope` is `message` or `sender`.
-- `mode_done (account_id, thread_id, mode, through_seq, through_count,
-  done_at)`: per-mode done, using the same watermark as `desk_dismissals`
-  (`051_desk_dismissals.sql`, `DeskDismissal::covers`), so a new message in
-  the thread brings it back to that mode only.
-
-Activity records for these writes go through `state.activity.record(...)`
-with ids and counts only, never titles or due words, and `MXR_ACTIVITY=off`
+Shared stores: `mode_aspects` (model cache by prompt version and content
+hash), `mode_corrections (account_id, scope, key, mode, verdict,
+decided_at)` with `scope` in `message | sender`, and `mode_done
+(account_id, thread_id, mode, through_seq, through_count, done_at)` on the
+`DeskDismissal::covers` watermark. Per-mode stores are specified in the
+research notes: `update_facts` and `update_sources` (updates.md §4),
+`reading_items`, `reading_state` and `reading_articles` (reading.md §4),
+`records` with its field, message and group tables (archive.md §4), and a
+small `people` identity layer (messages.md §5). Activity records carry ids
+and counts only, never titles, amounts or due words, and `MXR_ACTIVITY=off`
 disables them.
 
-## Messages ranks by person
+## Lead times are a fixed table by kind of action
 
-Messages answers "who matters" before "what's newest". Each person gets a
-relationship strength from local history, already in the `contacts` table
-(`010_contacts.sql`): `total_outbound`, `replied_count`, `last_outbound_at`,
-`cadence_days_p50`, plus reply pairs. Writing to someone is the strongest
-signal; their writing to you, alone, is weak. The score is a small,
-explainable formula, not a model, and the row can say why it ranks there:
-"you've written to Maya 48 times, last on Tuesday".
+The lead time is how long the outside world takes. One default fails
+because the spread runs from hours (a verify link) to ten weeks (a
+passport); a learned one fails as Todoist's Smart Schedule did, withdrawn
+because it "was not accurate enough to be helpful" (todo.md §6).
 
-Rows are per person, like a chat list: one row per counterparty with their
-latest conversation, and a group conversation is its own row. Ranking is
-by strength band first (close, regular, occasional), then by whether you
-owe a reply, then by recency. Someone new who writes once lands at the
-bottom of "occasional" until you reply.
+| Kind | Act-by | Surfaces | Basis |
+|---|---|---|---|
+| Bill, pay link on the biller's site | due date | 3 days before act-by | Card payment is immediate; 3 days is slack |
+| Bill, bank details only | due minus 3 working days | 3 days before act-by | Bacs takes three working days |
+| Bill by direct debit or card on file | not a to-do | Updates | Scheduled payments; a failed collection is always a to-do |
+| Subscription or insurance renewal | due date | 14 days before | Time to compare quotes |
+| Passport, visa | expiry minus 6 months, or the trip date if known | 10 weeks before act-by | HMPO advises up to 10 weeks; US routine is 4 to 6 weeks plus post |
+| Driving licence, ID card | expiry | 8 weeks before | Judgement; no source yet |
+| Lease or tenancy | end minus notice (2 months default in England) | 4 weeks before act-by | Tenant notice period |
+| Return window | delivered + stated window ("assumed 14 days") | 4 days before close | Consumer Contracts Regulations; only on request |
+| RSVP | the reply-by date, else 2 days before the event | 2 days before | No standard |
+| Verify, confirm | link expiry | at once | Links expire in hours |
+| Promise you made | the date you named | 1 working day before | You chose the date |
+| Other | due date | 2 days before | Default |
 
-## Deadlines surface ahead of time, not on the day
+`surface_at` moves to the start of the user's working hours and is never
+later than now; a date already past surfaces at once as "was due Tue". Numeric
+dates ("09/10/2026") are not parsed by `natural_time` and are ambiguous, so
+schema.org dates come first, then the account's locale, then the row asks.
+Lead times are config per kind and per sender through `K` ("Remind me 2
+weeks earlier for Admiral"). The sources are mostly UK; other defaults are
+open.
 
-A to-do with a deadline appears in To do as soon as it's detected, and on
-the desk at its surface time:
+## How the modes map onto what exists today
 
-| Verb | Lead time | Why |
-|---|---|---|
-| pay | 3 days | Bank transfers take a working day or two |
-| renew | 7 days, 30 for documents (passport, visa, licence) | Renewals have their own processing time |
-| sign | 2 days | Usually needs a quiet moment |
-| book | 7 days | Slots run out |
-| verify, confirm | at once | Links expire quickly |
-| rsvp | 2 days | The organiser plans around replies |
-| other | 2 days | A default the user can change |
-
-Rules for the surface time:
-
-- `surface_at = due_at - lead`, moved to the start of the user's working
-  hours that day (the preferred hours `natural_time` already uses), and
-  never later than now when the deadline is already inside the lead time.
-- A due date in the past at detection time surfaces at once, labelled
-  "was due Tue", with no red and no scolding (D101).
-- A to-do without a deadline surfaces at once and stays in To do until
-  done. It never shows on the desk unless scheduled.
-- A scheduled to-do ("do it on Saturday") surfaces at its scheduled time
-  instead of its lead time, but its due date still shows.
-- Only the due words found verbatim in the message count. When the parser
-  offers several readings, the earliest plausible one is used and the row
-  says "due Fri 3 (assumed 15:00)". The user can correct it with the
-  natural-time field (D096).
-- The lead times are config with these defaults, per verb.
+| Exists today | Becomes |
+|---|---|
+| Desk lanes (`desk_lanes.rs`, `desk.rs`) | Now |
+| Reply queue, Owed, Waiting on | Messages filters, sharing one owed rule with Now |
+| Focus & reply (`routes/focus.tsx`) | `g F` inside Messages and To do |
+| Snoozed (`snooze.rs`) | A state each mode shows; the cross-mode list under More |
+| Paper trail (`places.rs`) | Split: notifications to Updates, records to Archive; `/paper-trail` redirects |
+| Reading place (`ReadingRoute.tsx`, full renders 12 at a time) | Reading's edition, reader and Later |
+| Screener (`screener.rs`) | An inline per-row question; the page under More as history |
+| Promises (`024_contact_commitments.sql`) | To do rows with `kind = promise` |
+| Deliveries (`042_deliveries.sql`) | Updates trackers in transit, Archive orders once delivered |
+| Invites (`038_calendar_invites.sql`) | To do while unanswered, Archive after |
+| Subscriptions (`subscriptions.tsx`) | Reading's Sources view |
+| `mxr ask` (`archive_ask.rs`) | Archive's fallback answer |
+| `mxr triage` (`triage.rs`) | Superseded by mode aspects in phase 7 |
 
 ## Phases
 
-Each phase ships on its own, behind no flag, with a user-visible check and
-named tests. The first proves the model with the mode that has no home
-today.
+Each phase ships one mode's real view in its researched shape, behind no
+flag: daemon IPC and CLI JSON first, then TUI and web, then MCP, then that
+mode's index recipe. Mutations and batches go through the preview path
+(D098).
 
-### Phase 1: To do, with rule-based deadline detection
+### Phase 1: To do as a runway, with the data it needs
 
-The `todos` table, the rule-based to-do and deadline detector (run in
-`post_sync_fanout` in `crates/daemon/src/loops.rs`, like deliveries), lead
-time surfacing in the timer loop (`process_due_timers`), `mxr todo`, the
-desk's Due lane showing to-dos beside promises, a web To do page and rail
-entry, and a TUI lens. Handoff from a conversation (`t`, `mxr todo add
---from`) ships here too, because a hand-made to-do needs no classifier.
+The `todos` table; the rule detector in `post_sync_fanout` (admin verbs,
+due phrases, direct debit, failed collection); `schema_org.rs` extended to
+`Invoice` (`totalPaymentDue`, `paymentDueDate`, `provider`) and
+`*Reservation`; the lead-time table with act-by in working days; the action
+link picker with the DMARC and domain gate; confirmation matching; promises
+merged in `ListTodos`; `CreateTodo`, `UpdateTodo`, `SetTodoDone {
+dry_run }`; `mxr todo` (`list`, `add --from MESSAGE --due PHRASE`, `done`,
+`schedule`, `edit`, `undo`, all `--format json`); the web view with bands,
+runway bars, one labelled button and the field panel; the TUI lens with the
+link domain in the footer; a To do rail entry; the desk's Due lane on
+act-by; `t` from a conversation. Models: `llm.tiers.fast` and
+`llm.tiers.smart` with the feature-to-tier table; smart-tier extraction of
+To do fields for mail the rules placed in To do, with the verbatim
+amount and date checks, the content-hash cache and the model named on each
+chip; `mxr modes eval --extract` comparing local and cloud on the user's
+mail. Index: the recipe table, chunk mode tags, text-hash embedding keys,
+the To do instruction chunk, and the retrieval eval's first run on today's
+chunking.
 
-- **Check:** on BK's real mailbox, `mxr todo --format json` lists his real
-  bills and renewals with due dates (counts reviewed by BK, no content
-  recorded). In the demo, a bill due in five days appears on the desk
-  three days before, exactly once, after a daemon restart.
-- **Tests:** `crates/store` `todos` tests (upsert by dedup key, claim
-  guard); `todo_detect` unit tests over fixtures per verb and due phrase;
-  `handler/tests/todo.rs` with a moved clock (surfaces once at lead time,
-  not before, survives restart, done cancels); CLI JSON snapshot;
-  `e2e/todo.spec.ts` (detect, schedule, tick off, undo, handoff from a
-  conversation); TUI lens test.
+- **Check:** in the demo, Camden's council tax email (schema.org
+  `Invoice`) reads "Pay council tax, Camden Council, £142.00, act by Wed 7
+  · due Fri 9" with "Pay on camden.gov.uk"; a lookalike-domain copy shows
+  "Open email to pay" and the raw domain; the receipt turns it into "Looks
+  done"; a bill due in five days appears on the desk three days before,
+  once, across a restart. On BK's real mail `mxr todo --format json` lists
+  his bills and renewals, and he records counts of right, wrong and missed,
+  plus the extraction eval's local and cloud field counts.
+- **Tests:** `todos` store tests (dedup upsert, claim guard);
+  `llm_tiers` tests (precedence override, tier, base; a cloud tier without
+  `api_key_env` is refused; only To do mail reaches the smart tier; with no
+  cloud tier, fields come back unchecked);
+  `todo_detect` fixtures per verb, due phrase and doc type; `schema_org`
+  Invoice fixtures; `action_link` gate fixtures (DMARC fail, lookalike,
+  redirect wrapper, prior-mail domain); `lead_time` tests per kind;
+  `todo_complete` matcher tests; `handler/tests/todo.rs` with a moved
+  clock; CLI JSON snapshot; `e2e/todo.spec.ts`; TUI lens test;
+  `index_recipe` tests (one embedding per distinct chunk text).
 
-### Phase 2: The rail by mode, membership, reasons and per-mode done
+### Phase 2: Now, the rail, membership, per-mode done and the eval harness
 
-`modes()` as above with rules only, `mode_corrections` and `mode_done`,
-`ListModeItems`, `GetModeMembership`, `SetModeDone` with a dry run, `mxr
-modes`, `mxr why` listing every mode, and the web and TUI rail of Now,
-five modes and Inbox. Paper trail splits into Updates and Archive; Reply
-queue, Waiting on and Owed become Messages filters. The provider archive
-waits for the last mode to let go.
+`modes()` with rules only, `mode_corrections`, `mode_done`,
+`ListModeItems`, `GetModeMembership`, `SetModeCorrection`, `SetModeDone {
+dry_run }`, `GetNow`; `mxr modes`, `mxr why`, `mxr now`; the desktop rail,
+mobile tabs and TUI sidebar with the new `g` keys and `K` menu; Now's four
+capped sections; the identity anchor and "Also in"; archive on last done
+with its toasts and setting; the Screener as an inline question; `mxr
+modes eval` in rules-only mode, so accuracy is measured before any model.
+Index: the baseline at sync, version stamps, stale-only reindex and the
+mode filter on search.
 
-- **Check:** on the demo, "Action required: unusual sign-in attempt" is in
-  To do or Updates, not Messages, and says why. An email with a reply owed
-  and a to-do is in both; done in Messages leaves the to-do open.
-- **Tests:** `mode_membership` unit tests (every base mode, multi-mode,
-  corrections win, done watermark); `handler/tests/modes.rs` (dry-run
-  token, preview equals commit, provider archive only when the last mode
-  lets go); `e2e/modes.spec.ts` (rail, reasons, correction per email and
-  per sender, handoff); `keymapParity.test.ts`.
+- **Check:** in the demo, "Action required: unusual sign-in attempt" is
+  in To do or Updates, says why, and is never in People. The landlord's
+  email is in Messages and To do; `e` in Messages toasts "Done in
+  Messages. Still in To do" and Gmail keeps it; ticking off the to-do
+  toasts "Archived in Gmail". Now never shows more than ten items. `mxr
+  modes eval --sample 200` prints rules-only counts on BK's mail.
+- **Tests:** `mode_membership` unit tests; `handler/tests/modes.rs`
+  (preview equals commit, archive only when the last mode lets go, setting
+  off); `handler/tests/now.rs` (caps, more counts); `e2e/now.spec.ts`;
+  `e2e/modes.spec.ts`; `keymapParity.test.ts` with the mode scopes.
 
-### Phase 3: Messages ranks by person
+### Phase 3: Messages as people with topics
 
-The relationship strength score, per-person rows with group conversations
-as their own rows, owed and waiting as filters, and the ranking reason on
-hover and in JSON.
+`conversation_shape`, the `people` identity layer with manual merge,
+closeness bands, thread-aware quote and signature stripping in
+`crates/reader` with `trimmed` flags, the ask (smart tier, quoted
+verbatim), `GetPerson`, `mxr messages`
+(`--turn`, `show <person>`, `ack <thread> --dry-run` printing the exact
+text), the web list and person page with the permanent composer and Got
+it, and the TUI two-pane lens. Index: the Messages recipe (new text with a
+person and topic prefix, plus the gist).
 
-- **Check:** BK's Messages top ten are people he would name, checked by
-  him against his real mail (counts of agree and disagree recorded).
-- **Tests:** `relationship_strength` unit tests (writing to someone
-  outranks being written to; bands; recency); `e2e/messages.spec.ts`;
-  timing of the ranking SQL read-only on the real store (D5).
+- **Check:** Samir is one row however many threads he's in; the Samir and
+  Ruth thread is its own row; a CC-only thread is in Updates. BK's top ten
+  are people he would name (agree count recorded).
+- **Tests:** `conversation_shape` fixtures (CC churn keeps one group row);
+  quote-matching fixtures from Gmail, Apple, Outlook and plain text;
+  `relationship_strength` tests; ack dry-run equals sent text;
+  `e2e/messages.spec.ts`; retrieval eval rerun for Messages.
 
-### Phase 4: Updates as a daily digest, and the desk as the now view
+### Phase 4: Updates as a twice-daily briefing
 
-`GetUpdatesDigest`, `mxr updates`, the Updates mode grouped by sender and
-day, "let go" (with a dry run for a whole day), "this needs me" handoff to
-To do, deliveries shown in Updates, and the desk rebuilt as You owe, Due
-soon and one digest card a day at the user's chosen time.
+`update_facts` (source, template, fact, numbers, code deltas, signal),
+`update_sources` tuning, digest cuts with leftovers folding, `needs_you`
+breakthrough, deliveries as trackers, `GetUpdatesDigest { cut }`, `mxr
+updates` (`--cut`, `let-go --dry-run`, `tune`), the web briefing, Now's
+card and the TUI lens. Index: one fact chunk per message, deduplicated by
+template.
 
-- **Check:** a day of demo notifications arrives as one digest card, not
-  as rows, and letting go of the day archives what no other mode holds.
-- **Tests:** `handler/tests/updates.rs` (digest window, one card a day,
-  let go respects other modes); `e2e/updates.spec.ts`; `e2e/desk.spec.ts`
-  updated for the now view.
+- **Check:** a day of demo notifications is two briefings of source lines;
+  four parcel emails are one track; let go of a cut acts on exactly the
+  previewed set and leaves what To do holds.
+- **Tests:** `template_key` fixtures from real automated senders (split and
+  merge cases); delta tests (none across units or templates);
+  `handler/tests/updates.rs` (cut boundaries, fold, preview equals commit,
+  badge stays zero); `e2e/updates.spec.ts`.
 
-### Phase 5: The model for to-dos, deadlines and notifications, measured
+### Phase 5: Reading as an edition, a reader and a shelf
 
-The `ModeAspects` LLM feature with its override, the loopback-only
-background rule, `mode_aspects` cache, prefilter shortlist, quote and due
-word checks, provenance on every model-placed item, and `mxr modes eval`:
-a local labelling and scoring harness over a read-only sample of the
-user's mail that reports counts only.
+`reading_items` extraction, `reading_state`, bands with affinity and
+expiry, unsubscribe evidence, `ListReadingItems`, `SetReadingState {
+dry_run }`, `ListLater`, `mxr reading` (`--format json`, `later`, `sources
+--rank`, `let-go --expired --dry-run`), the web edition and 66-character
+reader, and the TUI lens. Article fetch (`FetchArticle`, a Rust Readability
+port chosen by a spike on 30 real articles) comes last, on an explicit key
+only. Index: section-aware chunks and link items, embedded lazily.
 
-- **Check:** `mxr modes eval --sample 200` on BK's mail with his local
-  model reports per-mode precision and recall and deadline accuracy, and
-  the numbers are recorded in the rubric (counts only, no content). A
-  cloud endpoint configured only for drafts classifies nothing.
-- **Tests:** `mode_aspects` prompt tests (untrusted wrapping, quote check,
-  due words resolved by the parser not the model); privacy tests in the
-  style of `draft_compose` ("a cloud model without the background opt-in
-  never sees mail", "the disclosure follows the provider that answered");
-  cache hit and invalidation by content hash.
+- **Check:** `mxr reading --format json` shows shape and minutes for every
+  issue, and BK agrees with the shape on 30 sampled issues (counts only);
+  "later" on a digest link, then offline, reads the article in full.
+- **Tests:** extractor fixtures from real newsletter HTML (low confidence
+  falls back to the subject); expiry clamp tests; `e2e/reading.spec.ts`.
 
-### Phase 6: Reading later and Archive records
+### Phase 6: Archive as records with an answer box
 
-Reading's later list (the email, or the linked article fetched and
-cleaned through `mxr_reader` on request), and Archive as search with a
-records facet (receipts, orders, bookings, filed to-dos) and `mxr records`.
+`records` and its field, message and group tables, the record detector,
+PDF prefetch for record emails within a cap, record search fields,
+`ListRecords`, `AnswerRecordQuery`, `SetRecordField`, `DismissRecord`,
+`FileAsRecord { dry_run }`, `ExportRecords { dry_run }`, `mxr records`
+(`list`, `show`, `find`, `fix`, `export`), the web answer box, ledger and
+record card, and the TUI lens. Models: record fields on the smart tier for
+mail the detector placed in Archive, with the same verbatim checks, cache
+and provenance as phase 1, and `mxr modes eval --extract` extended to
+record fields. Index: one field chunk plus PDF text, with identifiers left
+to BM25.
 
-- **Check:** "later" on a newsletter link shows the article in Reading's
-  later list in reader mode; `mxr records --query "passport"` finds the
-  renewal receipt from phase 1's to-do.
-- **Tests:** `e2e/reading-later.spec.ts`, `e2e/archive.spec.ts`, record
-  detector unit tests.
+- **Check:** "lisbon booking" returns the reference on an answer card with
+  its provenance; the Dell order's three emails are one row; phase 1's
+  ticked-off council tax is a record; the export preview states the
+  unchecked rows.
+- **Tests:** detector and field fixtures per source;
+  `handler/tests/records.rs` (correction wins forever, preview equals
+  file); `e2e/archive.spec.ts`; per-field precision in `mxr modes eval`.
+
+### Phase 7: Fast-tier classification for what rules can't tell, measured
+
+The `ModeAspects` feature on the fast tier, the loopback-only rule with the
+user's explicit cloud opt-in and API key, the `mode_aspects` cache,
+shortlist prefilter, quote and due-word checks, and italics plus model
+provenance on every model-placed item.
+
+- **Check:** `mxr modes eval --sample 200` with BK's local model reports
+  per-mode precision and recall, deadline accuracy and field precision,
+  recorded in the rubric; a cloud endpoint configured only for drafts
+  classifies nothing.
+- **Tests:** prompt tests (untrusted wrapping, quote check, dates from the
+  parser); privacy tests in the style of `draft_compose`; cache
+  invalidation by content hash.
+
+## Design bets, and how we'll learn
+
+- **One email in several modes has no direct evidence.** Taskmaster's
+  thrasks are the nearest study, and it was small. From phase 2, log
+  (counts only) how often "Also in" is followed, and BK notes any moment
+  an email read as a duplicate. If it confuses, fall back to one primary
+  mode with the others as chips.
+- **Person rows with topics** rest on evidence that importance attaches to
+  people, not on a test of this layout in email. Learn from BK's top-ten
+  agree count and time to clear Your turn.
+- **Two digest cuts** extrapolate from a phone study at three a day. Learn
+  from a week of counts per cut in `docs/dogfooding-log.md`.
+- **Length decides shape** must keep contracts readable where Spike failed.
+  BK reads real long threads in it before phase 3 ships.
+- **Auto-filing and auto-complete** depend on field precision and receipt
+  matching that are unknown until phase 6's eval and a month of undo
+  counts.
+- **Per-mode index recipes** may not beat today's chunking. The retrieval
+  eval decides per mode before switching.
+- **Classifier errors are what users see first**, and Now's cap of three
+  makes each one a third of a section. That is why the eval harness lands
+  in phase 2.
 
 ## Unresolved questions
 
-- Messages rows per person or per conversation? This plan says per person
-  with group conversations as their own rows. Confirm.
-- Should the provider archive wait for the last mode to let go, or should
-  archive stay an explicit verb with modes only hiding mail?
-- What time should the daily Updates digest arrive, and should it be one
-  card or a short list on the desk?
-- Are the default lead times right for you, especially 30 days for
-  document renewals?
-- Should promises you made and admin to-dos share one To do list, or sit
-  in two sections of it?
-- Does the Screener survive as its own page once rules and "written to"
-  place most senders, or does it fold into a per-sender question in each
-  mode?
-- Is a feature-specific opt-in enough for cloud background classification,
-  or should it be impossible?
+Research settled what the earlier draft asked (rows per person, archive on
+last done, Screener, one To do list, lead times, digest cadence). What is
+left is a values call, or needs BK's real mail.
+
+- How strict is the pay-link gate: DMARC plus domain match, also require
+  earlier mail from that domain, or never show a one-click money button?
+- Should To do's Monday headline show a weekly money total ("£554 out this
+  week"), or does it read as financial advice?
+- Archive on last done is on by default on product precedent (Superhuman,
+  Shortwave), not a study. Keep it on for you?
+- Where do Reading highlights go: Archive search, a Markdown export, or
+  Obsidian?
+- What false-positive bar must To do meet before it gets a rail badge?
+  todo.md suggests under one false to-do a week on your mail.
+- Should person merge across addresses be automatic on exact name plus
+  "you've written to both", or manual only?
+- Is one key (`.`) right for Got it, which sends mail after a countdown, or
+  should it be a chord?
+- Reading's engagement tracking (dwell, scroll) is local and powers ranking
+  and unsubscribe evidence. On by default, and separate from
+  `MXR_ACTIVITY`?
+- Which records count for your taxes, and should Archive ever suggest
+  deleting old statements?

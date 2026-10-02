@@ -3,8 +3,12 @@
 **Changelog.** v3 (2026-10-02): grades email as five modes (Messages, To
 do, Updates, Reading, Archive) per [22-email-modes.md](blueprint/22-email-modes.md),
 with per-mode criteria, cross-mode criteria and classification accuracy
-measured on BK's real mail. v2's sections stay below as history, and the
-criteria v3 carries over keep their v2 numbers. v2 (2026-09-30): adds A11 triage at a glance, A12 one
+measured on BK's real mail. Revised the same day after the mode research
+(`docs/research/email-modes/`): each mode is graded on its researched view
+shape (fail if it renders a list of subject lines), plus digest cadence,
+lead-time accuracy, field provenance, one key map, model tiers and a
+retrieval eval. v2's sections stay below as history, and the criteria v3
+carries over keep their v2 numbers. v2 (2026-09-30): adds A11 triage at a glance, A12 one
 vocabulary across clients, section D (budgets measured on a real mailbox)
 and section E (independent grading and a dogfooding log). v1 (2026-09-28):
 sections A to C.
@@ -40,10 +44,11 @@ around.
 ## v3: each mode gets the right mail, its own verbs and its own rhythm
 
 v3 grades the model in [22-email-modes.md](blueprint/22-email-modes.md):
-email is five apps at once, and each has its own action. Every mode is
-graded on the same four questions: does the right mail land there, does it
-have its own verbs, does it keep its own rhythm, and does handoff to the
-next mode work. Then the cross-mode rules, then what v2 already proved and
+email is five apps at once, and each shows an email its own way. Every
+mode is graded on the same five questions: does the right mail land there,
+does the view show the mode's own unit (not a list of subject lines), does
+it have its own verbs, does it keep its own rhythm, and does handoff to
+the next mode work. Then the cross-mode rules, then what v2 already proved and
 must keep.
 
 ### v3 scoring
@@ -53,7 +58,8 @@ browser against the FakeProvider daemon, 3 best in class.
 
 **Pass bar (v3):**
 - Every criterion at 2 or better.
-- The "lands right" criteria (M1, T1, U1, R1, F1) and T2 (deadlines) at 3.
+- The "lands right" criteria (M1, T1, U1, R1, F1), the view-shape
+  criteria (M5, T5, U5, R5, F5) and T2 (deadlines) at 3.
 - B1 to B3 stay at 3.
 - A 3 in sections M, T, U, R, F or X needs the dogfooding log (E2) to
   cover the modes, and every score of 2 or more is graded by someone who
@@ -83,6 +89,15 @@ For to-dos with a deadline: the due date matches BK's label in at least
 95% of detected deadlines, and no detected to-do surfaces after its
 deadline.
 
+`mxr modes eval --extract` runs the same sample through the fast (local)
+and smart (the user's cloud model, with their own key) tiers and prints
+per-field precision for To do fields (verb and object, payee, amount,
+due, act-by, action link) and Archive record fields, per tier. The counts
+settle each task's default tier. A semantic retrieval eval runs BK's own
+known-item queries over his mail and prints top-5 hit rate, per mode, for
+today's chunking (`build_chunks`) and for the per-mode index recipes; a
+recipe ships only when it is at least as good as today's chunking.
+
 ### M. Messages: a few people you care about
 
 | # | Criterion | How to check |
@@ -91,33 +106,39 @@ deadline.
 | M2 | **Reply and start a conversation are the verbs.** Reply sits where reading ends; starting a conversation with someone in the list is one key. No archive-as-primary on a person's row. | `e2e/messages.spec.ts`: reply from the row, start a conversation from a person, both by keys only. |
 | M3 | **Ranked by person, not age.** Rows rank by relationship strength from local history (writing to someone outranks being written to), then owed, then recency, and the row can say why it ranks there. | Unit tests on the strength score; BK reviews his top ten against his real mail and the agree count is recorded. |
 | M4 | **Handoff to To do carries the task.** After replying, "move to To do" (`t`) creates a to-do prefilled from the ask and its due words, and the conversation stays reachable in Messages. | `e2e/messages.spec.ts`: reply, `t`, the to-do appears with the right due date; Messages shows the conversation as done, not gone. |
+| M5 | **The unit is a person, with topics inside.** One row per person; a group thread is its own row keyed by thread; a CC-only thread is not here. The preview is their ask or last line, the composer is always present and addressed, and the up-front verbs are reply, got it (`.`), done here (`e`), to do (`t`), later (`b`). Fails if the view renders a list of subject lines. | `e2e/messages.spec.ts`: Samir with three threads is one row; the Samir and Ruth thread is its own row; no row's headline is a subject line; the verbs work by key. |
 
 ### T. To do: admin that needs you
 
 | # | Criterion | How to check |
 |---|---|---|
 | T1 | **Admin lands here.** Pay, renew, verify, sign, book and RSVP items are detected from mail, with a title that names the task. Meets the To do accuracy bar. | Detector fixtures per verb; `mxr modes eval` counts on real mail. |
-| T2 | **Deadlines surface ahead, not on the day.** Due words found in the message resolve through the shared parser; each item appears on the desk at its lead time (by verb) at the start of the working day, exactly once across restarts; a passed deadline reads "was due Tue" without red or scolding. | `handler/tests/todo.rs` with a moved clock; demo bill due in five days is on the desk three days before; deadline accuracy counts on real mail. |
-| T3 | **Do it, schedule it, tick it off.** Each is one key with undo. Scheduling takes natural language ("sat 10") and shows the resolved time before commit. Ticking off offers to file the source email. | `e2e/todo.spec.ts` covers all three with undo; `verbs.spec` includes the to-do verbs. |
+| T2 | **Deadlines surface ahead, not on the day.** Due words found in the message resolve through the shared parser; each item surfaces at act-by minus the lead time for its kind (the table in [22](blueprint/22-email-modes.md)) at the start of the working day, exactly once across restarts; a passed deadline reads "was due Tue" without red or scolding. | `handler/tests/todo.rs` with a moved clock; demo bill due in five days is on the desk three days before; deadline accuracy counts on real mail. |
+| T3 | **Do it, schedule it, tick it off.** Each is one key with undo. Scheduling takes natural language ("sat 10") and shows the resolved time before commit. Ticking off files the source's record in Archive with no prompt and says so in the toast. | `e2e/todo.spec.ts` covers all three with undo; `verbs.spec` includes the to-do verbs. |
 | T4 | **Handoff in and out.** To-dos arrive from Messages and Updates, and leave to Archive, without clearing the source mode. | `e2e/todo.spec.ts`: from an Update ("this needs me"), tick off, file; the Update's own done state is unchanged. |
+| T5 | **The unit is an instruction on a runway.** Each row is titled verb plus object, shows counterparty, amount, "act by" and "due", and has one primary button labelled with its verb and destination; rows sit in Now, Coming up and Whenever bands by act-by date; a bill, its reminder and its receipt are one row. Fails if the view renders a list of subject lines or a flag on an email row. | `e2e/todo.spec.ts`: no row title equals its email's subject; the council tax row's button reads "Pay on camden.gov.uk"; the receipt completes the same row. |
+| T6 | **Lead times and the money gate are right.** Act-by and surface dates match the lead-time table for every kind in the fixtures (100%) and BK's label within one day for at least 95% on real mail. A one-click pay button appears only with DMARC pass and a matching registrable domain: zero buttons across the phishing fixtures. | `lead_time` table tests; `action_link` gate fixtures; `mxr modes eval` deadline counts. |
 
 ### U. Updates: something you might want to know
 
 | # | Criterion | How to check |
 |---|---|---|
 | U1 | **Notifications land here.** Sign-ups, alerts, weekly summaries, deliveries in transit; not conversations and not to-dos. Meets the Updates accuracy bar. | Demo placement checks; `mxr modes eval` counts. |
-| U2 | **Glance and let go.** Updates read as short facts grouped by sender and day; letting go of a day is one action with a dry-run preview and undo. | `e2e/updates.spec.ts`: let go of a day, preview count equals what changed, undo restores it. |
-| U3 | **A batched rhythm.** One digest a day at the user's chosen time, never a badge or a row per notification. | `handler/tests/updates.rs`: a day of notifications is one digest card; the badge stays at zero. |
+| U2 | **Glance and let go.** Updates read as short facts, one line per source within a digest cut; letting go of a cut is one action (`A`) with a dry-run preview and undo, and acts on exactly the previewed set. | `e2e/updates.spec.ts`: let go of a cut, preview count equals what changed, undo restores it. |
+| U3 | **A batched rhythm.** Two fixed cuts a day by default (08:00 and 16:30 in the user's zone, configurable from one to four), leftovers folding into the next cut, Now showing the latest cut as one card; never a badge or a row per notification. | `handler/tests/updates.rs`: cut boundaries in the user's zone, fold, one Now card per cut; the badge stays at zero. |
 | U4 | **"This needs me" hands off.** Any update becomes a to-do in one key, keeping its link to the source. | Covered by T4's journey. |
+| U5 | **The unit is a source line in a briefing.** Sections are Needs a look, Changed and Routine; each line is a fact, not a subject; things with state (parcels, builds) show one tracker with their current state. Fails if the view renders one row per email or a list of subject lines. | `e2e/updates.spec.ts`: 31 demo updates from 12 sources render as 12 lines or fewer; four parcel emails are one tracker. |
+| U6 | **Numbers are quoted and deltas computed.** Every number shown appears verbatim in its email; a delta is computed by code against the previous message of the same template and only when units match; model-written facts are italic and name their model. | Delta tests (no delta across units or templates); a fixture with a mismatched unit shows the raw number. |
 
 ### R. Reading: things you asked to receive
 
 | # | Criterion | How to check |
 |---|---|---|
 | R1 | **Subscriptions land here.** Newsletters, digests and posts the user signed up for, nothing else. Meets the Reading accuracy bar. | Demo placement checks; `mxr modes eval` counts. |
-| R2 | **Read now, later, or unsubscribe.** Read in reader mode; "later" keeps the email or its linked article in a later list; unsubscribe is one key with its irreversibility stated. | `e2e/reading-later.spec.ts`; the unsubscribe journey in `verbs.spec`. |
+| R2 | **Read now, later, or unsubscribe.** Read in reader mode; "later" keeps the email or its linked article in a later list; unsubscribe is one key with its irreversibility stated. | `e2e/reading.spec.ts`; the unsubscribe journey in `verbs.spec`. |
 | R3 | **Reading at your pace.** No unread counts, no badges, nothing ages into guilt. | `places.spec`'s no-count check carried over to the mode. |
-| R4 | **Handoff out.** An article that asks something of you (renew a membership) hands off to To do. | `e2e/reading-later.spec.ts`. |
+| R4 | **Handoff out.** An article that asks something of you (renew a membership) hands off to To do. | `e2e/reading.spec.ts`. |
+| R5 | **The unit is a readable item.** A digest shows its link items, a teaser shows its article, each item shows headline, source, minutes and standfirst, banded by time; the reader column holds 45 to 90 characters per line. Fails if the view renders a list of subject lines or the sender's HTML at 600px as the default. | `e2e/reading.spec.ts`: a demo digest shows its link items; measured line length in the reader at 1280px and 390px. |
 
 ### F. Archive: records you will need later
 
@@ -127,6 +148,8 @@ deadline.
 | F2 | **Find it and use it.** Search over records answers "the passport renewal receipt" in one query, with the attachment one key away. | `e2e/archive.spec.ts`; `mxr records --query` CLI test. |
 | F3 | **Filing never needs a decision.** Records file themselves; the user never drags mail into folders. | No folder-move step in the record journeys. |
 | F4 | **Handoff in.** Ticking off a to-do or letting go of a delivered parcel files its record. | Covered by T4 and U2's journeys. |
+| F5 | **The unit is a record, and a query returns an answer.** One row per record (an order's three emails are one row), showing issuer, what, amount, reference, transaction date and document; a query that matches a field returns the field on an answer card. Fails if the view renders a list of subject lines. | `e2e/archive.spec.ts`: "lisbon booking" returns the reference on the card; the Dell order is one row. |
+| F6 | **Every field shows where it came from.** Each extracted field names its source (schema.org, rule, model by name, or you); unchecked money and date fields are marked; the export preview counts unchecked rows. | `handler/tests/records.rs`; `e2e/archive.spec.ts` hovers a model field and reads its model name. |
 
 ### X. Across modes
 
@@ -135,10 +158,13 @@ deadline.
 | X1 | **One email, several modes.** A message with a reply owed and a deadline is in Messages and To do at once, each showing its own aspect. | `mode_membership` unit tests; `e2e/modes.spec.ts`. |
 | X2 | **Done in one mode stays in that mode.** Each mode has its own done; a new message in the thread returns it to that mode only; the provider archive waits for the last mode to let go. | `handler/tests/modes.rs`; `e2e/modes.spec.ts`. |
 | X3 | **Every item says why, and one key fixes it.** "Here because: …" names the rule, the user's decision or the model. Corrections work per email and per sender, and future mail follows the sender correction. | `e2e/modes.spec.ts` asserts a reason on every row in every mode and that a sender correction places that sender's next message. |
-| X4 | **The rail is the modes.** Now, Messages, To do, Updates, Reading, Archive, then Inbox as everything. No mechanics (flags, timers) as top-level places. | `controls.spec` inventory updated; web and TUI rails match (`keymapParity.test.ts`). |
-| X5 | **The desk is the now view.** People owed, to-dos due soon and one Updates digest; acting on a row acts in its mode; desk and mode counts agree. | `e2e/desk.spec.ts`: counts equal the mode queries; done on a desk row equals done in its mode. |
-| X6 | **Mail goes only to the user's model.** Background classification uses a loopback endpoint unless the user opted in for this feature; every model-placed item names its model and whether it was local. With AI off, rules still place everything. | Daemon privacy tests in the style of `draft_compose`; `e2e/modes.spec.ts` with no model. |
+| X4 | **The rail is the modes.** Now, Messages, To do, Updates, Reading, Archive, then Inbox as everything; on mobile five tabs (Now, Messages, To do, Reading, Find). No mechanics (flags, timers) as top-level places. | `controls.spec` inventory updated; web and TUI rails match (`keymapParity.test.ts`). |
+| X5 | **Now is the now view.** Four fixed sections (people owed, to-dos to act on by act-by date, the latest Updates cut as one card, a Reading pick in the evening), at most three items each; acting on a row acts in its mode; Now and mode counts agree. | `e2e/now.spec.ts`: counts equal the mode queries; never more than ten items; done on a Now row equals done in its mode. |
+| X6 | **Mail goes only to the user's model, by tier.** Fast-tier work (classification, Updates facts) uses a loopback endpoint unless the user opted in; the smart tier reaches a cloud model only with the user's own API key and only for mail already in To do, Archive or Messages; every model-placed item names its model and whether it was local. With AI off, rules still place everything. | Daemon privacy tests in the style of `draft_compose`; `e2e/modes.spec.ts` with no model. |
 | X7 | **CLI first.** Every mode and verb is daemon IPC plus CLI JSON, then TUI, web and MCP. Batch moves have a dry run whose preview equals the commit. | CLI JSON snapshots per mode; preview-token tests (D098). |
+| X8 | **One key map.** Every key in the table in [22](blueprint/22-email-modes.md) means the same thing in web and TUI, `e` is done here in every mode, and no mode key shadows a global verb outside that table. | `keymapParity.test.ts` with the mode scopes. |
+| X9 | **Model text is marked.** Any sentence or field a model produced is italic or carries a chip naming the model and tier; the verbatim email is one key away (`o`); amounts and dates were checked to appear verbatim. | Unit tests on the verbatim check; `e2e/modes.spec.ts` looks for the chip on every model-placed item. |
+| X10 | **Search finds what each mode cares about.** The per-mode index recipes match or beat today's chunking on the retrieval eval (top-5 hit rate on BK's known-item queries, counts only) before they replace it. | The retrieval eval's counts, recorded below. |
 
 ### Carried over from v2
 
@@ -160,6 +186,18 @@ Not graded yet. Phase 1 (To do) is the first item to grade.
 | Date | Version | Model | Sample | Mode | Precision | Recall | Notes |
 |---|---|---|---:|---|---:|---:|---|
 | | | | | | | | |
+
+Extraction eval (`mxr modes eval --extract`), per field and tier:
+
+| Date | Version | Tier and model | Sample | Field | Correct | Wrong | Missing |
+|---|---|---|---:|---|---:|---:|---:|
+| | | | | | | | |
+
+Retrieval eval, top-5 hit rate per mode:
+
+| Date | Version | Chunking | Queries | Mode | Hits in top 5 | Notes |
+|---|---|---|---:|---|---:|---|
+| | | | | | | |
 
 ## v2 rubric (history)
 

@@ -189,17 +189,23 @@ Work this list in order. Each item's scope and its check are in
 ## Email modes: five apps in one inbox
 
 Email is five apps at once (Messages, To do, Updates, Reading, Archive),
-each with its own verb. The model, data and classifier design are in
-[22-email-modes.md](22-email-modes.md) (D107 to D111), and rubric v3 in
+each with its own view, unit and verbs, with Now as the front page across
+them. The model, data, classifier, model tiers and index recipes are in
+[22-email-modes.md](22-email-modes.md) (D107 to D114), and rubric v3 in
 `docs/web-app-experience-rubric.md` grades it. Work the phases in order;
-each ships on its own with its check and tests named in 22.
+each ships on its own with the check, docs and tests named in 22. A phase
+is not done until the site pages and repo docs on its Docs line describe
+what shipped ([site-modes-inventory.md](../site-modes-inventory.md)).
 
-- [ ] **Phase 1: To do with rule-based deadline detection**: `todos` table, lead-time surfacing, `mxr todo`, handoff from a conversation, desk Due lane, web and TUI To do
-- [ ] **Phase 2: Rail by mode**: computed membership, reasons, corrections per email and sender, per-mode done, Paper trail split, Inbox as everything
-- [ ] **Phase 3: Messages ranks by person**: relationship strength from local history, per-person rows
-- [ ] **Phase 4: Updates digest and the desk as the now view**: one digest a day, let go with a dry run, "this needs me" handoff
-- [ ] **Phase 5: The user's model for to-dos, deadlines and notifications**: loopback-only background classification, provenance, `mxr modes eval` on real mail (counts only)
-- [ ] **Phase 6: Reading later and Archive records**: later list with fetched articles, `mxr records`
+- [ ] **Phase 0: Say the new philosophy**: the email modes page on the site, philosophy pages rewritten with unbuilt parts marked planned, README, vision and agent skills, the docs inventory, a Docs line per phase
+- [ ] **Phase 1: To do as a runway**: `todos` table, rule detection, lead times and act-by dates, the gated action link, `mxr todo`, web and TUI To do, `llm.tiers`, smart-tier extraction, the first index recipe
+- [ ] **Phase 2: Now, the rail and membership**: computed membership with reasons, corrections per email and sender, per-mode done, archive on last done, Now's four sections, the Screener as an inline question, `mxr modes eval` rules-only
+- [ ] **Phase 3: Messages as people with topics**: people rows, group threads by thread, thread-aware quote stripping, the ask, Got it
+- [ ] **Phase 4: Updates as a twice-daily briefing**: facts by source, two digest cuts, let go with a dry run, `needs_you` breakthrough to To do, deliveries as trackers
+- [ ] **Phase 5: Reading as an edition, a reader and a shelf**: reading items, fading, Later, unsubscribe with evidence, article fetch on a key
+- [ ] **Phase 6: Archive as records with an answer box**: records, the answer box, ledger, export with a dry run
+- [ ] **Phase 7: Fast-tier classification, measured**: the user's model for what rules can't tell, loopback by default, `mxr modes eval` on real mail (counts only)
+- [ ] **Docs match what ships** (rubric X11): every phase's Docs line done in its release
 
 ## Future (post-v1.0)
 
@@ -212,7 +218,7 @@ These are explicitly NOT on the roadmap for v1. They may grow out of the core la
 - **Conditional snooze**: "Snooze until reply from X" via rules engine
 - **Contact enrichment / CRM**: Auto-enrich sender profiles
 - **Audio summaries**: TTS for newsletter content
-- **Todo extraction**: Moved into the email modes plan above (To do, phases 1 and 5)
+- **Todo extraction**: Moved into the email modes plan above (To do, phases 1 and 7)
 - **Additional web dashboards**: Surfaces beyond the first-party local SPA/bridge
 - **Additional community adapters**: JMAP/Fastmail/Apple Mail/etc. after real demand appears
 - **Encryption**: PGP integration with good UX (not homebrew crypto)

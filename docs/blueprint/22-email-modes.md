@@ -792,6 +792,16 @@ small `people` identity layer (messages.md §5). Activity records carry ids
 and counts only, never titles, amounts or due words, and `MXR_ACTIVITY=off`
 disables them.
 
+Deleting an email deletes everything derived from it. Every new store
+above (to-dos, aspects, facts, reading items, records, index chunks) is
+removed when its source message leaves the store, through a foreign-key
+cascade or the delete path in sync, and a store that merges several
+emails (a record, a tracker) drops the deleted message's fields and
+removes itself when no source is left. Today's gaps, such as gists,
+summaries, promises, decisions and opened attachment files that outlive
+their message, are tracked separately and listed on the site's Security &
+Privacy page.
+
 ## Lead times are a fixed table by kind of action
 
 The lead time is how long the outside world takes. One default fails
@@ -847,6 +857,44 @@ flag: daemon IPC and CLI JSON first, then TUI and web, then MCP, then that
 mode's index recipe. Mutations and batches go through the preview path
 (D098).
 
+### Docs land with the feature they describe
+
+The docs site documents what ships, so the modes reach the docs in two
+steps. Phase 0 changes the philosophy and positioning now and says
+plainly which parts are planned. Each later phase updates the pages its
+Docs line names, in the same release as the feature, and a phase is not
+done until they are (rubric v3, X11). Every phase also:
+
+- updates the status table on `guides/email-modes.md` and drops
+  "(planned)" from the glossary terms it ships;
+- regenerates the CLI reference (`npm run generate` in `site/`) and the
+  OpenAPI dump for the commands and routes it adds;
+- keeps an old URL working with a redirect when it replaces a page;
+- checks every new claim against the code at the release commit and runs
+  `npm run build` in `site/`.
+
+[docs/site-modes-inventory.md](../site-modes-inventory.md) lists every
+site page and repo doc with the phase that changes it, and the sidebar to
+move to once phase 2 ships.
+
+### Phase 0: say the new philosophy
+
+Rewrite only what states the philosophy, and describe nothing unbuilt as
+if it ships. Site: a new `guides/email-modes.md` ("Email is five apps at
+once") with the model and a status table per mode pointing at the shipped
+features that serve it; `index.mdx`, `guides/why-mxr.md`,
+`guides/glossary.md` (mode terms marked planned), `guides/llm-features.md`
+and `guides/security-and-privacy.md` (what each request sends today, the
+planned tiers and cloud-only setup, what deletion removes today); notes on
+`guides/your-day.md` and `guides/desk.md`; the sidebar entry. Repo:
+`README.md`, `docs/vision.md`, `docs/README.md`, `AGENTS.md` and the
+product description in both agent skills. Plan: this workstream, a Docs
+line on every phase, the roadmap checklist and rubric X11.
+
+- **Check:** `npm run build` in `site/` passes with no broken internal
+  links; every claim about shipped behaviour names the code it was checked
+  against; `docs/site-modes-inventory.md` is committed.
+
 ### Phase 1: To do as a runway, with the data it needs
 
 The `todos` table; the rule detector in `post_sync_fanout` (admin verbs,
@@ -876,6 +924,20 @@ chunking.
   once, across a restart. On BK's real mail `mxr todo --format json` lists
   his bills and renewals, and he records counts of right, wrong and missed,
   plus the extraction eval's local and cloud field counts.
+- **Docs:** site: new `guides/todo.md` and its sidebar entry;
+  `guides/email-modes.md`, `guides/glossary.md`, `guides/forgotten-work.md`
+  (promises become To do rows), `guides/desk.md` (the Due lane on act-by),
+  `guides/calendar-invites.md`, `guides/llm-features.md` and
+  `guides/security-and-privacy.md` (`llm.tiers`, the smart tier's cloud
+  opt-in), `guides/semantic-search.md` (recipe table, text-hash keys),
+  `guides/web-app.md`, `guides/activity-log.md`,
+  `guides/automation-contract.md`, `guides/for-agents.md`,
+  `guides/agent-skill.md`, `reference/config.md`, `reference/json-output.md`,
+  `reference/keybindings.md` (`t`), `reference/tui.md`, `reference/bridge.md`,
+  `reference/mcp.md`, `reference/time-phrases.md`. Repo: `README.md`,
+  `.agents/skills/mxr/SKILL.md`, `docs/web-app.md`, `docs/activity-log.md`,
+  `docs/reference/ai-email.md`, `docs/security-audit-rubric.md`,
+  `PRIVACY.md`, `docs/calendar-email/`, blueprint 02, 05, 09 and 12.
 - **Tests:** `todos` store tests (dedup upsert, claim guard);
   `llm_tiers` tests (precedence override, tier, base; a cloud tier without
   `api_key_env` is refused; only To do mail reaches the smart tier; with no
@@ -905,6 +967,24 @@ mode filter on search.
   Messages. Still in To do" and Gmail keeps it; ticking off the to-do
   toasts "Archived in Gmail". Now never shows more than ten items. `mxr
   modes eval --sample 200` prints rules-only counts on BK's mail.
+- **Docs:** site: `guides/now.md` replaces `guides/desk.md` and
+  `reference/now-and-modes.md` replaces `reference/desk-and-places.md`, both
+  with redirects; the sidebar reorganised by mode (inventory);
+  `guides/your-day.md`, `guides/email-modes.md`, `guides/glossary.md`,
+  `guides/triage-flow.md` (the Screener as an inline question),
+  `guides/mailbox.md`, `guides/search.md` (mode filter),
+  `guides/semantic-search.md` (baseline at sync, stale-only reindex),
+  `guides/sound-hints-and-touch.md`, `guides/web-app.md`,
+  `guides/architecture.md`, `guides/no-native-desktop-app.md`,
+  `guides/recipes.md`, `examples.md`, `getting-started/quick-start.md`,
+  `getting-started/first-sync.md`, `getting-started/gmail-setup.md`,
+  `index.mdx`, `reference/keybindings.md` (`g` keys, `K`, `X`, `T`, `e`),
+  `reference/tui.md`, `reference/cli/concepts.md`, `reference/json-output.md`,
+  `reference/config.md` (`modes.archive_on_last_done`), `reference/mcp.md`,
+  `reference/bridge.md`. Repo: `README.md`, `.agents/skills/mxr/SKILL.md`,
+  `docs/web-app.md`, `docs/web-app-controls.md`, `ARCHITECTURE.md`,
+  blueprint 00 and 08, a superseded note on 21, and the regenerated
+  `docs/reference/tui-keymap.json`.
 - **Tests:** `mode_membership` unit tests; `handler/tests/modes.rs`
   (preview equals commit, archive only when the last mode lets go, setting
   off); `handler/tests/now.rs` (caps, more counts); `e2e/now.spec.ts`;
@@ -924,6 +1004,16 @@ person and topic prefix, plus the gist).
 - **Check:** Samir is one row however many threads he's in; the Samir and
   Ruth thread is its own row; a CC-only thread is in Updates. BK's top ten
   are people he would name (agree count recorded).
+- **Docs:** site: new `guides/messages.md` and its sidebar group;
+  `guides/focus-and-reply.md` (`g F` inside Messages),
+  `guides/forgotten-work.md` (owed replies become Your turn),
+  `guides/sender-view.md` (the person page), `guides/automated-followups.md`
+  (Waiting on as a Messages filter), `guides/briefings-and-loop-in.md`,
+  `guides/semantic-search.md` (the Messages recipe), `guides/email-modes.md`,
+  `guides/glossary.md`, `guides/web-app.md`, `reference/keybindings.md`
+  (`.`, `>`, `Mod+Enter`), `reference/tui.md`, `reference/json-output.md`,
+  `reference/mcp.md`, `reference/bridge.md`. Repo:
+  `.agents/skills/mxr/SKILL.md`, `docs/web-app.md`.
 - **Tests:** `conversation_shape` fixtures (CC churn keeps one group row);
   quote-matching fixtures from Gmail, Apple, Outlook and plain text;
   `relationship_strength` tests; ack dry-run equals sent text;
@@ -941,6 +1031,15 @@ template.
 - **Check:** a day of demo notifications is two briefings of source lines;
   four parcel emails are one track; let go of a cut acts on exactly the
   previewed set and leaves what To do holds.
+- **Docs:** site: new `guides/updates.md` and its sidebar group;
+  `guides/reading-and-paper-trail.md` (notifications leave Paper trail),
+  `guides/deliveries.md` (trackers), `guides/now.md` (the Updates card),
+  `guides/your-day.md`, `guides/email-modes.md`, `guides/glossary.md`,
+  `guides/semantic-search.md` (the fact chunk), `guides/web-app.md`,
+  `reference/config.md` (digest cuts), `reference/keybindings.md` (`g u`
+  moves from Subscriptions, `A`), `reference/tui.md`,
+  `reference/json-output.md`, `reference/mcp.md`, `reference/bridge.md`.
+  Repo: `.agents/skills/mxr/SKILL.md`, `docs/web-app.md`.
 - **Tests:** `template_key` fixtures from real automated senders (split and
   merge cases); delta tests (none across units or templates);
   `handler/tests/updates.rs` (cut boundaries, fold, preview equals commit,
@@ -959,6 +1058,15 @@ only. Index: section-aware chunks and link items, embedded lazily.
 - **Check:** `mxr reading --format json` shows shape and minutes for every
   issue, and BK agrees with the shape on 30 sampled issues (counts only);
   "later" on a digest link, then offline, reads the article in full.
+- **Docs:** site: new `guides/reading.md` (from the Reading half of
+  `guides/reading-and-paper-trail.md`) and its sidebar group;
+  `guides/unsubscribe.md` (`D` with evidence), `guides/now.md` (the evening
+  pick), `guides/email-modes.md`, `guides/glossary.md`,
+  `guides/semantic-search.md` (lazy embedding), `guides/security-and-privacy.md`
+  (`FetchArticle` contacts the article's domain), `guides/web-app.md`,
+  `reference/keybindings.md` (`b`, `L`, `R`), `reference/tui.md`,
+  `reference/json-output.md`, `reference/mcp.md`, `reference/bridge.md`.
+  Repo: `.agents/skills/mxr/SKILL.md`, `docs/web-app.md`.
 - **Tests:** extractor fixtures from real newsletter HTML (low confidence
   falls back to the subject); expiry clamp tests; `e2e/reading.spec.ts`.
 
@@ -979,6 +1087,18 @@ to BM25.
   its provenance; the Dell order's three emails are one row; phase 1's
   ticked-off council tax is a record; the export preview states the
   unchecked rows.
+- **Docs:** site: new `guides/archive.md` and its sidebar group;
+  `guides/reading-and-paper-trail.md` becomes a redirect;
+  `guides/archive-intelligence.md` (`mxr ask` as the fallback),
+  `guides/search.md`, `guides/deliveries.md` (delivered orders as records),
+  `guides/calendar-invites.md`, `guides/your-day.md`, `guides/email-modes.md`,
+  `guides/glossary.md`, `guides/semantic-search.md`, `guides/llm-features.md`
+  (record fields on the smart tier), `guides/security-and-privacy.md` and
+  `index.mdx` (PDF prefetch ends "downloads an attachment when you open
+  it"), `guides/web-app.md`, `reference/keybindings.md` (`y`, `Y`, `E`, `,`),
+  `reference/tui.md`, `reference/json-output.md`, `reference/mcp.md`,
+  `reference/bridge.md`. Repo: `README.md` (the attachment line),
+  `.agents/skills/mxr/SKILL.md`, `docs/web-app.md`, `PRIVACY.md`.
 - **Tests:** detector and field fixtures per source;
   `handler/tests/records.rs` (correction wins forever, preview equals
   file); `e2e/archive.spec.ts`; per-field precision in `mxr modes eval`.
@@ -994,6 +1114,14 @@ provenance on every model-placed item.
   per-mode precision and recall, deadline accuracy and field precision,
   recorded in the rubric; a cloud endpoint configured only for drafts
   classifies nothing.
+- **Docs:** site: `guides/llm-features.md` and
+  `guides/security-and-privacy.md` (the fast tier, the loopback rule and
+  `allow_cloud_background_classification`), `guides/email-modes.md`,
+  `guides/glossary.md`, `guides/rules.md`, `guides/triage-flow.md` and
+  `guides/recipes.md` (`mxr triage` superseded), `guides/for-agents.md`
+  ("What stays local"), `reference/config.md`. Repo: `README.md` ("What is
+  local"), `PRIVACY.md`, `docs/security-audit-rubric.md`,
+  `docs/reference/ai-email.md`, `.agents/skills/mxr/SKILL.md`.
 - **Tests:** prompt tests (untrusted wrapping, quote check, dates from the
   parser); privacy tests in the style of `draft_compose`; cache
   invalidation by content hash.

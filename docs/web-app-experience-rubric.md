@@ -165,6 +165,7 @@ recipe ships only when it is at least as good as today's chunking.
 | X8 | **One key map.** Every key in the table in [22](blueprint/22-email-modes.md) means the same thing in web and TUI, `e` is done here in every mode, and no mode key shadows a global verb outside that table. | `keymapParity.test.ts` with the mode scopes. |
 | X9 | **Model text is marked.** Any sentence or field a model produced is italic or carries a chip naming the model and tier; the verbatim email is one key away (`o`); amounts and dates were checked to appear verbatim. | Unit tests on the verbatim check; `e2e/modes.spec.ts` looks for the chip on every model-placed item. |
 | X10 | **Search finds what each mode cares about.** The per-mode index recipes match or beat today's chunking on the retrieval eval (top-5 hit rate on BK's known-item queries, counts only) before they replace it. | The retrieval eval's counts, recorded below. |
+| X11 | **Docs and READMEs match what ships.** Each phase updates the site pages and repo docs on its Docs line in 22 in the same release; no page describes a mode behaviour that hasn't shipped, and planned parts are marked planned. | The phase's Docs line checked off page by page; `npm run build` in `site/` passes; each new claim names the code it was checked against. |
 
 ### Carried over from v2
 

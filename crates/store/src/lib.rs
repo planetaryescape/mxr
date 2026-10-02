@@ -85,7 +85,7 @@ pub use draft::SentDraftReceipt;
 pub use draft_commitments::{new_candidate_id, DraftCommitmentCandidate};
 pub use draft_safety::{DraftSafetyOverrideRecord, DraftSafetyRunRecord};
 pub use event_log::{EventLogEntry, EventLogFilter, EventLogRefs};
-pub use message_deletion::{DeletedMessages, StoredMessageIdentity};
+pub use message_deletion::{DeletedMessages, StoredMessageIdentity, MAX_FORGET_ATTEMPTS};
 pub use message_flags::{DeskReplyLater, ReplyLaterState};
 pub use owed_replies::OwedReplyRow;
 pub use places::PlaceMessage;

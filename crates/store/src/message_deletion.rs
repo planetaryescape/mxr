@@ -87,6 +87,9 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
     ),
 ];
 
+/// Failed cleanups of a deleted message's files before it is left alone.
+pub const MAX_FORGET_ATTEMPTS: u32 = 10;
+
 /// What a delete removed, for the caller to clear outside SQLite.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct DeletedMessages {
@@ -319,21 +322,55 @@ impl super::Store {
     }
 
     /// Deleted messages whose cleanup outside SQLite (semantic index,
-    /// attachment files) has not been confirmed yet, oldest first.
+    /// attachment files) is due: not yet confirmed, not waiting out a retry
+    /// backoff, and not given up on. Oldest first.
     pub async fn list_pending_message_forgets(
         &self,
         limit: u32,
     ) -> Result<Vec<MessageId>, sqlx::Error> {
         sqlx::query_scalar::<_, String>(
             "SELECT message_id FROM pending_message_forgets
+             WHERE retry_after <= unixepoch() AND attempts < ?
              ORDER BY deleted_at, message_id LIMIT ?",
         )
+        .bind(i64::from(MAX_FORGET_ATTEMPTS))
         .bind(i64::from(limit))
         .fetch_all(self.reader())
         .await?
         .iter()
         .map(|id| decode_id(id))
         .collect()
+    }
+
+    /// Records a failed cleanup: it is retried after a backoff that doubles
+    /// per attempt (one minute, capped at six hours), and not after
+    /// `MAX_FORGET_ATTEMPTS` failures. Returns how many hit the cap now.
+    pub async fn record_failed_message_forgets(
+        &self,
+        message_ids: &[MessageId],
+    ) -> Result<u64, sqlx::Error> {
+        let mut gave_up = 0;
+        for chunk in message_ids.chunks(crate::SQLITE_BIND_CHUNK) {
+            let ids = vec!["?"; chunk.len()].join(", ");
+            let sql = format!(
+                "UPDATE pending_message_forgets
+                 SET attempts = attempts + 1,
+                     retry_after = unixepoch() + MIN(60 * (1 << MIN(attempts, 10)), 21600)
+                 WHERE message_id IN ({ids})
+                 RETURNING attempts"
+            );
+            let mut query = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql));
+            for id in chunk {
+                query = query.bind(id.as_str());
+            }
+            gave_up += query
+                .fetch_all(self.writer())
+                .await?
+                .into_iter()
+                .filter(|attempts| *attempts >= i64::from(MAX_FORGET_ATTEMPTS))
+                .count() as u64;
+        }
+        Ok(gave_up)
     }
 
     /// Marks the cleanup of these deleted messages as done.
@@ -735,6 +772,72 @@ mod tests {
         store.clear_pending_message_forgets(&[gone]).await.unwrap();
         assert!(store
             .list_pending_message_forgets(100)
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    /// A cleanup that failed stays recorded, waits out a backoff, and is
+    /// given up on after the attempt cap instead of retrying forever.
+    #[tokio::test]
+    async fn a_failed_cleanup_backs_off_and_stops_at_the_cap() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let gone = inbound(
+            &store,
+            &account.id,
+            "gone",
+            &ThreadId::new(),
+            "a@example.com",
+        )
+        .await;
+        store
+            .delete_messages_and_derived(&account.id, &["gone".to_string()])
+            .await
+            .unwrap();
+        let due_now = || async {
+            sqlx::query("UPDATE pending_message_forgets SET retry_after = 0")
+                .execute(store.writer())
+                .await
+                .unwrap();
+        };
+
+        assert_eq!(
+            store
+                .record_failed_message_forgets(&[gone.clone()])
+                .await
+                .unwrap(),
+            0
+        );
+        assert!(
+            store
+                .list_pending_message_forgets(10)
+                .await
+                .unwrap()
+                .is_empty(),
+            "a failed cleanup is retried only after its backoff"
+        );
+        due_now().await;
+        assert_eq!(
+            store.list_pending_message_forgets(10).await.unwrap(),
+            vec![gone.clone()]
+        );
+
+        for _ in 1..MAX_FORGET_ATTEMPTS - 1 {
+            store
+                .record_failed_message_forgets(&[gone.clone()])
+                .await
+                .unwrap();
+        }
+        assert_eq!(
+            store.record_failed_message_forgets(&[gone]).await.unwrap(),
+            1,
+            "the last allowed attempt reports giving up"
+        );
+        due_now().await;
+        assert!(store
+            .list_pending_message_forgets(10)
             .await
             .unwrap()
             .is_empty());

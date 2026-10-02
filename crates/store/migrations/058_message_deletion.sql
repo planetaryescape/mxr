@@ -12,10 +12,15 @@ CREATE INDEX IF NOT EXISTS idx_event_log_message
 -- daemon after it clears them, so a failed sync pass or a crash between the
 -- two leaves the work recorded instead of lost. No foreign key: the
 -- messages are gone by the time a row is read.
+-- A cleanup that fails (a permission error on a file) stays recorded and is
+-- retried after `retry_after`, with a backoff that grows per attempt, and
+-- is left alone once `attempts` reaches the cap so it cannot spin forever.
 CREATE TABLE IF NOT EXISTS pending_message_forgets (
     message_id  TEXT PRIMARY KEY,
     account_id  TEXT NOT NULL,
-    deleted_at  INTEGER NOT NULL
+    deleted_at  INTEGER NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    retry_after INTEGER NOT NULL DEFAULT 0
 );
 
 -- Which messages a decision cites, as rows the delete can find through an

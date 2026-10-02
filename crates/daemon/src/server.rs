@@ -214,10 +214,11 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         // Cleanup a previous daemon owed for deleted mail (it failed or died
         // between the delete and the cleanup). Off the startup path: it only
         // touches files and the semantic worker.
-        let forget_state = state.clone();
-        tokio::spawn(async move {
-            crate::message_deletion::drain_pending_forgets(&forget_state).await;
-        });
+        // Also retries cleanups that failed (a file that could not be
+        // removed) on a timer, not only at the next delete.
+        tokio::spawn(crate::message_deletion::drain_pending_forgets_periodically(
+            state.clone(),
+        ));
 
         // Spawn background loops
         loops::spawn_sync_loops(state.clone());

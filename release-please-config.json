@@ -18,7 +18,7 @@
       ],
       "extra-files": [
         { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.package.version" },
-        { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(!@.source)].version" }
+        { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(!@.source && @.name != \"hnsw_rs\")].version" }
       ]
     }
   },

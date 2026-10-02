@@ -545,6 +545,49 @@ impl SyncEngine {
                 });
             }
 
+            // A complete server listing of a scope: whatever the store holds
+            // in that scope and the server does not list is gone. Diffed
+            // against the stored rows themselves, so rows the provider's own
+            // bookkeeping lost track of are caught too.
+            if !batch.complete_listings.is_empty() {
+                let stored = self
+                    .store
+                    .list_provider_ids_by_account(account_id)
+                    .await
+                    .map_err(|e| MxrError::Store(e.to_string()))?;
+                // Only this page's upserts are in the batch so far.
+                let upserted: HashSet<&str> = lexical_batch
+                    .entries
+                    .iter()
+                    .map(|entry| entry.envelope.provider_id.as_str())
+                    .collect();
+                for listing in &batch.complete_listings {
+                    let listed: HashSet<&str> =
+                        listing.provider_ids.iter().map(String::as_str).collect();
+                    let gone = stored
+                        .iter()
+                        .filter(|id| {
+                            provider.provider_id_scope(id).as_deref()
+                                == Some(listing.scope.as_str())
+                        })
+                        .filter(|id| {
+                            !listed.contains(id.as_str()) && !upserted.contains(id.as_str())
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    if !gone.is_empty() {
+                        tracing::warn!(
+                            account = %account_id,
+                            scope = %listing.scope,
+                            listed = listing.provider_ids.len(),
+                            removed = gone.len(),
+                            "server listing no longer holds stored mail; removing it"
+                        );
+                    }
+                    batch.deleted_provider_ids.extend(gone);
+                }
+            }
+
             if !batch.deleted_provider_ids.is_empty() {
                 let batch_deleted = self
                     .store

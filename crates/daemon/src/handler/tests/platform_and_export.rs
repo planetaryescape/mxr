@@ -2094,6 +2094,7 @@ impl mxr_core::MailSyncProvider for HeldPageSyncProvider {
             upserted: Vec::new(),
             deleted_provider_ids: Vec::new(),
             reissued_provider_ids: vec![],
+            complete_listings: vec![],
             label_changes: Vec::new(),
             next_cursor: cursor.clone(),
             has_more: false,

@@ -232,6 +232,7 @@ mod tests {
                 upserted: self.messages.clone(),
                 deleted_provider_ids: vec![],
                 reissued_provider_ids: vec![],
+                complete_listings: vec![],
                 label_changes: vec![],
                 next_cursor: SyncCursor::from_bytes(b"native-synced".to_vec()),
                 has_more: false,
@@ -287,6 +288,7 @@ mod tests {
                 upserted: vec![self.message.clone()],
                 deleted_provider_ids: vec![],
                 reissued_provider_ids: vec![],
+                complete_listings: vec![],
                 label_changes: vec![],
                 next_cursor: SyncCursor::from_bytes(b"more-pages".to_vec()),
                 has_more: true,
@@ -337,6 +339,7 @@ mod tests {
                 upserted: self.messages.clone(),
                 deleted_provider_ids: vec![],
                 reissued_provider_ids: vec![],
+                complete_listings: vec![],
                 label_changes: vec![],
                 next_cursor: SyncCursor::empty(),
                 has_more: false,
@@ -397,6 +400,7 @@ mod tests {
                     upserted: vec![self.message.clone()],
                     deleted_provider_ids: vec![],
                     reissued_provider_ids: vec![],
+                    complete_listings: vec![],
                     label_changes: vec![],
                     next_cursor: SyncCursor::from_bytes(b"recovered-cursor".to_vec()),
                     has_more: false,
@@ -470,6 +474,7 @@ mod tests {
                     upserted: self.messages.clone(),
                     deleted_provider_ids: vec![],
                     reissued_provider_ids: vec![],
+                    complete_listings: vec![],
                     label_changes: vec![],
                     next_cursor: SyncCursor::from_bytes(b"delta-initial".to_vec()),
                     has_more: false,
@@ -481,6 +486,7 @@ mod tests {
                     upserted: vec![],
                     deleted_provider_ids: vec![],
                     reissued_provider_ids: vec![],
+                    complete_listings: vec![],
                     label_changes: self.label_changes.clone(),
                     next_cursor: SyncCursor::from_bytes(b"delta-follow-up".to_vec()),
                     has_more: false,
@@ -598,6 +604,7 @@ mod tests {
                     self.expunged.clone()
                 },
                 reissued_provider_ids: vec![],
+                complete_listings: vec![],
                 label_changes: vec![],
                 next_cursor: SyncCursor::from_bytes(b"expunging".to_vec()),
                 has_more: false,
@@ -627,6 +634,11 @@ mod tests {
     impl MailSyncProvider for ScriptedProvider {
         fn name(&self) -> &str {
             "scripted"
+        }
+        fn provider_id_scope(&self, provider_id: &str) -> Option<String> {
+            provider_id
+                .rsplit_once(':')
+                .map(|(scope, _)| scope.to_string())
         }
         fn account_id(&self) -> &AccountId {
             &self.account_id
@@ -680,12 +692,57 @@ mod tests {
                 .collect(),
             deleted_provider_ids: vec![],
             reissued_provider_ids: reissued,
+            complete_listings: vec![],
             label_changes: vec![],
             next_cursor: SyncCursor::from_bytes(b"scripted".to_vec()),
             has_more: false,
             threads_changed: vec![],
             remaining_estimate: None,
         }
+    }
+
+    /// After a UIDVALIDITY change the provider lists every UID the folder
+    /// holds. Stored rows of that folder outside the listing are gone, even
+    /// above the UID the cursor last reached (a fetch failure floors it);
+    /// other folders and freshly fetched mail are untouched.
+    #[tokio::test]
+    async fn a_complete_listing_removes_stored_mail_the_server_no_longer_has() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        let engine = SyncEngine::new(store.clone(), in_memory_search());
+        let stored = ["INBOX:1", "INBOX:2", "INBOX:9", "Archive:2"]
+            .map(|id| make_test_envelope(&account_id, id, vec![]));
+        let mut listing_page = page(
+            vec![make_test_envelope(&account_id, "INBOX:3", vec![])],
+            vec![],
+        );
+        listing_page.complete_listings = vec![mxr_core::types::ProviderIdListing {
+            scope: "INBOX".to_string(),
+            provider_ids: vec!["INBOX:1".to_string()],
+        }];
+        let provider = ScriptedProvider {
+            account_id: account_id.clone(),
+            batches: std::sync::Mutex::new([page(stored.to_vec(), vec![]), listing_page].into()),
+        };
+        engine.sync_account_with_outcome(&provider).await.unwrap();
+
+        let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
+
+        let mut left = store
+            .list_provider_ids_by_account(&account_id)
+            .await
+            .unwrap();
+        left.sort();
+        assert_eq!(left, vec!["Archive:2", "INBOX:1", "INBOX:3"]);
+        let deleted: HashSet<_> = outcome.deleted.message_ids.into_iter().collect();
+        assert_eq!(
+            deleted,
+            HashSet::from([stored[1].id.clone(), stored[2].id.clone()])
+        );
     }
 
     /// After a UIDVALIDITY change the server reuses `INBOX:1` for another

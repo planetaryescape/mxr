@@ -49,9 +49,10 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
     ("deliveries", MessageDeletionRule::ClearedWithMessages),
     ("desk_dismissals", MessageDeletionRule::ClearedWithMessages),
     ("event_log", MessageDeletionRule::ClearedWithMessages),
+    // Cleared for every person a delete touches, and with its contact.
     (
         "contact_relationship_summary",
-        MessageDeletionRule::ClearedWithContact,
+        MessageDeletionRule::ClearedWithMessages,
     ),
     ("contact_style", MessageDeletionRule::ClearedWithContact),
     (
@@ -180,6 +181,11 @@ impl super::Store {
                     OR subject_key IN (SELECT 'gist:' || thread_id FROM temp.mxr_deleting))",
             "DELETE FROM context_briefings WHERE account_id = ?1 AND kind = 'recipient'
                AND subject_key IN (SELECT email FROM temp.mxr_deleting_people)",
+            // A relationship summary is model text drawn from the person's
+            // mail. A refresh skips rewriting one when no newer mail exists,
+            // so it is dropped here and rebuilt from the mail that is left.
+            "DELETE FROM contact_relationship_summary WHERE account_id = ?1
+               AND email IN (SELECT email FROM temp.mxr_deleting_people)",
             "DELETE FROM thread_summaries WHERE account_id = ?1
                AND thread_id IN (SELECT thread_id FROM temp.mxr_deleting)",
             "DELETE FROM contact_commitments WHERE account_id = ?1
@@ -460,6 +466,16 @@ mod tests {
             )
             .await;
         }
+        for email in ["Alice@Example.com", "dave@example.com"] {
+            exec(
+                &store,
+                "INSERT INTO contact_relationship_summary (account_id, email, text, model,
+                     computed_at, source_hash)
+                 VALUES (?, ?, 'quotes the deleted mail', 'm', 0, 'h')",
+                &[&acct, email],
+            )
+            .await;
+        }
         for (message, summary) in [(&gone_s, "Applied rules to gone"), (&other_s, "kept")] {
             exec(
                 &store,
@@ -540,6 +556,12 @@ mod tests {
         assert_eq!(
             ids(&store, "SELECT summary FROM event_log").await,
             set(&["kept"])
+        );
+        // Alice still has mail in thread A, but her summary drew on the
+        // deleted message and is rebuilt; Dave's mail was untouched.
+        assert_eq!(
+            ids(&store, "SELECT email FROM contact_relationship_summary").await,
+            set(&["dave@example.com"])
         );
     }
 

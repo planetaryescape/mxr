@@ -36,9 +36,41 @@ failed would invite a retry of finished work and drop the undo entry.
 Before, a reindex error failed that message and skipped the rest of its
 account.
 
-`batch_archive_reindexes_every_message_in_search` archives three indexed
-inbox messages in one request and checks `in:inbox` no longer finds any.
-It fails with the batch reindex disabled.
+### No silent staleness when a read fails
+
+If reading one message back from the store fails, the batch leaves out
+only that message and still commits the rest. The skipped id goes into the
+`search_reindex_pending` table (migration 57). Every later reindex retries
+up to 500 marked ids, and startup maintenance drains the table. That
+matters because a stale entry leaves the document count unchanged, so
+the count-based startup repair never sees it. If the store can't take the
+mark either, the id stays in memory and the next reindex in this daemon
+run retries it.
+
+### Last commit reads last
+
+Batching moved the reindex out from under each message's provider guard,
+so a batch could read a message, a concurrent single mutation could
+change and commit it, and then the batch could commit its older read last.
+Search would keep the old flags or labels, even across a restart.
+
+Each reindex now holds `AppState::search_reindex` from its store reads
+through its commit. Every mutation writes the store before it reindexes,
+so whichever reindex commits last also read last, and search ends on the
+store's newest state. Undo and the flag path go through the same function.
+The lock covers mutation reindexes only; the sync engine's own index
+writes don't take it.
+
+Each of these tests fails against the broken variant named after it:
+
+- `batch_archive_reindexes_every_message_in_search`: the batch reindex
+  disabled.
+- `a_failed_search_read_skips_only_that_message_and_marks_it_for_repair`:
+  aborting the batch on the first failed read leaves all 3 messages stale.
+- `a_mutation_reindex_commits_the_store_state_at_commit_time`: reading
+  before taking the lock commits the pre-star state.
+- `startup_maintenance_reindexes_messages_marked_stale`: startup without
+  the drain.
 
 ## Evidence
 

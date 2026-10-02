@@ -86,7 +86,9 @@ pub(crate) use account_config::{list_account_configs, repair_account_config};
 pub(crate) use helpers::{
     dir_size_sync, file_size_sync, recent_log_lines_sync, should_fallback_to_tantivy,
 };
-pub(crate) use mutations::{reconcile_provider_drafts, send_stored_draft};
+pub(crate) use mutations::{
+    drain_search_reindex_pending, reconcile_provider_drafts, send_stored_draft,
+};
 pub(crate) use status_helpers::{
     build_doctor_findings, doctor_data_stats, latest_successful_sync_at, no_error_findings,
     DoctorFindingInputs,

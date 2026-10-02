@@ -935,6 +935,12 @@ const MIGRATIONS: &[Migration] = &[
                      ON reply_pairs (parent_message_id, direction)",
             ),
         ]),
+    },    Migration {
+        version: 57,
+        name: "search_reindex_pending",
+        kind: MigrationKind::Sql(include_str!(
+            "../migrations/057_search_reindex_pending.sql"
+        )),
     },
 ];
 

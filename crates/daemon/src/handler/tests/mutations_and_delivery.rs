@@ -831,6 +831,70 @@ async fn batch_archive_reindexes_every_message_in_search() {
     assert_eq!(lexical_hits(&state, "quarterlyreindex in:inbox").await, 0);
 }
 
+/// One message whose store read fails must not cost the rest of the batch
+/// their reindex, and must stay marked until a later reindex can read it:
+/// the search document count does not change, so the count-based startup
+/// repair would never find it.
+#[tokio::test]
+async fn a_failed_search_read_skips_only_that_message_and_marks_it_for_repair() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let ids = indexed_inbox_messages(&state, "unreadablereindex", 3).await;
+    let unreadable = ids[1].clone();
+    // An attachment row whose id does not parse makes get_body fail for this
+    // message only; the archive itself never reads the body.
+    sqlx::query(
+        "INSERT INTO bodies (message_id, text_plain, text_html, fetched_at, metadata_json)
+         VALUES (?, 'body', NULL, 0, '{}')",
+    )
+    .bind(unreadable.as_str())
+    .execute(state.store.writer())
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO attachments (id, message_id, filename, mime_type, size_bytes, provider_id)
+         VALUES ('not-an-id', ?, 'a.txt', 'text/plain', 1, 'p')",
+    )
+    .bind(unreadable.as_str())
+    .execute(state.store.writer())
+    .await
+    .unwrap();
+
+    let result = assert_mutation_succeeded(
+        handle_request(&state, &archive_request(ids.clone()))
+            .await
+            .payload,
+    );
+    assert_eq!(result.succeeded, 3);
+
+    // The two readable messages left the inbox in search; only the
+    // unreadable one is stale, and it is marked.
+    assert_eq!(lexical_hits(&state, "unreadablereindex in:inbox").await, 1);
+    assert_eq!(
+        state.store.list_search_reindex_pending(10).await.unwrap(),
+        vec![unreadable.clone()]
+    );
+
+    // Once the message reads again, the next mutation's reindex repairs it.
+    sqlx::query("DELETE FROM attachments WHERE id = 'not-an-id'")
+        .execute(state.store.writer())
+        .await
+        .unwrap();
+    let other = indexed_inbox_messages(&state, "laterreindex", 1).await;
+    assert_mutation_succeeded(
+        handle_request(&state, &archive_request(other))
+            .await
+            .payload,
+    );
+
+    assert_eq!(lexical_hits(&state, "unreadablereindex in:inbox").await, 0);
+    assert!(state
+        .store
+        .list_search_reindex_pending(10)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
 /// A reindex must read the store after it takes the reindex lock, not
 /// before. Otherwise a reindex that read early but committed late would
 /// leave search on an older state than the store, past any restart.

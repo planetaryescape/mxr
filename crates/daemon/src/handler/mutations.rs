@@ -2027,6 +2027,10 @@ async fn reindex_message_in_search(
     reindex_messages_in_search(state, std::slice::from_ref(message_id)).await
 }
 
+/// Most marked messages one reindex retries, so a long backlog of failed
+/// reads cannot turn a single mutation into a rebuild.
+const PENDING_REINDEX_BATCH: u32 = 500;
+
 /// Refreshes the indexed copy of each message from the store in one search
 /// commit, so queries (`mxr search ...`) see new flags and labels at once.
 ///
@@ -2034,47 +2038,155 @@ async fn reindex_message_in_search(
 /// mutation writes the store before it reindexes, so whichever reindex
 /// commits last also read last, and search ends on the newest state even
 /// when two mutations of one message race.
+///
+/// Messages marked by an earlier failed read are retried here too. A message
+/// whose read fails is left out of the commit, marked for the next reindex,
+/// and reported in the error; the rest are still committed.
 async fn reindex_messages_in_search(
     state: &AppState,
     message_ids: &[mxr_core::MessageId],
 ) -> Result<(), String> {
-    if message_ids.is_empty() {
+    let mut unrecorded = state.search_reindex.lock().await;
+    let pending = state
+        .store
+        .list_search_reindex_pending(PENDING_REINDEX_BATCH)
+        .await
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "failed to list messages waiting for a search reindex");
+            Vec::new()
+        });
+
+    let mut seen = HashSet::new();
+    let targets: Vec<mxr_core::MessageId> = message_ids
+        .iter()
+        .chain(&pending)
+        .chain(unrecorded.iter())
+        .filter(|id| seen.insert((*id).clone()))
+        .cloned()
+        .collect();
+    if targets.is_empty() {
         return Ok(());
     }
-    let _reindex = state.search_reindex.lock().await;
+
     let mut batch = mxr_search::SearchUpdateBatch::default();
-    for message_id in message_ids {
-        let envelope = state
-            .store
-            .get_envelope(message_id)
-            .await
-            .map_err(|e| e.to_string())?;
-        let Some(envelope) = envelope else {
-            // Message was removed locally (e.g. IMAP delete); drop from index.
-            batch.removed_message_ids.push(message_id.clone());
-            continue;
-        };
-        let body = state
-            .store
-            .get_body(message_id)
-            .await
-            .map_err(|e| e.to_string())?;
-        let reply_later = state
-            .store
-            .is_reply_later(message_id)
-            .await
-            .map_err(|e| e.to_string())?;
-        batch.entries.push(mxr_search::SearchIndexEntry {
-            envelope,
-            body,
-            reply_later,
-        });
+    let mut read = Vec::new();
+    let mut skipped = Vec::new();
+    let mut first_error = None;
+    for message_id in targets {
+        match search_entry_from_store(state, &message_id).await {
+            Ok(Some(entry)) => batch.entries.push(entry),
+            // Removed locally (e.g. IMAP delete); drop it from the index.
+            Ok(None) => batch.removed_message_ids.push(message_id.clone()),
+            Err(error) => {
+                first_error.get_or_insert(error);
+                skipped.push(message_id);
+                continue;
+            }
+        }
+        read.push(message_id);
     }
-    state
-        .search
-        .apply_batch(batch)
+
+    if let Err(error) = state.search.apply_batch(batch).await {
+        // Nothing reached the index, so every message is still stale.
+        skipped.extend(read);
+        mark_for_reindex(state, &mut unrecorded, skipped).await;
+        return Err(error.to_string());
+    }
+
+    let read: HashSet<_> = read.into_iter().collect();
+    unrecorded.retain(|id| !read.contains(id));
+    let done: Vec<_> = pending.into_iter().filter(|id| read.contains(id)).collect();
+    if let Err(error) = state.store.clear_search_reindex_pending(&done).await {
+        // Harmless: they are reindexed again next time.
+        tracing::warn!(%error, "failed to clear reindexed messages from the pending list");
+    }
+
+    match first_error {
+        None => Ok(()),
+        Some(error) => {
+            let count = skipped.len();
+            mark_for_reindex(state, &mut unrecorded, skipped).await;
+            Err(format!(
+                "{count} message(s) left for the next search reindex after a failed read: {error}"
+            ))
+        }
+    }
+}
+
+/// Marks `message_ids` in the store for the next reindex. If the store
+/// cannot take the mark, keeps them in memory instead, so this daemon run
+/// still retries them.
+async fn mark_for_reindex(
+    state: &AppState,
+    unrecorded: &mut HashSet<mxr_core::MessageId>,
+    message_ids: Vec<mxr_core::MessageId>,
+) {
+    match state.store.mark_search_reindex_pending(&message_ids).await {
+        Ok(()) => {
+            for message_id in &message_ids {
+                unrecorded.remove(message_id);
+            }
+        }
+        Err(error) => {
+            tracing::warn!(
+                %error,
+                messages = message_ids.len(),
+                "failed to mark messages for a search reindex; retrying them from memory"
+            );
+            unrecorded.extend(message_ids);
+        }
+    }
+}
+
+/// The message's search entry as the store holds it now, or `None` when the
+/// store no longer has it.
+async fn search_entry_from_store(
+    state: &AppState,
+    message_id: &mxr_core::MessageId,
+) -> Result<Option<mxr_search::SearchIndexEntry>, String> {
+    let Some(envelope) = state
+        .store
+        .get_envelope(message_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(None);
+    };
+    let body = state
+        .store
+        .get_body(message_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let reply_later = state
+        .store
+        .is_reply_later(message_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(Some(mxr_search::SearchIndexEntry {
+        envelope,
+        body,
+        reply_later,
+    }))
+}
+
+/// Startup's retry of messages an earlier reindex left marked. Stops at the
+/// first batch that cannot finish, leaving the rest for the next mutation or
+/// startup.
+pub(crate) async fn drain_search_reindex_pending(state: &AppState) {
+    loop {
+        match state.store.list_search_reindex_pending(1).await {
+            Ok(pending) if pending.is_empty() => return,
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(%error, "startup: failed to list messages waiting for a search reindex");
+                return;
+            }
+        }
+        if let Err(error) = reindex_messages_in_search(state, &[]).await {
+            tracing::warn!(%error, "startup: search reindex of marked messages did not finish");
+            return;
+        }
+    }
 }
 
 fn mutation_log_entry(cmd: &MutationCommand, envelope: &Envelope) -> (String, Option<String>) {

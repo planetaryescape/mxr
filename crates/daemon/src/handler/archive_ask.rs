@@ -263,25 +263,28 @@ async fn retrieve_candidates(
         matches!(requested, ArchiveAskMode::Semantic | ArchiveAskMode::Hybrid) && semantic_enabled;
 
     let lexical_ids: Vec<mxr_core::MessageId> = if want_lexical {
-        let query = lexical_query_with_filters(question, filters);
-        let page = if has_structured_filters(filters) {
-            let query = mxr_search::build_query(&query).map_err(|e| e.to_string())?;
-            state
+        // The question is prose, searched as plain words; only the
+        // structured filters go through the query parser.
+        let builder = mxr_search::QueryBuilder::new(&mxr_search::MxrSchema::build());
+        let query = match structured_filter_query(filters) {
+            Some(filter) => {
+                let filter = mxr_search::parse_query(&filter).map_err(|e| e.to_string())?;
+                Some(builder.build_any_words_where(question, &filter))
+            }
+            None => builder.build_any_words(question),
+        };
+        match query {
+            Some(query) => state
                 .search
                 .search_ast(query, pool_size, 0, SortOrder::Relevance)
                 .await
                 .map_err(|e| e.to_string())?
-        } else {
-            state
-                .search
-                .search(&query, pool_size, 0, SortOrder::Relevance)
-                .await
-                .map_err(|e| e.to_string())?
-        };
-        page.results
-            .iter()
-            .filter_map(|h| h.message_id.parse().ok())
-            .collect()
+                .results
+                .iter()
+                .filter_map(|h| h.message_id.parse().ok())
+                .collect(),
+            None => Vec::new(),
+        }
     } else {
         Vec::new()
     };
@@ -329,18 +332,10 @@ async fn retrieve_candidates(
     Ok((merged, executed_mode))
 }
 
-fn has_structured_filters(filters: &ArchiveAskFiltersData) -> bool {
-    filters
-        .from
-        .as_deref()
-        .is_some_and(|v| !v.trim().is_empty())
-        || filters.to.as_deref().is_some_and(|v| !v.trim().is_empty())
-        || filters.after.is_some()
-        || filters.before.is_some()
-}
-
-fn lexical_query_with_filters(question: &str, filters: &ArchiveAskFiltersData) -> String {
-    let mut parts = vec![question.trim().to_string()];
+/// The sender, recipient and date filters as query syntax, or `None`
+/// when there are none.
+fn structured_filter_query(filters: &ArchiveAskFiltersData) -> Option<String> {
+    let mut parts = Vec::new();
     if let Some(from) = filters.from.as_deref().filter(|v| !v.trim().is_empty()) {
         parts.push(format!("from:{}", quote_query_value(from)));
     }
@@ -353,8 +348,7 @@ fn lexical_query_with_filters(question: &str, filters: &ArchiveAskFiltersData) -
     if let Some(before) = filters.before {
         parts.push(format!("before:{}", before.format("%Y-%m-%d")));
     }
-    parts.retain(|part| !part.trim().is_empty());
-    parts.join(" ")
+    (!parts.is_empty()).then(|| parts.join(" "))
 }
 
 fn quote_query_value(value: &str) -> String {
@@ -660,6 +654,44 @@ mod tests {
                 assert!(answer.retrieval.candidate_count > 0);
             }
             other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    /// A question is prose, not query syntax: "re:" or "status:" must
+    /// not parse as a field, with or without structured filters.
+    #[tokio::test]
+    async fn question_with_colons_is_searched_as_words() {
+        for from in [None, Some("alice@example.com".to_string())] {
+            let (state, account_id, ids) = fixture(Arc::new(CannedLlm {
+                body: String::new(),
+                last_user: Mutex::new(String::new()),
+            }))
+            .await;
+            state.llm.replace(Arc::new(CannedLlm {
+                body: format!(
+                    r#"{{"answer":"Status updated.","citations":[{{"msg_id":"{}","quote":"status update"}}]}}"#,
+                    ids[0]
+                ),
+                last_user: Mutex::new(String::new()),
+            }));
+
+            let resp = ask(
+                &state,
+                "Re: what's the status: update? (foo: bar)",
+                &ArchiveAskFiltersData {
+                    account_id: Some(account_id),
+                    from: from.clone(),
+                    ..Default::default()
+                },
+                5,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("from={from:?}: {e:?}"));
+            let ResponseData::ArchiveAnswer { answer } = resp else {
+                panic!("unexpected response");
+            };
+            assert_eq!(answer.citations.len(), 1, "from={from:?}");
+            assert_eq!(answer.citations[0].message_id, ids[0]);
         }
     }
 

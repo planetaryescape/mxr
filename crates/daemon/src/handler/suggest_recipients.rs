@@ -16,13 +16,10 @@ use mxr_search::{MxrSchema, QueryBuilder};
 use std::collections::{HashMap, HashSet};
 
 const MIN_SUPPORT_THREADS: usize = 3;
-/// Enough words to name a topic; a long first paragraph adds noise, not signal.
-const MAX_TOPIC_WORDS: usize = 32;
 
 pub(crate) async fn suggest(state: &AppState, draft: &Draft, limit: usize) -> super::HandlerResult {
     // Draft text is prose, not query syntax: search it as plain words.
-    let Some(query) =
-        QueryBuilder::new(&MxrSchema::build()).build_any_words(&topic_text(draft), MAX_TOPIC_WORDS)
+    let Some(query) = QueryBuilder::new(&MxrSchema::build()).build_any_words(&topic_text(draft))
     else {
         return Ok(ResponseData::SuggestedCollaborators {
             suggestions: vec![],

@@ -10,6 +10,7 @@ use crate::state::AppState;
 use mxr_core::id::AccountId;
 use mxr_core::SortOrder;
 use mxr_protocol::{ExpertSuggestionData, ResponseData};
+use mxr_search::{MxrSchema, QueryBuilder};
 use std::collections::{HashMap, HashSet};
 
 pub(crate) async fn find(
@@ -19,12 +20,14 @@ pub(crate) async fn find(
     include_self: bool,
     limit: usize,
 ) -> super::HandlerResult {
-    if query.trim().is_empty() {
+    // The query is a message's subject and snippet: prose, not query
+    // syntax, so it is searched as plain words.
+    let Some(query) = QueryBuilder::new(&MxrSchema::build()).build_any_words(query) else {
         return Ok(ResponseData::ExpertSuggestions { experts: vec![] });
-    }
+    };
     let page = state
         .search
-        .search(query, 50, 0, SortOrder::Relevance)
+        .search_ast(query, 50, 0, SortOrder::Relevance)
         .await?;
 
     let self_addresses = self_addresses_for(state, account_id).await;
@@ -256,6 +259,47 @@ mod tests {
         assert!(
             experts.iter().all(|e| e.email != "alice@example.com"),
             "asker must not be ranked: {experts:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn subject_and_snippet_with_colons_are_searched_as_words() {
+        let (state, account) = fixture().await;
+        let thread = ThreadId::new();
+        let q = env(
+            &account,
+            &thread,
+            "alice@example.com",
+            "kafka rebalance question",
+            "kafka rebalance question",
+            -120,
+        );
+        let a = env(
+            &account,
+            &thread,
+            "bob@example.com",
+            "Re: kafka rebalance question",
+            "kafka answer details",
+            -60,
+        );
+        index(&state, &q, "kafka rebalance question").await;
+        index(&state, &a, "kafka answer details").await;
+        // What the TUI sends: the selected message's subject and snippet.
+        let resp = find(
+            &state,
+            &account,
+            "Re: kafka rebalance question Note: see (details)",
+            false,
+            5,
+        )
+        .await
+        .unwrap();
+        let ResponseData::ExpertSuggestions { experts } = resp else {
+            panic!("unexpected");
+        };
+        assert_eq!(
+            experts.first().map(|e| e.email.as_str()),
+            Some("bob@example.com")
         );
     }
 

@@ -25,7 +25,7 @@ pub use mail_query::{
 };
 
 pub use index::{SearchIndex, SearchPage, SearchResult};
-pub use query_builder::{build_query, CompiledQuery, QueryBuilder};
+pub use query_builder::{build_query, CompiledQuery, QueryBuilder, MAX_PROSE_WORDS};
 pub use schema::MxrSchema;
 pub use service::{SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch};
 

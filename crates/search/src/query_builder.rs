@@ -45,6 +45,10 @@ pub struct QueryBuilder {
     size_bytes: Field,
 }
 
+/// Enough words to name a topic or a question; past this a long
+/// paragraph adds noise to the ranking, not signal.
+pub const MAX_PROSE_WORDS: usize = 32;
+
 impl QueryBuilder {
     pub fn new(schema: &MxrSchema) -> Self {
         Self {
@@ -154,16 +158,17 @@ impl QueryBuilder {
         ]
     }
 
-    /// Any of the words in free prose (a draft, a question), ranked by
-    /// relevance. Prose is not query syntax: "Re: ..." or "foo: bar" must
-    /// not parse as a field filter. Words are tokenized like bare `Text`
-    /// terms, deduplicated and capped at `max_words`, so a long paragraph
-    /// stays one flat, bounded OR. `None` when the text has no words.
-    pub fn build_any_words(&self, text: &str, max_words: usize) -> Option<Box<dyn Query>> {
+    /// Any of the words in free prose (a draft, a question, a subject),
+    /// ranked by relevance. Prose is not query syntax: "Re: ..." or
+    /// "foo: bar" must not parse as a field filter. Words are tokenized
+    /// like bare `Text` terms, deduplicated and capped at
+    /// [`MAX_PROSE_WORDS`], so a long paragraph stays one flat, bounded
+    /// OR. `None` when the text has no words.
+    pub fn build_any_words(&self, text: &str) -> Option<Box<dyn Query>> {
         let fields_boosts = self.text_fields_boosts();
         let mut words: Vec<String> = Vec::new();
         for token in tokenize_text_value(text) {
-            if words.len() == max_words {
+            if words.len() == MAX_PROSE_WORDS {
                 break;
             }
             if !words.contains(&token) {
@@ -183,6 +188,20 @@ impl QueryBuilder {
             })
             .collect();
         Some(Box::new(BooleanQuery::new(clauses)))
+    }
+
+    /// [`Self::build_any_words`] within a structured `filter` (sender,
+    /// dates): the filter must match, and so must at least one word. With
+    /// no words in `text`, the filter alone.
+    pub fn build_any_words_where(&self, text: &str, filter: &QueryNode) -> Box<dyn Query> {
+        let filter = self.build(filter);
+        match self.build_any_words(text) {
+            Some(words) => Box::new(BooleanQuery::new(vec![
+                (Occur::Must, filter),
+                (Occur::Must, words),
+            ])),
+            None => filter,
+        }
     }
 
     fn build_text_query(&self, text: &str) -> Box<dyn Query> {
@@ -776,12 +795,34 @@ mod tests {
         let qb = QueryBuilder::new(&schema);
 
         let query = qb
-            .build_any_words("Re: Deployment plan? foo: bar (draft) -minus", 32)
+            .build_any_words("Re: Deployment plan? foo: bar (draft) -minus")
             .unwrap();
         let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
         assert_eq!(results.results[0].message_id, envelopes[0].id.as_str());
 
-        assert!(qb.build_any_words(" :: -- ", 32).is_none());
+        assert!(qb.build_any_words(" :: -- ").is_none());
+    }
+
+    #[test]
+    fn any_words_where_requires_the_filter_and_a_word() {
+        let (idx, envelopes) = build_test_index();
+        let schema = MxrSchema::build();
+        let qb = QueryBuilder::new(&schema);
+        let from_bob = parse_query("from:bob@example.com").unwrap();
+
+        // "deployment" is Alice's; within Bob's mail no word matches.
+        let query = qb.build_any_words_where("Re: deployment?", &from_bob);
+        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
+        assert!(results.results.is_empty());
+
+        let query = qb.build_any_words_where("Re: invoice?", &from_bob);
+        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results.len(), 1);
+        assert_eq!(results.results[0].message_id, envelopes[1].id.as_str());
+
+        let query = qb.build_any_words_where("?", &from_bob);
+        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results.len(), 1);
     }
 
     #[test]

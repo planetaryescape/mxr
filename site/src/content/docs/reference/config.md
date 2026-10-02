@@ -141,13 +141,18 @@ model = "qwen2.5:3b-instruct"
 api_key_env = ""                          # name of env var; empty for Ollama / LM Studio
 context_window = 8192
 request_timeout_secs = 120
+allow_cloud_relationship_data = false     # true lets relationship features use a cloud endpoint
 
 [llm.overrides.answer_coverage]
 # Optional per-feature LLM override. Same shape as [llm] above. Useful
 # when answer-coverage benefits from a different model than the default
 # (e.g. a smarter cloud model for the only LLM-backed safety check).
+# Answer coverage carries relationship data, so a cloud endpoint here
+# runs only with allow_cloud_relationship_data = true under [llm].
 # enabled = true
+# base_url = "https://api.openai.com/v1"
 # model = "gpt-5-mini"
+# api_key_env = "OPENAI_API_KEY"
 
 [safety.recipients]
 internal_domains = ["company.com"]        # paired with internal markers in body
@@ -606,9 +611,17 @@ api_key_env = "OPENAI_API_KEY"
 ```
 
 Any field omitted from an override falls back to the top-level `[llm]`
-section. Feature keys: `summarize`, `draft_assist`, `draft_new`,
-`draft_refine`, `voice_match`, `answer_coverage`, `commitments`,
+section. Feature keys: `summarize` (also row gists and `mxr triage`),
+`relationship_summary`, `commitments`, `draft_assist`, `draft_new`,
+`draft_refine`, `voice_match`, `humanize_rewrite`, `answer_coverage`,
+`archive_ask`, `decision_log`, `briefing`, `expert`, and
 `delivery_extraction` (confirm/enrich for [delivery tracking](/guides/deliveries/)).
+
+`relationship_summary`, `commitments`, `voice_match`, `answer_coverage`,
+`archive_ask`, `decision_log`, `briefing` and `expert` carry relationship
+data, so the daemon refuses them on a non-local endpoint unless
+`allow_cloud_relationship_data = true`. The `answer_coverage` example above
+needs that setting to run.
 
 ## `safety`
 

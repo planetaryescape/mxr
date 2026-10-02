@@ -155,7 +155,8 @@ Capture the `mutation_id` in the output. If the user notices an over-archive, th
 ## What stays local, what doesn't
 
 - **Embeddings (semantic search)** — computed on your machine and never sent off-device. The model weights are downloaded from Hugging Face the first time a profile runs, unless you already have them or turn the download off.
-- **`mxr summarize` and `mxr draft-assist`** — call your configured `[llm]` endpoint. That can be a local server (Ollama, LM Studio) or a remote provider. Configure in `config.toml`. The thread content goes wherever the LLM is.
+- **Model features (`mxr summarize`, `mxr draft-assist`, `mxr ask` and the rest)** — call your configured `[llm]` endpoint. That can be a local server (Ollama, LM Studio) or a remote provider. Configure in `config.toml`. The thread content goes wherever the LLM is.
+- **Background model calls** — with `[llm] enabled = true`, the daemon also calls that endpoint without a command from you. It writes a one-line gist for conversations from people that the web app or TUI shows (newsletters and automated mail are never sent), and after each sync it asks the model to confirm mail the delivery heuristic shortlisted as shipping, sending that message's sender, subject and cleaned body. Point `[llm]` at a local server, or set `[deliveries] enabled = false`, to keep that work on your machine. [LLM features](/guides/llm-features/#know-what-each-request-sends-and-where) lists what each request sends.
 - **Remote images in HTML mail** — fetched from whatever URLs the sender put in the message, tracking pixels included.
 - **Provider mail content** — passes through mxr to whatever provider the account is connected to (Gmail, IMAP). mxr never proxies through third parties.
 

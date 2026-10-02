@@ -8,6 +8,13 @@ mail that isn't from people. This page is the order; each step links to the
 page with the detail. It works the same in the web app, the TUI and the CLI,
 because all three read the same daemon.
 
+:::note
+This is the workflow in v0.6.47. mxr is moving to
+[five email modes](/guides/email-modes/): the desk becomes Now, and Paper
+trail splits into Updates and Archive. Steps change here as each mode
+ships.
+:::
+
 ## 1. Open the desk
 
 ```bash

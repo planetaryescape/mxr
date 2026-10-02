@@ -9,6 +9,7 @@ This skill holds the context that used to bloat always-on agent files. Load it o
 
 ## Product shape
 
+- Email modes: the product model is five modes (Messages, To do, Updates, Reading, Archive) plus Now, per `docs/blueprint/22-email-modes.md` (D107 to D114). Build them in its phase order. A phase ships with the site pages and repo docs its Docs line names, and user docs never describe a mode behaviour before it ships.
 - Local-first: SQLite is canonical, search indexes are rebuildable, and core mail works offline.
 - Daemon-backed: TUI, CLI, web, and scripts are clients over Unix-socket IPC.
 - CLI-first: new capabilities land in CLI at the same time as daemon support, with stable JSON/JSONL.

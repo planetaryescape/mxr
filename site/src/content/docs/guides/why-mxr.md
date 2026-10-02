@@ -3,29 +3,44 @@ title: Why mxr
 description: Decide whether mxr fits your email workflow.
 ---
 
-Use mxr when you want email state on your own machine, with one local
-runtime behind the TUI, CLI, web app, scripts, and agent workflows.
+Use mxr when you want your whole mail history on your own machine, with
+one local runtime behind the TUI, CLI, web app, scripts and agents, and a
+mail client that sorts what needs you from what merely arrived.
 
 ```bash
 mxr demo
+mxr desk
 mxr search "is:unread" --format json
 mxr web
 ```
 
-What you get: an isolated demo inbox, a machine-readable search result,
-and the browser UI served by the local bridge.
+What you get: an isolated demo inbox, the desk's list of replies you owe
+and promises due, a machine-readable search result, and the browser UI
+served by the local bridge.
 
-## The fit
+## mxr keeps your mail local and works it by what you do with it
 
-mxr is a local mail runtime. It syncs provider mail into SQLite,
-indexes it locally, and exposes the same daemon-backed state through
-human and machine interfaces.
+mxr is a local mail runtime. It syncs provider mail into SQLite, indexes
+it locally, and exposes the same daemon-backed state through human and
+machine interfaces. Because the whole history is on your disk, search,
+analytics and an agent's questions run against it without a provider
+round trip.
+
+On top of that store, mxr treats email as five jobs: conversations with
+people, things to do, updates to glance at, reading you chose, and records
+to keep. Today the desk, Reading and Paper trail split your inbox along
+those lines by rule, and every placement says why. Separate views for each
+of the five modes are planned; [Email is five apps at once](/guides/email-modes/)
+shows what ships for each one now and what is coming.
 
 Choose mxr when you want:
 
 - synced mail in SQLite on your machine
-- Gmail and IMAP receive paths, plus Gmail or SMTP send paths
+- Gmail, Outlook and IMAP receive paths, plus Gmail, Outlook or SMTP send paths
 - Gmail-style local search over stored mail
+- a desk of what needs you, with newsletters and notifications kept off it
+- AI features that are off by default, run against a model you choose, and
+  default to a local endpoint
 - dry-runnable batch mutations
 - structured CLI output for shell scripts and agents
 - a TUI, browser UI, and HTTP bridge on the same daemon contract
@@ -48,7 +63,7 @@ workflow platform, or backend email API for a server product. It is also
 not a native desktop app; the GUI surface is the web app opened with
 `mxr web`.
 
-Use something else when you need:
+Use something else when:
 
 - You want a hosted connector layer more than a local mail runtime.
 - You mainly want a terminal UI and do not care about a broad CLI or daemon.
@@ -100,6 +115,7 @@ touching your real profile.
 ## See also
 
 - [Quick start](/getting-started/quick-start/)
+- [Email is five apps at once](/guides/email-modes/)
 - [Automation contract](/guides/automation-contract/)
 - [For agents](/guides/for-agents/)
 - [MCP server](/reference/mcp/)

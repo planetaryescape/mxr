@@ -27,12 +27,9 @@ The Tantivy search index and semantic model cache are local and rebuildable. Att
 
 ## Credentials
 
-Gmail OAuth refresh tokens, IMAP passwords, and SMTP passwords are stored in the OS-native secret store when available:
+IMAP and SMTP passwords are stored in `secrets.toml` in the mxr config directory, a plaintext file with mode `0600` (owner read and write only). This is the same model as `~/.aws/credentials`: any process running as you can read it, and it is not encrypted at rest. mxr chose this because macOS revokes keychain access for the release binary on every upgrade, which used to stop the daemon from starting.
 
-- macOS: Keychain
-- Linux: Secret Service, such as GNOME Keyring or KWallet
-
-Gmail may keep a private disk fallback under the active token directory so a noninteractive keychain failure does not strand an otherwise valid account. Outlook OAuth tokens are stored as JSON files under the active token directory. `config.toml` references credentials by keychain/token reference and does not store IMAP or SMTP passwords.
+Gmail OAuth refresh tokens are stored in the OS secret store when it is available (macOS Keychain, or Secret Service such as GNOME Keyring or KWallet on Linux). A private disk fallback under the active token directory keeps an otherwise valid account working when a noninteractive keychain read fails. Outlook OAuth tokens are stored as JSON files under the active token directory. `config.toml` refers to credentials and never contains a password.
 
 ---
 
@@ -89,7 +86,7 @@ mxr does not integrate with third-party analytics, advertising, or tracking serv
 
 ## Data Deletion
 
-Since data is local, you can delete mxr data by removing the active config and data directories. To inspect them:
+When an email is deleted from your mailbox, mxr deletes everything it derived from that email: search and semantic index entries, summaries, briefings, extracted commitments and decisions, and downloaded attachment files. Since data is local, you can delete all mxr data by removing the active config and data directories. To inspect them:
 
 ```bash
 mxr status --format json

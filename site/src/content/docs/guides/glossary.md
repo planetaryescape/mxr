@@ -70,7 +70,7 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 **Focus & reply**: a web app mode that shows everyone you owe a reply one conversation at a time, with the reply beside it. See [Reply to everyone you owe](/guides/focus-and-reply/).
 
-**Place**: where mail that is not from people goes instead of the desk. There are two, **Reading** (newsletters and lists) and **Paper trail** (receipts and notifications). Both are views over the inbox. CLI: `mxr reading`, `mxr paper-trail`. See [Clear Reading and Paper trail](/guides/reading-and-paper-trail/).
+**Place**: where mail that is not from people goes instead of the desk. There are two, **Reading** (newsletters and lists) and **Paper trail** (receipts and notifications). Both are views over the inbox. CLI: `mxr reading`, `mxr paper-trail`. See [Clear Reading and Paper trail](/guides/reading-and-paper-trail/). Under the [modes plan](#email-modes), Reading becomes a mode and Paper trail splits into Updates and Archive.
 
 **Sender kind**: where a sender's mail goes, set once with `mxr sender kind` or Move sender: people, reading, paper-trail, screened-out, or auto (the rules decide). Stored as the sender's screener decision. `mxr why MESSAGE_ID` says which rule placed a message.
 
@@ -81,6 +81,85 @@ See [Architecture](/guides/architecture/) for why this split matters.
 **Low tide**: what the web app shows when the desk is clear: "Low tide. Nobody's waiting on you."
 
 **Time phrase**: a time typed in words, such as `fri 3` or `in 2d`, accepted wherever mxr asks for a time. Preview one with `mxr time`. See [time phrases](/reference/time-phrases/).
+
+## Email modes
+
+mxr's plan treats email as five apps sharing one inbox. See
+[Email is five apps at once](/guides/email-modes/) for the model and what
+ships today. Terms marked **(planned)** name parts of the plan that are not
+in a release yet; the rest exist today.
+
+**Mode** (planned): one of the five jobs email does, each with its own view,
+unit and verbs: Messages, To do, Updates, Reading and Archive. One email
+can be in several modes at once. Today the desk, Reading and Paper trail
+cover parts of these jobs.
+
+**Messages** (planned): the mode for people you are in conversation with,
+one row per person with their conversations as topics inside. Today's
+nearest features are the desk's You owe and Waiting on lanes, `mxr owed`
+and Focus & reply.
+
+**To do** (planned): the mode for things you must act on, each titled as
+an instruction ("Pay council tax") with a due date and an act-by date.
+Today's nearest features are promises (`mxr commitments`) on the desk's
+Due lane and calendar invites.
+
+**Updates** (planned): the mode for notifications, shown as a briefing by
+source in fixed digests and let go in one key. Today Paper trail and
+deliveries hold this mail.
+
+**Reading** (mode): the planned mode for newsletters and posts you chose,
+with a Later shelf. It grows out of today's Reading place, which exists.
+
+**Archive** (mode, planned): records such as receipts, orders and bookings,
+with an answer box that returns the field you asked for. Not the same as
+the archive action, which removes mail from your provider's inbox.
+
+**Now** (planned): the front page across the modes, at most ten items in
+four fixed sections. The desk is its first version.
+
+**Inbox**: everything, in arrival order. Under the modes plan it stays as
+a lens over all mail, not a mode.
+
+**Handoff** (planned): passing an item from one mode to the next, such as
+making a to-do from a message (`t`) or letting a delivered parcel's order
+file itself in Archive. The toast names where the item went.
+
+**Done here** (planned): finishing an item in one mode without clearing it
+from the others. The provider archive happens when the last mode lets go.
+Today's **Done** on the desk archives at once.
+
+**Reason**: the line that says why an item is where it is. Today
+`mxr why MESSAGE_ID` prints the place and the rule. Under the plan every
+item in every mode carries one, naming the rule, your decision or the
+model.
+
+**Correction**: telling mxr an item is in the wrong place. Today you
+correct a sender with `mxr sender kind`. Corrections per email are
+planned.
+
+**Fast tier** (planned): model work that touches every incoming message,
+such as deciding its mode. Runs on your local model by default; a cloud
+model only with your explicit opt-in and your own API key.
+
+**Smart tier** (planned): model work that needs care, such as pulling the
+amount and deadline from a bill. It sees only mail already placed in To
+do, Archive or Messages. Can step up (**escalate**) to a stronger model
+when its answer fails the check that amounts and dates appear verbatim.
+
+**Index recipe** (planned): what each mode indexes for semantic search,
+such as one fact per Updates message or each message's new text in
+Messages. Today one recipe covers all mail.
+
+**Let go** (planned): Updates' and Reading's word for done. Letting go of
+a digest acts on exactly the set the preview listed.
+
+**Act-by date** (planned): the last day you can act and still meet a due
+date, such as three working days before a bill paid by bank transfer.
+To do surfaces an item ahead of its act-by date, not its due date.
+
+**Record** (planned): Archive's unit, built from one or more emails: an
+order's confirmation, dispatch and delivery are one record.
 
 ## Pre-send safety
 
@@ -149,4 +228,4 @@ deterministic profile fallbacks may return no citations. See [archive intelligen
 - [Architecture](/guides/architecture/): the daemon-and-clients model in depth
 - [CLI concepts](/reference/cli/concepts/): query operators, search modes, output formats
 - [Automation contract](/guides/automation-contract/): the scriptable surface
-- [Decision log](https://github.com/planetaryescape/mxr/blob/main/docs/blueprint/15-decision-log.md): D001-D048, why mxr is the way it is
+- [Decision log](https://github.com/planetaryescape/mxr/blob/main/docs/blueprint/15-decision-log.md): D001 to D114, why mxr is the way it is

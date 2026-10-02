@@ -109,6 +109,7 @@ export default defineConfig({
           label: 'Concepts',
           items: [
             { label: 'Why mxr', slug: 'guides/why-mxr' },
+            { label: 'Email Is Five Apps', slug: 'guides/email-modes' },
             { label: 'Architecture', slug: 'guides/architecture' },
             { label: 'Security & Privacy', slug: 'guides/security-and-privacy' },
             { label: 'Glossary', slug: 'guides/glossary' },

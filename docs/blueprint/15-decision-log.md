@@ -733,3 +733,122 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 **Considered**: Permanent dismissal, so a thread marked Done never returns.
 
 **Why**: A new message is new information, and a permanent Done would hide replies that need an answer. To stop hearing from a sender, the screener (Deny, Feed, Paper trail) is the tool, not Done. Settled with D103 and D104 when the open questions in `21-web-experience.md` were closed. (2026-10-02)
+||||||| parent of c288f9bc (docs: add email modes model, plan, D107-D111 and rubric v3)
+
+## D107: Email is five modes, each with its own verb
+
+**Chosen**: mxr treats email as five apps sharing one inbox: Messages (reply or start a conversation), To do (do it, schedule it, tick it off), Updates (glance and let go), Reading (read now or later, or unsubscribe) and Archive (file it, find it later). Each mode has its own verbs and rhythm. The full model is [22-email-modes.md](22-email-modes.md).
+
+**Considered**: Keeping the desk plus places (Reading, Paper trail) and adding more places; a single smart inbox ranked by importance.
+
+**Why**: Each kind of mail already has its own action, and the current app makes the user apply the wrong one: a sign-in alert from a person-looking sender sits in You owe as if it needed a reply, and admin with a deadline has no home at all. Places were organised by who sent the mail; modes are organised by what the user does with it.
+
+**Trade-offs accepted**: Five modes plus Inbox is more navigation than one list. The desk stays as the one place to start the day, so a user who never opens a mode still sees what needs them.
+
+## D108: One email can be in several modes, and handoff carries it forward
+
+**Chosen**: A message is in every mode whose aspect it has (the conversation, the task and its deadline, the fact, the article, the record). Each mode keeps its own done state, with the `desk_dismissals` watermark, so done in one mode never clears another. Handoff passes an item to the next mode ("move to To do" after replying, "this needs me" from Updates). The provider archive happens only when the last mode holding the message lets it go.
+
+**Considered**: One mode per message, chosen by precedence (as desk lanes dedupe today); archive as the shared done for every mode.
+
+**Why**: An accountant's "send the signed form by Friday" is a conversation and a deadline at once. Forcing one mode loses one of them, and a shared archive means replying would silently drop the to-do.
+
+**Trade-offs accepted**: Membership is a computed set, not a label, so a client can't read it from the provider. The delayed provider archive can surprise someone who checks Gmail directly; Inbox (everything) shows what modes still hold.
+
+## D109: The rail is the five modes, with Inbox as the everything view
+
+**Chosen**: The web and TUI rail lists Now (the desk), Messages, To do, Updates, Reading and Archive, then Inbox in arrival order. Reply queue, Waiting on and Owed become filters in Messages. Paper trail splits into Updates and Archive. Snoozed becomes a state each mode shows, with the cross-mode list under More. Screener, Invites, Deliveries and Subscriptions move into their mode or under More.
+
+**Considered**: Keeping the current rail (`Sidebar.tsx`: Desk, Inbox, Reply queue, Waiting on, Snoozed, Reading, Paper trail, Screener); adding To do as one more entry.
+
+**Why**: The current rail is a Gmail-style folder list organised by mail mechanics (flags, labels, timers). Users navigate by what they want to do. Adding To do alone would make nine entries and leave the mechanics in charge.
+
+**Trade-offs accepted**: Existing routes and keys (`g q`, `g w`, `g p`) move or redirect, and the keymap parity test must change in the same release for web and TUI.
+
+## D110: The desk is a cross-mode now view, not a sixth place
+
+**Chosen**: The desk shows people you owe a reply (from Messages), to-dos and promises due soon (from To do), and one Updates digest a day (amended by D112: two cuts a day, with the latest as one card). It holds no item of its own: acting on a row acts in the row's mode. New from people moves into Messages.
+
+**Considered**: Retiring the desk in favour of opening on Messages; keeping New from people on the desk.
+
+**Why**: Starting the day needs one answer to "what needs me now?" across modes (D095 still holds). A desk that owns items would be a sixth mode with its own rules, which is how owed and desk counts drifted apart.
+
+**Trade-offs accepted**: The desk's lanes become a composition of mode queries, so its speed budget (D1, under 300 ms warm) now covers to-do and digest reads too.
+
+## D111: Classification is rules first, then the user's own model, with a reason on every item
+
+**Chosen**: Placement runs in layers. Sender rules (`mail_kind::classify`) and screener dispositions set the base mode: Allow is Messages, Feed is Reading, PaperTrail is Updates or Archive, Deny is no mode. Deterministic message rules add aspects (admin verbs, due phrases, schema.org, receipts, invites). The user's configured model then decides what rules can't: whether there is a task, its due words, whether it's a notification. Due words must appear verbatim and are resolved by `natural_time`, never by the model. Corrections are stored per message and per sender and beat every layer. Every item says why it's there and what decided it. Background classification uses a loopback endpoint unless the user opts in for this feature explicitly.
+
+**Considered**: Rules only (D097 as it stood); a model for everything.
+
+**Why**: D097 kept kinds rule-based because users abandon opaque categories they can't fix, and that stays true for the sender's base mode. But sender rules can't see that one message from a person is a sign-in alert, or that a billing email has a deadline; those are message-level facts. Layering keeps every placement explainable and correctable, keeps working with AI off (the default), and keeps mail on the user's machine unless they configured otherwise (`GistPolicy::pin`, `llm_endpoint_is_local`, `relationship_data_allowed`).
+
+**Trade-offs accepted**: This amends D097 and the "no automatic LLM classification" line in `21-web-experience.md` for message aspects only. A local model is slower and less accurate than a hosted one, so accuracy is measured on BK's real mail (counts only) before model placement counts toward the rubric.
+
+## D112: Each mode shows an email its own way, not as a list of subject lines
+
+**Chosen**: Each mode has its own unit, extracted data, up-front actions, rhythm and end state, set by the research in `docs/research/email-modes/`: Messages shows a person with topics inside (group threads keyed by thread, CC-only threads in Updates); To do shows an instruction (verb plus object) on a runway to its act-by date with one labelled button; Updates shows a briefing by source in two fixed cuts a day (08:00, 16:30), with Now showing the latest cut as one card; Reading shows readable items in an edition with a Later shelf; Archive shows records under an answer box. One key map covers Now and every mode, with `e` as done here everywhere. This amends D110's "one Updates digest a day". The full design is [22-email-modes.md](22-email-modes.md).
+
+**Considered**: Five modes that each list emails with the same row (sender, subject, snippet) and only differ by membership; one digest a day.
+
+**Why**: BK: "otherwise we'll end up with 5 good categorizations that just show lists again like traditional emails." Taskmaster found a marker that says "something to do" without saying what did not help planning; HEY, Shortwave and SaneBox fold notifications to one row per source; refinding studies favour records found by search over messages filed by hand. Fitz, Kushlev et al. found a few fixed batches a day helped where hourly did nothing, and a parcel update is stale by the next morning.
+
+**Trade-offs accepted**: Five views and their extractors are more code than five filters, and each view's quality depends on extraction accuracy, which is measured on BK's real mail (rubric v3) before the shape counts as done.
+
+## D113: Each mode indexes the part of the email it cares about
+
+**Chosen**: Content units are extracted once per message (new text without quotes and signatures, article or link sections, record fields, attachment text, the gist). A typed, versioned recipe per mode in `crates/semantic` picks units, windowing and a context prefix: Messages indexes each message's new text prefixed with person and topic, plus the gist; To do one instruction chunk plus the body; Updates one fact chunk per message, deduplicated by template; Reading section-aware chunks and link items, embedded lazily; Archive a field chunk plus PDF text, leaving identifiers to BM25. Chunks are tagged with every mode they serve, embeddings are keyed by a hash of the chunk text, a baseline (header plus new text) is indexed at sync and enriched after classification, and messages carry recipe and classification versions so only stale ones reindex through the resumable index job. One embedding model and one ANN index per profile stay; search gains a mode filter beside `allowed_source_kinds`.
+
+**Considered**: Keeping one recipe for all mail (`build_chunks`: a header chunk plus 120-word windows with 30-word overlap); a separate index per mode; recipes as user config from the start.
+
+**Why**: One recipe re-embeds quoted history in every reply, splits a record's fields across windows, and spends embedding work on newsletters that are never read. Keying embeddings by text means a message in several modes costs one embedding per distinct chunk. A table in code can be versioned and tested; config can follow once the recipes settle.
+
+**Trade-offs accepted**: Two passes per message (baseline, then enrichment) and a version stamp to track. Each recipe replaces today's chunking only when a local retrieval eval on BK's mail (top-5 hit rate, counts only) shows it at least as good.
+
+## D114: Model work runs in a fast tier and a smart tier
+
+**Chosen**: Bulk, low-nuance work (mode classification, Updates facts, baseline index extras) runs on the fast tier, the local model by default. Nuanced extraction (To do fields, Archive record fields, Messages' ask) runs on the smart tier: the user's cloud model when they configured one with their own API key, otherwise local with the fields marked unchecked. Only mail already classified into that mode reaches the smart tier. Config is `llm.tiers.fast` and `llm.tiers.smart`, each an `LlmOverrideConfig` inheriting from `[llm]`, with a fixed feature-to-tier table in code; `llm.overrides` stays for the features it covers today, with precedence override, then tier, then base. Each tier is pinned per request as `GistPolicy::pin` does; a cloud tier needs an API key, and enabling it names the tier and what it sends. Amounts and dates must appear verbatim and are checked in code, dates go through `natural_time`, the provenance chip names the model, and results are cached by content hash. Sign in with ChatGPT is parked until OpenAI publishes data terms for plan usage (`docs/issues/chatgpt-plan-usage-data-terms.md`).
+
+**Considered**: One model for everything; a per-feature override for each new mode feature; Sign in with ChatGPT as the cloud credential.
+
+**Why**: BK decided this on 2026-10-02. Classification reads every message, so it belongs on a local model; extraction of amounts, deadlines and links is where a stronger model pays, and restricting it to mail already in To do, Archive or Messages keeps the cloud's share small and bounded. A fixed table keeps the privacy story explainable; per-feature overrides for every new feature would multiply settings nobody tunes.
+
+**Trade-offs accepted**: Users without a cloud model get local extraction with more unchecked fields. The default tier per task is not fixed in advance: `mxr modes eval --extract` compares local and cloud on the user's own mail and records counts, not content. A user may run both tiers in the cloud with no local model (BK, 2026-10-02): `[llm]` on a cloud endpoint plus `allow_cloud_background_classification = true`, with the opt-in stating that every incoming message is sent. No mode feature may require a local LLM server.
+
+## D115: Every mode item has a relevancy window derived from its content
+
+**Chosen**: Each item in To do, Updates, Reading and Now carries `relevant_from`, `relevant_until` and a `window_source`. The end comes from code, never a model: schema.org (`Event.endDate`, `Offer.validThrough`, `ParcelDelivery.expectedArrivalUntil`, `Invoice.paymentDueDate`), ICS `DTEND`, Gmail's `availabilityEnds`, or quoted words resolved by `natural_time`, with a per-kind default table (a one-time code 10 minutes, a verify link 3 days, a sign-in alert 2 days, a bill due plus 14 days, an offer 7 days) configurable per kind and per sender. Past its window an item leaves To do, Updates and Now on its own: to-dos move to an `expired` state, facts drop out of cuts and never break through, and record-worthy items file to Archive. Expiry never touches a to-do the user made or edited, never archives at the provider, and is shown as one "N expired since you last looked" line with restore, never a badge. Messages don't expire; the turn decays to Quiet. Nothing past its window enters Now. The design is "Items have a relevancy window, and the first run uses it" in [22-email-modes.md](22-email-modes.md).
+
+**Considered**: One age window for everything (the desk's `DESK_WINDOW_DAYS = 30` today); no expiry, with "was due" rows and a reschedule-all button as Todoist does; letting a model judge staleness.
+
+**Why**: BK, 2026-10-02: notifications "don't dismiss even after the thing is clearly stale... Notifications have a relevancy period." His store has 63 of 83 active deliveries with no event for over 30 days, because the active list has no age bound, and 50 unanswered RSVP requests, all for events already over. Android (`setTimeoutAfter`), ActivityKit (`staleDate`), Wallet (`expirationDate`, with expired passes hidden to a list you can unhide) and Gmail's deal annotations all put the end on the item; iOS notifications have no end time, which is why stale alerts linger. One age window is too long for a code and too short for a passport. Dates from code keep D111's rule that models don't invent dates.
+
+**Trade-offs accepted**: The defaults without a source are judgement and will be wrong for some senders, so restores from the Expired list are counted to tune them. One timestamp per mode is stored to compute "since you last looked". A bill that expires unpaid relies on the biller's next email to reopen it.
+
+## D116: The first run classifies newest first, lets windows clear history, and gives the undated rest one bounded catch-up
+
+**Chosen**: Classification reads a queue ordered by message date, not sync order; the last 14 days run first through rules and the fast tier so Now is useful within minutes, then history runs newest to oldest in the background with progress. Windows apply during classification: an item already past its window is expired at birth, never surfaced and summarised in one line. Open-ended items (undated to-dos and promises, owed replies) from the last 14 days form one catch-up batch shown once, at most 25 rows, with keep or let go per row and "let go of all" behind a dry-run preview that equals the commit; older open-ended items are expired at birth. Beyond 90 days history is rules only (`modes.model_history_days`), and smart-tier record fields for older mail run lazily. Every item keeps a stable claim (`dedup_key`, `surfaced_at`, `expired_at`), so a rule or recipe change re-evaluates fields without re-surfacing anything, and new finds in old mail pass the same window and cap.
+
+**Considered**: Classifying everything and letting the user triage it; HEY's fresh start (no history in the modes at all); Superhuman's Get Me To Zero (the user picks a cut-off and archives the rest); running the fast tier over all history.
+
+**Why**: BK, 2026-10-02: "when we do the first classification I imagine there'll be tonnes of incoming todos and all that of old things." His store has 1,842 open promises, 93% undated, 90 of them from the last 14 days; as specified, `ListTodos` would open with all of them. Every product that handles a backlog bounds the window (HEY Screener 90 days, Superhuman a chosen time frame, Sunsama four days), saves what matters by a cheap signal, and makes the bulk action reversible; Todoist's own writer abandoned the app at around 50 overdue tasks. Over 90% of email replies come within a day (Kooti et al., WWW 2015), so an undated item older than two weeks is rarely still live. Model output on mail past its window would be discarded, so spending it there is waste; 90 days on BK's store is 4,605 messages against 110,285. Linear skips already-imported issues on re-import, the precedent for re-runs never re-flooding.
+
+**Trade-offs accepted**: A live undated item older than 14 days is missed until a new message revives it or the user restores it from the Expired list. The IMAP adapter must page newest first, since its initial sync fetches ascending UIDs and returns the folder in one batch today. The cap of 25 is judgement, and on BK's mail undated promise precision decides whether the catch-up fits under it.
+
+## D117: The open modes questions are decided, so building can start
+
+**Chosen**: The values calls left in blueprint 22 are decided as listed in its "Decisions made on BK's behalf" section.
+- **Money and links:** a strict pay-link gate, and no weekly money total.
+- **Archive and Reading:** archive on last done stays on; highlights go to Archive search and a Markdown export.
+- **Accuracy and identity:** a measured bar for the To do badge, and manual person merge with suggestions.
+- **Interaction and privacy:** Got it stays on `.`; Reading engagement tracking is governed by `MXR_ACTIVITY`.
+- **Expiry and first run:** promises and bills never expire silently; the catch-up window is asked once, defaulting to 14 days; the expired line stays.
+- **Models and indexing:** GPT-6.1 Sol as the default escalation model, no TypeSafe Jev, and index recipes in code.
+- **Deferred or declined:** Gmail offline deletion is deferred, and the Sign in with ChatGPT SDK is not built.
+
+**Considered**: Leaving them open for BK.
+
+**Why**: BK, 2026-10-02: "review and decide for me, I just want a working app." Each choice follows the research notes. Where they were silent, it takes the option that keeps data and asks less of the user.
+
+**Trade-offs accepted**: Several defaults (the badge bar, the 14-day catch-up, Sol) are judgement calls that later use may overturn; each is a config value or one line in the plan.
+

@@ -3,11 +3,10 @@ title: LLM features (summarize, draft assist)
 description: Configure Ollama, LM Studio, OpenAI, or any OpenAI-compatible endpoint for thread summarisation and draft assist in mxr.
 ---
 
-## What's in scope
+## Every model feature uses the backend you configure here
 
-This page covers how to **configure** the LLM backend that powers every
-synthesis surface in mxr. The features themselves each have their own
-guide:
+Set up the model backend once, under `[llm]`, and every synthesis feature
+in mxr uses it. Each feature has its own guide:
 
 | Feature | Guide | What the LLM does |
 |---|---|---|
@@ -20,6 +19,8 @@ guide:
 | `mxr decisions rebuild` | [Archive intelligence](/guides/archive-intelligence/#the-decision-log--mxr-decisions) | extract explicit decisions from threads |
 | `mxr briefing thread` / `recipient` | [Briefings and loop-in](/guides/briefings-and-loop-in/) | dormant-thread / long-gap recap from the local thread transcript or relationship baseline |
 | delivery extraction | [Deliveries](/guides/deliveries/) | confirm a shortlisted email is a real shipment, extract merchant / carrier / items / ETA |
+| row and reader gists | [Clear the desk](/guides/desk/#see-what-each-row-asks) | one line on what a conversation is about and what it asks of you, with the ask quoted from the message |
+| `mxr triage` | [CLI: `mxr triage`](/reference/cli/triage/) | sort search results into action, FYI and routine, reusing the cached summary verdict |
 
 Every feature has an explicit disabled path when `[llm] enabled = false`.
 Pure LLM commands such as `mxr summarize` and `mxr draft-assist` return
@@ -47,9 +48,12 @@ every major option:
 | **Mistral La Plateforme** | `https://api.mistral.ai/v1` | `MISTRAL_API_KEY` | |
 | **Anthropic via OpenAI-compatible proxy** | depends | depends | |
 
-mxr's local-first stance: the recommended config uses Ollama or LM
-Studio so completions never leave your machine. Cloud endpoints are
-opt-in via the same single config block.
+mxr's local-first stance: model features are off until you set
+`[llm] enabled = true`, and the default endpoint is Ollama on
+`localhost`, so completions never leave your machine. A cloud endpoint is
+opt-in through the same config block, with an API key you supply. mxr ships
+no key and runs no relay: requests go straight from the daemon to the
+endpoint you name.
 
 ## Configuration
 
@@ -88,6 +92,81 @@ mxr llm status --format json
 Config reloads rebuild the runtime provider, so changing `[llm]` and
 reloading the daemon account/config runtime switches the model without
 restarting the process.
+
+## Know what each request sends, and where
+
+The endpoint decides where your mail goes. With a local endpoint nothing
+leaves your machine. With a cloud endpoint, the text below goes to that
+provider, and that includes mail other people sent you, so use a provider
+whose API data terms cover it. A key from the provider's API console is
+the path mxr supports; mxr has no sign-in with a consumer chat
+subscription.
+
+| Work | When it runs | What a cloud endpoint receives |
+|---|---|---|
+| `mxr summarize`, `mxr triage`, `mxr draft-assist`, `mxr draft` and `mxr draft refine` | When you run them | The thread the command works on |
+| Row gists | In the background, for conversations from people that a client shows | That conversation's messages. Newsletters and automated mail are never sent |
+| Delivery confirmation | After sync, for mail the local heuristic shortlisted as shipping | That message's sender, subject and cleaned body |
+| Relationship summaries, commitments, voice matching, answer coverage, briefings, decisions, experts, `mxr ask` | In the background or on demand | Nothing: these are refused for a cloud endpoint unless `llm.allow_cloud_relationship_data = true` |
+| Drafts | When you ask for one | The conversation being drafted. Your other emails and habits only with `llm.allow_cloud_relationship_data = true` |
+
+Prompts that carry mail wrap it as untrusted data and tell the model it is
+not an instruction. Check what the running daemon uses:
+
+```bash
+mxr llm status --format json
+```
+
+`base_url` shows the endpoint. A `localhost`, `127.x.x.x` or `::1` host is
+local; anything else is cloud.
+
+## Send one feature to a different model
+
+Each feature can override `[llm]` on its own. Fields you leave out
+inherit from `[llm]`. This keeps every feature on your local model except
+thread summaries, which go to a cloud model:
+
+```toml
+[llm.overrides.summarize]
+base_url = "https://api.openai.com/v1"
+model = "gpt-5-mini"
+api_key_env = "OPENAI_API_KEY"
+```
+
+The keys are `summarize` (which also covers gists and `mxr triage`),
+`relationship_summary`, `commitments`, `draft_assist`, `draft_new`,
+`draft_refine`, `voice_match`, `humanize_rewrite`, `answer_coverage`,
+`archive_ask`, `decision_log`, `briefing`, `expert` and
+`delivery_extraction`. The relationship rule above still applies to an
+override that points at a cloud endpoint.
+
+## Fast and smart tiers are planned for the email modes
+
+The [email modes](/guides/email-modes/) plan adds model work that reads
+more of your mail, so it splits that work into two tiers instead of one
+model for everything. None of this is in a release yet.
+
+- `llm.tiers.fast` will place incoming mail in a mode. It reads every new
+  message, so it runs on a loopback endpoint unless you point it at a cloud
+  endpoint and set `allow_cloud_background_classification = true`. A cloud
+  model you set up for drafting will never start classifying all your mail
+  on its own.
+- `llm.tiers.smart` will pull out fields that need care, such as the amount
+  and deadline of a bill. It only sees mail already in To do, Archive or
+  Messages. Without a cloud model it runs locally and marks its fields
+  unchecked.
+- `escalate`, an optional stronger model on the same provider and key, will
+  take over when the smart model's answer fails the check that amounts and
+  dates appear word for word in the email.
+- A cloud tier will need an API key (`api_key_env`), so cloud work stays
+  under the provider's API data terms.
+- Running both tiers in the cloud, with no local model server, will be a
+  supported setup. Turning it on will say plainly that the text of every
+  incoming message goes to that provider.
+
+`llm.overrides` keeps working when the tiers land. The design is in
+[22. Email is five apps](https://github.com/planetaryescape/mxr/blob/main/docs/blueprint/22-email-modes.md)
+and decision D114.
 
 ## Recommended local models
 

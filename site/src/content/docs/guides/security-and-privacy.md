@@ -22,7 +22,53 @@ Mail syncs from the provider into SQLite on your machine. Search runs against th
 - Provider-side mutations like archive, trash, labels, and spam
 - Browser handoff for HTML or unsubscribe pages when needed
 
-That is the intended boundary. The network is for talking to your provider, not to a hosted mxr service.
+There is no mxr-operated service in that list. Four other things can reach the network, each because you configured or asked for it:
+
+- The model endpoint under `[llm]`, when you turn model features on and point them at a cloud provider.
+- The semantic search model weights, downloaded once from Hugging Face unless `search.semantic.auto_download_models = false`. Embedding runs on your CPU after that.
+- Remote images in HTML mail, unless `render.html_remote_content = false` (the web app has its own Remote images toggle).
+- The unsubscribe endpoint a sender chose, when you run `mxr unsubscribe`.
+
+[For agents](/guides/for-agents/#what-stays-local-what-doesnt) has the config that turns the last three off.
+
+## Model features are off by default and go only where you point them
+
+`[llm] enabled` defaults to `false`, and the default endpoint is a model server on `localhost`. With a local endpoint, prompts stay on your machine: mxr calls a loopback endpoint directly, ignoring `HTTP_PROXY`, and never follows a redirect from an LLM endpoint.
+
+A cloud endpoint receives the mail each feature works on, and that is mail other people wrote to you. Use a provider whose API data terms cover that mail, with an API key you supply in `api_key_env`. mxr ships no key and runs no relay. Besides the commands you run and the threads you open, two background jobs reach a cloud endpoint without a separate opt-in: row gists for conversations from people that a client shows, and confirmation of mail the delivery heuristic shortlisted. Features that carry your wider history (relationship summaries, commitments, voice matching, answer coverage, briefings, decisions, experts and `mxr ask`) are refused on a cloud endpoint unless you set `llm.allow_cloud_relationship_data = true`. [LLM features](/guides/llm-features/#know-what-each-request-sends-and-where) lists what each request sends.
+
+```bash
+mxr llm status --format json
+```
+
+`enabled` and `base_url` say whether model features are on and where they go.
+
+The [email modes](/guides/email-modes/) plan adds background classification of every incoming message. That work is planned, not shipped, and it will run on a loopback endpoint unless you point its tier at a cloud endpoint and set `allow_cloud_background_classification = true`. Running everything in the cloud with your own key will be supported, and turning it on will say that the text of every incoming message goes to that provider.
+
+## Deleting an email removes most of what mxr derived from it
+
+When your provider deletes or expunges a message and mxr syncs that change, the daemon deletes the local message. SQLite cascades remove what hangs off it, and sync removes it from the keyword index:
+
+| Removed with the message | Left behind today |
+|---|---|
+| Body, headers, labels, flags, snooze and reply-later state, pins, invite data, reply timing pairs | Thread summaries, row gists and recipient briefings in the local cache |
+| Keyword (Tantivy) index entry | Extracted promises (`mxr commitments`) and decisions (`mxr decisions`), which are still listed |
+| Semantic chunks and embeddings in the database | The in-memory semantic index until its next rebuild or a daemon restart |
+| The message's link to a delivery | The delivery row itself |
+| The cached triage verdict | Attachment files you opened, under the attachment cache |
+| | Contact records and relationship summaries built from that mail |
+
+Moving mail to Trash is not a delete: on Gmail the message keeps its derived data until Gmail empties the trash and reports the deletion. mxr has no command that deletes a message permanently.
+
+To remove everything at once, preview the reset first:
+
+```bash
+mxr reset --hard --dry-run
+```
+
+A hard reset deletes the database, both indexes, the model cache, logs, and the attachment cache when it lives inside the data directory. It keeps `config.toml` unless you add `--including-config`, and it leaves `secrets.toml` alone either way.
+
+The email modes plan makes "deleting an email deletes everything derived from it" a rule for every new store, and the gaps above are logged as work to close.
 
 ## Guardrails that exist today
 

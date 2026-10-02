@@ -17,6 +17,14 @@ receipts and notifications are not on the desk; they wait in
 [Reading and Paper trail](/guides/reading-and-paper-trail/). The exact lane
 rules are in the [desk reference](/reference/desk-and-places/#lanes).
 
+:::note
+The desk is the first version of Now, the front page of the planned
+[email modes](/guides/email-modes/). Under that plan Now draws from each
+mode, New from people moves into Messages, and Done in one mode no longer
+archives mail another mode still holds. None of that has shipped; the
+lanes below are how the desk works today.
+:::
+
 ## Open the desk
 
 The web app opens on the desk (`mxr web`). In the TUI, **Desk** is the first

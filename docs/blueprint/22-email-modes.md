@@ -1621,5 +1621,8 @@ rules above; D117 records them.
   user config.
 - **Gmail mail deleted while offline.** Deferred until after phase 1. The
   design is in `docs/issues/deletion-clears-derived-data.md`.
+- **`mxr demo` on first run.** Offered only when no account is set up yet. A real mailbox goes straight to its own first run.
+- **Dismissed teaching cards.** The daemon stores dismissals, so a card dismissed in the web app stays dismissed in the TUI.
+- **Who takes the five-second check.** BK and two people new to mxr, during dogfooding. Until they have, the independent grader runs it on the demo mailbox.
 - **Sign in with ChatGPT SDK.** Not built. See
   `docs/extractable-crates/14-chatgpt-sign-in-sdk.md`.

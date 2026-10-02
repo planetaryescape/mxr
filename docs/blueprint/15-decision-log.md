@@ -733,7 +733,6 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 **Considered**: Permanent dismissal, so a thread marked Done never returns.
 
 **Why**: A new message is new information, and a permanent Done would hide replies that need an answer. To stop hearing from a sender, the screener (Deny, Feed, Paper trail) is the tool, not Done. Settled with D103 and D104 when the open questions in `21-web-experience.md` were closed. (2026-10-02)
-||||||| parent of c288f9bc (docs: add email modes model, plan, D107-D111 and rubric v3)
 
 ## D107: Email is five modes, each with its own verb
 

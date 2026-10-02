@@ -1,7 +1,7 @@
 use super::label_resolve::{build_label_name_index, resolve_label_names};
 use super::search_filter::{
-    ast_contains_owed_reply, has_negated_semantic_terms, matches_structured_filters,
-    semantic_query_plan,
+    ast_asks_for_trash_or_spam, ast_contains_owed_reply, has_negated_semantic_terms,
+    matches_structured_filters, semantic_query_plan,
 };
 use super::{build_execution, ExecutionExplainInput, SearchExecution};
 use crate::state::AppState;
@@ -713,12 +713,18 @@ pub(super) async fn filter_dense_hits(
         .map(|envelope| (envelope.id.clone(), envelope))
         .collect::<HashMap<_, _>>();
 
+    let include_trash_and_spam = ast_asks_for_trash_or_spam(ast);
     let mut results = Vec::new();
     for hit in hits {
         let Some(envelope) = envelopes_by_id.get(&hit.message_id) else {
             continue;
         };
         if account_id.is_some_and(|account_id| &envelope.account_id != account_id) {
+            continue;
+        }
+        // Trashed mail keeps its vectors so untrash needs no re-embed, but a
+        // meaning match from the bin or from spam is noise unless asked for.
+        if !include_trash_and_spam && envelope.is_trash_or_spam() {
             continue;
         }
         if !matches_structured_filters(ast, envelope) {
@@ -800,6 +806,62 @@ mod owed_reply_filter_tests {
             label_provider_ids: vec![],
             keywords: std::collections::BTreeSet::new(),
         }
+    }
+
+    #[tokio::test]
+    async fn semantic_hits_leave_out_trash_and_spam_unless_the_query_asks() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let mut envelopes = Vec::new();
+        for flags in [
+            MessageFlags::empty(),
+            MessageFlags::TRASH,
+            MessageFlags::SPAM,
+        ] {
+            let envelope = Envelope {
+                flags,
+                ..envelope_inbound(&account_id, &ThreadId::new(), "alice@example.com", 1)
+            };
+            state.store.upsert_envelope(&envelope).await.unwrap();
+            envelopes.push(envelope);
+        }
+        let hits = || {
+            envelopes
+                .iter()
+                .map(|envelope| SemanticHit {
+                    message_id: envelope.id.clone(),
+                    score: 0.9,
+                    chunk_id: mxr_core::id::SemanticChunkId::new(),
+                    source_kind: mxr_core::types::SemanticChunkSourceKind::Body,
+                    snippet: String::new(),
+                })
+                .collect::<Vec<_>>()
+        };
+        let kept = |query: &str| {
+            let state = &state;
+            let hits = hits();
+            let query = query.to_string();
+            async move {
+                let ast = mxr_search::parse_query(&query).unwrap();
+                filter_dense_hits(state, &ast, None, hits)
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|result| result.message_id)
+                    .collect::<Vec<_>>()
+            }
+        };
+
+        assert_eq!(kept("invoice").await, vec![envelopes[0].id.as_str()]);
+        assert_eq!(
+            kept("in:trash invoice").await,
+            vec![envelopes[1].id.as_str()]
+        );
+        assert_eq!(
+            kept("in:spam invoice").await,
+            vec![envelopes[2].id.as_str()]
+        );
+        assert_eq!(kept("in:anywhere invoice").await.len(), 3);
     }
 
     /// The acceptance criterion from

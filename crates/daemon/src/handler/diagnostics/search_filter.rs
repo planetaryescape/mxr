@@ -29,6 +29,24 @@ pub(super) fn ast_contains_owed_reply(node: &QueryNode) -> bool {
     }
 }
 
+/// Whether the query asks for Trash or Spam (`in:trash`, `in:spam`,
+/// `in:anywhere`, or the label itself) outside a negation. Semantic results
+/// leave Trash and Spam out unless it does, as Gmail search does.
+pub(super) fn ast_asks_for_trash_or_spam(node: &QueryNode) -> bool {
+    match node {
+        QueryNode::Filter(FilterKind::Trash | FilterKind::Spam | FilterKind::Anywhere) => true,
+        QueryNode::Label(label) => {
+            label.eq_ignore_ascii_case(system_labels::TRASH)
+                || label.eq_ignore_ascii_case(system_labels::SPAM)
+        }
+        QueryNode::And(left, right) | QueryNode::Or(left, right) => {
+            ast_asks_for_trash_or_spam(left) || ast_asks_for_trash_or_spam(right)
+        }
+        // `-in:trash` names trash only to leave it out.
+        _ => false,
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct SemanticQueryPlan {
     pub text: String,
@@ -370,6 +388,24 @@ fn push_source_kind(
 mod tests {
     use super::*;
     use mxr_search::parse_query;
+
+    #[test]
+    fn only_a_positive_trash_or_spam_mention_asks_for_them() {
+        for query in [
+            "in:trash invoice",
+            "invoice in:spam",
+            "in:anywhere invoice",
+            "label:TRASH invoice",
+            "invoice OR in:trash",
+        ] {
+            let ast = parse_query(query).unwrap();
+            assert!(ast_asks_for_trash_or_spam(&ast), "{query}");
+        }
+        for query in ["invoice", "invoice -in:trash", "in:inbox invoice"] {
+            let ast = parse_query(query).unwrap();
+            assert!(!ast_asks_for_trash_or_spam(&ast), "{query}");
+        }
+    }
 
     #[test]
     fn semantic_query_plan_uses_all_sources_for_unfielded_text() {

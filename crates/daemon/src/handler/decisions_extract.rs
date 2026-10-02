@@ -213,13 +213,22 @@ pub(crate) async fn rebuild(
 ) -> Result<RebuildSummary, String> {
     let cutoff = chrono::Utc::now() - chrono::Duration::days(since_days as i64);
     let cutoff_secs = cutoff.timestamp();
+    // Threads with only Trash or Spam mail in the window are not sent to the
+    // model; `extract_thread` on one still works when asked for directly.
     let rows = sqlx::query(
         r#"SELECT DISTINCT thread_id
-           FROM messages
-           WHERE account_id = ? AND date >= ?"#,
+           FROM messages m
+           WHERE m.account_id = ? AND m.date >= ?
+             AND (m.flags & ?) = 0
+             AND NOT EXISTS (
+                 SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
+                 WHERE ml.message_id = m.id AND l.provider_id IN ('TRASH', 'SPAM'))"#,
     )
     .bind(account_id.as_str())
     .bind(cutoff_secs)
+    .bind(i64::from(
+        (mxr_core::MessageFlags::TRASH | mxr_core::MessageFlags::SPAM).bits(),
+    ))
     .fetch_all(state.store.reader())
     .await
     .map_err(|e| e.to_string())?;
@@ -577,6 +586,23 @@ mod tests {
             summary.skipped
         );
         assert_eq!(summary.errors, 0);
+    }
+
+    #[tokio::test]
+    async fn rebuild_does_not_send_trashed_threads_to_the_model() {
+        let (state, account, _, ids, stub) = fixture(r#"{"decisions":[]}"#).await;
+        for id in &ids {
+            state
+                .store
+                .move_to_trash(id, mxr_core::types::EventSource::User)
+                .await
+                .unwrap();
+        }
+
+        let summary = rebuild(&state, &account, 365).await.unwrap();
+
+        assert_eq!(summary.extracted + summary.skipped + summary.errors, 0);
+        assert_eq!(*stub.calls.lock().unwrap(), 0);
     }
 
     #[tokio::test]

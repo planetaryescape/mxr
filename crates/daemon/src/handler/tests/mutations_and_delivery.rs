@@ -719,6 +719,106 @@ async fn async_mutation_job_reports_progress_and_undo_ids_for_large_batch() {
     }
 }
 
+/// A batch mutation reindexes its messages in one search commit rather than
+/// one per message, and every message in the batch must still be refreshed.
+#[tokio::test]
+async fn batch_archive_reindexes_every_message_in_search() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let first_id = sync_and_get_first_id(&state).await;
+    let account_id = state
+        .store
+        .get_envelope(&first_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .account_id;
+
+    // upsert_envelope stores no label links, so attach INBOX explicitly.
+    let inbox = state
+        .store
+        .list_labels_by_account(&account_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|label| label.provider_id == "INBOX")
+        .expect("fake account has an INBOX label");
+
+    let mut ids = Vec::new();
+    let mut entries = Vec::new();
+    for i in 0..3 {
+        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .provider_id(format!("reindex-batch-{i}"))
+            .subject(format!("quarterlyreindex {i}"))
+            .label_provider_ids(vec!["INBOX".to_string()])
+            .build();
+        state.store.upsert_envelope(&envelope).await.unwrap();
+        state
+            .store
+            .set_message_labels(
+                &envelope.id,
+                std::slice::from_ref(&inbox.id),
+                mxr_core::EventSource::Sync,
+            )
+            .await
+            .unwrap();
+        ids.push(envelope.id.clone());
+        entries.push(mxr_search::SearchIndexEntry {
+            envelope: state
+                .store
+                .get_envelope(&envelope.id)
+                .await
+                .unwrap()
+                .unwrap(),
+            body: None,
+            reply_later: false,
+        });
+    }
+    state
+        .search
+        .apply_batch(mxr_search::SearchUpdateBatch {
+            entries,
+            removed_message_ids: Vec::new(),
+        })
+        .await
+        .unwrap();
+
+    let inbox_hits = |state: Arc<AppState>| async move {
+        let search = IpcMessage {
+            id: 9,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::Search {
+                query: "quarterlyreindex in:inbox".to_string(),
+                limit: 10,
+                offset: 0,
+                account_id: None,
+                mode: None,
+                sort: None,
+                explain: false,
+            }),
+        };
+        match handle_request(&state, &search).await.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::SearchResults { results, .. },
+            }) => results.len(),
+            other => panic!("expected SearchResults; got {other:?}"),
+        }
+    };
+    assert_eq!(inbox_hits(state.clone()).await, 3);
+
+    let archive = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
+            message_ids: ids,
+        })),
+    };
+    let result = assert_mutation_succeeded(handle_request(&state, &archive).await.payload);
+    assert_eq!(result.succeeded, 3);
+
+    assert_eq!(inbox_hits(state.clone()).await, 0);
+}
+
 #[tokio::test]
 async fn star_mutation_returns_an_undo_id() {
     let state = Arc::new(AppState::in_memory().await.unwrap());

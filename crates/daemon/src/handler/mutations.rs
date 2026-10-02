@@ -694,6 +694,11 @@ pub(super) async fn apply_mutation_batch(
     // touches the store.
     let mut succeeded_snapshots: Vec<UndoEntrySnapshot> = Vec::new();
     let mut failed_snapshots: Vec<UndoEntrySnapshot> = Vec::new();
+    // Every message the batch may have changed, reindexed together at the
+    // end. Each search commit also reloads the reader, so a commit per
+    // message made batch time grow with commit latency (about 30 ms a
+    // message in a debug build: 12 s of a 405-message archive job).
+    let mut touched_ids: Vec<mxr_core::MessageId> = Vec::new();
 
     let mut accounts = Vec::new();
     for (account_id, envelopes) in envelopes_by_account(state, mutation_message_ids(cmd)).await? {
@@ -773,6 +778,7 @@ pub(super) async fn apply_mutation_batch(
                     }
                 }
             };
+            touched_ids.push(envelope.id.clone());
             match applied {
                 Ok(()) => {
                     account_result.succeeded += 1;
@@ -802,6 +808,18 @@ pub(super) async fn apply_mutation_batch(
         }
 
         accounts.push(account_result);
+    }
+
+    // The store and the provider already hold the change, so a stale search
+    // index is not a failed mutation: reporting it as one would invite a
+    // retry of work that is done, and would drop the undo entry.
+    if let Err(error) = reindex_messages_in_search(state, &touched_ids).await {
+        tracing::warn!(
+            %error,
+            mutation_id,
+            messages = touched_ids.len(),
+            "failed to reindex mutated messages in search"
+        );
     }
 
     accounts.sort_by(|left, right| {
@@ -1511,7 +1529,7 @@ async fn restore_snapshot(
 
     // Refresh the Tantivy index so `mxr search label:inbox` (and friends)
     // see the restored state immediately. Mirror what
-    // `apply_mutation_to_envelope` does at the end of every mutation.
+    // `apply_mutation_batch` does at the end of every batch.
     reindex_message_in_search(state, &snapshot.message_id)
         .await
         .map_err(SnapshotError::Other)?;
@@ -1940,9 +1958,8 @@ async fn apply_mutation_under_guard(
             }
         }
     }
-    // Single point of search-index reconciliation: refresh the indexed envelope so
-    // queries (`mxr search ...`) see the new flags/labels immediately.
-    reindex_message_in_search(state, message_id).await
+    // Search is reindexed by `apply_mutation_batch`, once for the whole batch.
+    Ok(())
 }
 
 /// Dedup-aware provider mutation: skips the provider call if a row for
@@ -2007,42 +2024,49 @@ async fn reindex_message_in_search(
     state: &AppState,
     message_id: &mxr_core::MessageId,
 ) -> Result<(), String> {
-    let envelope = state
-        .store
-        .get_envelope(message_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    let Some(envelope) = envelope else {
-        // Message was removed locally (e.g. IMAP delete); drop from index.
-        return state
-            .search
-            .apply_batch(mxr_search::SearchUpdateBatch {
-                entries: Vec::new(),
-                removed_message_ids: vec![message_id.clone()],
-            })
+    reindex_messages_in_search(state, std::slice::from_ref(message_id)).await
+}
+
+/// Refreshes the indexed copy of each message from the store in one search
+/// commit, so queries (`mxr search ...`) see new flags and labels at once.
+async fn reindex_messages_in_search(
+    state: &AppState,
+    message_ids: &[mxr_core::MessageId],
+) -> Result<(), String> {
+    if message_ids.is_empty() {
+        return Ok(());
+    }
+    let mut batch = mxr_search::SearchUpdateBatch::default();
+    for message_id in message_ids {
+        let envelope = state
+            .store
+            .get_envelope(message_id)
             .await
-            .map_err(|e| e.to_string());
-    };
-    let body = state
-        .store
-        .get_body(message_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    let reply_later = state
-        .store
-        .is_reply_later(message_id)
-        .await
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
+        let Some(envelope) = envelope else {
+            // Message was removed locally (e.g. IMAP delete); drop from index.
+            batch.removed_message_ids.push(message_id.clone());
+            continue;
+        };
+        let body = state
+            .store
+            .get_body(message_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let reply_later = state
+            .store
+            .is_reply_later(message_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        batch.entries.push(mxr_search::SearchIndexEntry {
+            envelope,
+            body,
+            reply_later,
+        });
+    }
     state
         .search
-        .apply_batch(mxr_search::SearchUpdateBatch {
-            entries: vec![mxr_search::SearchIndexEntry {
-                envelope,
-                body,
-                reply_later,
-            }],
-            removed_message_ids: Vec::new(),
-        })
+        .apply_batch(batch)
         .await
         .map_err(|e| e.to_string())
 }

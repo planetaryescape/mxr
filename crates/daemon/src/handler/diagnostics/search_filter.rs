@@ -47,6 +47,22 @@ pub(super) fn ast_asks_for_trash_or_spam(node: &QueryNode) -> bool {
     }
 }
 
+/// Leaves Trash and Spam out of a query that does not ask for them, as
+/// Gmail search does. One rewrite, so the lexical half, the dense filter
+/// and counts all apply the same default.
+pub(super) fn exclude_trash_and_spam_by_default(ast: QueryNode) -> QueryNode {
+    if ast_asks_for_trash_or_spam(&ast) {
+        return ast;
+    }
+    QueryNode::And(
+        Box::new(ast),
+        Box::new(QueryNode::Not(Box::new(QueryNode::Or(
+            Box::new(QueryNode::Filter(FilterKind::Trash)),
+            Box::new(QueryNode::Filter(FilterKind::Spam)),
+        )))),
+    )
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct SemanticQueryPlan {
     pub text: String,

@@ -1,7 +1,7 @@
 use super::label_resolve::{build_label_name_index, resolve_label_names};
 use super::search_filter::{
-    ast_asks_for_trash_or_spam, ast_contains_owed_reply, has_negated_semantic_terms,
-    matches_structured_filters, semantic_query_plan,
+    ast_asks_for_trash_or_spam, ast_contains_owed_reply, exclude_trash_and_spam_by_default,
+    has_negated_semantic_terms, matches_structured_filters, semantic_query_plan,
 };
 use super::{build_execution, ExecutionExplainInput, SearchExecution};
 use crate::state::AppState;
@@ -54,7 +54,7 @@ pub(super) async fn execute_search(
             // parser doesn't know about a given user's labels.
             let labels = collect_labels_for_resolution(state).await;
             let label_index = build_label_name_index(&labels);
-            let ast = resolve_label_names(ast, &label_index);
+            let ast = exclude_trash_and_spam_by_default(resolve_label_names(ast, &label_index));
             let needs_owed_filter = ast_contains_owed_reply(&ast);
             (
                 execute_search_ast(state, query, &ast, &options).await?,
@@ -806,6 +806,57 @@ mod owed_reply_filter_tests {
             label_provider_ids: vec![],
             keywords: std::collections::BTreeSet::new(),
         }
+    }
+
+    #[tokio::test]
+    async fn lexical_search_leaves_out_trash_and_spam_unless_the_query_asks() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let mut ids = Vec::new();
+        for flags in [
+            MessageFlags::empty(),
+            MessageFlags::TRASH,
+            MessageFlags::SPAM,
+        ] {
+            let envelope = Envelope {
+                flags,
+                subject: "quarterly invoice".into(),
+                ..envelope_inbound(&account_id, &ThreadId::new(), "alice@example.com", 1)
+            };
+            state.store.upsert_envelope(&envelope).await.unwrap();
+            index_envelope(&state, &envelope).await;
+            ids.push(envelope.id.as_str());
+        }
+        let found = |query: &'static str| {
+            let state = &state;
+            async move {
+                let mut found = execute_search(
+                    state,
+                    query,
+                    10,
+                    0,
+                    None,
+                    SearchMode::Lexical,
+                    SortOrder::Relevance,
+                    false,
+                )
+                .await
+                .unwrap()
+                .results
+                .into_iter()
+                .map(|result| result.message_id)
+                .collect::<Vec<_>>();
+                found.sort();
+                found
+            }
+        };
+
+        assert_eq!(found("invoice").await, vec![ids[0].clone()]);
+        assert_eq!(found("in:trash invoice").await, vec![ids[1].clone()]);
+        assert_eq!(found("in:spam invoice").await, vec![ids[2].clone()]);
+        let mut all = ids.clone();
+        all.sort();
+        assert_eq!(found("in:anywhere invoice").await, all);
     }
 
     #[tokio::test]

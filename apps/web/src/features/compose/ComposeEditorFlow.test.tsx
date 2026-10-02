@@ -190,10 +190,11 @@ describe("Compose keyboard flow", () => {
     renderCompose();
 
     // Rendering recipient chips for a loaded draft must not flip the autosave
-    // fingerprint: the status stays "Saved", not "Unsaved changes".
+    // fingerprint to "Unsaved changes"; loading is not a save either, so the
+    // status claims nothing.
     await screen.findByLabelText("To");
-    expect(await screen.findByText(/saved/i)).toBeVisible();
     expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Saved/)).not.toBeInTheDocument();
     expect(api.updateComposeSession).not.toHaveBeenCalled();
   });
 

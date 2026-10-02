@@ -42,6 +42,9 @@ struct DeltaFolderSyncResult {
     mailbox: ImapMailboxCursor,
     synced: Vec<SyncedMessage>,
     deleted_provider_ids: Vec<String>,
+    /// Refetched after a `UIDVALIDITY` change: a stored row under the same
+    /// `folder:uid` may be a different message.
+    reissued_provider_ids: Vec<String>,
 }
 
 struct CollectSyncedMessages<'a> {
@@ -539,6 +542,7 @@ impl ImapProvider {
         Ok(SyncBatch {
             upserted: synced,
             deleted_provider_ids: vec![],
+            reissued_provider_ids: vec![],
             label_changes: vec![],
             next_cursor: Self::build_imap_cursor(mailboxes, &capabilities),
             has_more: false,
@@ -754,6 +758,7 @@ impl ImapProvider {
         Ok(SyncBatch {
             upserted: synced,
             deleted_provider_ids: vec![],
+            reissued_provider_ids: vec![],
             label_changes: vec![],
             next_cursor,
             has_more,
@@ -827,10 +832,12 @@ impl ImapProvider {
         let mut synced = Vec::new();
         let mut mailboxes = Vec::with_capacity(folder_results.len());
         let mut deleted_provider_ids = Vec::new();
+        let mut reissued_provider_ids = Vec::new();
         for result in folder_results {
             mailboxes.push(result.mailbox);
             synced.extend(result.synced);
             deleted_provider_ids.extend(result.deleted_provider_ids);
+            reissued_provider_ids.extend(result.reissued_provider_ids);
         }
 
         debug!("IMAP delta sync complete: {} new messages", synced.len());
@@ -838,6 +845,7 @@ impl ImapProvider {
         Ok(SyncBatch {
             upserted: synced,
             deleted_provider_ids,
+            reissued_provider_ids,
             label_changes: vec![],
             next_cursor: Self::build_imap_cursor(mailboxes, &capabilities),
             has_more: false,
@@ -884,7 +892,8 @@ impl ImapProvider {
             highest_modseq: mailbox_info.highest_modseq,
         };
 
-        let query = if mailbox_info.uid_validity != old_mailbox.uid_validity {
+        let uid_validity_changed = mailbox_info.uid_validity != old_mailbox.uid_validity;
+        let query = if uid_validity_changed {
             warn!(
                 mailbox = %all_mail.name,
                 old = old_mailbox.uid_validity,
@@ -925,11 +934,22 @@ impl ImapProvider {
                 .await?;
         }
         Self::floor_uid_next_to_failed(&mut mailbox, min_failed_uid);
+        // Every UID is void after a validity change, so a refetched UID may
+        // name a different message than the row stored under it.
+        let reissued_provider_ids = if uid_validity_changed {
+            synced
+                .iter()
+                .map(|message| message.envelope.provider_id.clone())
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         let _ = session.logout().await;
         Ok(SyncBatch {
             upserted: synced,
             deleted_provider_ids: vec![],
+            reissued_provider_ids,
             label_changes: vec![],
             next_cursor: Self::build_imap_cursor(vec![mailbox], &capabilities),
             has_more: false,
@@ -1199,12 +1219,22 @@ impl ImapProvider {
                 .map(|uid| folders::format_provider_id(&folder.name, uid)),
         );
 
+        let reissued_provider_ids = if uid_validity_changed {
+            synced
+                .iter()
+                .map(|message| message.envelope.provider_id.clone())
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         let _ = session.logout().await;
         Ok(DeltaFolderSyncResult {
             folder_index,
             mailbox,
             synced,
             deleted_provider_ids,
+            reissued_provider_ids,
         })
     }
 }
@@ -2743,6 +2773,9 @@ mod tests {
             batch.deleted_provider_ids,
             vec!["INBOX:3", "INBOX:4", "INBOX:5"]
         );
+        // UIDs 1 and 2 are void too: the rows stored under them may be other
+        // emails, which the engine checks before it overwrites them.
+        assert_eq!(batch.reissued_provider_ids, vec!["INBOX:1", "INBOX:2"]);
     }
 
     /// Mail that lands between the search and the fetch after a validity
@@ -2767,6 +2800,22 @@ mod tests {
 
         assert_eq!(batch.upserted.len(), 2);
         assert_eq!(batch.deleted_provider_ids, vec!["INBOX:3"]);
+    }
+
+    #[tokio::test]
+    async fn an_unchanged_uid_validity_reissues_nothing() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 6, 2),
+            vec![vec![make_fetched_message(5, "New", "alice@example.com")]],
+            vec![],
+        )
+        .with_uid_search("INBOX", vec![1, 2, 5]);
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let batch = provider.sync_messages(&imap_cursor(1, 5)).await.unwrap();
+
+        assert!(batch.reissued_provider_ids.is_empty());
     }
 
     #[tokio::test]

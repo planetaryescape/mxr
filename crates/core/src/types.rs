@@ -2131,6 +2131,14 @@ pub struct SyncedMessage {
 pub struct SyncBatch {
     pub upserted: Vec<SyncedMessage>,
     pub deleted_provider_ids: Vec<String>,
+    /// Provider ids that may now name a different message than the one
+    /// stored under them: IMAP UIDs refetched after a `UIDVALIDITY` change.
+    /// For each upsert among them, the sync engine compares the stored
+    /// message with the incoming one and, when they differ, deletes the
+    /// stored row and everything derived from it before inserting the new
+    /// message, instead of overwriting it in place.
+    #[serde(default)]
+    pub reissued_provider_ids: Vec<String>,
     pub label_changes: Vec<LabelChange>,
     pub next_cursor: SyncCursor,
     /// True iff the provider deliberately truncated this batch and

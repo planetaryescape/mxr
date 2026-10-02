@@ -231,6 +231,7 @@ mod tests {
             Ok(SyncBatch {
                 upserted: self.messages.clone(),
                 deleted_provider_ids: vec![],
+                reissued_provider_ids: vec![],
                 label_changes: vec![],
                 next_cursor: SyncCursor::from_bytes(b"native-synced".to_vec()),
                 has_more: false,
@@ -285,6 +286,7 @@ mod tests {
             Ok(SyncBatch {
                 upserted: vec![self.message.clone()],
                 deleted_provider_ids: vec![],
+                reissued_provider_ids: vec![],
                 label_changes: vec![],
                 next_cursor: SyncCursor::from_bytes(b"more-pages".to_vec()),
                 has_more: true,
@@ -334,6 +336,7 @@ mod tests {
             Ok(SyncBatch {
                 upserted: self.messages.clone(),
                 deleted_provider_ids: vec![],
+                reissued_provider_ids: vec![],
                 label_changes: vec![],
                 next_cursor: SyncCursor::empty(),
                 has_more: false,
@@ -393,6 +396,7 @@ mod tests {
                 Ok(SyncBatch {
                     upserted: vec![self.message.clone()],
                     deleted_provider_ids: vec![],
+                    reissued_provider_ids: vec![],
                     label_changes: vec![],
                     next_cursor: SyncCursor::from_bytes(b"recovered-cursor".to_vec()),
                     has_more: false,
@@ -465,6 +469,7 @@ mod tests {
                 Ok(SyncBatch {
                     upserted: self.messages.clone(),
                     deleted_provider_ids: vec![],
+                    reissued_provider_ids: vec![],
                     label_changes: vec![],
                     next_cursor: SyncCursor::from_bytes(b"delta-initial".to_vec()),
                     has_more: false,
@@ -475,6 +480,7 @@ mod tests {
                 Ok(SyncBatch {
                     upserted: vec![],
                     deleted_provider_ids: vec![],
+                    reissued_provider_ids: vec![],
                     label_changes: self.label_changes.clone(),
                     next_cursor: SyncCursor::from_bytes(b"delta-follow-up".to_vec()),
                     has_more: false,
@@ -591,6 +597,7 @@ mod tests {
                 } else {
                     self.expunged.clone()
                 },
+                reissued_provider_ids: vec![],
                 label_changes: vec![],
                 next_cursor: SyncCursor::from_bytes(b"expunging".to_vec()),
                 has_more: false,
@@ -608,6 +615,140 @@ mod tests {
         ) -> Result<(), MxrError> {
             Ok(())
         }
+    }
+
+    /// Serves the given batches in order, one per sync call.
+    struct ScriptedProvider {
+        account_id: AccountId,
+        batches: std::sync::Mutex<std::collections::VecDeque<SyncBatch>>,
+    }
+
+    #[async_trait::async_trait]
+    impl MailSyncProvider for ScriptedProvider {
+        fn name(&self) -> &str {
+            "scripted"
+        }
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+        fn capabilities(&self) -> SyncCapabilities {
+            SyncCapabilities {
+                sync: SyncCaps {
+                    delta: true,
+                    native_threading: true,
+                },
+                ..Default::default()
+            }
+        }
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            Ok(vec![])
+        }
+        async fn sync_messages(&self, _cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            Ok(self
+                .batches
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("no batch left"))
+        }
+        async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+        async fn apply_mutation(
+            &self,
+            _mutation_id: &str,
+            _mutation: &Mutation,
+        ) -> Result<(), MxrError> {
+            Ok(())
+        }
+    }
+
+    fn page(upserted: Vec<Envelope>, reissued: Vec<String>) -> SyncBatch {
+        SyncBatch {
+            upserted: upserted
+                .into_iter()
+                .map(|envelope| SyncedMessage {
+                    body: make_empty_body(&envelope.id),
+                    envelope,
+                })
+                .collect(),
+            deleted_provider_ids: vec![],
+            reissued_provider_ids: reissued,
+            label_changes: vec![],
+            next_cursor: SyncCursor::from_bytes(b"scripted".to_vec()),
+            has_more: false,
+            threads_changed: vec![],
+            remaining_estimate: None,
+        }
+    }
+
+    /// After a UIDVALIDITY change the server reuses `INBOX:1` for another
+    /// email. The old message's row, and everything derived from it, must
+    /// not pass to the new one; a UID that still holds the same email keeps
+    /// its row and the local state on it.
+    #[tokio::test]
+    async fn a_reissued_uid_holding_a_different_email_replaces_the_stored_row() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        let engine = SyncEngine::new(store.clone(), in_memory_search());
+        let with_header = |provider_id: &str, header: &str| Envelope {
+            message_id_header: Some(header.to_string()),
+            ..make_test_envelope(&account_id, provider_id, vec![])
+        };
+        let old = with_header("INBOX:1", "<old@example.com>");
+        let same = with_header("INBOX:2", "<same@example.com>");
+        let provider = ScriptedProvider {
+            account_id: account_id.clone(),
+            batches: std::sync::Mutex::new(
+                [
+                    page(vec![old.clone(), same.clone()], vec![]),
+                    page(
+                        vec![
+                            with_header("INBOX:1", "<new@example.com>"),
+                            with_header("INBOX:2", "<SAME@example.com>"),
+                        ],
+                        vec!["INBOX:1".to_string(), "INBOX:2".to_string()],
+                    ),
+                ]
+                .into(),
+            ),
+        };
+        engine.sync_account_with_outcome(&provider).await.unwrap();
+        store
+            .set_starred(&old.id, true, EventSource::User)
+            .await
+            .unwrap();
+
+        let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
+
+        assert_eq!(outcome.deleted.message_ids, vec![old.id.clone()]);
+        assert!(store.get_envelope(&old.id).await.unwrap().is_none());
+        let now_at_uid_1 = store
+            .get_message_id_by_provider_id(&account_id, "INBOX:1")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(now_at_uid_1, old.id);
+        let replacement = store.get_envelope(&now_at_uid_1).await.unwrap().unwrap();
+        assert_eq!(
+            replacement.message_id_header.as_deref(),
+            Some("<new@example.com>")
+        );
+        assert!(
+            !replacement.flags.contains(MessageFlags::STARRED),
+            "the old email's star moved to the new one"
+        );
+        assert!(store.get_envelope(&same.id).await.unwrap().is_some());
     }
 
     #[tokio::test]

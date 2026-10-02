@@ -362,6 +362,7 @@ impl MailSyncProvider for FakeProvider {
                     return Ok(SyncBatch {
                         upserted: vec![],
                         deleted_provider_ids: vec![],
+                        reissued_provider_ids: vec![],
                         label_changes: vec![],
                         next_cursor: cursor.clone(),
                         has_more: false,
@@ -389,6 +390,7 @@ impl MailSyncProvider for FakeProvider {
         Ok(SyncBatch {
             upserted,
             deleted_provider_ids: vec![],
+            reissued_provider_ids: vec![],
             label_changes: vec![],
             next_cursor,
             has_more,

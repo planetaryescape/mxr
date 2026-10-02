@@ -275,6 +275,7 @@ impl mxr_core::MailSyncProvider for FolderCopyProvider {
         Ok(mxr_core::SyncBatch {
             upserted: self.synced_messages(),
             deleted_provider_ids,
+            reissued_provider_ids: vec![],
             label_changes: vec![],
             next_cursor: mxr_core::SyncCursor::empty(),
             has_more: false,

@@ -652,7 +652,7 @@ mod tests {
         let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
 
         assert_eq!(outcome.synced_count, 0);
-        let deleted: HashSet<_> = outcome.deleted_message_ids.iter().cloned().collect();
+        let deleted: HashSet<_> = outcome.deleted.message_ids.iter().cloned().collect();
         assert_eq!(deleted, HashSet::from([gone.id.clone(), alone.id.clone()]));
         assert!(store.get_envelope(&kept.id).await.unwrap().is_some());
         let threads: std::collections::HashMap<_, _> = outcome
@@ -668,7 +668,8 @@ mod tests {
         );
         assert_eq!(
             outcome
-                .deleted_counterparties
+                .deleted
+                .counterparties
                 .iter()
                 .map(|(_, email)| email.as_str())
                 .collect::<Vec<_>>(),

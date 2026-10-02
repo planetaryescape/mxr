@@ -743,13 +743,12 @@ pub(crate) async fn finalize_sync_pass(
     // Outside `count > 0`: a page that only deleted mail upserts nothing,
     // and gating on upserts left the semantic index, attachment files and
     // contacts of deleted mail behind.
-    if !outcome.deleted_message_ids.is_empty() {
+    if !outcome.deleted.message_ids.is_empty() {
         let fanout_state = state.clone();
         let fanout_account = account_id.clone();
-        let deleted = outcome.deleted_message_ids;
-        let counterparties = outcome.deleted_counterparties;
+        let deleted = outcome.deleted;
         tokio::spawn(async move {
-            post_delete_fanout(fanout_state, fanout_account, deleted, counterparties).await;
+            post_delete_fanout(fanout_state, fanout_account, deleted).await;
         });
     }
 
@@ -1197,15 +1196,14 @@ async fn post_sync_fanout(
 async fn post_delete_fanout(
     state: Arc<AppState>,
     account_id: AccountId,
-    deleted_message_ids: Vec<mxr_core::MessageId>,
-    counterparties: Vec<(AccountId, String)>,
+    deleted: mxr_store::DeletedMessages,
 ) {
     tracing::info!(
         account = %account_id,
-        deleted = deleted_message_ids.len(),
+        deleted = deleted.message_ids.len(),
         "clearing derived data of deleted messages"
     );
-    crate::message_deletion::forget_deleted_messages(&state, &deleted_message_ids).await;
+    crate::message_deletion::forget_deleted_messages(&state, &deleted.message_ids).await;
     if let Err(error) = state
         .contacts_refresh
         .enqueue_accounts(std::slice::from_ref(&account_id))
@@ -1213,7 +1211,11 @@ async fn post_delete_fanout(
     {
         tracing::warn!(account = %account_id, %error, "contacts refresh enqueue failed");
     }
-    if let Err(error) = state.relationship.enqueue_contacts(counterparties).await {
+    if let Err(error) = state
+        .relationship
+        .enqueue_contacts(deleted.counterparties)
+        .await
+    {
         tracing::warn!(account = %account_id, %error, "relationship profile enqueue failed");
     }
 }

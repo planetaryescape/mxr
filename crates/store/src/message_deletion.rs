@@ -5,19 +5,20 @@
 //! `messages(id)`. The tables below hold text built from mail but are keyed
 //! by thread, contact or a JSON list of ids, which a cascade cannot follow,
 //! so [`Store::delete_messages_and_derived`] clears them in the same
-//! transaction as the message rows. [`MESSAGE_DELETION_RULES`] records the
+//! transaction as the message rows. `MESSAGE_DELETION_RULES` records the
 //! rule of every table that refers to messages without a cascade; the
 //! schema test fails for a new table that has neither.
 
+use crate::decode_id;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use sqlx::Row;
 
-use crate::decode_id;
-
 /// How a table that refers to messages without a cascading foreign key
-/// follows a message delete.
+/// follows a message delete. Only the schema test reads it; the variants and
+/// reasons are the record a new table's author adds to.
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MessageDeletionRule {
+pub(crate) enum MessageDeletionRule {
     /// Cleared by [`Store::delete_messages_and_derived`].
     ClearedWithMessages,
     /// Cleared when its contact is pruned for having no mail left
@@ -33,7 +34,8 @@ pub enum MessageDeletionRule {
 /// Every table that refers to messages (by id, thread or evidence list) and
 /// has no `ON DELETE CASCADE` to `messages`. Checked against the live schema
 /// by `every_table_referring_to_messages_has_a_deletion_rule`.
-pub const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
+#[cfg(test)]
+pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
     (
         "context_briefings",
         MessageDeletionRule::ClearedWithMessages,
@@ -99,11 +101,20 @@ impl super::Store {
         if provider_ids.is_empty() {
             return Ok(DeletedMessages::default());
         }
-        // Read before the transaction: the counterparties come from the rows
-        // about to be deleted, and the lookup runs on the reader pool.
-        let preview = self
-            .message_ids_by_provider_ids(account_id, provider_ids)
-            .await?;
+        // Read before the transaction: the counterparties come from rows
+        // about to be deleted, and the lookup needs the reader pool, which
+        // may share the writer's only connection (in-memory stores).
+        let mut preview = Vec::new();
+        for chunk in provider_ids.chunks(crate::SQLITE_BIND_CHUNK) {
+            preview.extend(
+                provider_id_query("SELECT id FROM messages", account_id, chunk)
+                    .fetch_all(self.reader())
+                    .await?
+                    .iter()
+                    .map(|row| decode_id::<MessageId>(&row.get::<String, _>("id")))
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
+        }
         if preview.is_empty() {
             return Ok(DeletedMessages::default());
         }
@@ -112,10 +123,6 @@ impl super::Store {
         let account = account_id.as_str();
         let mut tx = self.writer().begin().await?;
         for statement in [
-            "DROP TABLE IF EXISTS temp.mxr_deleting",
-            "DROP TABLE IF EXISTS temp.mxr_deleting_people",
-            "DROP TABLE IF EXISTS temp.mxr_deleting_deliveries",
-            "DROP TABLE IF EXISTS temp.mxr_deleting_decisions",
             "CREATE TEMP TABLE mxr_deleting (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL)",
             "CREATE TEMP TABLE mxr_deleting_people (email TEXT PRIMARY KEY)",
         ] {
@@ -124,17 +131,13 @@ impl super::Store {
         // Resolved again inside the transaction, so what is deleted is
         // exactly what the database holds now.
         for chunk in provider_ids.chunks(crate::SQLITE_BIND_CHUNK) {
-            let sql = format!(
-                "INSERT OR IGNORE INTO temp.mxr_deleting (id, thread_id)
-                 SELECT id, thread_id FROM messages
-                 WHERE account_id = ? AND provider_id IN ({})",
-                placeholders(chunk.len())
-            );
-            let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(&account);
-            for provider_id in chunk {
-                query = query.bind(provider_id);
-            }
-            query.execute(&mut *tx).await?;
+            provider_id_query(
+                "INSERT OR IGNORE INTO temp.mxr_deleting (id, thread_id) SELECT id, thread_id FROM messages",
+                account_id,
+                chunk,
+            )
+            .execute(&mut *tx)
+            .await?;
         }
         for (_, email) in &counterparties {
             sqlx::query("INSERT OR IGNORE INTO temp.mxr_deleting_people (email) VALUES (lower(?))")
@@ -142,19 +145,19 @@ impl super::Store {
                 .execute(&mut *tx)
                 .await?;
         }
-
-        let deleted = sqlx::query("SELECT id, thread_id FROM temp.mxr_deleting ORDER BY id")
+        let message_ids = sqlx::query_scalar::<_, String>("SELECT id FROM temp.mxr_deleting")
             .fetch_all(&mut *tx)
-            .await?;
-        let mut message_ids = Vec::with_capacity(deleted.len());
-        let mut thread_ids = Vec::new();
-        for row in &deleted {
-            message_ids.push(decode_id::<MessageId>(&row.get::<String, _>("id"))?);
-            let thread_id = decode_id::<ThreadId>(&row.get::<String, _>("thread_id"))?;
-            if !thread_ids.contains(&thread_id) {
-                thread_ids.push(thread_id);
-            }
-        }
+            .await?
+            .iter()
+            .map(|id| decode_id::<MessageId>(id))
+            .collect::<Result<Vec<_>, _>>()?;
+        let thread_ids =
+            sqlx::query_scalar::<_, String>("SELECT DISTINCT thread_id FROM temp.mxr_deleting")
+                .fetch_all(&mut *tx)
+                .await?
+                .iter()
+                .map(|id| decode_id::<ThreadId>(id))
+                .collect::<Result<Vec<_>, _>>()?;
 
         // Statements bind `?1` to the account. Order matters: the
         // provenance and evidence lookups read rows the message delete
@@ -216,33 +219,23 @@ impl super::Store {
             counterparties,
         })
     }
-
-    async fn message_ids_by_provider_ids(
-        &self,
-        account_id: &AccountId,
-        provider_ids: &[String],
-    ) -> Result<Vec<MessageId>, sqlx::Error> {
-        let mut ids = Vec::new();
-        for chunk in provider_ids.chunks(crate::SQLITE_BIND_CHUNK) {
-            let sql = format!(
-                "SELECT id FROM messages WHERE account_id = ? AND provider_id IN ({})",
-                placeholders(chunk.len())
-            );
-            let mut query =
-                sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(account_id.as_str());
-            for provider_id in chunk {
-                query = query.bind(provider_id);
-            }
-            for row in query.fetch_all(self.reader()).await? {
-                ids.push(decode_id(&row.get::<String, _>("id"))?);
-            }
-        }
-        Ok(ids)
-    }
 }
 
-fn placeholders(count: usize) -> String {
-    vec!["?"; count].join(", ")
+/// `<select> WHERE account_id = ? AND provider_id IN (<chunk>)`, bound.
+fn provider_id_query<'q>(
+    select: &str,
+    account_id: &AccountId,
+    chunk: &'q [String],
+) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments> {
+    let sql = format!(
+        "{select} WHERE account_id = ? AND provider_id IN ({})",
+        vec!["?"; chunk.len()].join(", ")
+    );
+    let mut query = sqlx::query(sqlx::AssertSqlSafe(sql)).bind(account_id.as_str());
+    for provider_id in chunk {
+        query = query.bind(provider_id);
+    }
+    query
 }
 
 #[cfg(test)]
@@ -251,6 +244,7 @@ mod tests {
     use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
     use crate::Store;
     use mxr_core::types::{Address, MessageDirection};
+    use sqlx::Row;
     use std::collections::{BTreeMap, BTreeSet};
 
     async fn inbound(
@@ -518,6 +512,28 @@ mod tests {
             ids(&store, "SELECT provider_id FROM messages").await,
             set(&["kept"])
         );
+    }
+
+    /// The delete runs this lookup while holding the writer; a full scan of
+    /// the event log there stalls every other write. (The commitments lookup
+    /// is already covered by the table's unique index on the account.)
+    #[tokio::test]
+    async fn the_event_log_delete_uses_an_index() {
+        let store = Store::in_memory().await.unwrap();
+        for (sql, index) in [(
+            "EXPLAIN QUERY PLAN SELECT 1 FROM event_log WHERE message_id IN ('a', 'b')",
+            "idx_event_log_message",
+        )] {
+            let plan = sqlx::query(sqlx::AssertSqlSafe(sql))
+                .fetch_all(store.reader())
+                .await
+                .unwrap()
+                .iter()
+                .map(|row| row.get::<String, _>("detail"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(plan.contains(index), "{sql}\n{plan}");
+        }
     }
 
     /// Fails when a table refers to messages (a foreign key, a message or

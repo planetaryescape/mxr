@@ -22,7 +22,6 @@ use mxr_store::{decision_id, decision_source_hash, DecisionLogEntry};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Deserialize;
-use sqlx::Row;
 
 /// Cheap keyword prefilter — if a thread has no message body matching
 /// any of these terms, skip the LLM call. Threads with ≥3 messages
@@ -212,41 +211,20 @@ pub(crate) async fn rebuild(
     since_days: u32,
 ) -> Result<RebuildSummary, String> {
     let cutoff = chrono::Utc::now() - chrono::Duration::days(since_days as i64);
-    let cutoff_secs = cutoff.timestamp();
     // Threads with only Trash or Spam mail in the window are not sent to the
     // model; `extract_thread` on one still works when asked for directly.
-    let rows = sqlx::query(
-        r#"SELECT DISTINCT thread_id
-           FROM messages m
-           WHERE m.account_id = ? AND m.date >= ?
-             AND (m.flags & ?) = 0
-             AND NOT EXISTS (
-                 SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
-                 WHERE ml.message_id = m.id AND l.provider_id IN ('TRASH', 'SPAM'))"#,
-    )
-    .bind(account_id.as_str())
-    .bind(cutoff_secs)
-    .bind(i64::from(
-        (mxr_core::MessageFlags::TRASH | mxr_core::MessageFlags::SPAM).bits(),
-    ))
-    .fetch_all(state.store.reader())
-    .await
-    .map_err(|e| e.to_string())?;
+    let thread_ids = state
+        .store
+        .thread_ids_with_live_mail_since(account_id, cutoff)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let mut summary = RebuildSummary {
         extracted: 0,
         skipped: 0,
         errors: 0,
     };
-    for row in rows {
-        let raw: String = row.try_get("thread_id").map_err(|e| e.to_string())?;
-        let thread_id: ThreadId = match raw.parse() {
-            Ok(id) => id,
-            Err(_) => {
-                summary.errors += 1;
-                continue;
-            }
-        };
+    for thread_id in thread_ids {
         match extract_thread(state, account_id, &thread_id).await {
             Ok(0) => summary.skipped += 1,
             Ok(n) => summary.extracted += n as u32,

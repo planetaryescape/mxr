@@ -41,6 +41,28 @@ pub struct PlaceMessage {
 }
 
 impl super::Store {
+    /// Threads with mail outside Trash and Spam dated `since` or later: the
+    /// threads background model work may read.
+    pub async fn thread_ids_with_live_mail_since(
+        &self,
+        account_id: &AccountId,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<ThreadId>, sqlx::Error> {
+        let sql = format!(
+            "SELECT DISTINCT m.thread_id FROM messages m
+             WHERE m.account_id = ?1 AND m.date >= ?3 AND {NOT_TRASHED}"
+        );
+        sqlx::query_scalar::<_, String>(sqlx::AssertSqlSafe(sql))
+            .bind(account_id.as_str())
+            .bind(hidden_flags())
+            .bind(since.timestamp())
+            .fetch_all(self.reader())
+            .await?
+            .iter()
+            .map(|id| decode_id(id))
+            .collect()
+    }
+
     /// Every inbox message of `account_id` that is not trashed or spam.
     pub async fn place_candidates(
         &self,

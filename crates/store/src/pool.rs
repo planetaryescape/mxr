@@ -942,6 +942,13 @@ const MIGRATIONS: &[Migration] = &[
             "../migrations/057_search_reindex_pending.sql"
         )),
     },
+    Migration {
+        version: 57,
+        name: "deletion_lookup_indexes",
+        kind: MigrationKind::Sql(include_str!(
+            "../migrations/057_deletion_lookup_indexes.sql"
+        )),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

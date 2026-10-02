@@ -211,6 +211,15 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         // behind; clear it before any loop can read it as "already syncing".
         loops::reconcile_interrupted_syncs(&state).await;
 
+        // Cleanup a previous daemon owed for deleted mail (it failed or died
+        // between the delete and the cleanup). Off the startup path: it only
+        // touches files and the semantic worker.
+        // Also retries cleanups that failed (a file that could not be
+        // removed) on a timer, not only at the next delete.
+        tokio::spawn(crate::message_deletion::drain_pending_forgets_periodically(
+            state.clone(),
+        ));
+
         // Spawn background loops
         loops::spawn_sync_loops(state.clone());
         let startup_handle = spawn_startup_maintenance(state.clone());
@@ -1772,6 +1781,17 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
                 "startup: reset orphaned 'sending' drafts back to 'draft' for retry"
             );
         }
+    }
+
+    // Decisions whose cited mail was deleted before decision evidence was
+    // tracked are invisible to every later delete; clear them once.
+    match state.store.prune_decisions_without_evidence().await {
+        Ok(0) => {}
+        Ok(pruned) => tracing::info!(
+            pruned,
+            "startup: removed decisions whose cited mail is all deleted"
+        ),
+        Err(error) => tracing::warn!("startup: decision cleanup failed: {error}"),
     }
 
     // Lost scheduled sends: a scheduled-send attempt whose outcome was

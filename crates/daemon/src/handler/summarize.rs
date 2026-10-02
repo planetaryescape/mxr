@@ -177,15 +177,23 @@ pub(crate) async fn summarize_thread_cached(
         model: summary.model.clone(),
         generated_at,
     };
-    store
-        .upsert_thread_summary(&record)
+    let written = store
+        .upsert_thread_summary_if_sources_exist(&record, &context.source_ids)
         .await
         .map_err(|e| e.to_string())?;
+    if !written {
+        return Err(format!(
+            "part of thread {thread_id} was deleted while it was summarized"
+        ));
+    }
     Ok(summary)
 }
 
 struct SummaryContext {
     account_id: mxr_core::AccountId,
+    /// The messages the prompt was built from; the cache write is refused if
+    /// any was deleted while the model ran.
+    source_ids: Vec<mxr_core::MessageId>,
     content_hash: String,
     message_count: u32,
     prompt: String,
@@ -201,7 +209,7 @@ async fn load_summary_context(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Thread {thread_id} not found"))?;
     let envelopes = store
-        .get_thread_envelopes(thread_id)
+        .get_thread_envelopes_for_model(thread_id)
         .await
         .map_err(|e| e.to_string())?;
     if envelopes.is_empty() {
@@ -277,6 +285,10 @@ async fn load_summary_context(
 
     Ok(SummaryContext {
         account_id: thread.account_id,
+        source_ids: envelopes
+            .iter()
+            .map(|envelope| envelope.id.clone())
+            .collect(),
         content_hash: format!(
             "{}:{relationship_hash}:{SUMMARY_PROMPT_VERSION}",
             thread_summary_content_hash(&envelopes)

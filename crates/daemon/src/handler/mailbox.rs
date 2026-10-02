@@ -1270,7 +1270,7 @@ async fn set_private_file_permissions(_path: &Path) -> std::io::Result<()> {
 fn html_image_dir(state: &AppState, message_id: &MessageId) -> PathBuf {
     state
         .attachment_dir()
-        .join("_html_assets")
+        .join(super::HTML_ASSETS_DIR)
         .join(message_id.as_str())
 }
 

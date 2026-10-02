@@ -63,6 +63,43 @@ impl super::Store {
         Ok(())
     }
 
+    /// Writes a summary built from `sources`, unless any of them was deleted
+    /// while the model ran. Returns whether it was written.
+    pub async fn upsert_thread_summary_if_sources_exist(
+        &self,
+        record: &ThreadSummaryRecord,
+        sources: &[MessageId],
+    ) -> Result<bool, sqlx::Error> {
+        let now = chrono::Utc::now().timestamp();
+        let sql = format!(
+            r#"INSERT INTO thread_summaries
+               (thread_id, account_id, content_hash, text, model, generated_at, updated_at)
+               SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
+               WHERE {sources_exist}
+               ON CONFLICT(thread_id) DO UPDATE SET
+                   account_id = excluded.account_id,
+                   content_hash = excluded.content_hash,
+                   text = excluded.text,
+                   model = excluded.model,
+                   generated_at = excluded.generated_at,
+                   updated_at = excluded.updated_at"#,
+            sources_exist = crate::sources_exist_sql(8)
+        );
+        let written = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(record.thread_id.as_str())
+            .bind(record.account_id.as_str())
+            .bind(&record.content_hash)
+            .bind(&record.text)
+            .bind(&record.model)
+            .bind(record.generated_at.timestamp())
+            .bind(now)
+            .bind(crate::sources_json(sources))
+            .execute(self.writer())
+            .await?
+            .rows_affected();
+        Ok(written > 0)
+    }
+
     pub async fn thread_ids_for_message_ids(
         &self,
         message_ids: &[MessageId],

@@ -543,6 +543,140 @@ mod tests {
         }
     }
 
+    /// Upserts its messages on the first sync, then reports the given
+    /// provider ids deleted on every later one: a Gmail expunge or an IMAP
+    /// `VANISHED`.
+    struct ExpungingProvider {
+        account_id: AccountId,
+        messages: Vec<SyncedMessage>,
+        expunged: Vec<String>,
+    }
+
+    #[async_trait::async_trait]
+    impl MailSyncProvider for ExpungingProvider {
+        fn name(&self) -> &str {
+            "expunging"
+        }
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+        fn capabilities(&self) -> SyncCapabilities {
+            SyncCapabilities {
+                sync: SyncCaps {
+                    delta: true,
+                    native_threading: true,
+                },
+                ..Default::default()
+            }
+        }
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            Ok(vec![])
+        }
+        async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            let initial = cursor.is_empty();
+            Ok(SyncBatch {
+                upserted: if initial {
+                    self.messages.clone()
+                } else {
+                    vec![]
+                },
+                deleted_provider_ids: if initial {
+                    vec![]
+                } else {
+                    self.expunged.clone()
+                },
+                label_changes: vec![],
+                next_cursor: SyncCursor::from_bytes(b"expunging".to_vec()),
+                has_more: false,
+                threads_changed: vec![],
+                remaining_estimate: None,
+            })
+        }
+        async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+        async fn apply_mutation(
+            &self,
+            _mutation_id: &str,
+            _mutation: &Mutation,
+        ) -> Result<(), MxrError> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_delete_only_pass_reports_the_deleted_mail_and_the_threads_it_changed() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        let engine = SyncEngine::with_address_lookup(
+            store.clone(),
+            in_memory_search(),
+            Arc::new(LoadedAddressLookup::for_account(
+                account_id.clone(),
+                ["user@example.com"],
+            )),
+        );
+        let shared_thread = ThreadId::new();
+        let gone = Envelope {
+            thread_id: shared_thread.clone(),
+            ..make_test_envelope(&account_id, "gone", vec![])
+        };
+        let kept = Envelope {
+            thread_id: shared_thread.clone(),
+            ..make_test_envelope(&account_id, "kept", vec![])
+        };
+        let alone = make_test_envelope(&account_id, "alone", vec![]);
+        let provider = ExpungingProvider {
+            account_id: account_id.clone(),
+            messages: [&gone, &kept, &alone]
+                .into_iter()
+                .map(|envelope| SyncedMessage {
+                    envelope: envelope.clone(),
+                    body: make_empty_body(&envelope.id),
+                })
+                .collect(),
+            expunged: vec!["gone".to_string(), "alone".to_string()],
+        };
+        engine.sync_account_with_outcome(&provider).await.unwrap();
+
+        let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
+
+        assert_eq!(outcome.synced_count, 0);
+        let deleted: HashSet<_> = outcome.deleted.message_ids.iter().cloned().collect();
+        assert_eq!(deleted, HashSet::from([gone.id.clone(), alone.id.clone()]));
+        assert!(store.get_envelope(&kept.id).await.unwrap().is_some());
+        let threads: std::collections::HashMap<_, _> = outcome
+            .threads_changed
+            .iter()
+            .map(|thread| (thread.id.clone(), thread.message_ids.clone()))
+            .collect();
+        assert_eq!(threads.get(&shared_thread), Some(&vec![kept.id.clone()]));
+        assert_eq!(
+            threads.get(&alone.thread_id),
+            Some(&vec![]),
+            "an emptied thread is reported as a tombstone"
+        );
+        assert_eq!(
+            outcome
+                .deleted
+                .counterparties
+                .iter()
+                .map(|(_, email)| email.as_str())
+                .collect::<Vec<_>>(),
+            vec!["test@example.com"]
+        );
+    }
+
     #[tokio::test]
     async fn sync_ingest_applies_deny_screener_decision() {
         let store = Arc::new(Store::in_memory().await.unwrap());

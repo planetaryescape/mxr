@@ -1,7 +1,7 @@
 use super::label_resolve::{build_label_name_index, resolve_label_names};
 use super::search_filter::{
-    ast_contains_owed_reply, has_negated_semantic_terms, matches_structured_filters,
-    semantic_query_plan,
+    ast_contains_owed_reply, exclude_trash_and_spam_by_default, has_negated_semantic_terms,
+    matches_structured_filters, semantic_query_plan,
 };
 use super::{build_execution, ExecutionExplainInput, SearchExecution};
 use crate::state::AppState;
@@ -54,7 +54,7 @@ pub(super) async fn execute_search(
             // parser doesn't know about a given user's labels.
             let labels = collect_labels_for_resolution(state).await;
             let label_index = build_label_name_index(&labels);
-            let ast = resolve_label_names(ast, &label_index);
+            let ast = exclude_trash_and_spam_by_default(resolve_label_names(ast, &label_index));
             let needs_owed_filter = ast_contains_owed_reply(&ast);
             (
                 execute_search_ast(state, query, &ast, &options).await?,
@@ -800,6 +800,193 @@ mod owed_reply_filter_tests {
             label_provider_ids: vec![],
             keywords: std::collections::BTreeSet::new(),
         }
+    }
+
+    #[tokio::test]
+    async fn lexical_search_leaves_out_trash_and_spam_unless_the_query_asks() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let mut ids = Vec::new();
+        for flags in [
+            MessageFlags::empty(),
+            MessageFlags::TRASH,
+            MessageFlags::SPAM,
+        ] {
+            let envelope = Envelope {
+                flags,
+                subject: "quarterly invoice".into(),
+                ..envelope_inbound(&account_id, &ThreadId::new(), "alice@example.com", 1)
+            };
+            state.store.upsert_envelope(&envelope).await.unwrap();
+            index_envelope(&state, &envelope).await;
+            ids.push(envelope.id.as_str());
+        }
+        let found = |query: &'static str| {
+            let state = &state;
+            async move {
+                let mut found = execute_search(
+                    state,
+                    query,
+                    10,
+                    0,
+                    None,
+                    SearchMode::Lexical,
+                    SortOrder::Relevance,
+                    false,
+                )
+                .await
+                .unwrap()
+                .results
+                .into_iter()
+                .map(|result| result.message_id)
+                .collect::<Vec<_>>();
+                found.sort();
+                found
+            }
+        };
+
+        assert_eq!(found("invoice").await, vec![ids[0].clone()]);
+        assert_eq!(found("in:trash invoice").await, vec![ids[1].clone()]);
+        assert_eq!(found("in:spam invoice").await, vec![ids[2].clone()]);
+        let mut all = ids.clone();
+        all.sort();
+        assert_eq!(found("in:anywhere invoice").await, all);
+    }
+
+    /// `--search` on a batch mutation resolves its targets with this
+    /// request, for the dry run and for the real run alike. With
+    /// `in:trash OR from:alice`, the selection is Alice's live mail and
+    /// everything in Trash; Alice's Spam stays out, and `mxr count` agrees.
+    #[tokio::test]
+    async fn a_search_selection_lifts_only_the_place_its_alternative_asks_for() {
+        use mxr_protocol::{IpcMessage, IpcPayload, Request, Response, ResponseData};
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let mut by_name = std::collections::HashMap::new();
+        for (name, from, flags) in [
+            ("alice inbox", "alice@example.com", MessageFlags::empty()),
+            ("alice spam", "alice@example.com", MessageFlags::SPAM),
+            ("bob trash", "bob@example.com", MessageFlags::TRASH),
+            ("bob spam", "bob@example.com", MessageFlags::SPAM),
+        ] {
+            let envelope = Envelope {
+                flags,
+                subject: format!("{name} note"),
+                ..envelope_inbound(&account_id, &ThreadId::new(), from, 1)
+            };
+            state.store.upsert_envelope(&envelope).await.unwrap();
+            index_envelope(&state, &envelope).await;
+            by_name.insert(envelope.id.as_str(), name);
+        }
+        let query = "in:trash OR from:alice@example.com".to_string();
+        let request = |payload| IpcMessage {
+            id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(payload),
+        };
+
+        let selection = match crate::handler::handle_request(
+            &state,
+            &request(Request::Search {
+                query: query.clone(),
+                limit: crate::commands::selection::SEARCH_HARD_CAP,
+                offset: 0,
+                account_id: None,
+                mode: None,
+                sort: Some(SortOrder::DateDesc),
+                explain: false,
+            }),
+        )
+        .await
+        .payload
+        {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::SearchResults { results, .. },
+            }) => results,
+            other => panic!("expected search results, got {other:?}"),
+        };
+        let mut selected = selection
+            .iter()
+            .map(|result| by_name[&result.message_id.as_str()])
+            .collect::<Vec<_>>();
+        selected.sort_unstable();
+        assert_eq!(selected, vec!["alice inbox", "bob trash"]);
+
+        let count = match crate::handler::handle_request(
+            &state,
+            &request(Request::Count {
+                query,
+                account_id: None,
+                mode: None,
+            }),
+        )
+        .await
+        .payload
+        {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Count { count },
+            }) => count,
+            other => panic!("expected a count, got {other:?}"),
+        };
+        assert_eq!(count as usize, selection.len());
+    }
+
+    #[tokio::test]
+    async fn semantic_hits_leave_out_trash_and_spam_unless_the_query_asks() {
+        let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let mut envelopes = Vec::new();
+        for flags in [
+            MessageFlags::empty(),
+            MessageFlags::TRASH,
+            MessageFlags::SPAM,
+        ] {
+            let envelope = Envelope {
+                flags,
+                ..envelope_inbound(&account_id, &ThreadId::new(), "alice@example.com", 1)
+            };
+            state.store.upsert_envelope(&envelope).await.unwrap();
+            envelopes.push(envelope);
+        }
+        let hits = || {
+            envelopes
+                .iter()
+                .map(|envelope| SemanticHit {
+                    message_id: envelope.id.clone(),
+                    score: 0.9,
+                    chunk_id: mxr_core::id::SemanticChunkId::new(),
+                    source_kind: mxr_core::types::SemanticChunkSourceKind::Body,
+                    snippet: String::new(),
+                })
+                .collect::<Vec<_>>()
+        };
+        let kept = |query: &str| {
+            let state = &state;
+            let hits = hits();
+            let query = query.to_string();
+            async move {
+                let ast =
+                    exclude_trash_and_spam_by_default(mxr_search::parse_query(&query).unwrap());
+                filter_dense_hits(state, &ast, None, hits)
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|result| result.message_id)
+                    .collect::<Vec<_>>()
+            }
+        };
+
+        assert_eq!(kept("invoice").await, vec![envelopes[0].id.as_str()]);
+        assert_eq!(
+            kept("in:trash invoice").await,
+            vec![envelopes[1].id.as_str()]
+        );
+        assert_eq!(
+            kept("in:spam invoice").await,
+            vec![envelopes[2].id.as_str()]
+        );
+        assert_eq!(kept("in:anywhere invoice").await.len(), 3);
     }
 
     /// The acceptance criterion from

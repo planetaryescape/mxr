@@ -56,7 +56,10 @@ pub(super) async fn draft_compose(
 
     // Reply to an explicit thread (reader / quick-reply).
     if let Some(thread_id) = thread_id.as_ref() {
-        let envelopes = state.store.get_thread_envelopes(thread_id).await?;
+        let envelopes = state
+            .store
+            .get_thread_envelopes_for_model(thread_id)
+            .await?;
         if envelopes.is_empty() {
             return Err(format!("Thread {thread_id} has no messages to reply to").into());
         }

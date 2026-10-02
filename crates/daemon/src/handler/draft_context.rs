@@ -204,11 +204,21 @@ pub(crate) async fn resolve_thread_envelopes(
     let Ok(Some(envelope)) = state.store.get_envelope(message_id).await else {
         return Vec::new();
     };
-    state
+    let mut envelopes = state
         .store
-        .get_thread_envelopes(&envelope.thread_id)
+        .get_thread_envelopes_for_model(&envelope.thread_id)
         .await
-        .unwrap_or_default()
+        .unwrap_or_default();
+    // The message being answered stays in even when it is in Trash or Spam:
+    // the user chose it.
+    if !envelopes
+        .iter()
+        .any(|candidate| candidate.id == envelope.id)
+    {
+        envelopes.push(envelope);
+        envelopes.sort_by_key(|candidate| candidate.date);
+    }
+    envelopes
 }
 
 /// If the contact's profile is missing or older than their newest message,

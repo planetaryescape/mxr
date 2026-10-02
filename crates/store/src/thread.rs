@@ -235,6 +235,24 @@ impl super::Store {
         Ok(threads)
     }
 
+    /// The thread's messages a model may read: Trash and Spam left out.
+    /// A thread that is all Trash or Spam comes back whole, because asking
+    /// about one is an explicit choice, as `in:trash` is in search;
+    /// background work never selects such threads in the first place.
+    pub async fn get_thread_envelopes_for_model(
+        &self,
+        thread_id: &ThreadId,
+    ) -> Result<Vec<Envelope>, sqlx::Error> {
+        let envelopes = self.get_thread_envelopes(thread_id).await?;
+        if envelopes.iter().all(Envelope::is_trash_or_spam) {
+            return Ok(envelopes);
+        }
+        Ok(envelopes
+            .into_iter()
+            .filter(|envelope| !envelope.is_trash_or_spam())
+            .collect())
+    }
+
     pub async fn get_thread_envelopes(
         &self,
         thread_id: &ThreadId,

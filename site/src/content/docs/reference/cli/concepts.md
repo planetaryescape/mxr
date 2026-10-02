@@ -97,6 +97,8 @@ mxr accounts --format json
 
 The query parser accepts Gmail-style operators. The same grammar drives `mxr search`, `mxr count`, `mxr saved add`, the TUI `/`, and the `--search` flag on core batch mutations.
 
+As in Gmail, a query leaves out Trash and Spam unless it asks for them with `in:trash`, `in:spam`, `in:anywhere` or `label:TRASH`/`label:SPAM`. Each is let in on its own and only for the part of the query that asks: `in:trash OR from:alice@example.com` finds everything in Trash and Alice's mail outside Trash and Spam. A query with more than 32 OR-alternatives keeps Trash and Spam out unless every alternative asks for them; wrap it as `in:anywhere (...)` to search them. A batch mutation's `--search` follows the same rule, so acting on mail already in Trash needs `in:trash` in its query.
+
 | Operator | Example | Notes |
 |---|---|---|
 | bare text | `invoice receipt` | full-text across subject, sender name/email, snippet, body text, and attachment filenames |

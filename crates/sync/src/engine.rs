@@ -3,13 +3,18 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use mxr_core::{MailSyncProvider, MxrError};
 use mxr_search::{SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch};
-use mxr_store::{ScreenerDisposition, Store, SyncUpsert};
+use mxr_store::{DeletedMessages, ScreenerDisposition, Store, SyncUpsert};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 pub struct SyncOutcome {
     pub synced_count: u32,
     pub upserted_message_ids: Vec<MessageId>,
+    /// What this pass deleted because the provider deleted it. Everything
+    /// outside SQLite and the lexical index that was built from those
+    /// messages (semantic index, attachment files, contacts) is the caller's
+    /// to clear.
+    pub deleted: DeletedMessages,
     /// Provider truncated this batch and the next sync call will yield
     /// more data immediately. The daemon uses this to skip its normal
     /// sleep interval and re-poll right away.
@@ -312,6 +317,9 @@ impl SyncEngine {
         // returned by `rethread_account`. Drained into
         // `outcome.threads_changed` just before returning.
         let mut touched_threads: HashSet<ThreadId> = HashSet::new();
+        // Outside the loop: a pass that restarts from an empty cursor has
+        // already committed the deletes of the batch before the restart.
+        let mut deleted = DeletedMessages::default();
         tracing::debug!(account = %account_id, "sync_account_with_outcome: starting");
 
         loop {
@@ -483,22 +491,20 @@ impl SyncEngine {
                 });
             }
 
-            for provider_message_id in &batch.deleted_provider_ids {
-                if let Some(message_id) = self
-                    .store
-                    .get_message_id_by_provider_id(account_id, provider_message_id)
-                    .await
-                    .map_err(|e| MxrError::Store(e.to_string()))?
-                {
-                    lexical_batch.removed_message_ids.push(message_id);
-                }
-            }
-
             if !batch.deleted_provider_ids.is_empty() {
-                self.store
-                    .delete_messages_by_provider_ids(account_id, &batch.deleted_provider_ids)
+                let batch_deleted = self
+                    .store
+                    .delete_messages_and_derived(account_id, &batch.deleted_provider_ids)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
+                // The thread lists the delete changed, tombstoned if emptied.
+                touched_threads.extend(batch_deleted.thread_ids.iter().cloned());
+                lexical_batch
+                    .removed_message_ids
+                    .extend(batch_deleted.message_ids.iter().cloned());
+                deleted.message_ids.extend(batch_deleted.message_ids);
+                deleted.thread_ids.extend(batch_deleted.thread_ids);
+                deleted.counterparties.extend(batch_deleted.counterparties);
             }
 
             // Apply label changes from delta sync (previously dead code)
@@ -657,6 +663,7 @@ impl SyncEngine {
             return Ok(SyncOutcome {
                 synced_count,
                 upserted_message_ids,
+                deleted,
                 has_more,
                 threads_changed,
             });

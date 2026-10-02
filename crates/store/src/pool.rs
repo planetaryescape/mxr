@@ -22,6 +22,11 @@ const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(90);
 pub struct Store {
     writer: SqlitePool,
     reader: SqlitePool,
+    /// Serialises the cleanup of a deleted message's files and index
+    /// entries with sync storing messages, so a message id that comes back
+    /// (an IMAP UID reused for a new message) is never cleaned up as the
+    /// deleted one. See `lock_message_cleanup`.
+    pub(crate) message_cleanup: tokio::sync::Mutex<()>,
 }
 
 impl Store {
@@ -59,7 +64,11 @@ impl Store {
             .connect_with(read_opts)
             .await?;
 
-        let store = Self { writer, reader };
+        let store = Self {
+            writer,
+            reader,
+            message_cleanup: tokio::sync::Mutex::new(()),
+        };
         store.run_migrations().await?;
         Ok(store)
     }
@@ -77,6 +86,7 @@ impl Store {
         let store = Self {
             writer: pool.clone(),
             reader: pool,
+            message_cleanup: tokio::sync::Mutex::new(()),
         };
         store.run_migrations().await?;
         Ok(store)
@@ -941,6 +951,11 @@ const MIGRATIONS: &[Migration] = &[
         kind: MigrationKind::Sql(include_str!(
             "../migrations/057_search_reindex_pending.sql"
         )),
+    },
+    Migration {
+        version: 58,
+        name: "message_deletion",
+        kind: MigrationKind::Sql(include_str!("../migrations/058_message_deletion.sql")),
     },
 ];
 

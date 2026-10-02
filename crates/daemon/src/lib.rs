@@ -17,6 +17,7 @@ pub mod handler;
 pub(crate) mod history_text;
 pub mod ipc_client;
 pub(crate) mod loops;
+pub(crate) mod message_deletion;
 pub mod output;
 pub(crate) mod process_probe;
 pub(crate) mod provider_credentials;

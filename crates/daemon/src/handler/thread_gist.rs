@@ -130,7 +130,10 @@ pub(super) async fn thread_envelopes(
     state: &AppState,
     thread_id: &ThreadId,
 ) -> Result<Vec<Envelope>, HandlerError> {
-    let mut envelopes = state.store.get_thread_envelopes(thread_id).await?;
+    let mut envelopes = state
+        .store
+        .get_thread_envelopes_for_model(thread_id)
+        .await?;
     envelopes.sort_by_key(|envelope| envelope.date);
     Ok(envelopes)
 }
@@ -173,6 +176,9 @@ pub(super) struct GistSetup {
     key: String,
     /// The conversation's newest message: what the gist answers for.
     newest: MessageId,
+    /// Every message the gist is built from. The cache write is refused if
+    /// any was deleted while the model ran.
+    sources: Vec<MessageId>,
 }
 
 impl GistSetup {
@@ -186,6 +192,10 @@ impl GistSetup {
             account_id: newest.account_id.clone(),
             key: cache_key(thread_id),
             newest: newest.id.clone(),
+            sources: envelopes
+                .iter()
+                .map(|envelope| envelope.id.clone())
+                .collect(),
         })
     }
 }
@@ -334,19 +344,31 @@ async fn thread_gist(
         tracing::debug!(%thread_id, "thread gist: a newer message arrived; not cached");
         return Ok(ready(thread_id, setup, payload, generated_at, false));
     }
-    state
+    let written = state
         .store
-        .upsert_context_briefing(&ContextBriefing {
-            id: new_briefing_id(),
-            account_id: setup.account_id.clone(),
-            kind: BriefingKind::Thread,
-            subject_key: setup.key.clone(),
-            content_hash: setup.content_hash.clone(),
-            body_markdown: serde_json::to_string(&payload)?,
-            citations: vec![],
-            generated_at,
-        })
+        .upsert_context_briefing_if_sources_exist(
+            &ContextBriefing {
+                id: new_briefing_id(),
+                account_id: setup.account_id.clone(),
+                kind: BriefingKind::Thread,
+                subject_key: setup.key.clone(),
+                content_hash: setup.content_hash.clone(),
+                body_markdown: serde_json::to_string(&payload)?,
+                citations: vec![],
+                generated_at,
+            },
+            &setup.sources,
+        )
         .await?;
+    if !written {
+        // Mail it read was deleted mid-call; its text must not come back.
+        tracing::debug!(%thread_id, "thread gist: a source message was deleted; not cached");
+        return Ok(unavailable(
+            thread_id,
+            ThreadGistStatusData::Failed,
+            "Part of the conversation was deleted while the gist was written.",
+        ));
+    }
     Ok(ready(thread_id, setup, payload, generated_at, false))
 }
 

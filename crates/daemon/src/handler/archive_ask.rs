@@ -388,6 +388,10 @@ fn reciprocal_rank_fuse(
 }
 
 fn pass_filter(env: &mxr_core::types::Envelope, f: &ArchiveAskFiltersData) -> bool {
+    // Trash and Spam never go to the model as evidence for an answer.
+    if env.is_trash_or_spam() {
+        return false;
+    }
     if let Some(account) = f.account_id.as_ref() {
         if env.account_id != *account {
             return false;
@@ -1008,6 +1012,22 @@ mod tests {
             email: to.into(),
         }];
         env
+    }
+
+    #[test]
+    fn trash_and_spam_never_reach_the_ask_prompt() {
+        let account_id = AccountId::new();
+        let filters = ArchiveAskFiltersData::default();
+        let inbox = envelope_to_recipient(&account_id, "a@example.com", "b@example.com", "q");
+        assert!(pass_filter(&inbox, &filters));
+        for flag in [MessageFlags::TRASH, MessageFlags::SPAM] {
+            let mut envelope = inbox.clone();
+            envelope.flags = flag;
+            assert!(!pass_filter(&envelope, &filters), "{flag:?}");
+        }
+        let mut labelled = inbox;
+        labelled.label_provider_ids = vec!["TRASH".to_string()];
+        assert!(!pass_filter(&labelled, &filters));
     }
 
     /// `pass_filter` must honor `filters.to` -- a CLI user running

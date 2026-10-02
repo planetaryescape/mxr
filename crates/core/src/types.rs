@@ -835,6 +835,17 @@ const LINK_DENSITY_WORDS_PER_LINK: u32 = 50;
 const LINK_DENSITY_HEAVY_ABSOLUTE: u32 = 5;
 
 impl Envelope {
+    /// Whether the message sits in Trash or Spam, by flag or by provider
+    /// label (a label change from delta sync does not always set the flag).
+    pub fn is_trash_or_spam(&self) -> bool {
+        self.flags
+            .intersects(MessageFlags::TRASH | MessageFlags::SPAM)
+            || self.label_provider_ids.iter().any(|label| {
+                label.eq_ignore_ascii_case(system_labels::TRASH)
+                    || label.eq_ignore_ascii_case(system_labels::SPAM)
+            })
+    }
+
     /// Classify this envelope's link presence into the tri-state used by the
     /// mail-list indicator and rule conditions. Derived from `link_count` and
     /// `body_word_count` so the threshold can be retuned without re-running

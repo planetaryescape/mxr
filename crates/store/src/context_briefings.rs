@@ -106,6 +106,99 @@ impl super::Store {
     }
 }
 
+impl super::Store {
+    /// Writes a briefing built from `sources`, unless any of them has been
+    /// deleted since the caller read them. Returns whether it was written.
+    ///
+    /// A model call can outlast a delete: the briefing it returns may quote
+    /// mail that is gone, and writing it would bring that text back after
+    /// the delete cleared the cache. The check and the write are one
+    /// statement on the single writer connection, so a delete lands either
+    /// before it (the write is refused) or after it (the delete removes the
+    /// row it wrote).
+    pub async fn upsert_context_briefing_if_sources_exist(
+        &self,
+        b: &ContextBriefing,
+        sources: &[mxr_core::MessageId],
+    ) -> Result<bool, sqlx::Error> {
+        let citations_json = serde_json::to_string(&b.citations).unwrap_or_else(|_| "[]".into());
+        let sql = format!(
+            r#"INSERT INTO context_briefings
+               (id, account_id, kind, subject_key, content_hash, body_markdown,
+                citations_json, generated_at)
+               SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+               WHERE {sources_exist}
+               ON CONFLICT(account_id, kind, subject_key) DO UPDATE SET
+                 content_hash = excluded.content_hash,
+                 body_markdown = excluded.body_markdown,
+                 citations_json = excluded.citations_json,
+                 generated_at = excluded.generated_at"#,
+            sources_exist = crate::sources_exist_sql(9)
+        );
+        let written = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(&b.id)
+            .bind(b.account_id.as_str())
+            .bind(b.kind.as_str())
+            .bind(&b.subject_key)
+            .bind(&b.content_hash)
+            .bind(&b.body_markdown)
+            .bind(&citations_json)
+            .bind(b.generated_at.timestamp())
+            .bind(crate::sources_json(sources))
+            .execute(self.writer())
+            .await?
+            .rows_affected();
+        Ok(written > 0)
+    }
+}
+
+impl super::Store {
+    /// Writes a recipient briefing built from the contact row as it stood
+    /// at `contact_version` (its `refreshed_at`, or `None` when there was no
+    /// row), unless the row changed since. A message delete touching the
+    /// contact moves that version, so a briefing whose model call outlived
+    /// the delete is refused. Returns whether it was written.
+    pub async fn upsert_recipient_briefing_if_contact_unchanged(
+        &self,
+        b: &ContextBriefing,
+        email: &str,
+        contact_version: Option<i64>,
+    ) -> Result<bool, sqlx::Error> {
+        let citations_json = serde_json::to_string(&b.citations).unwrap_or_else(|_| "[]".into());
+        let written = sqlx::query(
+            r#"INSERT INTO context_briefings
+               (id, account_id, kind, subject_key, content_hash, body_markdown,
+                citations_json, generated_at)
+               SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+               WHERE (?10 IS NULL AND NOT EXISTS (
+                          SELECT 1 FROM contacts WHERE account_id = ?2 AND LOWER(email) = LOWER(?9)))
+                  OR EXISTS (
+                          SELECT 1 FROM contacts
+                          WHERE account_id = ?2 AND LOWER(email) = LOWER(?9)
+                            AND refreshed_at = ?10)
+               ON CONFLICT(account_id, kind, subject_key) DO UPDATE SET
+                 content_hash = excluded.content_hash,
+                 body_markdown = excluded.body_markdown,
+                 citations_json = excluded.citations_json,
+                 generated_at = excluded.generated_at"#,
+        )
+        .bind(&b.id)
+        .bind(b.account_id.as_str())
+        .bind(b.kind.as_str())
+        .bind(&b.subject_key)
+        .bind(&b.content_hash)
+        .bind(&b.body_markdown)
+        .bind(&citations_json)
+        .bind(b.generated_at.timestamp())
+        .bind(email)
+        .bind(contact_version)
+        .execute(self.writer())
+        .await?
+        .rows_affected();
+        Ok(written > 0)
+    }
+}
+
 pub fn new_briefing_id() -> String {
     Uuid::now_v7().to_string()
 }
@@ -174,6 +267,42 @@ mod tests {
             .unwrap();
         assert_eq!(got.body_markdown, "v2");
         assert_eq!(got.content_hash, "h2");
+    }
+
+    /// A gist whose model call outlasted the delete of a message it read
+    /// must not be written back: the delete already cleared the cache.
+    #[tokio::test]
+    async fn a_briefing_built_from_deleted_mail_is_not_written() {
+        let (store, account) = fixture().await;
+        let mut kept = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account.clone())
+            .build();
+        kept.provider_id = "kept".into();
+        store.upsert_envelope(&kept).await.unwrap();
+        let deleted_while_the_model_ran = mxr_core::MessageId::new();
+
+        let written = store
+            .upsert_context_briefing_if_sources_exist(
+                &briefing(&account, "gist:th-1", "quotes deleted mail", "h1"),
+                &[kept.id.clone(), deleted_while_the_model_ran],
+            )
+            .await
+            .unwrap();
+        assert!(!written);
+        assert!(store
+            .get_context_briefing(&account, BriefingKind::Thread, "gist:th-1")
+            .await
+            .unwrap()
+            .is_none());
+
+        let written = store
+            .upsert_context_briefing_if_sources_exist(
+                &briefing(&account, "gist:th-1", "current", "h2"),
+                &[kept.id],
+            )
+            .await
+            .unwrap();
+        assert!(written);
     }
 
     #[tokio::test]

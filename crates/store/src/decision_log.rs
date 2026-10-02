@@ -28,7 +28,52 @@ pub struct DecisionLogEntry {
 
 impl super::Store {
     /// Idempotent upsert keyed on stable decision id.
+    ///
+    /// Also records which stored messages the decision cites, so a message
+    /// delete can find it through an index instead of parsing every
+    /// decision's evidence JSON while holding the writer.
     pub async fn upsert_decision(&self, entry: &DecisionLogEntry) -> Result<(), sqlx::Error> {
+        self.write_decision(entry, false).await.map(|_| ())
+    }
+
+    /// Writes a decision a model just extracted, unless a message it cites
+    /// was deleted while the model ran. Returns whether it was written.
+    ///
+    /// Without the check the decision would be stored with no evidence row
+    /// for the deleted message, where no later delete could find it, and its
+    /// text can quote that message. The check and the write share one
+    /// transaction on the single writer connection, so a delete lands either
+    /// before (the write is refused) or after (it finds the evidence row).
+    pub async fn upsert_extracted_decision(
+        &self,
+        entry: &DecisionLogEntry,
+    ) -> Result<bool, sqlx::Error> {
+        self.write_decision(entry, true).await
+    }
+
+    /// Deletes decisions that cite messages none of which is stored any
+    /// more: left over from deletes made before decision evidence was
+    /// tracked, which nothing else would ever find. Decisions that cite
+    /// nothing are kept. Idempotent, and one statement driven by the
+    /// evidence table's primary key, so it is cheap on a large store.
+    pub async fn prune_decisions_without_evidence(&self) -> Result<u64, sqlx::Error> {
+        Ok(sqlx::query(
+            "DELETE FROM decision_log
+             WHERE json_array_length(evidence_msg_ids) > 0
+               AND NOT EXISTS (
+                   SELECT 1 FROM decision_evidence
+                   WHERE decision_evidence.decision_id = decision_log.id)",
+        )
+        .execute(self.writer())
+        .await?
+        .rows_affected())
+    }
+
+    async fn write_decision(
+        &self,
+        entry: &DecisionLogEntry,
+        require_evidence: bool,
+    ) -> Result<bool, sqlx::Error> {
         let evidence_json = serde_json::to_string(
             &entry
                 .evidence_msg_ids
@@ -37,6 +82,19 @@ impl super::Store {
                 .collect::<Vec<_>>(),
         )
         .unwrap_or_else(|_| "[]".into());
+        let mut tx = self.writer().begin().await?;
+        if require_evidence {
+            let evidence_missing: bool = sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM json_each(?)
+                                WHERE value NOT IN (SELECT id FROM messages))",
+            )
+            .bind(&evidence_json)
+            .fetch_one(&mut *tx)
+            .await?;
+            if evidence_missing {
+                return Ok(false);
+            }
+        }
         sqlx::query(
             r#"INSERT INTO decision_log
                (id, account_id, thread_id, topic, decision, rationale,
@@ -63,9 +121,22 @@ impl super::Store {
         .bind(entry.decided_at.map(|v| v.timestamp()))
         .bind(entry.extracted_at.timestamp())
         .bind(&entry.source_hash)
-        .execute(self.writer())
+        .execute(&mut *tx)
         .await?;
-        Ok(())
+        sqlx::query("DELETE FROM decision_evidence WHERE decision_id = ?")
+            .bind(&entry.id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            "INSERT OR IGNORE INTO decision_evidence (decision_id, message_id)
+             SELECT ?1, value FROM json_each(?2) WHERE value IN (SELECT id FROM messages)",
+        )
+        .bind(&entry.id)
+        .bind(&evidence_json)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(true)
     }
 
     /// Fetch a single decision by primary-key id. Returns `Ok(None)`
@@ -232,6 +303,77 @@ mod tests {
             extracted_at: Utc::now(),
             source_hash: hash,
         }
+    }
+
+    /// A model extraction that outlived the delete of a message it cites
+    /// must not store the decision: no evidence row would point the next
+    /// delete at it.
+    #[tokio::test]
+    async fn an_extracted_decision_citing_deleted_mail_is_not_written() {
+        let (store, account, thread, _) = fixture().await;
+        let mut stored = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account.clone())
+            .build();
+        stored.thread_id = thread.clone();
+        store.upsert_envelope(&stored).await.unwrap();
+        let deleted_while_the_model_ran = MessageId::new();
+
+        let mut citing_both = entry(&account, &thread, &stored.id, "Use Postgres");
+        citing_both
+            .evidence_msg_ids
+            .push(deleted_while_the_model_ran.clone());
+        assert!(!store.upsert_extracted_decision(&citing_both).await.unwrap());
+        assert!(store
+            .list_decisions(&account, None, None, 10)
+            .await
+            .unwrap()
+            .is_empty());
+
+        let citing_live = entry(&account, &thread, &stored.id, "Use Postgres");
+        assert!(store.upsert_extracted_decision(&citing_live).await.unwrap());
+        assert_eq!(
+            store
+                .list_decisions(&account, None, None, 10)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    /// A decision whose cited mail was deleted before evidence was tracked
+    /// has no evidence rows, so no delete will ever reach it.
+    #[tokio::test]
+    async fn decisions_left_over_from_earlier_deletes_are_pruned() {
+        let (store, account, thread, deleted_long_ago) = fixture().await;
+        let mut stored = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account.clone())
+            .build();
+        stored.thread_id = thread.clone();
+        store.upsert_envelope(&stored).await.unwrap();
+        store
+            .upsert_decision(&entry(&account, &thread, &deleted_long_ago, "Orphaned"))
+            .await
+            .unwrap();
+        store
+            .upsert_decision(&entry(&account, &thread, &stored.id, "Live"))
+            .await
+            .unwrap();
+        let mut no_evidence = entry(&account, &thread, &stored.id, "Cites nothing");
+        no_evidence.evidence_msg_ids.clear();
+        store.upsert_decision(&no_evidence).await.unwrap();
+
+        assert_eq!(store.prune_decisions_without_evidence().await.unwrap(), 1);
+        assert_eq!(store.prune_decisions_without_evidence().await.unwrap(), 0);
+        let mut left = store
+            .list_decisions(&account, None, None, 10)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|decision| decision.decision)
+            .collect::<Vec<_>>();
+        left.sort();
+        assert_eq!(left, vec!["Cites nothing", "Live"]);
     }
 
     #[tokio::test]

@@ -221,6 +221,7 @@ fn action(record: &TodoRecord, kind: TodoKind) -> Option<TodoActionData> {
             dmarc_pass: gate.dmarc_pass,
             domain_match: gate.domain_match,
             prior_mail: gate.prior_mail,
+            lookalike: gate.lookalike,
         }),
         untrusted_reason: (!trusted).then(|| {
             gate.and_then(Gate::failure)

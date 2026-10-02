@@ -3,8 +3,8 @@
 //!
 //! * Camden Council's council tax bill, due in five days, with schema.org
 //!   `Invoice` markup, a pay link on the council's own domain and a DMARC
-//!   pass, after an earlier statement from the same domain: a trusted
-//!   "Pay on camden.gov.uk" row.
+//!   pass, after three statements over 80 days: a trusted "Pay on
+//!   camden.gov.uk" row.
 //! * Spotify's failed payment yesterday: a to-do at once.
 //! * Sam's leaving drinks, which ended yesterday: already over, so never
 //!   shown.
@@ -19,12 +19,12 @@ use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::{Address, Envelope, MessageBody, MessageFlags, UnsubscribeMethod};
 
 /// Messages `todo_demo_messages` returns.
-pub(super) const TODO_DEMO_MESSAGE_COUNT: usize = 7;
+pub(super) const TODO_DEMO_MESSAGE_COUNT: usize = 9;
 
 /// The sent message the demo command records as an undated promise.
 const TODO_DEMO_PROMISE_SUBJECT: &str = "Re: Engagement form";
 /// Its position among the messages `todo_demo_messages` returns.
-pub(super) const TODO_DEMO_PROMISE_POSITION: usize = 4;
+pub(super) const TODO_DEMO_PROMISE_POSITION: usize = 6;
 
 fn thread(account_id: &AccountId, name: &str) -> ThreadId {
     ThreadId::from_scoped_provider_id(account_id, "fake", &format!("demo-todo-{name}"))
@@ -93,20 +93,24 @@ pub(super) fn todo_demo_messages(
         built.push((envelope, body));
     };
 
-    let mut statement = message(
-        camden.clone(),
-        self_addr,
-        "Your annual council tax statement",
-        "Your annual council tax statement for this year is attached. You don't need to do anything yet; we'll write when your next instalment is due.".to_string(),
-        now - Duration::days(40),
-    );
-    statement.flags = MessageFlags::READ;
-    push(
-        statement,
-        thread(account_id, "camden-statement"),
-        None,
-        true,
-    );
+    // Three statements over 80 days: the established relationship a
+    // one-click pay button needs.
+    for days in [120, 80, 40] {
+        let mut statement = message(
+            camden.clone(),
+            self_addr,
+            "Your council tax statement",
+            "Your council tax statement is attached. You don't need to do anything yet; we'll write when your next instalment is due.".to_string(),
+            now - Duration::days(days),
+        );
+        statement.flags = MessageFlags::READ;
+        push(
+            statement,
+            thread(account_id, &format!("camden-statement-{days}")),
+            None,
+            true,
+        );
+    }
 
     let bill_text = format!(
         "Dear Alex,\n\nYour council tax payment of £142.00 is due on {due_words}.\n\nPay online: https://www.camden.gov.uk/pay-council-tax\n\nAccount reference: 4471 0092 18\n\nCamden Council"

@@ -14,7 +14,7 @@ use mxr_protocol::{
     TodoCatchupDecisionData, TodoData, TodoRunwayData, TodoStateActionData, TodoStateData,
 };
 use mxr_store::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
-use mxr_todo::pass::{self, PassConfig};
+use mxr_todo::pass;
 use std::collections::HashMap;
 
 const CAMDEN_AUTH: &str =
@@ -120,18 +120,9 @@ async fn put(fx: &Fixture, mail: Mail<'_>) -> MessageId {
     id
 }
 
-fn cfg(now: DateTime<Utc>) -> PassConfig<Local> {
-    PassConfig {
-        now,
-        tz: Local,
-        morning_hour: 9,
-        catchup_days: 14,
-        catchup_max: 25,
-    }
-}
-
 async fn scan(fx: &Fixture, ids: &[MessageId], now: DateTime<Utc>) -> pass::PassSummary {
-    pass::scan_messages(&fx.state.store, &cfg(now), ids)
+    let cfg = todos::pass_config(&fx.state, now).await.unwrap();
+    pass::scan_messages(&fx.state.store, &cfg, ids)
         .await
         .unwrap()
 }
@@ -170,14 +161,17 @@ fn invoice_html(due: DateTime<Utc>, link: &str) -> String {
 
 /// Camden's earlier statement, then its bill due in five days.
 async fn camden_bill(fx: &Fixture, now: DateTime<Utc>) -> MessageId {
-    let mut statement = Mail::new(
-        ("Camden Council", "council.tax@camden.gov.uk"),
-        "Your annual council tax statement",
-        "Your annual statement is attached.",
-        now - Duration::days(40),
-    );
-    statement.auth = Some(CAMDEN_AUTH);
-    put(fx, statement).await;
+    // Three statements over 80 days: an established relationship.
+    for days in [120, 80, 40] {
+        let mut statement = Mail::new(
+            ("Camden Council", "council.tax@camden.gov.uk"),
+            "Your council tax statement",
+            "Your statement is attached.",
+            now - Duration::days(days),
+        );
+        statement.auth = Some(CAMDEN_AUTH);
+        put(fx, statement).await;
+    }
     let due = now + Duration::days(5);
     let mut bill = Mail::new(
         ("Camden Council", "council.tax@camden.gov.uk"),
@@ -296,7 +290,7 @@ async fn a_lookalike_domain_gets_open_email_to_pay_and_its_raw_domain() {
     assert_eq!(action.domain.as_deref(), Some("camden-gov.uk"));
     assert_eq!(
         action.untrusted_reason.as_deref(),
-        Some("there's no earlier mail from this domain")
+        Some("you have no established history with this domain")
     );
 }
 
@@ -808,4 +802,97 @@ async fn a_catch_up_decision_scoped_to_one_account_never_touches_another() {
     };
     assert!(change.changed.is_empty());
     assert_eq!(runway(&fx, now).await.catchup_count, 1);
+}
+
+#[tokio::test]
+async fn a_primed_lookalike_of_a_known_biller_still_gets_open_email_to_pay() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    camden_bill(&fx, now).await;
+    // The attacker primes a history: three messages over 70 days.
+    for days in [100, 60, 30] {
+        let mut primer = Mail::new(
+            ("Camden Council", "council.tax@camden-gov.uk"),
+            "Council tax news",
+            "Updates from the council.",
+            now - Duration::days(days),
+        );
+        primer.auth = Some(LOOKALIKE_AUTH);
+        put(&fx, primer).await;
+    }
+    finish_first_run(&fx, now).await;
+    let mut phish = Mail::new(
+        ("Camden Council", "council.tax@camden-gov.uk"),
+        "Your council tax bill",
+        "Your council tax payment of £142.00 is due soon.",
+        now,
+    );
+    phish.html = Some(invoice_html(
+        now + Duration::days(1),
+        "https://camden-gov.uk/pay",
+    ));
+    phish.auth = Some(LOOKALIKE_AUTH);
+    let id = put(&fx, phish).await;
+    scan(&fx, std::slice::from_ref(&id), now).await;
+    let today = runway(&fx, now).await;
+    let row = today
+        .now
+        .iter()
+        .find(|todo| todo.source_message_id.as_ref() == Some(&id))
+        .expect("the phish is a row");
+    let action = row.action.as_ref().expect("a button");
+    assert!(!action.trusted);
+    assert_eq!(action.label, "Open email to pay");
+    assert_eq!(
+        action.untrusted_reason.as_deref(),
+        Some("the sender's domain looks like one you already know")
+    );
+}
+
+#[tokio::test]
+async fn a_forged_pass_below_the_providers_fail_gets_no_button() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    camden_bill(&fx, now).await;
+    finish_first_run(&fx, now).await;
+    let mut forged = Mail::new(
+        ("Camden Council", "council.tax@camden.gov.uk"),
+        "Your council tax bill",
+        "Your council tax payment of £99.00 is due soon.",
+        now,
+    );
+    forged.html = Some(invoice_html(
+        now + Duration::days(2),
+        "https://www.camden.gov.uk/pay",
+    ));
+    forged.auth = None;
+    let id = put(&fx, forged).await;
+    // The provider's own result says fail; the sender's forged pass sits below it.
+    fx.state
+        .store
+        .insert_body(&MessageBody {
+            message_id: id.clone(),
+            text_plain: Some("Your council tax payment of £99.00 is due soon.".into()),
+            text_html: Some(invoice_html(now + Duration::days(2), "https://www.camden.gov.uk/pay")),
+            attachments: vec![],
+            fetched_at: now,
+            metadata: MessageMetadata {
+                auth_results: vec![
+                    "mx.google.com; dkim=fail; spf=fail; dmarc=fail (p=REJECT) header.from=camden.gov.uk".into(),
+                    CAMDEN_AUTH.into(),
+                ],
+                ..MessageMetadata::default()
+            },
+        })
+        .await
+        .unwrap();
+    scan(&fx, std::slice::from_ref(&id), now).await;
+    let today = runway(&fx, now).await;
+    let row = today
+        .now
+        .iter()
+        .chain(coming_up(&today))
+        .find(|todo| todo.source_message_id.as_ref() == Some(&id))
+        .expect("a row");
+    assert!(!row.action.as_ref().expect("a button").trusted);
 }

@@ -27,12 +27,34 @@ async fn main() -> anyhow::Result<()> {
     }
     let store = Store::new(&path).await?;
     let now = Utc::now();
+    // Gmail and the fake provider stamp `mx.google.com`; others get no
+    // trusted id, as in the daemon.
+    let trusted_authserv = store
+        .list_accounts()
+        .await?
+        .into_iter()
+        .map(|account| {
+            let google = account.sync_backend.is_some_and(|backend| {
+                matches!(
+                    backend.provider_kind,
+                    mxr_core::types::ProviderKind::Gmail | mxr_core::types::ProviderKind::Fake
+                )
+            });
+            let ids = if google {
+                vec!["mx.google.com".to_string()]
+            } else {
+                Vec::new()
+            };
+            (account.id, ids)
+        })
+        .collect();
     let cfg = PassConfig {
         now,
         tz: chrono::Local,
         morning_hour: 9,
         catchup_days: 14,
         catchup_max: 25,
+        trusted_authserv,
     };
 
     let started = Instant::now();
@@ -180,10 +202,14 @@ async fn main() -> anyhow::Result<()> {
             .await?
     );
     timed!(
-        "has_mail_from_domain_before",
+        "sender_history",
         store
-            .has_mail_from_domain_before(&account.id, "example-not-a-sender.test", now)
+            .sender_history(&account.id, "example-not-a-sender.test", now)
             .await?
+    );
+    timed!(
+        "established_sender_hosts",
+        store.established_sender_hosts(&account.id, 3, 60).await?
     );
     timed!(
         "list_promises_for_todos",

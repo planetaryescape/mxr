@@ -60,9 +60,16 @@ pub struct TodoAmountData {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TodoGateData {
+    /// DMARC passed, as reported by your own mail provider.
     pub dmarc_pass: bool,
     pub domain_match: bool,
+    /// An established relationship with the domain: mail from it at least
+    /// 30 days earlier, and either mail you sent to it or 3 messages from
+    /// it over 60 days.
     pub prior_mail: bool,
+    /// The domain imitates one you already know.
+    #[serde(default)]
+    pub lookalike: bool,
 }
 
 /// The one thing Enter does.

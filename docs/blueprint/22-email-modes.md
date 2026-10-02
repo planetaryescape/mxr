@@ -251,12 +251,23 @@ for the smart tier and GPT-6.1 Sol (GPT-6 Astra available in config) for
   an open dot. Expensify and Paperless both report wrong dates and totals
   from extraction (archive.md §3).
 - **One-click money links are gated.** A "Pay on camden.gov.uk" button
-  appears only when DMARC passes for the sender's domain (`auth_results`
-  in `crates/mail-parse/src/lib.rs`) and the link's registrable domain
-  matches the sender's or one seen in earlier authenticated mail from
-  them. Otherwise the row says "Open email to pay" and shows the raw
-  domain. The domain is always visible before Enter, and the TUI footer
-  prints it (todo.md §5, §9). How strict the gate is stays BK's call.
+  appears only when four things hold. First, DMARC passed for the sender's
+  domain in the `Authentication-Results` header your own provider added:
+  the topmost one whose authserv-id is the provider's (`mx.google.com`
+  for Gmail; for IMAP, an id in `[todo] trusted_authserv_ids`), naming
+  the From domain in `header.from`. A sender can write that header too,
+  so any other copy is ignored, and an account with no trusted id never
+  gets the button. Second, the link's registrable domain is the
+  sender's. Third, you have an established relationship with that domain:
+  mail from it at least 30 days before this message, and either mail you
+  sent to it or at least 3 messages from it over at least 60 days, which
+  an attacker priming a lookalike can't fake quickly. Fourth, the domain
+  isn't a confusable or one-edit variant (IDN skeleton, digit and letter
+  swaps, an added hyphen) of a domain you already have that relationship
+  with. Otherwise the row says "Open email to pay" and shows the raw
+  domain, and mxr never opens the link straight from the row. The domain
+  is always visible before Enter, and the TUI footer prints it (todo.md
+  §5, §9).
 - **Badges count work only:** Now, and To do's Now band.
 
 ## Now shows at most ten things in four fixed sections
@@ -1587,9 +1598,14 @@ BK asked on 2026-10-02 for these to be decided for him ("review and decide
 for me, I just want a working app"). Each follows the research and the
 rules above; D117 records them.
 
-- **Pay-link gate.** A one-click pay button needs three things: DMARC pass,
-  the link's registrable domain matching the sender's, and earlier mail
-  from that domain. Anything else shows "Open email to pay".
+- **Pay-link gate.** A one-click pay button needs four things: DMARC pass
+  in the result your own provider added (never a header the sender could
+  write), the link's registrable domain matching the sender's, an
+  established relationship with that domain (mail from it at least 30
+  days earlier, and either mail you sent to it or 3 messages over 60
+  days), and a domain that isn't a lookalike of one you already know.
+  Anything else shows "Open email to pay", and the link is never opened
+  straight from the row.
 - **No weekly money total.** Per-item amounts only. A running total reads
   as financial advice and adds worry without an action.
 - **Archive on last done.** Stays on by default. Toasts say which happened,

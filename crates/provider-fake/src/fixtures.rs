@@ -2050,7 +2050,7 @@ mod tests {
     fn generated_demo_carries_the_to_do_mail_and_names_the_promise() {
         let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
         let stream = DemoFixtureStream::new(&account_id, 500);
-        let seeded = stream.page(0, 12);
+        let seeded = stream.page(0, 14);
         let subjects: Vec<&str> = seeded.iter().map(|(env, _)| env.subject.as_str()).collect();
         assert!(subjects.contains(&"Your council tax bill"));
         assert!(subjects.contains(&"We can't process your payment"));

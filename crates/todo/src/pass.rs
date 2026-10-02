@@ -12,7 +12,7 @@
 //! The same placement rules serve all of them, so a re-run or a rule
 //! change can add at most one more catch-up batch, never a flood.
 
-use crate::action_link::{dmarc_passes, registrable_domain, Gate};
+use crate::action_link::{dmarc_passes, is_lookalike, registrable_domain, Gate};
 use crate::complete::{looks_done, LaterMessage, OpenRow};
 use crate::detect::{detect, from_invite, Detection, MessageInput, Origin};
 use crate::provenance::{FieldProvenance, FieldSource, FieldSources};
@@ -42,6 +42,10 @@ pub struct PassConfig<Tz> {
     /// How far back undated items may join the first run's catch-up.
     pub catchup_days: u32,
     pub catchup_max: u32,
+    /// Per account, the authserv-ids of `Authentication-Results` headers
+    /// its provider adds. An account without any never gets a one-click
+    /// pay button.
+    pub trusted_authserv: HashMap<AccountId, Vec<String>>,
 }
 
 /// Counts only: no titles, amounts or due words, so a summary is safe to
@@ -294,20 +298,17 @@ where
         return Ok(summary);
     };
     let gate = match (&detection.link, &sender_domain) {
-        (Some(link), Some(domain)) => {
-            let dmarc_pass = dmarc_passes(&body.metadata.auth_results, domain);
-            let domain_match = registrable_domain(&link.host).as_deref() == Some(domain.as_str());
-            let prior_mail = dmarc_pass
-                && domain_match
-                && store
-                    .has_mail_from_domain_before(&row.account_id, domain, row.date)
-                    .await?;
-            Some(Gate {
-                dmarc_pass,
-                domain_match,
-                prior_mail,
-            })
-        }
+        (Some(link), Some(domain)) => Some(
+            check_gate(
+                store,
+                cfg,
+                row,
+                &body.metadata.auth_results,
+                &link.host,
+                domain,
+            )
+            .await?,
+        ),
         _ => None,
     };
     let (record, placement) = build_record(cfg, row, detection, gate, run_in_progress);
@@ -318,6 +319,67 @@ where
         store.upsert_detected_todo(&record).await?,
     );
     Ok(summary)
+}
+
+/// The one-click gate for a link in `row`. The relationship and lookalike
+/// checks only run once DMARC and the domain match have passed, since a
+/// failed gate shows "Open email to pay" whatever they say.
+async fn check_gate<Tz>(
+    store: &Store,
+    cfg: &PassConfig<Tz>,
+    row: &TodoScanRow,
+    auth_results: &[String],
+    link_host: &str,
+    sender_domain: &str,
+) -> anyhow::Result<Gate> {
+    let trusted_ids = cfg
+        .trusted_authserv
+        .get(&row.account_id)
+        .map_or(&[][..], Vec::as_slice);
+    let mut gate = Gate {
+        dmarc_pass: dmarc_passes(auth_results, sender_domain, trusted_ids),
+        domain_match: registrable_domain(link_host).as_deref() == Some(sender_domain),
+        ..Gate::default()
+    };
+    if !(gate.dmarc_pass && gate.domain_match) {
+        return Ok(gate);
+    }
+    let history = store
+        .sender_history(&row.account_id, sender_domain, row.date)
+        .await?;
+    gate.prior_mail = established(&history, row.date);
+    let known: Vec<String> = store
+        .established_sender_hosts(&row.account_id, ESTABLISHED_MESSAGES, ESTABLISHED_SPAN_DAYS)
+        .await?
+        .iter()
+        .filter_map(|host| registrable_domain(host))
+        .collect();
+    gate.lookalike = is_lookalike(sender_domain, &known);
+    Ok(gate)
+}
+
+/// Mail from the domain at least this long before this message.
+const ESTABLISHED_FIRST_DAYS: i64 = 30;
+/// Or, without mail you sent them, this many messages...
+const ESTABLISHED_MESSAGES: i64 = 3;
+/// ...spread over at least this many days.
+const ESTABLISHED_SPAN_DAYS: i64 = 60;
+
+/// An established relationship: mail from the domain at least 30 days
+/// before `at`, and either mail you sent to it, or at least 3 messages
+/// from it over at least 60 days. An attacker can send a few messages
+/// ahead of the phish; they can't make you have written to them, or wait
+/// months.
+pub fn established(history: &mxr_store::SenderHistory, at: DateTime<Utc>) -> bool {
+    let Some(first) = history.first else {
+        return false;
+    };
+    let old_enough = first <= at - chrono::Duration::days(ESTABLISHED_FIRST_DAYS);
+    let spread = history
+        .last
+        .is_some_and(|last| last - first >= chrono::Duration::days(ESTABLISHED_SPAN_DAYS))
+        && history.inbound >= ESTABLISHED_MESSAGES;
+    old_enough && (history.wrote_to || spread)
 }
 
 fn record_outcome(
@@ -814,4 +876,53 @@ pub async fn sweep(store: &Store, now: DateTime<Utc>) -> anyhow::Result<SweepSum
         expired: store.expire_lapsed_todos(now).await?,
         surfaced: store.claim_surfaced_todos(now).await?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+    use mxr_store::SenderHistory;
+
+    fn day(n: i64) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 10, 1, 9, 0, 0)
+            .single()
+            .expect("valid time")
+            + chrono::Duration::days(n)
+    }
+
+    #[test]
+    fn an_established_relationship_needs_age_and_either_a_reply_or_a_spread() {
+        let at = day(0);
+        let history = |inbound, first, last, wrote_to| SenderHistory {
+            inbound,
+            first: Some(day(first)),
+            last: Some(day(last)),
+            wrote_to,
+        };
+        assert!(
+            established(&history(1, -40, -40, true), at),
+            "old and you wrote to them"
+        );
+        assert!(
+            established(&history(3, -90, -5, false), at),
+            "three over 85 days"
+        );
+        assert!(
+            !established(&history(10, -20, -1, true), at),
+            "primed in the last 30 days"
+        );
+        assert!(
+            !established(&history(2, -90, -5, false), at),
+            "too few, never written to"
+        );
+        assert!(
+            !established(&history(5, -40, -30, false), at),
+            "five in ten days is a burst"
+        );
+        assert!(
+            !established(&SenderHistory::default(), at),
+            "nothing before"
+        );
+    }
 }

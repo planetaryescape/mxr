@@ -35,6 +35,15 @@ pub struct TodoRun {
     pub completed_at: Option<DateTime<Utc>>,
 }
 
+/// What the account has had from and sent to one domain.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SenderHistory {
+    pub inbound: i64,
+    pub first: Option<DateTime<Utc>>,
+    pub last: Option<DateTime<Utc>>,
+    pub wrote_to: bool,
+}
+
 /// A promise you made, with what a to-do row needs from around it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PromiseForTodo {
@@ -211,19 +220,31 @@ impl super::Store {
         Ok(out)
     }
 
-    /// Whether the account had mail from `domain` (or a subdomain of it)
-    /// before `before`: one leg of the pay-link gate.
-    pub async fn has_mail_from_domain_before(
+    /// The account's history with `domain` (or a subdomain of it) before
+    /// `before`, for the pay-link gate's relationship check.
+    pub async fn sender_history(
         &self,
         account_id: &AccountId,
         domain: &str,
         before: DateTime<Utc>,
-    ) -> Result<bool, sqlx::Error> {
+    ) -> Result<SenderHistory, sqlx::Error> {
         let domain = domain.to_ascii_lowercase();
-        let exists: Option<i64> = sqlx::query_scalar(
-            "SELECT 1 FROM messages
+        let row = sqlx::query(
+            "SELECT COUNT(*) AS n, MIN(date) AS first, MAX(date) AS last FROM messages
              WHERE account_id = ?1 AND date < ?2 AND direction <> 'outbound'
-               AND (LOWER(from_email) LIKE '%@' || ?3 OR LOWER(from_email) LIKE '%.' || ?3)
+               AND (LOWER(from_email) LIKE '%@' || ?3 OR LOWER(from_email) LIKE '%.' || ?3)",
+        )
+        .bind(account_id.as_str())
+        .bind(before.timestamp())
+        .bind(&domain)
+        .fetch_one(self.reader())
+        .await?;
+        // Recipients are stored as JSON, so an address ends in `"`.
+        let wrote_to: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM messages
+             WHERE account_id = ?1 AND date < ?2 AND direction = 'outbound'
+               AND (LOWER(to_addrs) LIKE '%@' || ?3 || '\"%'
+                    OR LOWER(to_addrs) LIKE '%.' || ?3 || '\"%')
              LIMIT 1",
         )
         .bind(account_id.as_str())
@@ -231,7 +252,34 @@ impl super::Store {
         .bind(&domain)
         .fetch_optional(self.reader())
         .await?;
-        Ok(exists.is_some())
+        Ok(SenderHistory {
+            inbound: row.try_get("n")?,
+            first: decode_optional_timestamp(row.try_get("first")?)?,
+            last: decode_optional_timestamp(row.try_get("last")?)?,
+            wrote_to: wrote_to.is_some(),
+        })
+    }
+
+    /// Sender hosts the account has heard from at least `min_messages`
+    /// times over at least `min_days`: the domains a lookalike would copy.
+    pub async fn established_sender_hosts(
+        &self,
+        account_id: &AccountId,
+        min_messages: i64,
+        min_days: i64,
+    ) -> Result<Vec<String>, sqlx::Error> {
+        sqlx::query_scalar(
+            "SELECT LOWER(substr(from_email, instr(from_email, '@') + 1)) AS host
+             FROM messages
+             WHERE account_id = ?1 AND direction <> 'outbound'
+             GROUP BY host
+             HAVING COUNT(*) >= ?2 AND MAX(date) - MIN(date) >= ?3",
+        )
+        .bind(account_id.as_str())
+        .bind(min_messages)
+        .bind(min_days * 86_400)
+        .fetch_all(self.reader())
+        .await
     }
 
     /// Promises you made, with their evidence date and the person's name.

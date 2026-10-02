@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Correct a to-do: title, due, amount, counterparty or kind, as field=value. The row is yours from then on
+
+Usage: mxr todo edit [OPTIONS] <TODO_ID> <FIELD=VALUE>...
+
+Arguments:
+  <TODO_ID>
+  <FIELD=VALUE>...
+
+Options:
+      --dry-run
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

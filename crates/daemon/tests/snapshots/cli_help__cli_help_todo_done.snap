@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Tick off to-dos
+
+Usage: mxr todo done [OPTIONS] <TODO_ID>...
+
+Arguments:
+  <TODO_ID>...
+
+Options:
+      --dry-run            Show what would change without changing anything
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

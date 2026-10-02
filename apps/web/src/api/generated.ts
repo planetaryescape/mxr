@@ -1965,6 +1965,127 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/todos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The To do runway: Now, Coming up by week, Later, Whenever and Done this week */
+        get: operations["mail_todos_runway"];
+        put?: never;
+        /** Make a to-do from a message yourself (dry_run previews) */
+        post: operations["mail_todos_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/todos/catchup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The first run's one-time catch-up, with what was already over */
+        get: operations["mail_todos_catchup_get"];
+        put?: never;
+        /** Keep or let go in the catch-up; let_go_all takes every row still waiting (dry_run previews) */
+        post: operations["mail_todos_catchup_set"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/todos/in/{state}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every to-do in one state, newest change first; `expired` is the Expired list */
+        get: operations["mail_todos_in_state"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/todos/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tick off, reopen or mark to-dos not a to-do (dry_run previews) */
+        post: operations["mail_todos_state"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/todos/{todo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One to-do with where each of its fields came from */
+        get: operations["mail_todo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/todos/{todo_id}/edit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct a to-do's fields; it is yours from then on (dry_run previews) */
+        post: operations["mail_todo_edit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/todos/{todo_id}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Show a to-do on your own date, or clear it (dry_run previews) */
+        post: operations["mail_todo_schedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/whois": {
         parameters: {
             query?: never;
@@ -5915,6 +6036,61 @@ export interface components {
         } | {
             account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
+            cmd: "GetTodoRunway";
+            mark_seen?: boolean;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "ListTodos";
+            /** Format: int32 */
+            limit?: number;
+            state: components["schemas"]["TodoStateData"];
+        } | {
+            /** @enum {string} */
+            cmd: "GetTodo";
+            todo_id: string;
+        } | {
+            action: components["schemas"]["TodoStateActionData"];
+            /** @enum {string} */
+            cmd: "SetTodoState";
+            dry_run?: boolean;
+            todo_ids: string[];
+        } | {
+            /** @enum {string} */
+            cmd: "ScheduleTodo";
+            dry_run?: boolean;
+            time_zone?: string | null;
+            todo_id: string;
+            when?: string | null;
+        } | {
+            /** @enum {string} */
+            cmd: "UpdateTodo";
+            dry_run?: boolean;
+            edits: components["schemas"]["TodoEditData"][];
+            time_zone?: string | null;
+            todo_id: string;
+        } | {
+            /** @enum {string} */
+            cmd: "CreateTodo";
+            dry_run?: boolean;
+            due?: string | null;
+            kind?: string | null;
+            message_id: components["schemas"]["MessageId"];
+            time_zone?: string | null;
+            title: string;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "GetTodoCatchup";
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "SetTodoCatchup";
+            decision: components["schemas"]["TodoCatchupDecisionData"];
+            dry_run?: boolean;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
             cmd: "ListPlace";
             /**
              * Format: int32
@@ -6626,6 +6802,26 @@ export interface components {
             dry_run: boolean;
             /** @enum {string} */
             kind: "RecordedPromise";
+        } | {
+            /** @enum {string} */
+            kind: "TodoRunway";
+            runway: components["schemas"]["TodoRunwayData"];
+        } | {
+            /** @enum {string} */
+            kind: "Todos";
+            todos: components["schemas"]["TodoData"][];
+        } | {
+            /** @enum {string} */
+            kind: "Todo";
+            todo: components["schemas"]["TodoData"];
+        } | {
+            change: components["schemas"]["TodoChangeData"];
+            /** @enum {string} */
+            kind: "TodoChange";
+        } | {
+            catchup: components["schemas"]["TodoCatchupData"];
+            /** @enum {string} */
+            kind: "TodoCatchup";
         } | {
             account_id?: null | components["schemas"]["AccountId"];
             bundles: components["schemas"]["PlaceBundleData"][];
@@ -7460,6 +7656,339 @@ export interface components {
         TimeSpan: {
             end: number;
             start: number;
+        };
+        /** @description The one thing Enter does. */
+        TodoActionData: {
+            /** @description The link's registrable domain, always shown before Enter. */
+            domain?: string | null;
+            gate?: null | components["schemas"]["TodoGateData"];
+            /**
+             * @description "Pay on camden.gov.uk" when the gate passed, "Open email to pay"
+             *     when it didn't.
+             */
+            label: string;
+            trusted: boolean;
+            /** @description The first gate check that failed, in plain words. */
+            untrusted_reason?: string | null;
+            /** @description Open this only when `trusted`; otherwise open the email. */
+            url: string;
+        };
+        TodoAmountData: {
+            /** @description ISO 4217. */
+            currency: string;
+            /** @description "£142.00". */
+            display: string;
+            /**
+             * Format: int64
+             * @description In the currency's minor unit.
+             */
+            minor: number;
+        };
+        /** @description Body of `POST /api/v1/mail/todos/catchup`. */
+        TodoCatchupBody: {
+            /** @description Omitted: every account. */
+            account_id?: string | null;
+            decision: components["schemas"]["TodoCatchupDecisionData"];
+            dry_run?: boolean;
+        };
+        /** @description Returned by `Request::GetTodoCatchup`. */
+        TodoCatchupData: {
+            /** @description What the first run found already over, by kind. */
+            already_over: components["schemas"]["TodoKindCountData"][];
+            /** @description "Already over, so not shown: 50 past invites, 63 quiet parcels." */
+            already_over_line?: string | null;
+            first_run: components["schemas"]["TodoFirstRunData"];
+            /**
+             * Format: int32
+             * @description Found for the batch after it was full; in the Expired list.
+             */
+            overflow_count: number;
+            /** @description "Catch up: 12 things from the last two weeks might still need you." */
+            title: string;
+            todos: components["schemas"]["TodoData"][];
+            /** @description `todo_copy::CATCH_UP_WHY`. */
+            why: string;
+            /**
+             * Format: int32
+             * @description The catch-up window, in days.
+             */
+            window_days: number;
+        };
+        /** @description Keep or let go in the catch-up. */
+        TodoCatchupDecisionData: {
+            /** @enum {string} */
+            decision: "keep";
+            todo_ids: string[];
+        } | {
+            /** @enum {string} */
+            decision: "let_go";
+            todo_ids: string[];
+        } | {
+            /** @enum {string} */
+            decision: "let_go_all";
+        };
+        /**
+         * @description Returned by every to-do mutation. With `dry_run`, `changed` is what
+         *     would change and nothing was written.
+         */
+        TodoChangeData: {
+            /** @description done | undo | dismiss | schedule | edit | create | keep | let_go */
+            action: string;
+            /** @description The rows as they are (or would be) after the change. */
+            changed: components["schemas"]["TodoData"][];
+            dry_run: boolean;
+            /** @description One line saying what happened: "Ticked off 2.", "Would let go of 12." */
+            summary: string;
+            /** @description Ids that matched but were not in a state this change applies to. */
+            unchanged?: string[];
+        };
+        /** @description Body of `POST /api/v1/mail/todos`. */
+        TodoCreateBody: {
+            dry_run?: boolean;
+            /** @description A phrase ("fri", "9 oct") or RFC3339. */
+            due?: string | null;
+            /** @description Defaults to `other`. */
+            kind?: string | null;
+            /** @description The message it's about. */
+            message_id: string;
+            time_zone?: string | null;
+            /** @description What to do, starting with the verb. */
+            title: string;
+        };
+        /** @description One row: a thing to do, titled verb plus object, never the subject. */
+        TodoData: {
+            account_id: components["schemas"]["AccountId"];
+            /**
+             * Format: date-time
+             * @description When you must act: due minus processing time.
+             */
+            act_by_at?: string | null;
+            action?: null | components["schemas"]["TodoActionData"];
+            amount?: null | components["schemas"]["TodoAmountData"];
+            /** @description pending | kept | let_go | overflow */
+            catchup?: string | null;
+            counterparty?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            dismissed_at?: string | null;
+            /** Format: date-time */
+            done_at?: string | null;
+            /**
+             * Format: date-time
+             * @description The outside deadline.
+             */
+            due_at?: string | null;
+            /** @description The phrase the due date was read from, verbatim. */
+            due_words?: string | null;
+            /** Format: date-time */
+            expired_at?: string | null;
+            /** @description Where each field came from. */
+            fields: components["schemas"]["TodoFieldData"][];
+            id: string;
+            /**
+             * @description bill | payment_failed | renewal | document | lease | return | rsvp |
+             *     verify | sign | promise | other
+             */
+            kind: string;
+            looks_done?: null | components["schemas"]["TodoLooksDoneData"];
+            /**
+             * @description What happens next, where it's true: "When the receipt arrives, the
+             *     row says it looks done."
+             */
+            next?: string | null;
+            /** @description rule | schema | ics | model | handoff | manual */
+            origin: string;
+            /** @description Past the due date. */
+            overdue: boolean;
+            /** @description "you promised Priya" on promise rows. */
+            person_label?: string | null;
+            /**
+             * Format: date-time
+             * @description When it stops mattering.
+             */
+            relevant_until?: string | null;
+            /**
+             * Format: double
+             * @description How far the runway bar is filled, from surfacing (0) to due (1).
+             */
+            runway?: number | null;
+            /**
+             * Format: date-time
+             * @description Your own date; wins over `surface_at`.
+             */
+            scheduled_for?: string | null;
+            /** Format: date-time */
+            source_date?: string | null;
+            source_message_id?: null | components["schemas"]["MessageId"];
+            state: components["schemas"]["TodoStateData"];
+            /**
+             * Format: date-time
+             * @description When the row shows up in Now.
+             */
+            surface_at?: string | null;
+            /** Format: date-time */
+            surfaced_at?: string | null;
+            thread_id?: null | components["schemas"]["ThreadId"];
+            /** @description "Pay council tax". */
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** @description You made or changed it: it never expires and re-runs leave it be. */
+            user_touched: boolean;
+            verb: string;
+            /**
+             * @description "act by Wed 7 Oct · due Fri 9 Oct", "was due Fri 9 Oct", "shows up
+             *     Mon 12 Oct", "no date".
+             */
+            when_label: string;
+            /** @description "Here because: \"payment due 9 October\" (rule)." */
+            why: string;
+        };
+        /** @description Body of `POST /api/v1/mail/todos/{todo_id}/edit`. */
+        TodoEditBody: {
+            dry_run?: boolean;
+            /**
+             * @description title, due, amount, counterparty or kind; an empty value clears due,
+             *     amount and counterparty.
+             */
+            edits: components["schemas"]["TodoEditData"][];
+            time_zone?: string | null;
+        };
+        /**
+         * @description One edit: `field` is title, due, amount, counterparty or kind; an
+         *     empty value clears due, amount and counterparty.
+         */
+        TodoEditData: {
+            field: string;
+            value: string;
+        };
+        /** @description Where one field came from. */
+        TodoFieldData: {
+            /**
+             * @description False for a guess to confirm, such as a numeric date that reads
+             *     differently in UK and US order. Shown with an open dot.
+             */
+            checked: boolean;
+            /** @description The words it was read from, or how it was worked out. */
+            evidence?: string | null;
+            /**
+             * @description title, kind, counterparty, amount, due_at, act_by_at, surface_at,
+             *     relevant_until, action_url, event_start
+             */
+            field: string;
+            /** @description schema | ics | rule | table | model | user */
+            source: string;
+            /** @description "a pattern in the email", "the lead-time table", "you". */
+            source_label: string;
+        };
+        /** @description How far the newest-first first run has got. */
+        TodoFirstRunData: {
+            complete: boolean;
+            /**
+             * Format: date-time
+             * @description The oldest message date reached.
+             */
+            reached?: string | null;
+            /**
+             * Format: int64
+             * @description Messages classified so far.
+             */
+            scanned: number;
+        };
+        /** @description Each check of the one-click gate. */
+        TodoGateData: {
+            dmarc_pass: boolean;
+            domain_match: boolean;
+            prior_mail: boolean;
+        };
+        /** @description A kind and how many, for "Already over, so not shown: 50 past invites". */
+        TodoKindCountData: {
+            /** Format: int32 */
+            count: number;
+            kind: string;
+            /** @description "past invites". */
+            label: string;
+        };
+        TodoLooksDoneData: {
+            message_id?: null | components["schemas"]["MessageId"];
+            /** @description "payment received 3 Oct". */
+            reason: string;
+        };
+        /** @description The next row to show up, for the empty state. */
+        TodoNextData: {
+            /** Format: date-time */
+            at: string;
+            /** @description "Mon 19 Oct". */
+            label: string;
+            title: string;
+            todo_id: string;
+        };
+        /** @description Returned by `Request::GetTodoRunway`: the bands, ready to draw. */
+        TodoRunwayData: {
+            /**
+             * Format: int32
+             * @description Rows waiting in the one-time catch-up.
+             */
+            catchup_count: number;
+            /** @description Showing up in the next 30 days, by week. */
+            coming_up: components["schemas"]["TodoWeekData"][];
+            done_this_week: components["schemas"]["TodoData"][];
+            /** @description Set when Now is empty: what lands here, or when the next thing does. */
+            empty_state?: string | null;
+            /**
+             * Format: int32
+             * @description "3 expired since you last looked", when above zero.
+             */
+            expired_since_last_looked: number;
+            first_run: components["schemas"]["TodoFirstRunData"];
+            /** Format: date-time */
+            generated_at: string;
+            /** @description `todo_copy::HEADER`. */
+            header: string;
+            /**
+             * @description "3 things need you this week. Council tax first, act by Wed." Empty
+             *     when Now is.
+             */
+            headline: string;
+            /** @description Dated, showing up after 30 days. */
+            later: components["schemas"]["TodoData"][];
+            next_surface?: null | components["schemas"]["TodoNextData"];
+            /** @description Shown now, by act-by; overdue rows after the ones still in time. */
+            now: components["schemas"]["TodoData"][];
+            /** @description No date. */
+            whenever: components["schemas"]["TodoData"][];
+        };
+        /** @description Body of `POST /api/v1/mail/todos/{todo_id}/schedule`. */
+        TodoScheduleBody: {
+            dry_run?: boolean;
+            /** @description The browser's IANA zone, so "mon 9am" means the user's Monday. */
+            time_zone?: string | null;
+            /** @description "mon 9am", "in 3d" or RFC3339; omitted clears your date. */
+            when?: string | null;
+        };
+        /** @enum {string} */
+        TodoStateActionData: "done" | "undo" | "dismiss";
+        /** @description Body of `POST /api/v1/mail/todos/state`. */
+        TodoStateBody: {
+            action: components["schemas"]["TodoStateActionData"];
+            /** @description Preview only: the rows that would change, nothing written. */
+            dry_run?: boolean;
+            /** @description Full ids or unique prefixes. */
+            todo_ids: string[];
+        };
+        /** @enum {string} */
+        TodoStateData: "open" | "done" | "dismissed" | "expired";
+        /** @description One week of Coming up. */
+        TodoWeekData: {
+            /** @description "wk of 12 Oct". */
+            label: string;
+            todos: components["schemas"]["TodoData"][];
+            /**
+             * Format: date
+             * @description The Monday the week starts, in the user's zone.
+             */
+            week_start: string;
         };
         TriageMessageData: {
             account_id: components["schemas"]["AccountId"];
@@ -10820,6 +11349,301 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description The `ResolvedTime` variant: exactly one of `resolution` and `error` is set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_todos_runway: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description Record that To do was opened, so the expired count starts again */
+                mark_seen?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `TodoRunway` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_todos_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TodoCreateBody"];
+            };
+        };
+        responses: {
+            /** @description The `TodoChange` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_todos_catchup_get: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `TodoCatchup` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_todos_catchup_set: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TodoCatchupBody"];
+            };
+        };
+        responses: {
+            /** @description The `TodoChange` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_todos_in_state: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description Rows (default 200) */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description `open`, `done`, `dismissed` or `expired` */
+                state: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `Todos` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Unknown state */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_todos_state: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TodoStateBody"];
+            };
+        };
+        responses: {
+            /** @description The `TodoChange` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_todo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A full id or a unique prefix */
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `Todo` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_todo_edit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A full id or a unique prefix */
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TodoEditBody"];
+            };
+        };
+        responses: {
+            /** @description The `TodoChange` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_todo_schedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A full id or a unique prefix */
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TodoScheduleBody"];
+            };
+        };
+        responses: {
+            /** @description The `TodoChange` variant */
             200: {
                 headers: {
                     [name: string]: unknown;

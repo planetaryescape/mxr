@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.40"
+    "version": "0.6.51"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -674,6 +674,41 @@
           },
           "400": {
             "description": "No items"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/desk/later": {
+      "post": {
+        "tags": [],
+        "summary": "Reply later, or bring back if nobody replies, until a time (by who wrote last). dry_run previews",
+        "operationId": "mail_desk_later",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeskLaterBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ThreadsDeferred` variant: one item per conversation and the undo id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No conversations"
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -2062,6 +2097,348 @@
         "responses": {
           "200": {
             "description": "The `ResolvedTime` variant: exactly one of `resolution` and `error` is set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/todos": {
+      "get": {
+        "tags": [],
+        "summary": "The To do runway: Now, Coming up by week, Later, Whenever and Done this week",
+        "operationId": "mail_todos_runway",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mark_seen",
+            "in": "query",
+            "description": "Record that To do was opened, so the expired count starts again",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `TodoRunway` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "Make a to-do from a message yourself (dry_run previews)",
+        "operationId": "mail_todos_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TodoCreateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `TodoChange` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/todos/catchup": {
+      "get": {
+        "tags": [],
+        "summary": "The first run's one-time catch-up, with what was already over",
+        "operationId": "mail_todos_catchup_get",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `TodoCatchup` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "Keep or let go in the catch-up; let_go_all takes every row still waiting (dry_run previews)",
+        "operationId": "mail_todos_catchup_set",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TodoCatchupBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `TodoChange` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/todos/in/{state}": {
+      "get": {
+        "tags": [],
+        "summary": "Every to-do in one state, newest change first; `expired` is the Expired list",
+        "operationId": "mail_todos_in_state",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "path",
+            "description": "`open`, `done`, `dismissed` or `expired`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Rows (default 200)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `Todos` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown state"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/todos/state": {
+      "post": {
+        "tags": [],
+        "summary": "Tick off, reopen or mark to-dos not a to-do (dry_run previews)",
+        "operationId": "mail_todos_state",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TodoStateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `TodoChange` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/todos/{todo_id}": {
+      "get": {
+        "tags": [],
+        "summary": "One to-do with where each of its fields came from",
+        "operationId": "mail_todo_get",
+        "parameters": [
+          {
+            "name": "todo_id",
+            "in": "path",
+            "description": "A full id or a unique prefix",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `Todo` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/todos/{todo_id}/edit": {
+      "post": {
+        "tags": [],
+        "summary": "Correct a to-do's fields; it is yours from then on (dry_run previews)",
+        "operationId": "mail_todo_edit",
+        "parameters": [
+          {
+            "name": "todo_id",
+            "in": "path",
+            "description": "A full id or a unique prefix",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TodoEditBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `TodoChange` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/todos/{todo_id}/schedule": {
+      "post": {
+        "tags": [],
+        "summary": "Show a to-do on your own date, or clear it (dry_run previews)",
+        "operationId": "mail_todo_schedule",
+        "parameters": [
+          {
+            "name": "todo_id",
+            "in": "path",
+            "description": "A full id or a unique prefix",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TodoScheduleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `TodoChange` variant",
             "content": {
               "application/json": {
                 "schema": {
@@ -5274,6 +5651,25 @@
                 "$ref": "#/components/schemas/ThreadGistData"
               }
             }
+          },
+          {
+            "type": "object",
+            "description": "A timed reply later came back: the message is in the reply queue\nagain and its conversation on the desk. Sent once per return, even\nacross restarts.",
+            "required": [
+              "message_id",
+              "event"
+            ],
+            "properties": {
+              "event": {
+                "type": "string",
+                "enum": [
+                  "ReplyLaterReturned"
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            }
           }
         ]
       },
@@ -5337,6 +5733,66 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "DeferKindData": {
+        "type": "string",
+        "description": "How a conversation is deferred, decided by who wrote last (the desk's\nown rule).",
+        "enum": [
+          "reply_later",
+          "waiting"
+        ]
+      },
+      "DeferredThreadData": {
+        "type": "object",
+        "description": "What deferring one conversation did, or with `dry_run` would do.",
+        "required": [
+          "thread_id"
+        ],
+        "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AccountId",
+                "description": "Absent when the conversation was not found."
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why this conversation was not deferred. The others still are."
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeferKindData",
+                "description": "Absent when the conversation could not be deferred (see `error`)."
+              }
+            ]
+          },
+          "message_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageId",
+                "description": "The message the time is set on: their latest message for reply\nlater, yours for waiting."
+              }
+            ]
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
           }
         }
       },
@@ -5639,6 +6095,12 @@
             "description": "Messages marked read.",
             "minimum": 0
           },
+          "reminders_cancelled": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Pending \"bring it back if no reply\" reminders cancelled, so the\nconversation doesn't come back on its own.",
+            "minimum": 0
+          },
           "reply_later_cleared": {
             "type": "integer",
             "format": "int32",
@@ -5742,6 +6204,33 @@
           "people_new"
         ]
       },
+      "DeskLaterBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/desk/later`.",
+        "required": [
+          "thread_ids",
+          "until"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Preview only; nothing changes."
+          },
+          "thread_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "until": {
+            "type": "string",
+            "description": "The instant the client previewed, as RFC3339. Never a phrase: resolve\nit with `/api/v1/mail/time/resolve` and send the chosen `at`."
+          }
+        }
+      },
       "DeskRowData": {
         "type": "object",
         "description": "One row on the desk: a thread, who it is with, and why it is here.",
@@ -5765,6 +6254,14 @@
             "type": "integer",
             "format": "int64",
             "description": "Seconds from `since` to `generated_at`. Negative for a promise that\nis not due yet."
+          },
+          "back_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The row is back because a time you set came: reply later on You\nowe, \"bring it back if no reply\" on Waiting on. The time you set."
           },
           "commitment_id": {
             "type": [
@@ -6608,6 +7105,53 @@
           "long"
         ]
       },
+      "DraftProvenanceData": {
+        "type": "object",
+        "description": "Where an AI draft came from: the model that actually answered, whether\nthe user's other mail reached it, and the messages it read, so clients\ncan say so and open each source. Describes the request as it ran (the\nprovider pinned for it), not the configuration.",
+        "required": [
+          "model",
+          "locality",
+          "history_used"
+        ],
+        "properties": {
+          "conversation": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DraftSourceData"
+            },
+            "description": "Messages of the conversation being answered that fit in the prompt,\noldest first. Empty for a new message or a refine."
+          },
+          "history_used": {
+            "type": "boolean",
+            "description": "Something from the user's other mail reached the model: their past\nemails, the writing habits drawn from them, or the relationship\nsummary. False when the privacy gate kept it back (a cloud model\nwithout `llm.allow_cloud_relationship_data`) or there was none."
+          },
+          "locality": {
+            "$ref": "#/components/schemas/AiLocalityData"
+          },
+          "model": {
+            "type": "string",
+            "description": "The model that wrote the draft, as its endpoint named it."
+          },
+          "rewrite": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DraftRewriteProvenanceData",
+                "description": "The humanizer's second model pass (to read less machine-made): who\nran it and whether its text was used. Absent when no pass was due."
+              }
+            ]
+          },
+          "voice_examples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DraftSourceData"
+            },
+            "description": "The user's own past emails the model was shown to copy their voice,\nin the order the prompt carried them."
+          }
+        }
+      },
       "DraftRefineKnobsData": {
         "type": "object",
         "properties": {
@@ -6628,6 +7172,46 @@
           },
           "warmer": {
             "type": "boolean"
+          }
+        }
+      },
+      "DraftRewriteOutcomeData": {
+        "type": "string",
+        "enum": [
+          "applied",
+          "rejected",
+          "skipped"
+        ]
+      },
+      "DraftRewriteProvenanceData": {
+        "type": "object",
+        "description": "The model pass that rewrites a draft after it was written.",
+        "required": [
+          "model",
+          "locality",
+          "history_used"
+        ],
+        "properties": {
+          "history_used": {
+            "type": "boolean",
+            "description": "The rewrite saw the user's habits and past emails, to keep the voice."
+          },
+          "locality": {
+            "$ref": "#/components/schemas/AiLocalityData"
+          },
+          "model": {
+            "type": "string",
+            "description": "The model that answered the rewrite (or would have, when skipped)."
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/DraftRewriteOutcomeData"
+          },
+          "rejected_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A later pass, after the text that was kept, whose answer was\ndropped: this model saw the draft too."
           }
         }
       },
@@ -6777,6 +7361,43 @@
           "warn",
           "blocked"
         ]
+      },
+      "DraftSourceData": {
+        "type": "object",
+        "description": "One message a draft was written from, in the user's own mailbox.",
+        "required": [
+          "message_id",
+          "thread_id",
+          "date",
+          "from_me",
+          "person"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "from_me": {
+            "type": "boolean",
+            "description": "The user sent it."
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "person": {
+            "type": "string",
+            "description": "The other person's address: who the user wrote to, or who wrote it."
+          },
+          "person_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
       },
       "EntityCandidateData": {
         "type": "object",
@@ -8609,7 +9230,8 @@
         "properties": {
           "expected_days": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "The pace `overdue_score` is measured against, in days."
           },
           "from_email": {
             "type": "string"
@@ -8636,6 +9258,14 @@
           },
           "thread_id": {
             "$ref": "#/components/schemas/ThreadId"
+          },
+          "usual_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long you usually take to reply to this person, when at least\ntwo past replies say so. Only the default (desk) list sets it;\n`expected_days` falls back to a day without it."
           },
           "waiting_days": {
             "type": "number",
@@ -13205,7 +13835,7 @@
           },
           {
             "type": "object",
-            "description": "List \"owed reply\" threads for an account: latest inbound has\nnot been followed by an outbound, ranked by overdue ratio.",
+            "description": "List the replies you owe for an account. By default this is the\ndesk's You owe lane: mail from people, in the inbox, from someone\nyou are in conversation with, ranked by how far past your usual\npace with them it is. `all` returns the raw list instead: every\nthread whose latest inbound has not been followed by an outbound,\nranked by overdue ratio.",
             "required": [
               "account_id",
               "cmd"
@@ -13213,6 +13843,9 @@
             "properties": {
               "account_id": {
                 "$ref": "#/components/schemas/AccountId"
+              },
+              "all": {
+                "type": "boolean"
               },
               "cmd": {
                 "type": "string",
@@ -14002,6 +14635,286 @@
           },
           {
             "type": "object",
+            "description": "The To do runway: Now, Coming up by week, Later, Whenever and Done\nthis week, with the headline, the empty state and the catch-up\ncount. `mark_seen` records that To do was opened, so the next\n\"expired since you last looked\" counts from now. Returns\n`ResponseData::TodoRunway`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetTodoRunway"
+                ]
+              },
+              "mark_seen": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Rows in one state, newest change first: `expired` is the Expired\nlist. Returns `ResponseData::Todos`.",
+            "required": [
+              "state",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListTodos"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "state": {
+                "$ref": "#/components/schemas/TodoStateData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "One row with every field's provenance. Takes a full id or a unique\nprefix. Returns `ResponseData::Todo`.",
+            "required": [
+              "todo_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetTodo"
+                ]
+              },
+              "todo_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Tick off, reopen or mark \"not a to-do\". Returns\n`ResponseData::TodoChange`.",
+            "required": [
+              "todo_ids",
+              "action",
+              "cmd"
+            ],
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/TodoStateActionData"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetTodoState"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "todo_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Show the row on your own date (\"mon 9am\", \"in 3d\", RFC3339), or\nclear it with `when: None`. Resolved in `time_zone`, else the\ndaemon's. Returns `ResponseData::TodoChange`.",
+            "required": [
+              "todo_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ScheduleTodo"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "time_zone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "todo_id": {
+                "type": "string"
+              },
+              "when": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Correct fields; the row is yours from then on. Returns\n`ResponseData::TodoChange`.",
+            "required": [
+              "todo_id",
+              "edits",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UpdateTodo"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "edits": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TodoEditData"
+                }
+              },
+              "time_zone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "todo_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Make a to-do from a message yourself. `kind` defaults to `other`;\n`due` is a phrase or RFC3339. Returns `ResponseData::TodoChange`.",
+            "required": [
+              "message_id",
+              "title",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "CreateTodo"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "due": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "time_zone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The first run's one-time catch-up batch. Returns\n`ResponseData::TodoCatchup`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetTodoCatchup"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Keep or let go in the catch-up; `let_go_all` takes every row still\nwaiting. Returns `ResponseData::TodoChange`.",
+            "required": [
+              "decision",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetTodoCatchup"
+                ]
+              },
+              "decision": {
+                "$ref": "#/components/schemas/TodoCatchupDecisionData"
+              },
+              "dry_run": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "A place (Reading or Paper trail): inbox mail of that kind grouped by\nsender, newest bundle first, each with the reason it is there.\n`account_id: None` covers every enabled account.",
             "required": [
               "place",
@@ -14229,6 +15142,36 @@
                 "items": {
                   "$ref": "#/components/schemas/ThreadId"
                 }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Reply later, or wait, until `until`, per conversation by who wrote\nlast: when they did, reply later (off the desk and out of the reply\nqueue until then, back in both at the time); when you did, bring it\nback if nobody replies (off Waiting on until then; at the time,\nunless someone replied, back on Waiting on and in the reply queue).\n`until` is the instant the client previewed, never a phrase, and\nmust be in the future. `dry_run` returns the same plan without\nchanging anything. The real run returns one `mutation_id` for\n`UndoMutation`, which puts the flags and reminders back as they\nwere. Returns `ResponseData::ThreadsDeferred`.",
+            "required": [
+              "thread_ids",
+              "until",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DeferThreads"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "thread_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadId"
+                }
+              },
+              "until": {
+                "type": "string",
+                "format": "date-time"
               }
             }
           }
@@ -15266,6 +16209,17 @@
               "report": {
                 "$ref": "#/components/schemas/HumanizerReportSummaryData"
               },
+              "rewrite": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DraftRewriteProvenanceData",
+                    "description": "The model that rewrote the text, when one did."
+                  }
+                ]
+              },
               "text": {
                 "type": "string"
               }
@@ -15440,6 +16394,17 @@
               },
               "model": {
                 "type": "string"
+              },
+              "provenance": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DraftProvenanceData",
+                    "description": "What the draft was written from, for the \"which model, whose\nhistory, which emails\" line."
+                  }
+                ]
               },
               "rewrite_iterations": {
                 "type": "integer",
@@ -17200,6 +18165,104 @@
           },
           {
             "type": "object",
+            "description": "Returned by `Request::GetTodoRunway`.",
+            "required": [
+              "runway",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "TodoRunway"
+                ]
+              },
+              "runway": {
+                "$ref": "#/components/schemas/TodoRunwayData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ListTodos`.",
+            "required": [
+              "todos",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Todos"
+                ]
+              },
+              "todos": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TodoData"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetTodo`.",
+            "required": [
+              "todo",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Todo"
+                ]
+              },
+              "todo": {
+                "$ref": "#/components/schemas/TodoData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by every to-do mutation.",
+            "required": [
+              "change",
+              "kind"
+            ],
+            "properties": {
+              "change": {
+                "$ref": "#/components/schemas/TodoChangeData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "TodoChange"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetTodoCatchup`.",
+            "required": [
+              "catchup",
+              "kind"
+            ],
+            "properties": {
+              "catchup": {
+                "$ref": "#/components/schemas/TodoCatchupData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "TodoCatchup"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Returned by `Request::ListPlace`.",
             "required": [
               "place",
@@ -17437,6 +18500,47 @@
                 "enum": [
                   "ThreadGists"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::DeferThreads`, one item per conversation in\nrequest order. `mutation_id` undoes the whole run.",
+            "required": [
+              "items",
+              "until",
+              "dry_run",
+              "kind"
+            ],
+            "properties": {
+              "dry_run": {
+                "type": "boolean"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DeferredThreadData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ThreadsDeferred"
+                ]
+              },
+              "mutation_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "undo_unavailable": {
+                "type": "boolean",
+                "description": "Something changed but its undo could not be saved."
+              },
+              "until": {
+                "type": "string",
+                "format": "date-time"
               }
             }
           }
@@ -19697,6 +20801,919 @@
           "start": {
             "type": "integer",
             "minimum": 0
+          }
+        }
+      },
+      "TodoActionData": {
+        "type": "object",
+        "description": "The one thing Enter does.",
+        "required": [
+          "label",
+          "url",
+          "trusted"
+        ],
+        "properties": {
+          "domain": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The link's registrable domain, always shown before Enter."
+          },
+          "gate": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TodoGateData"
+              }
+            ]
+          },
+          "label": {
+            "type": "string",
+            "description": "\"Pay on camden.gov.uk\" when the gate passed, \"Open email to pay\"\nwhen it didn't."
+          },
+          "trusted": {
+            "type": "boolean"
+          },
+          "untrusted_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The first gate check that failed, in plain words."
+          },
+          "url": {
+            "type": "string",
+            "description": "Open this only when `trusted`; otherwise open the email."
+          }
+        }
+      },
+      "TodoAmountData": {
+        "type": "object",
+        "required": [
+          "minor",
+          "currency",
+          "display"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217."
+          },
+          "display": {
+            "type": "string",
+            "description": "\"£142.00\"."
+          },
+          "minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "In the currency's minor unit."
+          }
+        }
+      },
+      "TodoCatchupBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/todos/catchup`.",
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omitted: every account."
+          },
+          "decision": {
+            "$ref": "#/components/schemas/TodoCatchupDecisionData"
+          },
+          "dry_run": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TodoCatchupData": {
+        "type": "object",
+        "description": "Returned by `Request::GetTodoCatchup`.",
+        "required": [
+          "title",
+          "why",
+          "window_days",
+          "todos",
+          "overflow_count",
+          "already_over",
+          "first_run"
+        ],
+        "properties": {
+          "already_over": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoKindCountData"
+            },
+            "description": "What the first run found already over, by kind."
+          },
+          "already_over_line": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"Already over, so not shown: 50 past invites, 63 quiet parcels.\""
+          },
+          "first_run": {
+            "$ref": "#/components/schemas/TodoFirstRunData"
+          },
+          "overflow_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Found for the batch after it was full; in the Expired list.",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string",
+            "description": "\"Catch up: 12 things from the last two weeks might still need you.\""
+          },
+          "todos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoData"
+            }
+          },
+          "why": {
+            "type": "string",
+            "description": "`todo_copy::CATCH_UP_WHY`."
+          },
+          "window_days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The catch-up window, in days.",
+            "minimum": 0
+          }
+        }
+      },
+      "TodoCatchupDecisionData": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "todo_ids",
+              "decision"
+            ],
+            "properties": {
+              "decision": {
+                "type": "string",
+                "enum": [
+                  "keep"
+                ]
+              },
+              "todo_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "todo_ids",
+              "decision"
+            ],
+            "properties": {
+              "decision": {
+                "type": "string",
+                "enum": [
+                  "let_go"
+                ]
+              },
+              "todo_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Every row still waiting in the batch.",
+            "required": [
+              "decision"
+            ],
+            "properties": {
+              "decision": {
+                "type": "string",
+                "enum": [
+                  "let_go_all"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Keep or let go in the catch-up."
+      },
+      "TodoChangeData": {
+        "type": "object",
+        "description": "Returned by every to-do mutation. With `dry_run`, `changed` is what\nwould change and nothing was written.",
+        "required": [
+          "dry_run",
+          "action",
+          "changed",
+          "summary"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "done | undo | dismiss | schedule | edit | create | keep | let_go"
+          },
+          "changed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoData"
+            },
+            "description": "The rows as they are (or would be) after the change."
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": "string",
+            "description": "One line saying what happened: \"Ticked off 2.\", \"Would let go of 12.\""
+          },
+          "unchanged": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Ids that matched but were not in a state this change applies to."
+          }
+        }
+      },
+      "TodoCreateBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/todos`.",
+        "required": [
+          "message_id",
+          "title"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "due": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A phrase (\"fri\", \"9 oct\") or RFC3339."
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Defaults to `other`."
+          },
+          "message_id": {
+            "type": "string",
+            "description": "The message it's about."
+          },
+          "time_zone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "What to do, starting with the verb."
+          }
+        }
+      },
+      "TodoData": {
+        "type": "object",
+        "description": "One row: a thing to do, titled verb plus object, never the subject.",
+        "required": [
+          "id",
+          "account_id",
+          "kind",
+          "verb",
+          "title",
+          "state",
+          "origin",
+          "why",
+          "when_label",
+          "overdue",
+          "fields",
+          "user_touched",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "act_by_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When you must act: due minus processing time."
+          },
+          "action": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TodoActionData"
+              }
+            ]
+          },
+          "amount": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TodoAmountData"
+              }
+            ]
+          },
+          "catchup": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "pending | kept | let_go | overflow"
+          },
+          "counterparty": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dismissed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "done_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "due_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The outside deadline."
+          },
+          "due_words": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The phrase the due date was read from, verbatim."
+          },
+          "expired_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoFieldData"
+            },
+            "description": "Where each field came from."
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "bill | payment_failed | renewal | document | lease | return | rsvp |\nverify | sign | promise | other"
+          },
+          "looks_done": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TodoLooksDoneData"
+              }
+            ]
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What happens next, where it's true: \"When the receipt arrives, the\nrow says it looks done.\""
+          },
+          "origin": {
+            "type": "string",
+            "description": "rule | schema | ics | model | handoff | manual"
+          },
+          "overdue": {
+            "type": "boolean",
+            "description": "Past the due date."
+          },
+          "person_label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"you promised Priya\" on promise rows."
+          },
+          "relevant_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it stops mattering."
+          },
+          "runway": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "How far the runway bar is filled, from surfacing (0) to due (1)."
+          },
+          "scheduled_for": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Your own date; wins over `surface_at`."
+          },
+          "source_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "source_message_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/TodoStateData"
+          },
+          "surface_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the row shows up in Now."
+          },
+          "surfaced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "thread_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId"
+              }
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "\"Pay council tax\"."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_touched": {
+            "type": "boolean",
+            "description": "You made or changed it: it never expires and re-runs leave it be."
+          },
+          "verb": {
+            "type": "string"
+          },
+          "when_label": {
+            "type": "string",
+            "description": "\"act by Wed 7 Oct · due Fri 9 Oct\", \"was due Fri 9 Oct\", \"shows up\nMon 12 Oct\", \"no date\"."
+          },
+          "why": {
+            "type": "string",
+            "description": "\"Here because: \\\"payment due 9 October\\\" (rule).\""
+          }
+        }
+      },
+      "TodoEditBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/todos/{todo_id}/edit`.",
+        "required": [
+          "edits"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "edits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoEditData"
+            },
+            "description": "title, due, amount, counterparty or kind; an empty value clears due,\namount and counterparty."
+          },
+          "time_zone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TodoEditData": {
+        "type": "object",
+        "description": "One edit: `field` is title, due, amount, counterparty or kind; an\nempty value clears due, amount and counterparty.",
+        "required": [
+          "field",
+          "value"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "TodoFieldData": {
+        "type": "object",
+        "description": "Where one field came from.",
+        "required": [
+          "field",
+          "source",
+          "checked",
+          "source_label"
+        ],
+        "properties": {
+          "checked": {
+            "type": "boolean",
+            "description": "False for a guess to confirm, such as a numeric date that reads\ndifferently in UK and US order. Shown with an open dot."
+          },
+          "evidence": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The words it was read from, or how it was worked out."
+          },
+          "field": {
+            "type": "string",
+            "description": "title, kind, counterparty, amount, due_at, act_by_at, surface_at,\nrelevant_until, action_url, event_start"
+          },
+          "source": {
+            "type": "string",
+            "description": "schema | ics | rule | table | model | user"
+          },
+          "source_label": {
+            "type": "string",
+            "description": "\"a pattern in the email\", \"the lead-time table\", \"you\"."
+          }
+        }
+      },
+      "TodoFirstRunData": {
+        "type": "object",
+        "description": "How far the newest-first first run has got.",
+        "required": [
+          "complete",
+          "scanned"
+        ],
+        "properties": {
+          "complete": {
+            "type": "boolean"
+          },
+          "reached": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The oldest message date reached."
+          },
+          "scanned": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Messages classified so far."
+          }
+        }
+      },
+      "TodoGateData": {
+        "type": "object",
+        "description": "Each check of the one-click gate.",
+        "required": [
+          "dmarc_pass",
+          "domain_match",
+          "prior_mail"
+        ],
+        "properties": {
+          "dmarc_pass": {
+            "type": "boolean"
+          },
+          "domain_match": {
+            "type": "boolean"
+          },
+          "prior_mail": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TodoKindCountData": {
+        "type": "object",
+        "description": "A kind and how many, for \"Already over, so not shown: 50 past invites\".",
+        "required": [
+          "kind",
+          "count",
+          "label"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "description": "\"past invites\"."
+          }
+        }
+      },
+      "TodoLooksDoneData": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "message_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "\"payment received 3 Oct\"."
+          }
+        }
+      },
+      "TodoNextData": {
+        "type": "object",
+        "description": "The next row to show up, for the empty state.",
+        "required": [
+          "todo_id",
+          "title",
+          "at",
+          "label"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "label": {
+            "type": "string",
+            "description": "\"Mon 19 Oct\"."
+          },
+          "title": {
+            "type": "string"
+          },
+          "todo_id": {
+            "type": "string"
+          }
+        }
+      },
+      "TodoRunwayData": {
+        "type": "object",
+        "description": "Returned by `Request::GetTodoRunway`: the bands, ready to draw.",
+        "required": [
+          "generated_at",
+          "header",
+          "headline",
+          "now",
+          "coming_up",
+          "later",
+          "whenever",
+          "done_this_week",
+          "catchup_count",
+          "expired_since_last_looked",
+          "first_run"
+        ],
+        "properties": {
+          "catchup_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Rows waiting in the one-time catch-up.",
+            "minimum": 0
+          },
+          "coming_up": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoWeekData"
+            },
+            "description": "Showing up in the next 30 days, by week."
+          },
+          "done_this_week": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoData"
+            }
+          },
+          "empty_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when Now is empty: what lands here, or when the next thing does."
+          },
+          "expired_since_last_looked": {
+            "type": "integer",
+            "format": "int32",
+            "description": "\"3 expired since you last looked\", when above zero.",
+            "minimum": 0
+          },
+          "first_run": {
+            "$ref": "#/components/schemas/TodoFirstRunData"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "header": {
+            "type": "string",
+            "description": "`todo_copy::HEADER`."
+          },
+          "headline": {
+            "type": "string",
+            "description": "\"3 things need you this week. Council tax first, act by Wed.\" Empty\nwhen Now is."
+          },
+          "later": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoData"
+            },
+            "description": "Dated, showing up after 30 days."
+          },
+          "next_surface": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TodoNextData"
+              }
+            ]
+          },
+          "now": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoData"
+            },
+            "description": "Shown now, by act-by; overdue rows after the ones still in time."
+          },
+          "whenever": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoData"
+            },
+            "description": "No date."
+          }
+        }
+      },
+      "TodoScheduleBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/todos/{todo_id}/schedule`.",
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "time_zone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The browser's IANA zone, so \"mon 9am\" means the user's Monday."
+          },
+          "when": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"mon 9am\", \"in 3d\" or RFC3339; omitted clears your date."
+          }
+        }
+      },
+      "TodoStateActionData": {
+        "type": "string",
+        "enum": [
+          "done",
+          "undo",
+          "dismiss"
+        ]
+      },
+      "TodoStateBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/todos/state`.",
+        "required": [
+          "todo_ids",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/TodoStateActionData"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "Preview only: the rows that would change, nothing written."
+          },
+          "todo_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Full ids or unique prefixes."
+          }
+        }
+      },
+      "TodoStateData": {
+        "type": "string",
+        "enum": [
+          "open",
+          "done",
+          "dismissed",
+          "expired"
+        ]
+      },
+      "TodoWeekData": {
+        "type": "object",
+        "description": "One week of Coming up.",
+        "required": [
+          "week_start",
+          "label",
+          "todos"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "\"wk of 12 Oct\"."
+          },
+          "todos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoData"
+            }
+          },
+          "week_start": {
+            "type": "string",
+            "format": "date",
+            "description": "The Monday the week starts, in the user's zone."
           }
         }
       },

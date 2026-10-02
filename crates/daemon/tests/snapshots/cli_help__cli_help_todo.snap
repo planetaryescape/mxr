@@ -1,0 +1,33 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Things email asked you to do, ordered by when to act.
+
+Each row is one thing to do, written as what to do rather than the email's subject ("Pay council tax"), with who it's for, how much, when to act and when it's due. A row shows up on the day you should start on it: a bill three days before it's due, a renewal two weeks before, a verify link at once. Bills, failed payments, renewals, sign and verify requests, invites and the promises you made land here. A payment collected by direct debit or card on file is not a to-do; a failed one is.
+
+With no subcommand, prints the runway: Now, Coming up by week, Later, Whenever and Done this week.
+
+Usage: mxr todo [OPTIONS] [COMMAND]
+
+Commands:
+  list     The runway (the default), or every row in one state
+  why      Where each field of a to-do came from: schema.org, a pattern in the email, the lead-time table, a model, or you
+  done     Tick off to-dos
+  undo     Reopen to-dos you ticked off, marked not a to-do, or that expired. A reopened row is yours: it never expires again
+  dismiss  Not a to-do: kept as a correction and never shown again
+  snooze   Show a to-do on your own date ("mon 9am", "in 3d", "fri"). The due date stays as it is
+  edit     Correct a to-do: title, due, amount, counterparty or kind, as field=value. The row is yours from then on
+  add      Add a to-do from a message yourself
+  catchup  The first run's one-time catch-up: things from before mxr sorted your mail that might still need you. Keep or let go of each
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --account <ACCOUNT>
+          Limit to one account; the default covers every account
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

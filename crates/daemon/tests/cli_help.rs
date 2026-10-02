@@ -254,6 +254,16 @@ fn cli_help_snapshots_cover_all_commands() {
             "cli_help_snippets_remove",
             &["snippets", "remove", "--help"],
         ),
+        ("cli_help_todo", &["todo", "--help"]),
+        ("cli_help_todo_list", &["todo", "list", "--help"]),
+        ("cli_help_todo_why", &["todo", "why", "--help"]),
+        ("cli_help_todo_done", &["todo", "done", "--help"]),
+        ("cli_help_todo_undo", &["todo", "undo", "--help"]),
+        ("cli_help_todo_dismiss", &["todo", "dismiss", "--help"]),
+        ("cli_help_todo_snooze", &["todo", "snooze", "--help"]),
+        ("cli_help_todo_edit", &["todo", "edit", "--help"]),
+        ("cli_help_todo_add", &["todo", "add", "--help"]),
+        ("cli_help_todo_catchup", &["todo", "catchup", "--help"]),
         ("cli_help_deliveries", &["deliveries", "--help"]),
         (
             "cli_help_deliveries_list",
@@ -363,7 +373,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_briefing_gists", &["briefing", "gists", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 205);
+    assert_eq!(cases.len(), 215);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

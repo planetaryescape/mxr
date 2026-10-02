@@ -10,8 +10,8 @@
 
 use crate::state::AppState;
 use mxr_core::id::MessageId;
-use std::collections::HashSet;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// Deleted messages cleared per round, bounding one round's work.
@@ -38,7 +38,7 @@ pub(crate) async fn drain_pending_forgets(state: &AppState) {
         if message_ids.is_empty() {
             return;
         }
-        let Some(failed) = forget_deleted_messages(state, &message_ids).await else {
+        let Some(failed) = forget_deleted_messages(state, &message_ids, |_| async {}).await else {
             return;
         };
         let cleared = message_ids
@@ -90,25 +90,62 @@ pub(crate) async fn drain_pending_forgets_periodically(state: std::sync::Arc<App
 
 /// Drops deleted messages from the semantic index and removes their
 /// attachment files. Returns the messages whose files could not be removed,
-/// or `None` when the store could not be read and nothing was done.
+/// or `None` when the attachment dir could not be listed and nothing was
+/// done.
 ///
 /// An id that names a stored message again (an IMAP UID reused for a new
 /// message) is skipped and counts as done: its files and index entries are
-/// the new message's. A semantic failure is logged and not retried: the
-/// index is rebuilt from the store, which no longer holds the messages, on
-/// the next rebuild or restart.
-async fn forget_deleted_messages(
+/// the new message's.
+///
+/// Sync takes the same store lock to store messages, so the lock is held
+/// only for short steps: the attachment dirs are listed without it, then
+/// each message's folders are removed under its own hold (check the id is
+/// still absent, remove, release), and the semantic forget runs once under
+/// a final hold that re-checks the ids and is bounded by a timeout. A
+/// semantic failure is logged and not retried: the index is rebuilt from
+/// the store, which no longer holds the messages, on the next rebuild or
+/// restart. `after_each` runs after every message's hold is released.
+async fn forget_deleted_messages<F, Fut>(
     state: &AppState,
     message_ids: &[MessageId],
-) -> Option<HashSet<MessageId>> {
-    // Held from the live check through the removal, so sync cannot store a
-    // message under one of these ids in between (it takes the same lock).
+    mut after_each: F,
+) -> Option<HashSet<MessageId>>
+where
+    F: FnMut(&MessageId) -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    let mut dirs = find_message_dirs(&state.attachment_dir(), message_ids).await?;
+    let mut failed = HashSet::new();
+    for message_id in message_ids {
+        {
+            let _cleanup = state.store.lock_message_cleanup().await;
+            match state
+                .store
+                .existing_message_ids(std::slice::from_ref(message_id))
+                .await
+            {
+                Ok(live) if live.is_empty() => {
+                    let paths = dirs.remove(message_id).unwrap_or_default();
+                    if !remove_dirs(paths).await {
+                        failed.insert(message_id.clone());
+                    }
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::warn!(%error, "could not check a deleted message before its cleanup");
+                    failed.insert(message_id.clone());
+                }
+            }
+        }
+        after_each(message_id).await;
+    }
+
     let _cleanup = state.store.lock_message_cleanup().await;
     let live = match state.store.existing_message_ids(message_ids).await {
         Ok(live) => live,
         Err(error) => {
-            tracing::warn!(%error, "could not check deleted messages before their cleanup");
-            return None;
+            tracing::warn!(%error, "could not check deleted messages before forgetting them");
+            return Some(failed);
         }
     };
     let gone = message_ids
@@ -117,7 +154,7 @@ async fn forget_deleted_messages(
         .cloned()
         .collect::<Vec<_>>();
     if gone.is_empty() {
-        return Some(HashSet::new());
+        return Some(failed);
     }
     // Bounded: sync waits on this lock, and the semantic worker can be busy
     // with an ingest batch. A forget that times out is not retried; the
@@ -139,40 +176,38 @@ async fn forget_deleted_messages(
             "semantic index did not answer the forget in time; its next rebuild drops them"
         ),
     }
-    Some(remove_attachment_files(&state.attachment_dir(), &gone).await)
+    Some(failed)
 }
 
-/// Removes the per-message directories the daemon writes under the
-/// attachment dir: downloaded attachments (`<id>/`) and inline HTML images
-/// (`_html_assets/<id>/`). Returns the messages whose files may still be
-/// there; a directory that does not exist counts as removed.
+/// The per-message directories the daemon writes under the attachment dir,
+/// for each of these messages: downloaded attachments (`<id>/`) and inline
+/// HTML images (`_html_assets/<id>/`). `None` when a root that exists could
+/// not be listed, so nothing can be removed safely this round.
 ///
-/// Lists each root once and removes the entries named for a deleted id, so
-/// an account purge of 100k messages costs one listing, not 200k probes.
-/// Only directories named exactly as a deleted message id are touched.
-async fn remove_attachment_files(
+/// Lists each root once, so an account purge of 100k messages costs one
+/// listing, not 200k probes. Only directories named exactly as one of the
+/// message ids are returned.
+async fn find_message_dirs(
     attachment_dir: &Path,
     message_ids: &[MessageId],
-) -> HashSet<MessageId> {
-    let by_name: std::collections::HashMap<String, MessageId> = message_ids
+) -> Option<HashMap<MessageId, Vec<PathBuf>>> {
+    let by_name: HashMap<String, MessageId> = message_ids
         .iter()
         .map(|id| (id.as_str(), id.clone()))
         .collect();
-    let all = message_ids.iter().cloned().collect::<HashSet<_>>();
     let roots = [
         attachment_dir.to_path_buf(),
         attachment_dir.join(crate::handler::HTML_ASSETS_DIR),
     ];
     let result = tokio::task::spawn_blocking(move || {
-        let mut failed = HashSet::new();
+        let mut found: HashMap<MessageId, Vec<PathBuf>> = HashMap::new();
         for root in roots {
             let entries = match std::fs::read_dir(&root) {
                 Ok(entries) => entries,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(error) => {
-                    // Nothing under this root could be checked.
                     tracing::warn!(path = %root.display(), %error, "could not list attachment files");
-                    return by_name.into_values().collect();
+                    return None;
                 }
             };
             for entry in entries {
@@ -180,38 +215,60 @@ async fn remove_attachment_files(
                     Ok(entry) => entry,
                     Err(error) => {
                         tracing::warn!(path = %root.display(), %error, "could not list attachment files");
-                        return by_name.into_values().collect();
+                        return None;
                     }
                 };
-                let Some(message_id) = entry.file_name().to_str().and_then(|name| by_name.get(name))
-                else {
-                    continue;
-                };
-                let path = entry.path();
-                match std::fs::remove_dir_all(&path) {
-                    Ok(()) => {}
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(error) => {
-                        tracing::warn!(
-                            path = %path.display(),
-                            %error,
-                            "could not remove files of a deleted message"
-                        );
-                        failed.insert(message_id.clone());
-                    }
+                if let Some(message_id) =
+                    entry.file_name().to_str().and_then(|name| by_name.get(name))
+                {
+                    found
+                        .entry(message_id.clone())
+                        .or_default()
+                        .push(entry.path());
                 }
             }
         }
-        failed
+        Some(found)
     })
     .await;
     match result {
-        Ok(failed) => failed,
+        Ok(found) => found,
         Err(error) => {
-            tracing::warn!(%error, "attachment cleanup task failed");
-            all
+            tracing::warn!(%error, "attachment listing task failed");
+            None
         }
     }
+}
+
+/// Removes one message's directories. Returns whether they are all gone; a
+/// directory that no longer exists counts as removed.
+async fn remove_dirs(paths: Vec<PathBuf>) -> bool {
+    if paths.is_empty() {
+        return true;
+    }
+    let result = tokio::task::spawn_blocking(move || {
+        let mut removed = true;
+        for path in paths {
+            match std::fs::remove_dir_all(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        %error,
+                        "could not remove files of a deleted message"
+                    );
+                    removed = false;
+                }
+            }
+        }
+        removed
+    })
+    .await;
+    result.unwrap_or_else(|error| {
+        tracing::warn!(%error, "attachment cleanup task failed");
+        false
+    })
 }
 
 #[cfg(test)]
@@ -332,6 +389,83 @@ mod tests {
         );
     }
 
+    /// A drain over many messages releases the cleanup lock between them,
+    /// so sync can store mail mid-drain instead of waiting for the whole
+    /// batch. A sync that revives a later message's id in that gap keeps
+    /// that message's files: its own hold re-checks the id.
+    #[tokio::test]
+    async fn a_sync_upsert_can_land_between_the_messages_of_a_drain() {
+        let state = AppState::in_memory().await.unwrap();
+        let attachments = tempfile::tempdir().unwrap();
+        state.set_attachment_dir_for_tests(attachments.path().to_path_buf());
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let envelopes = ["INBOX:1", "INBOX:2"].map(|provider_id| {
+            crate::test_fixtures::TestEnvelopeBuilder::new()
+                .account_id(account_id.clone())
+                .provider_id(provider_id)
+                .build()
+        });
+        for envelope in &envelopes {
+            state.store.upsert_envelope(envelope).await.unwrap();
+            let files = attachments.path().join(envelope.id.as_str());
+            std::fs::create_dir_all(&files).unwrap();
+            std::fs::write(files.join("file.pdf"), b"pdf").unwrap();
+        }
+        state
+            .store
+            .delete_messages_and_derived(
+                &account_id,
+                &["INBOX:1".to_string(), "INBOX:2".to_string()],
+            )
+            .await
+            .unwrap();
+        let ids = envelopes.iter().map(|e| e.id.clone()).collect::<Vec<_>>();
+        let revived = envelopes[1].clone();
+        let mut synced_mid_drain = false;
+
+        let failed = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            forget_deleted_messages(&state, &ids, |done| {
+                // After the first message, a sync stores a new message under
+                // the second id. Held across the batch, the lock would make
+                // this wait for the drain and time the test out.
+                let first = *done == ids[0];
+                let revived = revived.clone();
+                let state = &state;
+                synced_mid_drain |= first;
+                async move {
+                    if first {
+                        state
+                            .store
+                            .apply_sync_upserts(&mut [mxr_store::SyncUpsert {
+                                body: crate::test_fixtures::make_empty_body(&revived.id),
+                                envelope: revived,
+                                direction: mxr_core::types::MessageDirection::Inbound,
+                                label_ids: vec![],
+                            }])
+                            .await
+                            .unwrap();
+                    }
+                }
+            }),
+        )
+        .await
+        .expect("a sync upsert could not run between the messages of a drain")
+        .unwrap();
+
+        assert!(synced_mid_drain);
+        assert!(failed.is_empty());
+        assert!(!attachments.path().join(ids[0].as_str()).exists());
+        assert!(
+            attachments
+                .path()
+                .join(ids[1].as_str())
+                .join("file.pdf")
+                .exists(),
+            "the revived message's files were removed"
+        );
+    }
+
     /// A permission error leaves the files and the owed cleanup in place;
     /// the drain records a retry instead of clearing the row.
     #[cfg(unix)]
@@ -387,9 +521,11 @@ mod tests {
         }
 
         // A message that never had files is not an error.
-        let failed =
-            remove_attachment_files(root.path(), &[deleted.clone(), MessageId::new()]).await;
-        assert!(failed.is_empty());
+        let mut found = find_message_dirs(root.path(), &[deleted.clone(), MessageId::new()])
+            .await
+            .unwrap();
+        assert_eq!(found.len(), 1, "only the deleted message has folders");
+        assert!(remove_dirs(found.remove(&deleted).unwrap()).await);
 
         assert!(!root.path().join(deleted.as_str()).exists());
         assert!(!root

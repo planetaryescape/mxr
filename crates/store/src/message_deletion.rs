@@ -186,6 +186,13 @@ impl super::Store {
             // so it is dropped here and rebuilt from the mail that is left.
             "DELETE FROM contact_relationship_summary WHERE account_id = ?1
                AND email IN (SELECT email FROM temp.mxr_deleting_people)",
+            // Moves the version a recipient briefing in flight read, so its
+            // late write is refused. `refreshed_at` is otherwise written
+            // only by the contacts refresh, which sets it afresh.
+            "UPDATE contacts SET refreshed_at = refreshed_at - 1
+               WHERE account_id = ?1
+                 AND (email IN (SELECT email FROM temp.mxr_deleting_people)
+                      OR LOWER(email) IN (SELECT email FROM temp.mxr_deleting_people))",
             "DELETE FROM thread_summaries WHERE account_id = ?1
                AND thread_id IN (SELECT thread_id FROM temp.mxr_deleting)",
             "DELETE FROM contact_commitments WHERE account_id = ?1
@@ -832,6 +839,115 @@ mod tests {
             samples.is_empty(),
             "trashed mail reached the summary samples"
         );
+    }
+
+    /// Every cache of model text over mail refuses a write that started
+    /// before a delete of mail it read and lands after it: otherwise the
+    /// write brings the deleted text back after the delete cleared it.
+    #[tokio::test]
+    async fn model_caches_refuse_writes_built_from_mail_deleted_mid_call() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let thread = ThreadId::new();
+        let kept = inbound(&store, &account.id, "kept", &thread, "alice@example.com").await;
+        let gone = inbound(&store, &account.id, "gone", &thread, "alice@example.com").await;
+        store.refresh_contacts().await.unwrap();
+        // The model calls start: they read the mail and the contact row.
+        let contact_version: i64 = sqlx::query_scalar(
+            "SELECT refreshed_at FROM contacts WHERE email = 'alice@example.com'",
+        )
+        .fetch_one(store.reader())
+        .await
+        .unwrap();
+        store
+            .delete_messages_and_derived(&account.id, &["gone".to_string()])
+            .await
+            .unwrap();
+
+        let summary = crate::ThreadSummaryRecord {
+            thread_id: thread.clone(),
+            account_id: account.id.clone(),
+            content_hash: "h".into(),
+            text: "quotes the deleted mail".into(),
+            model: "m".into(),
+            generated_at: chrono::Utc::now(),
+        };
+        assert!(!store
+            .upsert_thread_summary_if_sources_exist(&summary, &[kept.clone(), gone.clone()])
+            .await
+            .unwrap());
+        let relationship = crate::ContactRelationshipSummaryRecord {
+            account_id: account.id.clone(),
+            email: "alice@example.com".into(),
+            text: "quotes the deleted mail".into(),
+            model: "m".into(),
+            known_topics: vec![],
+            computed_at: chrono::Utc::now(),
+            source_hash: "h".into(),
+            last_error: None,
+        };
+        assert!(!store
+            .upsert_contact_relationship_summary_if_sources_exist(
+                &relationship,
+                &[kept.clone(), gone]
+            )
+            .await
+            .unwrap());
+        let recipient = crate::ContextBriefing {
+            id: crate::new_briefing_id(),
+            account_id: account.id.clone(),
+            kind: crate::BriefingKind::Recipient,
+            subject_key: "alice@example.com".into(),
+            content_hash: "h".into(),
+            body_markdown: "stats from before the delete".into(),
+            citations: vec![],
+            generated_at: chrono::Utc::now(),
+        };
+        assert!(!store
+            .upsert_recipient_briefing_if_contact_unchanged(
+                &recipient,
+                "alice@example.com",
+                Some(contact_version)
+            )
+            .await
+            .unwrap());
+        for table in [
+            "thread_summaries",
+            "contact_relationship_summary",
+            "context_briefings",
+        ] {
+            let rows: i64 =
+                sqlx::query_scalar(sqlx::AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
+                    .fetch_one(store.reader())
+                    .await
+                    .unwrap();
+            assert_eq!(rows, 0, "{table} took a write built from deleted mail");
+        }
+
+        // Built from mail that is all still here, the writes go through.
+        assert!(store
+            .upsert_thread_summary_if_sources_exist(&summary, &[kept.clone()])
+            .await
+            .unwrap());
+        assert!(store
+            .upsert_contact_relationship_summary_if_sources_exist(&relationship, &[kept])
+            .await
+            .unwrap());
+        let current: i64 = sqlx::query_scalar(
+            "SELECT refreshed_at FROM contacts WHERE email = 'alice@example.com'",
+        )
+        .fetch_one(store.reader())
+        .await
+        .unwrap();
+        assert!(store
+            .upsert_recipient_briefing_if_contact_unchanged(
+                &recipient,
+                "alice@example.com",
+                Some(current)
+            )
+            .await
+            .unwrap());
     }
 
     #[tokio::test]

@@ -111,6 +111,29 @@ pub use voice_samples::{MyReplySample, MySentSample};
 /// this leaves room for the query's other binds and keeps a page-sized id
 /// list from silently outgrowing it.
 pub(crate) const SQLITE_BIND_CHUNK: usize = 500;
+
+/// SQL condition that holds when every message id in the JSON array bound
+/// at `?param` still exists. Model output cached under it cannot outlive a
+/// delete of mail it read: the condition and the write are one statement on
+/// the single writer connection, so a delete lands either before (the write
+/// is refused) or after (the delete clears what was written).
+pub(crate) fn sources_exist_sql(param: u8) -> String {
+    format!(
+        "NOT EXISTS (SELECT 1 FROM json_each(?{param}) AS source
+                     WHERE source.value NOT IN (SELECT id FROM messages))"
+    )
+}
+
+/// The JSON array `sources_exist_sql` reads.
+pub(crate) fn sources_json(sources: &[mxr_core::MessageId]) -> String {
+    serde_json::to_string(
+        &sources
+            .iter()
+            .map(mxr_core::MessageId::as_str)
+            .collect::<Vec<_>>(),
+    )
+    .unwrap_or_else(|_| "[]".into())
+}
 pub use thread_context::CounterpartyExchange;
 pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
 pub use triage::TriageCacheRecord;

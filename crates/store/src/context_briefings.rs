@@ -122,21 +122,60 @@ impl super::Store {
         sources: &[mxr_core::MessageId],
     ) -> Result<bool, sqlx::Error> {
         let citations_json = serde_json::to_string(&b.citations).unwrap_or_else(|_| "[]".into());
-        let sources_json = serde_json::to_string(
-            &sources
-                .iter()
-                .map(mxr_core::MessageId::as_str)
-                .collect::<Vec<_>>(),
-        )
-        .unwrap_or_else(|_| "[]".into());
+        let sql = format!(
+            r#"INSERT INTO context_briefings
+               (id, account_id, kind, subject_key, content_hash, body_markdown,
+                citations_json, generated_at)
+               SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+               WHERE {sources_exist}
+               ON CONFLICT(account_id, kind, subject_key) DO UPDATE SET
+                 content_hash = excluded.content_hash,
+                 body_markdown = excluded.body_markdown,
+                 citations_json = excluded.citations_json,
+                 generated_at = excluded.generated_at"#,
+            sources_exist = crate::sources_exist_sql(9)
+        );
+        let written = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(&b.id)
+            .bind(b.account_id.as_str())
+            .bind(b.kind.as_str())
+            .bind(&b.subject_key)
+            .bind(&b.content_hash)
+            .bind(&b.body_markdown)
+            .bind(&citations_json)
+            .bind(b.generated_at.timestamp())
+            .bind(crate::sources_json(sources))
+            .execute(self.writer())
+            .await?
+            .rows_affected();
+        Ok(written > 0)
+    }
+}
+
+impl super::Store {
+    /// Writes a recipient briefing built from the contact row as it stood
+    /// at `contact_version` (its `refreshed_at`, or `None` when there was no
+    /// row), unless the row changed since. A message delete touching the
+    /// contact moves that version, so a briefing whose model call outlived
+    /// the delete is refused. Returns whether it was written.
+    pub async fn upsert_recipient_briefing_if_contact_unchanged(
+        &self,
+        b: &ContextBriefing,
+        email: &str,
+        contact_version: Option<i64>,
+    ) -> Result<bool, sqlx::Error> {
+        let citations_json = serde_json::to_string(&b.citations).unwrap_or_else(|_| "[]".into());
         let written = sqlx::query(
             r#"INSERT INTO context_briefings
                (id, account_id, kind, subject_key, content_hash, body_markdown,
                 citations_json, generated_at)
                SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
-               WHERE NOT EXISTS (
-                   SELECT 1 FROM json_each(?9) AS source
-                   WHERE source.value NOT IN (SELECT id FROM messages))
+               WHERE (?10 IS NULL AND NOT EXISTS (
+                          SELECT 1 FROM contacts WHERE account_id = ?2 AND LOWER(email) = LOWER(?9)))
+                  OR EXISTS (
+                          SELECT 1 FROM contacts
+                          WHERE account_id = ?2 AND LOWER(email) = LOWER(?9)
+                            AND refreshed_at = ?10)
                ON CONFLICT(account_id, kind, subject_key) DO UPDATE SET
                  content_hash = excluded.content_hash,
                  body_markdown = excluded.body_markdown,
@@ -151,7 +190,8 @@ impl super::Store {
         .bind(&b.body_markdown)
         .bind(&citations_json)
         .bind(b.generated_at.timestamp())
-        .bind(&sources_json)
+        .bind(email)
+        .bind(contact_version)
         .execute(self.writer())
         .await?
         .rows_affected();

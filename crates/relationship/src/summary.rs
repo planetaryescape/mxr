@@ -68,6 +68,7 @@ pub async fn generate_relationship_summary(
         + "\n\n\n\n\n\n".len();
     let excerpt_budget = MAX_PROMPT_CHARS.saturating_sub(overhead);
     let mut excerpts = String::new();
+    let mut source_ids = Vec::new();
     for sample in samples
         .iter()
         .filter(|sample| !sample.is_list_sender)
@@ -78,6 +79,7 @@ pub async fn generate_relationship_summary(
         } else {
             "user_to_them"
         };
+        source_ids.push(sample.message_id.clone());
         let body = clean(Some(&sample.body), None, &reader_config).content;
         excerpts.push_str(&format!(
             "Message {} ({direction}, {}):\n{}\n\n",
@@ -123,25 +125,30 @@ pub async fn generate_relationship_summary(
     if parsed.text.trim().is_empty() {
         return Ok(false);
     }
-    store
-        .upsert_contact_relationship_summary(&ContactRelationshipSummaryRecord {
-            account_id: account_id.clone(),
-            email: email.to_ascii_lowercase(),
-            text: parsed.text.trim().to_string(),
-            model: response.model,
-            known_topics: parsed
-                .known_topics
-                .into_iter()
-                .map(|topic| topic.trim().to_string())
-                .filter(|topic| !topic.is_empty())
-                .take(12)
-                .collect(),
-            computed_at: chrono::Utc::now(),
-            source_hash: style.source_hash,
-            last_error: None,
-        })
+    // Refused when mail it read was deleted while the model ran; the
+    // delete's re-enqueue rebuilds the summary from what is left.
+    let written = store
+        .upsert_contact_relationship_summary_if_sources_exist(
+            &ContactRelationshipSummaryRecord {
+                account_id: account_id.clone(),
+                email: email.to_ascii_lowercase(),
+                text: parsed.text.trim().to_string(),
+                model: response.model,
+                known_topics: parsed
+                    .known_topics
+                    .into_iter()
+                    .map(|topic| topic.trim().to_string())
+                    .filter(|topic| !topic.is_empty())
+                    .take(12)
+                    .collect(),
+                computed_at: chrono::Utc::now(),
+                source_hash: style.source_hash,
+                last_error: None,
+            },
+            &source_ids,
+        )
         .await?;
-    Ok(true)
+    Ok(written)
 }
 
 fn parse_summary_response(content: &str) -> Result<SummaryResponse> {

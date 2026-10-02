@@ -321,13 +321,25 @@ pub(crate) async fn get_recipient_briefing(
         citations: vec![],
         generated_at: chrono::Utc::now(),
     };
-    state.store.upsert_context_briefing(&entry).await?;
+    // Refused when a delete touched this contact while the model ran; the
+    // answer is still returned, just not cached.
+    state
+        .store
+        .upsert_recipient_briefing_if_contact_unchanged(
+            &entry,
+            &entry.subject_key,
+            contact.as_ref().map(|contact| contact.version),
+        )
+        .await?;
     Ok(ResponseData::RecipientBriefing {
         briefing: to_recipient_briefing(&entry, false),
     })
 }
 
 struct ContactSummary {
+    /// The row's `refreshed_at`: the version the briefing write is checked
+    /// against.
+    version: i64,
     last_inbound_at: Option<chrono::DateTime<chrono::Utc>>,
     last_outbound_at: Option<chrono::DateTime<chrono::Utc>>,
     total_inbound: i64,
@@ -342,7 +354,8 @@ async fn lookup_contact_summary(
 ) -> Option<ContactSummary> {
     use sqlx::Row as _;
     let row = sqlx::query(
-        "SELECT last_inbound_at, last_outbound_at, total_inbound, total_outbound, cadence_days_p50
+        "SELECT refreshed_at, last_inbound_at, last_outbound_at, total_inbound, total_outbound,
+                cadence_days_p50
          FROM contacts
          WHERE account_id = ? AND LOWER(email) = LOWER(?)",
     )
@@ -355,6 +368,7 @@ async fn lookup_contact_summary(
     let last_in: Option<i64> = row.try_get("last_inbound_at").ok();
     let last_out: Option<i64> = row.try_get("last_outbound_at").ok();
     Some(ContactSummary {
+        version: row.try_get("refreshed_at").ok()?,
         last_inbound_at: last_in.and_then(|s| chrono::DateTime::from_timestamp(s, 0)),
         last_outbound_at: last_out.and_then(|s| chrono::DateTime::from_timestamp(s, 0)),
         total_inbound: row.try_get("total_inbound").unwrap_or(0),

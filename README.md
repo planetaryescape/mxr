@@ -12,6 +12,15 @@ MCP, and an agent skill. Attachment names, types, and sizes are local; mxr
 downloads attachment contents when you open them. Send through Gmail, Outlook,
 or any SMTP server.
 
+mxr sorts what arrives by what you do with it. The desk lists the people
+waiting on a reply and the promises you made that are coming due.
+Newsletters go to Reading, and receipts and notifications go to Paper
+trail. A rule you can read places each message, and `mxr why` prints it.
+The next step is treating email as five apps that share one inbox
+(Messages, To do, Updates, Reading and Archive), each with its own view.
+Most of that is still planned:
+[what each mode has today](https://mxr.sh/guides/email-modes/).
+
 Write `mxr`, say “Mixer”.
 
 <a href="https://mxr.sh/mxr-tui.webm">
@@ -175,8 +184,10 @@ The recordings use the seeded demo inbox and real mxr commands.
 - Relationship profiles, communication history, and analytics
 - Pending offline mutations and the activity log
 
-LLM-assisted commands read local context and call the model provider you
-configure for generation. They do not send drafts automatically.
+Model features are off until you turn them on. They read local context and
+call the endpoint you configure, a local model server by default or a cloud
+provider with your own API key, and they never send mail on their own.
+[What each request sends](https://mxr.sh/guides/llm-features/#know-what-each-request-sends-and-where)
 
 ## How it works
 

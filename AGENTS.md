@@ -2,6 +2,7 @@
 
 - `mxr` is Rust 2021. Use `scripts/cargo-test -p <crate> --tests` for focused tests and `cargo build -p mxr` before handoff.
 - Product shape: local-first, daemon-backed, CLI-first email. New capabilities must be daemon IPC plus CLI JSON/JSONL; TUI/web layer on the same daemon surface.
+- Product model: email is five modes (Messages, To do, Updates, Reading, Archive) plus Now; see `docs/blueprint/22-email-modes.md`. Most of it is unbuilt, so user docs describe only what ships, and each phase updates the docs its Docs line names.
 - Mutations, destructive actions, and batch operations require a dry-run or preview path. The preview selection path must match the real mutation path.
 - Keep provider-specific logic inside provider crates. Daemon code talks to providers only through `MailSyncProvider` / `MailSendProvider`.
 - Respect Cargo crate boundaries from `docs/blueprint/01-architecture.md`; use real dependencies, never `#[path]`.

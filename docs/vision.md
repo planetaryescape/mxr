@@ -4,9 +4,28 @@ This document preserves the product and implementation thinking behind the compl
 
 The goal was not one feature. It was a parity push: make the useful mail workflows feel complete across daemon, CLI, TUI, HTTP bridge, and desktop without turning every client into its own product. The daemon remains the source of truth; clients expose the same durable capabilities in shapes that fit their surface.
 
+## The product thesis moved to email modes
+
+On 2026-10-02 BK changed what mxr is for. Email is five apps sharing one
+inbox (Messages, To do, Updates, Reading and Archive), each with its own
+view, unit and verbs. One email can be in several modes, with handoff
+between them, and Now is the front page across them. Classification is
+rules first, then the user's own model, with a visible reason. Model work
+runs in a fast and a smart tier, cloud-only with the user's own API key is
+a supported setup, and each task gets the tool that fits it, often plain
+code. The design and its phases are in
+[blueprint/22-email-modes.md](blueprint/22-email-modes.md); the settled
+choices are D107 to D114 in
+[blueprint/15-decision-log.md](blueprint/15-decision-log.md).
+
+Almost none of that has shipped. v0.6.47 has the desk, Reading and Paper
+trail, the screener, promises and deliveries. The delight-plan principles
+below still govern how features get built: daemon first, CLI first, local
+first, exactness before cleverness.
+
 ## Thesis
 
-The product bet was:
+The delight-plan bet was:
 
 > Email that respects the keyboard, the network, and your data.
 
@@ -67,6 +86,8 @@ If a durable feature ships only in TUI or desktop, it is incomplete unless the f
 The project stays local-first where it matters: mail state, search, sync state, rules, reminders, snippets, drafts, and relationship data live locally. LLM features are optional and degrade cleanly when disabled.
 
 The LLM backend deliberately pivoted away from bundling `mistral.rs`. The shipped model is an OpenAI-compatible HTTP provider that covers Ollama, LM Studio, OpenAI, Groq, OpenRouter, Together AI, Mistral La Plateforme, and similar providers. That kept compile cost, binary complexity, and model-artifact management out of the core app while still supporting local engines.
+
+The email modes plan keeps this shape: a fast tier on the local model by default, a smart tier that may use the user's cloud model with their own API key, and no mode feature that requires a local LLM server (D114).
 
 Do not reintroduce embedded inference as a replacement for the current provider. If native inference ever returns, it should be an optional additional provider with clear install and maintenance costs.
 

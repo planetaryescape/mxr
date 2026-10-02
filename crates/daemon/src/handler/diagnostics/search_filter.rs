@@ -29,38 +29,118 @@ pub(super) fn ast_contains_owed_reply(node: &QueryNode) -> bool {
     }
 }
 
-/// Whether the query asks for Trash or Spam (`in:trash`, `in:spam`,
-/// `in:anywhere`, or the label itself) outside a negation. Semantic results
-/// leave Trash and Spam out unless it does, as Gmail search does.
-pub(super) fn ast_asks_for_trash_or_spam(node: &QueryNode) -> bool {
+/// The two places search leaves out unless a query asks for them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Hidden {
+    Trash,
+    Spam,
+}
+
+impl Hidden {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Trash => system_labels::TRASH,
+            Self::Spam => system_labels::SPAM,
+        }
+    }
+
+    fn filter(self) -> FilterKind {
+        match self {
+            Self::Trash => FilterKind::Trash,
+            Self::Spam => FilterKind::Spam,
+        }
+    }
+
+    /// `NOT (in:<place> OR label:<PLACE>)`: by flag and by label, since a
+    /// label change from delta sync does not always set the flag.
+    fn exclusion(self) -> QueryNode {
+        QueryNode::Not(Box::new(QueryNode::Or(
+            Box::new(QueryNode::Filter(self.filter())),
+            Box::new(QueryNode::Label(self.label().to_string())),
+        )))
+    }
+}
+
+/// Whether `node` asks for `place` (`in:trash`, `in:anywhere`, the label)
+/// outside a negation: `-in:trash` names Trash only to leave it out.
+fn asks_for(node: &QueryNode, place: Hidden) -> bool {
     match node {
-        QueryNode::Filter(FilterKind::Trash | FilterKind::Spam | FilterKind::Anywhere) => true,
-        QueryNode::Label(label) => {
-            label.eq_ignore_ascii_case(system_labels::TRASH)
-                || label.eq_ignore_ascii_case(system_labels::SPAM)
-        }
+        QueryNode::Filter(FilterKind::Anywhere) => true,
+        QueryNode::Filter(kind) => *kind == place.filter(),
+        QueryNode::Label(label) => label.eq_ignore_ascii_case(place.label()),
         QueryNode::And(left, right) | QueryNode::Or(left, right) => {
-            ast_asks_for_trash_or_spam(left) || ast_asks_for_trash_or_spam(right)
+            asks_for(left, place) || asks_for(right, place)
         }
-        // `-in:trash` names trash only to leave it out.
         _ => false,
     }
 }
 
-/// Leaves Trash and Spam out of a query that does not ask for them, as
-/// Gmail search does. One rewrite, so the lexical half, the dense filter
-/// and counts all apply the same default.
-pub(super) fn exclude_trash_and_spam_by_default(ast: QueryNode) -> QueryNode {
-    if ast_asks_for_trash_or_spam(&ast) {
-        return ast;
+/// Adds the exclusion of each place `node` does not ask for.
+fn guarded(node: QueryNode) -> QueryNode {
+    let lifted = [Hidden::Trash, Hidden::Spam].map(|place| asks_for(&node, place));
+    [Hidden::Trash, Hidden::Spam]
+        .into_iter()
+        .zip(lifted)
+        .filter(|(_, lifted)| !lifted)
+        .fold(node, |node, (place, _)| {
+            QueryNode::And(Box::new(node), Box::new(place.exclusion()))
+        })
+}
+
+/// Most alternatives a query is expanded into before scoping falls back to
+/// the whole query.
+const MAX_SCOPED_ALTERNATIVES: usize = 32;
+
+/// The query as alternatives (OR of ANDs), or `None` when that would exceed
+/// `MAX_SCOPED_ALTERNATIVES`. Negations and leaves are kept whole.
+fn alternatives(node: &QueryNode) -> Option<Vec<QueryNode>> {
+    match node {
+        QueryNode::Or(left, right) => {
+            let mut all = alternatives(left)?;
+            all.extend(alternatives(right)?);
+            (all.len() <= MAX_SCOPED_ALTERNATIVES).then_some(all)
+        }
+        QueryNode::And(left, right) => {
+            let lefts = alternatives(left)?;
+            let rights = alternatives(right)?;
+            if lefts.len().saturating_mul(rights.len()) > MAX_SCOPED_ALTERNATIVES {
+                return None;
+            }
+            Some(
+                lefts
+                    .iter()
+                    .flat_map(|l| {
+                        rights
+                            .iter()
+                            .map(move |r| QueryNode::And(Box::new(l.clone()), Box::new(r.clone())))
+                    })
+                    .collect(),
+            )
+        }
+        other => Some(vec![other.clone()]),
     }
-    QueryNode::And(
-        Box::new(ast),
-        Box::new(QueryNode::Not(Box::new(QueryNode::Or(
-            Box::new(QueryNode::Filter(FilterKind::Trash)),
-            Box::new(QueryNode::Filter(FilterKind::Spam)),
-        )))),
-    )
+}
+
+/// Leaves Trash and Spam out of a query unless it asks for them, as Gmail
+/// search does. One rewrite, so the lexical half, the dense filter, counts
+/// and `--search` selections all apply the same default.
+///
+/// Each place is lifted on its own: `in:trash` lets Trash in, not Spam. And
+/// the lift is scoped to the alternative that asks: in
+/// `in:trash OR from:alice`, Alice's own Trash and Spam stay out. When the
+/// alternatives all ask for the same places the query keeps its shape; a
+/// query too large to expand falls back to lifting per place for the whole
+/// query.
+pub(super) fn exclude_trash_and_spam_by_default(ast: QueryNode) -> QueryNode {
+    let asks = |node: &QueryNode| (asks_for(node, Hidden::Trash), asks_for(node, Hidden::Spam));
+    match alternatives(&ast) {
+        Some(terms) if terms.iter().any(|term| asks(term) != asks(&ast)) => terms
+            .into_iter()
+            .map(guarded)
+            .reduce(|left, right| QueryNode::Or(Box::new(left), Box::new(right)))
+            .unwrap_or(ast),
+        _ => guarded(ast),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -405,22 +485,68 @@ mod tests {
     use super::*;
     use mxr_search::parse_query;
 
-    #[test]
-    fn only_a_positive_trash_or_spam_mention_asks_for_them() {
-        for query in [
-            "in:trash invoice",
-            "invoice in:spam",
-            "in:anywhere invoice",
-            "label:TRASH invoice",
-            "invoice OR in:trash",
+    /// Which of Trash and Spam a sample message in each place reaches the
+    /// results through, for a query over Alice's and Bob's mail.
+    fn reached(query: &str) -> Vec<&'static str> {
+        let ast = exclude_trash_and_spam_by_default(parse_query(query).unwrap());
+        let mut reached = Vec::new();
+        for (name, from, flags) in [
+            (
+                "alice inbox",
+                "alice@example.com",
+                mxr_core::MessageFlags::empty(),
+            ),
+            (
+                "alice trash",
+                "alice@example.com",
+                mxr_core::MessageFlags::TRASH,
+            ),
+            (
+                "alice spam",
+                "alice@example.com",
+                mxr_core::MessageFlags::SPAM,
+            ),
+            (
+                "bob trash",
+                "bob@example.com",
+                mxr_core::MessageFlags::TRASH,
+            ),
+            ("bob spam", "bob@example.com", mxr_core::MessageFlags::SPAM),
         ] {
-            let ast = parse_query(query).unwrap();
-            assert!(ast_asks_for_trash_or_spam(&ast), "{query}");
+            let envelope = mxr_core::Envelope {
+                from: mxr_core::Address {
+                    name: None,
+                    email: from.to_string(),
+                },
+                flags,
+                ..crate::test_fixtures::TestEnvelopeBuilder::new().build()
+            };
+            if matches_structured_filters(&ast, &envelope) {
+                reached.push(name);
+            }
         }
-        for query in ["invoice", "invoice -in:trash", "in:inbox invoice"] {
-            let ast = parse_query(query).unwrap();
-            assert!(!ast_asks_for_trash_or_spam(&ast), "{query}");
-        }
+        reached
+    }
+
+    #[test]
+    fn trash_and_spam_are_lifted_each_on_their_own_and_only_where_asked() {
+        assert_eq!(reached("from:alice@example.com"), vec!["alice inbox"]);
+        assert_eq!(
+            reached("in:trash"),
+            vec!["alice trash", "bob trash"],
+            "in:trash must not let Spam in"
+        );
+        assert_eq!(
+            reached("in:trash OR from:alice@example.com"),
+            vec!["alice inbox", "alice trash", "bob trash"],
+            "Alice's Spam came in through the in:trash alternative"
+        );
+        assert_eq!(
+            reached("from:alice@example.com (in:spam OR in:inbox)"),
+            vec!["alice spam"]
+        );
+        assert_eq!(reached("-in:trash"), vec!["alice inbox"]);
+        assert_eq!(reached("in:anywhere").len(), 5);
     }
 
     #[test]

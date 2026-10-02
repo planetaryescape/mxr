@@ -616,28 +616,6 @@ impl super::Store {
         Ok(directions)
     }
 
-    // Dynamic SQL -- kept as runtime query due to variable IN clause
-    pub async fn delete_messages_by_provider_ids(
-        &self,
-        account_id: &AccountId,
-        provider_ids: &[String],
-    ) -> Result<u64, sqlx::Error> {
-        if provider_ids.is_empty() {
-            return Ok(0);
-        }
-        let placeholders: Vec<String> = provider_ids.iter().map(|_| "?".to_string()).collect();
-        let sql = format!(
-            "DELETE FROM messages WHERE account_id = ? AND provider_id IN ({})",
-            placeholders.join(", ")
-        );
-        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(account_id.as_str());
-        for pid in provider_ids {
-            query = query.bind(pid);
-        }
-        let result = query.execute(self.writer()).await?;
-        Ok(result.rows_affected())
-    }
-
     /// Bulk-replace the label set for a message.
     ///
     /// This is the reconciliation path used by sync to mirror remote state;

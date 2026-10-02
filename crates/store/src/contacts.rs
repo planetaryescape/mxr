@@ -221,6 +221,31 @@ impl super::Store {
             tx.commit().await?;
             tokio::task::yield_now().await;
         }
+
+        // Every contact the aggregate produced now carries this run's
+        // timestamp, so an older one has no mail left. It goes, with what was
+        // computed about the person from that mail: the relationship summary
+        // is model-written text drawn from it.
+        let mut tx = self.writer().begin().await?;
+        for statement in [
+            r#"DELETE FROM contact_relationship_summary WHERE EXISTS (
+                   SELECT 1 FROM contacts
+                   WHERE contacts.refreshed_at < ?1
+                     AND contacts.account_id = contact_relationship_summary.account_id
+                     AND contact_relationship_summary.email = contacts.email)"#,
+            r#"DELETE FROM contact_style WHERE EXISTS (
+                   SELECT 1 FROM contacts
+                   WHERE contacts.refreshed_at < ?1
+                     AND contacts.account_id = contact_style.account_id
+                     AND contact_style.email = contacts.email)"#,
+            "DELETE FROM contacts WHERE refreshed_at < ?1",
+        ] {
+            sqlx::query(statement)
+                .bind(now_unix)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
         trace_query("contacts.refresh", started_at, affected as usize);
         Ok(affected)
     }

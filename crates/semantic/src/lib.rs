@@ -4125,7 +4125,7 @@ mod tests {
         assert!(hits.iter().any(|hit| hit.message_id == first.id));
 
         store
-            .delete_messages_by_provider_ids(&first.account_id, &[first.provider_id.clone()])
+            .delete_messages_and_derived(&first.account_id, &[first.provider_id.clone()])
             .await
             .unwrap();
         engine.forget_messages(std::slice::from_ref(&first.id));
@@ -4207,7 +4207,7 @@ mod tests {
         assert!(hits.iter().any(|hit| hit.message_id == first.id));
 
         store
-            .delete_messages_by_provider_ids(&account.id, &[first.provider_id.clone()])
+            .delete_messages_and_derived(&account.id, &[first.provider_id.clone()])
             .await
             .unwrap();
         handle

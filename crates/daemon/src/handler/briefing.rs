@@ -158,7 +158,20 @@ pub(crate) async fn get_thread_briefing(
         citations,
         generated_at: chrono::Utc::now(),
     };
-    state.store.upsert_context_briefing(&entry).await?;
+    let sources = envelopes
+        .iter()
+        .map(|envelope| envelope.id.clone())
+        .collect::<Vec<_>>();
+    if !state
+        .store
+        .upsert_context_briefing_if_sources_exist(&entry, &sources)
+        .await?
+    {
+        return Err(format!(
+            "part of thread {thread_id} was deleted while its briefing was written"
+        )
+        .into());
+    }
     Ok(ResponseData::ThreadBriefing {
         briefing: to_thread_briefing(&entry, false),
     })

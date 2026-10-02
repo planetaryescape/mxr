@@ -57,6 +57,10 @@ enum SemanticCommand {
         message_ids: Vec<MessageId>,
         resp: oneshot::Sender<Result<()>>,
     },
+    ForgetMessages {
+        message_ids: Vec<MessageId>,
+        resp: oneshot::Sender<()>,
+    },
     Search {
         query: String,
         limit: usize,
@@ -435,6 +439,24 @@ impl SemanticServiceHandle {
         resp_rx.await.map_err(|_| worker_stopped())?
     }
 
+    /// Forgets messages deleted from the store: no in-memory snippet or hit
+    /// for them survives this call, and the index is queued for the rebuild
+    /// that drops their vectors.
+    pub async fn forget_messages(&self, message_ids: &[MessageId]) -> Result<()> {
+        if message_ids.is_empty() {
+            return Ok(());
+        }
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.tx
+            .send(SemanticCommand::ForgetMessages {
+                message_ids: message_ids.to_vec(),
+                resp: resp_tx,
+            })
+            .await
+            .map_err(closed_error)?;
+        resp_rx.await.map_err(|_| worker_stopped())
+    }
+
     pub async fn search(
         &self,
         query: &str,
@@ -551,6 +573,17 @@ async fn handle_command(
             }
             tracing::trace!(queued = pending.len(), "semantic ingest enqueued");
             let _ = resp.send(Ok(()));
+        }
+        SemanticCommand::ForgetMessages { message_ids, resp } => {
+            let forgotten = message_ids.iter().collect::<HashSet<_>>();
+            // A queued ingest of a deleted message would only find it gone.
+            pending.retain(|item| !forgotten.contains(&item.message_id));
+            pending_ids.retain(|message_id| !forgotten.contains(message_id));
+            if let Ok(mut metrics) = runtime_metrics.lock() {
+                metrics.queue_depth = pending.len() as u32;
+            }
+            engine.forget_messages(&message_ids);
+            let _ = resp.send(());
         }
         SemanticCommand::Search {
             query,

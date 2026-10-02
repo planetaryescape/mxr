@@ -297,6 +297,11 @@ pub struct SemanticEngine {
     /// ingests.
     #[cfg(feature = "local")]
     completed_index_passes: HashMap<SemanticProfile, u64>,
+    /// Messages forgotten while `index_build` was running. That build may
+    /// have read their rows before the delete, so they are stripped from it
+    /// when it is swapped in instead of coming back from the dead.
+    #[cfg(feature = "local")]
+    forgotten_during_build: HashSet<MessageId>,
     #[cfg(feature = "local")]
     test_embedder: Option<TestEmbedder>,
 }
@@ -316,6 +321,7 @@ impl SemanticEngine {
             index_build: None,
             index_build_failures: HashMap::new(),
             completed_index_passes: HashMap::new(),
+            forgotten_during_build: HashSet::new(),
             test_embedder: None,
         }
     }
@@ -481,6 +487,29 @@ impl SemanticEngine {
 
     pub async fn reindex_messages(&mut self, message_ids: &[MessageId]) -> Result<()> {
         self.ingest_messages(message_ids).await
+    }
+
+    /// Drops deleted messages from every loaded index straight away.
+    ///
+    /// Their chunk rows are already gone with the message rows; what is left
+    /// is the in-memory snippet and vector. Removing the chunk mapping stops
+    /// them ranking at once (`best_hits_for_neighbours` skips unknown
+    /// points). `hnsw_rs` cannot remove a point, so the vector itself only
+    /// goes with the rebuild this queues.
+    pub fn forget_messages(&mut self, message_ids: &[MessageId]) {
+        if message_ids.is_empty() {
+            return;
+        }
+        let forgotten = message_ids.iter().collect::<HashSet<_>>();
+        for (profile, index) in &mut self.indexes {
+            if forget_in_index(index, &forgotten) {
+                self.dirty_indexes.insert(*profile);
+            }
+        }
+        if self.index_build.is_some() {
+            self.forgotten_during_build
+                .extend(message_ids.iter().cloned());
+        }
     }
 
     pub async fn search(
@@ -865,9 +894,17 @@ impl SemanticEngine {
         let profile = build.profile;
         let result = (&mut build.handle).await;
         self.index_build = None;
+        // Whatever happened to the build, the next one reads rows from after
+        // the delete, so this set is only ever owed to the build that just ended.
+        let forgotten = std::mem::take(&mut self.forgotten_during_build);
         match result.map_err(anyhow::Error::new).and_then(|built| built) {
-            Ok(index) => {
+            Ok(mut index) => {
                 self.index_build_failures.remove(&profile);
+                if forget_in_index(&mut index, &forgotten.iter().collect()) {
+                    // The build picked up vectors of deleted mail; one more
+                    // rebuild drops them.
+                    self.dirty_indexes.insert(profile);
+                }
                 self.indexes.insert(profile, index);
             }
             Err(error) => {
@@ -1339,6 +1376,8 @@ impl SemanticEngine {
         self.ingest_messages(message_ids).await
     }
 
+    pub fn forget_messages(&mut self, _message_ids: &[MessageId]) {}
+
     pub(crate) async fn poll_index_builds(&mut self) -> Result<()> {
         Ok(())
     }
@@ -1640,6 +1679,20 @@ fn build_semantic_index(
         chunks_by_id,
         pass_epoch,
     })
+}
+
+/// Removes the chunk mappings of `forgotten` messages. Returns whether any
+/// went, which means the index still holds their vectors.
+#[cfg(feature = "local")]
+fn forget_in_index(index: &mut SemanticIndex, forgotten: &HashSet<&MessageId>) -> bool {
+    if forgotten.is_empty() {
+        return false;
+    }
+    let before = index.chunks_by_id.len();
+    index
+        .chunks_by_id
+        .retain(|_, chunk| !forgotten.contains(&chunk.message_id));
+    index.chunks_by_id.len() != before
 }
 
 #[cfg(feature = "local")]
@@ -3996,6 +4049,176 @@ mod tests {
             "re-ingesting unchanged messages must not re-embed, saw {:?}",
             embed_call_sizes(&calls)
         );
+
+        handle.request_shutdown().await.unwrap();
+        worker.await.unwrap();
+    }
+
+    /// Seeds two messages ("deployment" and "roadmap") and indexes both.
+    async fn engine_with_two_indexed_messages(
+        store: &Arc<Store>,
+        data_dir: &StdPath,
+    ) -> (SemanticEngine, Envelope, Envelope) {
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let first = test_envelope(&account.id);
+        store.upsert_envelope(&first).await.unwrap();
+        store
+            .insert_body(&test_body_with_text(
+                &first.id,
+                "Deployment checklist",
+                Vec::new(),
+            ))
+            .await
+            .unwrap();
+        let second = Envelope {
+            provider_id: "fake-2".into(),
+            subject: "Roadmap notes".into(),
+            snippet: "Launch plan".into(),
+            ..test_envelope(&account.id)
+        };
+        store.upsert_envelope(&second).await.unwrap();
+        store
+            .insert_body(&test_body_with_text(
+                &second.id,
+                "Roadmap notes launch",
+                Vec::new(),
+            ))
+            .await
+            .unwrap();
+
+        let mut engine = SemanticEngine::new(store.clone(), data_dir, SemanticConfig::default());
+        engine.set_test_embedder(Arc::new(test_embedder));
+        engine
+            .ingest_messages(&[first.id.clone(), second.id.clone()])
+            .await
+            .unwrap();
+        (engine, first, second)
+    }
+
+    fn indexed_messages(engine: &SemanticEngine) -> HashSet<MessageId> {
+        engine
+            .indexes
+            .values()
+            .flat_map(|index| index.chunks_by_id.values())
+            .map(|chunk| chunk.message_id.clone())
+            .collect()
+    }
+
+    const ALL_KINDS: [SemanticChunkSourceKind; 2] = [
+        SemanticChunkSourceKind::Header,
+        SemanticChunkSourceKind::Body,
+    ];
+
+    #[tokio::test]
+    async fn a_forgotten_message_leaves_the_index_and_search_at_once() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let data_dir = tempdir().unwrap();
+        let (mut engine, first, second) =
+            engine_with_two_indexed_messages(&store, data_dir.path()).await;
+        assert!(engine.start_next_index_build(false).await.unwrap());
+        engine.index_build_ready().await;
+        let hits = engine
+            .search("deployment checklist", 5, &ALL_KINDS)
+            .await
+            .unwrap();
+        assert!(hits.iter().any(|hit| hit.message_id == first.id));
+
+        store
+            .delete_messages_by_provider_ids(&first.account_id, &[first.provider_id.clone()])
+            .await
+            .unwrap();
+        engine.forget_messages(std::slice::from_ref(&first.id));
+
+        assert_eq!(
+            indexed_messages(&engine),
+            HashSet::from([second.id.clone()])
+        );
+        let hits = engine
+            .search("deployment checklist", 5, &ALL_KINDS)
+            .await
+            .unwrap();
+        assert!(hits.iter().all(|hit| hit.message_id != first.id));
+        assert!(hits.iter().any(|hit| hit.message_id == second.id));
+        assert!(
+            engine
+                .dirty_indexes
+                .contains(&SemanticProfile::BgeSmallEnV15),
+            "the vectors are still in the HNSW graph, so a rebuild is owed"
+        );
+
+        assert!(engine.start_next_index_build(false).await.unwrap());
+        engine.index_build_ready().await;
+        assert_eq!(indexed_messages(&engine), HashSet::from([second.id]));
+        assert!(engine.dirty_indexes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_build_running_when_a_message_is_forgotten_does_not_bring_it_back() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let data_dir = tempdir().unwrap();
+        let (mut engine, first, second) =
+            engine_with_two_indexed_messages(&store, data_dir.path()).await;
+
+        // The rows stay in the store, standing in for a build that read them
+        // before the delete committed.
+        assert!(engine.start_next_index_build(false).await.unwrap());
+        engine.forget_messages(std::slice::from_ref(&first.id));
+        engine.index_build_ready().await;
+
+        assert_eq!(indexed_messages(&engine), HashSet::from([second.id]));
+        assert!(
+            engine
+                .dirty_indexes
+                .contains(&SemanticProfile::BgeSmallEnV15),
+            "the swapped-in build holds the forgotten vectors, so it is rebuilt"
+        );
+        assert!(engine.forgotten_during_build.is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_service_forgets_messages_before_answering_the_next_search() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let first = test_envelope(&account.id);
+        store.upsert_envelope(&first).await.unwrap();
+        store
+            .insert_body(&test_body_with_text(
+                &first.id,
+                "Deployment checklist",
+                Vec::new(),
+            ))
+            .await
+            .unwrap();
+        let data_dir = tempdir().unwrap();
+        let engine = SemanticEngine::new(store.clone(), data_dir.path(), SemanticConfig::default());
+        let (handle, worker) =
+            SemanticServiceHandle::start(engine, Arc::new(tokio::sync::Semaphore::new(1)));
+        handle.set_test_embedder(test_embedder).await.unwrap();
+        handle
+            .ingest_messages(std::slice::from_ref(&first.id))
+            .await
+            .unwrap();
+        let hits = handle
+            .search("deployment checklist", 5, &ALL_KINDS)
+            .await
+            .unwrap();
+        assert!(hits.iter().any(|hit| hit.message_id == first.id));
+
+        store
+            .delete_messages_by_provider_ids(&account.id, &[first.provider_id.clone()])
+            .await
+            .unwrap();
+        handle
+            .forget_messages(std::slice::from_ref(&first.id))
+            .await
+            .unwrap();
+        let hits = handle
+            .search("deployment checklist", 5, &ALL_KINDS)
+            .await
+            .unwrap();
+        assert!(hits.is_empty(), "forgotten message still ranked: {hits:?}");
 
         handle.request_shutdown().await.unwrap();
         worker.await.unwrap();

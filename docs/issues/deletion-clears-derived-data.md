@@ -73,20 +73,39 @@ have been checked on a real mailbox.
   email replaces the row and its derived data under a new id, and the
   same email keeps its row and local state. Gmail All Mail is covered for
   delta passes; a validity change in the middle of an All Mail backfill
-  restarts the backfill without that check.
+  restarts the backfill without that check or a listing.
 - Contacts are pruned only when no message from or to the address exists,
   checked in the prune's write transaction; the aggregate only nominates.
 - The relationship summaries of everyone a delete touches are dropped and
   rebuilt from the remaining mail.
 - Thread gists and thread briefings refuse to write when a message they
-  were built from was deleted during the model call. `thread_summaries`
-  (`mxr summarize`) has the same race and is not guarded yet.
+  were built from was deleted during the model call.
 - Whole-thread model input leaves Trash and Spam messages out unless the
   whole thread is in them; drafting keeps the message being answered.
 - Decision evidence is indexed in `decision_evidence` (migration 58).
 - Lexical search and counts leave Trash and Spam out unless the query
   asks for them, as Gmail does. The Tantivy fallback for queries the
   parser rejects does not apply the default.
+
+### Round-2 review follow-ups
+
+- Model-extracted decisions are refused when a cited message is gone at
+  write time. Thread summaries and relationship summaries use the same
+  sources-exist guard as gists. A recipient briefing reads only the
+  contact row; the delete moves that row's version (`refreshed_at`), so a
+  briefing built from the old row is refused.
+- Decisions whose cited mail was deleted before evidence tracking are
+  removed by startup maintenance (count logged; decisions citing nothing
+  are kept).
+- After a `UIDVALIDITY` change the provider sends the folder's complete
+  `UID SEARCH ALL` listing and the engine removes stored rows of that
+  folder outside it, so rows above a floored cursor are caught.
+- A cleanup whose files could not be removed stays owed with a backoff
+  (one minute doubling to six hours, ten attempts), and owed cleanups are
+  drained every ten minutes.
+- Trash and Spam exclusions are lifted per place and only for the query
+  alternative that asks for them.
+- Migration renumbered to 58 after `search_reindex_pending` took 57.
 
 ### Still open
 

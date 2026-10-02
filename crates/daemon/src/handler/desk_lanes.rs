@@ -143,7 +143,7 @@ impl WindowFacts {
         let mut facts = Self::default();
         for message in inputs.messages {
             if inputs.is_outbound(message) {
-                for recipient in message.to.iter().chain(&message.cc) {
+                for recipient in message.to.iter().chain(&message.cc).chain(&message.bcc) {
                     facts
                         .written_to
                         .insert(recipient.email.to_ascii_lowercase());
@@ -715,6 +715,7 @@ mod tests {
                 email: to.into(),
             }],
             cc: vec![],
+            bcc: vec![],
             subject: "Re: Launch plan".into(),
             list_id: None,
             unsubscribe: UnsubscribeMethod::None,
@@ -836,6 +837,25 @@ mod tests {
         assert_eq!(new.row.lane, DeskLaneKind::PeopleNew);
         assert_eq!(new.row.reason, "first message from them");
         assert_eq!(lane_of(&lanes, &replied), Some(DeskLaneKind::Owed));
+    }
+
+    #[test]
+    fn a_bcc_counts_as_writing_to_them() {
+        let earlier = ThreadId::new();
+        let theirs = ThreadId::new();
+        let mut sent = message(&earlier, ME, "team@example.com", 50);
+        sent.bcc = vec![Address {
+            name: None,
+            email: "Priya@Example.com".into(),
+        }];
+        let messages = vec![
+            sent,
+            message(&theirs, "priya@example.com", ME, 5),
+            message(&ThreadId::new(), "theo@example.com", ME, 3),
+        ];
+        let lanes = lanes(&messages, &[]);
+        assert_eq!(lane_of(&lanes, &theirs), Some(DeskLaneKind::Owed));
+        assert_eq!(lanes.elsewhere.screener, 1, "only Theo");
     }
 
     #[test]

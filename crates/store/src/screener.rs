@@ -185,9 +185,9 @@ impl super::Store {
     /// Compute the screener queue: senders with at least one inbound
     /// message in this account, but no `allow`/`deny`/`feed`/`paper_trail`
     /// decision yet. (`unknown` rows are also considered "no decision".)
-    /// The screener is for strangers: anyone you have written to (an
-    /// outbound To/Cc, or a contact with outbound mail) is never queued,
-    /// the desk's rule for being in conversation (D104).
+    /// The screener is for strangers: anyone you have written to (To, Cc
+    /// or Bcc of your sent mail, or a contact with outbound mail) is never
+    /// queued, the desk's rule for being in conversation (D104).
     /// Returns one entry per distinct sender, with rollup stats.
     pub async fn list_screener_queue(
         &self,
@@ -217,14 +217,35 @@ impl super::Store {
 }
 
 /// Parameters: ?1 account, ?2 limit.
-const SCREENER_QUEUE_SQL: &str = r#"WITH written_to AS (
+const SCREENER_QUEUE_SQL: &str = r#"WITH own AS (
+        SELECT LOWER(email) AS email FROM accounts WHERE id = ?1
+        UNION
+        SELECT LOWER(email) FROM account_addresses WHERE account_id = ?1
+    ),
+    -- Your sent mail by the desk's rule: stored as outbound, or of unknown
+    -- direction and from one of the account's own addresses (an alias
+    -- synced before its address was known).
+    -- Two index lookups on (account_id, direction), read once for the
+    -- three recipient lists below.
+    sent AS MATERIALIZED (
+        SELECT to_addrs, cc_addrs, bcc_addrs
+        FROM messages
+        WHERE account_id = ?1 AND direction = 'outbound'
+        UNION ALL
+        SELECT to_addrs, cc_addrs, bcc_addrs
+        FROM messages
+        WHERE account_id = ?1 AND direction = 'unknown'
+          AND LOWER(from_email) IN (SELECT email FROM own)
+    ),
+    written_to AS (
         SELECT LOWER(json_extract(recipient.value, '$.email')) AS email
-        FROM messages outbound, json_each(outbound.to_addrs) recipient
-        WHERE outbound.account_id = ?1 AND outbound.direction = 'outbound'
+        FROM sent, json_each(sent.to_addrs) recipient
         UNION
         SELECT LOWER(json_extract(recipient.value, '$.email'))
-        FROM messages outbound, json_each(outbound.cc_addrs) recipient
-        WHERE outbound.account_id = ?1 AND outbound.direction = 'outbound'
+        FROM sent, json_each(sent.cc_addrs) recipient
+        UNION
+        SELECT LOWER(json_extract(recipient.value, '$.email'))
+        FROM sent, json_each(sent.bcc_addrs) recipient
         UNION
         SELECT email FROM contacts WHERE account_id = ?1 AND total_outbound > 0
     ),
@@ -261,6 +282,7 @@ mod tests {
     use super::{ScreenerDecision, ScreenerDisposition};
     use chrono::{TimeZone, Utc};
     use mxr_core::id::{AccountId, MessageId};
+    use mxr_core::types::MessageDirection;
 
     fn anchor() -> chrono::DateTime<chrono::Utc> {
         Utc.with_ymd_and_hms(2024, 5, 7, 14, 0, 0).unwrap()
@@ -445,10 +467,10 @@ mod tests {
         store: &Store,
         aid: &AccountId,
         n: i64,
-        from: &str,
+        (from, direction): (&str, MessageDirection),
         [to, cc, bcc]: [&[&str]; 3],
     ) {
-        use mxr_core::types::{Address, MessageDirection};
+        use mxr_core::types::Address;
         let addresses = |emails: &[&str]| {
             emails
                 .iter()
@@ -468,15 +490,28 @@ mod tests {
         env.cc = addresses(cc);
         env.bcc = addresses(bcc);
         env.date = anchor() + chrono::Duration::minutes(n);
-        let direction = if from == "me@example.com" {
-            MessageDirection::Outbound
-        } else {
-            MessageDirection::Inbound
-        };
         store
             .upsert_envelope_with_direction(&env, direction)
             .await
             .unwrap();
+    }
+
+    const ME: (&str, MessageDirection) = ("test@example.com", MessageDirection::Outbound);
+
+    fn sender(email: &str) -> (&str, MessageDirection) {
+        (email, MessageDirection::Inbound)
+    }
+
+    async fn queued(store: &Store, aid: &AccountId) -> Vec<String> {
+        let mut emails: Vec<_> = store
+            .list_screener_queue(aid, 10)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|q| q.sender_email)
+            .collect();
+        emails.sort();
+        emails
     }
 
     #[tokio::test]
@@ -489,16 +524,15 @@ mod tests {
             "erin@example.com",
             "frank@example.com",
         ];
-        for (n, sender) in (1..).zip(senders) {
-            store_message(&store, &aid, n, sender, [&["me@example.com"], &[], &[]]).await;
+        for (n, email) in (1..).zip(senders) {
+            store_message(&store, &aid, n, sender(email), [&[ME.0], &[], &[]]).await;
         }
-        // You wrote to Carol, copied Erin, and blind-copied Frank, which
-        // only the contacts table records.
+        // You wrote to Carol, copied Erin and blind-copied Frank.
         store_message(
             &store,
             &aid,
             9,
-            "me@example.com",
+            ME,
             [
                 &["carol@example.com"],
                 &["ERIN@example.com"],
@@ -506,20 +540,39 @@ mod tests {
             ],
         )
         .await;
+        // No contacts refresh needed: the sent mail itself says so.
+        assert_eq!(queued(&store, &aid).await, vec!["dave@example.com"]);
+    }
 
-        let queued = |queue: Vec<super::ScreenerQueueEntry>| {
-            let mut emails: Vec<_> = queue.into_iter().map(|q| q.sender_email).collect();
-            emails.sort();
-            emails
-        };
-        assert_eq!(
-            queued(store.list_screener_queue(&aid, 10).await.unwrap()),
-            vec!["dave@example.com", "frank@example.com"]
-        );
-        store.refresh_contacts().await.unwrap();
-        assert_eq!(
-            queued(store.list_screener_queue(&aid, 10).await.unwrap()),
-            vec!["dave@example.com"]
-        );
+    #[tokio::test]
+    async fn screener_queue_counts_mail_from_an_alias_of_unknown_direction() {
+        let store = Store::in_memory().await.unwrap();
+        let aid = make_account(&store).await;
+        store
+            .add_account_address(&aid, "Me@Alias.example", false)
+            .await
+            .unwrap();
+        for (n, email) in (1..).zip(["carol@example.com", "dave@example.com"]) {
+            store_message(&store, &aid, n, sender(email), [&[ME.0], &[], &[]]).await;
+        }
+        // Synced before the alias was known: stored with no direction.
+        store_message(
+            &store,
+            &aid,
+            9,
+            ("me@alias.example", MessageDirection::Unknown),
+            [&["carol@example.com"], &[], &[]],
+        )
+        .await;
+        // The same from a stranger is not your sent mail.
+        store_message(
+            &store,
+            &aid,
+            10,
+            ("someone@else.example", MessageDirection::Unknown),
+            [&["dave@example.com"], &[], &[]],
+        )
+        .await;
+        assert_eq!(queued(&store, &aid).await, vec!["dave@example.com"]);
     }
 }

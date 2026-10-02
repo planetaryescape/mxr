@@ -67,6 +67,17 @@ have been checked on a real mailbox.
 - `user_activity` draft rows can carry a reply's subject (up to 200
   chars) and are kept until tier retention.
 - SQLite free pages and WAL keep deleted text until reused (fix 7).
+- If a sync pass fails after its delete commits (a later label change,
+  the lexical commit or the cursor write errors), the pass returns an error
+  and the delete fan-out never runs; a daemon crash before the detached
+  fan-out has the same effect. The semantic entries go at the next rebuild
+  or restart, but the attachment directories stay. A sweep of directories
+  with no message row would catch both, but `attachment_dir` is
+  user-configurable and deleting UUID-named directories the store does
+  not know is not safe enough to automate without a marker file.
+- After a `UIDVALIDITY` change, an old UID the server reuses for a
+  different message is overwritten in place under the same `folder:uid`
+  and keeps the old message's per-message rows.
 - On IMAP, `mxr trash` is a MOVE: the source row is deleted with its
   vectors and the Trash copy is a new message that is embedded again.
 

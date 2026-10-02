@@ -45,6 +45,7 @@ impl super::Store {
     /// second.
     pub async fn refresh_contacts(&self) -> Result<u32, sqlx::Error> {
         const CHUNK_SIZE: usize = 500;
+        let _one_refresh_at_a_time = self.contacts_refresh.lock().await;
 
         let started_at = Instant::now();
         let now_unix = chrono::Utc::now().timestamp();

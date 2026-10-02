@@ -140,8 +140,10 @@ impl super::Store {
             .await?;
         }
         for (_, email) in &counterparties {
-            sqlx::query("INSERT OR IGNORE INTO temp.mxr_deleting_people (email) VALUES (lower(?))")
-                .bind(email)
+            // Lowercased as recipient briefings key it; SQL `lower()` folds
+            // ASCII only.
+            sqlx::query("INSERT OR IGNORE INTO temp.mxr_deleting_people (email) VALUES (?)")
+                .bind(email.to_lowercase())
                 .execute(&mut *tx)
                 .await?;
         }
@@ -165,8 +167,11 @@ impl super::Store {
         for statement in [
             // Thread gists and summaries can quote any message of the
             // thread, so a partial delete drops them too.
+            // `GetThreadBriefing` keys on the bare thread id, the gist on
+            // `gist:<thread id>`.
             "DELETE FROM context_briefings WHERE account_id = ?1 AND kind = 'thread'
-               AND subject_key IN (SELECT thread_id FROM temp.mxr_deleting)",
+               AND (subject_key IN (SELECT thread_id FROM temp.mxr_deleting)
+                    OR subject_key IN (SELECT 'gist:' || thread_id FROM temp.mxr_deleting))",
             "DELETE FROM context_briefings WHERE account_id = ?1 AND kind = 'recipient'
                AND subject_key IN (SELECT email FROM temp.mxr_deleting_people)",
             "DELETE FROM thread_summaries WHERE account_id = ?1
@@ -300,14 +305,7 @@ mod tests {
         let (thread_a, thread_b, thread_c) = (ThreadId::new(), ThreadId::new(), ThreadId::new());
         let gone = inbound(&store, &account.id, "gone", &thread_a, "alice@example.com").await;
         let kept = inbound(&store, &account.id, "kept", &thread_a, "alice@example.com").await;
-        let gone_b = inbound(
-            &store,
-            &account.id,
-            "gone-b",
-            &thread_b,
-            "Carol@Example.com",
-        )
-        .await;
+        let gone_b = inbound(&store, &account.id, "gone-b", &thread_b, "JÖRG@Example.com").await;
         let other = inbound(&store, &account.id, "other", &thread_c, "dave@example.com").await;
         let (a, b, c) = (thread_a.as_str(), thread_b.as_str(), thread_c.as_str());
         let (gone_s, kept_s, gone_b_s, other_s) = (
@@ -322,8 +320,10 @@ mod tests {
             ("brief-a", "thread", a.as_str()),
             ("brief-b", "thread", b.as_str()),
             ("brief-c", "thread", c.as_str()),
+            ("gist-a", "thread", &format!("gist:{a}")),
+            ("gist-c", "thread", &format!("gist:{c}")),
+            ("brief-jorg", "recipient", "jörg@example.com"),
             ("brief-alice", "recipient", "alice@example.com"),
-            ("brief-carol", "recipient", "carol@example.com"),
             ("brief-dave", "recipient", "dave@example.com"),
         ] {
             exec(
@@ -446,9 +446,9 @@ mod tests {
         let people = deleted
             .counterparties
             .iter()
-            .map(|(_, email)| email.to_ascii_lowercase())
+            .map(|(_, email)| email.to_lowercase())
             .collect::<BTreeSet<_>>();
-        assert_eq!(people, set(&["alice@example.com", "carol@example.com"]));
+        assert_eq!(people, set(&["alice@example.com", "jörg@example.com"]));
 
         assert_eq!(
             ids(&store, "SELECT provider_id FROM messages").await,
@@ -456,7 +456,7 @@ mod tests {
         );
         assert_eq!(
             ids(&store, "SELECT id FROM context_briefings").await,
-            set(&["brief-c", "brief-dave"])
+            set(&["brief-c", "brief-dave", "gist-c"])
         );
         assert_eq!(
             ids(&store, "SELECT thread_id FROM thread_summaries").await,
@@ -486,6 +486,64 @@ mod tests {
             ids(&store, "SELECT summary FROM event_log").await,
             set(&["kept"])
         );
+    }
+
+    #[tokio::test]
+    async fn a_contact_whose_mail_is_all_gone_loses_what_was_built_about_them() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        inbound(
+            &store,
+            &account.id,
+            "from-alice",
+            &ThreadId::new(),
+            "alice@example.com",
+        )
+        .await;
+        inbound(
+            &store,
+            &account.id,
+            "from-bob",
+            &ThreadId::new(),
+            "bob@example.com",
+        )
+        .await;
+        store.refresh_contacts().await.unwrap();
+        let acct = account.id.as_str();
+        for email in ["alice@example.com", "bob@example.com"] {
+            exec(
+                &store,
+                "INSERT INTO contact_relationship_summary (account_id, email, text, model,
+                     computed_at, source_hash)
+                 VALUES (?, ?, 'what they talk about', 'm', 0, 'h')",
+                &[&acct, email],
+            )
+            .await;
+            exec(
+                &store,
+                "INSERT INTO contact_style (account_id, email, computed_at, source_hash)
+                 VALUES (?, ?, 0, 'h')",
+                &[&acct, email],
+            )
+            .await;
+        }
+
+        store
+            .delete_messages_and_derived(&account.id, &["from-alice".to_string()])
+            .await
+            .unwrap();
+        // A later second, so the prune can tell this run's rows apart.
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+        store.refresh_contacts().await.unwrap();
+
+        let bob = set(&["bob@example.com"]);
+        assert_eq!(ids(&store, "SELECT email FROM contacts").await, bob);
+        assert_eq!(
+            ids(&store, "SELECT email FROM contact_relationship_summary").await,
+            bob
+        );
+        assert_eq!(ids(&store, "SELECT email FROM contact_style").await, bob);
     }
 
     #[tokio::test]

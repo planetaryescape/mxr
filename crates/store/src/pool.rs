@@ -22,6 +22,10 @@ const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(90);
 pub struct Store {
     writer: SqlitePool,
     reader: SqlitePool,
+    /// Serialises `refresh_contacts`. Its prune treats a contact older than
+    /// the run's own timestamp as having no mail left, which only holds when
+    /// no other run is rewriting rows with an earlier timestamp meanwhile.
+    pub(crate) contacts_refresh: tokio::sync::Mutex<()>,
 }
 
 impl Store {
@@ -59,7 +63,11 @@ impl Store {
             .connect_with(read_opts)
             .await?;
 
-        let store = Self { writer, reader };
+        let store = Self {
+            writer,
+            reader,
+            contacts_refresh: tokio::sync::Mutex::new(()),
+        };
         store.run_migrations().await?;
         Ok(store)
     }
@@ -77,6 +85,7 @@ impl Store {
         let store = Self {
             writer: pool.clone(),
             reader: pool,
+            contacts_refresh: tokio::sync::Mutex::new(()),
         };
         store.run_migrations().await?;
         Ok(store)

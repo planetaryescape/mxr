@@ -186,6 +186,21 @@ Work this list in order. Each item's scope and its check are in
 - [ ] **Five-day dogfooding log** (E2): needed before section A can reach 3
 - [ ] **Person-only checks:** sound on real speakers (B4), swipes on a real phone (B9), an independent copy review (C3)
 
+## Email modes: five apps in one inbox
+
+Email is five apps at once (Messages, To do, Updates, Reading, Archive),
+each with its own verb. The model, data and classifier design are in
+[22-email-modes.md](22-email-modes.md) (D107 to D111), and rubric v3 in
+`docs/web-app-experience-rubric.md` grades it. Work the phases in order;
+each ships on its own with its check and tests named in 22.
+
+- [ ] **Phase 1: To do with rule-based deadline detection**: `todos` table, lead-time surfacing, `mxr todo`, handoff from a conversation, desk Due lane, web and TUI To do
+- [ ] **Phase 2: Rail by mode**: computed membership, reasons, corrections per email and sender, per-mode done, Paper trail split, Inbox as everything
+- [ ] **Phase 3: Messages ranks by person**: relationship strength from local history, per-person rows
+- [ ] **Phase 4: Updates digest and the desk as the now view**: one digest a day, let go with a dry run, "this needs me" handoff
+- [ ] **Phase 5: The user's model for to-dos, deadlines and notifications**: loopback-only background classification, provenance, `mxr modes eval` on real mail (counts only)
+- [ ] **Phase 6: Reading later and Archive records**: later list with fetched articles, `mxr records`
+
 ## Future (post-v1.0)
 
 These are explicitly NOT on the roadmap for v1. They may grow out of the core later:
@@ -197,7 +212,7 @@ These are explicitly NOT on the roadmap for v1. They may grow out of the core la
 - **Conditional snooze**: "Snooze until reply from X" via rules engine
 - **Contact enrichment / CRM**: Auto-enrich sender profiles
 - **Audio summaries**: TTS for newsletter content
-- **Todo extraction**: Parse action items from emails
+- **Todo extraction**: Moved into the email modes plan above (To do, phases 1 and 5)
 - **Additional web dashboards**: Surfaces beyond the first-party local SPA/bridge
 - **Additional community adapters**: JMAP/Fastmail/Apple Mail/etc. after real demand appears
 - **Encryption**: PGP integration with good UX (not homebrew crypto)

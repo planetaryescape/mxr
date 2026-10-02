@@ -28,6 +28,7 @@
 | 18b | [Bug Reporting](18-bug-reporting.md) | `mxr bug-report` command, log sanitization, log retention, diagnostic capture workflow (D072-D074) |
 | 20 | [Transports](20-transports.md) | Transport-adapter system: frozen protocol + byte-stream adapters + HTTP gateway, trait reference, per-transport security policy, the token gate, the community adapter kit + conformance, and the backlog (D052-D057) |
 | 21 | [Web Experience](21-web-experience.md) | The desk model, what shipped v0.6.34 to v0.6.42, standards every web change keeps, and the ordered plan to pass the experience rubric (D095-D102) |
+| 22 | [Email Modes](22-email-modes.md) | Email as five modes (Messages, To do, Updates, Reading, Archive), multi-mode membership and handoff, rules-first classification with the user's own model, to-do deadlines, and the phased plan (D107-D111) |
 | — | [Internal Model Audit](internal-model-audit.md) | Keep/document/tighten/adjust judgment on the current provider-agnostic mail model |
 | — | [IPC Audit](ipc-audit.md) | Current protocol inventory classified into `core-mail`, `mxr-platform`, `admin-maintenance`, and `client-specific` |
 | — | [Sync / Index Lifecycle Audit](sync-index-lifecycle-audit.md) | Code-truth audit of sync guarantees, lexical freshness, semantic chunk persistence, and repair behavior |

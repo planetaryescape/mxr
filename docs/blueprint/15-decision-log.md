@@ -733,3 +733,54 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 **Considered**: Permanent dismissal, so a thread marked Done never returns.
 
 **Why**: A new message is new information, and a permanent Done would hide replies that need an answer. To stop hearing from a sender, the screener (Deny, Feed, Paper trail) is the tool, not Done. Settled with D103 and D104 when the open questions in `21-web-experience.md` were closed. (2026-10-02)
+||||||| parent of c288f9bc (docs: add email modes model, plan, D107-D111 and rubric v3)
+
+## D107: Email is five modes, each with its own verb
+
+**Chosen**: mxr treats email as five apps sharing one inbox: Messages (reply or start a conversation), To do (do it, schedule it, tick it off), Updates (glance and let go), Reading (read now or later, or unsubscribe) and Archive (file it, find it later). Each mode has its own verbs and rhythm. The full model is [22-email-modes.md](22-email-modes.md).
+
+**Considered**: Keeping the desk plus places (Reading, Paper trail) and adding more places; a single smart inbox ranked by importance.
+
+**Why**: Each kind of mail already has its own action, and the current app makes the user apply the wrong one: a sign-in alert from a person-looking sender sits in You owe as if it needed a reply, and admin with a deadline has no home at all. Places were organised by who sent the mail; modes are organised by what the user does with it.
+
+**Trade-offs accepted**: Five modes plus Inbox is more navigation than one list. The desk stays as the one place to start the day, so a user who never opens a mode still sees what needs them.
+
+## D108: One email can be in several modes, and handoff carries it forward
+
+**Chosen**: A message is in every mode whose aspect it has (the conversation, the task and its deadline, the fact, the article, the record). Each mode keeps its own done state, with the `desk_dismissals` watermark, so done in one mode never clears another. Handoff passes an item to the next mode ("move to To do" after replying, "this needs me" from Updates). The provider archive happens only when the last mode holding the message lets it go.
+
+**Considered**: One mode per message, chosen by precedence (as desk lanes dedupe today); archive as the shared done for every mode.
+
+**Why**: An accountant's "send the signed form by Friday" is a conversation and a deadline at once. Forcing one mode loses one of them, and a shared archive means replying would silently drop the to-do.
+
+**Trade-offs accepted**: Membership is a computed set, not a label, so a client can't read it from the provider. The delayed provider archive can surprise someone who checks Gmail directly; Inbox (everything) shows what modes still hold.
+
+## D109: The rail is the five modes, with Inbox as the everything view
+
+**Chosen**: The web and TUI rail lists Now (the desk), Messages, To do, Updates, Reading and Archive, then Inbox in arrival order. Reply queue, Waiting on and Owed become filters in Messages. Paper trail splits into Updates and Archive. Snoozed becomes a state each mode shows, with the cross-mode list under More. Screener, Invites, Deliveries and Subscriptions move into their mode or under More.
+
+**Considered**: Keeping the current rail (`Sidebar.tsx`: Desk, Inbox, Reply queue, Waiting on, Snoozed, Reading, Paper trail, Screener); adding To do as one more entry.
+
+**Why**: The current rail is a Gmail-style folder list organised by mail mechanics (flags, labels, timers). Users navigate by what they want to do. Adding To do alone would make nine entries and leave the mechanics in charge.
+
+**Trade-offs accepted**: Existing routes and keys (`g q`, `g w`, `g p`) move or redirect, and the keymap parity test must change in the same release for web and TUI.
+
+## D110: The desk is a cross-mode now view, not a sixth place
+
+**Chosen**: The desk shows people you owe a reply (from Messages), to-dos and promises due soon (from To do), and one Updates digest a day. It holds no item of its own: acting on a row acts in the row's mode. New from people moves into Messages.
+
+**Considered**: Retiring the desk in favour of opening on Messages; keeping New from people on the desk.
+
+**Why**: Starting the day needs one answer to "what needs me now?" across modes (D095 still holds). A desk that owns items would be a sixth mode with its own rules, which is how owed and desk counts drifted apart.
+
+**Trade-offs accepted**: The desk's lanes become a composition of mode queries, so its speed budget (D1, under 300 ms warm) now covers to-do and digest reads too.
+
+## D111: Classification is rules first, then the user's own model, with a reason on every item
+
+**Chosen**: Placement runs in layers. Sender rules (`mail_kind::classify`) and screener dispositions set the base mode: Allow is Messages, Feed is Reading, PaperTrail is Updates or Archive, Deny is no mode. Deterministic message rules add aspects (admin verbs, due phrases, schema.org, receipts, invites). The user's configured model then decides what rules can't: whether there is a task, its due words, whether it's a notification. Due words must appear verbatim and are resolved by `natural_time`, never by the model. Corrections are stored per message and per sender and beat every layer. Every item says why it's there and what decided it. Background classification uses a loopback endpoint unless the user opts in for this feature explicitly.
+
+**Considered**: Rules only (D097 as it stood); a model for everything.
+
+**Why**: D097 kept kinds rule-based because users abandon opaque categories they can't fix, and that stays true for the sender's base mode. But sender rules can't see that one message from a person is a sign-in alert, or that a billing email has a deadline; those are message-level facts. Layering keeps every placement explainable and correctable, keeps working with AI off (the default), and keeps mail on the user's machine unless they configured otherwise (`GistPolicy::pin`, `llm_endpoint_is_local`, `relationship_data_allowed`).
+
+**Trade-offs accepted**: This amends D097 and the "no automatic LLM classification" line in `21-web-experience.md` for message aspects only. A local model is slower and less accurate than a hosted one, so accuracy is measured on BK's real mail (counts only) before model placement counts toward the rubric.

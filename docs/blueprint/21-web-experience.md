@@ -186,7 +186,9 @@ lands.
 ## Out of scope
 
 - Automatic LLM classification of mail kinds. Placement stays rule-based
-  and explainable (D097).
+  and explainable (D097). A sender's base mode still follows this rule;
+  D111 adds model-detected message aspects (to-dos, deadlines,
+  notifications) on top, in [22-email-modes.md](22-email-modes.md).
 - Points, streaks or scolding copy (D101).
 - Opening a web-only capability that the CLI and TUI can't reach. Daemon
   IPC and CLI JSON come first, then the clients.

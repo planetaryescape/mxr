@@ -1,6 +1,10 @@
-# Web app experience rubric (v2)
+# Web app experience rubric (v3)
 
-**Changelog.** v2 (2026-09-30): adds A11 triage at a glance, A12 one
+**Changelog.** v3 (2026-10-02): grades email as five modes (Messages, To
+do, Updates, Reading, Archive) per [22-email-modes.md](blueprint/22-email-modes.md),
+with per-mode criteria, cross-mode criteria and classification accuracy
+measured on BK's real mail. v2's sections stay below as history, and the
+criteria v3 carries over keep their v2 numbers. v2 (2026-09-30): adds A11 triage at a glance, A12 one
 vocabulary across clients, section D (budgets measured on a real mailbox)
 and section E (independent grading and a dogfooding log). v1 (2026-09-28):
 sections A to C.
@@ -33,7 +37,136 @@ current web app hides that knowledge in side rails and dashboards and leads
 with a Gmail-style list sorted by arrival. The rubric's job is to turn that
 around.
 
-## Scoring
+## v3: each mode gets the right mail, its own verbs and its own rhythm
+
+v3 grades the model in [22-email-modes.md](blueprint/22-email-modes.md):
+email is five apps at once, and each has its own action. Every mode is
+graded on the same four questions: does the right mail land there, does it
+have its own verbs, does it keep its own rhythm, and does handoff to the
+next mode work. Then the cross-mode rules, then what v2 already proved and
+must keep.
+
+### v3 scoring
+
+Same scale: 0 absent, 1 present but flawed, 2 solid and verified in a
+browser against the FakeProvider daemon, 3 best in class.
+
+**Pass bar (v3):**
+- Every criterion at 2 or better.
+- The "lands right" criteria (M1, T1, U1, R1, F1) and T2 (deadlines) at 3.
+- B1 to B3 stay at 3.
+- A 3 in sections M, T, U, R, F or X needs the dogfooding log (E2) to
+  cover the modes, and every score of 2 or more is graded by someone who
+  didn't build it (E1).
+- A "lands right" criterion scores 2 only with a measured accuracy at or
+  above its threshold on BK's real mail (below), and 3 only once the
+  dogfooding log agrees.
+
+### Accuracy is measured on BK's real mail, locally, as counts only
+
+`mxr modes eval` samples at least 200 messages from the last 90 days of
+BK's real mailbox, read-only. BK labels each one with the modes it belongs
+to and, for to-dos, the due date. The harness compares those labels with
+the classifier and prints counts only: no subjects, senders or bodies leave
+his machine or enter the repo. Each run is recorded below with its date,
+version, model (or "rules only"), sample size and counts.
+
+| Mode | Precision at least | Recall at least | Why this bar |
+|---|---:|---:|---|
+| Messages | 95% | 90% | A machine in Messages is the costliest mistake: it asks for a reply nobody wants |
+| To do | 90% | 80% | A false to-do nags; a missed one costs money, so the deadline check below backs it |
+| Updates | 90% | 85% | Glance-and-let-go forgives a little noise |
+| Reading | 95% | 85% | Readers chose these senders; a stranger here is spam |
+| Archive (records) | 90% | 85% | A record that isn't filed can't be found later |
+
+For to-dos with a deadline: the due date matches BK's label in at least
+95% of detected deadlines, and no detected to-do surfaces after its
+deadline.
+
+### M. Messages: a few people you care about
+
+| # | Criterion | How to check |
+|---|---|---|
+| M1 | **People land here, machines don't.** Conversations with people, and nothing automated, whatever the sender's address looks like. Meets the Messages accuracy bar. | Demo: "Action required: unusual sign-in attempt" is not in Messages and says where it went. Real mail: `mxr modes eval` counts. |
+| M2 | **Reply and start a conversation are the verbs.** Reply sits where reading ends; starting a conversation with someone in the list is one key. No archive-as-primary on a person's row. | `e2e/messages.spec.ts`: reply from the row, start a conversation from a person, both by keys only. |
+| M3 | **Ranked by person, not age.** Rows rank by relationship strength from local history (writing to someone outranks being written to), then owed, then recency, and the row can say why it ranks there. | Unit tests on the strength score; BK reviews his top ten against his real mail and the agree count is recorded. |
+| M4 | **Handoff to To do carries the task.** After replying, "move to To do" (`t`) creates a to-do prefilled from the ask and its due words, and the conversation stays reachable in Messages. | `e2e/messages.spec.ts`: reply, `t`, the to-do appears with the right due date; Messages shows the conversation as done, not gone. |
+
+### T. To do: admin that needs you
+
+| # | Criterion | How to check |
+|---|---|---|
+| T1 | **Admin lands here.** Pay, renew, verify, sign, book and RSVP items are detected from mail, with a title that names the task. Meets the To do accuracy bar. | Detector fixtures per verb; `mxr modes eval` counts on real mail. |
+| T2 | **Deadlines surface ahead, not on the day.** Due words found in the message resolve through the shared parser; each item appears on the desk at its lead time (by verb) at the start of the working day, exactly once across restarts; a passed deadline reads "was due Tue" without red or scolding. | `handler/tests/todo.rs` with a moved clock; demo bill due in five days is on the desk three days before; deadline accuracy counts on real mail. |
+| T3 | **Do it, schedule it, tick it off.** Each is one key with undo. Scheduling takes natural language ("sat 10") and shows the resolved time before commit. Ticking off offers to file the source email. | `e2e/todo.spec.ts` covers all three with undo; `verbs.spec` includes the to-do verbs. |
+| T4 | **Handoff in and out.** To-dos arrive from Messages and Updates, and leave to Archive, without clearing the source mode. | `e2e/todo.spec.ts`: from an Update ("this needs me"), tick off, file; the Update's own done state is unchanged. |
+
+### U. Updates: something you might want to know
+
+| # | Criterion | How to check |
+|---|---|---|
+| U1 | **Notifications land here.** Sign-ups, alerts, weekly summaries, deliveries in transit; not conversations and not to-dos. Meets the Updates accuracy bar. | Demo placement checks; `mxr modes eval` counts. |
+| U2 | **Glance and let go.** Updates read as short facts grouped by sender and day; letting go of a day is one action with a dry-run preview and undo. | `e2e/updates.spec.ts`: let go of a day, preview count equals what changed, undo restores it. |
+| U3 | **A batched rhythm.** One digest a day at the user's chosen time, never a badge or a row per notification. | `handler/tests/updates.rs`: a day of notifications is one digest card; the badge stays at zero. |
+| U4 | **"This needs me" hands off.** Any update becomes a to-do in one key, keeping its link to the source. | Covered by T4's journey. |
+
+### R. Reading: things you asked to receive
+
+| # | Criterion | How to check |
+|---|---|---|
+| R1 | **Subscriptions land here.** Newsletters, digests and posts the user signed up for, nothing else. Meets the Reading accuracy bar. | Demo placement checks; `mxr modes eval` counts. |
+| R2 | **Read now, later, or unsubscribe.** Read in reader mode; "later" keeps the email or its linked article in a later list; unsubscribe is one key with its irreversibility stated. | `e2e/reading-later.spec.ts`; the unsubscribe journey in `verbs.spec`. |
+| R3 | **Reading at your pace.** No unread counts, no badges, nothing ages into guilt. | `places.spec`'s no-count check carried over to the mode. |
+| R4 | **Handoff out.** An article that asks something of you (renew a membership) hands off to To do. | `e2e/reading-later.spec.ts`. |
+
+### F. Archive: records you will need later
+
+| # | Criterion | How to check |
+|---|---|---|
+| F1 | **Records are filed.** Receipts, invoices, order and booking confirmations, delivered parcels and ticked-off to-dos are findable as records. Meets the Archive accuracy bar. | Record detector fixtures; `mxr modes eval` counts. |
+| F2 | **Find it and use it.** Search over records answers "the passport renewal receipt" in one query, with the attachment one key away. | `e2e/archive.spec.ts`; `mxr records --query` CLI test. |
+| F3 | **Filing never needs a decision.** Records file themselves; the user never drags mail into folders. | No folder-move step in the record journeys. |
+| F4 | **Handoff in.** Ticking off a to-do or letting go of a delivered parcel files its record. | Covered by T4 and U2's journeys. |
+
+### X. Across modes
+
+| # | Criterion | How to check |
+|---|---|---|
+| X1 | **One email, several modes.** A message with a reply owed and a deadline is in Messages and To do at once, each showing its own aspect. | `mode_membership` unit tests; `e2e/modes.spec.ts`. |
+| X2 | **Done in one mode stays in that mode.** Each mode has its own done; a new message in the thread returns it to that mode only; the provider archive waits for the last mode to let go. | `handler/tests/modes.rs`; `e2e/modes.spec.ts`. |
+| X3 | **Every item says why, and one key fixes it.** "Here because: …" names the rule, the user's decision or the model. Corrections work per email and per sender, and future mail follows the sender correction. | `e2e/modes.spec.ts` asserts a reason on every row in every mode and that a sender correction places that sender's next message. |
+| X4 | **The rail is the modes.** Now, Messages, To do, Updates, Reading, Archive, then Inbox as everything. No mechanics (flags, timers) as top-level places. | `controls.spec` inventory updated; web and TUI rails match (`keymapParity.test.ts`). |
+| X5 | **The desk is the now view.** People owed, to-dos due soon and one Updates digest; acting on a row acts in its mode; desk and mode counts agree. | `e2e/desk.spec.ts`: counts equal the mode queries; done on a desk row equals done in its mode. |
+| X6 | **Mail goes only to the user's model.** Background classification uses a loopback endpoint unless the user opted in for this feature; every model-placed item names its model and whether it was local. With AI off, rules still place everything. | Daemon privacy tests in the style of `draft_compose`; `e2e/modes.spec.ts` with no model. |
+| X7 | **CLI first.** Every mode and verb is daemon IPC plus CLI JSON, then TUI, web and MCP. Batch moves have a dry run whose preview equals the commit. | CLI JSON snapshots per mode; preview-token tests (D098). |
+
+### Carried over from v2
+
+These keep their v2 numbers, definitions and checks, now applied to every
+mode: B1 (speed budget, now including opening each mode), B2 (motion),
+B3 (every verb, including the new mode verbs, has feedback and undo),
+B7 (typography), C1 and C2 (privacy and AI provenance), C3 (no guilt, now
+including overdue to-dos), D1 to D5 (real scale), E1 (independent grade)
+and E2 (dogfooding, now covering the modes).
+
+| # | Criterion | Budget | How to check |
+|---|---|---|---|
+| D6 | **Mode lists.** `ListModeItems` for each mode, and `ListTodos`. | < 100 ms warm | Timed read-only on the real store; recorded with date and size. |
+
+### v3 scores
+
+Not graded yet. Phase 1 (To do) is the first item to grade.
+
+| Date | Version | Model | Sample | Mode | Precision | Recall | Notes |
+|---|---|---|---:|---|---:|---:|---|
+| | | | | | | | |
+
+## v2 rubric (history)
+
+The v2 criteria and grades below stay as the record. v3 carries over B1
+to B3, B7, C1 to C3, D1 to D5, E1 and E2 by number.
+
+## v2 scoring
 
 Same scale as the parity rubric: 0 absent, 1 present but flawed, 2 solid and
 verified in a browser against the FakeProvider daemon, 3 best in class.

@@ -805,7 +805,7 @@ mod tests {
 
         assert_eq!(
             store
-                .record_failed_message_forgets(&[gone.clone()])
+                .record_failed_message_forgets(std::slice::from_ref(&gone))
                 .await
                 .unwrap(),
             0
@@ -826,7 +826,7 @@ mod tests {
 
         for _ in 1..MAX_FORGET_ATTEMPTS - 1 {
             store
-                .record_failed_message_forgets(&[gone.clone()])
+                .record_failed_message_forgets(std::slice::from_ref(&gone))
                 .await
                 .unwrap();
         }
@@ -1036,7 +1036,7 @@ mod tests {
 
         // Built from mail that is all still here, the writes go through.
         assert!(store
-            .upsert_thread_summary_if_sources_exist(&summary, &[kept.clone()])
+            .upsert_thread_summary_if_sources_exist(&summary, std::slice::from_ref(&kept))
             .await
             .unwrap());
         assert!(store

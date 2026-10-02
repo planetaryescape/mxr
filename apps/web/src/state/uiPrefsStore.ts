@@ -69,7 +69,8 @@ export const useUiPrefs = create<UiPrefsState>()(
   persist(
     (set) => ({
       home: "desk",
-      theme: "midnight",
+      // Follow the OS appearance until someone picks a theme.
+      theme: "system",
       density: "regular",
       motion: "system",
       sidebarCollapsed: false,

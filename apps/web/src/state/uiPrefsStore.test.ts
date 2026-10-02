@@ -20,6 +20,12 @@ describe("compose editor preference", () => {
   });
 });
 
+describe("theme preference", () => {
+  test("someone with no saved prefs follows the OS appearance", () => {
+    expect(useUiPrefs.getInitialState().theme).toBe("system");
+  });
+});
+
 describe("home and sidebar prefs", () => {
   test("new installs land on the desk with only places unfolded", () => {
     const initial = useUiPrefs.getInitialState();

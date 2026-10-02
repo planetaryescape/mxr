@@ -179,8 +179,9 @@
     }
   }
 
+  /* oklab, not oklch: Chrome mixes transparent's hue in as 0, a pink tint. */
   ::selection {
-    background-color: color-mix(in oklch, var(--primary) 30%, transparent);
+    background-color: color-mix(in oklab, var(--primary) 30%, transparent);
   }
 
   ::-webkit-scrollbar {

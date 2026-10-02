@@ -242,15 +242,17 @@ where
     };
 
     let schema = schema_org::read(input.body_html);
-    if let Some(todo) = schema.todo {
-        return Some(context.schema_todo(todo, tz, &anchor));
-    }
-    if schema.settled {
-        return None;
-    }
-
-    if FAILED.is_match(&text) || FIX_ASK.is_match(input.subject) {
-        return Some(context.payment_failed(&anchor));
+    let text_says_failed = FAILED.is_match(&text) || FIX_ASK.is_match(input.subject);
+    match schema.todo {
+        Some(todo @ SchemaTodo::PaymentFailed { .. }) => {
+            return Some(context.schema_todo(todo, tz, &anchor));
+        }
+        // Markup never hides a failure the words report: a declined
+        // payment under a stale "due" or "paid" status is still a to-do.
+        _ if text_says_failed => return Some(context.payment_failed(&anchor)),
+        Some(todo) => return Some(context.schema_todo(todo, tz, &anchor)),
+        None if schema.settled => return None,
+        None => {}
     }
     if PAID.is_match(&text) {
         return None;
@@ -376,10 +378,11 @@ impl Context<'_> {
 
     fn set_amount(detection: &mut Detection, amount: Option<Amount>, source: FieldSource) {
         if let Some(amount) = &amount {
-            detection.fields.set(
-                "amount",
-                FieldProvenance::with_evidence(source, amount.text.clone()),
-            );
+            let mut provenance = FieldProvenance::with_evidence(source, amount.text.clone());
+            if !amount.checked {
+                provenance = provenance.unchecked();
+            }
+            detection.fields.set("amount", provenance);
         }
         detection.amount = amount;
     }
@@ -482,6 +485,7 @@ impl Context<'_> {
                         minor: amount.minor,
                         currency: amount.currency,
                         text: amount.text,
+                        checked: true,
                     })
                     .map(|amount| (amount, FieldSource::Schema))
                     .or_else(|| pick_amount(self.text).map(|amount| (amount, FieldSource::Rule)));
@@ -505,6 +509,41 @@ impl Context<'_> {
                 }
                 self.set_link(&mut detection, url);
                 detection.doc_type = Some(pay_method(&detection, self.text).to_string());
+                detection
+            }
+            SchemaTodo::PaymentFailed {
+                provider,
+                amount,
+                url,
+            } => {
+                let mut detection = self.payment_failed(anchor);
+                detection.origin = Origin::Schema;
+                detection.reason = "an invoice whose payment was declined (schema.org)".to_string();
+                detection.fields.set(
+                    "kind",
+                    FieldProvenance::with_evidence(FieldSource::Schema, "Invoice.paymentStatus"),
+                );
+                if let Some(provider) = provider {
+                    detection.title = format!("Fix payment for {provider}");
+                    detection.object_key = normalise(&provider);
+                    detection.counterparty = Some(provider);
+                    detection.fields.set(
+                        "counterparty",
+                        FieldProvenance::with_evidence(FieldSource::Schema, "Invoice.provider"),
+                    );
+                }
+                if let Some(amount) = amount {
+                    let amount = Amount {
+                        minor: amount.minor,
+                        currency: amount.currency,
+                        text: amount.text,
+                        checked: true,
+                    };
+                    Self::set_amount(&mut detection, Some(amount), FieldSource::Schema);
+                }
+                if url.is_some() {
+                    self.set_link(&mut detection, url);
+                }
                 detection
             }
             SchemaTodo::PendingReservation {

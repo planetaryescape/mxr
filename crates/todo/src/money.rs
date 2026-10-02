@@ -1,9 +1,12 @@
 //! Amounts and currencies in an email's text.
 //!
 //! Every amount shown appears verbatim in its message: the matched text is
-//! kept as evidence. When several different amounts appear and none sits
-//! next to a payment word ("amount due", "total", "balance"), no amount is
-//! picked, because a wrong amount is worse than none.
+//! kept as evidence. Candidates are ranked by the words just before them:
+//! "amount due" and "to pay" beat "total" and "premium", which beat a bare
+//! amount; "previous balance" or "last paid" never count. When the best
+//! rank still holds different amounts, the first is kept but unchecked.
+//! When several different unlabelled amounts appear, none is picked,
+//! because a wrong amount is worse than none.
 
 use crate::text::floor_char_boundary;
 use once_cell::sync::Lazy;
@@ -17,6 +20,8 @@ pub struct Amount {
     pub currency: String,
     /// The text it was read from, verbatim.
     pub text: String,
+    /// False when another amount in the mail was as likely to be the one.
+    pub checked: bool,
 }
 
 impl Amount {
@@ -73,11 +78,24 @@ static AMOUNT: Lazy<Regex> = Lazy::new(|| {
 });
 
 /// Words that put an amount next to what is owed.
-static PAYMENT_CONTEXT: Lazy<Regex> = Lazy::new(|| {
+/// What is owed now: the strongest label.
+static OWED: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r"(?i)(amount\s+(?:due|owed|outstanding|to\s+pay|payable)|total\s+(?:due|amount|to\s+pay|payable)|balance(?:\s+due)?|payment\s+of|minimum\s+payment|you\s+owe|to\s+pay|due\s*:|total\s*:|amount\s*:|outstanding|renewal\s+(?:price|premium|cost)|premium|price)",
+        r"(?i)(amount\s+(?:due|owed|outstanding|to\s+pay|payable)|total\s+(?:due|to\s+pay|payable)|balance\s+(?:due|to\s+pay|outstanding)|payment\s+(?:of|due)|minimum\s+payment|you\s+owe|to\s+pay|due\s*:|outstanding)",
     )
-    .expect("valid payment-context regex")
+    .expect("valid owed regex")
+});
+/// A price or total that may be what is owed.
+static PRICED: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)(total|amount\s*:|renewal\s+(?:price|premium|cost)|premium|price|balance)")
+        .expect("valid priced regex")
+});
+/// Words that make an amount history, not what is owed now.
+static PAST: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)(previous|last\s+(?:month|bill|statement|payment)|paid|credit|refund|was\b|saved?)",
+    )
+    .expect("valid past regex")
 });
 
 /// How far before an amount a payment word may sit and still count.
@@ -113,6 +131,7 @@ pub fn find_amounts(text: &str) -> Vec<(usize, Amount)> {
                         minor,
                         currency,
                         text: whole.as_str().to_string(),
+                        checked: true,
                     },
                 )
             })
@@ -132,22 +151,43 @@ fn parse_minor(number: &str) -> Option<i64> {
     whole.checked_mul(100)?.checked_add(frac)
 }
 
-/// The amount the email asks for: the one next to a payment word, else the
-/// only amount it mentions. `None` when it can't tell.
+/// The amount the email asks for, ranked by the words before each
+/// candidate. `None` when it can't tell.
 pub fn pick_amount(text: &str) -> Option<Amount> {
-    let amounts = find_amounts(text);
-    let in_context = amounts.iter().find(|(start, _)| {
-        let from = floor_char_boundary(text, start.saturating_sub(CONTEXT_WINDOW));
-        PAYMENT_CONTEXT.is_match(&text[from..*start])
-    });
-    if let Some((_, amount)) = in_context {
-        return Some(amount.clone());
-    }
-    let first = amounts.first()?;
-    amounts
+    let mut ranked: Vec<(u8, Amount)> = find_amounts(text)
+        .into_iter()
+        .filter_map(|(start, amount)| {
+            let from = floor_char_boundary(text, start.saturating_sub(CONTEXT_WINDOW));
+            // The label closest to the amount decides: "Previous balance
+            // £100. Amount due £240" reads "amount due" before £240.
+            let before = text[from..start].rsplit(['.', '\n']).next().unwrap_or("");
+            let rank = if PAST.is_match(before) {
+                0
+            } else if OWED.is_match(before) {
+                3
+            } else if PRICED.is_match(before) {
+                2
+            } else {
+                1
+            };
+            (rank > 0).then_some((rank, amount))
+        })
+        .collect();
+    let best = ranked.iter().map(|(rank, _)| *rank).max()?;
+    ranked.retain(|(rank, _)| *rank == best);
+    let (_, mut first) = ranked.first()?.clone();
+    let differs = ranked
         .iter()
-        .all(|(_, amount)| amount.minor == first.1.minor && amount.currency == first.1.currency)
-        .then(|| first.1.clone())
+        .any(|(_, other)| other.minor != first.minor || other.currency != first.currency);
+    if differs {
+        // Unlabelled amounts that disagree are noise; labelled ones that
+        // disagree are a guess to confirm.
+        if best == 1 {
+            return None;
+        }
+        first.checked = false;
+    }
+    Some(first)
 }
 
 #[cfg(test)]
@@ -178,6 +218,21 @@ mod tests {
             .expect("amount");
         assert_eq!(amount.minor, 14200);
         assert_eq!(amount.text, "£142.00");
+    }
+
+    #[test]
+    fn what_is_owed_beats_a_previous_balance() {
+        let amount = pick_amount("Previous balance £100.00. Amount due £240.00 by 9 October.")
+            .expect("amount");
+        assert_eq!(amount.minor, 24000);
+        assert!(amount.checked);
+    }
+
+    #[test]
+    fn two_amounts_owed_are_a_guess() {
+        let amount = pick_amount("Minimum payment £25.00. Amount due £400.00.").expect("amount");
+        assert_eq!(amount.minor, 2500);
+        assert!(!amount.checked, "two plausible amounts");
     }
 
     #[test]

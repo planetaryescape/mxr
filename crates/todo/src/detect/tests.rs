@@ -362,3 +362,45 @@ fn counterparty_drops_roles_and_falls_back_to_the_domain() {
         Some("Spotify")
     );
 }
+
+#[test]
+fn markup_never_hides_a_failed_payment() {
+    let declined = r#"<script type="application/ld+json">{"@type":"Invoice","provider":{"name":"Spotify"},
+        "paymentStatus":"https://schema.org/PaymentDeclined","totalPaymentDue":{"price":"11.99","priceCurrency":"GBP"}}</script>"#
+        .to_string();
+    let detection = Mail::new(
+        "no-reply@spotify.com",
+        "Your invoice",
+        "Your invoice for October.",
+    )
+    .html(declined)
+    .detect()
+    .expect("a failed payment");
+    assert_eq!(detection.kind, TodoKind::PaymentFailed);
+    assert_eq!(detection.origin, Origin::Schema);
+    assert_eq!(detection.amount.as_ref().map(|a| a.minor), Some(1199));
+
+    let stale_paid = r#"<script type="application/ld+json">{"@type":"Invoice","paymentStatus":"https://schema.org/PaymentComplete"}</script>"#
+        .to_string();
+    let detection = Mail::new(
+        "billing@example.com",
+        "Payment failed",
+        "Your card was declined. Update your payment details.",
+    )
+    .html(stale_paid)
+    .detect()
+    .expect("the words win");
+    assert_eq!(detection.kind, TodoKind::PaymentFailed);
+}
+
+#[test]
+fn a_previous_balance_is_not_what_you_owe() {
+    let detection = Mail::new(
+        "bills@energy.co.uk",
+        "Your energy bill",
+        "Previous balance £100.00. Amount due £240.00. Please pay by 20 October 2026.",
+    )
+    .detect()
+    .expect("a bill");
+    assert_eq!(detection.amount.as_ref().map(|a| a.minor), Some(24000));
+}

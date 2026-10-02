@@ -37,6 +37,12 @@ pub enum SchemaTodo {
         due_text: Option<String>,
         url: Option<String>,
     },
+    /// An `Invoice` whose payment was declined: fix it.
+    PaymentFailed {
+        provider: Option<String>,
+        amount: Option<SchemaAmount>,
+        url: Option<String>,
+    },
     /// A `*Reservation` waiting for the user to confirm it.
     PendingReservation {
         name: Option<String>,
@@ -149,9 +155,14 @@ fn judge(entity: &Value) -> Judgement {
     };
     match name.as_str() {
         "Invoice" => match enum_suffix(entity, "paymentStatus").as_deref() {
-            Some("PaymentComplete" | "PaymentAutomaticallyApplied" | "PaymentDeclined") => {
-                Judgement::Settled
-            }
+            Some("PaymentComplete" | "PaymentAutomaticallyApplied") => Judgement::Settled,
+            Some("PaymentDeclined") => Judgement::Todo(SchemaTodo::PaymentFailed {
+                provider: name_field(entity, &["provider", "broker", "seller"]),
+                amount: ["totalPaymentDue", "minimumPaymentDue"]
+                    .iter()
+                    .find_map(|key| entity.get(*key).and_then(|node| amount(node, entity))),
+                url: action_url(entity),
+            }),
             _ => Judgement::Todo(bill(
                 entity,
                 &["provider", "broker", "seller"],
@@ -352,6 +363,23 @@ mod tests {
             assert_eq!(verdict.todo, None, "{status}");
             assert!(verdict.settled, "{status}");
         }
+    }
+
+    #[test]
+    fn a_declined_payment_is_a_to_do_not_a_settled_invoice() {
+        let html = wrap(
+            r#"{"@type":"Invoice","provider":{"name":"Spotify"},"paymentStatus":"https://schema.org/PaymentDeclined",
+                "totalPaymentDue":{"price":"11.99","priceCurrency":"GBP"}}"#,
+        );
+        let verdict = read(Some(&html));
+        assert!(!verdict.settled);
+        assert!(matches!(
+            verdict.todo,
+            Some(SchemaTodo::PaymentFailed {
+                amount: Some(SchemaAmount { minor: 1199, .. }),
+                ..
+            })
+        ));
     }
 
     #[test]

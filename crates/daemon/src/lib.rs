@@ -461,10 +461,11 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             older_than_days,
             within_days,
             limit,
+            all,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::owed::run(account, older_than_days, within_days, limit, format).await?;
+            commands::owed::run(account, older_than_days, within_days, limit, all, format).await?;
         }
         Some(Command::Desk {
             action,

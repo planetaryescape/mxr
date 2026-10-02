@@ -409,8 +409,14 @@ pub struct OwedReplyRowData {
     pub subject: String,
     pub latest_inbound_at: chrono::DateTime<chrono::Utc>,
     pub waiting_days: f64,
+    /// The pace `overdue_score` is measured against, in days.
     pub expected_days: f64,
     pub overdue_score: f64,
+    /// How long you usually take to reply to this person, when at least
+    /// two past replies say so. Only the default (desk) list sets it;
+    /// `expected_days` falls back to a day without it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usual_seconds: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

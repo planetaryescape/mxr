@@ -37,7 +37,7 @@ Commands:
   time                Preview how a time phrase resolves before using it
   decisions           List or rebuild the citation-backed decision log
   ask                 Ask a question against the local archive. Returns a citation- validated answer; the daemon rejects LLM citations that point to messages outside the retrieved set
-  owed                List threads where the user owes a reply, ranked by how overdue they are relative to the recipient's typical cadence
+  owed                List the replies you owe: the desk's You owe lane (mail from people in your inbox, from someone you've written to), most overdue against your usual pace with them first
   desk                What needs you, not what arrived: replies you owe, promises coming due, threads waiting on someone, and new mail from people, each with the reason it is there. Everything else is summarised as counts
   reading             Reading: newsletters and lists in your inbox, grouped by sender, each with the reason it is here. Nothing here counts as unread
   paper-trail         Paper trail: receipts, notifications and other automated mail in your inbox, grouped by sender, each with the reason it is here

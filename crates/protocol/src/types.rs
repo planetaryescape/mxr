@@ -1390,8 +1390,12 @@ pub enum Request {
         #[serde(default = "default_archive_ask_limit")]
         limit: u32,
     },
-    /// List "owed reply" threads for an account: latest inbound has
-    /// not been followed by an outbound, ranked by overdue ratio.
+    /// List the replies you owe for an account. By default this is the
+    /// desk's You owe lane: mail from people, in the inbox, from someone
+    /// you are in conversation with, ranked by how far past your usual
+    /// pace with them it is. `all` returns the raw list instead: every
+    /// thread whose latest inbound has not been followed by an outbound,
+    /// ranked by overdue ratio.
     ListOwedReplies {
         account_id: AccountId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1400,6 +1404,8 @@ pub enum Request {
         within_days: Option<u32>,
         #[serde(default = "default_owed_reply_limit")]
         limit: u32,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        all: bool,
     },
     DeleteDraft {
         draft_id: DraftId,

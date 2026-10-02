@@ -131,6 +131,14 @@ struct WindowFacts {
 }
 
 impl WindowFacts {
+    /// You have written to them: the window shows it, or the contacts
+    /// table counts mail from you. Being in conversation and never being
+    /// screened both rest on this (D104).
+    fn wrote_to(&self, inputs: &AccountInputs<'_>, email: &str) -> bool {
+        inputs.contact(email).is_some_and(|c| c.total_outbound > 0)
+            || self.written_to.contains(&email.to_ascii_lowercase())
+    }
+
     fn from_inputs(inputs: &AccountInputs<'_>) -> Self {
         let mut facts = Self::default();
         for message in inputs.messages {
@@ -278,6 +286,7 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
                 .decision(&email)
                 .is_none_or(|d| d == ScreenerDisposition::Unknown)
                 && first_seen_recently
+                && !facts.wrote_to(inputs, &email)
             {
                 screener_senders.insert(email);
             }
@@ -382,10 +391,10 @@ fn thread_row(
     let email = inbound.from.email.as_str();
     let key = email.to_ascii_lowercase();
     let contact = inputs.contact(email);
-    let in_conversation = latest_outbound.is_some()
-        || contact.is_some_and(|c| c.total_outbound > 0)
-        || facts.written_to.contains(&key)
-        || inputs.decision(email) == Some(ScreenerDisposition::Allow);
+    // An actual exchange: you wrote in this thread or to them before.
+    // Allowing a sender makes them a person (the classifier), not someone
+    // you owe; their first mail is new from people until you write (D104).
+    let in_conversation = latest_outbound.is_some() || facts.wrote_to(inputs, email);
 
     let (lane, reason, pace) = if in_conversation {
         let unanswered = latest_outbound.map_or(0, |sent| {
@@ -623,9 +632,15 @@ pub(super) fn sort_lane(lane: DeskLaneKind, rows: &mut [DeskRowData]) {
     }
 }
 
-fn pace_ratio(row: &DeskRowData) -> f64 {
-    let pace = row.usual_seconds.unwrap_or(DEFAULT_PACE_SECONDS).max(60);
-    row.age_seconds as f64 / pace as f64
+/// The pace an owed or waiting row is measured against: the person's usual
+/// pace, or a day when there is no history.
+pub(super) fn pace_seconds(row: &DeskRowData) -> i64 {
+    row.usual_seconds.unwrap_or(DEFAULT_PACE_SECONDS).max(60)
+}
+
+/// How many paces old a row is: the lane's sort key.
+pub(super) fn pace_ratio(row: &DeskRowData) -> f64 {
+    row.age_seconds as f64 / pace_seconds(row) as f64
 }
 
 /// Lane precedence when one conversation qualifies for several.
@@ -712,12 +727,19 @@ mod tests {
     }
 
     fn lanes(messages: &[DeskMessage], contacts: &[DeskContact]) -> ThreadLanes {
+        lanes_with_screener(messages, contacts, HashMap::new())
+    }
+
+    fn lanes_with_screener(
+        messages: &[DeskMessage],
+        contacts: &[DeskContact],
+        screener: HashMap<String, ScreenerDisposition>,
+    ) -> ThreadLanes {
         let account = AccountId::new();
         let contacts = contacts
             .iter()
             .map(|c| (c.email.to_ascii_lowercase(), c.clone()))
             .collect();
-        let screener = HashMap::new();
         let dismissed = HashMap::new();
         let timers = DeskTimers::default();
         let is_self = |email: &str| email.eq_ignore_ascii_case(ME);
@@ -782,6 +804,62 @@ mod tests {
         assert_eq!(row.lane, DeskLaneKind::Owed);
         assert_eq!(row.reason, "wrote to you");
         assert_eq!(row.counterparty_name.as_deref(), Some("Priya Raman"));
+    }
+
+    #[test]
+    fn allowing_a_sender_makes_a_person_not_a_conversation() {
+        // Allowed and looks automated: Allow makes them a person, but you
+        // have never written to them, so their mail is new, not owed.
+        let never_replied = ThreadId::new();
+        // Allowed and you replied in the thread: an exchange, so owed.
+        let replied = ThreadId::new();
+        let messages = vec![
+            message(&never_replied, "notifications@studio.example", ME, 3),
+            message(&replied, "ops@studio.example", ME, 30),
+            message(&replied, ME, "ops@studio.example", 20),
+            message(&replied, "ops@studio.example", ME, 2),
+        ];
+        let screener = HashMap::from([
+            (
+                "notifications@studio.example".to_string(),
+                ScreenerDisposition::Allow,
+            ),
+            ("ops@studio.example".to_string(), ScreenerDisposition::Allow),
+        ]);
+        assert!(looks_automated("notifications@studio.example"));
+        let lanes = lanes_with_screener(&messages, &[], screener);
+        let new = lanes
+            .rows
+            .iter()
+            .find(|r| r.row.thread_id == never_replied)
+            .expect("an allowed sender is a person");
+        assert_eq!(new.row.lane, DeskLaneKind::PeopleNew);
+        assert_eq!(new.row.reason, "first message from them");
+        assert_eq!(lane_of(&lanes, &replied), Some(DeskLaneKind::Owed));
+    }
+
+    #[test]
+    fn the_screener_count_leaves_out_anyone_you_have_written_to() {
+        let messages = vec![
+            message(&ThreadId::new(), ME, "maya@example.com", 50),
+            message(&ThreadId::new(), "maya@example.com", ME, 5),
+            message(&ThreadId::new(), "theo@example.com", ME, 3),
+            message(&ThreadId::new(), "priya@example.com", ME, 2),
+        ];
+        // Priya: the contacts table knows you wrote to her before.
+        let priya = DeskContact {
+            email: "priya@example.com".into(),
+            display_name: None,
+            first_seen_at: now() - Duration::days(3),
+            total_inbound: 1,
+            total_outbound: 1,
+            is_list_sender: false,
+        };
+        assert_eq!(
+            lanes(&messages, &[priya]).elsewhere.screener,
+            1,
+            "only Theo"
+        );
     }
 
     #[test]

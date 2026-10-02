@@ -40,6 +40,40 @@ pub(super) async fn get_desk_at(
     now: DateTime<Utc>,
 ) -> HandlerResult {
     let started = std::time::Instant::now();
+    let desk = compose_desk(state, account_id, now).await?;
+    let lane = |kind| desk_lane(&desk.rows, kind, lane_limit);
+    let data = ResponseData::Desk {
+        account_id: account_id.cloned(),
+        owed: lane(DeskLaneKind::Owed),
+        due: lane(DeskLaneKind::Due),
+        waiting: lane(DeskLaneKind::Waiting),
+        people_new: lane(DeskLaneKind::PeopleNew),
+        elsewhere: desk.elsewhere,
+        last_from_people_at: desk.last_from_people_at,
+        generated_at: now,
+    };
+    tracing::debug!(
+        accounts = desk.accounts,
+        elapsed_ms = started.elapsed().as_secs_f64() * 1000.0,
+        "desk composed"
+    );
+    Ok(data)
+}
+
+/// Every desk row, each conversation in its highest lane, plus the counts.
+pub(super) struct ComposedDesk {
+    pub rows: Vec<DeskRowData>,
+    elsewhere: DeskElsewhereData,
+    last_from_people_at: Option<DateTime<Utc>>,
+    accounts: usize,
+}
+
+/// The desk for one account, or every enabled account, at `now`.
+pub(super) async fn compose_desk(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    now: DateTime<Utc>,
+) -> Result<ComposedDesk, super::HandlerError> {
     let accounts: Vec<AccountId> = match account_id {
         Some(id) => vec![id.clone()],
         None => state
@@ -68,38 +102,28 @@ pub(super) async fn get_desk_at(
         last_from_people_at = last_from_people_at.max(desk.last_from_people_at);
     }
     elsewhere.deliveries = count_active_deliveries(state, &accounts).await?;
-
-    let rows = dedupe_by_precedence(rows);
-    let lane = |kind: DeskLaneKind| {
-        let mut lane_rows: Vec<DeskRowData> = rows
-            .iter()
-            .filter(|row| row.lane == kind)
-            .cloned()
-            .collect();
-        sort_lane(kind, &mut lane_rows);
-        let total = lane_rows.len() as u32;
-        lane_rows.truncate(lane_limit as usize);
-        DeskLaneData {
-            rows: lane_rows,
-            total,
-        }
-    };
-    let data = ResponseData::Desk {
-        account_id: account_id.cloned(),
-        owed: lane(DeskLaneKind::Owed),
-        due: lane(DeskLaneKind::Due),
-        waiting: lane(DeskLaneKind::Waiting),
-        people_new: lane(DeskLaneKind::PeopleNew),
+    Ok(ComposedDesk {
+        rows: dedupe_by_precedence(rows),
         elsewhere,
         last_from_people_at,
-        generated_at: now,
-    };
-    tracing::debug!(
-        accounts = accounts.len(),
-        elapsed_ms = started.elapsed().as_secs_f64() * 1000.0,
-        "desk composed"
-    );
-    Ok(data)
+        accounts: accounts.len(),
+    })
+}
+
+/// One lane in its order, trimmed to `limit`; the total counts every row.
+pub(super) fn desk_lane(rows: &[DeskRowData], kind: DeskLaneKind, limit: u32) -> DeskLaneData {
+    let mut lane_rows: Vec<DeskRowData> = rows
+        .iter()
+        .filter(|row| row.lane == kind)
+        .cloned()
+        .collect();
+    sort_lane(kind, &mut lane_rows);
+    let total = lane_rows.len() as u32;
+    lane_rows.truncate(limit as usize);
+    DeskLaneData {
+        rows: lane_rows,
+        total,
+    }
 }
 
 /// Whether an address is this account's own (any of its addresses).

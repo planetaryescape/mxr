@@ -1606,6 +1606,7 @@ pub async fn run() -> anyhow::Result<()> {
                         older_than_days: None,
                         within_days: None,
                         limit: 100,
+                        all: false,
                     },
                 )
                 .await;

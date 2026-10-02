@@ -4670,7 +4670,7 @@ async fn parity_routes_dispatch_daemon_requests() {
     let json = get("/api/v1/mail/owed?older_than_days=3&limit=5".into()).await;
     assert_eq!(json["kind"], "OwedReplies");
     get(format!(
-        "/api/v1/mail/owed?account={other_account}&within_days=30"
+        "/api/v1/mail/owed?account={other_account}&within_days=30&all=true"
     ))
     .await;
     let json = get(format!(
@@ -4721,12 +4721,12 @@ async fn parity_routes_dispatch_daemon_requests() {
         .collect::<Vec<_>>();
     assert!(matches!(
         requests[0],
-        Request::ListOwedReplies { account_id, older_than_days: Some(3), within_days: None, limit: 5 }
+        Request::ListOwedReplies { account_id, older_than_days: Some(3), within_days: None, limit: 5, all: false }
             if account_id == &default_account
     ));
     assert!(matches!(
         requests[1],
-        Request::ListOwedReplies { account_id, within_days: Some(30), limit: 50, .. }
+        Request::ListOwedReplies { account_id, within_days: Some(30), limit: 50, all: true, .. }
             if account_id == &other_account
     ));
     assert!(matches!(

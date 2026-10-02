@@ -94,6 +94,7 @@ mod tests {
             waiting_days: waiting,
             expected_days: expected,
             overdue_score: waiting / expected,
+            usual_seconds: None,
         }
     }
 

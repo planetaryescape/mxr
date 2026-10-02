@@ -4649,7 +4649,10 @@ export interface components {
             since: string;
         };
         OwedReplyRowData: {
-            /** Format: double */
+            /**
+             * Format: double
+             * @description The pace `overdue_score` is measured against, in days.
+             */
             expected_days: number;
             from_email: string;
             from_name?: string | null;
@@ -4660,6 +4663,13 @@ export interface components {
             overdue_score: number;
             subject: string;
             thread_id: components["schemas"]["ThreadId"];
+            /**
+             * Format: int64
+             * @description How long you usually take to reply to this person, when at least
+             *     two past replies say so. Only the default (desk) list sets it;
+             *     `expected_days` falls back to a day without it.
+             */
+            usual_seconds?: number | null;
             /** Format: double */
             waiting_days: number;
         };
@@ -5714,6 +5724,7 @@ export interface components {
             question: string;
         } | {
             account_id: components["schemas"]["AccountId"];
+            all?: boolean;
             /** @enum {string} */
             cmd: "ListOwedReplies";
             /** Format: int32 */

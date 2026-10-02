@@ -719,12 +719,14 @@ async fn async_mutation_job_reports_progress_and_undo_ids_for_large_batch() {
     }
 }
 
-/// A batch mutation reindexes its messages in one search commit rather than
-/// one per message, and every message in the batch must still be refreshed.
-#[tokio::test]
-async fn batch_archive_reindexes_every_message_in_search() {
-    let state = Arc::new(AppState::in_memory().await.unwrap());
-    let first_id = sync_and_get_first_id(&state).await;
+/// `count` new inbox messages for the fake account, indexed in search, with
+/// `term` in each subject so a test can find exactly them.
+async fn indexed_inbox_messages(
+    state: &Arc<AppState>,
+    term: &str,
+    count: usize,
+) -> Vec<mxr_core::MessageId> {
+    let first_id = sync_and_get_first_id(state).await;
     let account_id = state
         .store
         .get_envelope(&first_id)
@@ -732,7 +734,6 @@ async fn batch_archive_reindexes_every_message_in_search() {
         .unwrap()
         .unwrap()
         .account_id;
-
     // upsert_envelope stores no label links, so attach INBOX explicitly.
     let inbox = state
         .store
@@ -745,11 +746,11 @@ async fn batch_archive_reindexes_every_message_in_search() {
 
     let mut ids = Vec::new();
     let mut entries = Vec::new();
-    for i in 0..3 {
+    for i in 0..count {
         let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
             .account_id(account_id.clone())
-            .provider_id(format!("reindex-batch-{i}"))
-            .subject(format!("quarterlyreindex {i}"))
+            .provider_id(format!("{term}-{i}"))
+            .subject(format!("{term} {i}"))
             .label_provider_ids(vec!["INBOX".to_string()])
             .build();
         state.store.upsert_envelope(&envelope).await.unwrap();
@@ -762,7 +763,6 @@ async fn batch_archive_reindexes_every_message_in_search() {
             )
             .await
             .unwrap();
-        ids.push(envelope.id.clone());
         entries.push(mxr_search::SearchIndexEntry {
             envelope: state
                 .store
@@ -773,6 +773,7 @@ async fn batch_archive_reindexes_every_message_in_search() {
             body: None,
             reply_later: false,
         });
+        ids.push(envelope.id);
     }
     state
         .search
@@ -782,41 +783,95 @@ async fn batch_archive_reindexes_every_message_in_search() {
         })
         .await
         .unwrap();
+    ids
+}
 
-    let inbox_hits = |state: Arc<AppState>| async move {
-        let search = IpcMessage {
-            id: 9,
-            source: ::mxr_protocol::ClientKind::default(),
-            payload: IpcPayload::Request(Request::Search {
-                query: "quarterlyreindex in:inbox".to_string(),
-                limit: 10,
-                offset: 0,
-                account_id: None,
-                mode: None,
-                sort: None,
-                explain: false,
-            }),
-        };
-        match handle_request(&state, &search).await.payload {
-            IpcPayload::Response(Response::Ok {
-                data: ResponseData::SearchResults { results, .. },
-            }) => results.len(),
-            other => panic!("expected SearchResults; got {other:?}"),
-        }
+async fn lexical_hits(state: &Arc<AppState>, query: &str) -> usize {
+    let search = IpcMessage {
+        id: 9,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::Search {
+            query: query.to_string(),
+            limit: 10,
+            offset: 0,
+            account_id: None,
+            mode: None,
+            sort: None,
+            explain: false,
+        }),
     };
-    assert_eq!(inbox_hits(state.clone()).await, 3);
+    match handle_request(state, &search).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::SearchResults { results, .. },
+        }) => results.len(),
+        other => panic!("expected SearchResults; got {other:?}"),
+    }
+}
 
-    let archive = IpcMessage {
+fn archive_request(message_ids: Vec<mxr_core::MessageId>) -> IpcMessage {
+    IpcMessage {
         id: 1,
         source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive {
-            message_ids: ids,
-        })),
-    };
-    let result = assert_mutation_succeeded(handle_request(&state, &archive).await.payload);
+        payload: IpcPayload::Request(Request::mutation(MutationCommand::Archive { message_ids })),
+    }
+}
+
+/// A batch mutation reindexes its messages in one search commit rather than
+/// one per message, and every message in the batch must still be refreshed.
+#[tokio::test]
+async fn batch_archive_reindexes_every_message_in_search() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let ids = indexed_inbox_messages(&state, "quarterlyreindex", 3).await;
+    assert_eq!(lexical_hits(&state, "quarterlyreindex in:inbox").await, 3);
+
+    let result =
+        assert_mutation_succeeded(handle_request(&state, &archive_request(ids)).await.payload);
     assert_eq!(result.succeeded, 3);
 
-    assert_eq!(inbox_hits(state.clone()).await, 0);
+    assert_eq!(lexical_hits(&state, "quarterlyreindex in:inbox").await, 0);
+}
+
+/// A reindex must read the store after it takes the reindex lock, not
+/// before. Otherwise a reindex that read early but committed late would
+/// leave search on an older state than the store, past any restart.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_mutation_reindex_commits_the_store_state_at_commit_time() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let ids = indexed_inbox_messages(&state, "racereindex", 1).await;
+    let id = ids[0].clone();
+
+    // Stall every reindex at the lock.
+    let held = state.search_reindex.lock().await;
+    let archive = {
+        let state = state.clone();
+        let request = archive_request(ids);
+        tokio::spawn(async move { handle_request(&state, &request).await.payload })
+    };
+    // Wait for the archive to reach the store, then give it time to reach
+    // the reindex lock.
+    while !state
+        .store
+        .get_message_label_ids(&id)
+        .await
+        .unwrap()
+        .is_empty()
+    {
+        tokio::task::yield_now().await;
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // A later change to the same message lands in the store while the
+    // archive's reindex waits.
+    state
+        .store
+        .set_starred(&id, true, mxr_core::EventSource::User)
+        .await
+        .unwrap();
+    drop(held);
+    assert_mutation_succeeded(archive.await.unwrap());
+
+    assert_eq!(lexical_hits(&state, "racereindex is:starred").await, 1);
+    assert_eq!(lexical_hits(&state, "racereindex in:inbox").await, 0);
 }
 
 #[tokio::test]

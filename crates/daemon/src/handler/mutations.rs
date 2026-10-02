@@ -2029,6 +2029,11 @@ async fn reindex_message_in_search(
 
 /// Refreshes the indexed copy of each message from the store in one search
 /// commit, so queries (`mxr search ...`) see new flags and labels at once.
+///
+/// The store reads and the commit run under `state.search_reindex`. A
+/// mutation writes the store before it reindexes, so whichever reindex
+/// commits last also read last, and search ends on the newest state even
+/// when two mutations of one message race.
 async fn reindex_messages_in_search(
     state: &AppState,
     message_ids: &[mxr_core::MessageId],
@@ -2036,6 +2041,7 @@ async fn reindex_messages_in_search(
     if message_ids.is_empty() {
         return Ok(());
     }
+    let _reindex = state.search_reindex.lock().await;
     let mut batch = mxr_search::SearchUpdateBatch::default();
     for message_id in message_ids {
         let envelope = state

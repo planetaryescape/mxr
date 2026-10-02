@@ -5,6 +5,7 @@
 //! sidebar/keybinding hook-up is incremental TUI plumbing that
 //! lives in `app/` once the lens state is wired through.
 
+use super::desk_lens::short_duration;
 use mxr_protocol::OwedReplyRowData;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -55,8 +56,8 @@ pub fn draw(frame: &mut Frame, area: Rect, rows: &[OwedReplyRowData], theme: &cr
                 format!("  {:>4.2}  ", row.overdue_score),
                 Style::default().fg(score_color),
             ),
-            Span::raw(format!("{:>5.1}d  ", row.waiting_days)),
-            Span::raw(format!("{:>5.1}d  ", row.expected_days)),
+            Span::raw(format!("{:>7}  ", days_label(row.waiting_days))),
+            Span::raw(format!("{:>7}  ", days_label(row.expected_days))),
             Span::styled(truncate(from, 24), Style::default().fg(theme.accent)),
             Span::raw("  "),
             Span::raw(truncate(&row.subject, 60)),
@@ -64,6 +65,11 @@ pub fn draw(frame: &mut Frame, area: Rect, rows: &[OwedReplyRowData], theme: &cr
     }
 
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+}
+
+/// The desk's "47m", "5h", "3d": paces are often under a day.
+fn days_label(days: f64) -> String {
+    short_duration((days * 86_400.0).round() as i64)
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -133,6 +139,22 @@ mod tests {
         assert!(rendered.contains("bob@example.com"));
         // Alice's overdue score is 5.0 (very overdue); Bob's ~0.29.
         assert!(rendered.contains("5.00") || rendered.contains("5.0"));
+    }
+
+    #[test]
+    fn paces_under_a_day_read_in_hours_and_minutes_not_zero_days() {
+        let rows = vec![row("alice@example.com", "Status update?", 0.25, 0.0326)];
+        let rendered = render_to_string(100, 6, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 100, 6),
+                &rows,
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(rendered.contains("6h"), "{rendered}");
+        assert!(rendered.contains("46m"), "{rendered}");
+        assert!(!rendered.contains("0.0d"), "{rendered}");
     }
 
     #[test]

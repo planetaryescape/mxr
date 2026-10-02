@@ -232,7 +232,7 @@ pub(crate) fn age_cell(row: &DeskRowData) -> String {
     }
 }
 
-fn short_duration(seconds: i64) -> String {
+pub(crate) fn short_duration(seconds: i64) -> String {
     match seconds.max(0) {
         s if s < 3_600 => format!("{}m", (s / 60).max(1)),
         s if s < 86_400 => format!("{}h", s / 3_600),

@@ -464,8 +464,8 @@ the keychain itself. The plan:
 ### The daemon refreshes tokens on demand behind one lock
 
 - The daemon's `AccessTokenSource` refreshes when the token is within 60 s of
-  expiry and `earliest_refresh_at` has passed. The DevKit does the same in
-  `packages/local/src/index.ts` lines 99-102.
+  expiry and `earliest_refresh_at` has passed, as the public token docs
+  describe.
 - A `tokio::Mutex` serializes refreshes.
 - The rotated refresh token is written to the keychain before the new access
   token is used.

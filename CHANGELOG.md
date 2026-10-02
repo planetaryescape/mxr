@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.51](https://github.com/planetaryescape/mxr/compare/v0.6.50...v0.6.51) (2026-10-02)
+
+
+### Bug Fixes
+
+* deleting an email deletes everything derived from it ([#282](https://github.com/planetaryescape/mxr/issues/282)) ([8234399](https://github.com/planetaryescape/mxr/commit/82343998804c0581c1cdc7b4b4f6e8154d15d00e))
+
 ## [0.6.50](https://github.com/planetaryescape/mxr/compare/v0.6.49...v0.6.50) (2026-10-02)
 
 

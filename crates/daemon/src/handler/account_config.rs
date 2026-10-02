@@ -324,17 +324,20 @@ pub(super) async fn remove_account_config(
             .search
             .apply_batch(mxr_search::SearchUpdateBatch {
                 entries: Vec::new(),
-                removed_message_ids: message_ids,
+                removed_message_ids: message_ids.clone(),
             })
             .await
             .map_err(|e| e.to_string())
         {
-            Ok(()) => state
-                .store
-                .delete_account(&account_id)
-                .await
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
+            Ok(()) => match state.store.delete_account(&account_id).await {
+                Ok(_) => {
+                    // The account cascade cleared every row; the semantic
+                    // index and attachment files sit outside SQLite.
+                    crate::message_deletion::forget_deleted_messages(state, &message_ids).await;
+                    Ok(())
+                }
+                Err(error) => Err(error.to_string()),
+            },
             Err(error) => Err(error),
         }
     } else {

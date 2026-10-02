@@ -740,6 +740,19 @@ pub(crate) async fn finalize_sync_pass(
         });
     }
 
+    // Outside `count > 0`: a page that only deleted mail upserts nothing,
+    // and gating on upserts left the semantic index, attachment files and
+    // contacts of deleted mail behind.
+    if !outcome.deleted_message_ids.is_empty() {
+        let fanout_state = state.clone();
+        let fanout_account = account_id.clone();
+        let deleted = outcome.deleted_message_ids;
+        let counterparties = outcome.deleted_counterparties;
+        tokio::spawn(async move {
+            post_delete_fanout(fanout_state, fanout_account, deleted, counterparties).await;
+        });
+    }
+
     tracing::info!(account = %account_id, "Sync completed: {count} messages");
     crate::chimes::emit_daemon_event(
         &state,
@@ -1177,6 +1190,34 @@ async fn post_sync_fanout(
     }
 }
 
+/// Clears what the store delete cannot reach for mail the provider deleted,
+/// refreshes the contacts it counted, and recomputes what was built about
+/// the people it was with. Detached like `post_sync_fanout`, for the same
+/// reason: the semantic worker may be busy.
+async fn post_delete_fanout(
+    state: Arc<AppState>,
+    account_id: AccountId,
+    deleted_message_ids: Vec<mxr_core::MessageId>,
+    counterparties: Vec<(AccountId, String)>,
+) {
+    tracing::info!(
+        account = %account_id,
+        deleted = deleted_message_ids.len(),
+        "clearing derived data of deleted messages"
+    );
+    crate::message_deletion::forget_deleted_messages(&state, &deleted_message_ids).await;
+    if let Err(error) = state
+        .contacts_refresh
+        .enqueue_accounts(std::slice::from_ref(&account_id))
+        .await
+    {
+        tracing::warn!(account = %account_id, %error, "contacts refresh enqueue failed");
+    }
+    if let Err(error) = state.relationship.enqueue_contacts(counterparties).await {
+        tracing::warn!(account = %account_id, %error, "relationship profile enqueue failed");
+    }
+}
+
 /// Self-heal analytics derived data.
 ///
 /// Every step is a whole-table `WHERE column IS NULL / = 'unknown'` scan, so
@@ -1353,13 +1394,19 @@ async fn apply_rules_to_messages(
             }
         }
 
+        // The summary repeats the subject, so the row carries the message id:
+        // deleting the message deletes the row with it.
         let _ = state
             .store
-            .insert_event(
+            .insert_event_refs(
                 if error.is_some() { "error" } else { "info" },
                 "rule",
                 &format!("Applied rules to {}", message.subject),
-                Some(account_id),
+                mxr_store::EventLogRefs {
+                    account_id: Some(account_id),
+                    message_id: Some(message_id_str.as_str()),
+                    rule_id: None,
+                },
                 error.as_deref(),
             )
             .await;
@@ -2807,6 +2854,124 @@ mod tests {
         ) -> Result<(), MxrError> {
             Ok(())
         }
+    }
+
+    /// Serves one page that deletes the given provider ids and upserts
+    /// nothing: the shape of a Gmail history page after an expunge.
+    struct DeleteOnlySyncProvider {
+        account_id: AccountId,
+        deleted_provider_ids: Vec<String>,
+    }
+
+    #[async_trait::async_trait]
+    impl MailSyncProvider for DeleteOnlySyncProvider {
+        fn name(&self) -> &str {
+            "delete-only"
+        }
+
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+
+        fn capabilities(&self) -> SyncCapabilities {
+            SyncCapabilities::default()
+        }
+
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            Ok(Vec::new())
+        }
+
+        async fn sync_messages(&self, _cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            Ok(SyncBatch {
+                upserted: Vec::new(),
+                deleted_provider_ids: self.deleted_provider_ids.clone(),
+                label_changes: Vec::new(),
+                next_cursor: SyncCursor::from_bytes(b"done".to_vec()),
+                has_more: false,
+                threads_changed: Vec::new(),
+                remaining_estimate: None,
+            })
+        }
+
+        async fn fetch_attachment(
+            &self,
+            _provider_message_id: &str,
+            _provider_attachment_id: &str,
+        ) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+
+        async fn apply_mutation(
+            &self,
+            _mutation_id: &str,
+            _mutation: &mxr_core::Mutation,
+        ) -> Result<(), MxrError> {
+            Ok(())
+        }
+    }
+
+    /// A page that only deletes mail synced zero messages, which used to skip
+    /// the whole fan-out: the deleted message's attachment files stayed on
+    /// disk for good.
+    #[tokio::test]
+    async fn a_delete_only_page_clears_the_files_of_the_deleted_message() {
+        let account_id = AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let provider = std::sync::Arc::new(DeleteOnlySyncProvider {
+            account_id: account_id.clone(),
+            deleted_provider_ids: vec!["gone".to_string()],
+        });
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, provider.clone(), None)
+                .await
+                .unwrap(),
+        );
+        let attachments = tempfile::tempdir().unwrap();
+        state.set_attachment_dir_for_tests(attachments.path().to_path_buf());
+        let gone = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .provider_id("gone")
+            .build();
+        state.store.upsert_envelope(&gone).await.unwrap();
+        let files = attachments.path().join(gone.id.as_str());
+        std::fs::create_dir_all(&files).unwrap();
+        std::fs::write(files.join("invoice.pdf"), b"pdf").unwrap();
+
+        let pass = begin_sync_pass(
+            &state,
+            provider as std::sync::Arc<dyn MailSyncProvider>,
+            None,
+            SyncStarter::AccountLoop,
+        )
+        .await;
+        let SyncWait::Finished { pass, result } = run_sync_pass(pass, Duration::from_secs(5)).await
+        else {
+            panic!("a fast sync must not detach");
+        };
+        let outcome = finalize_sync_pass(pass, result).await.unwrap();
+
+        assert_eq!(outcome.synced_count, 0);
+        assert!(state.store.get_envelope(&gone.id).await.unwrap().is_none());
+        let mut cleared = false;
+        for _ in 0..100 {
+            if !files.exists() {
+                cleared = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(
+            cleared,
+            "the deleted message's attachment dir is still there"
+        );
     }
 
     /// Poll for the whole-table analytics repair having run.

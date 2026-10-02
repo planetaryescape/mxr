@@ -75,6 +75,21 @@ fn asks_for(node: &QueryNode, place: Hidden) -> bool {
     }
 }
 
+/// Whether every alternative of `node` asks for `place`, without
+/// expanding it: one side of an AND is enough, both sides of an OR are
+/// needed.
+fn asked_everywhere(node: &QueryNode, place: Hidden) -> bool {
+    match node {
+        QueryNode::And(left, right) => {
+            asked_everywhere(left, place) || asked_everywhere(right, place)
+        }
+        QueryNode::Or(left, right) => {
+            asked_everywhere(left, place) && asked_everywhere(right, place)
+        }
+        leaf => asks_for(leaf, place),
+    }
+}
+
 /// Adds the exclusion of each place `node` does not ask for.
 fn guarded(node: QueryNode) -> QueryNode {
     let lifted = [Hidden::Trash, Hidden::Spam].map(|place| asks_for(&node, place));
@@ -128,18 +143,34 @@ fn alternatives(node: &QueryNode) -> Option<Vec<QueryNode>> {
 /// Each place is lifted on its own: `in:trash` lets Trash in, not Spam. And
 /// the lift is scoped to the alternative that asks: in
 /// `in:trash OR from:alice`, Alice's own Trash and Spam stay out. When the
-/// alternatives all ask for the same places the query keeps its shape; a
-/// query too large to expand falls back to lifting per place for the whole
-/// query.
+/// alternatives all ask for the same places the query keeps its shape.
+///
+/// A query with more than `MAX_SCOPED_ALTERNATIVES` alternatives cannot be
+/// scoped, so it lifts a place only when every alternative asks for it and
+/// otherwise keeps the exclusion: lifting it for the whole query would let
+/// in Trash or Spam the user did not ask for. `in:anywhere` beside the rest
+/// of the query still reaches them.
 pub(super) fn exclude_trash_and_spam_by_default(ast: QueryNode) -> QueryNode {
     let asks = |node: &QueryNode| (asks_for(node, Hidden::Trash), asks_for(node, Hidden::Spam));
-    match alternatives(&ast) {
-        Some(terms) if terms.iter().any(|term| asks(term) != asks(&ast)) => terms
+    let Some(terms) = alternatives(&ast) else {
+        // Lift a place only where every alternative asks for it.
+        let lifted = [Hidden::Trash, Hidden::Spam].map(|place| asked_everywhere(&ast, place));
+        return [Hidden::Trash, Hidden::Spam]
+            .into_iter()
+            .zip(lifted)
+            .filter(|(_, lifted)| !lifted)
+            .fold(ast, |node, (place, _)| {
+                QueryNode::And(Box::new(node), Box::new(place.exclusion()))
+            });
+    };
+    if terms.iter().any(|term| asks(term) != asks(&ast)) {
+        terms
             .into_iter()
             .map(guarded)
             .reduce(|left, right| QueryNode::Or(Box::new(left), Box::new(right)))
-            .unwrap_or(ast),
-        _ => guarded(ast),
+            .unwrap_or(ast)
+    } else {
+        guarded(ast)
     }
 }
 
@@ -547,6 +578,20 @@ mod tests {
         );
         assert_eq!(reached("-in:trash"), vec!["alice inbox"]);
         assert_eq!(reached("in:anywhere").len(), 5);
+    }
+
+    /// Past the expansion cap a query cannot be scoped; it keeps both
+    /// exclusions rather than letting Trash in for every alternative.
+    #[test]
+    fn a_query_too_large_to_scope_keeps_both_exclusions() {
+        let large = "in:trash OR (a OR b) (c OR d) (e OR f) (g OR h) (i OR j) (k OR l)";
+        assert!(alternatives(&parse_query(large).unwrap()).is_none());
+        assert_eq!(reached(large), vec!["alice inbox"]);
+        assert_eq!(
+            reached(&format!("in:anywhere ({large})")).len(),
+            5,
+            "in:anywhere still reaches Trash and Spam"
+        );
     }
 
     #[test]

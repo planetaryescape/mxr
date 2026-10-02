@@ -107,6 +107,17 @@ have been checked on a real mailbox.
   alternative that asks for them.
 - Migration renumbered to 58 after `search_reindex_pending` took 57.
 
+### Round-3 review follow-ups
+
+- An IMAP cleanup listing is sent only when `UID SEARCH ALL` matches
+  `EXISTS` from the same SELECT, never for Gmail All Mail (Trash and Spam
+  are outside it but recoverable), and not when another folder holds the
+  old UIDVALIDITY or a folder's validity is unknown (a rename).
+- A synced message cancels cleanup owed to its id, and the cleanup skips
+  ids that exist in messages again.
+- A query too large to scope keeps the Trash and Spam exclusions unless
+  every alternative asks for them.
+
 ### Still open
 
 - `user_activity` draft rows can carry a reply's subject (up to 200

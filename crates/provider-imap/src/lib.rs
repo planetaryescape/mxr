@@ -42,12 +42,6 @@ struct DeltaFolderSyncResult {
     mailbox: ImapMailboxCursor,
     synced: Vec<SyncedMessage>,
     deleted_provider_ids: Vec<String>,
-    /// Refetched after a `UIDVALIDITY` change: a stored row under the same
-    /// `folder:uid` may be a different message.
-    reissued_provider_ids: Vec<String>,
-    /// Every UID the server holds after a `UIDVALIDITY` change, with the
-    /// validity the folder's stored rows were synced under.
-    complete_listing: Option<(u32, ProviderIdListing)>,
 }
 
 struct CollectSyncedMessages<'a> {
@@ -545,8 +539,6 @@ impl ImapProvider {
         Ok(SyncBatch {
             upserted: synced,
             deleted_provider_ids: vec![],
-            reissued_provider_ids: vec![],
-            complete_listings: vec![],
             label_changes: vec![],
             next_cursor: Self::build_imap_cursor(mailboxes, &capabilities),
             has_more: false,
@@ -762,8 +754,6 @@ impl ImapProvider {
         Ok(SyncBatch {
             upserted: synced,
             deleted_provider_ids: vec![],
-            reissued_provider_ids: vec![],
-            complete_listings: vec![],
             label_changes: vec![],
             next_cursor,
             has_more,
@@ -837,18 +827,10 @@ impl ImapProvider {
         let mut synced = Vec::new();
         let mut mailboxes = Vec::with_capacity(folder_results.len());
         let mut deleted_provider_ids = Vec::new();
-        let mut reissued_provider_ids = Vec::new();
-        let mut complete_listings = Vec::new();
         for result in folder_results {
             mailboxes.push(result.mailbox);
             synced.extend(result.synced);
             deleted_provider_ids.extend(result.deleted_provider_ids);
-            reissued_provider_ids.extend(result.reissued_provider_ids);
-            if let Some((old_uid_validity, listing)) = result.complete_listing {
-                if Self::stored_rows_belong_to(&listing.scope, old_uid_validity, &folders) {
-                    complete_listings.push(listing);
-                }
-            }
         }
 
         debug!("IMAP delta sync complete: {} new messages", synced.len());
@@ -856,48 +838,12 @@ impl ImapProvider {
         Ok(SyncBatch {
             upserted: synced,
             deleted_provider_ids,
-            reissued_provider_ids,
-            complete_listings,
             label_changes: vec![],
             next_cursor: Self::build_imap_cursor(mailboxes, &capabilities),
             has_more: false,
             threads_changed: vec![],
             remaining_estimate: None,
         })
-    }
-
-    /// Whether the rows stored under `scope` can be tied to that folder
-    /// after its UIDVALIDITY changed from `old_uid_validity`. Ids carry the
-    /// folder name, not the validity, so a folder renamed away and a new one
-    /// created under the old name look like a validity reset. If any other
-    /// folder now holds the old validity, or a folder's validity is unknown
-    /// (its STATUS failed), the old rows may belong elsewhere and are kept.
-    fn stored_rows_belong_to(scope: &str, old_uid_validity: u32, folders: &[FolderInfo]) -> bool {
-        let others = folders.iter().filter(|folder| folder.name != scope);
-        let mut ambiguous = false;
-        for folder in others {
-            match folder.uid_validity {
-                Some(validity) if validity == old_uid_validity => {
-                    warn!(
-                        mailbox = %scope,
-                        holder = %folder.name,
-                        "the old UIDVALIDITY now belongs to another folder (renamed?); \
-                         keeping the stored mail"
-                    );
-                    return false;
-                }
-                Some(_) => {}
-                None => ambiguous = true,
-            }
-        }
-        if ambiguous {
-            warn!(
-                mailbox = %scope,
-                "a folder's UIDVALIDITY is unknown, so a rename cannot be ruled out; \
-                 keeping the stored mail"
-            );
-        }
-        !ambiguous
     }
 
     async fn delta_gmail_all_mail_sync(
@@ -938,8 +884,7 @@ impl ImapProvider {
             highest_modseq: mailbox_info.highest_modseq,
         };
 
-        let uid_validity_changed = mailbox_info.uid_validity != old_mailbox.uid_validity;
-        let query = if uid_validity_changed {
+        let query = if mailbox_info.uid_validity != old_mailbox.uid_validity {
             warn!(
                 mailbox = %all_mail.name,
                 old = old_mailbox.uid_validity,
@@ -980,27 +925,11 @@ impl ImapProvider {
                 .await?;
         }
         Self::floor_uid_next_to_failed(&mut mailbox, min_failed_uid);
-        // Every UID is void after a validity change, so a refetched UID may
-        // name a different message than the row stored under it.
-        let reissued_provider_ids = if uid_validity_changed {
-            synced
-                .iter()
-                .map(|message| message.envelope.provider_id.clone())
-                .collect()
-        } else {
-            Vec::new()
-        };
 
         let _ = session.logout().await;
         Ok(SyncBatch {
             upserted: synced,
             deleted_provider_ids: vec![],
-            reissued_provider_ids,
-            // No listing-based cleanup for All Mail: a message moved to
-            // Trash or Spam leaves All Mail but is still recoverable in
-            // Gmail, and only All Mail is synced, so absence from it does
-            // not mean the message is gone.
-            complete_listings: vec![],
             label_changes: vec![],
             next_cursor: Self::build_imap_cursor(vec![mailbox], &capabilities),
             has_more: false,
@@ -1163,41 +1092,12 @@ impl ImapProvider {
         // legacy cursor) must issue `UID SEARCH ALL` and diff against the UIDs
         // we believed lived in this mailbox last sync (1..old.uid_next-1). The
         // extra search is cheap and dedup-safe.
-        //
-        // A UIDVALIDITY change voids every old UID and the folder is refetched
-        // from `1:*` under the same `folder:uid` ids. The cursor's old
-        // UIDNEXT cannot bound the cleanup there: a fetch failure floors it,
-        // so stored rows can sit above it. Instead the whole server listing
-        // goes to the engine, which diffs it against the stored rows of this
-        // folder. `UID SEARCH ALL` answers in full or fails the folder's
-        // sync, so a partial listing never reaches the engine.
-        let uid_validity_changed = old_mailbox
-            .as_ref()
-            .is_some_and(|old| old.uid_validity != mailbox_info.uid_validity);
-        let mut vanished_uids: Vec<u32> = Vec::new();
-        let mut server_listing: Option<HashSet<u32>> = None;
-        if uid_validity_changed {
-            let uids: HashSet<u32> = session
-                .uid_search("ALL")
-                .await
-                .map_err(mxr_core::error::MxrError::from)?
-                .into_iter()
-                .collect();
-            // Trusted as complete only when it accounts for every message
-            // the same SELECT counted. A short or empty answer (or mail that
-            // arrived in between) sends no listing, so nothing is deleted.
-            if uids.len() == mailbox_info.exists as usize {
-                server_listing = Some(uids);
-            } else {
-                warn!(
-                    mailbox = %folder.name,
-                    listed = uids.len(),
-                    exists = mailbox_info.exists,
-                    "UIDVALIDITY changed but UID SEARCH ALL does not match EXISTS; \
-                     skipping the cleanup of mail the server no longer has"
-                );
-            }
-        } else if !qresync_used {
+        if !qresync_used
+            && mailbox_info.uid_validity
+                == old_mailbox
+                    .as_ref()
+                    .map_or(mailbox_info.uid_validity, |c| c.uid_validity)
+        {
             if let Some(old) = old_mailbox.as_ref() {
                 if old.uid_next > 1 {
                     let server_uids: HashSet<u32> = session
@@ -1206,8 +1106,12 @@ impl ImapProvider {
                         .map_err(mxr_core::error::MxrError::from)?
                         .into_iter()
                         .collect();
-                    vanished_uids
-                        .extend((1..old.uid_next).filter(|uid| !server_uids.contains(uid)));
+                    for uid in 1..old.uid_next {
+                        if !server_uids.contains(&uid) {
+                            deleted_provider_ids
+                                .push(folders::format_provider_id(&folder.name, uid));
+                        }
+                    }
                 }
             }
         }
@@ -1274,51 +1178,12 @@ impl ImapProvider {
         }
         Self::floor_uid_next_to_failed(&mut mailbox, min_failed_uid);
 
-        deleted_provider_ids.extend(
-            vanished_uids
-                .into_iter()
-                .filter(|uid| !seen_uids.contains(uid))
-                .map(|uid| folders::format_provider_id(&folder.name, uid)),
-        );
-        // Mail that arrived between the search and the fetch is on the
-        // server too; fetched UIDs join the listing so it is never cleaned.
-        let old_uid_validity = old_mailbox.as_ref().map_or(0, |old| old.uid_validity);
-        let complete_listing = server_listing.map(|uids| {
-            let mut uids = uids
-                .into_iter()
-                .chain(seen_uids.iter().copied())
-                .collect::<Vec<_>>();
-            uids.sort_unstable();
-            uids.dedup();
-            (
-                old_uid_validity,
-                ProviderIdListing {
-                    scope: folder.name.clone(),
-                    provider_ids: uids
-                        .into_iter()
-                        .map(|uid| folders::format_provider_id(&folder.name, uid))
-                        .collect(),
-                },
-            )
-        });
-
-        let reissued_provider_ids = if uid_validity_changed {
-            synced
-                .iter()
-                .map(|message| message.envelope.provider_id.clone())
-                .collect()
-        } else {
-            Vec::new()
-        };
-
         let _ = session.logout().await;
         Ok(DeltaFolderSyncResult {
             folder_index,
             mailbox,
             synced,
             deleted_provider_ids,
-            reissued_provider_ids,
-            complete_listing,
         })
     }
 }
@@ -1331,14 +1196,6 @@ impl MailSyncProvider for ImapProvider {
 
     fn account_id(&self) -> &AccountId {
         &self.account_id
-    }
-
-    /// A stored id's folder: the scope of the listing sent after that
-    /// folder's `UIDVALIDITY` changes.
-    fn provider_id_scope(&self, provider_id: &str) -> Option<String> {
-        folders::parse_provider_id(provider_id)
-            .ok()
-            .map(|(mailbox, _)| mailbox)
     }
 
     fn capabilities(&self) -> SyncCapabilities {
@@ -2839,190 +2696,6 @@ mod tests {
         assert_eq!(batch.upserted[0].envelope.subject, "After reset");
 
         assert_eq!(decoded_imap_inbox(&batch.next_cursor).uid_validity, 2);
-    }
-
-    /// After a UIDVALIDITY change the folder is refetched under the same
-    /// `folder:uid` ids; old rows whose UID the server no longer has are
-    /// reported deleted instead of lingering forever.
-    #[tokio::test]
-    async fn uid_validity_change_deletes_old_uids_the_server_no_longer_has() {
-        let factory = MockImapSessionFactory::new(
-            mailbox_info(2, 3, 2),
-            vec![vec![
-                make_fetched_message(1, "First", "alice@example.com"),
-                make_fetched_message(2, "Second", "bob@example.com"),
-            ]],
-            vec![],
-        )
-        .with_uid_search("INBOX", vec![1, 2]);
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let batch = provider.sync_messages(&imap_cursor(1, 6)).await.unwrap();
-
-        assert_eq!(batch.upserted.len(), 2);
-        // The cleanup runs in the engine against the stored rows, from the
-        // full server listing, not from the cursor's UID range.
-        assert!(batch.deleted_provider_ids.is_empty());
-        assert_eq!(
-            batch.complete_listings,
-            vec![ProviderIdListing {
-                scope: "INBOX".to_string(),
-                provider_ids: vec!["INBOX:1".to_string(), "INBOX:2".to_string()],
-            }]
-        );
-        // UIDs 1 and 2 are void too: the rows stored under them may be other
-        // emails, which the engine checks before it overwrites them.
-        assert_eq!(batch.reissued_provider_ids, vec!["INBOX:1", "INBOX:2"]);
-    }
-
-    /// A `UID SEARCH ALL` that does not account for every message the
-    /// SELECT counted is not a complete listing: an empty or short answer
-    /// (or mail that arrived in between) would delete live rows. No listing
-    /// is sent, so nothing is deleted.
-    #[tokio::test]
-    async fn a_listing_that_disagrees_with_exists_is_not_sent() {
-        for search in [vec![], vec![1]] {
-            let factory = MockImapSessionFactory::new(
-                mailbox_info(2, 3, 2),
-                vec![vec![
-                    make_fetched_message(1, "First", "alice@example.com"),
-                    make_fetched_message(2, "Second", "bob@example.com"),
-                ]],
-                vec![],
-            )
-            .with_uid_search("INBOX", search.clone());
-            let provider = ImapProvider::with_session_factory(
-                AccountId::new(),
-                test_config(),
-                Box::new(factory),
-            );
-
-            let batch = provider.sync_messages(&imap_cursor(1, 4)).await.unwrap();
-
-            assert_eq!(batch.upserted.len(), 2);
-            assert!(
-                batch.complete_listings.is_empty(),
-                "a search of {search:?} against EXISTS 2 was trusted"
-            );
-            assert!(batch.deleted_provider_ids.is_empty());
-        }
-    }
-
-    /// A folder renamed away and a new folder created under its old name
-    /// looks like a validity reset under that name. When another folder
-    /// now holds the old validity, or any folder's validity is unknown, the
-    /// stored rows may belong elsewhere and no listing is sent.
-    #[tokio::test]
-    async fn a_reset_that_may_be_a_rename_sends_no_listing() {
-        let with_validity = |name: &str, validity: Option<u32>| FolderInfo {
-            uid_validity: validity,
-            ..folder_info(name, None)
-        };
-        for (other, expect_listing) in [
-            (with_validity("Projects-2024", Some(1)), false),
-            (with_validity("Projects-2024", None), false),
-            (with_validity("Projects-2024", Some(7)), true),
-        ] {
-            let factory = MockImapSessionFactory::new(
-                mailbox_info(2, 2, 1),
-                vec![vec![make_fetched_message(
-                    1,
-                    "New folder",
-                    "alice@example.com",
-                )]],
-                vec![with_validity("INBOX", Some(2)), other.clone()],
-            )
-            .with_mailbox_fetches("Projects-2024", vec![vec![]])
-            .with_uid_search("INBOX", vec![1]);
-            let provider = ImapProvider::with_session_factory(
-                AccountId::new(),
-                test_config(),
-                Box::new(factory),
-            );
-
-            let batch = provider
-                .sync_messages(&imap_cursor_mailboxes(vec![ImapMailboxCursor {
-                    mailbox: "INBOX".to_string(),
-                    uid_validity: 1,
-                    uid_next: 5,
-                    highest_modseq: None,
-                }]))
-                .await
-                .unwrap();
-
-            assert_eq!(
-                batch
-                    .complete_listings
-                    .iter()
-                    .any(|listing| listing.scope == "INBOX"),
-                expect_listing,
-                "other folder {:?} with validity {:?}",
-                other.name,
-                other.uid_validity
-            );
-        }
-    }
-
-    /// Gmail over IMAP syncs only All Mail, and a message moved to Trash or
-    /// Spam leaves All Mail while Gmail can still restore it. A validity
-    /// reset there must not turn that absence into a delete.
-    #[tokio::test]
-    async fn a_gmail_all_mail_reset_sends_no_listing() {
-        let factory = MockImapSessionFactory::new(
-            mailbox_info(2, 2, 1),
-            vec![],
-            vec![
-                folder_info("INBOX", Some("\\Inbox")),
-                folder_info("All Mail", Some("\\All")),
-            ],
-        )
-        .with_capabilities(ImapCapabilities {
-            x_gm_ext_1: true,
-            ..Default::default()
-        })
-        .with_mailbox_fetches(
-            "All Mail",
-            vec![vec![make_fetched_message(
-                1,
-                "Still here",
-                "alice@example.com",
-            )]],
-        )
-        .with_uid_search("All Mail", vec![1]);
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let batch = provider
-            .sync_messages(&imap_cursor_mailboxes(vec![ImapMailboxCursor {
-                mailbox: "All Mail".to_string(),
-                uid_validity: 1,
-                uid_next: 9,
-                highest_modseq: None,
-            }]))
-            .await
-            .unwrap();
-
-        assert_eq!(batch.upserted.len(), 1);
-        assert!(batch.complete_listings.is_empty());
-        assert!(batch.deleted_provider_ids.is_empty());
-    }
-
-    #[tokio::test]
-    async fn an_unchanged_uid_validity_reissues_nothing() {
-        let factory = MockImapSessionFactory::new(
-            mailbox_info(1, 6, 2),
-            vec![vec![make_fetched_message(5, "New", "alice@example.com")]],
-            vec![],
-        )
-        .with_uid_search("INBOX", vec![1, 2, 5]);
-        let provider =
-            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-
-        let batch = provider.sync_messages(&imap_cursor(1, 5)).await.unwrap();
-
-        assert!(batch.reissued_provider_ids.is_empty());
-        assert!(batch.complete_listings.is_empty());
     }
 
     #[tokio::test]

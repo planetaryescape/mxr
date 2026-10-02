@@ -2126,35 +2126,11 @@ pub struct SyncedMessage {
     pub body: MessageBody,
 }
 
-/// Every provider id the server holds in one scope, at the time of a sync.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct ProviderIdListing {
-    pub scope: String,
-    pub provider_ids: Vec<String>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SyncBatch {
     pub upserted: Vec<SyncedMessage>,
     pub deleted_provider_ids: Vec<String>,
-    /// Provider ids that may now name a different message than the one
-    /// stored under them: IMAP UIDs refetched after a `UIDVALIDITY` change.
-    /// For each upsert among them, the sync engine compares the stored
-    /// message with the incoming one and, when they differ, deletes the
-    /// stored row and everything derived from it before inserting the new
-    /// message, instead of overwriting it in place.
-    #[serde(default)]
-    pub reissued_provider_ids: Vec<String>,
-    /// Complete server listings of one scope each (an IMAP folder after a
-    /// `UIDVALIDITY` change). The engine deletes every stored message the
-    /// provider places in that scope (`MailSyncProvider::provider_id_scope`)
-    /// that is neither listed nor upserted in this batch. A provider sends
-    /// a listing only when it is complete; a partial one would delete live
-    /// mail.
-    #[serde(default)]
-    pub complete_listings: Vec<ProviderIdListing>,
     pub label_changes: Vec<LabelChange>,
     pub next_cursor: SyncCursor,
     /// True iff the provider deliberately truncated this batch and

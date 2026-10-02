@@ -4357,8 +4357,6 @@ mod mutation_dedup_invariant_tests {
             Ok(SyncBatch {
                 upserted: Vec::new(),
                 deleted_provider_ids: Vec::new(),
-                reissued_provider_ids: vec![],
-                complete_listings: vec![],
                 label_changes: Vec::new(),
                 next_cursor: SyncCursor::empty(),
                 has_more: false,
@@ -4520,8 +4518,6 @@ mod safety_context_wiring_tests {
             Ok(SyncBatch {
                 upserted: Vec::new(),
                 deleted_provider_ids: Vec::new(),
-                reissued_provider_ids: vec![],
-                complete_listings: vec![],
                 label_changes: Vec::new(),
                 next_cursor: SyncCursor::empty(),
                 has_more: false,
@@ -5000,8 +4996,6 @@ mod sent_append_tests {
             Ok(SyncBatch {
                 upserted: Vec::new(),
                 deleted_provider_ids: Vec::new(),
-                reissued_provider_ids: vec![],
-                complete_listings: vec![],
                 label_changes: Vec::new(),
                 next_cursor: SyncCursor::empty(),
                 has_more: false,

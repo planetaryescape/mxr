@@ -2290,8 +2290,6 @@ mod tests {
             Ok(SyncBatch {
                 upserted: Vec::new(),
                 deleted_provider_ids: Vec::new(),
-                reissued_provider_ids: vec![],
-                complete_listings: vec![],
                 label_changes: Vec::new(),
                 next_cursor: cursor.clone(),
                 has_more: false,
@@ -2380,8 +2378,6 @@ mod tests {
             Ok(SyncBatch {
                 upserted: Vec::new(),
                 deleted_provider_ids: Vec::new(),
-                reissued_provider_ids: vec![],
-                complete_listings: vec![],
                 label_changes: Vec::new(),
                 next_cursor: cursor.clone(),
                 has_more: false,
@@ -2837,8 +2833,6 @@ mod tests {
             Ok(SyncBatch {
                 upserted,
                 deleted_provider_ids: Vec::new(),
-                reissued_provider_ids: vec![],
-                complete_listings: vec![],
                 label_changes: Vec::new(),
                 next_cursor,
                 has_more,
@@ -2901,8 +2895,6 @@ mod tests {
             Ok(SyncBatch {
                 upserted: Vec::new(),
                 deleted_provider_ids: self.deleted_provider_ids.clone(),
-                reissued_provider_ids: vec![],
-                complete_listings: vec![],
                 label_changes: Vec::new(),
                 next_cursor: SyncCursor::from_bytes(b"done".to_vec()),
                 has_more: false,

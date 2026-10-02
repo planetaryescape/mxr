@@ -434,60 +434,6 @@ impl SyncEngine {
                 });
             }
 
-            // A reissued provider id (an IMAP UID refetched after a
-            // UIDVALIDITY change) can name a different message than the row
-            // stored under it. Overwriting that row in place would hand the
-            // new message the old one's attachments, flags and derived data,
-            // so a stored row that is not the same message is deleted with
-            // everything derived from it, and the new message is stored
-            // fresh under a new id. The same message keeps its row and the
-            // local state on it.
-            if !batch.reissued_provider_ids.is_empty() {
-                let reissued: HashSet<&String> = batch.reissued_provider_ids.iter().collect();
-                let candidates = upserts
-                    .iter()
-                    .map(|upsert| upsert.envelope.provider_id.clone())
-                    .filter(|provider_id| reissued.contains(provider_id))
-                    .collect::<Vec<_>>();
-                let stored = self
-                    .store
-                    .stored_message_identities(account_id, &candidates)
-                    .await
-                    .map_err(|e| MxrError::Store(e.to_string()))?;
-                let mut replaced = Vec::new();
-                for upsert in &mut upserts {
-                    let Some(identity) = stored.get(&upsert.envelope.provider_id) else {
-                        continue;
-                    };
-                    if identity.is_same_message(&upsert.envelope) {
-                        continue;
-                    }
-                    replaced.push(upsert.envelope.provider_id.clone());
-                    let fresh = MessageId::new();
-                    upsert.envelope.id = fresh.clone();
-                    upsert.body.set_message_id(fresh);
-                }
-                if !replaced.is_empty() {
-                    tracing::info!(
-                        account = %account_id,
-                        replaced = replaced.len(),
-                        "reissued provider ids now name different messages; replacing them"
-                    );
-                    let batch_deleted = self
-                        .store
-                        .delete_messages_and_derived(account_id, &replaced)
-                        .await
-                        .map_err(|e| MxrError::Store(e.to_string()))?;
-                    touched_threads.extend(batch_deleted.thread_ids.iter().cloned());
-                    lexical_batch
-                        .removed_message_ids
-                        .extend(batch_deleted.message_ids.iter().cloned());
-                    deleted.message_ids.extend(batch_deleted.message_ids);
-                    deleted.thread_ids.extend(batch_deleted.thread_ids);
-                    deleted.counterparties.extend(batch_deleted.counterparties);
-                }
-            }
-
             // A message the provider moved between threads leaves its old
             // thread behind. The upsert overwrites `thread_id`, so the store
             // is the only place that still knows which thread was vacated —
@@ -543,49 +489,6 @@ impl SyncEngine {
                     envelope: upsert.envelope,
                     body: Some(upsert.body),
                 });
-            }
-
-            // A complete server listing of a scope: whatever the store holds
-            // in that scope and the server does not list is gone. Diffed
-            // against the stored rows themselves, so rows the provider's own
-            // bookkeeping lost track of are caught too.
-            if !batch.complete_listings.is_empty() {
-                let stored = self
-                    .store
-                    .list_provider_ids_by_account(account_id)
-                    .await
-                    .map_err(|e| MxrError::Store(e.to_string()))?;
-                // Only this page's upserts are in the batch so far.
-                let upserted: HashSet<&str> = lexical_batch
-                    .entries
-                    .iter()
-                    .map(|entry| entry.envelope.provider_id.as_str())
-                    .collect();
-                for listing in &batch.complete_listings {
-                    let listed: HashSet<&str> =
-                        listing.provider_ids.iter().map(String::as_str).collect();
-                    let gone = stored
-                        .iter()
-                        .filter(|id| {
-                            provider.provider_id_scope(id).as_deref()
-                                == Some(listing.scope.as_str())
-                        })
-                        .filter(|id| {
-                            !listed.contains(id.as_str()) && !upserted.contains(id.as_str())
-                        })
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    if !gone.is_empty() {
-                        tracing::warn!(
-                            account = %account_id,
-                            scope = %listing.scope,
-                            listed = listing.provider_ids.len(),
-                            removed = gone.len(),
-                            "server listing no longer holds stored mail; removing it"
-                        );
-                    }
-                    batch.deleted_provider_ids.extend(gone);
-                }
             }
 
             if !batch.deleted_provider_ids.is_empty() {

@@ -390,8 +390,6 @@ impl GmailProvider {
         Ok(SyncBatch {
             upserted: all_messages,
             deleted_provider_ids: vec![],
-            reissued_provider_ids: vec![],
-            complete_listings: vec![],
             label_changes: vec![],
             next_cursor,
             has_more,
@@ -422,8 +420,6 @@ impl GmailProvider {
             return Ok(SyncBatch {
                 upserted: vec![],
                 deleted_provider_ids: vec![],
-                reissued_provider_ids: vec![],
-                complete_listings: vec![],
                 label_changes: vec![],
                 next_cursor: GmailCursor::delta(history_id).encode(),
                 has_more: false,
@@ -453,8 +449,6 @@ impl GmailProvider {
         Ok(SyncBatch {
             upserted: synced,
             deleted_provider_ids: vec![],
-            reissued_provider_ids: vec![],
-            complete_listings: vec![],
             label_changes: vec![],
             next_cursor,
             has_more,
@@ -567,8 +561,6 @@ impl GmailProvider {
         Ok(SyncBatch {
             upserted: synced,
             deleted_provider_ids: deleted_ids,
-            reissued_provider_ids: vec![],
-            complete_listings: vec![],
             label_changes,
             next_cursor: GmailCursor::delta(latest_history_id).encode(),
             has_more: false,

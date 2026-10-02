@@ -414,18 +414,6 @@ impl super::Store {
             .collect()
     }
 
-    /// Every stored provider id of the account. Unchecked query, as
-    /// `list_message_ids_by_account`.
-    pub async fn list_provider_ids_by_account(
-        &self,
-        account_id: &AccountId,
-    ) -> Result<Vec<String>, sqlx::Error> {
-        sqlx::query_scalar("SELECT provider_id FROM messages WHERE account_id = ?1")
-            .bind(account_id.as_str())
-            .fetch_all(self.reader())
-            .await
-    }
-
     /// Message ids with `date >= since`, newest first, across all accounts.
     /// Backs the deliveries backfill scan. Unchecked query (like
     /// `list_message_ids_by_account`) to avoid a `.sqlx` regen for an internal

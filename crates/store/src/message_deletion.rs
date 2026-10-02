@@ -257,70 +257,7 @@ impl super::Store {
     }
 }
 
-/// What identifies a stored message apart from its provider id: enough to
-/// tell whether a reissued provider id still names the same message.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StoredMessageIdentity {
-    pub message_id_header: Option<String>,
-    pub date: i64,
-    pub from_email: String,
-    pub subject: String,
-}
-
-impl StoredMessageIdentity {
-    /// Whether `envelope` is the message stored under its provider id. The
-    /// RFC 5322 Message-ID decides when both sides have one; otherwise the
-    /// date, sender and subject together do.
-    pub fn is_same_message(&self, envelope: &mxr_core::types::Envelope) -> bool {
-        fn normalized(header: &str) -> String {
-            header
-                .trim()
-                .trim_start_matches('<')
-                .trim_end_matches('>')
-                .to_ascii_lowercase()
-        }
-        match (&self.message_id_header, &envelope.message_id_header) {
-            (Some(stored), Some(incoming)) => normalized(stored) == normalized(incoming),
-            _ => {
-                self.date == envelope.date.timestamp()
-                    && self.from_email.eq_ignore_ascii_case(&envelope.from.email)
-                    && self.subject == envelope.subject
-            }
-        }
-    }
-}
-
 impl super::Store {
-    /// The stored identity of each of these provider ids that has a row.
-    pub async fn stored_message_identities(
-        &self,
-        account_id: &AccountId,
-        provider_ids: &[String],
-    ) -> Result<std::collections::HashMap<String, StoredMessageIdentity>, sqlx::Error> {
-        let mut identities = std::collections::HashMap::new();
-        for chunk in provider_ids.chunks(crate::SQLITE_BIND_CHUNK) {
-            let rows = provider_id_query(
-                "SELECT provider_id, message_id_header, date, from_email, subject FROM messages",
-                account_id,
-                chunk,
-            )
-            .fetch_all(self.reader())
-            .await?;
-            for row in rows {
-                identities.insert(
-                    row.get::<String, _>("provider_id"),
-                    StoredMessageIdentity {
-                        message_id_header: row.get("message_id_header"),
-                        date: row.get("date"),
-                        from_email: row.get("from_email"),
-                        subject: row.get("subject"),
-                    },
-                );
-            }
-        }
-        Ok(identities)
-    }
-
     /// Deleted messages whose cleanup outside SQLite (semantic index,
     /// attachment files) is due: not yet confirmed, not waiting out a retry
     /// backoff, and not given up on. Oldest first.

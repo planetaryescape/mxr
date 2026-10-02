@@ -35,13 +35,6 @@ pub trait MailSyncProvider: Send + Sync {
         false
     }
 
-    /// The scope a stored provider id belongs to, matching the `scope` of
-    /// the `ProviderIdListing`s this provider sends. `None` (the default)
-    /// keeps the id out of every listing's cleanup.
-    fn provider_id_scope(&self, _provider_id: &str) -> Option<String> {
-        None
-    }
-
     async fn authenticate(&mut self) -> Result<()>;
     async fn refresh_auth(&mut self) -> Result<()>;
 

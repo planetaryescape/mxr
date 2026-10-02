@@ -1,8 +1,10 @@
 # Deleting an email leaves vectors, gists, commitments and files behind
 
-Status: fixes 1 to 5 done on branch `fix/delete-derived` (based on
-`origin/main` `3da0c119`); fix 6 done for IMAP `UIDVALIDITY`, not for Gmail
-history expiry. Fix 7 (secure delete) not started. Audited at `37f6ff61`
+Status: fixes 1 to 5 done on branch `fix/delete-derived`. Fix 6 (reconcile
+after a full resync) is not done: Gmail history expiry is designed only,
+and IMAP `UIDVALIDITY` reconciliation was built and then pulled out of this
+work after four review rounds found data-loss cases; it is tracked in
+[imap-uidvalidity-reconciliation.md](imap-uidvalidity-reconciliation.md). Fix 7 (secure delete) not started. Audited at `37f6ff61`
 (branch `docs/email-modes`). BK's real DB has 0 orphan semantic chunks, so
 the SQLite cascade works today; the gaps were everything the cascade cannot
 reach.
@@ -16,7 +18,7 @@ reach.
 | 3. Attachment files | Done. `<attachment_dir>/<id>/` and `<attachment_dir>/_html_assets/<id>/` are removed after the delete commits; I/O errors are logged | `crates/daemon/src/message_deletion.rs` |
 | 4. Transactional delete | Done without a migration. `delete_messages_and_derived` replaces `delete_messages_by_provider_ids`; the derived tables are keyed by thread, contact or JSON, which a foreign key cannot follow, so one transaction clears them explicitly. The rule-applied event now carries its `message_id`. Contacts with no mail left are pruned on refresh, with their relationship summary and style | `crates/store/src/message_deletion.rs`, `crates/store/src/contacts.rs` |
 | 5. Trash and Spam out by default | Done. Semantic hits in Trash or Spam are dropped unless the query has a positive `in:trash`, `in:spam`, `in:anywhere` or the label. `mxr ask` never sends them to the model; the decision log rebuild skips threads with only Trash or Spam mail. Thread gist batches and delivery scans already skipped them | `crates/daemon/src/handler/diagnostics/search_execute.rs`, `archive_ask.rs`, `decisions_extract.rs` |
-| 6. Reconcile after full resync | IMAP `UIDVALIDITY`: done. Gmail history expiry: not done, see below | `crates/provider-imap/src/lib.rs` |
+| 6. Reconcile after full resync | Not done. IMAP `UIDVALIDITY`: removed from this work, see [imap-uidvalidity-reconciliation.md](imap-uidvalidity-reconciliation.md). Gmail history expiry: designed only, see below | none |
 | Schema test | Done. Fails for any table that refers to messages (a foreign key, a `*message_id*`, `*msg_id*` or `thread_id` column) with neither a cascading foreign key nor an entry in `MESSAGE_DELETION_RULES` | `crates/store/src/message_deletion.rs` |
 
 ### Decisions BK made
@@ -68,12 +70,8 @@ have been checked on a real mailbox.
   delete's own transaction (and by account purge), and drained after
   every delete and at daemon start, so a failed pass or a crash no longer
   leaks semantic entries or attachment files.
-- A reissued IMAP UID (after `UIDVALIDITY` changes) is compared with the
-  stored row by Message-ID, or by date, sender and subject; a different
-  email replaces the row and its derived data under a new id, and the
-  same email keeps its row and local state. Gmail All Mail is covered for
-  delta passes; a validity change in the middle of an All Mail backfill
-  restarts the backfill without that check or a listing.
+- IMAP `UIDVALIDITY` reconciliation (stale rows, reused UIDs) was
+  removed; see [imap-uidvalidity-reconciliation.md](imap-uidvalidity-reconciliation.md).
 - Contacts are pruned only when no message from or to the address exists,
   checked in the prune's write transaction; the aggregate only nominates.
 - The relationship summaries of everyone a delete touches are dropped and
@@ -97,9 +95,6 @@ have been checked on a real mailbox.
 - Decisions whose cited mail was deleted before evidence tracking are
   removed by startup maintenance (count logged; decisions citing nothing
   are kept).
-- After a `UIDVALIDITY` change the provider sends the folder's complete
-  `UID SEARCH ALL` listing and the engine removes stored rows of that
-  folder outside it, so rows above a floored cursor are caught.
 - A cleanup whose files could not be removed stays owed with a backoff
   (one minute doubling to six hours, ten attempts), and owed cleanups are
   drained every ten minutes.
@@ -109,12 +104,20 @@ have been checked on a real mailbox.
 
 ### Round-3 review follow-ups
 
-- An IMAP cleanup listing is sent only when `UID SEARCH ALL` matches
-  `EXISTS` from the same SELECT, never for Gmail All Mail (Trash and Spam
-  are outside it but recoverable), and not when another folder holds the
-  old UIDVALIDITY or a folder's validity is unknown (a rename).
 - A synced message cancels cleanup owed to its id, and the cleanup skips
-  ids that exist in messages again.
+  ids that exist in messages again. Cleanup holds the store's
+  message-cleanup lock from that check through the removal, and sync takes
+  the same lock while it stores messages, so a revived id cannot slip in
+  between.
+
+### Round-4 scope cut
+
+The IMAP `UIDVALIDITY` reconciliation (listing-based deletion, reissued-UID
+replacement, the sync engine's scope cleanup) kept producing data-loss
+findings and was removed. On a reset mxr keeps main's behaviour and leaks
+rather than deletes. The problem, every finding a design must handle and a
+sketch are in [imap-uidvalidity-reconciliation.md](imap-uidvalidity-reconciliation.md);
+the code is on the local branch `wip/imap-uidvalidity-reconcile`.
 - A query too large to scope keeps the Trash and Spam exclusions unless
   every alternative asks for them.
 

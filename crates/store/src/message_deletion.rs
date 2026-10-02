@@ -62,6 +62,12 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
         ),
     ),
     (
+        "search_reindex_pending",
+        MessageDeletionRule::KeptNoText(
+            "ids only; the next reindex drops a deleted message from search and clears its row",
+        ),
+    ),
+    (
         "drafts",
         MessageDeletionRule::KeptUserMade(
             "the user's own writing; `message_id_header` is the draft's own header",

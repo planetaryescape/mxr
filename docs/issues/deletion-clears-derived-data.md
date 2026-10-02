@@ -83,7 +83,7 @@ have been checked on a real mailbox.
   (`mxr summarize`) has the same race and is not guarded yet.
 - Whole-thread model input leaves Trash and Spam messages out unless the
   whole thread is in them; drafting keeps the message being answered.
-- Decision evidence is indexed in `decision_evidence` (migration 57).
+- Decision evidence is indexed in `decision_evidence` (migration 58).
 - Lexical search and counts leave Trash and Spam out unless the query
   asks for them, as Gmail does. The Tantivy fallback for queries the
   parser rejects does not apply the default.

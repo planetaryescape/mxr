@@ -943,9 +943,9 @@ const MIGRATIONS: &[Migration] = &[
         )),
     },
     Migration {
-        version: 57,
+        version: 58,
         name: "message_deletion",
-        kind: MigrationKind::Sql(include_str!("../migrations/057_message_deletion.sql")),
+        kind: MigrationKind::Sql(include_str!("../migrations/058_message_deletion.sql")),
     },
 ];
 

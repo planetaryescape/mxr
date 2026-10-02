@@ -9,6 +9,7 @@
 //! redirect fails the domain check on purpose: the domain shown must be the
 //! one the browser lands on first.
 
+use crate::text::floor_char_boundary;
 use crate::TodoKind;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -183,13 +184,6 @@ fn last_clause(before: &str) -> String {
         .find(|part| !part.trim().is_empty())
         .unwrap_or(before);
     clause.trim().trim_end_matches(':').trim().to_string()
-}
-
-fn floor_char_boundary(text: &str, mut index: usize) -> usize {
-    while index > 0 && !text.is_char_boundary(index) {
-        index -= 1;
-    }
-    index
 }
 
 fn decode_entities(value: &str) -> String {

@@ -3,7 +3,7 @@
 //! invites waiting for an answer. Rows themselves live in `todos.rs`.
 
 use crate::todos::{row_to_todo, TodoRecord, COLUMNS};
-use crate::{decode_id, decode_optional_timestamp, decode_timestamp};
+use crate::{decode_id, decode_optional_timestamp, decode_timestamp, in_list};
 use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use sqlx::sqlite::SqliteRow;
@@ -28,12 +28,10 @@ pub struct TodoScanRow {
 /// A first run's progress for one account.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TodoRun {
-    pub account_id: AccountId,
     pub rules_version: i64,
     /// The last message classified, newest first: `(date, id)`.
     pub cursor: Option<(DateTime<Utc>, MessageId)>,
     pub scanned: i64,
-    pub started_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
 }
 
@@ -71,18 +69,13 @@ fn row_to_scan_row(row: &SqliteRow) -> Result<TodoScanRow, sqlx::Error> {
     })
 }
 
-fn in_list(count: usize) -> String {
-    vec!["?"; count].join(", ")
-}
-
 impl super::Store {
     pub async fn get_todo_run(
         &self,
         account_id: &AccountId,
     ) -> Result<Option<TodoRun>, sqlx::Error> {
         let row = sqlx::query(
-            "SELECT account_id, rules_version, cursor_date, cursor_message_id, scanned,
-                    started_at, completed_at
+            "SELECT rules_version, cursor_date, cursor_message_id, scanned, completed_at
              FROM todo_runs WHERE account_id = ?",
         )
         .bind(account_id.as_str())
@@ -96,11 +89,9 @@ impl super::Store {
                 _ => None,
             };
             Ok(TodoRun {
-                account_id: decode_id(&row.try_get::<String, _>("account_id")?)?,
                 rules_version: row.try_get("rules_version")?,
                 cursor,
                 scanned: row.try_get("scanned")?,
-                started_at: decode_timestamp(row.try_get("started_at")?)?,
                 completed_at: decode_optional_timestamp(row.try_get("completed_at")?)?,
             })
         })

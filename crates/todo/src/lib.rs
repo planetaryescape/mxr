@@ -35,6 +35,7 @@ pub mod money;
 pub mod pass;
 pub mod provenance;
 pub mod schema_org;
+pub mod text;
 pub mod timing;
 
 use serde::{Deserialize, Serialize};
@@ -112,12 +113,6 @@ impl TodoKind {
             Self::Promise => "send",
             Self::Other => "do",
         }
-    }
-
-    /// Bills and promises stay "was due" until the user acts (D117); every
-    /// other detected kind lets go once its window closes.
-    pub fn expires_while_open(self) -> bool {
-        !matches!(self, Self::Bill | Self::PaymentFailed | Self::Promise)
     }
 }
 

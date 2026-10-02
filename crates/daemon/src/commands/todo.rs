@@ -15,6 +15,18 @@ use mxr_protocol::{
 };
 use std::fmt::Write as _;
 
+/// The payload of one `ResponseData` variant, or the daemon's error.
+macro_rules! expect_data {
+    ($response:expr, $variant:ident, $field:ident) => {
+        expect_response($response, |response| match response {
+            Response::Ok {
+                data: ResponseData::$variant { $field },
+            } => Some($field),
+            _ => None,
+        })?
+    };
+}
+
 pub async fn run(
     action: Option<TodoAction>,
     account: Option<String>,
@@ -44,15 +56,11 @@ pub async fn run(
             }
         }
         TodoAction::Why { todo_id } => {
-            let todo = expect_response(
+            let todo = expect_data!(
                 client.request(Request::GetTodo { todo_id }).await?,
-                |response| match response {
-                    Response::Ok {
-                        data: ResponseData::Todo { todo },
-                    } => Some(todo),
-                    _ => None,
-                },
-            )?;
+                Todo,
+                todo
+            );
             match format {
                 OutputFormat::Json | OutputFormat::Jsonl => print_json(&todo, format)?,
                 _ => print!("{}", why_text(&todo)),
@@ -201,20 +209,16 @@ async fn runway(
     account_id: Option<AccountId>,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
-    let runway = expect_response(
+    let runway = expect_data!(
         client
             .request(Request::GetTodoRunway {
                 account_id,
                 mark_seen: true,
             })
             .await?,
-        |response| match response {
-            Response::Ok {
-                data: ResponseData::TodoRunway { runway },
-            } => Some(runway),
-            _ => None,
-        },
-    )?;
+        TodoRunway,
+        runway
+    );
     match format {
         OutputFormat::Json | OutputFormat::Jsonl => print_json(&runway, format),
         OutputFormat::Ids => {
@@ -241,7 +245,7 @@ async fn list_state(
     limit: u32,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
-    let todos = expect_response(
+    let todos = expect_data!(
         client
             .request(Request::ListTodos {
                 account_id,
@@ -249,13 +253,9 @@ async fn list_state(
                 limit,
             })
             .await?,
-        |response| match response {
-            Response::Ok {
-                data: ResponseData::Todos { todos },
-            } => Some(todos),
-            _ => None,
-        },
-    )?;
+        Todos,
+        todos
+    );
     match format {
         OutputFormat::Json => print_json(&todos, format),
         OutputFormat::Jsonl => {
@@ -288,36 +288,28 @@ async fn catchup(
     account_id: Option<AccountId>,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
-    let catchup = expect_response(
+    let catchup = expect_data!(
         client
             .request(Request::GetTodoCatchup {
                 account_id: account_id.clone(),
             })
             .await?,
-        |response| match response {
-            Response::Ok {
-                data: ResponseData::TodoCatchup { catchup },
-            } => Some(catchup),
-            _ => None,
-        },
-    )?;
+        TodoCatchup,
+        catchup
+    );
     if matches!(format, OutputFormat::Json | OutputFormat::Jsonl) {
         return print_json(&catchup, format);
     }
-    let runway = expect_response(
+    let runway = expect_data!(
         client
             .request(Request::GetTodoRunway {
                 account_id,
                 mark_seen: false,
             })
             .await?,
-        |response| match response {
-            Response::Ok {
-                data: ResponseData::TodoRunway { runway },
-            } => Some(runway),
-            _ => None,
-        },
-    )?;
+        TodoRunway,
+        runway
+    );
     print!("{}", catchup_text(&catchup, &runway));
     Ok(())
 }
@@ -338,12 +330,11 @@ async fn set_state(
 }
 
 async fn change(client: &mut IpcClient, request: Request) -> anyhow::Result<TodoChangeData> {
-    expect_response(client.request(request).await?, |response| match response {
-        Response::Ok {
-            data: ResponseData::TodoChange { change },
-        } => Some(change),
-        _ => None,
-    })
+    Ok(expect_data!(
+        client.request(request).await?,
+        TodoChange,
+        change
+    ))
 }
 
 fn print_change(change: TodoChangeData, format: OutputFormat) -> anyhow::Result<()> {

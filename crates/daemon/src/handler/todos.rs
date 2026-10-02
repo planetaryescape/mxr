@@ -155,7 +155,7 @@ pub(super) async fn runway_at(
         .store
         .list_runway_todos(account_id, start_of_week(now, &Local))
         .await?;
-    let catchup_count = state.store.list_catchup_todos(account_id).await?.len();
+    let catchup_count = state.store.count_catchup_todos(account_id).await?;
     let last_seen = state.store.mode_last_viewed(MODE).await?;
     let expired_since = state
         .store
@@ -499,7 +499,7 @@ fn apply_edits(
                         "A to-do needs a title.".to_string(),
                     ));
                 }
-                record.title = mxr_todo::detect::clip(value, 120);
+                record.title = mxr_todo::text::clip(value, 120);
                 fields.set("title", yours);
             }
             "due" | "due_at" => {
@@ -527,8 +527,7 @@ fn apply_edits(
                 fields.set("amount", yours);
             }
             "counterparty" | "who" => {
-                record.counterparty =
-                    (!value.is_empty()).then(|| mxr_todo::detect::clip(value, 60));
+                record.counterparty = (!value.is_empty()).then(|| mxr_todo::text::clip(value, 60));
                 fields.set("counterparty", yours);
             }
             "kind" => {
@@ -671,7 +670,7 @@ pub(super) async fn create(
             .unwrap_or_else(|| kind.default_verb())
             .to_ascii_lowercase(),
         doc_type: None,
-        title: mxr_todo::detect::clip(title, 120),
+        title: mxr_todo::text::clip(title, 120),
         counterparty,
         sender_domain: mxr_todo::action_link::email_domain(&row.from_email),
         amount_minor: None,

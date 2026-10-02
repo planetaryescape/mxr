@@ -216,9 +216,11 @@ impl super::Store {
             // A detected to-do goes with its email. One the user made or
             // edited is theirs and stays, without the words it copied from
             // the email; the foreign keys then clear its pointers to it.
-            "DELETE FROM todos WHERE account_id = ?1
-               AND source_message_id IN (SELECT id FROM temp.mxr_deleting)
-               AND user_edited = 0 AND origin NOT IN ('manual', 'handoff')",
+            concat!(
+                "DELETE FROM todos WHERE account_id = ?1
+                   AND source_message_id IN (SELECT id FROM temp.mxr_deleting) AND ",
+                todo_untouched_sql!("")
+            ),
             "UPDATE todos SET due_words = NULL, action_url = NULL, action_gate = NULL,
                     looks_done_reason = NULL, reason = 'Its email was deleted.',
                     field_sources = COALESCE(

@@ -69,14 +69,6 @@ fn is_true(value: &bool) -> bool {
 }
 
 impl FieldProvenance {
-    pub fn new(source: FieldSource) -> Self {
-        Self {
-            source,
-            checked: true,
-            evidence: None,
-        }
-    }
-
     pub fn with_evidence(source: FieldSource, evidence: impl Into<String>) -> Self {
         Self {
             source,
@@ -104,12 +96,6 @@ impl FieldSources {
 
     pub fn get(&self, field: &str) -> Option<&FieldProvenance> {
         self.0.get(field)
-    }
-
-    pub fn any_user(&self) -> bool {
-        self.0
-            .values()
-            .any(|provenance| provenance.source == FieldSource::User)
     }
 
     pub fn to_json(&self) -> String {

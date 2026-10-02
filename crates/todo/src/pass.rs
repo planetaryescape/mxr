@@ -14,8 +14,9 @@
 
 use crate::action_link::{dmarc_passes, registrable_domain, Gate};
 use crate::complete::{looks_done, LaterMessage, OpenRow};
-use crate::detect::{clip, detect, from_invite, Detection, MessageInput, Origin};
+use crate::detect::{detect, from_invite, Detection, MessageInput, Origin};
 use crate::provenance::{FieldProvenance, FieldSource, FieldSources};
+use crate::text::clip;
 use crate::timing::{lead_time, place, window, Placement, TimingInput};
 use crate::{TodoKind, RULES_VERSION};
 use chrono::{DateTime, TimeZone, Utc};
@@ -183,10 +184,15 @@ where
             });
         };
         let cursor = (last.date, last.id.clone());
+        let mut page_summary = PassSummary::default();
         for row in &page {
-            summary.add(&classify(store, cfg, row, true).await?);
+            page_summary.add(&classify(store, cfg, row, true).await?);
         }
-        summary.catchup_overflow += store.trim_todo_catchup(cfg.catchup_max, cfg.now).await?;
+        if page_summary.catchup > 0 {
+            page_summary.catchup_overflow +=
+                store.trim_todo_catchup(cfg.catchup_max, cfg.now).await?;
+        }
+        summary.add(&page_summary);
         store
             .advance_todo_run(account_id, &cursor, page.len() as i64)
             .await?;
@@ -403,11 +409,7 @@ where
         &cfg.tz,
     );
     let action_gate = gate.and_then(|gate| serde_json::to_string(&gate).ok());
-    let (state, catchup, expired_at, expired_at_birth) = match placement {
-        Placement::Open => (TodoState::Open, None, None, false),
-        Placement::CatchUp => (TodoState::Open, Some(TodoCatchup::Pending), None, false),
-        Placement::ExpiredAtBirth(_) => (TodoState::Expired, None, Some(cfg.now), true),
-    };
+    let (state, catchup, expired_at, expired_at_birth) = placed_state(placement, cfg.now);
     let record = TodoRecord {
         id: new_todo_id(),
         account_id: row.account_id.clone(),
@@ -459,6 +461,18 @@ where
         dismissed_at: None,
     };
     (record, placement)
+}
+
+/// The state columns a new row starts with for its placement.
+fn placed_state(
+    placement: Placement,
+    now: DateTime<Utc>,
+) -> (TodoState, Option<TodoCatchup>, Option<DateTime<Utc>>, bool) {
+    match placement {
+        Placement::Open => (TodoState::Open, None, None, false),
+        Placement::CatchUp => (TodoState::Open, Some(TodoCatchup::Pending), None, false),
+        Placement::ExpiredAtBirth(_) => (TodoState::Expired, None, Some(now), true),
+    }
 }
 
 fn set_timing_fields(
@@ -683,7 +697,7 @@ fn promise_record<Tz: TimeZone>(
         .filter(|name| !name.trim().is_empty())
         .unwrap_or_else(|| promise.email.clone());
     let what = clip(promise.what.trim(), 100);
-    let title = capitalise_first(&what);
+    let title = crate::text::capitalise(&what);
     let mut fields = FieldSources::default();
     fields.set(
         "kind",
@@ -707,11 +721,7 @@ fn promise_record<Tz: TimeZone>(
         );
     }
     set_timing_fields(&mut fields, &timing, &window);
-    let (state, catchup, expired_at, expired_at_birth) = match placement {
-        Placement::Open => (TodoState::Open, None, None, false),
-        Placement::CatchUp => (TodoState::Open, Some(TodoCatchup::Pending), None, false),
-        Placement::ExpiredAtBirth(_) => (TodoState::Expired, None, Some(cfg.now), true),
-    };
+    let (state, catchup, expired_at, expired_at_birth) = placed_state(placement, cfg.now);
     let record = TodoRecord {
         id: new_todo_id(),
         account_id: promise.account_id.clone(),
@@ -761,13 +771,6 @@ fn promise_record<Tz: TimeZone>(
         dismissed_at: None,
     };
     (record, placement)
-}
-
-fn capitalise_first(value: &str) -> String {
-    let mut chars = value.chars();
-    chars.next().map_or_else(String::new, |first| {
-        first.to_uppercase().chain(chars).collect()
-    })
 }
 
 /// What one sweep did.

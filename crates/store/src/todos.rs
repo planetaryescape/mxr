@@ -9,7 +9,7 @@
 //! REPLACE`, and never clear a claim (`surfaced_at`), an expiry or a user
 //! decision.
 
-use crate::{decode_id, decode_optional_timestamp, decode_timestamp};
+use crate::{decode_id, decode_optional_timestamp, decode_timestamp, in_list, in_list_after_first};
 use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use sqlx::sqlite::SqliteRow;
@@ -129,7 +129,8 @@ pub struct TodoRecord {
 
 impl TodoRecord {
     /// Made or touched by the user: never expires, never rewritten by a
-    /// re-run, and survives its email's deletion.
+    /// re-run, and survives its email's deletion. The SQL side is
+    /// `todo_untouched_sql!` (a schedule alone still takes newer evidence).
     pub fn user_touched(&self) -> bool {
         self.user_edited
             || matches!(self.origin.as_str(), "manual" | "handoff")
@@ -165,12 +166,12 @@ pub(crate) const COLUMNS: &str =
 
 /// Open rows the sweep may expire: detected, untouched, and not a bill or
 /// promise, which stay "was due" until the user acts (D117).
-const EXPIRABLE: &str = "state = 'open'
-    AND COALESCE(catchup, '') <> 'pending'
-    AND user_edited = 0
-    AND origin NOT IN ('manual', 'handoff')
-    AND scheduled_for IS NULL
-    AND kind NOT IN ('bill', 'payment_failed', 'promise')";
+const EXPIRABLE: &str = concat!(
+    "state = 'open' AND COALESCE(catchup, '') <> 'pending' AND ",
+    todo_untouched_sql!(""),
+    " AND scheduled_for IS NULL AND kind NOT IN ('bill', 'payment_failed', 'promise')"
+);
+const UNTOUCHED_EXISTING: &str = todo_untouched_sql!("todos.");
 
 fn ts(value: Option<DateTime<Utc>>) -> Option<i64> {
     value.map(|value| value.timestamp())
@@ -234,19 +235,6 @@ pub(crate) fn row_to_todo(row: &SqliteRow) -> Result<TodoRecord, sqlx::Error> {
     })
 }
 
-fn in_list(count: usize) -> String {
-    vec!["?"; count].join(", ")
-}
-
-/// `?2, ?3, ...`: placeholders after a numbered `?1`. SQLite would number a
-/// bare `?` after `?1` the same way, but sqlx counts bare ones from 1.
-fn in_list_after_first(count: usize) -> String {
-    (2..count + 2)
-        .map(|index| format!("?{index}"))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 impl super::Store {
     /// Insert a detected row, or give an existing row with the same dedup
     /// key the newer evidence.
@@ -304,8 +292,7 @@ impl super::Store {
                          AND todos.scheduled_for > excluded.updated_at THEN NULL
                     ELSE todos.scheduled_for END,
                 updated_at = excluded.updated_at
-             WHERE todos.user_edited = 0
-               AND todos.origin NOT IN ('manual', 'handoff')
+             WHERE {UNTOUCHED_EXISTING}
                AND (todos.source_date IS NULL
                     OR excluded.source_date > todos.source_date
                     OR (excluded.source_date = todos.source_date
@@ -486,6 +473,19 @@ impl super::Store {
             .iter()
             .map(row_to_todo)
             .collect()
+    }
+
+    pub async fn count_catchup_todos(
+        &self,
+        account_id: Option<&AccountId>,
+    ) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar(
+            "SELECT COUNT(*) FROM todos
+             WHERE (?1 IS NULL OR account_id = ?1) AND state = 'open' AND catchup = 'pending'",
+        )
+        .bind(account_id.map(AccountId::as_str))
+        .fetch_one(self.reader())
+        .await
     }
 
     pub async fn count_catchup_overflow(

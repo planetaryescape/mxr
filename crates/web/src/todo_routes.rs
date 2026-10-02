@@ -2,6 +2,7 @@
 //! mutations. Thin passthroughs to the daemon, which owns detection, the
 //! bands, the labels and every preview's selection.
 
+use super::place_routes::parse_optional_account;
 use super::routes_v6::{dispatch, passthrough};
 use super::*;
 use mxr_protocol::{TodoCatchupDecisionData, TodoEditData, TodoStateActionData, TodoStateData};
@@ -9,12 +10,6 @@ use mxr_protocol::{TodoCatchupDecisionData, TodoEditData, TodoStateActionData, T
 // Mirrors the protocol's serde default so an omitted limit behaves the same
 // over HTTP as over IPC.
 const DEFAULT_TODO_LIMIT: u32 = 200;
-
-fn parse_optional_account(raw: Option<&str>) -> Result<Option<AccountId>, BridgeError> {
-    raw.filter(|value| !value.is_empty())
-        .map(parse_account_id)
-        .transpose()
-}
 
 fn parse_state(raw: &str) -> Result<TodoStateData, BridgeError> {
     match raw {

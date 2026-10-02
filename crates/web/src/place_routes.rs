@@ -21,7 +21,9 @@ fn parse_place(raw: &str) -> Result<MailPlaceData, BridgeError> {
     }
 }
 
-fn parse_optional_account(raw: Option<&str>) -> Result<Option<AccountId>, BridgeError> {
+/// An optional account from a query or body: empty or missing is every
+/// account.
+pub(crate) fn parse_optional_account(raw: Option<&str>) -> Result<Option<AccountId>, BridgeError> {
     raw.filter(|value| !value.is_empty())
         .map(parse_account_id)
         .transpose()

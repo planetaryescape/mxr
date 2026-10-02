@@ -5,6 +5,7 @@
 //! next to a payment word ("amount due", "total", "balance"), no amount is
 //! picked, because a wrong amount is worse than none.
 
+use crate::text::floor_char_boundary;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -147,13 +148,6 @@ pub fn pick_amount(text: &str) -> Option<Amount> {
         .iter()
         .all(|(_, amount)| amount.minor == first.1.minor && amount.currency == first.1.currency)
         .then(|| first.1.clone())
-}
-
-fn floor_char_boundary(text: &str, mut index: usize) -> usize {
-    while index > 0 && !text.is_char_boundary(index) {
-        index -= 1;
-    }
-    index
 }
 
 #[cfg(test)]

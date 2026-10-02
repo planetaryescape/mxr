@@ -14,6 +14,7 @@ use crate::dates::{end_of_day, find_due, find_lifetime, order_for, trigger_regex
 use crate::money::{pick_amount, Amount};
 use crate::provenance::{FieldProvenance, FieldSource, FieldSources};
 use crate::schema_org::{self, SchemaDate, SchemaTodo};
+use crate::text::{capitalise, clip, lower_first, truncate};
 use crate::TodoKind;
 use chrono::{DateTime, TimeZone, Utc};
 use once_cell::sync::Lazy;
@@ -864,25 +865,6 @@ pub fn counterparty(from_name: Option<&str>, sender_domain: Option<&str>) -> Opt
         .map(|name| clip(&name, 40))
 }
 
-fn capitalise(value: &str) -> String {
-    let mut chars = value.chars();
-    chars.next().map_or_else(String::new, |first| {
-        first.to_uppercase().chain(chars).collect()
-    })
-}
-
-fn lower_first(value: &str) -> String {
-    let mut chars = value.trim().chars();
-    match (chars.next(), chars.clone().next()) {
-        // Keep acronyms ("MOT", "TV licence") as written.
-        (Some(first), Some(second)) if first.is_uppercase() && second.is_uppercase() => {
-            value.trim().to_string()
-        }
-        (Some(first), _) => first.to_lowercase().chain(chars).collect(),
-        (None, _) => String::new(),
-    }
-}
-
 fn short_phrase(value: &str) -> bool {
     let words = value.split_whitespace().count();
     (1..=4).contains(&words) && !value.chars().any(|c| c.is_ascii_digit() || c == '#')
@@ -896,27 +878,6 @@ pub fn normalise(value: &str) -> String {
         .filter(|word| !word.is_empty())
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-fn truncate(value: &str, max: usize) -> &str {
-    if value.len() <= max {
-        return value;
-    }
-    let mut end = max;
-    while !value.is_char_boundary(end) {
-        end -= 1;
-    }
-    &value[..end]
-}
-
-/// At most `max` characters, with an ellipsis when cut.
-pub fn clip(value: &str, max: usize) -> String {
-    let collapsed = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    if collapsed.chars().count() <= max {
-        return collapsed;
-    }
-    let cut: String = collapsed.chars().take(max.saturating_sub(1)).collect();
-    format!("{}…", cut.trim_end())
 }
 
 #[cfg(test)]

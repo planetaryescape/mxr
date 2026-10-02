@@ -393,21 +393,10 @@ pub(super) fn empty_state(never_had_any: bool, next: Option<&TodoNextData>) -> S
         Some(next) => format!(
             "{} Next: {} shows up {}.",
             todo_copy::CLEAR_FOR_NOW,
-            lower_first(&next.title),
+            mxr_todo::text::lower_first(&next.title),
             next.label
         ),
         None => todo_copy::CLEAR_FOR_NOW.to_string(),
-    }
-}
-
-fn lower_first(value: &str) -> String {
-    let mut chars = value.chars();
-    match (chars.next(), chars.clone().next()) {
-        (Some(first), Some(second)) if second.is_uppercase() => {
-            format!("{first}{}", chars.as_str())
-        }
-        (Some(first), _) => first.to_lowercase().chain(chars).collect(),
-        _ => String::new(),
     }
 }
 

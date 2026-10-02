@@ -358,7 +358,8 @@ const BundleRow = memo(function BundleRow({
       className="relative"
     >
       {focused ? (
-        <span aria-hidden className="absolute inset-y-1.5 left-0 w-[2px] rounded-full bg-primary" />
+        // On the highlighted row's edge (the button is inset by mx-2), as on the desk.
+        <span aria-hidden className="absolute inset-y-1.5 left-2 w-[2px] rounded-full bg-primary" />
       ) : null}
       <button
         type="button"
@@ -424,7 +425,7 @@ const MessageRow = memo(function MessageRow({
       )}
     >
       {focused ? (
-        <span aria-hidden className="absolute inset-y-1 -left-2 w-[2px] rounded-full bg-primary" />
+        <span aria-hidden className="absolute inset-y-1 left-0 w-[2px] rounded-full bg-primary" />
       ) : null}
       <button
         type="button"

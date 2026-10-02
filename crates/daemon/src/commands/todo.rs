@@ -7,7 +7,7 @@ use crate::cli::{OutputFormat, TodoAction, TodoStateArg};
 use crate::commands::selection::parse_message_id;
 use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
-use crate::output::{jsonl, resolve_format};
+use crate::output::{jsonl, resolve_format, terminal_block};
 use mxr_core::id::AccountId;
 use mxr_protocol::{
     todo_copy, Request, Response, ResponseData, TodoCatchupData, TodoCatchupDecisionData,
@@ -63,7 +63,7 @@ pub async fn run(
             );
             match format {
                 OutputFormat::Json | OutputFormat::Jsonl => print_json(&todo, format)?,
-                _ => print!("{}", why_text(&todo)),
+                _ => print!("{}", terminal_block(&why_text(&todo))),
             }
             Ok(())
         }
@@ -232,7 +232,7 @@ async fn runway(
             Ok(())
         }
         _ => {
-            print!("{}", runway_text(&runway));
+            print!("{}", terminal_block(&runway_text(&runway)));
             Ok(())
         }
     }
@@ -277,7 +277,7 @@ async fn list_state(
             if state == TodoStateData::Expired && !todos.is_empty() {
                 out.push_str("\nRestore one with `mxr todo undo ID`.\n");
             }
-            print!("{out}");
+            print!("{}", terminal_block(&out));
             Ok(())
         }
     }
@@ -310,7 +310,7 @@ async fn catchup(
         TodoRunway,
         runway
     );
-    print!("{}", catchup_text(&catchup, &runway));
+    print!("{}", terminal_block(&catchup_text(&catchup, &runway)));
     Ok(())
 }
 
@@ -341,7 +341,7 @@ fn print_change(change: TodoChangeData, format: OutputFormat) -> anyhow::Result<
     if matches!(format, OutputFormat::Json | OutputFormat::Jsonl) {
         return print_json(&change, format);
     }
-    print!("{}", change_text(&change));
+    print!("{}", terminal_block(&change_text(&change)));
     Ok(())
 }
 
@@ -651,6 +651,55 @@ mod tests {
         assert_eq!(edit.field, "title");
         assert_eq!(edit.value, "Pay = council tax");
         assert!(parse_edit("due fri").is_err());
+    }
+
+    fn hostile_row() -> TodoData {
+        serde_json::from_value(serde_json::json!({
+            "id": "todo_0123456789abcdef",
+            "account_id": mxr_core::id::AccountId::new(),
+            "kind": "bill",
+            "verb": "pay",
+            "title": "Pay\u{1b}]0;pwned\u{7} council\u{202e}xat\u{1b}[2J",
+            "counterparty": "Eve\u{9b}31m",
+            "state": "open",
+            "origin": "rule",
+            "why": "Here because: \"due\u{2066} 9 October\" (rule).",
+            "when_label": "act by Fri 9 Oct",
+            "overdue": false,
+            "fields": [],
+            "user_touched": false,
+            "created_at": "2026-10-01T09:00:00Z",
+            "updated_at": "2026-10-01T09:00:00Z"
+        }))
+        .expect("a row")
+    }
+
+    #[test]
+    fn mail_text_cannot_send_escape_sequences_or_reorder_the_terminal() {
+        let mut out = String::new();
+        row(&mut out, &hostile_row(), "");
+        let printed = terminal_block(&out);
+        assert!(
+            !printed
+                .chars()
+                .any(|c| matches!(c as u32, 0x00..=0x09 | 0x0B..=0x1F | 0x7F..=0x9F)),
+            "{printed:?}"
+        );
+        assert!(
+            !printed
+                .chars()
+                .any(|c| matches!(c as u32, 0x202A..=0x202E | 0x2066..=0x2069)),
+            "{printed:?}"
+        );
+        assert!(
+            printed.contains("Pay ]0;pwned  councilxat [2J"),
+            "{printed:?}"
+        );
+        assert_eq!(
+            printed.lines().count(),
+            out.lines().count(),
+            "the block keeps its own lines"
+        );
     }
 
     #[test]

@@ -3,7 +3,8 @@ use std::borrow::Cow;
 /// Remove terminal-dangerous control characters from mail-controlled text.
 ///
 /// Keeps `\n` (U+000A) and `\t` (U+0009); strips all other C0 controls
-/// (U+0000–U+001F), DEL (U+007F), and C1 controls (U+0080–U+009F).
+/// (U+0000–U+001F), DEL (U+007F), C1 controls (U+0080–U+009F), and the
+/// bidirectional marks and overrides that reorder text around them.
 /// Printable content — ASCII, wide chars, emoji, and combining marks —
 /// passes through untouched.
 ///
@@ -23,7 +24,9 @@ pub(crate) fn strip_control_chars(input: &str) -> Cow<'_, str> {
             | 0x0E..=0x1F // C0: SO–US
             | 0x7F        // DEL
         )
-    }) || input.chars().any(|c| matches!(c as u32, 0x80..=0x9F));
+    }) || input
+        .chars()
+        .any(|c| matches!(c as u32, 0x80..=0x9F) || is_bidi_control(c));
 
     if !needs_strip {
         return Cow::Borrowed(input);
@@ -38,13 +41,22 @@ pub(crate) fn strip_control_chars(input: &str) -> Cow<'_, str> {
             0x00..=0x1F => false, // C0 controls (excl. tab/LF above)
             0x7F => false,        // DEL
             0x80..=0x9F => false, // C1 controls
-            _ => true,
+            _ => !is_bidi_control(c),
         };
         if keep {
             out.push(c);
         }
     }
     Cow::Owned(out)
+}
+
+/// Marks and overrides that change the display order of the text around
+/// them (the "Trojan Source" characters).
+fn is_bidi_control(c: char) -> bool {
+    matches!(
+        c as u32,
+        0x061C | 0x200E | 0x200F | 0x202A..=0x202E | 0x2066..=0x2069
+    )
 }
 
 /// Mail text on one terminal line: controls stripped, breaks and tabs made
@@ -67,6 +79,14 @@ pub(crate) fn truncate(s: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bidi_overrides_are_stripped() {
+        assert_eq!(
+            strip_control_chars("pay\u{202e}xat\u{2066}!").as_ref(),
+            "payxat!"
+        );
+    }
 
     #[test]
     fn passthrough_plain_text_is_borrowed() {

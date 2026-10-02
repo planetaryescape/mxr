@@ -239,6 +239,8 @@ New SQL timed read-only on the same store (D5):
 | v0.6.44 deferral | Reminder claim guard; possible-reply lookup (`idx_reply_pairs_parent`) | 0.8 ms; 0.8 to 2.3 ms per due reminder |
 | v0.6.44 provenance | 40-fingerprint lookup (scratch copy at the 5,000-row cap) | 0.03 to 0.09 ms |
 | v0.6.42 gists | Cache lookups for 40 conversations | 0.5 to 12 ms |
+| D103 owed default | `ListOwedReplies` as the desk's You owe lane, largest account, in-process on a store copy (`owed_on_a_store_copy`) | 32 to 47 ms for 7 rows; `--all` 0.21 s for 50 of 89,030 |
+| D104 screener queue | Queue without senders you have written to (To, Cc or Bcc, aliases included), largest account, read-only | 0.32 s for 8,044 senders (was 9,195; the old query took about 4.8 s end to end at limit 100) |
 
 ### Independent grade (2026-10-01)
 

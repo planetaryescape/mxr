@@ -100,6 +100,8 @@ test("moving a sender from Reading to People takes it to the desk, and u brings 
     await page.keyboard.press("h");
     await expect(page).toHaveURL(/\/desk$/);
     const row = mailList(page).locator(`[title='${bundle!.sender_email}']`).first();
+    // Decide only once the desk has rendered: isVisible() does not wait.
+    await expect(mailList(page).locator("[data-lane]").first()).toBeVisible();
     if (!(await row.isVisible()))
       await page.locator(`a[href='/desk?lane=${lane}']`).first().click();
     await expect(row).toBeVisible();

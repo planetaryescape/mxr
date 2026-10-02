@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::desk::short_duration;
 use crate::commands::resolve_account;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
@@ -9,6 +10,7 @@ pub async fn run(
     older_than_days: Option<u32>,
     within_days: Option<u32>,
     limit: u32,
+    all: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
@@ -19,6 +21,7 @@ pub async fn run(
             older_than_days,
             within_days,
             limit,
+            all,
         })
         .await?;
     print(resp, resolve_format(format))
@@ -66,11 +69,11 @@ fn print(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                 for row in rows {
                     let from = truncate(row.from_name.as_deref().unwrap_or(&row.from_email), 28);
                     println!(
-                        "{:>5.2}  {:<28}  {:>5.1}d  {:>5.1}d  {:>5.0}  {}",
+                        "{:>5.2}  {:<28}  {:>6}  {:>6}  {:>5.0}  {}",
                         row.overdue_score,
                         from,
-                        row.waiting_days,
-                        row.expected_days,
+                        days_label(row.waiting_days),
+                        days_label(row.expected_days),
                         row.waiting_days,
                         truncate(&row.subject, 60),
                     );
@@ -81,6 +84,12 @@ fn print(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
+}
+
+/// The desk's "40m", "5h", "3d" form: the default list's paces are often
+/// under a day.
+fn days_label(days: f64) -> String {
+    short_duration((days * 86_400.0).round() as i64)
 }
 
 pub(crate) fn truncate(s: &str, max: usize) -> String {

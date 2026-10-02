@@ -33,8 +33,9 @@ function toRow(row: OwedReplyRow): MessageRowView {
 const LENS = { kind: "other" } as const;
 
 /**
- * Threads where the last word is theirs and you haven't answered, most
- * overdue first by your usual cadence with that person (TUI Owed lens).
+ * The desk's You owe lane in full: mail from people you're in conversation
+ * with that you haven't answered, most overdue first by your usual pace
+ * with that person (TUI Owed lens).
  */
 export function OwedRoute() {
   const account = useUiPrefs((s) => s.accountScope);

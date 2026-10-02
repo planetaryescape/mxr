@@ -31,7 +31,9 @@ The `is:` filter has the usual suspects (`unread`, `read`, `starred`,
 - **`is:owed-reply`** (alias `is:owed`) — threads where the latest
   message is inbound, no later outbound exists, the sender isn't a
   newsletter/list, and the screener hasn't denied them. Same result
-  set as `mxr owed`, so the TUI sidebar can show it as a saved search.
+  set as `mxr owed --all`, so the TUI sidebar can show it as a saved
+  search. `mxr owed` without `--all` narrows it to the desk's You owe
+  lane: people you have written to, mail still in the inbox.
 
 Gmail-style operators are parsed by the `mail-query` crate, then executed
 against mxr's local index. The important practical consequence: syntax

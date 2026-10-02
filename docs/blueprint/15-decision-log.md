@@ -677,7 +677,7 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 
 **Considered**: Permanent dismissal; Date-header watermarks.
 
-**Why**: BK asked to "resolve an item… no action for me… don't bring it up again and mark read". New mail is new information, so it returns. Whether Done should be permanent is an open question for BK. (v0.6.40)
+**Why**: BK asked to "resolve an item… no action for me… don't bring it up again and mark read". New mail is new information, so it returns. Kept over permanent dismissal in D105. (v0.6.40)
 
 ## D100: Summaries belong in the list; the reader keeps the ask and the facts
 
@@ -704,3 +704,32 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 - Real-scale budgets (desk, owed, places, list scroll, new SQL) are measured read-only on a real, large mailbox and recorded with date and size.
 
 **Why**: The v1 pass was self-graded, missed whole dimensions (triage at a glance, shared keys), and was scored on demo data. The worst bugs, a 120-second `mxr owed` and an 88k-row owed list, showed only on a real 110k-message mailbox. (2026-09-30)
+
+## D103: `mxr owed` is the desk's You owe lane; `--all` keeps the raw list
+
+**Chosen**: `ListOwedReplies` returns the desk's You owe lane for one account by default, computed by the desk itself (`get_desk_at`), in the lane's order: mail from people, in the inbox, from someone you have written to, with dismissals, snoozes and reply-later times respected. `older_than_days` and `within_days` narrow it by the latest message from them. `expected_days` is your usual reply time to that person (one day without history), and `usual_seconds` says when that history exists. `all: true` (`mxr owed --all`, `?all=true` on the bridge) returns the previous raw list from the store: every thread whose latest inbound has no later outbound, ranked by contact cadence. `is:owed-reply` in search keeps matching the raw set. The CLI, TUI Owed lens and web Owed page all use the default.
+
+**Considered**: Pushing the desk's filters into the owed SQL as a second implementation; leaving `mxr owed` raw and documenting the difference.
+
+**Why**: On a real 110k-message mailbox the raw list held 89,030 threads, mostly automated and archived mail, while the desk showed 7. Two answers to "who do I owe" taught people to distrust both. Reusing the desk computation keeps one rule and costs 32 to 47 ms in process on that mailbox (the raw path took about 210 ms for 50 rows). Scripts that relied on the wide list keep it behind one flag.
+
+**Trade-offs accepted**: The default only sees conversations active in the last 30 days, like the desk, apart from reply-later returns. Older unanswered threads need `--all`. (2026-10-02)
+
+## D104: Allow makes a person, not a conversation; the Screener is for strangers
+
+**Chosen**:
+- Being "in conversation" requires an actual exchange: you sent mail to them (To, Cc or Bcc, per the window or the contacts table), or you replied in that conversation. A screener Allow alone no longer counts.
+- An allowed sender is still a person (`mail_kind::classify`), so their mail from someone you have never written to lands in New from people, and moves to You owe once you write. New from people keeps an allowed sender's mail for the desk's whole 30-day window, not only the 7 days it gives strangers, so Allow never takes a conversation off the desk.
+- The Screener is for strangers: anyone you have written to is never screened. The screener queue and the desk's screener count both leave out senders you have sent mail to (To, Cc or Bcc), where sent mail follows the desk's rule: stored as outbound, or of unknown direction from one of the account's own addresses.
+
+**Considered**: Keeping Allow as an exchange; a separate "trusted" disposition.
+
+**Why**: Allowing someone says "this is a person I want to hear from", not "I owe them". Counting it as a conversation put first-time senders BK had only screened into You owe. The queue listed everyone with no decision, including people BK writes to: 1,131 of 9,195 queued senders on the real mailbox, and the demo's You owe people as "first-time senders". (2026-10-02)
+
+## D105: Done comes back when someone writes again, by choice
+
+**Chosen**: Desk Done keeps D099's semantics. A dismissal lasts until any new message is stored in the conversation, then the conversation returns to its lane.
+
+**Considered**: Permanent dismissal, so a thread marked Done never returns.
+
+**Why**: A new message is new information, and a permanent Done would hide replies that need an answer. To stop hearing from a sender, the screener (Deny, Feed, Paper trail) is the tool, not Done. Settled with D103 and D104 when the open questions in `21-web-experience.md` were closed. (2026-10-02)

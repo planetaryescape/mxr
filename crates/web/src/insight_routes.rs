@@ -33,6 +33,9 @@ struct OwedQuery {
     within_days: Option<u32>,
     #[serde(default)]
     limit: Option<u32>,
+    /// The raw list instead of the desk's You owe lane.
+    #[serde(default)]
+    all: bool,
 }
 
 async fn owed_replies(
@@ -50,6 +53,7 @@ async fn owed_replies(
             older_than_days: query.older_than_days,
             within_days: query.within_days,
             limit: query.limit.unwrap_or(DEFAULT_OWED_REPLY_LIMIT),
+            all: query.all,
         },
     )
     .await?;

@@ -180,9 +180,10 @@ The help modal is context-aware. The command palette exposes mailbox, search, ru
   scan everything you've been ignoring, then bulk-archive what you
   decide to drop.
 - **Pin an Owed lens to your sidebar:** `mxr saved add owed
-  'is:owed-reply'`. The lens lists threads where you're the bottleneck,
-  ranked by overdue score. Same set as `mxr owed`; whichever surface
-  you prefer.
+  'is:owed-reply'`. The lens lists every thread whose latest message is
+  inbound with no reply from you, archived and automated mail included:
+  the same set as `mxr owed --all`. For only the people you owe, use the
+  desk or `mxr owed`.
 - **Switching contexts mid-day:** `g 1`–`g 9` jump straight to your
   saved-search lenses. Set up "VIP", "Today", "Waiting on me", and
   hop between them with one keystroke.

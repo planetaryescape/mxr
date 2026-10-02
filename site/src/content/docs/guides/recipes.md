@@ -122,10 +122,10 @@ mxr owed --format json \
   | head -20
 ```
 
-What you get: top 20 threads where *you* are the bottleneck, ranked by
-`waiting_days / expected_days` (using the recipient's typical cadence;
-default 7 days when no history). Same set as `mxr search
-'is:owed-reply'` — pick whichever surface fits your script.
+What you get: the top 20 replies you owe people (the desk's You owe
+lane), ranked by `waiting_days / expected_days`, where `expected_days` is
+your usual reply time to that person (one day when there's no history).
+`mxr owed --all` is the raw set that `mxr search 'is:owed-reply'` matches.
 
 ### Extract all attachment filenames from a query
 

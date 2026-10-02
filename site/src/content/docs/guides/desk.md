@@ -7,7 +7,7 @@ Open the desk, deal with each row, and put away the ones that need nothing
 from you. The desk shows what needs you instead of what arrived, in four
 lanes:
 
-- **You owe**: someone you are in conversation with wrote last.
+- **You owe**: someone you have written to wrote last.
 - **Due**: a promise you made is coming due.
 - **Waiting on**: you wrote last and they have not answered.
 - **New from people**: a person you have not written to before.
@@ -284,11 +284,15 @@ and the desk stays one step away. The TUI opens on the inbox.
   while the conversation is in the inbox. Undo, or move it back and wait for
   the next message.
 - **Came back after Done:** someone wrote in the conversation again. Done
-  holds only until the next message.
+  holds only until the next message, on purpose: new mail is new
+  information.
 - **Gone after `b`:** you set a time. It comes back then; until then it is
   still in the inbox. `u` right away, or `b` again with a new time, changes
   it.
 - **In You owe instead of New from people:** you have written to them
-  before, or allowed them in the screener.
+  before, or replied in that conversation.
+- **In New from people after you moved them to People:** moving a sender
+  to People makes their mail count as from a person. It lands in You owe
+  once you have written to them.
 
 Next: [answer everyone you owe in one sitting](/guides/focus-and-reply/).

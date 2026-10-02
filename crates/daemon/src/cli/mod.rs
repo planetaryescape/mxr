@@ -550,8 +550,9 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
-    /// List threads where the user owes a reply, ranked by how
-    /// overdue they are relative to the recipient's typical cadence.
+    /// List the replies you owe: the desk's You owe lane (mail from
+    /// people in your inbox, from someone you've written to), most
+    /// overdue against your usual pace with them first.
     Owed {
         #[arg(long)]
         account: Option<String>,
@@ -564,6 +565,11 @@ pub enum Command {
         within_days: Option<u32>,
         #[arg(long, default_value_t = 50)]
         limit: u32,
+        /// Every thread whose latest inbound message has no later reply
+        /// from you, newsletters and archived mail included, ranked by
+        /// the sender's usual cadence. The list before the desk filter.
+        #[arg(long)]
+        all: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },

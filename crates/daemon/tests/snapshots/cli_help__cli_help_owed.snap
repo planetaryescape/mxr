@@ -1,9 +1,8 @@
 ---
 source: crates/daemon/tests/cli_help.rs
-assertion_line: 14
 expression: stdout
 ---
-List threads where the user owes a reply, ranked by how overdue they are relative to the recipient's typical cadence
+List the replies you owe: the desk's You owe lane (mail from people in your inbox, from someone you've written to), most overdue against your usual pace with them first
 
 Usage: mxr owed [OPTIONS]
 
@@ -12,5 +11,6 @@ Options:
       --since <OLDER_THAN_DAYS>  Only include threads waiting at least this many days
       --within <WITHIN_DAYS>     Only include threads whose latest inbound landed in the last N days (excludes ancient unanswered threads)
       --limit <LIMIT>            [default: 50]
+      --all                      Every thread whose latest inbound message has no later reply from you, newsletters and archived mail included, ranked by the sender's usual cadence. The list before the desk filter
       --format <FORMAT>          [possible values: table, json, jsonl, csv, ids]
   -h, --help                     Print help

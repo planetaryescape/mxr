@@ -4,7 +4,7 @@ The web app's product model, what shipped between v0.6.34 and v0.6.42, and
 the work still needed to pass the experience rubric. The rubric
 (`docs/web-app-experience-rubric.md`) is the scoring source of truth. This
 document says what to build and in what order. Settled choices are logged
-as D095 to D102 in [15-decision-log.md](15-decision-log.md). Don't
+as D095 to D105 in [15-decision-log.md](15-decision-log.md). Don't
 re-debate them without new evidence.
 
 ## The model
@@ -92,9 +92,9 @@ the thread when nobody has replied by then.
 
 `mxr owed` runs in 1.0 s warm on the real mailbox, which is at the budget,
 not under it. The owed list is also noisy: 88k candidates on the main
-account, because it isn't filtered to people. Push the desk's
-people/inbox/recency filters into the owed SQL (pending BK's decision on
-whether the Owed page adopts the desk's people filter).
+account, because it isn't filtered to people. BK chose the desk's filter
+(D103): `mxr owed` and the Owed page now list the desk's You owe lane, and
+`mxr owed --all` keeps the raw list.
 
 - **Check:** `time mxr owed --format json`, second run, under 1 s on the
   real mailbox, recorded in the rubric with date and mailbox size.
@@ -168,14 +168,6 @@ A to 3.
   figure.
 - **Touch (B9):** swipe thresholds and vertical scrolling on a real phone.
 - **Copy (C3):** an independent copy review across the app.
-
-### Open decisions (BK)
-
-- Should a Done item stay gone even after someone replies? Today it comes
-  back when anyone writes in the conversation.
-- Should `mxr owed` and the Owed page use the desk's people filter?
-- Should a sender moved to People land in New from people rather than You
-  owe?
 
 ### Candidate criteria for rubric v3
 

@@ -149,6 +149,7 @@ mod tests {
             },
             to: Vec::new(),
             cc: Vec::new(),
+            bcc: Vec::new(),
             subject: "Launch plan".into(),
             list_id: None,
             unsubscribe: UnsubscribeMethod::None,

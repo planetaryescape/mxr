@@ -3,7 +3,7 @@ title: Forgotten work
 description: Catch the commitments you make in sent mail and the replies you owe, ranked by your own cadence.
 ---
 
-Two things make email feel like dropped balls: promises you typed into a draft and forgot about, and inbound threads that quietly aged past the speed at which you usually reply. mxr surfaces both, using only local data: extracted commitments from sent mail, and an "owed reply" lens that ranks threads against the recipient's typical cadence.
+Two things make email feel like dropped balls: promises you typed into a draft and forgot about, and inbound threads that quietly aged past the speed at which you usually reply. mxr surfaces both, using only local data: extracted commitments from sent mail, and an "owed reply" lens that ranks the replies you owe people against how fast you usually answer them.
 
 :::tip[The one-line mental model]
 Commitments come **out** of your sent mail; the owed-reply lens looks at threads where you owe **in**. Both are deterministic ledgers: no LLM is required for the owed lens; the commitments extractor uses an LLM only to confirm a deterministic prefilter match.
@@ -58,47 +58,40 @@ mxr send DRAFT_ID --check --no-llm --format json \
 
 ## Owed-reply lens: threads where you're the bottleneck
 
-For a daily view, use [`mxr desk`](/guides/desk/) instead. Its **You owe** lane counts only people you are in conversation with and only conversations still in the inbox, and it sits next to promises coming due and threads waiting on others. `mxr owed` is the wider list: any thread whose latest message is inbound, archived or not, automated senders included.
+`mxr owed` lists the [desk's](/guides/desk/) **You owe** lane in full, for one account: conversations in your inbox where someone you have written to wrote last and you have not replied. Newsletters, notifications, strangers and archived mail are not on it. A sender you allowed in the screener but never wrote to is in the desk's New from people instead. The exact rules are in the [desk reference](/reference/desk-and-places/#lanes).
 
-`mxr owed` ranks threads where the **latest** message is inbound and you haven't replied. It scores each thread by `waiting_days / expected_days`, where `expected_days` is the sender's usual cadence (`cadence_days_p50` on the contact), falling back to the average of every contact's cadence, then to 7 days, and never below half a day. The same set powers the [`is:owed-reply`](/guides/search/) search operator.
+Rows come most overdue first. `overdue_score` is `waiting_days / expected_days`, where `expected_days` is how long you usually take to reply to that person (`usual_seconds`, the median of your past replies, with at least two of them), or one day when there is no history.
 
 ```bash
-# Top 20 threads you owe, ranked overdue-first.
-mxr owed --format json | jq -r '.[0:20]
-  | sort_by(-.overdue_score)
-  | .[]
+# Top 20 replies you owe, most overdue first.
+mxr owed --format json | jq -r '.[0:20][]
   | "\(.overdue_score | tostring | .[0:4])\t\(.from_email)\t\(.subject)"'
 ```
 
-What you get: tab-separated rows `score \t sender \t subject`. Score 1.0 = exactly at typical cadence; 3.0 = three times longer than usual.
+What you get: tab-separated rows `score \t sender \t subject`. Score 1.0 means exactly your usual reply time; 3.0 means three times longer.
 
-```bash
-# Persistent sidebar lens (TUI and web).
-mxr saved add owed 'is:owed-reply'
+:::note[Rows and the raw list]
+`mxr owed --format json` returns one row per conversation (`thread_id`, `latest_inbound_msg_id`, `from_email`, `from_name`, `subject`, `latest_inbound_at`, `waiting_days`, `expected_days`, `overdue_score`, and `usual_seconds` when known).
 
-# Same set, scriptable.
-mxr search 'is:owed-reply' --format ids
-```
-
-:::note[Two equivalent forms]
-`mxr owed --format json` returns the structured row (`thread_id`, `latest_inbound_msg_id`, `from_email`, `from_name`, `subject`, `latest_inbound_at`, `waiting_days`, `expected_days`, `overdue_score`). `mxr search 'is:owed-reply'` returns the underlying message envelopes through the search stack. Use `owed` when you want the ranking metadata; use `search` when you want to compose with other operators (`is:owed-reply from:dana@acme.com`).
+`mxr owed --all` is the raw list the desk filters: every conversation whose latest inbound message has no later reply from you, archived or not, automated senders included (list senders and screener-denied senders are left out). It ranks by the sender's contact cadence (`cadence_days_p50`), falling back to the average of every contact's cadence, then 7 days, never below half a day. The [`is:owed-reply`](/guides/search/) search operator matches this raw set, so you can combine it with other operators (`is:owed-reply from:dana@acme.com`).
 :::
 
-### Exclude noise
+### Narrow by age
 
-The lens already excludes list senders and screener-denied senders. It does not exclude other automated mail, such as shipping updates. To narrow further:
+The windows apply to the latest message from them:
 
 ```bash
-# Only threads waiting >= 14 days.
+# Only replies waiting >= 14 days.
 mxr owed --since 14 --format json
 
-# Only threads whose latest inbound landed in the last 60 days
-# (skip ancient unanswered relics).
-mxr owed --within 60 --format json
+# Only replies whose latest message landed in the last 10 days.
+mxr owed --within 10 --format json
 
-# Combine: aged in, but not too old.
-mxr owed --since 7 --within 60 --format json
+# The raw list, skipping ancient unanswered relics.
+mxr owed --all --since 7 --within 60 --format json
 ```
+
+The default list only looks at conversations active in the last 30 days, like the desk, apart from ones you set to reply later. Use `--all` to reach older threads.
 
 ## In real life
 

@@ -1,16 +1,8 @@
 import { apiFetch } from "@/api/client";
+import type { components } from "@/api/generated";
 
-export interface OwedReplyRow {
-  thread_id: string;
-  latest_inbound_msg_id: string;
-  from_email: string;
-  from_name?: string | null;
-  subject: string;
-  latest_inbound_at: string;
-  waiting_days: number;
-  expected_days?: number | null;
-  overdue_score: number;
-}
+/** One reply you owe: the daemon's `OwedReplyRowData`. */
+export type OwedReplyRow = components["schemas"]["OwedReplyRowData"];
 
 export function fetchOwedReplies(account?: string | null): Promise<{ rows: OwedReplyRow[] }> {
   const query = new URLSearchParams({ limit: "200" });

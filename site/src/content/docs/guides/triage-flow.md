@@ -30,9 +30,12 @@ TUI `r`).
 
 ## Screener (first pass, by sender)
 
-The decision you make once per *sender* rather than per message:
+The decision you make once per *sender* rather than per message. The
+queue is for strangers: anyone you have written to is never in it.
 
-- `allow`: you want their mail in the inbox
+- `allow`: you want their mail in the inbox, as mail from a person. Until
+  you write to them, it shows on the desk under New from people, not You
+  owe.
 - `deny`: auto-trash + mark-read
 - `feed`: newsletters and lists. Their mail lives in [Reading](/guides/reading-and-paper-trail/), off the desk.
 - `paper-trail`: receipts and notifications. Their mail lives in [Paper trail](/guides/reading-and-paper-trail/), off the desk.

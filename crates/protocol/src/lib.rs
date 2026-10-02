@@ -1809,6 +1809,7 @@ mod tests {
             since in proptest::option::of(1u32..365),
             within in proptest::option::of(1u32..365),
             limit in 1u32..200,
+            all in proptest::bool::ANY,
         ) {
             let account_id = AccountId::new();
             let req = Request::ListOwedReplies {
@@ -1816,12 +1817,14 @@ mod tests {
                 older_than_days: since,
                 within_days: within,
                 limit,
+                all,
             };
             let json = serde_json::to_string(&req)?;
             let parsed: Request = serde_json::from_str(&json)?;
             match parsed {
-                Request::ListOwedReplies { account_id: a, older_than_days, within_days, limit: l } => {
+                Request::ListOwedReplies { account_id: a, older_than_days, within_days, limit: l, all: raw } => {
                     prop_assert_eq!(a, account_id);
+                    prop_assert_eq!(raw, all);
                     prop_assert_eq!(older_than_days, since);
                     prop_assert_eq!(within_days, within);
                     prop_assert_eq!(l, limit);

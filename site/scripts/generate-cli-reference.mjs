@@ -199,11 +199,11 @@ const COMMAND_EXAMPLES = {
   'response-time': { use: 'Measure reply latency with a counterparty or account.', examples: ["mxr response-time --theirs --counterparty alice@example.com --format json"] },
   stale: { use: 'Find threads where someone owes a reply.', examples: ["mxr stale --theirs --older-than-days 7", "mxr stale --mine --format ids | mxr snooze --until tomorrow --dry-run"] },
   owed: {
-    use: "List threads where you're the bottleneck, ranked by overdue score (waiting days / recipient's typical cadence). Same set as `is:owed-reply` in search; pick whichever surface you prefer. For a daily view limited to people and to mail still in the inbox, use `mxr desk`.",
+    use: "List the replies you owe: the desk's You owe lane in full for one account (people you have written to, mail still in the inbox), most overdue against your usual reply time first. `--all` lists the raw set instead, every thread whose latest inbound has no later reply from you, which is what `is:owed-reply` matches in search. See the [desk reference](/reference/desk-and-places/#lanes).",
     examples: [
       "mxr owed --format ids",
       "mxr owed --since 7 --format json | jq '.[] | {who:.from_email, days:.waiting_days, score:.overdue_score}'",
-      "mxr saved add owed 'is:owed-reply'   # persistent sidebar lens",
+      "mxr owed --all --within 60 --format ids   # the raw list, archived and automated mail included",
     ],
   },
   commitments: {

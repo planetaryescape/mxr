@@ -31,6 +31,9 @@ pub struct DeskMessage {
     pub from: Address,
     pub to: Vec<Address>,
     pub cc: Vec<Address>,
+    /// Only your own sent mail knows its Bcc; it still counts as writing
+    /// to them.
+    pub bcc: Vec<Address>,
     pub subject: String,
     pub list_id: Option<String>,
     pub unsubscribe: UnsubscribeMethod,
@@ -175,6 +178,7 @@ impl super::Store {
                     },
                     to: decode_json(row.try_get::<&str, _>("to_addrs")?)?,
                     cc: decode_json(row.try_get::<&str, _>("cc_addrs")?)?,
+                    bcc: decode_json(row.try_get::<&str, _>("bcc_addrs")?)?,
                     subject: row.try_get("subject")?,
                     list_id: row.try_get("list_id")?,
                     unsubscribe,
@@ -448,7 +452,7 @@ fn desk_messages_sql(active_threads: &str) -> String {
         r#"WITH active AS ({active_threads})
             SELECT
                 m.rowid AS seq, m.id, m.thread_id, m.direction, m.date, m.flags,
-                m.from_email, m.from_name, m.to_addrs, m.cc_addrs, m.subject,
+                m.from_email, m.from_name, m.to_addrs, m.cc_addrs, m.bcc_addrs, m.subject,
                 m.list_id, m.unsubscribe_method,
                 EXISTS (
                     SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id

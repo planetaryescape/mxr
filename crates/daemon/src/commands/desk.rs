@@ -426,7 +426,7 @@ fn age_cell(row: &DeskRowData) -> String {
     }
 }
 
-fn short_duration(seconds: i64) -> String {
+pub(crate) fn short_duration(seconds: i64) -> String {
     let seconds = seconds.max(0);
     match seconds {
         s if s < 3_600 => format!("{}m", (s / 60).max(1)),

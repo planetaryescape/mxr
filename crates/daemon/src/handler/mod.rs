@@ -41,6 +41,7 @@ mod mail_kind;
 mod mailbox;
 mod mutations;
 mod notifications;
+mod owed;
 pub(crate) mod places;
 mod platform;
 mod promises;
@@ -318,35 +319,6 @@ async fn get_decision(state: &Arc<AppState>, id: &str) -> HandlerResult {
             decided_at: r.decided_at,
             extracted_at: r.extracted_at,
         }),
-    })
-}
-
-async fn list_owed_replies(
-    state: &Arc<AppState>,
-    account_id: &mxr_core::AccountId,
-    older_than_days: Option<u32>,
-    within_days: Option<u32>,
-    limit: u32,
-) -> HandlerResult {
-    let rows = state
-        .store
-        .list_owed_replies(account_id, older_than_days, within_days, limit)
-        .await?;
-    Ok(ResponseData::OwedReplies {
-        rows: rows
-            .into_iter()
-            .map(|r| mxr_protocol::OwedReplyRowData {
-                thread_id: r.thread_id,
-                latest_inbound_msg_id: r.latest_inbound_msg_id,
-                from_email: r.from_email,
-                from_name: r.from_name,
-                subject: r.subject,
-                latest_inbound_at: r.latest_inbound_at,
-                waiting_days: r.waiting_days,
-                expected_days: r.expected_days,
-                overdue_score: r.overdue_score,
-            })
-            .collect(),
     })
 }
 
@@ -1156,7 +1128,20 @@ async fn dispatch(
             older_than_days,
             within_days,
             limit,
-        } => list_owed_replies(state, account_id, *older_than_days, *within_days, *limit).await,
+            all,
+        } => {
+            owed::list_owed_replies(
+                state,
+                account_id,
+                owed::OwedQuery {
+                    older_than_days: *older_than_days,
+                    within_days: *within_days,
+                    limit: *limit,
+                    all: *all,
+                },
+            )
+            .await
+        }
         Request::GetDesk {
             account_id,
             lane_limit,

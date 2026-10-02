@@ -98,7 +98,7 @@ Surface what you owe, what's going cold, and what you promised.
 ```bash
 mxr desk                                         # what needs you: owed, due, waiting, new
 mxr desk done THREAD_ID --dry-run                # put one away, previewed first
-mxr owed --since 7 --format json                 # every thread you owe, automated mail included
+mxr owed --since 7 --format json                 # replies you owe people, waiting a week or more
 mxr stale --mine --older-than-days 7             # cooling on your side
 mxr commitments --status open --format json      # promises made in email
 mxr remind MESSAGE_ID --when "in 5d"             # nudge if no reply

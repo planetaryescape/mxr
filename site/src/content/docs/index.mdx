@@ -182,7 +182,37 @@ mxr search "subject:invoice" --format json | jq -r '.results[].from' | sort -u
 
 </div>
 
-<div class="landing-section agent-section" data-folio="03">
+<div class="landing-section modes-section" data-folio="03">
+
+## sort mail by what you do with it
+
+<div class="modes-coda">
+  <div>
+    <p>Open the desk and you see people: who is waiting on a reply, which promises you made are coming due, and where you're waiting on someone else. Newsletters go to Reading. Receipts and notifications go to Paper trail, and one sweep clears them after a preview.</p>
+    <p>Rules you can read do the sorting. A sender's address, domain and list headers decide where their mail goes, <code>{`mxr why`}</code> prints the rule behind any message, and moving a sender once moves their mail from then on.</p>
+    <p>Next, mxr splits email into five modes with their own views: Messages, To do, Updates, Reading and Archive. <a href="/guides/email-modes/">See what each mode has today and what's planned →</a></p>
+  </div>
+
+```bash wrap
+# what needs you, and why each row is there
+mxr desk
+
+# why is this message in Paper trail?
+mxr why MESSAGE_ID
+
+# this sender's mail belongs in Reading from now on
+mxr sender kind news@example.com reading
+
+# preview, then clear the receipts you've seen
+mxr sweep paper-trail --dry-run
+mxr sweep paper-trail --yes
+```
+
+</div>
+
+</div>
+
+<div class="landing-section agent-section" data-folio="04">
 
 ## let your agent use the same inbox
 
@@ -240,7 +270,7 @@ mxr search "from:sarah@example.com after:2026-04-23" \
 
 </div>
 
-<div class="landing-section duplex-section" data-folio="04">
+<div class="landing-section duplex-section" data-folio="05">
 
 ## changes stay in sync
 
@@ -276,7 +306,7 @@ mxr search "from:sarah@example.com after:2026-04-23" \
 
 </div>
 
-<div class="landing-section surfaces-section" data-folio="05">
+<div class="landing-section surfaces-section" data-folio="06">
 
 ## one mailbox, several interfaces
 
@@ -333,7 +363,7 @@ would archive 142 messages.`}</code></pre>
 
 </div>
 
-<div class="landing-section capabilities-section" data-folio="06">
+<div class="landing-section capabilities-section" data-folio="07">
 
 ## daily mail tools
 
@@ -348,7 +378,7 @@ would archive 142 messages.`}</code></pre>
 
 </div>
 
-<div class="landing-section install-section" id="install" data-folio="07">
+<div class="landing-section install-section" id="install" data-folio="08">
 
 <div class="install-masthead">
   <h2>install</h2>
@@ -394,7 +424,7 @@ cargo install --git \
 
 </div>
 
-<div class="landing-section pickpath-section" data-folio="08">
+<div class="landing-section pickpath-section" data-folio="09">
 
 ## documentation
 
@@ -408,7 +438,7 @@ cargo install --git \
 
 </div>
 
-<div class="landing-section opensource-section" data-folio="09">
+<div class="landing-section opensource-section" data-folio="10">
 
 <div class="endplate-meta">open source ◈ MIT / Apache-2.0</div>
 

@@ -2083,3 +2083,16 @@ main:has(.video-gallery) .content-panel > .sl-container {
 @media (max-width: 900px) {
   .video-gallery { grid-template-columns: 1fr; }
 }
+
+/* Modes section: prose beside the commands, as in the search coda. */
+.modes-section .modes-coda {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(2rem, 5vw, 4rem);
+  align-items: start;
+  margin-top: 1.5rem;
+}
+
+@media (max-width: 720px) {
+  .modes-section .modes-coda { grid-template-columns: minmax(0, 1fr); }
+}

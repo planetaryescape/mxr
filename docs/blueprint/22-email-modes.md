@@ -174,6 +174,18 @@ extracted once. The default tier per task is settled by the local versus cloud
 extraction eval (`mxr modes eval --extract`), which the user runs on
 their own mail with their own key; the rubric records counts, not content.
 
+Cloud for everything is a supported setup, not a workaround. BK decided
+on 2026-10-02 that a user who wants no local model must be able to run
+every tier in the cloud. Pointing `[llm]` at a cloud endpoint with an API
+key and setting `allow_cloud_background_classification = true` sends both
+tiers there, and nothing in the modes plan may require a local LLM server
+to work. The opt-in screen says plainly what that means: the text of every
+incoming message goes to that provider. Embeddings are separate: they run
+in-process on the CPU through the bundled semantic models and need no
+local LLM server, so a cloud-only user still gets semantic search without
+installing anything. Cloud embeddings are not planned; they would send the
+whole mailbox to a provider and re-embed it on every model change.
+
 ## Every view follows the same trust rules
 
 - **Model text is italic and names its model.** Apple paused notification

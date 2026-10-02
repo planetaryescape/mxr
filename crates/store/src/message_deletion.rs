@@ -310,6 +310,15 @@ impl super::Store {
         Ok(gave_up)
     }
 
+    /// Held by the daemon from checking that a deleted message's id is
+    /// still absent until its files and index entries are gone, and by
+    /// `apply_sync_upserts` while it stores messages. Without it a sync could
+    /// store a new message under that id between the check and the removal,
+    /// and the cleanup would take the new message's files.
+    pub async fn lock_message_cleanup(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.message_cleanup.lock().await
+    }
+
     /// Which of these message ids name a stored message. An IMAP id is
     /// derived from account, folder and UID, so a deleted message's id can
     /// come back for a new message; cleanup owed to the old one must not

@@ -17,6 +17,9 @@ use std::time::Duration;
 /// Deleted messages cleared per round, bounding one round's work.
 const DRAIN_BATCH: u32 = 1_000;
 
+/// Longest the cleanup waits on the semantic worker while sync is held off.
+const SEMANTIC_FORGET_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// How often owed cleanups are retried with nothing else prompting it.
 pub(crate) const DRAIN_INTERVAL: Duration = Duration::from_secs(10 * 60);
 
@@ -98,6 +101,9 @@ async fn forget_deleted_messages(
     state: &AppState,
     message_ids: &[MessageId],
 ) -> Option<HashSet<MessageId>> {
+    // Held from the live check through the removal, so sync cannot store a
+    // message under one of these ids in between (it takes the same lock).
+    let _cleanup = state.store.lock_message_cleanup().await;
     let live = match state.store.existing_message_ids(message_ids).await {
         Ok(live) => live,
         Err(error) => {
@@ -113,12 +119,25 @@ async fn forget_deleted_messages(
     if gone.is_empty() {
         return Some(HashSet::new());
     }
-    if let Err(error) = state.semantic.forget_messages(&gone).await {
-        tracing::warn!(
+    // Bounded: sync waits on this lock, and the semantic worker can be busy
+    // with an ingest batch. A forget that times out is not retried; the
+    // vectors go at the next index rebuild, which reads only stored rows.
+    match tokio::time::timeout(
+        SEMANTIC_FORGET_TIMEOUT,
+        state.semantic.forget_messages(&gone),
+    )
+    .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => tracing::warn!(
             messages = gone.len(),
             %error,
             "semantic index could not forget deleted messages"
-        );
+        ),
+        Err(_) => tracing::warn!(
+            messages = gone.len(),
+            "semantic index did not answer the forget in time; its next rebuild drops them"
+        ),
     }
     Some(remove_attachment_files(&state.attachment_dir(), &gone).await)
 }
@@ -270,6 +289,47 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(owed, 0, "the stale cleanup stayed owed");
+    }
+
+    /// Sync storing a message under an id a cleanup is about to clear must
+    /// not land between the cleanup's live check and its removal. With the
+    /// sync holding the lock, the drain waits, then sees the revived id and
+    /// leaves its files.
+    #[tokio::test]
+    async fn a_cleanup_waits_for_a_sync_that_revives_its_id() {
+        let state = std::sync::Arc::new(AppState::in_memory().await.unwrap());
+        let attachments = tempfile::tempdir().unwrap();
+        state.set_attachment_dir_for_tests(attachments.path().to_path_buf());
+        let account_id = state.store.list_accounts().await.unwrap()[0].id.clone();
+        let reused = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .provider_id("INBOX:1")
+            .build();
+        state.store.upsert_envelope(&reused).await.unwrap();
+        state
+            .store
+            .delete_messages_and_derived(&account_id, &["INBOX:1".to_string()])
+            .await
+            .unwrap();
+
+        // A sync is mid-write: it holds the lock while it stores the new
+        // message under the reused id.
+        let sync_holds = state.store.lock_message_cleanup().await;
+        let drain_state = state.clone();
+        let drain = tokio::spawn(async move { drain_pending_forgets(&drain_state).await });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(!drain.is_finished(), "the drain did not wait for the sync");
+        state.store.upsert_envelope(&reused).await.unwrap();
+        let files = attachments.path().join(reused.id.as_str());
+        std::fs::create_dir_all(&files).unwrap();
+        std::fs::write(files.join("new.pdf"), b"pdf").unwrap();
+        drop(sync_holds);
+        drain.await.unwrap();
+
+        assert!(
+            files.join("new.pdf").exists(),
+            "the new message's file was removed"
+        );
     }
 
     /// A permission error leaves the files and the owed cleanup in place;

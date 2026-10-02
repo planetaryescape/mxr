@@ -74,6 +74,9 @@ impl super::Store {
         upserts: &mut [SyncUpsert],
     ) -> Result<Vec<ThreadId>, sqlx::Error> {
         let mut vacated_threads = Vec::new();
+        // Storing a message whose id a pending cleanup names must not land
+        // while that cleanup is between its check and its removal.
+        let _cleanup = self.lock_message_cleanup().await;
         for chunk in upserts.chunks_mut(UPSERT_CHUNK) {
             let mut tx = self.writer().begin().await?;
             for upsert in chunk {
@@ -223,6 +226,28 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    /// Sync storing messages waits while a cleanup holds the lock between
+    /// its live check and its removal.
+    #[tokio::test]
+    async fn sync_upserts_wait_for_a_cleanup_in_progress() {
+        let account = test_account();
+        let store = std::sync::Arc::new(Store::in_memory().await.unwrap());
+        store.insert_account(&account).await.unwrap();
+        let cleanup = store.lock_message_cleanup().await;
+        let sync_store = store.clone();
+        let sync_account = account.clone();
+        let sync = tokio::spawn(async move {
+            sync_store
+                .apply_sync_upserts(&mut [upsert(&sync_account, 1, vec![])])
+                .await
+                .unwrap();
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(!sync.is_finished(), "sync stored a message mid-cleanup");
+        drop(cleanup);
+        sync.await.unwrap();
     }
 
     /// The batched path must leave exactly the rows the per-message store

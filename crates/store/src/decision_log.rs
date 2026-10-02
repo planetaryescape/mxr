@@ -51,6 +51,24 @@ impl super::Store {
         self.write_decision(entry, true).await
     }
 
+    /// Deletes decisions that cite messages none of which is stored any
+    /// more: left over from deletes made before decision evidence was
+    /// tracked, which nothing else would ever find. Decisions that cite
+    /// nothing are kept. Idempotent, and one statement driven by the
+    /// evidence table's primary key, so it is cheap on a large store.
+    pub async fn prune_decisions_without_evidence(&self) -> Result<u64, sqlx::Error> {
+        Ok(sqlx::query(
+            "DELETE FROM decision_log
+             WHERE json_array_length(evidence_msg_ids) > 0
+               AND NOT EXISTS (
+                   SELECT 1 FROM decision_evidence
+                   WHERE decision_evidence.decision_id = decision_log.id)",
+        )
+        .execute(self.writer())
+        .await?
+        .rows_affected())
+    }
+
     async fn write_decision(
         &self,
         entry: &DecisionLogEntry,
@@ -321,6 +339,41 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    /// A decision whose cited mail was deleted before evidence was tracked
+    /// has no evidence rows, so no delete will ever reach it.
+    #[tokio::test]
+    async fn decisions_left_over_from_earlier_deletes_are_pruned() {
+        let (store, account, thread, deleted_long_ago) = fixture().await;
+        let mut stored = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account.clone())
+            .build();
+        stored.thread_id = thread.clone();
+        store.upsert_envelope(&stored).await.unwrap();
+        store
+            .upsert_decision(&entry(&account, &thread, &deleted_long_ago, "Orphaned"))
+            .await
+            .unwrap();
+        store
+            .upsert_decision(&entry(&account, &thread, &stored.id, "Live"))
+            .await
+            .unwrap();
+        let mut no_evidence = entry(&account, &thread, &stored.id, "Cites nothing");
+        no_evidence.evidence_msg_ids.clear();
+        store.upsert_decision(&no_evidence).await.unwrap();
+
+        assert_eq!(store.prune_decisions_without_evidence().await.unwrap(), 1);
+        assert_eq!(store.prune_decisions_without_evidence().await.unwrap(), 0);
+        let mut left = store
+            .list_decisions(&account, None, None, 10)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|decision| decision.decision)
+            .collect::<Vec<_>>();
+        left.sort();
+        assert_eq!(left, vec!["Cites nothing", "Live"]);
     }
 
     #[tokio::test]

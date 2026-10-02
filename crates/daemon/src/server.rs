@@ -1782,6 +1782,17 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
         }
     }
 
+    // Decisions whose cited mail was deleted before decision evidence was
+    // tracked are invisible to every later delete; clear them once.
+    match state.store.prune_decisions_without_evidence().await {
+        Ok(0) => {}
+        Ok(pruned) => tracing::info!(
+            pruned,
+            "startup: removed decisions whose cited mail is all deleted"
+        ),
+        Err(error) => tracing::warn!("startup: decision cleanup failed: {error}"),
+    }
+
     // Lost scheduled sends: a scheduled-send attempt whose outcome was
     // never recorded means the daemon died between clearing `send_at` and
     // the send resolving — the message may or may not have gone out.

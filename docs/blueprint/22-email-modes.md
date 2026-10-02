@@ -216,6 +216,17 @@ in limited preview with no docs or terms; revisit when it has both.
 `OpenAiCompatibleProvider` gains JSON-schema structured output regardless,
 since selection tasks need it.
 
+When the smart tier is not enough, the task steps up rather than every
+call paying for the strongest model (BK, 2026-10-02). `llm.tiers.smart`
+takes an optional `escalate` model on the same provider and key. A task
+escalates when the smart model answers "none" where code found
+candidates, when its pick fails the verbatim check, or when the user
+marks a field wrong; the escalated answer is cached like any other and its
+provenance chip names the stronger model. Model names are config defaults
+the user can change, never hard-coded: on OpenAI today that is GPT-6 Luna
+for the smart tier and GPT-6.1 Sol or GPT-6 Astra (the flagship) for
+`escalate`, per the OpenAI models page on 2026-10-02.
+
 ## Every view follows the same trust rules
 
 - **Model text is italic and names its model.** Apple paused notification

@@ -165,7 +165,7 @@ impl QueryBuilder {
     /// ranked by relevance. Prose is not query syntax: "Re: ..." or
     /// "foo: bar" must not parse as a field filter. It searches the same
     /// fields as the default string search, and stays one flat, bounded
-    /// OR however long the text (see [`prose_words`]). `None` when the
+    /// OR however long the text (see `prose_words`). `None` when the
     /// text has no words.
     pub fn build_any_words(&self, text: &str) -> Option<Box<dyn Query>> {
         let clauses: Vec<_> = prose_words(text)

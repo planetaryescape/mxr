@@ -957,6 +957,59 @@ async fn seed_demo_surfaces() -> anyhow::Result<()> {
     seed_surface!("screener", seed_demo_screener);
     seed_surface!("snooze/reply-later", seed_demo_message_state);
     seed_surface!("drafts", seed_demo_drafts);
+    seed_surface!("to-dos", seed_demo_todos);
+    Ok(())
+}
+
+/// Keeps the demo's sent "I'll send you the signed engagement form" as an
+/// undated promise, so To do shows one. Idempotent: skipped when a to-do
+/// for that message already exists in any state.
+async fn seed_demo_todos(client: &mut IpcClient) -> anyhow::Result<()> {
+    use mxr_protocol::TodoStateData;
+
+    let personal = AccountId::from_provider_id("fake", DEMO_PERSONAL_EMAIL);
+    let message_id = mxr_core::id::MessageId::from_scoped_provider_id(
+        &personal,
+        "fake",
+        &mxr_provider_fake::fixtures::todo_demo_promise_provider_id(),
+    );
+    for state in [
+        TodoStateData::Open,
+        TodoStateData::Done,
+        TodoStateData::Dismissed,
+        TodoStateData::Expired,
+    ] {
+        if let Response::Ok {
+            data: ResponseData::Todos { todos },
+        } = client
+            .request(Request::ListTodos {
+                account_id: Some(personal.clone()),
+                state,
+                limit: 1000,
+            })
+            .await?
+        {
+            if todos
+                .iter()
+                .any(|todo| todo.source_message_id.as_ref() == Some(&message_id))
+            {
+                return Ok(());
+            }
+        }
+    }
+    if let Response::Error { message, .. } = client
+        .request(Request::CreateTodo {
+            message_id,
+            title: "Send the signed engagement form".to_string(),
+            kind: Some("promise".to_string()),
+            due: None,
+            time_zone: None,
+            dry_run: false,
+        })
+        .await?
+    {
+        anyhow::bail!(message);
+    }
     Ok(())
 }
 

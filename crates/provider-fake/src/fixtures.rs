@@ -3,6 +3,18 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use std::collections::HashMap;
 
+mod todo_demo;
+
+/// The provider id of the demo's sent message that promises the signed
+/// engagement form, which `mxr demo` keeps as an undated promise. Seeded
+/// messages are numbered from 1: the shipping mail, then the To do mail.
+pub fn todo_demo_promise_provider_id() -> String {
+    format!(
+        "demo-msg-{}",
+        DELIVERY_DEMO_MESSAGE_COUNT + todo_demo::TODO_DEMO_PROMISE_POSITION + 1
+    )
+}
+
 pub const CURATED_DEMO_MESSAGE_COUNT: usize = 50;
 pub const DEFAULT_DEMO_MESSAGE_COUNT: usize = 50_000;
 /// Upper bound the demo generator clamps to. Public so callers sizing a
@@ -736,7 +748,7 @@ impl DemoFixtureStream {
         // message count is unchanged.
         let delivery_count = if profile.email == "alex@demo.mxr.local" && profile.target_count >= 16
         {
-            DELIVERY_DEMO_MESSAGE_COUNT
+            DELIVERY_DEMO_MESSAGE_COUNT + todo_demo::TODO_DEMO_MESSAGE_COUNT
         } else {
             0
         };
@@ -821,8 +833,17 @@ impl DemoFixtureStream {
         self.page(index, 1).pop()
     }
 
+    /// Shipping mail, then To do mail: the seeded messages at the head of
+    /// the personal account.
     fn delivery_messages(&self) -> Vec<(Envelope, MessageBody)> {
-        delivery_demo_messages(&self.account_id, &self.self_addr, self.now)
+        let mut messages = delivery_demo_messages(&self.account_id, &self.self_addr, self.now);
+        messages.extend(todo_demo::todo_demo_messages(
+            &self.account_id,
+            &self.self_addr,
+            self.now,
+            messages.len() + 1,
+        ));
+        messages
     }
 
     fn thread_message(
@@ -1573,6 +1594,11 @@ fn push_delivery_demo_threads(
     now: chrono::DateTime<chrono::Utc>,
 ) {
     for (envelope, body) in delivery_demo_messages(account_id, self_addr, now) {
+        bodies.insert(envelope.provider_id.clone(), body);
+        envelopes.push(envelope);
+        *msg_num += 1;
+    }
+    for (envelope, body) in todo_demo::todo_demo_messages(account_id, self_addr, now, *msg_num) {
         bodies.insert(envelope.provider_id.clone(), body);
         envelopes.push(envelope);
         *msg_num += 1;

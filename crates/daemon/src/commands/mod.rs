@@ -67,6 +67,7 @@ pub mod thread_context;
 pub mod thread_gists;
 pub mod threads;
 pub mod time;
+pub mod todo;
 pub mod triage;
 pub mod version;
 pub mod voice;

@@ -1187,6 +1187,10 @@ async fn post_sync_fanout(
             "post-sync delivery scan"
         );
     }
+
+    // To-dos and confirmations of them in the new mail. Local rules only;
+    // windows apply here too, so a backfill page never floods To do.
+    crate::handler::todos::scan_messages(&state, &upserted_message_ids).await;
 }
 
 /// Clears what the store delete cannot reach for mail the provider deleted,
@@ -2153,6 +2157,36 @@ pub async fn auto_reminders_loop(state: Arc<AppState>, mut shutdown_rx: watch::R
             Ok(n) => tracing::debug!(conversations = n, "timers brought conversations back"),
             Err(e) => tracing::warn!("Auto-reminders loop error: {e}"),
         }
+    }
+}
+
+/// To do's background work: the first run in steps, the promise mirror,
+/// expiry and the surfacing claim. Comes back every 30 seconds while a
+/// first run is going, every 5 minutes after.
+pub async fn todo_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
+    let mut fingerprints = std::collections::HashMap::new();
+    let mut wait = Duration::from_secs(20);
+    loop {
+        tokio::select! {
+            () = tokio::time::sleep(wait) => {}
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                    tracing::info!("To do loop exiting: shutdown requested");
+                    break;
+                }
+                continue;
+            }
+        }
+        wait = match crate::handler::todos::tick(&state, chrono::Utc::now(), &mut fingerprints)
+            .await
+        {
+            Ok(true) => Duration::from_secs(30),
+            Ok(false) => Duration::from_secs(300),
+            Err(error) => {
+                tracing::warn!(%error, "to-do tick failed");
+                Duration::from_secs(300)
+            }
+        };
     }
 }
 

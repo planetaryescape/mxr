@@ -957,6 +957,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "message_deletion",
         kind: MigrationKind::Sql(include_str!("../migrations/058_message_deletion.sql")),
     },
+    Migration {
+        version: 59,
+        name: "todos",
+        kind: MigrationKind::Sql(include_str!("../migrations/059_todos.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

@@ -141,6 +141,7 @@ members = [
     "crates/store",
     "crates/sync",
     "crates/test-support",
+    "crates/todo",
     "crates/transport",
     "crates/tui",
     "crates/web",
@@ -191,6 +192,7 @@ mxr-compose = { path = "crates/compose", version = "0.6.0" }
 mxr-config = { path = "crates/config", version = "0.6.0" }
 mxr-core = { path = "crates/core", version = "0.6.0" }
 mxr-deliveries = { path = "crates/deliveries", version = "0.6.0" }
+mxr-todo = { path = "crates/todo", version = "0.6.0" }
 mxr-export = { path = "crates/export", version = "0.6.0" }
 mxr-keychain = { path = "crates/keychain", version = "0.6.0" }
 mxr-humanizer = { path = "crates/humanizer", version = "0.6.0" }
@@ -329,6 +331,7 @@ unicode-width = "0.2"
 html2text = "0.17"
 htmlescape = "0.3"
 regex = "1"
+psl = "2"
 once_cell = "1"
 rodio = { version = "0.22.2", default-features = false, features = ["playback"] }
 
@@ -359,6 +362,7 @@ mxr-compose = { workspace = true }
 mxr-config = { workspace = true }
 mxr-core = { workspace = true }
 mxr-deliveries = { workspace = true }
+mxr-todo = { workspace = true }
 mxr-export = { workspace = true }
 mxr-keychain = { workspace = true }
 mxr-humanizer = { workspace = true }

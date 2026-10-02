@@ -239,6 +239,13 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         });
         state.register_auto_reminders_loop(reminders_handle);
 
+        let todo_state = state.clone();
+        let todo_handle = tokio::spawn(async move {
+            let shutdown_rx = todo_state.shutdown_receiver();
+            loops::todo_loop(todo_state, shutdown_rx).await;
+        });
+        state.register_todo_loop(todo_handle);
+
         let sends_state = state.clone();
         let sends_handle = tokio::spawn(async move {
             let shutdown_rx = sends_state.shutdown_receiver();

@@ -1,0 +1,88 @@
+# hnsw_rs 0.3.4 from crates.io with upstream commit 6256b00b11 applied
+# (jean-pierreBoth/hnswlib-rs, "vidaunited fix on reverse edges"). 0.3.4
+# writes every back-link onto the new point's top layer, so a point drawn at
+# level >= 1 has no layer-0 in-edges and search cannot reach it. Delete this
+# directory and the workspace [patch.crates-io] entry once a release with that
+# commit (0.3.5+) is on crates.io.
+[package]
+edition = "2024"
+name = "hnsw_rs"
+version = "0.3.4"
+authors = ["jeanpierre.both@gmail.com"]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+description = "Ann based on Hierarchical Navigable Small World Graphs from Yu.A. Malkov and D.A Yashunin"
+documentation = "https://docs.rs/hnsw_rs"
+readme = "README.md"
+keywords = [
+    "algorithms",
+    "ann",
+    "hnsw",
+]
+license = "MIT/Apache-2.0"
+repository = "https://github.com/jean-pierreBoth/hnswlib-rs"
+
+[features]
+default = []
+simdeez_f = ["anndists/simdeez_f"]
+stdsimd = ["anndists/stdsimd"]
+
+[lib]
+name = "hnsw_rs"
+path = "src/lib.rs"
+
+[dependencies.anndists]
+version = "0.1"
+
+[dependencies.anyhow]
+version = "1.0"
+
+[dependencies.bincode]
+version = "1.3"
+
+[dependencies.cfg-if]
+version = "1.0"
+
+[dependencies.cpu-time]
+version = "1.0"
+
+[dependencies.env_logger]
+version = "0.11"
+
+[dependencies.hashbrown]
+version = "0.15"
+
+[dependencies.indexmap]
+version = ">= 2.11"
+
+[dependencies.lazy_static]
+version = "1.4"
+
+[dependencies.log]
+version = "0.4"
+
+[dependencies.mmap-rs]
+version = "0.7"
+
+[dependencies.num-traits]
+version = "0.2"
+
+[dependencies.num_cpus]
+version = "1.16"
+
+[dependencies.parking_lot]
+version = "0.12"
+
+[dependencies.rand]
+version = "0.9"
+
+[dependencies.rayon]
+version = "1.11"
+
+[dependencies.serde]
+version = "1.0"
+features = ["derive"]

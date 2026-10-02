@@ -85,14 +85,41 @@ where
 {
     triggers.captures_iter(text).find_map(|caps| {
         let date = caps.name("date")?;
-        let (day, checked) = parse_date(date.as_str(), anchor, order)?;
+        let whole = caps.get(0)?;
+        let words = whole.as_str().trim();
+        // "was due" puts its tense before the trigger the regex matched.
+        let lead_in = crate::text::floor_char_boundary(text, whole.start().saturating_sub(12));
+        let intent = if PAST_INTENT.is_match(&text[lead_in..whole.end()]) {
+            YearIntent::JustGone
+        } else {
+            YearIntent::Next
+        };
+        let (day, checked) = parse_date(date.as_str(), anchor, order, intent)?;
         Some(FoundDate {
             at: end_of_day(day, &anchor.timezone()),
-            words: caps.get(0)?.as_str().trim().to_string(),
+            words: words.to_string(),
             checked,
         })
     })
 }
+
+/// Which year a date without one means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum YearIntent {
+    /// A deadline or expiry ahead ("due", "renew by", "expires"): the next
+    /// occurrence after the message was sent.
+    Next,
+    /// A date already passed ("was due", "expired on", "overdue since"):
+    /// the most recent one on or before the message.
+    JustGone,
+}
+
+static PAST_INTENT: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)\b(was|were)\s+(due|payable)|overdue|past\s+due|expired|lapsed")
+        .expect("valid past intent regex")
+});
+static MONTH_NAME: Lazy<Regex> =
+    Lazy::new(|| Regex::new(&format!(r"(?i)\b(?:{MONTHS})\b")).expect("valid month regex"));
 
 /// A stated lifetime ("expires in 24 hours") from `sent`.
 pub fn find_lifetime(text: &str, sent: DateTime<Utc>) -> Option<FoundDate> {
@@ -120,10 +147,13 @@ pub fn find_lifetime(text: &str, sent: DateTime<Utc>) -> Option<FoundDate> {
 }
 
 /// A date expression to a calendar day, and whether it is unambiguous.
+/// A yearless day and month ("9 October") is a guess about the year, so
+/// it comes back unchecked; `intent` picks which year.
 pub fn parse_date<Tz>(
     expr: &str,
     anchor: &DateTime<Tz>,
     order: DateOrder,
+    intent: YearIntent,
 ) -> Option<(NaiveDate, bool)>
 where
     Tz: TimeZone,
@@ -162,13 +192,13 @@ where
         .join(" ");
     let resolution = resolve_time(&normalized, anchor, &TimePrefs::default()).ok()?;
     let mut day = resolution.at.with_timezone(&anchor.timezone()).date_naive();
-    // Without a year the parser takes the next occurrence after the
-    // message. A reminder sent after the date ("was due 9 October", sent
-    // 12 October) means the one just gone, not next year's.
-    if !HAS_YEAR.is_match(&normalized) && (day - anchor.date_naive()).num_days() > 300 {
+    let year_guessed = !HAS_YEAR.is_match(&normalized) && MONTH_NAME.is_match(&normalized);
+    // The parser takes the next occurrence after the message; a date said
+    // to have passed means the one just gone.
+    if year_guessed && intent == YearIntent::JustGone && day > anchor.date_naive() {
         day = day.with_year(day.year() - 1)?;
     }
-    Some((day, true))
+    Some((day, !year_guessed))
 }
 
 fn parse_numeric(
@@ -251,7 +281,7 @@ mod tests {
             NaiveDate::from_ymd_opt(2026, 10, 9).expect("date")
         );
         assert_eq!(found.words, "Payment due 9 October");
-        assert!(found.checked);
+        assert!(!found.checked, "no year stated, so the year is a guess");
 
         let found = find_due(
             "Please pay by Friday, 9th October 2026",
@@ -276,6 +306,31 @@ mod tests {
             found.at.with_timezone(&London).date_naive(),
             NaiveDate::from_ymd_opt(2026, 10, 9).expect("date")
         );
+    }
+
+    #[test]
+    fn a_deadline_without_a_year_rolls_forward_and_is_unchecked() {
+        // Sent 1 December: "expires 3 March" is next March, a guess.
+        let found = find_due(
+            "Your passport expires 3 March",
+            &trigger_regex("expires"),
+            &sent(2026, 12, 1),
+            DateOrder::DayFirst,
+        )
+        .expect("due");
+        assert_eq!(
+            found.at.with_timezone(&London).date_naive(),
+            NaiveDate::from_ymd_opt(2027, 3, 3).expect("date")
+        );
+        assert!(!found.checked, "the year is a guess");
+        let stated = find_due(
+            "Your passport expires 3 March 2027",
+            &trigger_regex("expires"),
+            &sent(2026, 12, 1),
+            DateOrder::DayFirst,
+        )
+        .expect("due");
+        assert!(stated.checked);
     }
 
     #[test]

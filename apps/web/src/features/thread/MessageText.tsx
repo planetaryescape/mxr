@@ -107,7 +107,10 @@ function SegmentView({
           : "mt-3 text-[13px] text-muted-foreground"
       }
     >
-      <Paragraphs text={plain ? segment.text : stripQuoteMarks(segment.text)} />
+      <Paragraphs
+        text={plain ? segment.text : stripQuoteMarks(segment.text)}
+        highlightLink={highlightLink}
+      />
       {!forceOpen ? (
         <button
           type="button"

@@ -337,7 +337,11 @@ async fn the_updates_card_covers_the_latest_cut_and_never_more_than_two_days() {
     assert_eq!(card.message_count, 2);
     assert_eq!(card.source_count, 2);
     assert_eq!(card.since, today_at(8));
-    assert_eq!(card.thread_ids.len(), 2, "letting go acts on the card's threads");
+    assert_eq!(
+        card.thread_ids.len(),
+        2,
+        "letting go acts on the card's threads"
+    );
 
     // In the morning the card reaches back to yesterday's 16:30 cut, but
     // never past two days.

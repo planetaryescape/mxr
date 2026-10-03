@@ -116,7 +116,7 @@ pub(super) struct Placed {
 }
 
 /// The inbox mail of `accounts` (from `sender_email` only, when given)
-/// that belongs in `place`.
+/// that belongs in `place`, minus what that mode was marked done for.
 async fn place_messages(
     state: &AppState,
     accounts: &[AccountId],
@@ -124,11 +124,14 @@ async fn place_messages(
     sender_email: Option<&str>,
 ) -> Result<Vec<Placed>, HandlerError> {
     let kind = place_kind(place);
-    Ok(placed_inbox(state, accounts, sender_email)
+    let placed: Vec<Placed> = placed_inbox(state, accounts, sender_email)
         .await?
         .into_iter()
         .filter(|placed| placed.kind.kind == kind)
-        .collect())
+        .collect();
+    // Done in Updates or Reading takes a thread out of its early view too,
+    // even while To do keeps it in the inbox.
+    super::modes::without_done(state, accounts, placed).await
 }
 
 /// The inbox mail of `accounts` (from `sender_email` only, when given)

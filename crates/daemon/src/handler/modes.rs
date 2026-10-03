@@ -453,7 +453,38 @@ pub(super) async fn inbox_modes(
     state: &AppState,
     accounts: &[AccountId],
 ) -> Result<InboxModes, HandlerError> {
-    let placed = placed_inbox(state, accounts, None).await?;
+    let placed = without_done(state, accounts, placed_inbox(state, accounts, None).await?).await?;
+    let mut out = InboxModes {
+        updates: Vec::new(),
+        reading: Vec::new(),
+    };
+    for item in placed {
+        match item.kind.kind {
+            SenderKindData::PaperTrail => out.updates.push(item),
+            SenderKindData::Reading => out.reading.push(item),
+            _ => {}
+        }
+    }
+    let newest_first = |a: &Placed, b: &Placed| {
+        b.message
+            .date
+            .cmp(&a.message.date)
+            .then_with(|| b.message.seq.cmp(&a.message.seq))
+    };
+    out.updates.sort_by(newest_first);
+    out.reading.sort_by(newest_first);
+    Ok(out)
+}
+
+/// Placed inbox mail minus what Updates or Reading was marked done for:
+/// a thread stays out of a mode until a message of that mode arrives after
+/// its mark. Each thread's messages of one mode are checked together, as
+/// membership does. Order is not kept.
+pub(super) async fn without_done(
+    state: &AppState,
+    accounts: &[AccountId],
+    placed: Vec<Placed>,
+) -> Result<Vec<Placed>, HandlerError> {
     let mut marks: HashMap<(AccountId, &'static str), HashMap<ThreadId, DeskDismissal>> =
         HashMap::new();
     for account in accounts {
@@ -465,8 +496,6 @@ pub(super) async fn inbox_modes(
             );
         }
     }
-    // A thread's messages of one mode, so a mark is checked against all of
-    // them, as membership does.
     let mut threads: HashMap<(AccountId, ThreadId, SenderKindData), Vec<Placed>> = HashMap::new();
     for item in placed {
         let key = (
@@ -476,15 +505,15 @@ pub(super) async fn inbox_modes(
         );
         threads.entry(key).or_default().push(item);
     }
-    let mut out = InboxModes {
-        updates: Vec::new(),
-        reading: Vec::new(),
-    };
+    let mut kept = Vec::new();
     for ((account, thread, kind), items) in threads {
-        let (mode, bucket) = match kind {
-            SenderKindData::PaperTrail => (ModeKindData::Updates, &mut out.updates),
-            SenderKindData::Reading => (ModeKindData::Reading, &mut out.reading),
-            _ => continue,
+        let mode = match kind {
+            SenderKindData::PaperTrail => ModeKindData::Updates,
+            SenderKindData::Reading => ModeKindData::Reading,
+            _ => {
+                kept.extend(items);
+                continue;
+            }
         };
         let name = mark_name(mode).unwrap_or_default();
         let covered = marks
@@ -499,18 +528,10 @@ pub(super) async fn inbox_modes(
                 )
             });
         if !covered {
-            bucket.extend(items);
+            kept.extend(items);
         }
     }
-    let newest_first = |a: &Placed, b: &Placed| {
-        b.message
-            .date
-            .cmp(&a.message.date)
-            .then_with(|| b.message.seq.cmp(&a.message.seq))
-    };
-    out.updates.sort_by(newest_first);
-    out.reading.sort_by(newest_first);
-    Ok(out)
+    Ok(kept)
 }
 
 /// What an early mode's view is built on, for the clients' "early version"

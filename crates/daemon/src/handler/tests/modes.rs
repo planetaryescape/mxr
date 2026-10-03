@@ -698,3 +698,50 @@ async fn a_new_message_brings_a_thread_back_even_when_sqlite_reuses_a_rowid() {
         "Sam's new message brings the thread back to Messages"
     );
 }
+
+#[tokio::test]
+async fn done_in_updates_takes_the_thread_out_of_its_early_view_while_to_do_keeps_it() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let failed = mail(
+        &fx,
+        &thread,
+        "billing@shop.example",
+        "Payment failed for your plan",
+        Duration::hours(2),
+    )
+    .await;
+    add_todo(&fx, &failed.id, "tomorrow").await;
+    let in_place = |fx: &Fixture| {
+        let fx_state = fx.state.clone();
+        let thread = thread.clone();
+        async move {
+            let ResponseData::Place { bundles, .. } = crate::handler::places::list_place(
+                &fx_state,
+                mxr_protocol::MailPlaceData::PaperTrail,
+                None,
+                None,
+                crate::handler::places::PlacePage {
+                    limit: 50,
+                    offset: 0,
+                    messages_per_bundle: 50,
+                    message_offset: 0,
+                },
+            )
+            .await
+            .unwrap() else {
+                panic!("expected a place")
+            };
+            bundles
+                .iter()
+                .flat_map(|bundle| &bundle.messages)
+                .any(|message| message.thread_id == thread)
+        }
+    };
+    assert!(in_place(&fx).await, "Updates' early view shows it");
+
+    let (outcome, _) = done(&fx, &thread, ModeKindData::Updates, false).await;
+    assert_eq!(outcome.still_in, [ModeKindData::Todo]);
+    assert!(in_inbox(&fx, &failed.id).await, "To do still holds it");
+    assert!(!in_place(&fx).await, "done in Updates leaves Updates' view");
+}

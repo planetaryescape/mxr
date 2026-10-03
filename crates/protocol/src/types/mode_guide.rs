@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::todo_copy;
+use super::{now_copy, todo_copy};
 
 /// One key and the verb it does in this mode: "e tick off".
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -136,8 +136,39 @@ pub const TODO_GUIDE: ModeGuideCopy = ModeGuideCopy {
     first_run_line: todo_copy::FIRST_RUN_LINE,
 };
 
-/// Every mode that has shipped, in rail order.
-pub const MODE_GUIDES: &[ModeGuideCopy] = &[TODO_GUIDE];
+/// Now's keys: acting on a row does it in that row's own mode.
+const NOW_KEYS: &[(&str, &str)] = &[
+    ("Enter", "open in its mode"),
+    ("e", "done here"),
+    ("t", "make it a to-do"),
+    ("r", "reply"),
+    ("o", "open the email"),
+    ("u", "undo"),
+    ("?", "what is this"),
+];
+
+pub const NOW_GUIDE: ModeGuideCopy = ModeGuideCopy {
+    mode: "now",
+    name: "Now",
+    header: now_copy::HEADER,
+    never_had_any: now_copy::NEVER_HAD_ANY,
+    add_one: "",
+    clear_for_now: now_copy::CLEAR,
+    lands_here: "People waiting on you, things due soon, the latest updates and, after 17:00, one thing to read.",
+    card: now_copy::CARD,
+    card_keys: &[
+        ("Enter", "open in its mode"),
+        ("e", "done here"),
+        ("?", "what is this"),
+    ],
+    why_template: "From {mode}: {evidence}.",
+    keys: NOW_KEYS,
+    first_run_line: "",
+};
+
+/// Every mode that has shipped, in rail order. Now leads: it is the front
+/// page over the modes.
+pub const MODE_GUIDES: &[ModeGuideCopy] = &[NOW_GUIDE, TODO_GUIDE];
 
 /// The guide for a mode id. Accepts "todo", "to-do" and "to do".
 pub fn mode_guide(mode: &str) -> Option<&'static ModeGuideCopy> {
@@ -213,6 +244,7 @@ mod tests {
         for id in ["todo", "to-do", "To do", " TODO "] {
             assert_eq!(mode_guide(id).map(|g| g.mode), Some("todo"), "{id}");
         }
+        assert_eq!(mode_guide("Now").map(|g| g.mode), Some("now"));
         assert!(mode_guide("updates").is_none());
     }
 

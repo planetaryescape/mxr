@@ -1,12 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-
-import { ThreadPane } from "@/features/thread/ThreadPane";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/paper-trail/$threadId")({
-  component: OpenThread,
+  beforeLoad: ({ params }) => {
+    throw redirect({ to: "/updates/$threadId", params, replace: true });
+  },
 });
-
-function OpenThread() {
-  const { threadId } = Route.useParams();
-  return <ThreadPane threadId={threadId} />;
-}

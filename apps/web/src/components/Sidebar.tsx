@@ -13,13 +13,9 @@ import {
   History,
   Hourglass,
   Inbox,
-  LampDesk,
-  ListTodo,
   ListChecks,
   MailX,
-  Newspaper,
   Package,
-  Receipt,
   Reply,
   Search,
   Send,
@@ -34,15 +30,17 @@ import {
   Timer,
   Workflow,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, type ComponentType } from "react";
+import { Fragment, useEffect, useMemo, useRef, type ComponentType } from "react";
 
 import { AccountSwitcher } from "@/components/AccountSwitcher";
+import { railNavEntries } from "@/components/sidebarRail";
 import { ThemePicker } from "@/components/ThemePicker";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDeskQuery, type Desk } from "@/features/desk/api";
 import { lensesFromShell, type MailLens } from "@/features/mailbox/lenses";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
+import { useRailQuery } from "@/features/modes/rail";
 import { fetchReplyQueue } from "@/features/reply-queue/api";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { plural } from "@/lib/format";
@@ -57,7 +55,7 @@ type Icon = ComponentType<{ className?: string }>;
 export interface NavEntry {
   key: string;
   to: string;
-  /** Query the place is defined by (a desk lane). */
+  /** Query the place is defined by (a Messages lane). */
   search?: { lane: "waiting" } | { account?: string };
   /** Says what a count covers when the page it opens shows less of it. */
   hint?: string;
@@ -65,6 +63,10 @@ export interface NavEntry {
   Icon: Icon;
   /** Only work carries a count: owed and due, the reply queue, screening. */
   count?: number;
+  /** A quiet count (what a mode holds), not work: muted, never a dot. */
+  quietCount?: boolean;
+  /** "Early version: …": the mode is built on an existing view. */
+  early?: string;
   shortcut?: string;
 }
 
@@ -93,17 +95,10 @@ const SYSTEM_SHORTCUTS: Record<string, string> = {
   trash: "g #",
 };
 
-/** Views that live under "More": every folder, and the rarer triage lists. */
+/** Rarer triage lists under "More", after the ones the modes replaced. */
 const MORE_TRIAGE: NavEntry[] = [
   { key: "owed", to: "/owed", label: "Owed replies", Icon: Hourglass, shortcut: "g o" },
   { key: "invites", to: "/invites", label: "Invites", Icon: CalendarDays, shortcut: "g v" },
-  {
-    key: "subscriptions",
-    to: "/subscriptions",
-    label: "Subscriptions",
-    Icon: MailX,
-    shortcut: "g u",
-  },
   { key: "deliveries", to: "/deliveries", label: "Deliveries", Icon: Package, shortcut: "7" },
 ];
 
@@ -176,8 +171,8 @@ function isActive(path: string, lane: unknown, entry: NavEntry): boolean {
   const base = entry.to;
   if (base === "/settings/theme") return path.startsWith("/settings");
   const onPath = path === base || path.startsWith(`${base}/`);
-  // The desk and "Waiting on" share a path; the lane tells them apart.
-  if (base === "/desk") {
+  // Messages and "Waiting on" share a path; the lane tells them apart.
+  if (base === "/messages") {
     const entryLane = entry.search && "lane" in entry.search ? entry.search.lane : null;
     return onPath && entryLane === (lane === "waiting" ? "waiting" : null);
   }
@@ -203,18 +198,36 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const listRef = useRef<HTMLDivElement>(null);
 
   const desk = useDeskQuery();
+  const rail = useRailQuery();
   const replyQueue = useQuery({ queryKey: ["reply-queue"], queryFn: fetchReplyQueue });
 
   const sections = useMemo<NavSection[]>(() => {
     const lenses = lensesFromShell(shell.data);
     const labels = lenses.filter((lens) => lens.section === "labels");
     const saved = lenses.filter((lens) => lens.section === "saved");
-    const deskWork = desk.data ? desk.data.owed.total + desk.data.due.total : undefined;
-    const places: NavEntry[] = [
-      { key: "desk", to: "/desk", label: "Desk", Icon: LampDesk, count: deskWork, shortcut: "g h" },
-      // No count: To do earns a badge only once its rules are measured (D117).
-      { key: "todo", to: "/todo", label: "To do", Icon: ListTodo, shortcut: "g x" },
-      { key: "inbox", to: "/m/inbox", label: "Inbox", Icon: Inbox, shortcut: "g i" },
+    // The rail, in the daemon's order: Now, the five modes, then Inbox.
+    const places: NavEntry[] = railNavEntries(rail.data).map((entry) => ({
+      key: entry.key,
+      to: entry.to,
+      label: entry.label,
+      Icon: entry.Icon,
+      shortcut: entry.shortcut,
+      count: entry.count,
+      quietCount: !entry.badge,
+      early: entry.early,
+      hint: [entry.header, entry.early].filter(Boolean).join(" ") || undefined,
+    }));
+    // The views the modes replaced, still a key away under More. The
+    // Screener's page is decision history; new senders are asked on their row.
+    const screener: NavEntry = (desk.data ? screenerEntry(desk.data) : null) ?? {
+      key: "screener",
+      to: "/screener",
+      label: "Screener",
+      Icon: Shield,
+      shortcut: "g S",
+    };
+    const replaced: NavEntry[] = [
+      screener,
       {
         key: "reply-queue",
         to: "/reply-queue",
@@ -225,25 +238,15 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       },
       {
         key: "waiting",
-        to: "/desk",
+        to: "/messages",
         search: { lane: "waiting" },
         label: "Waiting on",
         Icon: Timer,
         shortcut: "g w",
       },
       { key: "snoozed", to: "/snoozed", label: "Snoozed", Icon: Clock, shortcut: "g n" },
-      // Mail that isn't from people: no counts, since none of it is work.
-      { key: "reading", to: "/reading", label: "Reading", Icon: Newspaper, shortcut: "g r" },
-      {
-        key: "paper-trail",
-        to: "/paper-trail",
-        label: "Paper trail",
-        Icon: Receipt,
-        shortcut: "g p",
-      },
+      { key: "subscriptions", to: "/subscriptions", label: "Subscriptions", Icon: MailX },
     ];
-    const screenerPlace = desk.data ? screenerEntry(desk.data) : null;
-    if (screenerPlace) places.push(screenerPlace);
     const result: NavSection[] = [{ id: "places", foldable: false, entries: places }];
     if (saved.length > 0) {
       result.push({
@@ -263,7 +266,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       id: "more",
       title: "More",
       foldable: true,
-      entries: [...folderEntries(lenses), ...MORE_TRIAGE],
+      entries: [...replaced, ...folderEntries(lenses), ...MORE_TRIAGE],
     });
     if (labels.length > 0) {
       result.push({
@@ -280,7 +283,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
     }
     result.push({ id: "tools", title: "Tools", foldable: true, entries: TOOLS });
     return result;
-  }, [desk.data, replyQueue.data, shell.data]);
+  }, [desk.data, rail.data, replyQueue.data, shell.data]);
 
   // Keyboard walks only what is visible: folded sections contribute their
   // header, not their entries.
@@ -385,7 +388,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                 : section.entries.map((entry) => {
                     runningIndex += 1;
                     const index = runningIndex;
-                    return (
+                    const link = (
                       <SidebarLink
                         key={entry.key}
                         entry={entry}
@@ -399,6 +402,16 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                         active={isActive(path, lane, entry)}
                         focused={sidebarFocused && clamp(focusIndex) === index}
                       />
+                    );
+                    // The rail's groups: Now, the modes, then Inbox (a lens).
+                    return section.id === "places" &&
+                      (entry.key === "messages" || entry.key === "inbox") ? (
+                      <Fragment key={entry.key}>
+                        <div aria-hidden className="mx-2 my-1.5 border-t border-sidebar-border" />
+                        {link}
+                      </Fragment>
+                    ) : (
+                      link
                     );
                   })}
             </nav>
@@ -480,18 +493,36 @@ function SidebarLink({
       <entry.Icon
         className={cn("size-4 shrink-0", active ? "text-sidebar-primary" : "text-muted-foreground")}
       />
-      {!collapsed ? <span className="min-w-0 flex-1 truncate">{entry.label}</span> : null}
+      {!collapsed ? (
+        <span className="min-w-0 flex-1 truncate">
+          {entry.label}
+          {entry.early ? (
+            <span
+              data-testid="rail-early"
+              className="ml-1.5 font-mono text-[9.5px] uppercase tracking-wide text-muted-foreground"
+            >
+              early
+            </span>
+          ) : null}
+        </span>
+      ) : null}
       {!collapsed && entry.shortcut ? (
         <span className="hidden font-mono text-2xs text-muted-foreground group-hover:inline">
           {formatChord(entry.shortcut)}
         </span>
       ) : null}
       {!collapsed && count ? (
-        <span className="font-mono text-2xs font-semibold tabular-nums text-sidebar-primary group-hover:hidden">
+        <span
+          data-testid="rail-count"
+          className={cn(
+            "font-mono text-2xs tabular-nums group-hover:hidden",
+            entry.quietCount ? "text-muted-foreground" : "font-semibold text-sidebar-primary",
+          )}
+        >
           {count > 9999 ? "9999+" : count.toLocaleString()}
         </span>
       ) : null}
-      {collapsed && count ? (
+      {collapsed && count && !entry.quietCount ? (
         <span aria-hidden className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
       ) : null}
     </Link>

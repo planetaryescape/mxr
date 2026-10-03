@@ -27,24 +27,35 @@ describe("theme preference", () => {
 });
 
 describe("home and sidebar prefs", () => {
-  test("new installs land on the desk with only places unfolded", () => {
+  test("new installs land on Now with only places unfolded", () => {
     const initial = useUiPrefs.getInitialState();
-    expect(initial.home).toBe("desk");
+    expect(initial.home).toBe("now");
     expect(initial.collapsedSections).toEqual(["more", "labels", "tools"]);
   });
 
-  test("saved v2 prefs keep their choices and fold More and Labels", () => {
+  test("saved v2 prefs keep their choices, fold More and Labels and land on Now", () => {
     expect(migrateUiPrefs({ theme: "paper", collapsedSections: ["tools", "saved"] }, 2)).toEqual({
       theme: "paper",
       collapsedSections: ["tools", "saved", "more", "labels"],
+      home: "now",
     });
     expect(migrateUiPrefs(undefined, 1)).toEqual({
       collapsedSections: ["tools", "more", "labels"],
+      home: "now",
     });
   });
 
-  test("v3 prefs pass through untouched, including an inbox home", () => {
-    const saved = { home: "inbox", collapsedSections: [] };
-    expect(migrateUiPrefs(saved, 3)).toBe(saved);
+  test("a saved desk home becomes Now and an inbox home stays", () => {
+    expect(migrateUiPrefs({ home: "desk", collapsedSections: [] }, 3)).toEqual({
+      home: "now",
+      collapsedSections: [],
+    });
+    const inbox = { home: "inbox", collapsedSections: [] };
+    expect(migrateUiPrefs(inbox, 3)).toBe(inbox);
+  });
+
+  test("v4 prefs pass through untouched", () => {
+    const saved = { home: "now", collapsedSections: [] };
+    expect(migrateUiPrefs(saved, 4)).toBe(saved);
   });
 });

@@ -967,6 +967,57 @@ const MIGRATIONS: &[Migration] = &[
         name: "mode_guide_seen",
         kind: MigrationKind::Sql(include_str!("../migrations/060_mode_guide_seen.sql")),
     },
+    Migration {
+        version: 61,
+        name: "mode_done",
+        kind: MigrationKind::Sql(include_str!("../migrations/061_mode_done.sql")),
+    },
+    Migration {
+        version: 62,
+        name: "done_watermark_by_date",
+        kind: MigrationKind::Composite(&[
+            MigrationStep::AddColumn {
+                table: "desk_dismissals",
+                column: "through_date",
+                sql: "ALTER TABLE desk_dismissals ADD COLUMN through_date INTEGER NOT NULL DEFAULT 0",
+            },
+            MigrationStep::AddColumn {
+                table: "desk_dismissals",
+                column: "through_message_id",
+                sql: "ALTER TABLE desk_dismissals ADD COLUMN through_message_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'",
+            },
+            MigrationStep::AddColumn {
+                table: "mode_done",
+                column: "through_date",
+                sql: "ALTER TABLE mode_done ADD COLUMN through_date INTEGER NOT NULL DEFAULT 0",
+            },
+            MigrationStep::AddColumn {
+                table: "mode_done",
+                column: "through_message_id",
+                sql: "ALTER TABLE mode_done ADD COLUMN through_message_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'",
+            },
+            MigrationStep::Sql(include_str!("../migrations/062_done_watermark_by_date.sql")),
+        ]),
+    },
+    // Done marks also keep the ids of the messages they saw, so a message
+    // the mark never saw is new whatever its Date header says. NULL on
+    // older marks, which keep the (date, id) watermark and count.
+    Migration {
+        version: 63,
+        name: "done_marks_covered_ids",
+        kind: MigrationKind::Composite(&[
+            MigrationStep::AddColumn {
+                table: "desk_dismissals",
+                column: "covered_ids",
+                sql: "ALTER TABLE desk_dismissals ADD COLUMN covered_ids TEXT",
+            },
+            MigrationStep::AddColumn {
+                table: "mode_done",
+                column: "covered_ids",
+                sql: "ALTER TABLE mode_done ADD COLUMN covered_ids TEXT",
+            },
+        ]),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

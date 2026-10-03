@@ -310,6 +310,8 @@ pub async fn run() -> anyhow::Result<()> {
         app.accounts.page.refresh_pending = true;
     } else {
         app.load(&mut client).await?;
+        // Now is the front page; the inbox stays loaded one key away.
+        app.apply(crate::action::Action::OpenNow);
         app.maybe_show_feature_onboarding();
         // Load accounts for sidebar account section
         app.accounts.page.refresh_pending = true;
@@ -1639,6 +1641,54 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if std::mem::take(&mut app.mailbox.now_page.pending_refresh) {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                AsyncResult::Now(fetch_now(&bg).await.map(Box::new))
+            });
+        }
+
+        if std::mem::take(&mut app.mailbox.pending_rail_refresh) {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, Request::GetRail { account_id: None }).await;
+                AsyncResult::Rail(match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Rail { rail },
+                    }) => Ok(rail),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response to GetRail".into())),
+                })
+            });
+        }
+
+        if let Some(thread_ids) = app.mailbox.now_page.pending_digest_preview.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::SetModeDone {
+                        thread_ids: thread_ids.clone(),
+                        mode: mxr_protocol::ModeKindData::Updates,
+                        dry_run: true,
+                        todo_ids: Vec::new(),
+                        sender: None,
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::ModeDone { items, .. },
+                    }) => Ok(items),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response to SetModeDone".into())),
+                };
+                AsyncResult::NowDigestPreview(thread_ids, result)
+            });
+        }
+
         if std::mem::take(&mut app.mailbox.todo_page.pending_refresh) {
             let mark_seen = std::mem::take(&mut app.mailbox.todo_page.pending_mark_seen);
             let bg = bg.clone();
@@ -2231,6 +2281,22 @@ pub async fn run() -> anyhow::Result<()> {
                             | ResponseData::DeskThreadsRestored { .. }
                             | ResponseData::MessagesPinned { .. },
                     }) => Ok(effect),
+                    Ok(Response::Ok {
+                        data:
+                            ResponseData::ModeDone {
+                                items,
+                                mutation_id,
+                                undo_unavailable,
+                                dry_run: false,
+                            },
+                    }) => {
+                        let (effect, undo) =
+                            mode_done_outcome(&items, mutation_id, undo_unavailable);
+                        if let Some(undo) = undo {
+                            let _ = result_tx_inner.send(AsyncResult::UndoCaptured(undo));
+                        }
+                        effect
+                    }
                     Ok(Response::Ok {
                         data:
                             ResponseData::DeskItemsResolved {
@@ -3365,6 +3431,23 @@ pub async fn run() -> anyhow::Result<()> {
                             app.refresh_places();
                             app.status_message = Some(format!("Sweep stopped: {e}"));
                         }
+                        AsyncResult::Now(Ok(loaded)) => {
+                            let (now, guide) = *loaded;
+                            app.set_now(now, guide);
+                        }
+                        AsyncResult::Now(Err(e)) => {
+                            app.status_message = Some(format!("Couldn't load Now: {e}"));
+                        }
+                        AsyncResult::Rail(Ok(rail)) => app.mailbox.rail = Some(rail),
+                        AsyncResult::Rail(Err(e)) => {
+                            tracing::debug!(error = %e, "rail fetch failed");
+                        }
+                        AsyncResult::NowDigestPreview(thread_ids, Ok(items)) => {
+                            app.show_now_digest_preview(thread_ids, items);
+                        }
+                        AsyncResult::NowDigestPreview(_, Err(e)) => {
+                            app.status_message = Some(format!("Couldn't preview: {e}"));
+                        }
                         AsyncResult::TodoRunway(Ok((runway, guide))) => {
                             app.set_todo_runway(runway, guide);
                         }
@@ -3773,6 +3856,74 @@ pub(crate) fn desk_request() -> Request {
 
 #[cfg(test)]
 mod tests;
+
+/// What a done-here answer means for the TUI: the toast in the daemon's
+/// handoff words with the undo it offers, or the error when nothing was
+/// done. A thread done could not let go keeps its row (the failure
+/// refetches Now), and `e` retries it.
+pub(crate) fn mode_done_outcome(
+    items: &[mxr_protocol::ModeDoneOutcomeData],
+    mutation_id: Option<String>,
+    undo_unavailable: bool,
+) -> (
+    Result<app::MutationEffect, MxrError>,
+    Option<app::PendingUndo>,
+) {
+    let done = items.iter().filter(|item| item.error.is_none()).count();
+    let mode = items
+        .first()
+        .map_or(mxr_protocol::ModeKindData::Messages, |item| item.mode);
+    let mut copy = app::mode_done_copy(items, mode);
+    let undo = mutation_id.map(|daemon_mutation_id| app::PendingUndo {
+        action: app::UndoAction::Mutations(vec![daemon_mutation_id]),
+        verb_past: "Done".into(),
+        count: u32::try_from(done).unwrap_or(u32::MAX),
+        applied_at: std::time::Instant::now(),
+    });
+    if !copy.is_empty() {
+        if undo.is_some() {
+            copy.push_str(" u to undo");
+        } else if undo_unavailable {
+            copy.push_str(" Its undo couldn't be saved.");
+        }
+    }
+    let effect = match items.iter().find_map(|item| item.error.as_deref()) {
+        Some(error) if done == 0 => Err(MxrError::Ipc(format!("Not done: {error}"))),
+        _ => Ok(app::MutationEffect::ModeDone(copy)),
+    };
+    (effect, undo)
+}
+
+/// Now and its guide, fetched together so the header, the card and the
+/// rows arrive at once. A guide error leaves the rows on screen.
+async fn fetch_now(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+) -> Result<(mxr_protocol::NowData, Option<mxr_protocol::ModeGuideData>), MxrError> {
+    let (now, guide) = tokio::join!(
+        ipc_call(bg, Request::GetNow { account_id: None }),
+        ipc_call(
+            bg,
+            Request::GetModeGuide {
+                mode: Some(crate::app::NOW_MODE.into()),
+            },
+        ),
+    );
+    let now = match now {
+        Ok(Response::Ok {
+            data: ResponseData::Now { now },
+        }) => now,
+        Ok(Response::Error { message, .. }) => return Err(MxrError::Ipc(message)),
+        Err(e) => return Err(e),
+        _ => return Err(MxrError::Ipc("unexpected response to GetNow".into())),
+    };
+    let guide = match guide {
+        Ok(Response::Ok {
+            data: ResponseData::ModeGuides { mut guides },
+        }) if !guides.is_empty() => Some(guides.remove(0)),
+        _ => None,
+    };
+    Ok((now, guide))
+}
 
 /// The runway and To do's guide, fetched together so the header, the card
 /// and the rows arrive at once. A guide error leaves the rows on screen.

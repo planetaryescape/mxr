@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 mod desk;
 mod draft_provenance;
 mod mode_guide;
+mod modes;
+mod now;
 mod places;
 mod platform;
 mod promises;
@@ -13,6 +15,8 @@ mod todos;
 pub use desk::*;
 pub use draft_provenance::*;
 pub use mode_guide::*;
+pub use modes::*;
+pub use now::*;
 pub use places::*;
 pub use platform::*;
 pub use promises::*;
@@ -1732,6 +1736,57 @@ pub enum Request {
         #[serde(default = "default_true")]
         seen: bool,
     },
+    // ----- Modes -----
+    /// Now, the front page: People, Due soon, one Updates card and an
+    /// evening Reading pick, at most three items each, with "and N more"
+    /// lines and the clear state. Local reads only. Returns
+    /// `ResponseData::Now`.
+    GetNow {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+    },
+    /// The rail: Now, the five modes and Inbox in order, each with its
+    /// key, count, badge (work only: Now) and whether it is built or an
+    /// early version on an existing view, plus the pages under More.
+    /// Returns `ResponseData::Rail`.
+    GetRail {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+    },
+    /// Which modes hold a thread and why, computed from the desk's lanes,
+    /// open to-dos, the sender classifier and per-mode done marks. Name
+    /// the thread by `thread_id`, by one of its messages, or many at once
+    /// in `thread_ids` (at most 100). Returns `ResponseData::ModeMembership`.
+    GetModeMembership {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        message_id: Option<MessageId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        thread_id: Option<ThreadId>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        thread_ids: Vec<ThreadId>,
+    },
+    /// Done here: the thread leaves `mode` until a new message arrives
+    /// (To do ticks its open rows off). When no other mode holds the
+    /// thread and `modes.archive_on_last_done` is on, it is archived at
+    /// the provider too. Each outcome carries the handoff copy. `dry_run`
+    /// returns the same plan without changing anything; the real run
+    /// returns one `mutation_id` for `UndoMutation`. Archive has no done.
+    /// In To do, `todo_ids` ticks off only those rows; To do lets go of a
+    /// thread only once none of its to-dos is open. `sender` adds every
+    /// thread of that sender's in the mode (Updates or Reading), resolved
+    /// here so the preview and the run cover the same set. Returns
+    /// `ResponseData::ModeDone`.
+    SetModeDone {
+        #[serde(default)]
+        thread_ids: Vec<ThreadId>,
+        mode: ModeKindData,
+        #[serde(default)]
+        dry_run: bool,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        todo_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sender: Option<ModeDoneSenderData>,
+    },
     /// A place (Reading or Paper trail): inbox mail of that kind grouped by
     /// sender, newest bundle first, each with the reason it is there.
     /// `account_id: None` covers every enabled account.
@@ -1977,6 +2032,10 @@ impl Request {
             | Self::SetTodoCatchup { .. }
             | Self::GetModeGuide { .. }
             | Self::SetModeGuideSeen { .. }
+            | Self::GetNow { .. }
+            | Self::GetRail { .. }
+            | Self::GetModeMembership { .. }
+            | Self::SetModeDone { .. }
             | Self::GetRecipientBriefing { .. }
             | Self::SuggestCollaborators { .. }
             | Self::FindExpert { .. }
@@ -2957,6 +3016,30 @@ pub enum ResponseData {
     ModeGuides {
         guides: Vec<ModeGuideData>,
     },
+    /// Returned by `Request::GetNow`.
+    Now {
+        now: NowData,
+    },
+    /// Returned by `Request::GetRail`.
+    Rail {
+        rail: RailData,
+    },
+    /// Returned by `Request::GetModeMembership`, one entry per thread
+    /// found, in request order.
+    ModeMembership {
+        threads: Vec<ThreadModesData>,
+    },
+    /// Returned by `Request::SetModeDone`, one outcome per thread in
+    /// request order. `mutation_id` undoes the whole run.
+    ModeDone {
+        items: Vec<ModeDoneOutcomeData>,
+        dry_run: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mutation_id: Option<String>,
+        /// Something changed but its undo could not be saved.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        undo_unavailable: bool,
+    },
     /// Returned by `Request::ListPlace`.
     Place {
         place: MailPlaceData,
@@ -3141,6 +3224,10 @@ impl ResponseData {
             | Self::TodoChange { .. }
             | Self::TodoCatchup { .. }
             | Self::ModeGuides { .. }
+            | Self::Now { .. }
+            | Self::Rail { .. }
+            | Self::ModeMembership { .. }
+            | Self::ModeDone { .. }
             | Self::RecipientBriefing { .. }
             | Self::SuggestedCollaborators { .. }
             | Self::ExpertSuggestions { .. }

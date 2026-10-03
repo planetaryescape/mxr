@@ -69,6 +69,26 @@ pub enum Action {
     OpenSubscriptions,
     OpenOwedReplies,
     OpenDesk,
+    /// Open Now (`g h`): the front page, at most ten things in four fixed
+    /// sections (`Request::GetNow`).
+    OpenNow,
+    /// Open Messages (`g m`): an early version on the desk lens.
+    OpenMessages,
+    /// Open Archive (`g e`): an early version that says what backs it.
+    OpenArchiveMode,
+    /// Enter on Now: open the row in its own mode.
+    NowOpen,
+    /// `e` on Now: done here, in the row's own mode (`SetModeDone`).
+    NowDone,
+    /// `o` on Now: open the email itself.
+    NowOpenEmail,
+    /// `A` on Now: preview letting go of the Updates card, or confirm it.
+    NowLetGoDigest,
+    /// Esc on Now's first-encounter card: retire it in every client.
+    NowCloseCard,
+    /// A digit on a new sender's row: answer its one question with that
+    /// choice (`SetSenderKind`).
+    NowAnswerSender(usize),
     /// Open Reading or Paper trail (`Request::ListPlace`).
     OpenPlace(mxr_protocol::MailPlaceData),
     /// Pin or unpin the message under the cursor in a place.

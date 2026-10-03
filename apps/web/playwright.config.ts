@@ -15,7 +15,8 @@ export default defineConfig({
     baseURL: appUrl,
     // The theme follows the OS until one is picked; the suite was written
     // against the dark default, so the browser reports a dark scheme.
-    colorScheme: "dark",
+    // MXR_E2E_SCHEME=light runs the whole suite in the light theme.
+    colorScheme: process.env.MXR_E2E_SCHEME === "light" ? "light" : "dark",
     trace: "on-first-retry",
     // Local escape hatch when the pinned Playwright browser isn't downloaded.
     launchOptions: process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {},

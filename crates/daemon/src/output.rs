@@ -75,6 +75,13 @@ const SINGLE_LINE_FIELDS: &[&str] = &[
     "who_owes",
     "label",
     "domain",
+    "also_in",
+    "copy",
+    "line",
+    "more_line",
+    "overload_line",
+    "not_now",
+    "empty_state",
 ];
 
 /// Makes every one-line, mail-controlled field of a daemon response safe

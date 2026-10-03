@@ -15,6 +15,8 @@ import {
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
+import { EarlyModeNote } from "@/features/modes/EarlyModeNote";
+import { markModeDone } from "@/features/modes/modeDone";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
 import { targetFromRows } from "@/features/mail-actions/target";
@@ -41,6 +43,7 @@ import {
   placeMessageRow,
   togglePin,
 } from "./placeVerbs";
+import { SenderDoneDialog, type SenderDone } from "./SenderDoneDialog";
 import { SweptClear } from "./SweptClear";
 import { usePlace } from "./usePlace";
 import { When } from "@/components/When";
@@ -58,8 +61,8 @@ function shownUnpinned(bundles: readonly PlaceBundle[], open: (bundle: PlaceBund
 }
 
 /**
- * Paper trail: receipts, notifications and automated mail, one row per
- * sender. A row opens to its messages; pin the few that matter and sweep
+ * Updates, an early version on Paper trail: receipts, notifications and
+ * automated mail, one row per sender, until the twice-daily digest ships. A row opens to its messages; pin the few that matter and sweep
  * the rest. Counts here are facts, never badges: none of this is work.
  */
 export function PaperTrailRoute() {
@@ -76,9 +79,10 @@ export function PaperTrailRoute() {
   const phase = useDelayedPending(status.isLoading);
   const lowTide = useLowTide("paper_trail", status.isLoading || status.isError, bundles.length > 0);
   return (
-    <PlaceLayout basePath="/paper-trail" label="Paper trail" threadIds={threadIds}>
+    <PlaceLayout basePath="/updates" label="Updates" threadIds={threadIds}>
+      <EarlyModeNote mode="updates" />
       <PlaceHeader
-        title="Paper trail"
+        title="Updates"
         meta={
           total > 0
             ? `${plural(total, "message")} from ${plural(senders, "sender")}. Pin what matters, sweep the rest.`
@@ -196,6 +200,7 @@ function Bundles({
     items.length > 0,
   );
 
+  const [senderDone, setSenderDone] = useState<SenderDone | null>(null);
   const toggle = useCallback(
     (key: string) => {
       setExpanded((previous) => {
@@ -228,6 +233,23 @@ function Bundles({
     down: () => move(1),
     up: () => move(-1),
     open: () => current && activate(current),
+    // Done here in Updates: one message's thread, or every thread of the
+    // sender's bundle (let go of this source).
+    // Done here in Updates: one message's thread at once, or, on a
+    // sender's row, all of that sender's threads after the daemon's preview.
+    done: () => {
+      if (!current) return;
+      if (current.type === "message") {
+        void markModeDone("updates", [current.message.thread_id]);
+        return;
+      }
+      setSenderDone({
+        mode: "updates",
+        accountId: current.bundle.account_id,
+        senderEmail: current.bundle.sender_email,
+        label: bundleSender(current.bundle),
+      });
+    },
     pin: () => {
       if (!current) return;
       if (current.type === "message") {
@@ -262,6 +284,9 @@ function Bundles({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
+      {senderDone ? (
+        <SenderDoneDialog target={senderDone} onClose={() => setSenderDone(null)} />
+      ) : null}
       <SwipeLayer ref={swipeLayer} />
       <ul
         ref={listRef}

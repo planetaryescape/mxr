@@ -216,7 +216,7 @@ const COMMAND_EXAMPLES = {
     ],
   },
   desk: {
-    use: 'See what needs you: replies you owe, promises coming due, threads waiting on someone and new mail from people. `done` puts a row away; preview it with `--dry-run`. See [Clear the desk](/guides/desk/) and the [desk reference](/reference/desk-and-places/).',
+    use: 'See what needs you: replies you owe, promises coming due, threads waiting on someone and new mail from people. `done` puts a row away; preview it with `--dry-run`. See [Clear the desk](/guides/now/) and the [desk reference](/reference/desk-and-places/).',
     examples: [
       "mxr desk",
       "mxr desk --format json | jq -r '.owed.rows[] | .subject'",

@@ -154,28 +154,37 @@ intentionally want it to talk to the installed runtime.
 
 Set `MXR_BRIDGE_URL=http://127.0.0.1:9000` to override.
 
-## The desk
+## Now and the rail
 
-The web app opens on the [desk](/guides/desk/): replies you owe, promises
-coming due, threads waiting on someone and new mail from people, each row
-with the reason it is there. Mail that is not from people goes to
-[Reading and Paper trail](/guides/reading-and-paper-trail/). To answer
+The web app opens on [Now](/guides/now/): the few things that need you now,
+from every mode, at most ten in four sections. Acting on a row does it in
+that row's own mode, and `e` is done here: other modes keep the
+conversation, and the toast says whether the email was archived. To answer
 everyone you owe in one sitting, use [Focus & reply](/guides/focus-and-reply/).
-[Work through your day](/guides/your-day/) puts the three in order.
+[Work through your day](/guides/your-day/) puts them in order.
 
 To open on the inbox instead, set **Settings > Appearance > Home** to
-**Inbox**. The arrival-order inbox shows everything, Reading and Paper trail
-mail included; the separation lives on the desk and in the places.
+**Inbox**. The arrival-order inbox shows everything.
 
-The sidebar holds places rather than folders: Desk, Inbox, Reply queue,
-Waiting on, Snoozed, Reading, Paper trail and, when someone new is waiting
-for a decision, Screener. Folders (Starred, Sent, Drafts, All Mail, Spam,
-Trash) and the rarer lists (Owed replies, Invites, Subscriptions and
-Deliveries) sit under **More**. **Labels**, **Saved searches** and **Tools**
-have their own sections; More, Labels and Tools start folded. Only work
-carries a count: the desk (owed and due), the reply queue and the screener.
-Unread mail still shows as bold rows, but the inbox, labels and saved searches
-carry no unread badge.
+The sidebar is the rail: Now, Messages, To do, Updates, Reading, Archive,
+then Inbox, each with its `g` key. Messages, Updates and Reading say "early"
+because they are built on the desk, Paper trail and the Reading place, and
+Archive says its records are coming. Only Now carries a badge (people whose
+turn it is and things to act on); To do and Messages show a quiet count.
+Screener, Reply queue, Waiting on, Snoozed and Subscriptions, the folders
+(Starred, Sent, Drafts, All Mail, Spam, Trash) and the rarer lists (Owed
+replies, Invites, Deliveries) sit under **More**. **Labels**, **Saved
+searches** and **Tools** have their own sections; More, Labels and Tools
+start folded. Unread mail still shows as bold rows, but no list carries an
+unread badge.
+
+The reader names the other modes holding a conversation ("Also in To do:
+sign by Mon 5 Oct"), and a first-time person's row asks once where their
+mail belongs.
+
+On a phone the sidebar gives way to five tabs at the bottom: Now, Messages,
+To do, Reading and Find. Find holds search, Archive and the Inbox; Updates
+opens from the card on Now.
 
 ## Reading and triage
 
@@ -271,8 +280,8 @@ draft above the quoted message. [How drafts are written](/guides/llm-features/).
 
 ### Triage queues
 
-The reply queue (reply later adds to it) is one of the sidebar's places. The other
-queues the TUI shows as lenses live under **More**: owed replies (the desk's
+The reply queue (reply later adds to it) and the other queues the TUI shows as
+lenses live under **More**: owed replies (the desk's
 You owe lane in full: people you have written to waiting on you, most
 overdue first), invites and subscriptions. On the reply queue each row has a
 **Done** button that takes it out of the queue. [Focus & reply](/guides/focus-and-reply/)

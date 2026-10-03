@@ -458,9 +458,15 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Compose".into(),
         },
         PaletteCommand {
-            label: "Desk".into(),
+            label: "Now".into(),
             shortcut: "gh".into(),
-            action: Action::OpenDesk,
+            action: Action::OpenNow,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Messages".into(),
+            shortcut: "gm".into(),
+            action: Action::OpenMessages,
             category: "Navigation".into(),
         },
         PaletteCommand {
@@ -482,9 +488,15 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Navigation".into(),
         },
         PaletteCommand {
-            label: "Paper trail".into(),
-            shortcut: "gp".into(),
+            label: "Updates".into(),
+            shortcut: "gu".into(),
             action: Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail),
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Archive".into(),
+            shortcut: "ge".into(),
+            action: Action::OpenArchiveMode,
             category: "Navigation".into(),
         },
         PaletteCommand {

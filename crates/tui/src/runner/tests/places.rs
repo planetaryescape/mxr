@@ -265,11 +265,12 @@ fn verbs_in_a_place_act_on_the_message_under_the_cursor_only() {
             loaded: true,
         },
     );
+    // `e` is done here in Updates for that message's thread.
     app.apply(Action::Archive);
     assert!(matches!(
         queued(&app).as_slice(),
-        [Request::Mutation { mutation: MutationCommand::Archive { message_ids }, .. }]
-            if message_ids == &vec![receipt.message_id.clone()]
+        [Request::SetModeDone { thread_ids, mode: mxr_protocol::ModeKindData::Updates, .. }]
+            if thread_ids == &vec![receipt.thread_id.clone()]
     ));
 }
 

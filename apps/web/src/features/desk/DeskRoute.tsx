@@ -12,12 +12,16 @@ import {
 } from "./api";
 import { deskHeadline, LANE_TITLES } from "./deskCopy";
 import { deskDoneItem, markDeskDone, useDeskDone } from "./deskDone";
+import type { DeskRow as DeskRowData } from "./api";
 import { elsewhereLinks } from "./deskLinks";
 import { deskGroups, partialLane } from "./deskRows";
 import { DeskRow } from "./DeskRow";
 import { useGistModel } from "@/features/gists/rowGists";
 import { useLlmStatus } from "@/features/llm/useLlmStatus";
 import { LowTide } from "@/features/low-tide/LowTide";
+import { EarlyModeNote } from "@/features/modes/EarlyModeNote";
+import { useThreadModesMap } from "@/features/modes/membership";
+import { markModeDone, useModeDone } from "@/features/modes/modeDone";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { usePendingMailOps, type MailAction } from "@/features/mail-actions/pendingMailOps";
 import type { InterceptedVerb } from "@/features/mail-actions/mailVerbs";
@@ -38,18 +42,32 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
  * put the conversation away (see deskDone). With a `lane`, the same page
  * shows that one lane in full.
  */
-export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
+export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "messages" }) {
   const account = useUiPrefs((s) => s.accountScope);
+  // Messages is an early version built on the desk: the same lanes, at its
+  // own URL, with `e` as done in Messages (`SetModeDone`).
+  const messages = mode === "messages";
+  const basePath = messages ? "/messages" : "/desk";
   // A lane's page starts with the first rows of each lane and can ask for
   // the whole lane; the choice resets when the lane changes.
   const [wholeLane, setWholeLane] = useState<DeskLaneKind | null>(null);
   const desk = useDeskQuery(lane && wholeLane === lane ? DESK_FULL_LANE_LIMIT : DESK_LANE_LIMIT);
   const ops = usePendingMailOps((s) => s.ops);
-  const hidden = useDeskDone((s) => s.hidden);
-  const { groups, index, byThread } = useMemo(
-    () => deskGroups(desk.data, ops, lane, hidden),
-    [desk.data, hidden, ops, lane],
+  const deskHidden = useDeskDone((s) => s.hidden);
+  const doneInMessages = useModeDone((s) => s.hidden.messages);
+  const hidden = useMemo(
+    () =>
+      messages && doneInMessages.size > 0
+        ? new Set([...deskHidden, ...doneInMessages])
+        : deskHidden,
+    [deskHidden, doneInMessages, messages],
   );
+  const { groups, index, byThread } = useMemo(
+    () => deskGroups(desk.data, ops, lane, hidden, basePath),
+    [basePath, desk.data, hidden, ops, lane],
+  );
+  // "Also in To do: …" and a new sender's question on each row (Messages).
+  const memberships = useThreadModesMap(messages ? [...byThread.keys()] : []).data;
   // Only the whole desk has a low tide; a lane's page is just a list.
   const hasWork = groups.some((group) => group.rows.length > 0);
   const lowTide = useLowTide("desk", Boolean(lane) || !desk.data, hasWork);
@@ -64,26 +82,48 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
 
   // On the desk, archive is Done: nothing for me to do here, put it away.
   // It covers the list, the selection and the reader opened from the desk.
-  const interceptVerb = useCallback((action: MailAction, target: MailTarget): InterceptedVerb => {
-    if (action !== "archive" && action !== "read-and-archive") return { rest: target };
-    const threadIds = new Set(target.rows.map((row) => row.thread_id));
-    if (target.threadId) threadIds.add(target.threadId);
-    const onDesk = [...threadIds].flatMap((id) => {
-      const row = rowsByThread.current.get(id);
-      return row ? [row] : [];
-    });
-    if (onDesk.length === 0) return { rest: target };
-    const rest = target.rows.filter((row) => !rowsByThread.current.has(row.thread_id));
-    return {
-      rest: rest.length > 0 ? targetFromRows(rest, target.source) : null,
-      commit: () => void markDeskDone(onDesk.map(deskDoneItem)),
-    };
-  }, []);
+  // In Messages, done is done in Messages, except a promise under Due,
+  // which the desk's Done resolves.
+  const putAway = useCallback(
+    (rows: DeskRowData[]) => {
+      const viaDesk = messages ? rows.filter((row) => row.lane === "due") : rows;
+      const viaMode = messages ? rows.filter((row) => row.lane !== "due") : [];
+      if (viaDesk.length > 0) void markDeskDone(viaDesk.map(deskDoneItem));
+      if (viaMode.length > 0)
+        void markModeDone(
+          "messages",
+          viaMode.map((row) => row.thread_id),
+        );
+    },
+    [messages],
+  );
 
-  const doneRow = useCallback((row: MessageRowView) => {
-    const source = rowsByThread.current.get(row.thread_id);
-    if (source) void markDeskDone([deskDoneItem(source)]);
-  }, []);
+  const interceptVerb = useCallback(
+    (action: MailAction, target: MailTarget): InterceptedVerb => {
+      if (action !== "archive" && action !== "read-and-archive") return { rest: target };
+      const threadIds = new Set(target.rows.map((row) => row.thread_id));
+      if (target.threadId) threadIds.add(target.threadId);
+      const onDesk = [...threadIds].flatMap((id) => {
+        const row = rowsByThread.current.get(id);
+        return row ? [row] : [];
+      });
+      if (onDesk.length === 0) return { rest: target };
+      const rest = target.rows.filter((row) => !rowsByThread.current.has(row.thread_id));
+      return {
+        rest: rest.length > 0 ? targetFromRows(rest, target.source) : null,
+        commit: () => putAway(onDesk),
+      };
+    },
+    [putAway],
+  );
+
+  const doneRow = useCallback(
+    (row: MessageRowView) => {
+      const source = rowsByThread.current.get(row.thread_id);
+      if (source) putAway([source]);
+    },
+    [putAway],
+  );
 
   // A short swipe right is Done, like `e`, in every lane; a long one
   // trashes, except on Waiting rows where there is nothing of yours to
@@ -106,10 +146,17 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
       const source = index.get(row.id);
       // Spread, not an object prop: the row stays memoized across renders.
       return source ? (
-        <DeskRow row={row} desk={source} onDone={doneRow} gistLine={gistLine} {...state} />
+        <DeskRow
+          row={row}
+          desk={source}
+          onDone={doneRow}
+          gistLine={gistLine}
+          modes={memberships?.get(source.thread_id)}
+          {...state}
+        />
       ) : null;
     },
-    [doneRow, gistLine, index],
+    [doneRow, gistLine, index, memberships],
   );
 
   // `w`, the list's row action, is Done too.
@@ -123,23 +170,30 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
     [doneRow],
   );
 
-  const title = lane ? LANE_TITLES[lane] : "Desk";
+  const title = lane ? LANE_TITLES[lane] : messages ? "Messages" : "Desk";
   const laneTotal = lane && desk.data ? desk.data[lane].total : null;
   const partial = partialLane(desk.data, lane);
   return (
     <ListWithReader
-      basePath="/desk"
+      basePath={basePath}
       preserveSearch
       title={title}
       meta={laneTotal ? plural(laneTotal, "conversation") : null}
       actions={
         lane ? (
-          <Link to="/desk" className="text-[12px] text-muted-foreground hover:text-foreground">
-            Back to the desk
+          <Link to={basePath} className="text-[12px] text-muted-foreground hover:text-foreground">
+            {messages ? "Back to Messages" : "Back to the desk"}
           </Link>
         ) : null
       }
-      heading={!lane && desk.data ? <DeskHeading desk={desk.data} /> : undefined}
+      heading={
+        !lane && desk.data ? (
+          <>
+            {messages ? <EarlyModeNote mode="messages" /> : null}
+            <DeskHeading desk={desk.data} basePath={basePath} />
+          </>
+        ) : undefined
+      }
       toolbar={
         lane && partial ? (
           <p className="text-[12px] text-muted-foreground">
@@ -156,7 +210,7 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
       }
       footer={!lane && desk.data ? <Elsewhere counts={desk.data.elsewhere} /> : null}
       groups={groups}
-      scopeKey={`desk|${lane ?? "all"}|${account ?? "all"}`}
+      scopeKey={`${basePath}|${lane ?? "all"}|${account ?? "all"}`}
       status={desk}
       renderRow={renderRow}
       airyHeaders
@@ -164,13 +218,13 @@ export function DeskRoute({ lane }: { lane?: DeskLaneKind }) {
       swipeActions={swipeActions}
       rowAction={done}
       rowGists
-      empty={<ClearDesk lane={lane} lowTide={lowTide} />}
+      empty={<ClearDesk lane={lane} lowTide={lowTide} messages={messages} />}
     />
   );
 }
 
 /** The greeting, whose counts double as links to each lane in full. */
-function DeskHeading({ desk }: { desk: Desk }) {
+function DeskHeading({ desk, basePath }: { desk: Desk; basePath: string }) {
   const headline = deskHeadline(desk);
   return (
     <div className="px-5 pb-3.5 pt-4">
@@ -182,7 +236,7 @@ function DeskHeading({ desk }: { desk: Desk }) {
               <span key={count.lane}>
                 {position > 0 ? ", " : null}
                 <Link
-                  to="/desk"
+                  to={basePath}
                   search={{ lane: count.lane }}
                   className="underline decoration-border-strong decoration-1 underline-offset-4 hover:decoration-primary"
                 >
@@ -232,11 +286,23 @@ function Elsewhere({ counts }: { counts: DeskElsewhere }) {
   );
 }
 
-function ClearDesk({ lane, lowTide }: { lane?: DeskLaneKind; lowTide: boolean }) {
+function ClearDesk({
+  lane,
+  lowTide,
+  messages,
+}: {
+  lane?: DeskLaneKind;
+  lowTide: boolean;
+  messages: boolean;
+}) {
   if (lowTide) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
-        <LowTide line="Low tide. Nobody's waiting on you." sound className="w-full">
+        <LowTide
+          line={messages ? "Nobody is waiting on you." : "Low tide. Nobody's waiting on you."}
+          sound
+          className="w-full"
+        >
           <NextDue />
           <p className="mt-3">
             New mail still arrives in the inbox: <kbd className="font-mono">g</kbd>{" "}
@@ -249,7 +315,11 @@ function ClearDesk({ lane, lowTide }: { lane?: DeskLaneKind; lowTide: boolean })
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-8 py-16 text-center">
       <p className="text-[15px] text-foreground/90">
-        {lane ? `Nothing under ${LANE_TITLES[lane]} right now.` : "The desk is clear."}
+        {lane
+          ? `Nothing under ${LANE_TITLES[lane]} right now.`
+          : messages
+            ? "Nobody is waiting on you."
+            : "The desk is clear."}
       </p>
       <p className="max-w-sm text-[13px] text-muted-foreground">
         New mail still arrives in the inbox, one key away: <kbd className="font-mono">g</kbd>{" "}

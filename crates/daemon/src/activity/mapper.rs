@@ -817,6 +817,15 @@ pub fn map_request(
         | Request::SetTodoCatchup { .. } => {
             skip_activity!("todo", "To do requests are not in the activity catalog yet");
         }
+        Request::GetNow { .. }
+        | Request::GetRail { .. }
+        | Request::GetModeMembership { .. }
+        | Request::SetModeDone { .. } => {
+            skip_activity!(
+                "modes",
+                "Now, the rail and per-mode done are not in the activity catalog yet"
+            );
+        }
         Request::GetModeGuide { .. } | Request::SetModeGuideSeen { .. } => {
             skip_activity!(
                 "mode_guide",

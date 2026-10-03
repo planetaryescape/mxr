@@ -105,7 +105,7 @@ mxr remind MESSAGE_ID --when "in 5d"             # nudge if no reply
 mxr replies                                      # your reply-later queue
 ```
 
-Full guide → [Clear the desk](/guides/desk/) · [Forgotten Work](/guides/forgotten-work/) · [Automated Follow-ups](/guides/automated-followups/)
+Full guide → [Clear the desk](/guides/now/) · [Forgotten Work](/guides/forgotten-work/) · [Automated Follow-ups](/guides/automated-followups/)
 
 ## Labels and saved searches
 

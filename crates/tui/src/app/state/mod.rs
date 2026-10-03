@@ -6,6 +6,7 @@ mod deliveries;
 mod diagnostics;
 mod mailbox;
 mod modals;
+mod now;
 mod rules;
 mod search;
 mod toasts;
@@ -44,6 +45,7 @@ pub use modals::{
     ThreadSummaryModalState, UserError, UserErrorSeverity, WhoisModalState, SNOOZE_PRESETS,
     USER_ERROR_LOG_CAPACITY, WARN_STATUS_TTL,
 };
+pub use now::{NowDigestPreview, NowPageState, NowRow};
 pub use rules::{RuleFormState, RulesPageState, RulesPanel, RulesState};
 pub use search::{
     PendingSearchCountRequest, PendingSearchDebounce, PendingSearchRequest, SearchPageState,

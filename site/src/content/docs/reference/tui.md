@@ -52,7 +52,7 @@ Behavior:
 ## Desk
 
 **Desk** is the first lens in the sidebar, and **Go to the Desk** opens it.
-It shows the same lanes as `mxr desk` ([Clear the desk](/guides/desk/)).
+It shows the same lanes as `mxr desk` ([Clear the desk](/guides/now/)).
 Move across the lanes and open a conversation beside the desk as in any
 list. The archive and mark-read-and-archive keys are **Done** for the row
 under the cursor, from the list or from that conversation, and undo reverses

@@ -8,6 +8,6 @@ export const Route = createFileRoute("/")({
     if (useUiPrefs.getState().home === "inbox") {
       throw redirect({ to: "/m/$mailbox", params: { mailbox: "inbox" } });
     }
-    throw redirect({ to: "/desk" });
+    throw redirect({ to: "/now" });
   },
 });

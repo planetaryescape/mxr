@@ -19,6 +19,11 @@ interface Crumb {
 }
 
 const PAGE_TITLES: Record<string, string> = {
+  now: "Now",
+  messages: "Messages",
+  updates: "Updates",
+  archive: "Archive",
+  find: "Find",
   desk: "Desk",
   todo: "To do",
   search: "Search",
@@ -46,7 +51,15 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 /** Pages whose second path segment is an open conversation. */
-const THREAD_PLACES = new Set(["search", "desk", "todo", "reading", "paper-trail"]);
+const THREAD_PLACES = new Set([
+  "search",
+  "desk",
+  "messages",
+  "todo",
+  "updates",
+  "reading",
+  "paper-trail",
+]);
 
 function threadIdInPath(parts: string[]): string | undefined {
   if (parts[0] === "m") return parts[1] === "label" || parts[1] === "saved" ? parts[3] : parts[2];

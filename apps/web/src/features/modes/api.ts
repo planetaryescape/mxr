@@ -15,8 +15,8 @@ export type ModeGuide = Schemas["ModeGuideData"];
 export type ModeKey = Schemas["ModeKeyData"];
 type ModeGuides = Extract<Schemas["ResponseData"], { kind: "ModeGuides" }>;
 
-/** Mode ids that have shipped. */
-export type ModeId = "todo";
+/** Mode ids with a guide: Now and the modes that have shipped. */
+export type ModeId = "now" | "todo";
 
 export const modeGuideKey = (mode: ModeId) => ["mode-guide", mode] as const;
 
@@ -39,6 +39,13 @@ export function useModeGuide(mode: ModeId) {
   });
 }
 
+async function postCardSeen(mode: ModeId): Promise<ModeGuides> {
+  return apiFetch<ModeGuides>(`/api/v1/mail/modes/${encodeURIComponent(mode)}/card`, {
+    method: "POST",
+    body: { seen: true },
+  });
+}
+
 /**
  * Retire a mode's card in every client. The card leaves at once; a failed
  * write puts it back, since showing a closed card again is the safer miss.
@@ -46,11 +53,7 @@ export function useModeGuide(mode: ModeId) {
 export function useRetireCard(mode: ModeId) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () =>
-      apiFetch<ModeGuides>(`/api/v1/mail/modes/${encodeURIComponent(mode)}/card`, {
-        method: "POST",
-        body: { seen: true },
-      }),
+    mutationFn: () => postCardSeen(mode),
     onMutate: () => {
       const previous = qc.getQueryData<ModeGuide>(modeGuideKey(mode));
       if (previous) qc.setQueryData(modeGuideKey(mode), { ...previous, card_seen: true });

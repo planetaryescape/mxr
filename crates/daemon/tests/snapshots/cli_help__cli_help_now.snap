@@ -1,0 +1,19 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+The few things that need you now, from every mode.
+
+Four sections in a fixed order, at most three items each: People (whose turn it is, from Messages), Due soon (To do's Now band, by act-by), one Updates card, and one thing to read after 17:00. Each section says how many more are in its mode. `mxr desk` still lists every lane in full.
+
+Usage: mxr now [OPTIONS]
+
+Options:
+      --account <ACCOUNT>
+          Limit to one account; the default covers every account
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

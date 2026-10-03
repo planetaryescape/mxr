@@ -203,6 +203,44 @@
   min-height: 0;
 }
 
+/*
+ * Phones: no sidebar and no status bar. Five tabs sit at the bottom, Now,
+ * Messages, To do, Reading and Find (Archive, search and Inbox); Updates
+ * opens from Now's card, since its rhythm is a few looks a day.
+ */
+.app-shell-tabs {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  .app-shell,
+  .app-shell[data-sidebar-collapsed="false"],
+  .app-shell[data-sidebar-collapsed="true"],
+  .app-shell[data-rightrail-open="true"],
+  .app-shell[data-sidebar-collapsed="false"][data-rightrail-open="true"],
+  .app-shell[data-sidebar-collapsed="true"][data-rightrail-open="true"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: var(--shell-topbar-h) minmax(0, 1fr) auto;
+    grid-template-areas:
+      "topbar"
+      "main"
+      "tabs";
+  }
+  /* Doubled class: the status bar's own rule comes later in this file. */
+  .app-shell-sidebar.app-shell-sidebar,
+  .app-shell-statusbar.app-shell-statusbar {
+    display: none;
+  }
+  .app-shell-tabs {
+    grid-area: tabs;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    border-top: 1px solid var(--border);
+    background-color: var(--sidebar);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
 .app-shell-statusbar {
   grid-area: statusbar;
   position: relative;

@@ -73,7 +73,8 @@ test("clearing the desk by keyboard earns low tide once, not on a revisit", asyn
   await pressSequence(page, "g", "i");
   await expect(page).toHaveURL(/\/m\/inbox$/);
   await expect(mailRows(page).first()).toBeVisible();
-  await pressSequence(page, "g", "h");
+  // Back to the desk (g h opens Now, which replaced it as the front page).
+  await page.goBack();
   await expect(page).toHaveURL(/\/desk$/);
   await expect(page.getByText("The desk is clear.")).toBeVisible();
   await expect(page.getByTestId("low-tide")).toHaveCount(0);

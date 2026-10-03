@@ -61,7 +61,7 @@ describe("HelpDialog", () => {
   test("filters by label, key or TUI note, dropping empty sections", () => {
     render(<HelpDialog open onOpenChange={() => undefined} />);
 
-    filter("archive");
+    filter("read and archive");
     expect(screen.getByText("Mark read and archive")).toBeVisible();
     expect(screen.queryByText("Go to Inbox")).not.toBeInTheDocument();
     expect(headings()).not.toContain("Go to");

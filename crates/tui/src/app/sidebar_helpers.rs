@@ -28,12 +28,35 @@ impl App {
         let mut user_labels = Vec::new();
         for label in self.visible_labels() {
             if label.kind == LabelKind::System {
-                system_labels.push(label.clone());
+                // Inbox is on the rail, not among the folders under More.
+                if !crate::ui::sidebar::is_inbox_label(&label.name) {
+                    system_labels.push(label.clone());
+                }
             } else {
                 user_labels.push(label.clone());
             }
         }
+        // The rail: Now, the five modes, then Inbox (blueprint 22).
+        items.extend([
+            SidebarItem::Now,
+            SidebarItem::Messages,
+            SidebarItem::Todo,
+            SidebarItem::Updates,
+            SidebarItem::Reading,
+            SidebarItem::ArchiveMode,
+            SidebarItem::Inbox,
+        ]);
+        // More: the pages that left the rail, then the folders.
         if self.mailbox.sidebar_system_expanded {
+            items.extend([
+                SidebarItem::Screener,
+                SidebarItem::ReplyQueue,
+                SidebarItem::Waiting,
+                SidebarItem::Subscriptions,
+                SidebarItem::Owed,
+                SidebarItem::CalendarInvites,
+                SidebarItem::AllMail,
+            ]);
             items.extend(
                 system_labels
                     .into_iter()
@@ -41,14 +64,6 @@ impl App {
                     .map(SidebarItem::Label),
             );
         }
-        items.push(SidebarItem::Desk);
-        items.push(SidebarItem::Todo);
-        items.push(SidebarItem::Reading);
-        items.push(SidebarItem::PaperTrail);
-        items.push(SidebarItem::AllMail);
-        items.push(SidebarItem::Subscriptions);
-        items.push(SidebarItem::Owed);
-        items.push(SidebarItem::CalendarInvites);
         if self.mailbox.sidebar_user_expanded {
             items.extend(
                 user_labels
@@ -114,13 +129,16 @@ impl App {
                 && self.mailbox.pending_active_label.is_none(),
             subscriptions_active: self.mailbox.mailbox_view == MailboxView::Subscriptions,
             subscription_count: self.mailbox.subscriptions_page.entries.len(),
-            desk_active: self.mailbox.mailbox_view == MailboxView::Desk,
-            desk_count: self.mailbox.desk_page.work_count(),
+            now_active: self.mailbox.mailbox_view == MailboxView::Now,
+            now_badge: self.rail_entry("now").and_then(|entry| entry.badge),
+            messages_active: self.mailbox.mailbox_view == MailboxView::Desk,
             todo_active: self.mailbox.mailbox_view == MailboxView::Todo,
+            updates_active: self.mailbox.mailbox_view
+                == MailboxView::Place(mxr_protocol::MailPlaceData::PaperTrail),
             reading_active: self.mailbox.mailbox_view
                 == MailboxView::Place(mxr_protocol::MailPlaceData::Reading),
-            paper_trail_active: self.mailbox.mailbox_view
-                == MailboxView::Place(mxr_protocol::MailPlaceData::PaperTrail),
+            archive_active: self.mailbox.mailbox_view == MailboxView::ArchiveMode,
+            early_modes: self.early_modes(),
             owed_active: self.mailbox.mailbox_view == MailboxView::Owed,
             owed_count: self.mailbox.owed_page.entries.len(),
             calendar_invites_active: self.mailbox.mailbox_view == MailboxView::CalendarInvites,
@@ -139,6 +157,32 @@ impl App {
         }
     }
 
+    pub(crate) fn rail_entry(&self, id: &str) -> Option<&mxr_protocol::RailEntryData> {
+        self.mailbox
+            .rail
+            .as_ref()?
+            .entries
+            .iter()
+            .find(|entry| entry.id == id)
+    }
+
+    /// Rail ids the daemon marks early versions. Before the rail loads,
+    /// the modes built on an existing view are early.
+    fn early_modes(&self) -> Vec<String> {
+        match &self.mailbox.rail {
+            Some(rail) => rail
+                .entries
+                .iter()
+                .filter(|entry| entry.status == mxr_protocol::RailStatusData::Early)
+                .map(|entry| entry.id.clone())
+                .collect(),
+            None => ["messages", "updates", "reading", "archive"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+        }
+    }
+
     pub fn selected_sidebar_item(&self) -> Option<SidebarItem> {
         self.sidebar_items()
             .get(self.mailbox.sidebar_selected)
@@ -152,10 +196,16 @@ impl App {
             }
             SidebarItem::AllMail => SidebarSelectionKey::AllMail,
             SidebarItem::Subscriptions => SidebarSelectionKey::Subscriptions,
-            SidebarItem::Desk => SidebarSelectionKey::Desk,
+            SidebarItem::Now => SidebarSelectionKey::Now,
+            SidebarItem::Messages => SidebarSelectionKey::Messages,
             SidebarItem::Todo => SidebarSelectionKey::Todo,
+            SidebarItem::Updates => SidebarSelectionKey::Updates,
             SidebarItem::Reading => SidebarSelectionKey::Reading,
-            SidebarItem::PaperTrail => SidebarSelectionKey::PaperTrail,
+            SidebarItem::ArchiveMode => SidebarSelectionKey::ArchiveMode,
+            SidebarItem::Inbox => SidebarSelectionKey::Inbox,
+            SidebarItem::Screener => SidebarSelectionKey::Screener,
+            SidebarItem::ReplyQueue => SidebarSelectionKey::ReplyQueue,
+            SidebarItem::Waiting => SidebarSelectionKey::Waiting,
             SidebarItem::Owed => SidebarSelectionKey::Owed,
             SidebarItem::CalendarInvites => SidebarSelectionKey::CalendarInvites,
             SidebarItem::Label(label) => SidebarSelectionKey::Label(label.id),
@@ -172,10 +222,16 @@ impl App {
                 }
                 (SidebarItem::AllMail, SidebarSelectionKey::AllMail) => true,
                 (SidebarItem::Subscriptions, SidebarSelectionKey::Subscriptions) => true,
-                (SidebarItem::Desk, SidebarSelectionKey::Desk) => true,
+                (SidebarItem::Now, SidebarSelectionKey::Now) => true,
+                (SidebarItem::Messages, SidebarSelectionKey::Messages) => true,
                 (SidebarItem::Todo, SidebarSelectionKey::Todo) => true,
+                (SidebarItem::Updates, SidebarSelectionKey::Updates) => true,
                 (SidebarItem::Reading, SidebarSelectionKey::Reading) => true,
-                (SidebarItem::PaperTrail, SidebarSelectionKey::PaperTrail) => true,
+                (SidebarItem::ArchiveMode, SidebarSelectionKey::ArchiveMode) => true,
+                (SidebarItem::Inbox, SidebarSelectionKey::Inbox) => true,
+                (SidebarItem::Screener, SidebarSelectionKey::Screener) => true,
+                (SidebarItem::ReplyQueue, SidebarSelectionKey::ReplyQueue) => true,
+                (SidebarItem::Waiting, SidebarSelectionKey::Waiting) => true,
                 (SidebarItem::Owed, SidebarSelectionKey::Owed) => true,
                 (SidebarItem::CalendarInvites, SidebarSelectionKey::CalendarInvites) => true,
                 (SidebarItem::Label(label), SidebarSelectionKey::Label(label_id)) => {
@@ -262,14 +318,20 @@ impl App {
             }
             Some(SidebarItem::AllMail) => Some(Action::GoToAllMail),
             Some(SidebarItem::Subscriptions) => Some(Action::OpenSubscriptions),
-            Some(SidebarItem::Desk) => Some(Action::OpenDesk),
+            Some(SidebarItem::Now) => Some(Action::OpenNow),
+            // Waiting on is a lane of the desk, which backs Messages.
+            Some(SidebarItem::Messages | SidebarItem::Waiting) => Some(Action::OpenMessages),
             Some(SidebarItem::Todo) => Some(Action::OpenTodo),
             Some(SidebarItem::Reading) => {
                 Some(Action::OpenPlace(mxr_protocol::MailPlaceData::Reading))
             }
-            Some(SidebarItem::PaperTrail) => {
+            Some(SidebarItem::Updates) => {
                 Some(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail))
             }
+            Some(SidebarItem::ArchiveMode) => Some(Action::OpenArchiveMode),
+            Some(SidebarItem::Inbox) => Some(Action::GoToInbox),
+            Some(SidebarItem::Screener) => Some(Action::OpenScreenerQueue),
+            Some(SidebarItem::ReplyQueue) => Some(Action::OpenReplyQueue),
             Some(SidebarItem::Owed) => Some(Action::OpenOwedReplies),
             Some(SidebarItem::CalendarInvites) => Some(Action::OpenCalendarInvites),
             Some(SidebarItem::Label(label)) => Some(Action::SelectLabel(label.id)),
@@ -298,10 +360,16 @@ impl App {
                 SidebarItem::Account(_)
                 | SidebarItem::AllMail
                 | SidebarItem::Subscriptions
-                | SidebarItem::Desk
+                | SidebarItem::Now
+                | SidebarItem::Messages
                 | SidebarItem::Todo
+                | SidebarItem::Updates
                 | SidebarItem::Reading
-                | SidebarItem::PaperTrail
+                | SidebarItem::ArchiveMode
+                | SidebarItem::Inbox
+                | SidebarItem::Screener
+                | SidebarItem::ReplyQueue
+                | SidebarItem::Waiting
                 | SidebarItem::Owed
                 | SidebarItem::CalendarInvites,
             )

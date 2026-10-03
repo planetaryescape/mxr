@@ -27,12 +27,13 @@ use chrono::Utc;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::MessageFlags;
 use mxr_protocol::{
-    AccountMutationResultData, DeskDoneItemData, DeskDoneOutcomeData, DeskLaneKind,
+    AccountMutationResultData, DeskDoneItemData, DeskDoneOutcomeData, DeskLaneKind, ModeKindData,
     MutationCommand, ResponseData,
 };
 use mxr_store::{
-    CommitmentPrior, CommitmentStatus, ContactCommitmentRecord, DeskDismissalMark, DeskMessage,
-    DeskUndo, ReminderState, ReplyLaterState, UndoEntry, UndoEntrySnapshot, UndoableMutationKind,
+    CommitmentPrior, CommitmentStatus, ContactCommitmentRecord, DeskDismissal, DeskDismissalMark,
+    DeskMessage, DeskUndo, ReminderState, ReplyLaterState, UndoEntry, UndoEntrySnapshot,
+    UndoableMutationKind,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -77,8 +78,10 @@ impl Plan {
         }
     }
 
+    /// Archived and read, rather than only read: a lane that archives,
+    /// when no other mode keeps the thread in the inbox.
     fn archives(&self) -> bool {
-        lane_archives(self.lane)
+        lane_archives(self.lane) && !self.archive.is_empty()
     }
 
     /// Every message the run changes, each once.
@@ -149,9 +152,10 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
                 .push(thread_id.clone());
         }
     }
+    let by_account_ids: Vec<(AccountId, Vec<ThreadId>)> = by_account.into_iter().collect();
     let mut threads: HashMap<ThreadId, Vec<DeskMessage>> = HashMap::new();
-    for (account, ids) in by_account {
-        for message in state.store.desk_messages_in_threads(&account, &ids).await? {
+    for (account, ids) in &by_account_ids {
+        for message in state.store.desk_messages_in_threads(account, ids).await? {
             threads
                 .entry(message.thread_id.clone())
                 .or_default()
@@ -175,6 +179,24 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
             .collect(),
     };
 
+    // The last-mode rule SetModeDone follows: the provider archive happens
+    // only when no other mode (To do, Updates, Reading) still holds the
+    // thread and `modes.archive_on_last_done` is on.
+    let archive_on_last_done = state.config_snapshot().modes.archive_on_last_done;
+    let mut held_elsewhere: HashSet<ThreadId> = HashSet::new();
+    for (account, ids) in &by_account_ids {
+        for placement in super::modes::place_threads(state, account, ids, Utc::now()).await? {
+            let held = placement
+                .data
+                .modes
+                .iter()
+                .any(|entry| entry.mode != ModeKindData::Messages && entry.mode.holds_inbox());
+            if held || !archive_on_last_done {
+                held_elsewhere.insert(placement.data.thread_id);
+            }
+        }
+    }
+
     let mut plans = Vec::with_capacity(items.len());
     let mut seen: HashSet<&ThreadId> = HashSet::new();
     for item in items {
@@ -193,6 +215,12 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
                 None => Err("conversation not found".to_string()),
             }
         };
+        let plan = plan.map(|mut plan| {
+            if held_elsewhere.contains(&plan.thread_id) {
+                plan.archive.clear();
+            }
+            plan
+        });
         plans.push(plan.unwrap_or_else(|error| {
             let lane = item.lane.unwrap_or_else(|| {
                 if item.commitment_id.is_some() {
@@ -266,14 +294,13 @@ async fn plan_item(
         .filter(|message| !message.flags.contains(MessageFlags::READ))
         .map(|message| message.id.clone())
         .collect();
-    // Storage order, as `DeskDismissal::covers` reads it: anything stored
-    // after this plan brings the conversation back. Due too, or keeping
-    // the promise would uncover the conversation's Waiting on row.
-    let mark = Some(DeskDismissalMark {
+    // The watermark `DeskDismissal::covers` reads: anything stored after
+    // this plan brings the conversation back. Due too, or keeping the
+    // promise would uncover the conversation's Waiting on row.
+    let mark = DeskDismissal::through(thread).map(|through| DeskDismissalMark {
         account_id: account_id.clone(),
         thread_id: item.thread_id.clone(),
-        through_seq: thread.iter().map(|m| m.seq).max().unwrap_or_default(),
-        through_count: thread.len() as i64,
+        through,
     });
     let reply_later = thread
         .iter()
@@ -489,7 +516,8 @@ async fn put_away(
     Ok(())
 }
 
-/// Undo's half for what Done changed beyond messages.
+/// Undo's half for what Done (the desk's, or a mode's) changed beyond
+/// messages.
 pub(super) async fn restore_desk_state(
     state: &AppState,
     desk: &DeskUndo,
@@ -498,6 +526,11 @@ pub(super) async fn restore_desk_state(
     state
         .store
         .put_back_desk_dismissals(&desk.dismissals)
+        .await?;
+    state.store.put_back_mode_done(&desk.mode_done).await?;
+    state
+        .store
+        .reopen_ticked_todos(&desk.todos_ticked, Utc::now())
         .await?;
     for commitment in &desk.commitments {
         state

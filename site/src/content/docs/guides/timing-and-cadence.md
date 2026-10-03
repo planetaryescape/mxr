@@ -118,7 +118,7 @@ mxr cadence drift --format json \
   | xargs -I{} mxr sender {}
 ```
 
-What you get: each drifted contact's profile (volume, recent threads, open commitments) so you can decide whether the gap actually matters. Watched contacts who have drifted also show under **Waiting on** on the [desk](/guides/desk/).
+What you get: each drifted contact's profile (volume, recent threads, open commitments) so you can decide whether the gap actually matters. Watched contacts who have drifted also show under **Waiting on** on the [desk](/guides/now/).
 
 ## In real life
 

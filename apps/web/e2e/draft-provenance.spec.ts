@@ -11,14 +11,24 @@ interface ThreadRead {
   messages: { id: string; date: string }[];
 }
 
-/** Open the list's first conversation and return what the reader loaded. */
-async function openFirst(page: Page, path: string): Promise<ThreadRead> {
+/**
+ * Open the list's first conversation with at least `minMessages` messages
+ * and return what the reader loaded. The demo's newest mail changes as
+ * fixtures are added, so this walks down the list rather than trusting
+ * the top row.
+ */
+async function openFirst(page: Page, path: string, minMessages = 1): Promise<ThreadRead> {
   await openList(page, path);
-  const read = page.waitForResponse((response) => isThreadRead(new URL(response.url())));
-  await page.keyboard.press("Enter");
-  const thread = (await (await read).json()) as ThreadRead;
-  await expect(threadMessages(page).first()).toBeVisible();
-  return thread;
+  for (let row = 0; row < 15; row += 1) {
+    const read = page.waitForResponse((response) => isThreadRead(new URL(response.url())));
+    await page.keyboard.press("Enter");
+    const thread = (await (await read).json()) as ThreadRead;
+    await expect(threadMessages(page).first()).toBeVisible();
+    if (thread.messages.length >= minMessages) return thread;
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("j");
+  }
+  throw new Error(`no conversation in ${path} has ${minMessages} messages`);
 }
 
 async function openSource(page: Page, link: Locator): Promise<Page> {
@@ -64,7 +74,7 @@ test("a drafted reply says which model wrote it, and each source opens the cited
   const yourEmail = sent.messages.at(-1);
   if (!yourEmail) throw new Error("the demo's Sent list opened an empty conversation");
   // The conversation being answered; its oldest message is cited too.
-  const inbox = await openFirst(page, "/m/inbox");
+  const inbox = await openFirst(page, "/m/inbox", 2);
   const oldest = inbox.messages[0];
   if (!oldest) throw new Error("the demo's inbox opened an empty conversation");
   expect(inbox.messages.length).toBeGreaterThan(1);

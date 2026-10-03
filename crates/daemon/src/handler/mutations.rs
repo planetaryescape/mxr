@@ -1326,7 +1326,9 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
         restored += (desk.dismissals.len()
             + desk.commitments.len()
             + desk.reply_later_priors.len()
-            + desk.reminder_priors.len()) as u32;
+            + desk.reminder_priors.len()
+            + desk.mode_done.len()
+            + desk.todos_ticked.len()) as u32;
     }
     let mut irreversible = 0u32;
     // Failures a retry can fix (a provider or account hiccup), kept so the
@@ -1515,6 +1517,7 @@ async fn restore_snapshot(
         UndoableMutationKind::SetRead
             | UndoableMutationKind::ReadAndArchive
             | UndoableMutationKind::DeskDone
+            | UndoableMutationKind::ModeDone
     ) {
         restore_flag(
             state,
@@ -1631,7 +1634,8 @@ fn uncertain_label_changes(
     match kind {
         UndoableMutationKind::Archive
         | UndoableMutationKind::ReadAndArchive
-        | UndoableMutationKind::DeskDone => (inbox(), Vec::new()),
+        | UndoableMutationKind::DeskDone
+        | UndoableMutationKind::ModeDone => (inbox(), Vec::new()),
         UndoableMutationKind::Trash => (inbox(), added("TRASH")),
         UndoableMutationKind::Spam => (inbox(), added("SPAM")),
         // A move or label edit may have removed any of them.

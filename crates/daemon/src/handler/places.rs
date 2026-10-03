@@ -15,8 +15,8 @@ use mxr_core::id::{AccountId, MessageId};
 use mxr_core::types::{AccountAddressLookup, UnsubscribeMethod};
 use mxr_core::MessageFlags;
 use mxr_protocol::{
-    MailKindData, MailPlaceData, MutationCommand, PlaceBundleData, PlaceMessageData, ResponseData,
-    SenderKindData, SweepPreviewData, SweepSenderData,
+    MailKindData, MailPlaceData, ModeKindData, MutationCommand, PlaceBundleData, PlaceMessageData,
+    ResponseData, SenderKindData, SweepPreviewData, SweepSenderData,
 };
 use mxr_store::{PlaceMessage, ScreenerDecision, ScreenerDisposition};
 use parking_lot::Mutex;
@@ -103,26 +103,50 @@ impl AccountKinds {
     }
 
     /// Mail you sent (or sent to yourself) never belongs to a place.
-    fn is_outbound(&self, message: &PlaceMessage) -> bool {
+    pub(super) fn is_outbound(&self, message: &PlaceMessage) -> bool {
         message.direction == "outbound"
             || (message.direction != "inbound" && self.is_self(&message.from_email))
     }
 }
 
 /// One message in a place, with its classification.
-struct Placed {
-    message: PlaceMessage,
-    kind: MailKindData,
+pub(super) struct Placed {
+    pub message: PlaceMessage,
+    pub kind: MailKindData,
 }
 
 /// The inbox mail of `accounts` (from `sender_email` only, when given)
-/// that belongs in `place`. Deliveries and invites have places of their own
-/// (and an invite may still need an answer), so they stay out, as they do
-/// from the desk's paper-trail count.
+/// that belongs in `place`, minus what that mode was marked done for.
 async fn place_messages(
     state: &AppState,
     accounts: &[AccountId],
     place: MailPlaceData,
+    sender_email: Option<&str>,
+) -> Result<Vec<Placed>, HandlerError> {
+    let kind = place_kind(place);
+    let mode = match place {
+        MailPlaceData::Reading => ModeKindData::Reading,
+        MailPlaceData::PaperTrail => ModeKindData::Updates,
+    };
+    let placed: Vec<Placed> = placed_inbox(state, accounts, sender_email)
+        .await?
+        .into_iter()
+        .filter(|placed| placed.kind.kind == kind)
+        .collect();
+    // Done in Updates or Reading takes a thread out of its early view too,
+    // even while To do keeps it in the inbox.
+    super::modes::without_done(state, accounts, &[mode], placed).await
+}
+
+/// The inbox mail of `accounts` (from `sender_email` only, when given)
+/// that belongs in Reading or Paper trail, each with its kind, in one
+/// pass. Deliveries and invites have places of their own (and an invite
+/// may still need an answer), so they stay out, as they do from the
+/// desk's paper-trail count. The modes read Updates and Reading from here
+/// too, so a mode and its early view never disagree.
+pub(super) async fn placed_inbox(
+    state: &AppState,
+    accounts: &[AccountId],
     sender_email: Option<&str>,
 ) -> Result<Vec<Placed>, HandlerError> {
     let mut placed = Vec::new();
@@ -147,7 +171,10 @@ async fn place_messages(
             }
             // Classify first; only mail that stays gets its reason written.
             let signals = kinds.signals(&message);
-            if mail_kind::classify(&signals).kind.to_data() != place_kind(place) {
+            if !matches!(
+                mail_kind::classify(&signals).kind.to_data(),
+                SenderKindData::Reading | SenderKindData::PaperTrail
+            ) {
                 continue;
             }
             let kind = mail_kind::describe(&signals);
@@ -157,7 +184,7 @@ async fn place_messages(
     Ok(placed)
 }
 
-async fn scoped_accounts(
+pub(super) async fn scoped_accounts(
     state: &AppState,
     account_id: Option<&AccountId>,
 ) -> Result<Vec<AccountId>, HandlerError> {

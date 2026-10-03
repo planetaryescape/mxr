@@ -20,7 +20,7 @@ export function PlaceLayout({
   wideReader = false,
   children,
 }: {
-  basePath: "/reading" | "/paper-trail" | "/todo";
+  basePath: "/reading" | "/updates" | "/todo";
   label: string;
   /** Conversations in the order the place shows them. */
   threadIds: () => string[];

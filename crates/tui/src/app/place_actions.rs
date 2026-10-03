@@ -81,6 +81,33 @@ impl App {
         self.mailbox.pending_desk_refresh = true;
     }
 
+    /// `e` on a place row: done in the mode the place backs (Updates for
+    /// Paper trail, Reading for Reading). Returns false when no place row
+    /// is under the cursor, so the verb runs as usual.
+    pub(super) fn done_in_place_row(&mut self) -> bool {
+        if !self.place_list_focused() {
+            return false;
+        }
+        let MailboxView::Place(place) = self.mailbox.mailbox_view else {
+            return false;
+        };
+        let Some((_, message)) = self.selected_place_row() else {
+            return false;
+        };
+        let thread_id = message.thread_id.clone();
+        let mode = match place {
+            MailPlaceData::Reading => mxr_protocol::ModeKindData::Reading,
+            MailPlaceData::PaperTrail => mxr_protocol::ModeKindData::Updates,
+        };
+        self.mailbox.place_page.remove_thread(&thread_id);
+        self.mailbox.selected_index = self
+            .mailbox
+            .selected_index
+            .min(self.mailbox.place_page.row_count().saturating_sub(1));
+        self.queue_mode_done(mode, thread_id);
+        true
+    }
+
     /// Enter on a place row opens its message in the reader beside it.
     pub(super) fn open_selected_place_row(&mut self) {
         if let Some((_, message)) = self.selected_place_row() {

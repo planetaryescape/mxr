@@ -50,6 +50,7 @@ mod message;
 mod message_deletion;
 mod message_events;
 mod message_flags;
+mod mode_done;
 mod mode_views;
 mod mutation_dedup;
 mod mutation_jobs;
@@ -105,6 +106,7 @@ pub use draft_safety::{DraftSafetyOverrideRecord, DraftSafetyRunRecord};
 pub use event_log::{EventLogEntry, EventLogFilter, EventLogRefs};
 pub use message_deletion::{DeletedMessages, MAX_FORGET_ATTEMPTS};
 pub use message_flags::{DeskReplyLater, ReplyLaterState};
+pub use mode_done::{ModeDoneMark, ModeDonePrior};
 pub use owed_replies::OwedReplyRow;
 pub use places::PlaceMessage;
 pub use pool::Store;
@@ -172,7 +174,9 @@ pub(crate) fn sources_json(sources: &[mxr_core::MessageId]) -> String {
 pub use thread_context::CounterpartyExchange;
 pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
 pub use triage::TriageCacheRecord;
-pub use undo::{CommitmentPrior, DeskUndo, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
+pub use undo::{
+    CommitmentPrior, DeskUndo, TodoTickPrior, UndoEntry, UndoEntrySnapshot, UndoableMutationKind,
+};
 pub use user_activity::{
     ActivityCursor, ActivityFilter, ActivityInsert, ActivityPage, ActivityRow, SavedActivityFilter,
     Tier,

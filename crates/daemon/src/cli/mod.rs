@@ -573,6 +573,14 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    #[command(about = mxr_protocol::now_copy::HEADER, long_about = NOW_LONG_ABOUT)]
+    Now {
+        /// Limit to one account; the default covers every account.
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// What needs you, not what arrived: replies you owe, promises
     /// coming due, threads waiting on someone, and new mail from people,
     /// each with the reason it is there. Everything else is summarised
@@ -2143,6 +2151,10 @@ pub enum TodoAction {
     },
 }
 
+const NOW_LONG_ABOUT: &str = "The few things that need you now, from every mode.
+
+Four sections in a fixed order, at most three items each: People (whose turn it is, from Messages), Due soon (To do's Now band, by act-by), one Updates card, and one thing to read after 17:00. Each section says how many more are in its mode. `mxr desk` still lists every lane in full.";
+
 #[derive(Debug, Clone, Subcommand)]
 pub enum ModesAction {
     /// What a mode is for, what lands there, its first-encounter card and
@@ -2159,6 +2171,47 @@ pub enum ModesAction {
         /// Show the card again the next time the mode has items.
         #[arg(long)]
         show: bool,
+    },
+    /// The rail: Now, the five modes and Inbox, with each one's key and
+    /// count, which are early versions, and the pages under More.
+    Rail {
+        /// Limit to one account; the default covers every account.
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// Which modes hold a conversation, and why.
+    Why {
+        /// A message in the conversation.
+        #[arg(required_unless_present = "thread", conflicts_with = "thread")]
+        message_id: Option<String>,
+        /// The conversation's thread id instead.
+        #[arg(long, value_name = "THREAD_ID")]
+        thread: Option<String>,
+    },
+    /// Done here: the conversations leave one mode until someone writes
+    /// again (in To do, their open to-dos are ticked off, or only those
+    /// named with --todo). When no other mode holds a conversation it is
+    /// archived at your provider too, unless `modes.archive_on_last_done`
+    /// is off. Prints what happened and an undo id for `mxr undo`.
+    Done {
+        /// Thread ids, as `mxr now --format ids` prints them.
+        #[arg(required_unless_present = "sender")]
+        thread_ids: Vec<String>,
+        /// The mode to be done in: messages, todo, updates or reading.
+        #[arg(long)]
+        mode: String,
+        /// To do only: tick off just this to-do (repeat for more).
+        #[arg(long = "todo", value_name = "TODO_ID")]
+        todo_ids: Vec<String>,
+        /// Updates or Reading: every conversation of this sender's there.
+        #[arg(long, value_name = "EMAIL", requires = "account")]
+        sender: Option<String>,
+        /// The sender's account, with --sender.
+        #[arg(long, value_name = "ACCOUNT_ID")]
+        account: Option<String>,
+        /// Show what done would change without changing anything.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 

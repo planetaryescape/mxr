@@ -69,13 +69,18 @@ pub struct SidebarView<'a> {
     pub all_mail_active: bool,
     pub subscriptions_active: bool,
     pub subscription_count: usize,
-    /// The desk badge counts only work: owed replies plus due promises.
-    pub desk_active: bool,
-    pub desk_count: usize,
+    pub now_active: bool,
+    /// Now's badge from the rail: work only, the one badge on the rail.
+    pub now_badge: Option<u32>,
+    /// Messages, an early version on the desk lens.
+    pub messages_active: bool,
     pub todo_active: bool,
-    /// Reading and Paper trail carry no count: their mail is never work.
+    /// Updates, an early version on Paper trail.
+    pub updates_active: bool,
     pub reading_active: bool,
-    pub paper_trail_active: bool,
+    pub archive_active: bool,
+    /// Rail ids (`messages`, `updates`, …) the daemon marks early.
+    pub early_modes: Vec<String>,
     pub owed_active: bool,
     pub owed_count: usize,
     pub calendar_invites_active: bool,
@@ -85,6 +90,7 @@ pub struct SidebarView<'a> {
     /// Spinner state for accounts currently syncing; ticked by the app
     /// while any account reports `sync_in_progress`.
     pub sync_throbber: Option<&'a ThrobberState>,
+    /// The More section (pages off the rail, then the system folders).
     pub system_expanded: bool,
     pub user_expanded: bool,
     pub saved_searches_expanded: bool,
@@ -92,7 +98,6 @@ pub struct SidebarView<'a> {
 }
 
 struct SidebarBuildState<'a> {
-    desk_count: usize,
     subscription_count: usize,
     owed_count: usize,
     calendar_invites_count: usize,
@@ -101,6 +106,71 @@ struct SidebarBuildState<'a> {
     system_expanded: bool,
     user_expanded: bool,
     saved_searches_expanded: bool,
+}
+
+/// One of the rail's entries: Now, the five modes, then Inbox.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RailItem {
+    Now,
+    Messages,
+    Todo,
+    Updates,
+    Reading,
+    Archive,
+}
+
+impl RailItem {
+    /// Rail order.
+    pub(crate) const MODES: [Self; 5] = [
+        Self::Messages,
+        Self::Todo,
+        Self::Updates,
+        Self::Reading,
+        Self::Archive,
+    ];
+
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Now => "Now",
+            Self::Messages => "Messages",
+            Self::Todo => "To do",
+            Self::Updates => "Updates",
+            Self::Reading => "Reading",
+            Self::Archive => "Archive",
+        }
+    }
+
+    /// The id `GetRail` uses.
+    const fn id(self) -> &'static str {
+        match self {
+            Self::Now => "now",
+            Self::Messages => "messages",
+            Self::Todo => "todo",
+            Self::Updates => "updates",
+            Self::Reading => "reading",
+            Self::Archive => "archive",
+        }
+    }
+}
+
+/// Pages that moved off the rail, under More (D117).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MorePage {
+    Screener,
+    ReplyQueue,
+    Waiting,
+}
+
+impl MorePage {
+    pub(crate) const ALL: [Self; 3] = [Self::Screener, Self::ReplyQueue, Self::Waiting];
+
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Screener => "Screener",
+            Self::ReplyQueue => "Reply queue",
+            Self::Waiting => "Waiting on",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -115,16 +185,13 @@ enum SidebarEntry<'a> {
         is_default: bool,
         sync: AccountSyncIndicator,
     },
+    Rail(RailItem),
+    Inbox,
+    More(MorePage),
     AllMail,
     Subscriptions {
         count: usize,
     },
-    Desk {
-        count: usize,
-    },
-    Todo,
-    Reading,
-    PaperTrail,
     Owed {
         count: usize,
     },
@@ -135,13 +202,18 @@ enum SidebarEntry<'a> {
     SavedSearch(&'a SavedSearch),
 }
 
+/// The inbox is on the rail as a lens of its own, so it isn't repeated
+/// among the folders under More.
+pub fn is_inbox_label(name: &str) -> bool {
+    name == "INBOX"
+}
+
 pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme) {
     let is_focused = *view.active_pane == ActivePane::Sidebar;
     let border_style = theme.border_style(is_focused);
 
     let inner_width = area.width.saturating_sub(2) as usize;
     let build_state = SidebarBuildState {
-        desk_count: view.desk_count,
         subscription_count: view.subscription_count,
         owed_count: view.owed_count,
         calendar_invites_count: view.calendar_invites_count,
@@ -153,6 +225,9 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
     };
     let entries = build_sidebar_entries(view.labels, view.saved_searches, &build_state);
     let selected_visual_index = visual_index_for_selection(&entries, view.sidebar_selected);
+    let inbox_active = view.labels.iter().any(|label| {
+        is_inbox_label(&label.name) && view.active_label.is_some_and(|id| *id == label.id)
+    });
 
     let items = entries
         .iter()
@@ -183,26 +258,17 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
                 view.sync_throbber,
                 theme,
             ),
+            SidebarEntry::Rail(item) => render_rail_item(inner_width, *item, view, theme),
+            SidebarEntry::Inbox => {
+                render_sidebar_link(inner_width, "Inbox", None, inbox_active, theme)
+            }
+            SidebarEntry::More(page) => {
+                render_sidebar_link(inner_width, page.name(), None, false, theme)
+            }
             SidebarEntry::AllMail => render_all_mail_item(inner_width, view.all_mail_active, theme),
             SidebarEntry::Subscriptions { count } => {
                 render_subscriptions_item(inner_width, *count, view.subscriptions_active, theme)
             }
-            SidebarEntry::Desk { count } => {
-                render_desk_item(inner_width, *count, view.desk_active, theme)
-            }
-            SidebarEntry::Todo => {
-                render_sidebar_link(inner_width, "To do", None, view.todo_active, theme)
-            }
-            SidebarEntry::Reading => {
-                render_sidebar_link(inner_width, "Reading", None, view.reading_active, theme)
-            }
-            SidebarEntry::PaperTrail => render_sidebar_link(
-                inner_width,
-                "Paper trail",
-                None,
-                view.paper_trail_active,
-                theme,
-            ),
             SidebarEntry::Owed { count } => {
                 render_owed_item(inner_width, *count, view.owed_active, theme)
             }
@@ -236,6 +302,51 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
     }
 }
 
+/// A rail entry: its name, Now's badge, and a dim "early" on modes that
+/// are early versions on an existing view.
+fn render_rail_item<'a>(
+    inner_width: usize,
+    item: RailItem,
+    view: &SidebarView<'_>,
+    theme: &Theme,
+) -> ListItem<'a> {
+    let active = match item {
+        RailItem::Now => view.now_active,
+        RailItem::Messages => view.messages_active,
+        RailItem::Todo => view.todo_active,
+        RailItem::Updates => view.updates_active,
+        RailItem::Reading => view.reading_active,
+        RailItem::Archive => view.archive_active,
+    };
+    if item == RailItem::Now {
+        let badge = view
+            .now_badge
+            .filter(|badge| *badge > 0)
+            .map(|badge| badge.to_string());
+        return render_sidebar_link(inner_width, item.name(), badge.as_deref(), active, theme);
+    }
+    if !view.early_modes.iter().any(|id| id == item.id()) {
+        return render_sidebar_link(inner_width, item.name(), None, active, theme);
+    }
+    let name_part = format!("  {}", item.name());
+    let early = "early";
+    let padding = inner_width.saturating_sub(name_part.chars().count() + early.len());
+    let style = if active {
+        Style::default()
+            .bg(theme.selection_bg)
+            .fg(theme.accent)
+            .bold()
+    } else {
+        Style::default()
+    };
+    ListItem::new(Line::from(vec![
+        Span::raw(name_part),
+        Span::raw(" ".repeat(padding)),
+        Span::styled(early, Style::default().fg(theme.text_muted)),
+    ]))
+    .style(style)
+}
+
 fn build_sidebar_entries<'a>(
     labels: &'a [Label],
     saved_searches: &'a [SavedSearch],
@@ -248,7 +359,7 @@ fn build_sidebar_entries<'a>(
 
     let mut system_labels: Vec<&Label> = visible_labels
         .iter()
-        .filter(|label| label.kind == LabelKind::System)
+        .filter(|label| label.kind == LabelKind::System && !is_inbox_label(&label.name))
         .filter(|label| {
             is_primary_system_label(&label.name) || label.total_count > 0 || label.unread_count > 0
         })
@@ -281,34 +392,34 @@ fn build_sidebar_entries<'a>(
         entries.push(SidebarEntry::Separator);
     }
 
+    // The rail: Now, the five modes, then Inbox (blueprint 22).
+    entries.push(SidebarEntry::Rail(RailItem::Now));
+    entries.push(SidebarEntry::Separator);
+    entries.extend(RailItem::MODES.into_iter().map(SidebarEntry::Rail));
+    entries.push(SidebarEntry::Separator);
+    entries.push(SidebarEntry::Inbox);
+
     entries.push(SidebarEntry::Header {
-        title: "System",
+        title: "More",
         expanded: state.system_expanded,
     });
     if state.system_expanded {
+        entries.extend(MorePage::ALL.into_iter().map(SidebarEntry::More));
+        entries.push(SidebarEntry::Subscriptions {
+            count: state.subscription_count,
+        });
+        entries.push(SidebarEntry::Owed {
+            count: state.owed_count,
+        });
+        entries.push(SidebarEntry::CalendarInvites {
+            count: state.calendar_invites_count,
+        });
+        entries.push(SidebarEntry::AllMail);
         entries.extend(system_labels.into_iter().map(SidebarEntry::Label));
     }
-    entries.push(SidebarEntry::Desk {
-        count: state.desk_count,
-    });
-    entries.push(SidebarEntry::Todo);
-    entries.push(SidebarEntry::Reading);
-    entries.push(SidebarEntry::PaperTrail);
-    entries.push(SidebarEntry::AllMail);
-    entries.push(SidebarEntry::Subscriptions {
-        count: state.subscription_count,
-    });
-    entries.push(SidebarEntry::Owed {
-        count: state.owed_count,
-    });
-    entries.push(SidebarEntry::CalendarInvites {
-        count: state.calendar_invites_count,
-    });
 
     if !user_labels.is_empty() {
-        if !entries.is_empty() {
-            entries.push(SidebarEntry::Separator);
-        }
+        entries.push(SidebarEntry::Separator);
         entries.push(SidebarEntry::Header {
             title: "Labels",
             expanded: state.user_expanded,
@@ -319,9 +430,7 @@ fn build_sidebar_entries<'a>(
     }
 
     if !saved_searches.is_empty() {
-        if !entries.is_empty() {
-            entries.push(SidebarEntry::Separator);
-        }
+        entries.push(SidebarEntry::Separator);
         entries.push(SidebarEntry::Header {
             title: "Saved Searches",
             expanded: state.saved_searches_expanded,
@@ -342,12 +451,11 @@ fn visual_index_for_selection(
     for (visual_index, entry) in entries.iter().enumerate() {
         match entry {
             SidebarEntry::Account { .. }
+            | SidebarEntry::Rail(_)
+            | SidebarEntry::Inbox
+            | SidebarEntry::More(_)
             | SidebarEntry::AllMail
             | SidebarEntry::Subscriptions { .. }
-            | SidebarEntry::Desk { .. }
-            | SidebarEntry::Todo
-            | SidebarEntry::Reading
-            | SidebarEntry::PaperTrail
             | SidebarEntry::Owed { .. }
             | SidebarEntry::CalendarInvites { .. }
             | SidebarEntry::Label(_)
@@ -447,16 +555,6 @@ fn render_subscriptions_item<'a>(
         is_active,
         theme,
     )
-}
-
-fn render_desk_item<'a>(
-    inner_width: usize,
-    count: usize,
-    is_active: bool,
-    theme: &Theme,
-) -> ListItem<'a> {
-    let count_str = (count > 0).then(|| count.to_string());
-    render_sidebar_link(inner_width, "Desk", count_str.as_deref(), is_active, theme)
 }
 
 fn render_owed_item<'a>(
@@ -705,14 +803,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn sidebar_entries_insert_labels_header_before_user_labels() {
-        let labels = vec![
-            label("INBOX", LabelKind::System),
-            label("Work", LabelKind::User),
-        ];
-        let state = SidebarBuildState {
-            desk_count: 2,
+    fn build_state() -> SidebarBuildState<'static> {
+        SidebarBuildState {
             subscription_count: 3,
             owed_count: 0,
             calendar_invites_count: 0,
@@ -721,39 +813,57 @@ mod tests {
             system_expanded: true,
             user_expanded: true,
             saved_searches_expanded: true,
-        };
-        let entries = build_sidebar_entries(&labels, &[], &state);
-        assert!(matches!(
-            entries[0],
-            SidebarEntry::Header {
-                title: "System",
-                ..
-            }
-        ));
-        assert!(matches!(entries[1], SidebarEntry::Label(label) if label.name == "INBOX"));
-        assert!(matches!(entries[2], SidebarEntry::Desk { count: 2 }));
-        assert!(matches!(entries[3], SidebarEntry::Todo));
-        assert!(matches!(entries[4], SidebarEntry::Reading));
-        assert!(matches!(entries[5], SidebarEntry::PaperTrail));
-        assert!(matches!(entries[6], SidebarEntry::AllMail));
-        assert!(matches!(
-            entries[7],
-            SidebarEntry::Subscriptions { count: 3 }
-        ));
-        assert!(matches!(entries[8], SidebarEntry::Owed { count: 0 }));
+        }
+    }
+
+    #[test]
+    fn the_rail_is_now_the_modes_then_inbox_with_the_rest_under_more() {
+        let labels = vec![
+            label("INBOX", LabelKind::System),
+            label("SENT", LabelKind::System),
+            label("Work", LabelKind::User),
+        ];
+        let entries = build_sidebar_entries(&labels, &[], &build_state());
+        assert!(matches!(entries[0], SidebarEntry::Rail(RailItem::Now)));
+        assert!(matches!(entries[1], SidebarEntry::Separator));
+        assert!(matches!(entries[2], SidebarEntry::Rail(RailItem::Messages)));
+        assert!(matches!(entries[3], SidebarEntry::Rail(RailItem::Todo)));
+        assert!(matches!(entries[4], SidebarEntry::Rail(RailItem::Updates)));
+        assert!(matches!(entries[5], SidebarEntry::Rail(RailItem::Reading)));
+        assert!(matches!(entries[6], SidebarEntry::Rail(RailItem::Archive)));
+        assert!(matches!(entries[7], SidebarEntry::Separator));
+        assert!(matches!(entries[8], SidebarEntry::Inbox));
         assert!(matches!(
             entries[9],
-            SidebarEntry::CalendarInvites { count: 0 }
+            SidebarEntry::Header { title: "More", .. }
         ));
-        assert!(matches!(entries[10], SidebarEntry::Separator));
+        assert!(matches!(
+            entries[10],
+            SidebarEntry::More(MorePage::Screener)
+        ));
         assert!(matches!(
             entries[11],
+            SidebarEntry::More(MorePage::ReplyQueue)
+        ));
+        assert!(matches!(entries[12], SidebarEntry::More(MorePage::Waiting)));
+        assert!(matches!(
+            entries[13],
+            SidebarEntry::Subscriptions { count: 3 }
+        ));
+        assert!(matches!(entries[14], SidebarEntry::Owed { .. }));
+        assert!(matches!(entries[15], SidebarEntry::CalendarInvites { .. }));
+        assert!(matches!(entries[16], SidebarEntry::AllMail));
+        // Inbox is on the rail, so it isn't repeated among the folders.
+        assert!(matches!(entries[17], SidebarEntry::Label(label) if label.name == "SENT"));
+        assert!(matches!(entries[18], SidebarEntry::Separator));
+        assert!(matches!(
+            entries[19],
             SidebarEntry::Header {
                 title: "Labels",
                 ..
             }
         ));
-        assert!(matches!(entries[12], SidebarEntry::Label(label) if label.name == "Work"));
+        assert!(matches!(entries[20], SidebarEntry::Label(label) if label.name == "Work"));
     }
 
     #[test]
@@ -773,33 +883,37 @@ mod tests {
             position: 0,
             created_at: chrono::Utc::now(),
         }];
+        let entries = build_sidebar_entries(&labels, &searches, &build_state());
+        assert_eq!(visual_index_for_selection(&entries, 0), Some(0)); // Now
+        assert_eq!(visual_index_for_selection(&entries, 1), Some(2)); // Messages
+        assert_eq!(visual_index_for_selection(&entries, 5), Some(6)); // Archive
+        assert_eq!(visual_index_for_selection(&entries, 6), Some(8)); // Inbox
+        assert_eq!(visual_index_for_selection(&entries, 7), Some(10)); // Screener
+        assert_eq!(visual_index_for_selection(&entries, 13), Some(16)); // All Mail
+        assert_eq!(visual_index_for_selection(&entries, 14), Some(19)); // Work
+        assert_eq!(visual_index_for_selection(&entries, 15), Some(22)); // Unread
+    }
+
+    #[test]
+    fn folding_more_hides_its_pages_and_folders() {
+        let labels = vec![
+            label("INBOX", LabelKind::System),
+            label("SENT", LabelKind::System),
+        ];
         let state = SidebarBuildState {
-            desk_count: 2,
-            subscription_count: 2,
-            owed_count: 0,
-            calendar_invites_count: 0,
-            accounts: &[],
-            accounts_expanded: true,
-            system_expanded: true,
-            user_expanded: true,
-            saved_searches_expanded: true,
+            system_expanded: false,
+            ..build_state()
         };
-        // [0] Header(System), [1] Label(INBOX), [2] Desk, [3] To do,
-        // [4] Reading, [5] PaperTrail, [6] AllMail, [7] Subscriptions,
-        // [8] Owed, [9] CalendarInvites, [10] Separator, [11] Header(Labels),
-        // [12] Label(Work), [13] Separator, [14] Header(Saved Searches),
-        // [15] SavedSearch(Unread)
-        let entries = build_sidebar_entries(&labels, &searches, &state);
-        assert_eq!(visual_index_for_selection(&entries, 0), Some(1));
-        assert_eq!(visual_index_for_selection(&entries, 1), Some(2)); // Desk
-        assert_eq!(visual_index_for_selection(&entries, 2), Some(3)); // To do
-        assert_eq!(visual_index_for_selection(&entries, 3), Some(4)); // Reading
-        assert_eq!(visual_index_for_selection(&entries, 4), Some(5)); // Paper trail
-        assert_eq!(visual_index_for_selection(&entries, 5), Some(6));
-        assert_eq!(visual_index_for_selection(&entries, 6), Some(7));
-        assert_eq!(visual_index_for_selection(&entries, 7), Some(8)); // Owed
-        assert_eq!(visual_index_for_selection(&entries, 8), Some(9)); // CalendarInvites
-        assert_eq!(visual_index_for_selection(&entries, 9), Some(12)); // Work
-        assert_eq!(visual_index_for_selection(&entries, 10), Some(15)); // Unread
+        let entries = build_sidebar_entries(&labels, &[], &state);
+        assert!(matches!(
+            entries.last(),
+            Some(SidebarEntry::Header {
+                title: "More",
+                expanded: false
+            })
+        ));
+        assert!(!entries
+            .iter()
+            .any(|entry| matches!(entry, SidebarEntry::More(_))));
     }
 }

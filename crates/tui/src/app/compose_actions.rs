@@ -19,7 +19,16 @@ impl App {
                 self.compose.compose_picker.open_to(contacts);
             }
             Action::Reply => {
-                if let Some(env) = self.context_envelope() {
+                // On Now, a person row is the conversation to answer.
+                if let Some(NowRow::Person(person)) = self
+                    .now_list_focused()
+                    .then(|| self.selected_now_row())
+                    .flatten()
+                {
+                    let message_id = person.row.message_id.clone();
+                    let account_id = person.row.account_id.clone();
+                    self.dispatch_or_defer_reply(message_id, account_id, false);
+                } else if let Some(env) = self.context_envelope() {
                     let message_id = env.id.clone();
                     let account_id = env.account_id.clone();
                     self.dispatch_or_defer_reply(message_id, account_id, false);

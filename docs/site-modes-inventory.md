@@ -47,7 +47,7 @@ in every phase that adds a command.
 | `guides/llm-features.md` | R | Phase 0: what each request sends and where, every override key, the planned tiers. P1: `llm.tiers` ships; P7: background classification and its opt-in |
 | `guides/security-and-privacy.md` | R | Phase 0: what else reaches the network, model features and cloud, what deletion removes today. P1 and P7: tier opt-ins; P5: article fetch contacts the article's domain; P6: PDF prefetch for records. Deletion table changes when `fix/delete-derived` lands |
 | `guides/your-day.md` | R | Phase 0: a note that this is the v0.6.47 workflow. P2: rewritten around Now; P4 and P6: the Paper trail step becomes Updates and Archive |
-| `guides/desk.md` | R, then O at P2 | Phase 0: a note that the desk is Now's first version. P2: replaced by `guides/now.md`, with a redirect from `/guides/desk/` |
+| `guides/desk.md` | R, then O at P2 | Phase 0: a note that the desk is Now's first version. P2: replaced by `guides/now.md`, with a redirect from `/guides/now/` |
 | `examples.md` | P2 | Desk and Paper trail examples; P4 and P6 move the Paper trail ones |
 | `getting-started/first-sync.md` | P2 | Mentions the desk and Paper trail after the first sync |
 | `getting-started/gmail-setup.md` | P2 | Mentions the web app opening on the desk |

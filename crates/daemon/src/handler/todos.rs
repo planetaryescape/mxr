@@ -208,7 +208,7 @@ pub(super) async fn runway_at(
     })
 }
 
-async fn first_run(
+pub(super) async fn first_run(
     state: &AppState,
     account_id: Option<&AccountId>,
 ) -> Result<TodoFirstRunData, HandlerError> {

@@ -84,7 +84,8 @@ use utoipa::{
         mail_place_list, mail_place_sweep, mail_message_kind, mail_messages_pin,
         mail_sender_kind, mail_todos_runway, mail_todos_create, mail_todos_in_state,
         mail_todo_get, mail_todos_state, mail_todo_schedule, mail_todo_edit,
-        mail_todos_catchup_get, mail_todos_catchup_set, mail_mode_guide, mail_mode_card
+        mail_todos_catchup_get, mail_todos_catchup_set, mail_mode_guide, mail_mode_card,
+        mail_now, mail_rail, mail_mode_membership_get, mail_mode_membership_post, mail_mode_done
     ),
     components(schemas(
         Request,
@@ -104,6 +105,8 @@ use utoipa::{
         crate::todo_routes::TodoCreateBody,
         crate::todo_routes::TodoCatchupBody,
         crate::mode_routes::ModeCardBody,
+        crate::mode_routes::ModeMembershipBody,
+        crate::mode_routes::ModeDoneBody,
     )),
     modifiers(&BearerSecurity),
     security(("bearer" = []))
@@ -517,6 +520,78 @@ fn mail_mode_guide() {}
 )]
 #[allow(dead_code)]
 fn mail_mode_card() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/now",
+    summary = "Now: People, Due soon, one Updates card and an evening Reading pick, at most three items each",
+    params(("account" = Option<String>, Query, description = "Account id; omitted covers every account")),
+    responses(
+        (status = 200, description = "The `Now` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_now() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/rail",
+    summary = "The rail: Now, the five modes and Inbox with keys, counts and early-version notes, plus More",
+    params(("account" = Option<String>, Query, description = "Account id; omitted covers every account")),
+    responses(
+        (status = 200, description = "The `Rail` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_rail() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/modes/membership",
+    summary = "Which modes hold one thread and why, named by the thread or one of its messages",
+    params(
+        ("thread_id" = Option<String>, Query, description = "The thread"),
+        ("message_id" = Option<String>, Query, description = "Or one of its messages"),
+    ),
+    responses(
+        (status = 200, description = "The `ModeMembership` variant", body = ResponseData),
+        (status = 400, description = "Neither id given"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_mode_membership_get() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/modes/membership",
+    summary = "Which modes hold each of up to 100 threads, in request order",
+    request_body = crate::mode_routes::ModeMembershipBody,
+    responses(
+        (status = 200, description = "The `ModeMembership` variant", body = ResponseData),
+        (status = 400, description = "No threads, or more than 100"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_mode_membership_post() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/modes/{mode}/done",
+    summary = "Done here: threads, a sender's threads or named to-dos leave one mode, archived only when no other mode holds them (dry_run previews)",
+    params(("mode" = String, Path, description = "`messages`, `todo`, `updates` or `reading`")),
+    request_body = crate::mode_routes::ModeDoneBody,
+    responses(
+        (status = 200, description = "The `ModeDone` variant: one outcome per thread with its handoff copy, and the undo id", body = ResponseData),
+        (status = 400, description = "Unknown mode or no threads"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_mode_done() {}
 
 #[utoipa::path(
     post,

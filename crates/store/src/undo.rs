@@ -29,6 +29,10 @@ pub enum UndoableMutationKind {
     /// Reply later or "bring it back if no reply" at a time: only the
     /// flags and reminders it replaced (`DeskUndo`), no message changes.
     Deferral,
+    /// Done in one mode: that mode's mark or ticked-off to-dos
+    /// (`DeskUndo`), plus labels and read state when the last mode let go
+    /// and the thread was archived.
+    ModeDone,
 }
 
 /// Snapshot of a single envelope's state right before a mutation was
@@ -72,6 +76,21 @@ pub struct DeskUndo {
     /// there was none).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reminder_priors: Vec<(MessageId, Option<crate::ReminderState>)>,
+    /// Per-mode done marks as they were before (`mode_done`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mode_done: Vec<crate::ModeDonePrior>,
+    /// To-dos a mode's done ticked off, to reopen as they were.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub todos_ticked: Vec<TodoTickPrior>,
+}
+
+/// A to-do before a mode's done ticked it off.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TodoTickPrior {
+    pub id: String,
+    /// Reopening puts this back, so an undo doesn't make the row the
+    /// user's (a user's row never expires).
+    pub user_edited: bool,
 }
 
 impl DeskUndo {
@@ -81,6 +100,8 @@ impl DeskUndo {
             && self.reply_later.is_empty()
             && self.reply_later_priors.is_empty()
             && self.reminder_priors.is_empty()
+            && self.mode_done.is_empty()
+            && self.todos_ticked.is_empty()
     }
 }
 

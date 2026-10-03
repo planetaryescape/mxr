@@ -369,6 +369,60 @@ impl super::Store {
         Ok(out)
     }
 
+    /// Undo of a mode's done: rows it ticked off go back to open with the
+    /// `user_edited` they had, so an undo never makes a row the user's.
+    /// Only rows still done are touched. Returns how many reopened.
+    pub async fn reopen_ticked_todos(
+        &self,
+        priors: &[crate::TodoTickPrior],
+        now: DateTime<Utc>,
+    ) -> Result<u64, sqlx::Error> {
+        let mut reopened = 0;
+        for prior in priors {
+            reopened += sqlx::query(
+                "UPDATE todos SET state = 'open', done_at = NULL, user_edited = ?2,
+                     updated_at = ?3
+                 WHERE id = ?1 AND state = 'done'",
+            )
+            .bind(&prior.id)
+            .bind(prior.user_edited)
+            .bind(now.timestamp())
+            .execute(self.writer())
+            .await?
+            .rows_affected();
+        }
+        Ok(reopened)
+    }
+
+    /// Open rows on these threads: what holds a thread in To do.
+    pub async fn open_todos_for_threads(
+        &self,
+        account_id: &AccountId,
+        thread_ids: &[ThreadId],
+    ) -> Result<Vec<TodoRecord>, sqlx::Error> {
+        if thread_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let wanted =
+            serde_json::to_string(&thread_ids.iter().map(ThreadId::as_str).collect::<Vec<_>>())
+                .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
+        // The account's open rows are few (the state index finds them), so
+        // the thread filter runs over those rather than needing its own index.
+        let sql = format!(
+            "SELECT {COLUMNS} FROM todos
+             WHERE account_id = ?1 AND state = 'open'
+               AND thread_id IN (SELECT value FROM json_each(?2))"
+        );
+        sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(account_id.as_str())
+            .bind(wanted)
+            .fetch_all(self.reader())
+            .await?
+            .iter()
+            .map(row_to_todo)
+            .collect()
+    }
+
     /// Ids that start with `prefix`, at most `limit`, so a client can take
     /// the short form it printed.
     pub async fn find_todo_ids_by_prefix(

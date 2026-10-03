@@ -1,3 +1,4 @@
+import { ReaderModesLine } from "@/features/modes/ReaderModesLine";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -411,6 +412,7 @@ export function ThreadReader({
         position={position}
       />
       <OtherAccountLine accountId={data.thread.account_id} />
+      <ReaderModesLine threadId={threadId} />
       <div
         ref={scrollRef}
         tabIndex={-1}

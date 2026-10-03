@@ -15,9 +15,13 @@ fn g_view_chord(second: char) -> Option<Action> {
         'q' => Some(Action::OpenReplyQueue),
         'o' => Some(Action::OpenOwedReplies),
         'v' => Some(Action::OpenCalendarInvites),
-        'u' => Some(Action::OpenSubscriptions),
+        // Updates, an early version on Paper trail. Subscriptions moved
+        // under More with no chord.
+        'u' => Some(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail)),
         'S' => Some(Action::OpenScreenerQueue),
         'x' => Some(Action::OpenTodo),
+        'm' => Some(Action::OpenMessages),
+        'e' => Some(Action::OpenArchiveMode),
         _ => None,
     }
 }
@@ -174,14 +178,14 @@ impl InputHandler {
                 self.state = KeyState::Normal;
                 Some(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail))
             }
-            // g h: the desk, the home of what needs you. `g d` stays Drafts.
+            // g h: Now, the front page. `g d` stays Drafts.
             (
                 KeyState::WaitingForSecond { first: 'g', .. },
                 KeyCode::Char('h'),
                 KeyModifiers::NONE,
             ) => {
                 self.state = KeyState::Normal;
-                Some(Action::OpenDesk)
+                Some(Action::OpenNow)
             }
             (KeyState::WaitingForSecond { first: 'g', .. }, KeyCode::Char('E'), modifiers)
                 if plain_or_shift(modifiers) =>
@@ -427,12 +431,12 @@ mod tests {
     }
 
     #[test]
-    fn chord_g_then_h_opens_the_desk_and_g_d_stays_drafts() {
+    fn chord_g_then_h_opens_now_and_g_d_stays_drafts() {
         let mut input = InputHandler::new();
         assert_eq!(input.handle_key(key(KeyCode::Char('g'))), None);
         assert_eq!(
             input.handle_key(key(KeyCode::Char('h'))),
-            Some(Action::OpenDesk)
+            Some(Action::OpenNow)
         );
         let _ = input.handle_key(key(KeyCode::Char('g')));
         assert_eq!(
@@ -462,7 +466,13 @@ mod tests {
             ('q', KeyModifiers::NONE, Action::OpenReplyQueue),
             ('o', KeyModifiers::NONE, Action::OpenOwedReplies),
             ('v', KeyModifiers::NONE, Action::OpenCalendarInvites),
-            ('u', KeyModifiers::NONE, Action::OpenSubscriptions),
+            (
+                'u',
+                KeyModifiers::NONE,
+                Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail),
+            ),
+            ('m', KeyModifiers::NONE, Action::OpenMessages),
+            ('e', KeyModifiers::NONE, Action::OpenArchiveMode),
             ('S', KeyModifiers::SHIFT, Action::OpenScreenerQueue),
         ] {
             let mut input = InputHandler::new();

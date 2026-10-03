@@ -6,6 +6,9 @@ import { rowAge, rowPerson } from "./deskCopy";
 import { GistAsk, gistText, gistTitle } from "@/features/gists/RowGistLine";
 import { useRowGist } from "@/features/gists/rowGists";
 import type { RowRenderState } from "@/features/mailbox/MailboxList";
+import { AlsoInLine } from "@/features/modes/AlsoInLine";
+import type { ThreadModes } from "@/features/modes/membership";
+import { NewSenderQuestion } from "@/features/modes/NewSenderQuestion";
 import type { MessageRowView } from "@/features/mailbox/types";
 import { cn } from "@/lib/utils";
 import { useClockLabel } from "@/lib/minuteClock";
@@ -20,6 +23,8 @@ type DeskRowProps = RowRenderState & {
    * conversation is about) so nothing moves when it lands.
    */
   gistLine: boolean;
+  /** Messages: the other modes holding the thread, and a new sender's question. */
+  modes?: ThreadModes;
 };
 
 /**
@@ -43,6 +48,7 @@ export const DeskRow = memo(function DeskRow({
   desk,
   onDone,
   gistLine,
+  modes,
   ...state
 }: DeskRowProps) {
   const who = rowPerson(desk);
@@ -142,6 +148,14 @@ export const DeskRow = memo(function DeskRow({
           className="col-span-2 col-start-1 row-start-3 h-5 min-w-0 truncate text-[12.5px] leading-5 text-muted-foreground/90 @2xl:col-span-1 @2xl:col-start-2 @2xl:row-start-2"
         >
           {gist?.about ?? ""}
+        </span>
+      ) : null}
+      {modes && (modes.new_sender || modes.modes.some((entry) => entry.mode !== "messages")) ? (
+        <span className="col-span-full grid gap-0.5 @2xl:col-start-2">
+          {modes.new_sender ? (
+            <NewSenderQuestion question={modes.new_sender} label={who} inOption />
+          ) : null}
+          <AlsoInLine modes={modes} here="messages" keys={false} links={false} />
         </span>
       ) : null}
       <span className="col-start-2 row-start-1 flex items-center justify-end gap-1.5 @2xl:col-start-3">

@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from "react";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { MobileTabs } from "@/components/MobileTabs";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBar } from "@/components/StatusBar";
@@ -173,6 +174,7 @@ export function AppShell() {
       <footer className="app-shell-statusbar">
         <StatusBar />
       </footer>
+      <MobileTabs />
       <Suspense fallback={null}>
         {mountPalette ? <CommandPaletteMount /> : null}
         {mountLauncher ? <ComposeLauncher /> : null}

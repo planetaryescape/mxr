@@ -20,6 +20,7 @@ mod modal_actions;
 mod mutation_actions;
 mod mutation_helpers;
 pub mod mutation_snapshot;
+mod now_actions;
 mod pending_optimistic;
 mod place_actions;
 mod platform_actions;
@@ -66,6 +67,7 @@ pub use mutation_snapshot::{
     MutationId, MutationIdGenerator, MutationSnapshot, MutationSnapshotStore, QueuedMutation,
     TRANSIENT_MUTATION_MAX_RETRIES,
 };
+pub(crate) use now_actions::{mode_done_copy, NOW_MODE};
 pub use pending_optimistic::PendingOptimisticState;
 pub use promises::PromisePrompt;
 #[cfg(test)]
@@ -123,6 +125,10 @@ pub enum MutationEffect {
     /// A to-do changed (ticked off, scheduled, edited, made, restored,
     /// kept or let go): refetch the lens and say what happened.
     Todo(String),
+    /// Done here in a mode (`SetModeDone`) or a sender answered: refetch
+    /// Now, the rail, the desk, places and To do, and say what happened in
+    /// the daemon's handoff words.
+    ModeDone(String),
     /// Successful SendDraft. Refreshes the active label so a Sent-view user
     /// sees the just-sent message immediately (no manual sync), and shows
     /// `status` in the status bar.

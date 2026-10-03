@@ -1161,6 +1161,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/modes/membership": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which modes hold one thread and why, named by the thread or one of its messages */
+        get: operations["mail_mode_membership_get"];
+        put?: never;
+        /** Which modes hold each of up to 100 threads, in request order */
+        post: operations["mail_mode_membership_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/modes/{mode}/card": {
         parameters: {
             query?: never;
@@ -1172,6 +1190,23 @@ export interface paths {
         put?: never;
         /** Retire a mode's first-encounter card in every client, or show it again */
         post: operations["mail_mode_card"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/modes/{mode}/done": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Done here: threads, a sender's threads or named to-dos leave one mode, archived only when no other mode holds them (dry_run previews) */
+        post: operations["mail_mode_done"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1365,6 +1400,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Now: People, Due soon, one Updates card and an evening Reading pick, at most three items each */
+        get: operations["mail_now"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/owed": {
         parameters: {
             query?: never;
@@ -1410,6 +1462,23 @@ export interface paths {
         put?: never;
         /** Archive everything unpinned in a place or one sender's bundle (dry_run previews) */
         post: operations["mail_place_sweep"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/rail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The rail: Now, the five modes and Inbox with keys, counts and early-version notes, plus More */
+        get: operations["mail_rail"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4684,6 +4753,51 @@ export interface components {
             /** @description True retires the card in every client; false shows it again. */
             seen?: boolean;
         };
+        /** @description Body of `POST /api/v1/mail/modes/{mode}/done`. */
+        ModeDoneBody: {
+            /** @description Preview only: the same plan, nothing changed. */
+            dry_run?: boolean;
+            sender?: null | components["schemas"]["ModeDoneSenderData"];
+            thread_ids?: string[];
+            /** @description To do only: tick off just these rows. */
+            todo_ids?: string[];
+        };
+        /** @description What done in one mode did to one thread, or with `dry_run` would do. */
+        ModeDoneOutcomeData: {
+            account_id?: null | components["schemas"]["AccountId"];
+            /**
+             * Format: int32
+             * @description Messages archived at the provider because the last mode let go.
+             */
+            archived?: number;
+            /**
+             * @description The handoff toast: "Done in Messages. Still in To do (due Wed)." or
+             *     "Done. Archived in Gmail."
+             */
+            copy: string;
+            /** @description Why this thread was not done. The others still are. */
+            error?: string | null;
+            /** @description Messages, Updates, Reading: the mode's done mark was written. */
+            marked?: boolean;
+            /**
+             * Format: int32
+             * @description Messages marked read with that archive.
+             */
+            marked_read?: number;
+            mode: components["schemas"]["ModeKindData"];
+            /** @description "Gmail", "Outlook" or "the mail server": named in `copy`. */
+            provider: string;
+            /** @description Modes still holding the thread after this. */
+            still_in?: components["schemas"]["ModeKindData"][];
+            thread_id: components["schemas"]["ThreadId"];
+            /** @description To do: the rows ticked off. */
+            todos_ticked?: string[];
+        };
+        /** @description Every thread of one sender's in a mode, for done on a sender's row. */
+        ModeDoneSenderData: {
+            account_id: components["schemas"]["AccountId"];
+            sender_email: string;
+        };
         /**
          * @description Returned in `ResponseData::ModeGuides`: one mode's teaching copy and
          *     whether its first-encounter card has been retired on this profile.
@@ -4732,6 +4846,35 @@ export interface components {
             /** @description As the clients print it: "Enter", "e", ",". */
             key: string;
             verb: string;
+        };
+        /**
+         * @description One of the five modes. Now is a view over them, and Inbox a lens.
+         * @enum {string}
+         */
+        ModeKindData: "messages" | "todo" | "updates" | "reading" | "archive";
+        /** @description Body of `POST /api/v1/mail/modes/membership`. */
+        ModeMembershipBody: {
+            /** @description At most 100 threads, answered in this order. */
+            thread_ids: string[];
+        };
+        /** @description One mode holding a thread, and why. */
+        ModeMembershipData: {
+            /**
+             * @description The line other modes show: "Also in To do: Sign the lease, act by
+             *     Mon 13 Oct · due Wed 15 Oct".
+             */
+            also_in: string;
+            /** @description The mode's view is an early version built on an existing one. */
+            early?: boolean;
+            /** @description "g x". */
+            key: string;
+            mode: components["schemas"]["ModeKindData"];
+            /** @description "To do". */
+            name: string;
+            /** @description "Here because: Sam wrote to you and you've written to them (rule)." */
+            reason: string;
+            /** @description To do: the open rows holding the thread. */
+            todo_ids?: string[];
         };
         /** @description Mutation commands for modifying messages. */
         MutationCommand: {
@@ -4852,6 +4995,129 @@ export interface components {
              */
             volume: number | null;
         };
+        /** @description Returned by `Request::GetNow`. */
+        NowData: {
+            due_soon: components["schemas"]["NowDueData"];
+            /**
+             * @description Set when every section is empty: "Clear. The next to-do surfaces
+             *     Mon 19 Oct 09:00." or the never-had-any line.
+             */
+            empty_state?: string | null;
+            /** @description The newest-first first run, for "Sorting your mail" while it runs. */
+            first_run: components["schemas"]["TodoFirstRunData"];
+            /** Format: date-time */
+            generated_at: string;
+            /** @description `now_copy::HEADER`. */
+            header: string;
+            /** @description "Friday afternoon. 3 people, 2 things to act on." */
+            headline: string;
+            /**
+             * Format: int32
+             * @description Items shown across all sections: never more than ten.
+             */
+            item_count: number;
+            /**
+             * Format: date-time
+             * @description When the next to-do surfaces, for the low tide scene.
+             */
+            next_at?: string | null;
+            /** @description "Not now: Reading 6 this week", while the pick isn't showing. */
+            not_now?: string | null;
+            /**
+             * @description The sections, in their fixed order. An empty one is omitted by
+             *     clients; its total says so.
+             */
+            people: components["schemas"]["NowPeopleData"];
+            reading?: null | components["schemas"]["NowReadingPickData"];
+            updates?: null | components["schemas"]["NowUpdatesCardData"];
+        };
+        /** @description Due soon: To do's Now band, by act-by. */
+        NowDueData: {
+            more_line?: string | null;
+            todos: components["schemas"]["NowTodoData"][];
+            /** Format: int32 */
+            total: number;
+        };
+        /** @description People: whose turn it is, from Messages. */
+        NowPeopleData: {
+            /** @description "and 8 more in Messages", when there are more. */
+            more_line?: string | null;
+            /**
+             * @description When You owe runs long: "11 people are waiting on you. The three
+             *     below have waited longest past your usual pace."
+             */
+            overload_line?: string | null;
+            /**
+             * @description At most three people, each once at their most pressing
+             *     conversation: You owe first, then New from people, then Waiting on.
+             */
+            rows: components["schemas"]["NowPersonData"][];
+            /**
+             * Format: int32
+             * @description Every person in Messages, shown or not.
+             */
+            total: number;
+        };
+        /** @description A person row: a desk row from You owe, New from people or Waiting on. */
+        NowPersonData: {
+            new_sender?: null | components["schemas"]["ScreenerQuestionData"];
+            row: components["schemas"]["DeskRowData"];
+            /** @description "From Messages: Maya wrote to you 22h ago." */
+            why: string;
+        };
+        /** @description The evening's one thing to read. */
+        NowReadingPickData: {
+            account_id: components["schemas"]["AccountId"];
+            /** Format: date-time */
+            date: string;
+            message_id: components["schemas"]["MessageId"];
+            sender_email: string;
+            sender_name?: string | null;
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
+            /** @description "From Reading: you've opened 9 of the last 10 from Long Reads." */
+            why: string;
+        };
+        /** @description A to-do on Now. */
+        NowTodoData: {
+            todo: components["schemas"]["TodoData"];
+            /** @description "From To do: act by Wed 7 Oct · due Fri 9 Oct." */
+            why: string;
+        };
+        /** @description One source on the Updates card. */
+        NowUpdateSourceData: {
+            /** Format: int32 */
+            count: number;
+            sender_email: string;
+            sender_name?: string | null;
+        };
+        /**
+         * @description The Updates card: one item, whatever the count. An early version: a
+         *     count and the busiest sources from automated mail in the inbox, until
+         *     the twice-daily digest ships.
+         */
+        NowUpdatesCardData: {
+            early: boolean;
+            /** @description "23 updates from 9 sources. Most from GitHub, Vercel and Stripe." */
+            line: string;
+            /** Format: int32 */
+            message_count: number;
+            /**
+             * Format: date-time
+             * @description The card counts updates from here: the digest cut before the latest
+             *     one, never more than two days back.
+             */
+            since: string;
+            /** Format: int32 */
+            source_count: number;
+            /**
+             * @description The card's threads, newest first: what letting go of the digest
+             *     (`SetModeDone` in Updates) acts on.
+             */
+            thread_ids: components["schemas"]["ThreadId"][];
+            /** @description The busiest three sources. */
+            top_sources: components["schemas"]["NowUpdateSourceData"][];
+        };
         OwedReplyHereData: {
             message_id: components["schemas"]["MessageId"];
             /** Format: date-time */
@@ -4949,6 +5215,66 @@ export interface components {
             kind: "sent_message";
             message_id: components["schemas"]["MessageId"];
         };
+        /** @description Returned by `Request::GetRail`. */
+        RailData: {
+            /** @description Now, the five modes, then Inbox. */
+            entries: components["schemas"]["RailEntryData"][];
+            /** Format: date-time */
+            generated_at: string;
+            /** @description Under More: the Screener (off the rail, D117) and the rest. */
+            more: components["schemas"]["RailLinkData"][];
+        };
+        /** @description One rail entry: Now, a mode, or Inbox. */
+        RailEntryData: {
+            /**
+             * Format: int32
+             * @description A badge counts work only, so only Now has one.
+             */
+            badge?: number | null;
+            /**
+             * Format: int32
+             * @description What the entry holds now, for a quiet count. Absent where a count
+             *     means nothing (Archive, Inbox).
+             */
+            count?: number | null;
+            /**
+             * @description For an early version: what it is built on, for the clients' "early
+             *     version" note.
+             */
+            early_note?: string | null;
+            /** @description `home` (Now), `modes`, or `lens` (Inbox): the rail's three groups. */
+            group: string;
+            /**
+             * @description The line under the name, from the mode's guide where the mode is
+             *     built.
+             */
+            header?: string | null;
+            /** @description "now", "messages", "todo", "updates", "reading", "archive", "inbox". */
+            id: string;
+            /** @description "g h". */
+            key: string;
+            name: string;
+            /**
+             * Format: int32
+             * @description Messages: person mail in the inbox no lane holds, kept until done
+             *     there. Not in `count`, which counts people.
+             */
+            quiet?: number | null;
+            status: components["schemas"]["RailStatusData"];
+        };
+        /** @description A page under More. */
+        RailLinkData: {
+            id: string;
+            key?: string | null;
+            name: string;
+            /** @description "Every sender you've decided on, and new ones to decide." */
+            note?: string | null;
+        };
+        /**
+         * @description Built in its researched shape, or an early version on an existing view.
+         * @enum {string}
+         */
+        RailStatusData: "built" | "early";
         RecipientSendTimeRowData: {
             /** Format: int64 */
             best_expected_reply_seconds?: number | null;
@@ -6188,6 +6514,28 @@ export interface components {
         } | {
             account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
+            cmd: "GetNow";
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "GetRail";
+        } | {
+            /** @enum {string} */
+            cmd: "GetModeMembership";
+            message_id?: null | components["schemas"]["MessageId"];
+            thread_id?: null | components["schemas"]["ThreadId"];
+            thread_ids?: components["schemas"]["ThreadId"][];
+        } | {
+            /** @enum {string} */
+            cmd: "SetModeDone";
+            dry_run?: boolean;
+            mode: components["schemas"]["ModeKindData"];
+            sender?: null | components["schemas"]["ModeDoneSenderData"];
+            thread_ids?: components["schemas"]["ThreadId"][];
+            todo_ids?: string[];
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
             cmd: "ListPlace";
             /**
              * Format: int32
@@ -6924,6 +7272,26 @@ export interface components {
             /** @enum {string} */
             kind: "ModeGuides";
         } | {
+            /** @enum {string} */
+            kind: "Now";
+            now: components["schemas"]["NowData"];
+        } | {
+            /** @enum {string} */
+            kind: "Rail";
+            rail: components["schemas"]["RailData"];
+        } | {
+            /** @enum {string} */
+            kind: "ModeMembership";
+            threads: components["schemas"]["ThreadModesData"][];
+        } | {
+            dry_run: boolean;
+            items: components["schemas"]["ModeDoneOutcomeData"][];
+            /** @enum {string} */
+            kind: "ModeDone";
+            mutation_id?: string | null;
+            /** @description Something changed but its undo could not be saved. */
+            undo_unavailable?: boolean;
+        } | {
             account_id?: null | components["schemas"]["AccountId"];
             bundles: components["schemas"]["PlaceBundleData"][];
             /** Format: date-time */
@@ -7097,6 +7465,12 @@ export interface components {
             subject: string;
             to?: components["schemas"]["Address"][];
         };
+        ScreenerChoiceData: {
+            /** @description What `SetSenderKind` stores. */
+            kind: components["schemas"]["SenderKindData"];
+            /** @description "Messages", "Updates", "Reading", "Block". */
+            label: string;
+        };
         ScreenerDecisionData: {
             account_id: components["schemas"]["AccountId"];
             /** Format: date-time */
@@ -7107,6 +7481,18 @@ export interface components {
         };
         /** @enum {string} */
         ScreenerDispositionData: "allow" | "deny" | "feed" | "paper_trail" | "unknown";
+        /**
+         * @description A first-time sender's one question, asked on their row in the mode
+         *     their mail landed in (D117). Answering is `SetSenderKind`.
+         */
+        ScreenerQuestionData: {
+            account_id: components["schemas"]["AccountId"];
+            /** @description The answers, the current mode's first. */
+            choices: components["schemas"]["ScreenerChoiceData"][];
+            /** @description "New sender. Keep in Messages?" */
+            question: string;
+            sender_email: string;
+        };
         ScreenerQueueEntryData: {
             display_name?: string | null;
             /** Format: date-time */
@@ -7685,6 +8071,27 @@ export interface components {
         };
         /** Format: uuid */
         ThreadId: string;
+        /** @description Every mode one thread is in, returned by `Request::GetModeMembership`. */
+        ThreadModesData: {
+            account_id: components["schemas"]["AccountId"];
+            /**
+             * @description Modes this thread was marked done in and stays out of until a new
+             *     message arrives.
+             */
+            done_in?: components["schemas"]["ModeKindData"][];
+            /**
+             * @description The modes keeping it in the provider's inbox: Inbox's "held by To
+             *     do" chip. Archive never holds.
+             */
+            held_by?: components["schemas"]["ModeKindData"][];
+            /** @description Any message of the thread is in the provider's inbox. */
+            in_inbox: boolean;
+            /** @description In rail order. Empty when no mode holds it (Inbox still shows it). */
+            modes: components["schemas"]["ModeMembershipData"][];
+            new_sender?: null | components["schemas"]["ScreenerQuestionData"];
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
+        };
         /** @description An open promise in the thread and who made it. */
         ThreadPromiseData: {
             commitment: components["schemas"]["CommitmentData"];
@@ -10130,6 +10537,83 @@ export interface operations {
             };
         };
     };
+    mail_mode_membership_get: {
+        parameters: {
+            query?: {
+                /** @description The thread */
+                thread_id?: string;
+                /** @description Or one of its messages */
+                message_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `ModeMembership` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Neither id given */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_mode_membership_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModeMembershipBody"];
+            };
+        };
+        responses: {
+            /** @description The `ModeMembership` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description No threads, or more than 100 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     mail_mode_card: {
         parameters: {
             query?: never;
@@ -10154,6 +10638,47 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ResponseData"];
                 };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_mode_done: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description `messages`, `todo`, `updates` or `reading` */
+                mode: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModeDoneBody"];
+            };
+        };
+        responses: {
+            /** @description The `ModeDone` variant: one outcome per thread with its handoff copy, and the undo id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Unknown mode or no threads */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Missing or invalid bridge token */
             401: {
@@ -10439,6 +10964,36 @@ export interface operations {
             };
         };
     };
+    mail_now: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `Now` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     mail_owed: {
         parameters: {
             query?: never;
@@ -10531,6 +11086,36 @@ export interface operations {
         };
         responses: {
             /** @description The `PlaceSwept` variant: the preview, and the archive job unless dry_run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_rail: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `Rail` variant */
             200: {
                 headers: {
                     [name: string]: unknown;

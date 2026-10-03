@@ -193,6 +193,7 @@ impl App {
             | MutationEffect::RefreshPlaces(_)
             | MutationEffect::SenderMoved(_)
             | MutationEffect::Todo(_)
+            | MutationEffect::ModeDone(_)
             | MutationEffect::SentSuccess { .. } => {}
         }
     }
@@ -239,6 +240,12 @@ impl App {
                 if let Some(label_id) = self.mailbox.active_label.clone() {
                     self.mailbox.pending_label_fetch = Some(label_id);
                 }
+                // An undo of done here puts a thread back in its modes.
+                match self.mailbox.mailbox_view {
+                    MailboxView::Now => self.refresh_now(),
+                    MailboxView::Desk | MailboxView::Place(_) => self.refresh_places(),
+                    _ => {}
+                }
                 self.mailbox.pending_subscriptions_refresh = true;
                 if show_completion_status {
                     self.push_toast(Toast::success("Synced"));
@@ -270,6 +277,16 @@ impl App {
                 }
             }
             MutationEffect::StatusOnly(msg) => {
+                if show_completion_status && !msg.is_empty() {
+                    self.push_toast(Toast::success(msg));
+                }
+            }
+            MutationEffect::ModeDone(msg) => {
+                self.refresh_now();
+                self.refresh_places();
+                if self.mailbox.mailbox_view == MailboxView::Todo {
+                    self.refresh_todo();
+                }
                 if show_completion_status && !msg.is_empty() {
                     self.push_toast(Toast::success(msg));
                 }
@@ -473,6 +490,7 @@ impl App {
             | MutationEffect::RefreshPlaces(_)
             | MutationEffect::SenderMoved(_)
             | MutationEffect::Todo(_)
+            | MutationEffect::ModeDone(_)
             | MutationEffect::SentSuccess { .. } => MutationSnapshot::None,
         }
     }
@@ -586,6 +604,7 @@ impl App {
         self.handle_mutation_reconciliation_failed(id);
         self.pending_optimistic.clear(id);
         self.reopen_todo_card_after_failure(id);
+        self.reopen_now_card_after_failure(id);
         self.refresh_mailbox_after_mutation_failure();
         if best_effort {
             self.push_toast(Toast::warn("Mailbox refreshing to reconcile state"));

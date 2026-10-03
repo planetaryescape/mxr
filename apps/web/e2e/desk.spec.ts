@@ -18,9 +18,9 @@ function sidebar(page: import("@playwright/test").Page) {
   return page.getByRole("complementary", { name: "Mailboxes" });
 }
 
-test("the app opens on the desk: lanes with reasons, and work-only badges", async ({ page }) => {
-  await openApp(page);
-  await expect(page).toHaveURL(/\/desk$/);
+test("Messages shows the desk's lanes with reasons, and only Now has a badge", async ({ page }) => {
+  await openApp(page, "/messages");
+  await expect(page).toHaveURL(/\/messages$/);
   const heading = page.getByRole("heading", { level: 1 });
   await expect(heading).toContainText(/(morning|afternoon|evening|night)\./);
   await expect(heading.getByRole("link", { name: /\d+ repl(y|ies)/ })).toBeVisible();
@@ -34,23 +34,23 @@ test("the app opens on the desk: lanes with reasons, and work-only badges", asyn
   );
   await expect(page.getByRole("navigation", { name: "Everything else" })).toBeVisible();
 
-  // The desk's badge is owed plus due; the inbox carries no unread count.
+  // Now's badge counts work; the inbox carries no unread count.
   const state = readE2EState();
-  const desk = (await (
-    await page.request.get(`${state.bridgeUrl}/api/v1/mail/desk`, {
+  const rail = (await (
+    await page.request.get(`${state.bridgeUrl}/api/v1/mail/rail`, {
       headers: { authorization: `Bearer ${state.token}` },
     })
-  ).json()) as { owed: { total: number }; due: { total: number } };
-  await expect(sidebar(page).getByRole("link", { name: "Desk" })).toContainText(
-    String(desk.owed.total + desk.due.total),
-  );
+  ).json()) as { rail: { entries: { id: string; badge?: number }[] } };
+  const badge = rail.rail.entries.find((entry) => entry.id === "now")?.badge;
+  expect(badge).toBeGreaterThan(0);
+  await expect(sidebar(page).getByRole("link", { name: /^Now/ })).toContainText(String(badge));
   await expect(sidebar(page).getByRole("link", { name: "Inbox" })).not.toContainText(/\d/);
 });
 
 test("desk journey: j, Done optimistically, undo, open and come back to the same row", async ({
   page,
 }) => {
-  await openApp(page);
+  await openApp(page, "/desk");
   await expect(mailRows(page).first()).toBeVisible();
   const [first, second, third] = await renderedRowIds(page);
   expect(first && second && third).toBeTruthy();
@@ -96,16 +96,18 @@ test("desk journey: j, Done optimistically, undo, open and come back to the same
 test("g i goes to arrival order and g h comes back; Waiting on is one lane in full", async ({
   page,
 }) => {
-  await openApp(page);
+  await openApp(page, "/messages");
   await expect(mailRows(page).first()).toBeVisible();
   await pressSequence(page, "g", "i");
   await expect(page).toHaveURL(/\/m\/inbox$/);
   await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
-  await pressSequence(page, "g", "h");
-  await expect(page).toHaveURL(/\/desk$/);
+  await pressSequence(page, "g", "m");
+  await expect(page).toHaveURL(/\/messages$/);
 
+  // Waiting on lives under More now.
+  await page.getByRole("button", { name: "More" }).click();
   await sidebar(page).getByRole("link", { name: "Waiting on" }).click();
-  await expect(page).toHaveURL(/\/desk\?lane=waiting$/);
+  await expect(page).toHaveURL(/\/messages\?lane=waiting$/);
   await expect(page.getByRole("heading", { level: 1, name: "Waiting on" })).toBeVisible();
   await expect(mailList(page).getByText("You owe", { exact: true })).toHaveCount(0);
   await expect(mailRows(page).first()).toBeVisible();

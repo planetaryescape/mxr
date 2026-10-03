@@ -35,6 +35,7 @@ pub mod logs;
 pub mod modes;
 pub mod mutations;
 pub mod notify;
+pub mod now;
 pub mod owed;
 pub mod places;
 pub mod profile;

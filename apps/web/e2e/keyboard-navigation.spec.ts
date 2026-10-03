@@ -1,20 +1,25 @@
 import { expect, test } from "@playwright/test";
 
-import { expectCursorOn, mailList, mailRows, openList, reader, renderedRowIds } from "./helpers/mail";
+import {
+  expectCursorOn,
+  mailList,
+  mailRows,
+  openList,
+  reader,
+  renderedRowIds,
+} from "./helpers/mail";
 import { openApp } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-test("h hands the keyboard to the sidebar; j and Enter open the next place", async ({
-  page,
-}) => {
+test("h hands the keyboard to the sidebar; j and Enter open the next place", async ({ page }) => {
   await openList(page, "/m/inbox");
   await page.keyboard.press("h");
   await expect(mailList(page)).not.toHaveAttribute("data-active-pane", "true");
-  // Places run Desk, Inbox, Reply queue: the next one after Inbox.
-  await page.keyboard.press("j");
+  // The rail runs Now, the modes, then Inbox: the one before Inbox is Archive.
+  await page.keyboard.press("k");
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/reply-queue$/);
+  await expect(page).toHaveURL(/\/archive$/);
 });
 
 test("collapsed sidebar keeps the expand control reachable", async ({ page }) => {
@@ -106,18 +111,21 @@ test("g chords jump to the TUI's views", async ({ page }) => {
     ["a", /\/m\/archive$/],
     ["d", /\/drafts$/],
     ["E", /\/drafts$/],
-    ["h", /\/desk$/],
+    ["h", /\/now$/],
+    ["m", /\/messages$/],
+    ["x", /\/todo$/],
+    ["u", /\/updates$/],
+    ["e", /\/archive$/],
     ["r", /\/reading$/],
-    ["p", /\/paper-trail$/],
+    ["p", /\/updates$/],
     // Retired web chords keep working for one release.
     ["R", /\/reading$/],
-    ["P", /\/paper-trail$/],
-    ["w", /\/desk\?lane=waiting$/],
+    ["P", /\/updates$/],
+    ["w", /\/messages\?lane=waiting$/],
     ["n", /\/snoozed$/],
     ["q", /\/reply-queue$/],
     ["o", /\/owed$/],
     ["v", /\/invites$/],
-    ["u", /\/subscriptions$/],
     ["A", /\/analytics/],
     ["i", /\/m\/inbox$/],
   ];
@@ -147,7 +155,9 @@ test("list rows and reader text are readable by default", async ({ page }) => {
   const largestText = (root: Element) =>
     Math.max(
       ...[...root.querySelectorAll("span, p, pre, div")]
-        .filter((el) => [...el.childNodes].some((n) => n.nodeType === 3 && (n.textContent ?? "").trim()))
+        .filter((el) =>
+          [...el.childNodes].some((n) => n.nodeType === 3 && (n.textContent ?? "").trim()),
+        )
         .map((el) => Number.parseFloat(getComputedStyle(el).fontSize)),
     );
 

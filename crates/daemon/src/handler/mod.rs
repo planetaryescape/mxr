@@ -39,9 +39,13 @@ mod helpers;
 mod humanizer;
 mod mail_kind;
 mod mailbox;
+mod mode_done;
 mod mode_guide;
+mod mode_rules;
+mod modes;
 mod mutations;
 mod notifications;
+mod now;
 mod owed;
 pub(crate) mod places;
 mod platform;
@@ -1330,6 +1334,34 @@ async fn dispatch(
         } => todos::set_catchup(state, account_id.as_ref(), decision, *dry_run).await,
         Request::GetModeGuide { mode } => mode_guide::get(state, mode.as_deref()).await,
         Request::SetModeGuideSeen { mode, seen } => mode_guide::set_seen(state, mode, *seen).await,
+        Request::GetNow { account_id } => now::get_now(state, account_id.as_ref()).await,
+        Request::GetRail { account_id } => modes::get_rail(state, account_id.as_ref()).await,
+        Request::GetModeMembership {
+            message_id,
+            thread_id,
+            thread_ids,
+        } => {
+            modes::get_membership(state, message_id.as_ref(), thread_id.as_ref(), thread_ids).await
+        }
+        Request::SetModeDone {
+            thread_ids,
+            mode,
+            dry_run,
+            todo_ids,
+            sender,
+        } => {
+            mode_done::set_mode_done(
+                state,
+                mode_done::DoneRequest {
+                    thread_ids,
+                    mode: *mode,
+                    dry_run: *dry_run,
+                    todo_ids,
+                    sender: sender.as_ref(),
+                },
+            )
+            .await
+        }
         Request::GetRecipientBriefing {
             account_id,
             email,
@@ -1638,6 +1670,8 @@ fn request_destructive_action(req: &Request) -> Option<DestructiveAction> {
             Some(DestructiveAction::Unsubscribe)
         }
         Request::SweepPlace { dry_run: false, .. } => Some(DestructiveAction::Archive),
+        // Done in the last mode holding a thread archives it at the provider.
+        Request::SetModeDone { dry_run: false, .. } => Some(DestructiveAction::Archive),
         Request::RedactActivity { .. } => Some(DestructiveAction::RedactActivity),
         Request::PruneActivity { .. } => Some(DestructiveAction::PruneActivity),
         _ => None,
@@ -1772,6 +1806,8 @@ async fn request_account_scope(
             account_id: None, ..
         }
         | Request::GetTodoCatchup { account_id: None }
+        | Request::GetNow { account_id: None }
+        | Request::GetRail { account_id: None }
         | Request::SetTodoCatchup {
             account_id: None, ..
         }
@@ -1882,6 +1918,33 @@ async fn request_account_scope(
         Request::ResolveDeskItems { items, .. } => {
             let thread_ids: Vec<_> = items.iter().map(|item| item.thread_id.clone()).collect();
             thread_account_scope(state, &thread_ids).await
+        }
+        Request::SetModeDone {
+            thread_ids, sender, ..
+        } => {
+            let mut scope = thread_account_scope(state, thread_ids).await?;
+            if let (Some(sender), RequestAccountScope::Accounts(accounts)) = (sender, &mut scope) {
+                push_unique_account(accounts, sender.account_id.clone());
+            }
+            Ok(scope)
+        }
+        Request::GetModeMembership {
+            message_id,
+            thread_id,
+            thread_ids,
+        } => {
+            let mut threads = thread_ids.clone();
+            threads.extend(thread_id.clone());
+            if let Some(message_id) = message_id {
+                let envelope = state
+                    .store
+                    .get_envelope(message_id)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| format!("Message not found: {message_id}"))?;
+                threads.push(envelope.thread_id);
+            }
+            thread_account_scope(state, &threads).await
         }
         _ => Ok(RequestAccountScope::None),
     }
@@ -2092,6 +2155,9 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetTodo { .. }
         | Request::GetTodoCatchup { .. }
         | Request::GetModeGuide { .. }
+        | Request::GetNow { .. }
+        | Request::GetRail { .. }
+        | Request::GetModeMembership { .. }
         | Request::ListSignatures
         | Request::ListSignatureDefaults
         | Request::ResolveSignature { .. }
@@ -2226,6 +2292,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::DismissDeskThreads { .. }
         | Request::RestoreDeskThreads { .. }
         | Request::ResolveDeskItems { .. }
+        | Request::SetModeDone { .. }
         | Request::DeferThreads { .. }
         | Request::SetSenderKind { .. }
         | Request::PinMessages { .. }
@@ -2466,6 +2533,10 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListTodos { .. } => "list_todos",
         Request::GetTodo { .. } => "get_todo",
         Request::SetTodoState { .. } => "set_todo_state",
+        Request::GetNow { .. } => "get_now",
+        Request::GetRail { .. } => "get_rail",
+        Request::GetModeMembership { .. } => "get_mode_membership",
+        Request::SetModeDone { .. } => "set_mode_done",
         Request::ScheduleTodo { .. } => "schedule_todo",
         Request::UpdateTodo { .. } => "update_todo",
         Request::CreateTodo { .. } => "create_todo",
@@ -2547,6 +2618,8 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::GetTodoRunway { account_id, .. }
         | Request::ListTodos { account_id, .. }
         | Request::GetTodoCatchup { account_id }
+        | Request::GetNow { account_id }
+        | Request::GetRail { account_id }
         | Request::SetTodoCatchup { account_id, .. }
         | Request::ListSenders { account_id, .. }
         | Request::ListStorageBreakdown { account_id, .. }

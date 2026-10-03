@@ -1,0 +1,6 @@
+Agreed on the rollout plan. I'll watch support tickets for the first hour.
+
+Samir
+
+Rollout risk: watch sync latency, auth failures, and support tickets for the first hour.
+Decision: keep the canary at 5% until Maya confirms the dashboard is quiet.

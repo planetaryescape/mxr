@@ -1018,6 +1018,11 @@ const MIGRATIONS: &[Migration] = &[
             },
         ]),
     },
+    Migration {
+        version: 64,
+        name: "person_links",
+        kind: MigrationKind::Sql(include_str!("../migrations/064_person_links.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

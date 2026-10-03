@@ -226,8 +226,9 @@
       "main"
       "tabs";
   }
-  .app-shell-sidebar,
-  .app-shell-statusbar {
+  /* Doubled class: the status bar's own rule comes later in this file. */
+  .app-shell-sidebar.app-shell-sidebar,
+  .app-shell-statusbar.app-shell-statusbar {
     display: none;
   }
   .app-shell-tabs {

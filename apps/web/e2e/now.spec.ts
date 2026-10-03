@@ -222,6 +222,10 @@ test.describe("on a phone", () => {
     ]);
     await expect(page.getByRole("complementary", { name: "Mailboxes" })).toBeHidden();
     await expect(page.getByTestId("now-row").first()).toBeVisible();
+    await expect(page.locator(".app-shell-statusbar")).toBeHidden();
+    // The page gets the whole width, not a strip beside hidden columns.
+    const main = (await page.locator("#main").boundingBox())!;
+    expect(main.width).toBeGreaterThanOrEqual(389);
     const overflowing: string[] = [];
     for (const [tab, url] of [
       ["Messages", /\/messages$/],

@@ -13,6 +13,7 @@ mod envelope_list;
 mod insight_routes;
 mod legacy;
 mod mailbox_threads;
+mod messages_routes;
 mod middleware;
 mod mode_routes;
 mod openapi;

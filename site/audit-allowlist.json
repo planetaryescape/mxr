@@ -1,0 +1,8 @@
+[
+  {
+    "advisory": "GHSA-ch52-4w7c-c8xp",
+    "package": "http-cache-semantics",
+    "reason": "Cross-user disclosure through a shared HTTP cache. The docs site is a static build with no shared server cache, and no fixed release exists (4.2.0 is the latest and is affected).",
+    "until": "2026-11-03"
+  }
+]

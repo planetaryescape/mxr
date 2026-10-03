@@ -396,7 +396,7 @@ jobs:
           cache: npm
           cache-dependency-path: site/package-lock.json
       - run: npm ci
-      - run: npm audit --audit-level=moderate
+      - run: node ../scripts/check-npm-audit.mjs audit-allowlist.json
       - run: npm run build
 
   build:

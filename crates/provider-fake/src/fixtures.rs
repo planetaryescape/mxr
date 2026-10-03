@@ -3,6 +3,7 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use std::collections::HashMap;
 
+mod modes_demo;
 mod todo_demo;
 
 /// The provider id of the demo's sent message that promises the signed
@@ -665,6 +666,11 @@ const DEMO_SPAM_SENDERS: [(&str, &str); 3] = [
     ("Prize Desk", "winner@claim-now.demo.mxr.local"),
     ("Payroll Notice", "payroll@notice-demo.mxr.local"),
 ];
+/// Subjects only an account's security system sends.
+const DEMO_SECURITY_SUBJECTS: [&str; 2] = [
+    "Action required: unusual sign-in attempt",
+    "Urgent password reset notice",
+];
 const DEMO_SUBJECT_TEMPLATES: [&str; 20] = [
     "Launch checklist for Project Aurora",
     "Canary rollout notes",
@@ -750,7 +756,9 @@ impl DemoFixtureStream {
         // message count is unchanged.
         let delivery_count = if profile.email == "alex@demo.mxr.local" && profile.target_count >= 16
         {
-            DELIVERY_DEMO_MESSAGE_COUNT + todo_demo::TODO_DEMO_MESSAGE_COUNT
+            DELIVERY_DEMO_MESSAGE_COUNT
+                + todo_demo::TODO_DEMO_MESSAGE_COUNT
+                + modes_demo::MODES_DEMO_MESSAGE_COUNT
         } else {
             0
         };
@@ -835,11 +843,17 @@ impl DemoFixtureStream {
         self.page(index, 1).pop()
     }
 
-    /// Shipping mail, then To do mail: the seeded messages at the head of
-    /// the personal account.
+    /// Shipping mail, then To do mail, then the modes' landlord and new
+    /// sender: the seeded messages at the head of the personal account.
     fn delivery_messages(&self) -> Vec<(Envelope, MessageBody)> {
         let mut messages = delivery_demo_messages(&self.account_id, &self.self_addr, self.now);
         messages.extend(todo_demo::todo_demo_messages(
+            &self.account_id,
+            &self.self_addr,
+            self.now,
+            messages.len() + 1,
+        ));
+        messages.extend(modes_demo::modes_demo_messages(
             &self.account_id,
             &self.self_addr,
             self.now,
@@ -865,6 +879,9 @@ impl DemoFixtureStream {
             7 => DEMO_ALERT_SENDERS[thread_num % DEMO_ALERT_SENDERS.len()],
             10 | 12 => DEMO_SPAM_SENDERS[thread_num % DEMO_SPAM_SENDERS.len()],
             11 => DEMO_PROMO_SENDERS[thread_num % DEMO_PROMO_SENDERS.len()],
+            // A security alert comes from a machine, never a colleague, so
+            // the demo never shows one as a person waiting on you.
+            _ if DEMO_SECURITY_SUBJECTS.contains(&root_subject) => DEMO_SPAM_SENDERS[0],
             _ => DEMO_PEOPLE[(thread_num + reply_idx) % DEMO_PEOPLE.len()],
         };
         let peer = Address {

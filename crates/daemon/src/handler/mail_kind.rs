@@ -30,6 +30,9 @@ const NOTIFYING_LOCAL_PARTS: &[&str] = &[
     "invoice",
     "shipment",
     "tracking",
+    "verify",
+    "verification",
+    "security",
 ];
 
 /// Local parts of newsletters.
@@ -290,6 +293,11 @@ mod tests {
         assert_eq!(described.rule, KindRuleData::AutomatedAddress);
         assert_eq!(described.reason, "automated sender, has List-Unsubscribe");
         assert!(!described.corrected);
+
+        // Account security mail is a machine's, however it's addressed.
+        let verify = describe(&signals("verify@security-mail.example.com"));
+        assert_eq!(verify.kind, SenderKindData::PaperTrail);
+        assert_eq!(verify.rule, KindRuleData::AutomatedAddress);
 
         let alerts = describe(&signals("uptime@alerts.example.com"));
         assert_eq!(alerts.rule, KindRuleData::AutomatedDomain);

@@ -20,7 +20,7 @@ const DEMO_COUNT_MARKER: &str = "demo-message-count";
 // 5: the fake provider derives message ids from the provider id instead of
 // generating random UUIDs, so a profile seeded by an older build has ids the
 // provider no longer produces. Reseed rather than mix the two.
-const DEMO_SEED_VERSION: u32 = 5;
+const DEMO_SEED_VERSION: u32 = 6;
 const DEMO_DEFAULT_MESSAGES: usize = 50_000;
 const DEMO_ACTIVE_MARKER: &str = "demo-active";
 

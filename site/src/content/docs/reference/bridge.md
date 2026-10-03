@@ -198,10 +198,10 @@ draws them. Done here previews with `dry_run: true` and returns one
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/mail/now` | Now: People, Due soon, the Updates card and the evening Reading pick (`?account=`) |
-| `GET` | `/mail/rail` | Now, the five modes and Inbox with keys, counts and early-version notes, plus More |
+| `GET` | `/mail/rail` | Now, the five modes and Inbox with keys, counts and early-version notes (Messages also carries `quiet`), plus More |
 | `GET` | `/mail/modes/membership` | Which modes hold one thread and why (`?thread_id=` or `?message_id=`) |
 | `POST` | `/mail/modes/membership` | The same for up to 100 threads (`{thread_ids}`) |
-| `POST` | `/mail/modes/{mode}/done` | Done here in `messages`, `todo`, `updates` or `reading` (`{thread_ids, dry_run}`); each outcome carries the toast copy |
+| `POST` | `/mail/modes/{mode}/done` | Done here in `messages`, `todo`, `updates` or `reading` (`{thread_ids, dry_run, todo_ids?, sender?}`): `todo_ids` ticks off only those to-dos, `sender` (`{account_id, sender_email}`) covers all of that sender's threads in Updates or Reading; each outcome carries the toast copy |
 | `GET` | `/mail/modes/guide` | How a mode explains itself (`?mode=now`) |
 | `POST` | `/mail/modes/{mode}/card` | Retire or show a mode's first-encounter card (`{seen}`) |
 

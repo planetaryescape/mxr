@@ -15,8 +15,9 @@ It shows at most ten things, in four sections that never change order:
   most.
 
 Each section shows at most three items, then "and 11 more in Messages". A
-long list of people becomes one line: "7 people are waiting on you. The three
-below are furthest past your usual pace." A section with nothing in it
+long list of people becomes one line: "14 people waiting on you: 7 you've
+written to, 7 new. Start with the three below." The headline, that line and
+"and 11 more in Messages" count the same people, so the numbers add up. A section with nothing in it
 disappears, and when they all have, Now says "Clear." and when the next to-do
 surfaces. The caps live in the daemon, so the web app, the TUI and
 `mxr now` show the same ten things.
@@ -36,10 +37,10 @@ mxr now --format table
 ```
 
 ```text
-Saturday morning. 14 people, 1 thing to act on.
+Saturday morning. 14 people waiting on you, 1 thing to act on.
 
 PEOPLE  (and 11 more in Messages)
-  7 people are waiting on you. The three below are furthest past your usual pace.
+  14 people waiting on you: 7 you've written to, 7 new. Start with the three below.
   Samir Patel             Contract renewal details
     From Messages: your turn with Samir Patel, 16h.
   Leo Park                Research notes: terminal workflows
@@ -84,7 +85,19 @@ Done. Archived in Gmail.
 ```
 
 `u` or the toast's **Undo** puts it back. To keep mail in the inbox even when
-the last mode lets go, set `modes.archive_on_last_done = false`.
+the last mode lets go, set `modes.archive_on_last_done = false`. The desk's
+own Done at `/desk` follows the same rule: it never archives an email To do
+still holds.
+
+In To do, `e` ticks off that one to-do. Another to-do on the same email stays
+open, and the email stays in the inbox until the last one is ticked off. In
+Updates, `e` on a sender's row first shows how many of their conversations it
+covers, all of them, not just the ones on screen.
+
+```bash
+mxr modes done THREAD_ID --mode todo --todo TODO_ID --dry-run
+mxr modes done --mode updates --sender notifications@github.com --account ACCOUNT_ID --dry-run
+```
 
 `A` on the Updates card previews what letting go does ("Let go of 11 updates
 from 4 sources? 3 conversations leave your inbox. 1 conversation also in To
@@ -156,7 +169,9 @@ Person mail still in your inbox that no lane holds, such as a note from
 weeks ago you never answered, stays in Messages as quiet: it is nobody's
 turn, but nobody let it go either. It keeps the email from vanishing from
 every mode, and ticking off a to-do on it never archives it. The reader
-names it ("Also in Messages: quiet, from Iris Chen").
+names it ("Also in Messages: quiet, from Iris Chen"). Quiet conversations are
+not in the count beside Messages, which counts people; the line under
+Messages' name, and `mxr modes rail`, say how many there are.
 
 In Messages, `e` is done in Messages, except on a promise under Due, where
 it is the desk's Done below. `/desk` still opens the desk itself.

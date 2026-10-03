@@ -34,3 +34,15 @@ older than the quarantine window, which is what the versions above are.
 
 When the overrides' parent (`@scalar/agent-chat`) ships a fixed `ai`,
 drop the two overrides.
+
+## 2026-10-03: GHSA-ch52-4w7c-c8xp has no fixed release
+
+`http-cache-semantics` 4.2.0, pulled in by `astro`, is the latest release
+and is affected by a cross-user disclosure through a shared HTTP cache.
+The docs site is a static build with no shared server cache, so the risk
+does not apply. `Docs Build` now runs `scripts/check-npm-audit.mjs`, which
+fails on any moderate or higher advisory except entries in
+`site/audit-allowlist.json`, each with a reason and an expiry date. This
+entry expires 2026-11-03; remove it when a fixed release ships. The web
+app's advisories (`dompurify`, `chokidar` via the TanStack router plugin)
+were fixed with `npm audit fix`.

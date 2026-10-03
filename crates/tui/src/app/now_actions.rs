@@ -162,14 +162,7 @@ impl App {
 
     /// What an early mode is built on, from the rail.
     pub(crate) fn rail_early_note(&self, id: &str) -> Option<&str> {
-        self.mailbox
-            .rail
-            .as_ref()?
-            .entries
-            .iter()
-            .find(|entry| entry.id == id)?
-            .early_note
-            .as_deref()
+        self.rail_entry(id)?.early_note.as_deref()
     }
 
     /// Refetch Now and the rail after anything that can move them.

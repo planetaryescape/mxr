@@ -13,6 +13,7 @@ use ratatui::widgets::*;
 
 use crate::app::{ActivePane, NowDigestPreview, NowPageState};
 use crate::ui::sanitize::{one_line, truncate};
+use crate::ui::todo_lens::wrap;
 
 /// Shown while the first run sorts history (blueprint 22, first run).
 const SORTING_LINE: &str = "Sorting your mail, newest first. Now fills in within a few minutes.";
@@ -40,26 +41,6 @@ fn age_label(seconds: i64) -> String {
     } else {
         format!("{}d", minutes / (24 * 60))
     }
-}
-
-/// Greedy word wrap for plain-text copy.
-fn wrap(text: &str, width: usize) -> Vec<String> {
-    let width = width.max(16);
-    let mut lines = Vec::new();
-    let mut current = String::new();
-    for word in text.split_whitespace() {
-        if !current.is_empty() && current.chars().count() + 1 + word.chars().count() > width {
-            lines.push(std::mem::take(&mut current));
-        }
-        if !current.is_empty() {
-            current.push(' ');
-        }
-        current.push_str(word);
-    }
-    if !current.is_empty() {
-        lines.push(current);
-    }
-    lines
 }
 
 /// A section rule: "── People ───────────── and 8 more in Messages".

@@ -5,36 +5,37 @@
  * rows whose done is in flight.
  */
 
-import { hiddenKey } from "@/features/modes/modeDone";
+import type { HiddenByMode } from "@/features/modes/modeDone";
+import { formatTime } from "@/lib/format";
 
 import type { Now, NowPerson, NowReadingPick, NowTodo, NowUpdatesCard } from "./api";
 
-export type NowItem =
-  | { kind: "person"; key: string; threadId: string; person: NowPerson }
-  | { kind: "todo"; key: string; threadId: string | null; todo: NowTodo }
-  | { kind: "updates"; key: string; card: NowUpdatesCard }
-  | { kind: "reading"; key: string; threadId: string; pick: NowReadingPick };
+export type PersonItem = { kind: "person"; key: string; threadId: string; person: NowPerson };
+export type TodoItem = { kind: "todo"; key: string; threadId: string | null; todo: NowTodo };
+export type CardItem = { kind: "updates"; key: string; card: NowUpdatesCard };
+export type PickItem = { kind: "reading"; key: string; threadId: string; pick: NowReadingPick };
+export type NowItem = PersonItem | TodoItem | CardItem | PickItem;
 
-export function nowItems(now: Now | undefined, hidden: ReadonlySet<string>): NowItem[] {
+export function nowItems(now: Now | undefined, hidden: HiddenByMode): NowItem[] {
   if (!now) return [];
   const items: NowItem[] = [];
   for (const person of now.people.rows) {
     const threadId = person.row.thread_id;
-    if (hidden.has(hiddenKey("messages", threadId))) continue;
+    if (hidden.messages.has(threadId)) continue;
     items.push({ kind: "person", key: `person:${threadId}`, threadId, person });
   }
   for (const todo of now.due_soon.todos) {
     const threadId = todo.todo.thread_id ?? null;
-    if (threadId && hidden.has(hiddenKey("todo", threadId))) continue;
+    if (threadId && hidden.todo.has(threadId)) continue;
     items.push({ kind: "todo", key: `todo:${todo.todo.id}`, threadId, todo });
   }
   const card = now.updates;
-  if (card && !card.thread_ids.every((id) => hidden.has(hiddenKey("updates", id)))) {
+  if (card && !card.thread_ids.every((id) => hidden.updates.has(id))) {
     items.push({ kind: "updates", key: "updates", card });
   }
   if (now.reading) {
     const threadId = now.reading.thread_id;
-    if (!hidden.has(hiddenKey("reading", threadId))) {
+    if (!hidden.reading.has(threadId)) {
       items.push({ kind: "reading", key: `reading:${threadId}`, threadId, pick: now.reading });
     }
   }
@@ -55,13 +56,10 @@ export function itemPath(item: NowItem): string {
   }
 }
 
-/** "since 16:30", in the viewer's clock. */
-export function sinceLabel(iso: string, locale?: string): string {
+/** "since 4:30 PM", or "since Fri 8:00 AM" before today, as times read everywhere. */
+export function sinceLabel(iso: string): string {
   const at = new Date(iso);
-  const time = at.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", hour12: false });
-  const today = new Date();
-  const sameDay = at.toDateString() === today.toDateString();
-  return sameDay
-    ? `since ${time}`
-    : `since ${at.toLocaleDateString(locale, { weekday: "short" })} ${time}`;
+  const sameDay = at.toDateString() === new Date().toDateString();
+  const day = sameDay ? "" : `${at.toLocaleDateString(undefined, { weekday: "short" })} `;
+  return `since ${day}${formatTime(at)}`;
 }

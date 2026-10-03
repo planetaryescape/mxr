@@ -15,8 +15,8 @@ use mxr_core::id::{AccountId, MessageId};
 use mxr_core::types::{AccountAddressLookup, UnsubscribeMethod};
 use mxr_core::MessageFlags;
 use mxr_protocol::{
-    MailKindData, MailPlaceData, MutationCommand, PlaceBundleData, PlaceMessageData, ResponseData,
-    SenderKindData, SweepPreviewData, SweepSenderData,
+    MailKindData, MailPlaceData, ModeKindData, MutationCommand, PlaceBundleData, PlaceMessageData,
+    ResponseData, SenderKindData, SweepPreviewData, SweepSenderData,
 };
 use mxr_store::{PlaceMessage, ScreenerDecision, ScreenerDisposition};
 use parking_lot::Mutex;
@@ -124,6 +124,10 @@ async fn place_messages(
     sender_email: Option<&str>,
 ) -> Result<Vec<Placed>, HandlerError> {
     let kind = place_kind(place);
+    let mode = match place {
+        MailPlaceData::Reading => ModeKindData::Reading,
+        MailPlaceData::PaperTrail => ModeKindData::Updates,
+    };
     let placed: Vec<Placed> = placed_inbox(state, accounts, sender_email)
         .await?
         .into_iter()
@@ -131,7 +135,7 @@ async fn place_messages(
         .collect();
     // Done in Updates or Reading takes a thread out of its early view too,
     // even while To do keeps it in the inbox.
-    super::modes::without_done(state, accounts, placed).await
+    super::modes::without_done(state, accounts, &[mode], placed).await
 }
 
 /// The inbox mail of `accounts` (from `sender_email` only, when given)

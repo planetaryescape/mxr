@@ -11,7 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { doneModeRequest, markModeDone } from "@/features/modes/modeDone";
+import { doneModeRequest, doneToast, markModeDone } from "@/features/modes/modeDone";
 
 import type { NowUpdatesCard } from "./api";
 import { letGoPreview } from "./letGoCopy";
@@ -58,7 +58,9 @@ export function LetGoDigestDialog({
             <AlertDialogAction
               onClick={() => {
                 onOpenChange(false);
-                void markModeDone("updates", copy.threadIds);
+                void markModeDone("updates", copy.threadIds, {
+                  message: (done) => `Let go of the digest. ${doneToast(done)}`,
+                });
               }}
             >
               Let go

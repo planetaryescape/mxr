@@ -103,16 +103,7 @@ where
     // To do's own Now band keeps late rows after the ones still in time;
     // Now puts them first, so its cap of three never hides one.
     let mut due_now = bands.now;
-    due_now.sort_by(|a, b| {
-        b.overdue
-            .cmp(&a.overdue)
-            .then_with(|| match (a.act_by_at, b.act_by_at) {
-                (Some(x), Some(y)) => x.cmp(&y),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => std::cmp::Ordering::Equal,
-            })
-    });
+    due_now.sort_by_key(|todo| (!todo.overdue, todo.act_by_at.is_none(), todo.act_by_at));
     Ok(NowSnapshot {
         owed: lane(DeskLaneKind::Owed),
         people_new: lane(DeskLaneKind::PeopleNew),

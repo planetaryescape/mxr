@@ -87,7 +87,11 @@ test("e ticks off, and u brings it back", async ({ page }) => {
   const spotify = row(page, "Fix payment for Spotify");
   await expect(spotify).toHaveAttribute("aria-current", "true");
   await page.keyboard.press("e");
-  await expect(page.getByText("Ticked off: Fix payment for Spotify")).toBeVisible();
+  // Done in To do, so the toast says where the email still is, or that it
+  // was archived.
+  await expect(
+    page.locator("[data-sonner-toast]").filter({ hasText: /^Ticked off\. (Still in|Archived)/ }),
+  ).toBeVisible();
   await expect(spotify).toHaveCount(0);
   await expect(page.getByTestId("done-toggle")).toContainText("Done this week");
   await page.keyboard.press("u");
@@ -105,7 +109,8 @@ test("an invite for an event that already happened never shows", async ({ page }
     ...runway.later,
     ...runway.whenever,
   ].map((todo) => todo.title);
-  expect(titles.some((title) => /Sam/.test(title))).toBe(false);
+  // Sam's leaving drinks already happened; Sam Okafor's lease is a real to-do.
+  expect(titles.some((title) => /leaving drinks/i.test(title))).toBe(false);
   await openApp(page, "/todo");
   await expect(row(page, "Fix payment for Spotify")).toBeVisible();
   await expect(page.getByText(/leaving drinks/i)).toHaveCount(0);

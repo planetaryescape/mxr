@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { doneToast, hiddenKey, type ModeDoneOutcome } from "./modeDone";
+import { doneToast, useModeDone, type ModeDoneOutcome } from "./modeDone";
 
 const outcome = (thread: string, copy: string): ModeDoneOutcome => ({
   thread_id: thread,
@@ -36,6 +36,11 @@ describe("done here's toast", () => {
   });
 
   test("hides a row per mode, so done in one mode leaves the others", () => {
-    expect(hiddenKey("messages", "t1")).not.toBe(hiddenKey("todo", "t1"));
+    const store = useModeDone.getState();
+    store.hide("messages", ["t1"]);
+    expect(useModeDone.getState().hidden.messages.has("t1")).toBe(true);
+    expect(useModeDone.getState().hidden.todo.has("t1")).toBe(false);
+    store.show("messages", ["t1"]);
+    expect(useModeDone.getState().hidden.messages.has("t1")).toBe(false);
   });
 });

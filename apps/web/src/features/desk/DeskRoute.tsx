@@ -21,7 +21,7 @@ import { useLlmStatus } from "@/features/llm/useLlmStatus";
 import { LowTide } from "@/features/low-tide/LowTide";
 import { EarlyModeNote } from "@/features/modes/EarlyModeNote";
 import { useThreadModesMap } from "@/features/modes/membership";
-import { hiddenKey, markModeDone, useModeDone } from "@/features/modes/modeDone";
+import { markModeDone, useModeDone } from "@/features/modes/modeDone";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { usePendingMailOps, type MailAction } from "@/features/mail-actions/pendingMailOps";
 import type { InterceptedVerb } from "@/features/mail-actions/mailVerbs";
@@ -54,15 +54,14 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
   const desk = useDeskQuery(lane && wholeLane === lane ? DESK_FULL_LANE_LIMIT : DESK_LANE_LIMIT);
   const ops = usePendingMailOps((s) => s.ops);
   const deskHidden = useDeskDone((s) => s.hidden);
-  const modeHidden = useModeDone((s) => s.hidden);
-  const hidden = useMemo(() => {
-    if (!messages || modeHidden.size === 0) return deskHidden;
-    const prefix = hiddenKey("messages", "");
-    const fromMode = [...modeHidden]
-      .filter((key) => key.startsWith(prefix))
-      .map((key) => key.slice(prefix.length));
-    return new Set([...deskHidden, ...fromMode]);
-  }, [deskHidden, messages, modeHidden]);
+  const doneInMessages = useModeDone((s) => s.hidden.messages);
+  const hidden = useMemo(
+    () =>
+      messages && doneInMessages.size > 0
+        ? new Set([...deskHidden, ...doneInMessages])
+        : deskHidden,
+    [deskHidden, doneInMessages, messages],
+  );
   const { groups, index, byThread } = useMemo(
     () => deskGroups(desk.data, ops, lane, hidden, basePath),
     [basePath, desk.data, hidden, ops, lane],

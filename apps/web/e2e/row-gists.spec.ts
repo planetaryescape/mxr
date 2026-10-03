@@ -89,7 +89,7 @@ test("desk rows say what each conversation asks, as the gists land, without movi
   page,
 }) => {
   const stub = await stubGists(page);
-  await openApp(page);
+  await openApp(page, "/desk");
   await expect(mailRows(page).first()).toBeVisible();
   // One request, for the rows on screen, top row first.
   await expect.poll(() => stub.asked.length).toBe(1);
@@ -148,7 +148,7 @@ test("with no model, rows look as they always did", async ({ page }) => {
   page.on("request", (request) => {
     if (request.url().includes("/api/v1/mail/gists")) posts.push(request.url());
   });
-  await openApp(page);
+  await openApp(page, "/desk");
   await expect(mailRows(page).first()).toBeVisible();
   await expect(page.getByTestId("desk-gist")).toHaveCount(0);
   await expect(page.getByTestId("desk-ask")).toHaveCount(0);

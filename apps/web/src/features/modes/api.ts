@@ -9,7 +9,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";
 import type { components } from "@/api/generated";
-import { getActiveQueryClient } from "@/lib/queryClient";
 
 type Schemas = components["schemas"];
 export type ModeGuide = Schemas["ModeGuideData"];
@@ -44,21 +43,6 @@ async function postCardSeen(mode: ModeId): Promise<ModeGuides> {
   return apiFetch<ModeGuides>(`/api/v1/mail/modes/${encodeURIComponent(mode)}/card`, {
     method: "POST",
     body: { seen: true },
-  });
-}
-
-/**
- * Retire a card from outside a component, when the mode's main verb ran
- * (done here retires Now's). Does nothing when the card is already gone or
- * its guide hasn't loaded, so it never costs a request per verb.
- */
-export function retireModeCard(mode: ModeId): void {
-  const qc = getActiveQueryClient();
-  const guide = qc?.getQueryData<ModeGuide>(modeGuideKey(mode));
-  if (!qc || !guide || guide.card_seen) return;
-  qc.setQueryData(modeGuideKey(mode), { ...guide, card_seen: true });
-  postCardSeen(mode).catch(() => {
-    qc.setQueryData(modeGuideKey(mode), guide);
   });
 }
 

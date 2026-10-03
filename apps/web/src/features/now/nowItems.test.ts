@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { hiddenKey } from "@/features/modes/modeDone";
+import { NONE_HIDDEN, type HiddenByMode } from "@/features/modes/modeDone";
 
 import type { Now } from "./api";
 import { itemPath, nowItems } from "./nowItems";
@@ -68,7 +68,7 @@ const now = {
 
 describe("Now's rows", () => {
   test("keep the fixed section order: People, Due soon, the card, the pick", () => {
-    expect(nowItems(now, new Set()).map((item) => item.key)).toEqual([
+    expect(nowItems(now, NONE_HIDDEN).map((item) => item.key)).toEqual([
       "person:t1",
       "person:t2",
       "todo:a",
@@ -79,25 +79,25 @@ describe("Now's rows", () => {
   });
 
   test("leave out rows whose done is in flight, in that row's own mode", () => {
-    const hidden = new Set([
-      hiddenKey("messages", "t1"),
-      hiddenKey("todo", "t3"),
-      hiddenKey("updates", "u1"),
-      // Done in another mode doesn't hide the row here.
-      hiddenKey("todo", "t2"),
-    ]);
+    const hidden: HiddenByMode = {
+      ...NONE_HIDDEN,
+      messages: new Set(["t1"]),
+      // Done in another mode doesn't hide the row here: t2 is a person row.
+      todo: new Set(["t3", "t2"]),
+      updates: new Set(["u1"]),
+    };
     expect(nowItems(now, hidden).map((item) => item.key)).toEqual([
       "person:t2",
       "todo:b",
       "updates",
       "reading:r1",
     ]);
-    const allLetGo = new Set([hiddenKey("updates", "u1"), hiddenKey("updates", "u2")]);
+    const allLetGo = { ...NONE_HIDDEN, updates: new Set(["u1", "u2"]) };
     expect(nowItems(now, allLetGo).some((item) => item.kind === "updates")).toBe(false);
   });
 
   test("open in their own mode", () => {
-    const [maya, , due, dueWithoutEmail, card, pick] = nowItems(now, new Set());
+    const [maya, , due, dueWithoutEmail, card, pick] = nowItems(now, NONE_HIDDEN);
     expect(itemPath(maya!)).toBe("/messages/t1");
     expect(itemPath(due!)).toBe("/todo/t3");
     expect(itemPath(dueWithoutEmail!)).toBe("/todo");
@@ -106,6 +106,6 @@ describe("Now's rows", () => {
   });
 
   test("nothing loaded is nothing to show", () => {
-    expect(nowItems(undefined, new Set())).toEqual([]);
+    expect(nowItems(undefined, NONE_HIDDEN)).toEqual([]);
   });
 });

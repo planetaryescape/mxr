@@ -97,13 +97,13 @@ test("moving a sender from Reading to People takes it to the desk, and u brings 
     expect(lane).toBeTruthy();
     // In-app navigation keeps the undo slot (a reload would drop it).
     await page.keyboard.press("g");
-    await page.keyboard.press("h");
-    await expect(page).toHaveURL(/\/desk$/);
+    await page.keyboard.press("m");
+    await expect(page).toHaveURL(/\/messages$/);
     const row = mailList(page).locator(`[title='${bundle!.sender_email}']`).first();
     // Decide only once the desk has rendered: isVisible() does not wait.
     await expect(mailList(page).locator("[data-lane]").first()).toBeVisible();
     if (!(await row.isVisible()))
-      await page.locator(`a[href='/desk?lane=${lane}']`).first().click();
+      await page.locator(`a[href='/messages?lane=${lane}']`).first().click();
     await expect(row).toBeVisible();
 
     // Undo restores the automatic kind: back in Reading.
@@ -255,9 +255,10 @@ test("the desk's everything-else links open the places with week counts", async 
   await reading.click();
   await expect(page).toHaveURL(/\/reading$/);
   await openApp(page, "/desk");
-  const paper = elsewhere.getByRole("link", { name: /Paper trail/ });
-  await expect(paper).toContainText(/\d+ this week/);
-  await paper.click();
-  await expect(page).toHaveURL(/\/paper-trail$/);
-  await expect(sidebar(page).getByRole("link", { name: "Paper trail" })).not.toContainText(/\d/);
+  const updates = elsewhere.getByRole("link", { name: /Updates/ });
+  await expect(updates).toContainText(/\d+ this week/);
+  await updates.click();
+  await expect(page).toHaveURL(/\/updates$/);
+  // Nothing in Updates is owed, so its rail entry carries no count.
+  await expect(sidebar(page).getByRole("link", { name: /^Updates/ })).not.toContainText(/\d/);
 });

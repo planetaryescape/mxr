@@ -18,7 +18,6 @@ const MAIL_QUERY_ROOTS = new Set([
   "snoozed",
   "saved-search-counts",
   "now",
-  "rail",
   "mode-membership",
 ]);
 

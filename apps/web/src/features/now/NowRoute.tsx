@@ -10,14 +10,23 @@ import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useModeGuide, useRetireCard, type ModeGuide } from "@/features/modes/api";
 import { useThreadModesMap } from "@/features/modes/membership";
 import { ModeCard } from "@/features/modes/ModeCard";
-import { markModeDone, useModeDone } from "@/features/modes/modeDone";
+import { markModeDone, NONE_HIDDEN, useModeDone } from "@/features/modes/modeDone";
+import { tickOff } from "@/features/todo/todoVerbs";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
 
 import { useNowQuery, type Now } from "./api";
 import { LetGoDigestDialog } from "./LetGoDigestDialog";
-import { itemPath, nowItems, type NowItem } from "./nowItems";
+import {
+  itemPath,
+  nowItems,
+  type CardItem,
+  type NowItem,
+  type PersonItem,
+  type PickItem,
+  type TodoItem,
+} from "./nowItems";
 import { PersonRow, ReadingRow, SectionHeading, TodoRow, UpdatesCard } from "./NowRows";
 
 /**
@@ -89,17 +98,14 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
     listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
   }, [index]);
 
-  // "Also in To do: …" on each row, from the daemon's membership.
+  // "Also in To do: …" on each row, from the daemon's membership. Keyed
+  // on every row, hidden or not, so a done in flight doesn't refetch it.
   const threadIds = useMemo(
     () =>
-      items.flatMap((item) =>
-        item.kind === "person" || item.kind === "reading"
-          ? [item.threadId]
-          : item.kind === "todo" && item.threadId
-            ? [item.threadId]
-            : [],
+      nowItems(now, NONE_HIDDEN).flatMap((item) =>
+        "threadId" in item && item.threadId ? [item.threadId] : [],
       ),
-    [items],
+    [now],
   );
   const memberships = useThreadModesMap(threadIds).data;
 
@@ -118,21 +124,26 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
     },
     [navigate],
   );
-  const done = useCallback((item: NowItem) => {
-    switch (item.kind) {
-      case "person":
-        void markModeDone("messages", [item.threadId]);
-        return;
-      case "todo":
-        if (item.threadId) void markModeDone("todo", [item.threadId]);
-        return;
-      case "reading":
-        void markModeDone("reading", [item.threadId]);
-        return;
-      case "updates":
-        setLetGo(true);
-    }
-  }, []);
+  const done = useCallback(
+    (item: NowItem) => {
+      // Done here is Now's main verb: using it retires the card about Now.
+      retireCard();
+      switch (item.kind) {
+        case "person":
+          void markModeDone("messages", [item.threadId]);
+          return;
+        case "todo":
+          void tickOff(item.todo.todo);
+          return;
+        case "reading":
+          void markModeDone("reading", [item.threadId]);
+          return;
+        case "updates":
+          setLetGo(true);
+      }
+    },
+    [retireCard],
+  );
   const reply = useCallback((item: NowItem) => {
     if (item.kind !== "person") return;
     useComposeUi
@@ -169,10 +180,10 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
     onOpen: open,
     onDone: done,
   });
-  const people = items.filter((item) => item.kind === "person");
-  const due = items.filter((item) => item.kind === "todo");
-  const card = items.find((item) => item.kind === "updates");
-  const pick = items.find((item) => item.kind === "reading");
+  const people = items.filter((item): item is PersonItem => item.kind === "person");
+  const due = items.filter((item): item is TodoItem => item.kind === "todo");
+  const card = items.find((item): item is CardItem => item.kind === "updates");
+  const pick = items.find((item): item is PickItem => item.kind === "reading");
 
   return (
     <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
@@ -194,17 +205,15 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
               </p>
             ) : null}
             <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
-              {people.map((item) =>
-                item.kind === "person" ? (
-                  <PersonRow
-                    key={item.key}
-                    item={item}
-                    modes={memberships?.get(item.threadId)}
-                    onReply={reply}
-                    {...rowState(item)}
-                  />
-                ) : null,
-              )}
+              {people.map((item) => (
+                <PersonRow
+                  key={item.key}
+                  item={item}
+                  modes={memberships?.get(item.threadId)}
+                  onReply={reply}
+                  {...rowState(item)}
+                />
+              ))}
             </ul>
           </section>
         ) : null}
@@ -214,23 +223,21 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
               Due soon
             </SectionHeading>
             <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
-              {due.map((item) =>
-                item.kind === "todo" ? (
-                  <TodoRow
-                    key={item.key}
-                    item={item}
-                    modes={item.threadId ? memberships?.get(item.threadId) : undefined}
-                    {...rowState(item)}
-                  />
-                ) : null,
-              )}
+              {due.map((item) => (
+                <TodoRow
+                  key={item.key}
+                  item={item}
+                  modes={item.threadId ? memberships?.get(item.threadId) : undefined}
+                  {...rowState(item)}
+                />
+              ))}
             </ul>
           </section>
         ) : null}
-        {card && card.kind === "updates" ? (
+        {card ? (
           <UpdatesCard item={card} onLetGo={() => setLetGo(true)} {...rowState(card)} />
         ) : null}
-        {pick && pick.kind === "reading" ? (
+        {pick ? (
           <section aria-labelledby="now-reading" data-testid="now-section-reading">
             <SectionHeading id="now-reading" to="/reading">
               For tonight

@@ -139,7 +139,9 @@ test("the rail lists Now, the modes, then Inbox, and their keys open them", asyn
     /^Inbox/,
   ]);
   // Early modes say so.
-  await expect(rail.getByRole("link", { name: /^Updates/ }).getByTestId("rail-early")).toBeVisible();
+  await expect(
+    rail.getByRole("link", { name: /^Updates/ }).getByTestId("rail-early"),
+  ).toBeVisible();
   for (const [key, url] of [
     ["m", /\/messages$/],
     ["x", /\/todo$/],
@@ -226,7 +228,6 @@ test.describe("on a phone", () => {
     // The page gets the whole width, not a strip beside hidden columns.
     const main = (await page.locator("#main").boundingBox())!;
     expect(main.width).toBeGreaterThanOrEqual(389);
-    const overflowing: string[] = [];
     for (const [tab, url] of [
       ["Messages", /\/messages$/],
       ["To do", /\/todo$/],
@@ -236,11 +237,9 @@ test.describe("on a phone", () => {
     ] as const) {
       await tabs.getByRole("link", { name: tab }).click();
       await expect(page).toHaveURL(url);
-      await page.waitForLoadState("networkidle");
-      const extra = await overflow(page);
-      if (extra > 0) overflowing.push(`${tab} (+${extra}px)`);
+      // Live views poll, so the network never idles: wait for a settled 0.
+      await expect.poll(() => overflow(page), { message: tab }).toBe(0);
     }
-    expect(overflowing).toEqual([]);
   });
 
   test("Find holds Archive, search and the Inbox; Updates opens from Now's card", async ({

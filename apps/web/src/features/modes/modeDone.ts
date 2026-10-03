@@ -15,7 +15,6 @@ import type { components } from "@/api/generated";
 import { invalidateMailQueries } from "@/features/mail-actions/mailQueryInvalidation";
 import { claimUndo, offerUndo, performUndo } from "@/features/mail-actions/mailUndo";
 import { soundFor } from "@/features/mail-actions/verbFeedback";
-import { retireModeCard } from "@/features/modes/api";
 import { playSound } from "@/features/sound/player";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { plural } from "@/lib/format";
@@ -30,26 +29,41 @@ type ModeDoneResponse = Extract<Schemas["ResponseData"], { kind: "ModeDone" }>;
 /** Modes that have a done: Archive keeps its records. */
 export type DoneMode = Exclude<ModeKind, "archive">;
 
+/** Threads hidden while their done is in flight, per mode. */
+export type HiddenByMode = Record<DoneMode, ReadonlySet<string>>;
+
+export const NONE_HIDDEN: HiddenByMode = {
+  messages: new Set(),
+  todo: new Set(),
+  updates: new Set(),
+  reading: new Set(),
+};
+
 interface ModeDoneState {
-  /** Threads hidden while their done is in flight, by mode. */
-  hidden: ReadonlySet<string>;
-  hide: (keys: string[]) => void;
-  show: (keys: string[]) => void;
+  hidden: HiddenByMode;
+  hide: (mode: DoneMode, threadIds: readonly string[]) => void;
+  show: (mode: DoneMode, threadIds: readonly string[]) => void;
 }
 
 export const useModeDone = create<ModeDoneState>((set) => ({
-  hidden: new Set(),
-  hide: (keys) => set((s) => ({ hidden: new Set([...s.hidden, ...keys]) })),
-  show: (keys) =>
+  hidden: NONE_HIDDEN,
+  hide: (mode, threadIds) =>
+    set((s) => ({
+      hidden: { ...s.hidden, [mode]: new Set([...s.hidden[mode], ...threadIds]) },
+    })),
+  // Unchanged state when none of them were hidden, so nothing re-renders.
+  show: (mode, threadIds) =>
     set((s) =>
-      keys.some((key) => s.hidden.has(key))
-        ? { hidden: new Set([...s.hidden].filter((key) => !keys.includes(key))) }
+      threadIds.some((id) => s.hidden[mode].has(id))
+        ? {
+            hidden: {
+              ...s.hidden,
+              [mode]: new Set([...s.hidden[mode]].filter((id) => !threadIds.includes(id))),
+            },
+          }
         : s,
     ),
 }));
-
-/** The hidden-set key for a thread in a mode. */
-export const hiddenKey = (mode: DoneMode, threadId: string) => `${mode}:${threadId}`;
 
 export function doneModeRequest(mode: DoneMode, threadIds: readonly string[], dryRun: boolean) {
   return apiFetch<ModeDoneResponse>(`/api/v1/mail/modes/${mode}/done`, {
@@ -74,6 +88,8 @@ export function doneToast(done: readonly ModeDoneOutcome[]): string {
 export interface ModeDoneOptions {
   /** Runs after an undo of this done succeeded. */
   onUndone?: () => void;
+  /** The toast, when the verb has its own words (letting go of a digest). */
+  message?: (done: readonly ModeDoneOutcome[]) => string;
 }
 
 /**
@@ -88,8 +104,7 @@ export async function markModeDone(
 ): Promise<boolean> {
   const unique = [...new Set(threadIds)];
   if (unique.length === 0 || refuseWhileDaemonDown("mark it done")) return false;
-  const keys = unique.map((id) => hiddenKey(mode, id));
-  useModeDone.getState().hide(keys);
+  useModeDone.getState().hide(mode, unique);
   // The row is gone at once, so `u` may come before the daemon answers.
   const claim = claimUndo();
   try {
@@ -109,16 +124,14 @@ export async function markModeDone(
       if (sound) playSound(sound);
       claim.settle(
         offerUndo(
-          doneToast(done),
-          `mode-done-${mutationId ?? keys.join(",")}`,
+          (options.message ?? doneToast)(done),
+          `mode-done-${mutationId ?? `${mode}-${unique.join(",")}`}`,
           reverse,
           claim.run,
           mutationId ?? undefined,
         ),
       );
       if (result.undo_unavailable) toast.warning("Done, but its undo couldn't be saved");
-      // Doing the mode's main verb retires Now's first-encounter card too.
-      retireModeCard("now");
     } else {
       claim.settle(null);
     }
@@ -136,15 +149,19 @@ export async function markModeDone(
     });
     return false;
   } finally {
-    useModeDone.getState().show(keys);
+    useModeDone.getState().show(mode, unique);
   }
 }
 
-/** Every view a done can change: mail lists, Now, the rail, To do, membership. */
+/**
+ * Every view a done can change: mail lists, Now, membership, To do and the
+ * rail. The rail polls on its own otherwise, so ordinary mail verbs leave it.
+ */
 export async function refreshModes(): Promise<void> {
   const qc = getActiveQueryClient();
   await Promise.all([
     invalidateMailQueries(qc).catch(() => undefined),
     qc?.invalidateQueries({ queryKey: ["todos"] }).catch(() => undefined),
+    qc?.invalidateQueries({ queryKey: ["rail"] }).catch(() => undefined),
   ]);
 }

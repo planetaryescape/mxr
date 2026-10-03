@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
-import { rowAge } from "@/features/desk/deskCopy";
+import { rowAge, rowPerson } from "@/features/desk/deskCopy";
 import { AlsoInLine } from "@/features/modes/AlsoInLine";
 import type { ThreadModes } from "@/features/modes/membership";
 import { NewSenderQuestion } from "@/features/modes/NewSenderQuestion";
@@ -128,7 +128,7 @@ export function PersonRow({
   onReply: (item: NowItem) => void;
 }) {
   const row = item.person.row;
-  const who = row.counterparty_name?.trim() || row.counterparty_email;
+  const who = rowPerson(row);
   const age = useClockLabel((now) => rowAge(row, now).label);
   const subject = row.subject.trim();
   return (

@@ -218,7 +218,7 @@ async function starredIds(page: Page, threadId: string): Promise<string[]> {
 async function starredOutsideTheList(page: Page): Promise<Row> {
   const inbox = await bridge<{ mailbox: { groups: { rows: Row[] }[] } }>(
     page,
-    "/api/v1/mail/mailbox?lens_kind=inbox&view=threads&limit=25&offset=0",
+    "/api/v1/mail/mailbox?lens_kind=inbox&view=threads&limit=60&offset=0",
   );
   for (const row of inbox.mailbox.groups.flatMap((group) => group.rows)) {
     if (!row.starred) continue;
@@ -472,6 +472,30 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     const rowId = await cursorRowId(page);
     await page.keyboard.press("e");
     await leavesThenUndoes(page, "desk-done", rowId);
+  },
+
+  "mode-done": async (page) => {
+    await openApp(page, "/messages");
+    await expect(mailRows(page).first()).toBeVisible();
+    await mailList(page).focus();
+    const rowId = await cursorRowId(page);
+    await page.keyboard.press("e");
+    await leavesThenUndoes(page, "mode-done", rowId);
+  },
+
+  "digest-let-go": async (page) => {
+    await openApp(page, "/now");
+    const card = page.getByTestId("now-section-updates");
+    await expect(card).toBeVisible();
+    await page.keyboard.press("A");
+    const dialog = page.getByTestId("let-go-dialog");
+    await expect(dialog).toContainText(/^Let go of \d+ updates? from/);
+    await dialog.getByRole("button", { name: "Let go", exact: true }).click();
+    await expectToast(page, "digest-let-go");
+    await expect(card).toHaveCount(0);
+    await page.keyboard.press("u");
+    await expectUndone(page);
+    await expect(page.getByTestId("now-section-updates")).toBeVisible();
   },
 
   "todo-done": todoVerb("todo-done", "e"),

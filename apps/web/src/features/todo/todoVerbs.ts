@@ -177,7 +177,7 @@ export async function tickOff(todo: Todo): Promise<void> {
     await markDone([todo]);
     return;
   }
-  if (refuseWhileDaemonDown("tick it off")) return;
+  // markModeDone refuses on its own while the daemon is down.
   startLeaving([todo.id]);
   try {
     await markModeDone("todo", [threadId]);

@@ -110,8 +110,9 @@ fn keys_line(page: &TodoPageState, selected: Option<&TodoData>) -> String {
     }
 }
 
-/// Greedy word wrap for the card and catch-up copy, which are plain text.
-fn wrap(text: &str, width: usize) -> Vec<String> {
+/// Greedy word wrap for the cards and catch-up copy, which are plain text.
+/// Now's lens uses it too.
+pub(crate) fn wrap(text: &str, width: usize) -> Vec<String> {
     let width = width.max(16);
     let mut lines = Vec::new();
     let mut current = String::new();

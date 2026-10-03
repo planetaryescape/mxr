@@ -453,7 +453,13 @@ pub(super) async fn inbox_modes(
     state: &AppState,
     accounts: &[AccountId],
 ) -> Result<InboxModes, HandlerError> {
-    let placed = without_done(state, accounts, placed_inbox(state, accounts, None).await?).await?;
+    let placed = without_done(
+        state,
+        accounts,
+        &[ModeKindData::Updates, ModeKindData::Reading],
+        placed_inbox(state, accounts, None).await?,
+    )
+    .await?;
     let mut out = InboxModes {
         updates: Vec::new(),
         reading: Vec::new(),
@@ -476,19 +482,20 @@ pub(super) async fn inbox_modes(
     Ok(out)
 }
 
-/// Placed inbox mail minus what Updates or Reading was marked done for:
-/// a thread stays out of a mode until a message of that mode arrives after
-/// its mark. Each thread's messages of one mode are checked together, as
-/// membership does. Order is not kept.
+/// Placed inbox mail minus what `modes` (Updates, Reading or both) marked
+/// done: a thread stays out of a mode until a message of that mode arrives
+/// after its mark. Each thread's messages of one mode are checked
+/// together, as membership does. Order is not kept.
 pub(super) async fn without_done(
     state: &AppState,
     accounts: &[AccountId],
+    modes: &[ModeKindData],
     placed: Vec<Placed>,
 ) -> Result<Vec<Placed>, HandlerError> {
     let mut marks: HashMap<(AccountId, &'static str), HashMap<ThreadId, DeskDismissal>> =
         HashMap::new();
     for account in accounts {
-        for mode in [ModeKindData::Updates, ModeKindData::Reading] {
+        for &mode in modes {
             let name = mark_name(mode).unwrap_or_default();
             marks.insert(
                 (account.clone(), name),

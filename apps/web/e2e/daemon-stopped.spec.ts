@@ -45,9 +45,9 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
     if (request.url().includes("/api/")) requests.push(request.url());
   });
 
-  // Load the desk, open its first conversation, and load the inbox.
-  await openApp(page);
-  await expect(page).toHaveURL(/\/desk$/);
+  // Load Messages, open its first conversation, and load the inbox.
+  await openApp(page, "/messages");
+  await expect(page).toHaveURL(/\/messages$/);
   await expect(mailRows(page).first()).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(threadMessages(page).first()).toBeVisible();
@@ -55,7 +55,7 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
   await page.keyboard.press("Escape");
   await pressSequence(page, "g", "i");
   await expect(page).toHaveURL(/\/m\/inbox$/);
-  // The desk's rows can linger for a frame after the route changes.
+  // Messages' rows can linger for a frame after the route changes.
   await expect(page.getByRole("heading", { level: 1, name: "Inbox", exact: true })).toBeVisible();
   await expect.poll(async () => (await renderedRowIds(page)).length).toBeGreaterThan(1);
   const [first, second] = await renderedRowIds(page);
@@ -82,10 +82,10 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
     await expect(rowById(page, first!)).toBeVisible();
     await expect(page.getByText(/^Archived/)).toHaveCount(0);
 
-    // A g-jump back to the desk shows it from cache, and the conversation
+    // A g-jump back to Messages shows it from cache, and the conversation
     // opened earlier opens again with its messages.
-    await pressSequence(page, "g", "h");
-    await expect(page).toHaveURL(/\/desk$/);
+    await pressSequence(page, "g", "m");
+    await expect(page).toHaveURL(/\/messages$/);
     await expect(mailRows(page).first()).toBeVisible();
     await page.keyboard.press("Enter");
     await expect(reader(page)).toHaveAttribute("aria-label", openedSubject!);

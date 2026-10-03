@@ -10,8 +10,8 @@ test("app shell renders against a real fake-provider daemon", async ({ page, req
   expect(status.ok()).toBe(true);
 
   await openApp(page);
-  // The router redirects / to the desk, the default home.
-  await expect(page).toHaveURL(/\/desk$/);
+  // The router redirects / to Now, the default home.
+  await expect(page).toHaveURL(/\/now$/);
   // Sidebar and topbar are rendered with live bridge data; folders sit
   // under "More".
   await expect(page.getByRole("button", { name: /compose/i })).toBeVisible();

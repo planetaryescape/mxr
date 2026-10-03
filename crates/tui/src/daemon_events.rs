@@ -55,6 +55,11 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             if app.mailbox.mailbox_view == crate::app::MailboxView::Todo {
                 app.refresh_todo();
             }
+            if app.mailbox.mailbox_view == crate::app::MailboxView::Now {
+                app.refresh_now();
+            } else {
+                app.mailbox.pending_rail_refresh = true;
+            }
             app.diagnostics.pending_status_refresh = true;
             if let Some(label_id) = app.mailbox.active_label.clone() {
                 app.mailbox.pending_label_fetch = Some(label_id);

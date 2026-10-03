@@ -29,11 +29,12 @@ fn sidebar_items_put_inbox_before_all_mail() {
         .position(|item| matches!(item, SidebarItem::AllMail))
         .unwrap();
 
-    assert!(matches!(
-        items.first(),
-        Some(SidebarItem::Label(label)) if label.name == "INBOX"
-    ));
-    assert!(all_mail_index > 0);
+    let inbox_index = items
+        .iter()
+        .position(|item| matches!(item, SidebarItem::Inbox))
+        .unwrap();
+    assert!(matches!(items.first(), Some(SidebarItem::Now)));
+    assert!(inbox_index < all_mail_index);
 }
 
 #[test]

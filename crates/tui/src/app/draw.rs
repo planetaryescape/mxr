@@ -219,6 +219,26 @@ impl App {
                                 },
                                 theme,
                             );
+                        } else if self.mailbox.mailbox_view == MailboxView::Now {
+                            ui::now_lens::draw(
+                                frame,
+                                chunks[1],
+                                &ui::now_lens::NowView {
+                                    page: &self.mailbox.now_page,
+                                    selected_index: self.mailbox.selected_index,
+                                    active_pane: &self.mailbox.active_pane,
+                                    updates_since: self.now_updates_since(),
+                                },
+                                theme,
+                            );
+                        } else if self.mailbox.mailbox_view == MailboxView::ArchiveMode {
+                            ui::now_lens::draw_archive(
+                                frame,
+                                chunks[1],
+                                self.rail_early_note("archive"),
+                                &self.mailbox.active_pane,
+                                theme,
+                            );
                         } else if self.mailbox.mailbox_view == MailboxView::Todo {
                             ui::todo_lens::draw(
                                 frame,
@@ -324,6 +344,26 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                 },
+                                theme,
+                            );
+                        } else if self.mailbox.mailbox_view == MailboxView::Now {
+                            ui::now_lens::draw(
+                                frame,
+                                chunks[1],
+                                &ui::now_lens::NowView {
+                                    page: &self.mailbox.now_page,
+                                    selected_index: self.mailbox.selected_index,
+                                    active_pane: &self.mailbox.active_pane,
+                                    updates_since: self.now_updates_since(),
+                                },
+                                theme,
+                            );
+                        } else if self.mailbox.mailbox_view == MailboxView::ArchiveMode {
+                            ui::now_lens::draw_archive(
+                                frame,
+                                chunks[1],
+                                self.rail_early_note("archive"),
+                                &self.mailbox.active_pane,
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::Todo {

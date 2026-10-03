@@ -51,6 +51,15 @@ pub(crate) enum AsyncResult {
     Subscriptions(Result<Vec<SubscriptionSummary>, MxrError>),
     OwedReplies(Result<Vec<mxr_protocol::OwedReplyRowData>, MxrError>),
     Desk(Result<crate::app::DeskPageState, MxrError>),
+    /// Now and, when the daemon served it, its guide.
+    /// Boxed: Now is large next to the other variants.
+    Now(Result<Box<(mxr_protocol::NowData, Option<mxr_protocol::ModeGuideData>)>, MxrError>),
+    Rail(Result<mxr_protocol::RailData, MxrError>),
+    /// The dry run of letting go of Now's Updates card, for those threads.
+    NowDigestPreview(
+        Vec<mxr_core::id::ThreadId>,
+        Result<Vec<mxr_protocol::ModeDoneOutcomeData>, MxrError>,
+    ),
     /// To do's runway and, when the daemon served it, its guide.
     TodoRunway(
         Result<

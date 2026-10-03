@@ -11,7 +11,9 @@ use mxr_protocol::MailPlaceData;
 use std::collections::BTreeMap;
 
 /// Mail contexts shared with the web app's shortcut scopes.
-const CONTEXTS: &[&str] = &["list", "reader", "sidebar", "place", "screener", "todo"];
+const CONTEXTS: &[&str] = &[
+    "list", "reader", "sidebar", "place", "screener", "todo", "now",
+];
 
 /// A key a pane handles in place (scrolling, moving focus) without
 /// returning an action, so the dispatcher probe cannot see it.
@@ -106,6 +108,8 @@ const INLINE: &[InlineKey] = &[
     inline("place", "ArrowLeft", "focus_sidebar", no_setup, pane),
     inline("todo", "h", "focus_sidebar", no_setup, pane),
     inline("todo", "ArrowLeft", "focus_sidebar", no_setup, pane),
+    inline("now", "h", "focus_sidebar", no_setup, pane),
+    inline("now", "ArrowLeft", "focus_sidebar", no_setup, pane),
     inline("sidebar", "j", "next_item", no_setup, sidebar_cursor),
     inline(
         "sidebar",
@@ -153,6 +157,7 @@ fn app_in(context: &str) -> App {
         "sidebar" => app.mailbox.active_pane = ActivePane::Sidebar,
         "place" => app.mailbox.mailbox_view = MailboxView::Place(MailPlaceData::Reading),
         "todo" => app.mailbox.mailbox_view = MailboxView::Todo,
+        "now" => app.mailbox.mailbox_view = MailboxView::Now,
         "screener" => app.modals.screener.visible = true,
         other => panic!("unknown context {other}"),
     }

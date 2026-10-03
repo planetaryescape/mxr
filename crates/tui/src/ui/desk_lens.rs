@@ -37,7 +37,8 @@ fn lane_title(kind: DeskLaneKind) -> &'static str {
 pub fn draw(frame: &mut Frame, area: Rect, view: &DeskView<'_>, theme: &crate::theme::Theme) {
     let is_focused = *view.active_pane == ActivePane::MailList;
     let block = Block::bordered()
-        .title(" Desk ")
+        // Messages is an early version built on the desk's lanes.
+        .title(" Messages \u{2500} early version: the desk's You owe, Due, Waiting on and New from people ")
         .border_type(BorderType::Rounded)
         .border_style(theme.border_style(is_focused));
     let inner = block.inner(area);

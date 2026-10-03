@@ -65,11 +65,16 @@ impl App {
             && self.mailbox.active_pane == ActivePane::MailList
     }
 
-    /// The guide `?` leads with: To do's, while its lens is on screen.
+    /// The guide `?` leads with: the mode's whose lens is on screen.
     pub(crate) fn help_mode_guide(&self) -> Option<&mxr_protocol::ModeGuideData> {
-        (self.screen == Screen::Mailbox && self.mailbox.mailbox_view == MailboxView::Todo)
-            .then_some(self.mailbox.todo_page.guide.as_ref())
-            .flatten()
+        if self.screen != Screen::Mailbox {
+            return None;
+        }
+        match self.mailbox.mailbox_view {
+            MailboxView::Todo => self.mailbox.todo_page.guide.as_ref(),
+            MailboxView::Now => self.mailbox.now_page.guide.as_ref(),
+            _ => None,
+        }
     }
 
     pub fn selected_todo(&self) -> Option<&TodoData> {
@@ -304,7 +309,23 @@ impl App {
     /// `t` on a conversation: a prompt for what to do, starting from
     /// "Reply to <sender>".
     fn open_create_todo_prompt(&mut self) {
-        let target = if self.place_list_focused() {
+        let now_person = self
+            .now_list_focused()
+            .then(|| match self.selected_now_row() {
+                Some(crate::app::NowRow::Person(person)) => Some((
+                    person.row.message_id.clone(),
+                    person
+                        .row
+                        .counterparty_name
+                        .clone()
+                        .unwrap_or_else(|| person.row.counterparty_email.clone()),
+                )),
+                _ => None,
+            })
+            .flatten();
+        let target = if now_person.is_some() {
+            now_person
+        } else if self.place_list_focused() {
             self.selected_place_row().map(|(bundle, message)| {
                 (
                     message.message_id.clone(),

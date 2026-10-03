@@ -1701,12 +1701,13 @@ fn requested(app: &App) -> Vec<Request> {
         .collect()
 }
 
-/// `e` on the desk is Done for the row under the cursor, whatever its
-/// lane: one daemon request naming the row's thread, lane and promise. The
-/// row leaves at once.
+/// `e` on the desk, which backs Messages, is done in Messages for a
+/// person row (`SetModeDone`, with the daemon's handoff copy), and still
+/// the desk's own Done for a promise under Due, which keeps the promise.
+/// The row leaves at once.
 #[test]
-fn e_on_the_desk_is_done_for_that_row() {
-    use mxr_protocol::{DeskDoneItemData, DeskLaneKind};
+fn e_on_the_desk_is_done_here_for_that_row() {
+    use mxr_protocol::{DeskLaneKind, ModeKindData};
     let mut app = App::new();
     let mut owed = desk_row(DeskLaneKind::Owed);
     owed.message_ids = vec![mxr_core::MessageId::new(), owed.message_id.clone()];
@@ -1720,12 +1721,8 @@ fn e_on_the_desk_is_done_for_that_row() {
     assert!(
         matches!(
             queued.as_slice(),
-            [Request::ResolveDeskItems { items, dry_run: false }]
-                if items == &vec![DeskDoneItemData {
-                    thread_id: owed.thread_id.clone(),
-                    lane: Some(DeskLaneKind::Owed),
-                    commitment_id: None,
-                }]
+            [Request::SetModeDone { thread_ids, mode: ModeKindData::Messages, dry_run: false }]
+                if thread_ids == &vec![owed.thread_id.clone()]
         ),
         "{queued:?}"
     );
@@ -1739,6 +1736,7 @@ fn e_on_the_desk_is_done_for_that_row() {
         [Request::ResolveDeskItems { items, .. }]
             if items[0].thread_id == due.thread_id
                 && items[0].commitment_id.as_deref() == Some("promise-1")
+                && items[0].lane == Some(DeskLaneKind::Due)
     ));
     assert_eq!(app.mailbox.desk_page.row_count(), 0);
 }
@@ -1771,7 +1769,7 @@ fn each_press_of_e_puts_away_one_row() {
     }
     let dones = requested(&app)
         .iter()
-        .filter(|request| matches!(request, Request::ResolveDeskItems { .. }))
+        .filter(|request| matches!(request, Request::SetModeDone { .. }))
         .count();
     assert_eq!(dones, 2);
     assert_eq!(app.mailbox.desk_page.row_count(), 2);

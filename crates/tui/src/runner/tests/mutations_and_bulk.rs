@@ -1172,18 +1172,11 @@ fn flattened_sidebar_navigation_reaches_saved_searches() {
     }];
     app.mailbox.active_pane = ActivePane::Sidebar;
 
-    // Sidebar order: INBOX, Desk, To do, Reading, Paper trail, AllMail,
-    // Subscriptions, Owed (Slice 2.3), CalendarInvites, SavedSearch. Nine
-    // `j` presses to reach the saved search.
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
+    // The saved search comes after the rail, More and the labels: walk
+    // the whole flattened list with `j`.
+    for _ in 0..app.sidebar_items().len() {
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
+    }
 
     assert!(matches!(
         app.selected_sidebar_item(),

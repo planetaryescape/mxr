@@ -24,16 +24,28 @@ pub struct PlaceView<'a> {
 pub(crate) const fn place_title(place: MailPlaceData) -> &'static str {
     match place {
         MailPlaceData::Reading => "Reading",
-        MailPlaceData::PaperTrail => "Paper trail",
+        MailPlaceData::PaperTrail => "Updates",
     }
 }
 
-const FOOTER: &str = "  enter open \u{b7} p pin \u{b7} K move sender \u{b7} S sweep sender \u{b7} A sweep all \u{b7} u undo";
+/// What each place's mode is built on for now: both are early versions.
+const fn early_note(place: MailPlaceData) -> &'static str {
+    match place {
+        MailPlaceData::Reading => "early version: newsletters and lists in your inbox by sender",
+        MailPlaceData::PaperTrail => "early version: automated mail in your inbox by sender",
+    }
+}
+
+const FOOTER: &str = "  enter open \u{b7} e done here \u{b7} p pin \u{b7} K move sender \u{b7} S sweep sender \u{b7} A sweep all \u{b7} u undo";
 
 pub fn draw(frame: &mut Frame, area: Rect, view: &PlaceView<'_>, theme: &crate::theme::Theme) {
     let is_focused = *view.active_pane == ActivePane::MailList;
     let block = Block::bordered()
-        .title(format!(" {} ", place_title(view.place)))
+        .title(format!(
+            " {} \u{2500} {} ",
+            place_title(view.place),
+            early_note(view.place)
+        ))
         .border_type(BorderType::Rounded)
         .border_style(theme.border_style(is_focused));
     let inner = block.inner(area);
@@ -424,7 +436,8 @@ mod tests {
     #[test]
     fn bundles_say_who_how_many_and_why_without_unread_counts() {
         let rendered = render(&page(vec![bundle("Shop", &["Receipt 2", "Receipt 1"], 1)]));
-        assert!(rendered.contains("Paper trail"), "{rendered}");
+        assert!(rendered.contains("Updates"), "{rendered}");
+        assert!(rendered.contains("early version"), "{rendered}");
         assert!(rendered.contains("4 messages from 1 sender"));
         assert!(rendered.contains("Shop  4 \u{b7} 1 pinned"));
         assert!(rendered.contains("here because: automated sender, has List-Unsubscribe"));
@@ -436,7 +449,7 @@ mod tests {
 
     #[test]
     fn an_empty_place_is_clear_and_mail_text_is_sanitised() {
-        assert!(render(&page(vec![])).contains("Paper trail is clear."));
+        assert!(render(&page(vec![])).contains("Updates is clear."));
         let hostile = bundle("Eve\u{1b}]0;pwned\u{7}", &["Invoice\u{1b}[2J\r\nnow"], 0);
         let rendered = render(&page(vec![hostile]));
         assert!(!rendered.chars().any(|c| c == '\u{1b}' || c == '\u{7}'));

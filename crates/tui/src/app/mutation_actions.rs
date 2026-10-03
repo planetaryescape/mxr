@@ -14,6 +14,11 @@ impl App {
         {
             return;
         }
+        // In Updates and Reading, `e` is done here in that mode: the
+        // provider archive happens only when no other mode holds the thread.
+        if action == Action::Archive && self.done_in_place_row() {
+            return;
+        }
         let row_lens_hint = if self.desk_list_focused() {
             Some("Open the conversation (Enter) to do that from the desk")
         } else if self.place_list_focused() {

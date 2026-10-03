@@ -46,6 +46,12 @@ pub enum MailboxView {
     /// To do (`Request::GetTodoRunway`): things email asked you to do, as
     /// a runway ordered by when to act.
     Todo,
+    /// Now (`Request::GetNow`): the front page, at most ten things in four
+    /// fixed sections.
+    Now,
+    /// Archive, the mode: an early version with nothing to list yet, so it
+    /// says so and points at search.
+    ArchiveMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,10 +171,18 @@ pub enum SidebarItem {
     Account(Box<mxr_protocol::AccountSummaryData>),
     AllMail,
     Subscriptions,
-    Desk,
+    /// The rail: Now, the five modes, then Inbox.
+    Now,
+    Messages,
     Todo,
+    Updates,
     Reading,
-    PaperTrail,
+    ArchiveMode,
+    Inbox,
+    /// Pages under More.
+    Screener,
+    ReplyQueue,
+    Waiting,
     Owed,
     CalendarInvites,
     Label(Box<Label>),
@@ -180,10 +194,16 @@ pub(crate) enum SidebarSelectionKey {
     Account(String),
     AllMail,
     Subscriptions,
-    Desk,
+    Now,
+    Messages,
     Todo,
+    Updates,
     Reading,
-    PaperTrail,
+    ArchiveMode,
+    Inbox,
+    Screener,
+    ReplyQueue,
+    Waiting,
     Owed,
     CalendarInvites,
     Label(mxr_core::LabelId),
@@ -327,6 +347,17 @@ impl PlacePageState {
 
     /// Flip a message's pin locally, so the lens shows it before the
     /// refetch lands.
+    /// Take a thread's messages off the place at once (done here); the
+    /// next fetch has the daemon's word on it.
+    pub fn remove_thread(&mut self, thread_id: &mxr_core::ThreadId) {
+        for bundle in &mut self.bundles {
+            bundle
+                .messages
+                .retain(|message| &message.thread_id != thread_id);
+        }
+        self.bundles.retain(|bundle| !bundle.messages.is_empty());
+    }
+
     pub fn set_pinned(&mut self, message_id: &MessageId, pinned: bool) {
         for bundle in &mut self.bundles {
             let mut changed = false;
@@ -572,6 +603,11 @@ pub struct MailboxState {
     pub desk_page: DeskPageState,
     /// To do (`GetTodoRunway`): the runway, its guide and its lists.
     pub todo_page: super::TodoPageState,
+    /// Now (`GetNow`): the front page and its guide.
+    pub now_page: super::NowPageState,
+    /// The rail (`GetRail`): badges, counts and which modes are early.
+    pub rail: Option<mxr_protocol::RailData>,
+    pub pending_rail_refresh: bool,
     pub place_page: PlacePageState,
     pub calendar_invites_page: CalendarInvitesPageState,
     pub active_label: Option<mxr_core::LabelId>,
@@ -678,6 +714,9 @@ impl MailboxState {
             owed_page: OwedRepliesPageState::default(),
             desk_page: DeskPageState::default(),
             todo_page: super::TodoPageState::default(),
+            now_page: super::NowPageState::default(),
+            rail: None,
+            pending_rail_refresh: false,
             place_page: PlacePageState::default(),
             calendar_invites_page: CalendarInvitesPageState::default(),
             active_label: None,

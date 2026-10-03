@@ -118,6 +118,10 @@ impl App {
                         MailboxView::Todo => {
                             self.apply(Action::TodoOpenEmail);
                         }
+                        MailboxView::Now => {
+                            self.apply(Action::NowOpen);
+                        }
+                        MailboxView::ArchiveMode => {}
                     }
                 }
             }

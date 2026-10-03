@@ -125,6 +125,15 @@ impl App {
             | Action::CatchupLetGo
             | Action::CatchupLetGoAll
             | Action::CreateTodoFromMessage => self.apply_todo_action(action),
+            Action::OpenNow
+            | Action::OpenMessages
+            | Action::OpenArchiveMode
+            | Action::NowOpen
+            | Action::NowDone
+            | Action::NowOpenEmail
+            | Action::NowLetGoDigest
+            | Action::NowCloseCard
+            | Action::NowAnswerSender(_) => self.apply_now_action(action),
             Action::OpenMailboxScreen
             | Action::OpenSearchScreen
             | Action::OpenGlobalSearch

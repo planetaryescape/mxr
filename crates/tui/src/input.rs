@@ -17,6 +17,7 @@ fn g_view_chord(second: char) -> Option<Action> {
         'v' => Some(Action::OpenCalendarInvites),
         'u' => Some(Action::OpenSubscriptions),
         'S' => Some(Action::OpenScreenerQueue),
+        'x' => Some(Action::OpenTodo),
         _ => None,
     }
 }

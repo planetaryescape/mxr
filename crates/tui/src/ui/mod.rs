@@ -47,6 +47,7 @@ pub mod summary_modal;
 pub mod thread_context_view;
 pub mod time_preview;
 pub mod toasts;
+pub mod todo_lens;
 pub mod unsubscribe_modal;
 pub mod url_modal;
 pub mod whois_modal;

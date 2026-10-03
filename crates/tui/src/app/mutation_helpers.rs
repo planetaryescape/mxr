@@ -192,6 +192,7 @@ impl App {
             | MutationEffect::StatusOnly(_)
             | MutationEffect::RefreshPlaces(_)
             | MutationEffect::SenderMoved(_)
+            | MutationEffect::Todo(_)
             | MutationEffect::SentSuccess { .. } => {}
         }
     }
@@ -269,6 +270,12 @@ impl App {
                 }
             }
             MutationEffect::StatusOnly(msg) => {
+                if show_completion_status && !msg.is_empty() {
+                    self.push_toast(Toast::success(msg));
+                }
+            }
+            MutationEffect::Todo(msg) => {
+                self.refresh_todo();
                 if show_completion_status && !msg.is_empty() {
                     self.push_toast(Toast::success(msg));
                 }
@@ -465,6 +472,7 @@ impl App {
             | MutationEffect::StatusOnly(_)
             | MutationEffect::RefreshPlaces(_)
             | MutationEffect::SenderMoved(_)
+            | MutationEffect::Todo(_)
             | MutationEffect::SentSuccess { .. } => MutationSnapshot::None,
         }
     }

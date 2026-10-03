@@ -43,6 +43,9 @@ pub enum MailboxView {
     /// Reading or Paper trail (`Request::ListPlace`): mail that isn't from
     /// people, bundled by sender, each bundle with the reason it is there.
     Place(mxr_protocol::MailPlaceData),
+    /// To do (`Request::GetTodoRunway`): things email asked you to do, as
+    /// a runway ordered by when to act.
+    Todo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,6 +166,7 @@ pub enum SidebarItem {
     AllMail,
     Subscriptions,
     Desk,
+    Todo,
     Reading,
     PaperTrail,
     Owed,
@@ -177,6 +181,7 @@ pub(crate) enum SidebarSelectionKey {
     AllMail,
     Subscriptions,
     Desk,
+    Todo,
     Reading,
     PaperTrail,
     Owed,
@@ -565,6 +570,8 @@ pub struct MailboxState {
     pub subscriptions_page: SubscriptionsPageState,
     pub owed_page: OwedRepliesPageState,
     pub desk_page: DeskPageState,
+    /// To do (`GetTodoRunway`): the runway, its guide and its lists.
+    pub todo_page: super::TodoPageState,
     pub place_page: PlacePageState,
     pub calendar_invites_page: CalendarInvitesPageState,
     pub active_label: Option<mxr_core::LabelId>,
@@ -667,6 +674,7 @@ impl MailboxState {
             subscriptions_page: SubscriptionsPageState::default(),
             owed_page: OwedRepliesPageState::default(),
             desk_page: DeskPageState::default(),
+            todo_page: super::TodoPageState::default(),
             place_page: PlacePageState::default(),
             calendar_invites_page: CalendarInvitesPageState::default(),
             active_label: None,

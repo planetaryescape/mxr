@@ -7,6 +7,7 @@ expression: snapshot
 "│  Inbox                           4/10│"
 "│  Starred                            2│"
 "│  Desk                               3│"
+"│  To do                               │"
 "│  Reading                             │"
 "│  Paper trail                         │"
 "│  All Mail                            │"
@@ -18,5 +19,4 @@ expression: snapshot
 "│  Projects                         1/5│"
 "│──────────────────────────────────────│"
 "│▾ Saved Searches                      │"
-"│  Unread                              │"
 "╰──────────────────────────────────────╯"

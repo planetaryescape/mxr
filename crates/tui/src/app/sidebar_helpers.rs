@@ -42,6 +42,7 @@ impl App {
             );
         }
         items.push(SidebarItem::Desk);
+        items.push(SidebarItem::Todo);
         items.push(SidebarItem::Reading);
         items.push(SidebarItem::PaperTrail);
         items.push(SidebarItem::AllMail);
@@ -115,6 +116,7 @@ impl App {
             subscription_count: self.mailbox.subscriptions_page.entries.len(),
             desk_active: self.mailbox.mailbox_view == MailboxView::Desk,
             desk_count: self.mailbox.desk_page.work_count(),
+            todo_active: self.mailbox.mailbox_view == MailboxView::Todo,
             reading_active: self.mailbox.mailbox_view
                 == MailboxView::Place(mxr_protocol::MailPlaceData::Reading),
             paper_trail_active: self.mailbox.mailbox_view
@@ -151,6 +153,7 @@ impl App {
             SidebarItem::AllMail => SidebarSelectionKey::AllMail,
             SidebarItem::Subscriptions => SidebarSelectionKey::Subscriptions,
             SidebarItem::Desk => SidebarSelectionKey::Desk,
+            SidebarItem::Todo => SidebarSelectionKey::Todo,
             SidebarItem::Reading => SidebarSelectionKey::Reading,
             SidebarItem::PaperTrail => SidebarSelectionKey::PaperTrail,
             SidebarItem::Owed => SidebarSelectionKey::Owed,
@@ -170,6 +173,7 @@ impl App {
                 (SidebarItem::AllMail, SidebarSelectionKey::AllMail) => true,
                 (SidebarItem::Subscriptions, SidebarSelectionKey::Subscriptions) => true,
                 (SidebarItem::Desk, SidebarSelectionKey::Desk) => true,
+                (SidebarItem::Todo, SidebarSelectionKey::Todo) => true,
                 (SidebarItem::Reading, SidebarSelectionKey::Reading) => true,
                 (SidebarItem::PaperTrail, SidebarSelectionKey::PaperTrail) => true,
                 (SidebarItem::Owed, SidebarSelectionKey::Owed) => true,
@@ -259,6 +263,7 @@ impl App {
             Some(SidebarItem::AllMail) => Some(Action::GoToAllMail),
             Some(SidebarItem::Subscriptions) => Some(Action::OpenSubscriptions),
             Some(SidebarItem::Desk) => Some(Action::OpenDesk),
+            Some(SidebarItem::Todo) => Some(Action::OpenTodo),
             Some(SidebarItem::Reading) => {
                 Some(Action::OpenPlace(mxr_protocol::MailPlaceData::Reading))
             }
@@ -294,6 +299,7 @@ impl App {
                 | SidebarItem::AllMail
                 | SidebarItem::Subscriptions
                 | SidebarItem::Desk
+                | SidebarItem::Todo
                 | SidebarItem::Reading
                 | SidebarItem::PaperTrail
                 | SidebarItem::Owed

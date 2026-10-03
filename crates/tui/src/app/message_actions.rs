@@ -115,6 +115,9 @@ impl App {
                         MailboxView::Place(_) => {
                             self.open_selected_place_row();
                         }
+                        MailboxView::Todo => {
+                            self.apply(Action::TodoOpenEmail);
+                        }
                     }
                 }
             }

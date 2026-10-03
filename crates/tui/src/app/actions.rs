@@ -109,6 +109,22 @@ impl App {
             | Action::SweepPlace
             | Action::MorePlaceSenders
             | Action::MoreFromSender => self.apply_place_action(action),
+            Action::OpenTodo
+            | Action::TodoPrimary
+            | Action::TodoDone
+            | Action::TodoSchedule
+            | Action::TodoEdit
+            | Action::TodoDismiss
+            | Action::TodoOpenEmail
+            | Action::TodoCloseCard
+            | Action::TodoOpenExpired
+            | Action::TodoOpenCatchup
+            | Action::TodoShowRunway
+            | Action::TodoRestore
+            | Action::CatchupKeep
+            | Action::CatchupLetGo
+            | Action::CatchupLetGoAll
+            | Action::CreateTodoFromMessage => self.apply_todo_action(action),
             Action::OpenMailboxScreen
             | Action::OpenSearchScreen
             | Action::OpenGlobalSearch

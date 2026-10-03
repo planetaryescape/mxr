@@ -219,6 +219,17 @@ impl App {
                                 },
                                 theme,
                             );
+                        } else if self.mailbox.mailbox_view == MailboxView::Todo {
+                            ui::todo_lens::draw(
+                                frame,
+                                chunks[1],
+                                &ui::todo_lens::TodoView {
+                                    page: &self.mailbox.todo_page,
+                                    selected_index: self.mailbox.selected_index,
+                                    active_pane: &self.mailbox.active_pane,
+                                },
+                                theme,
+                            );
                         } else if self.mailbox.mailbox_view == MailboxView::Owed {
                             ui::owed_lens::draw(
                                 frame,
@@ -310,6 +321,17 @@ impl App {
                                 &ui::place_lens::PlaceView {
                                     page: &self.mailbox.place_page,
                                     place,
+                                    selected_index: self.mailbox.selected_index,
+                                    active_pane: &self.mailbox.active_pane,
+                                },
+                                theme,
+                            );
+                        } else if self.mailbox.mailbox_view == MailboxView::Todo {
+                            ui::todo_lens::draw(
+                                frame,
+                                chunks[1],
+                                &ui::todo_lens::TodoView {
+                                    page: &self.mailbox.todo_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                 },
@@ -531,6 +553,7 @@ impl App {
         );
 
         ui::reply_later_prompt::draw(frame, area, self.modals.reply_later_prompt.as_ref(), theme);
+        ui::todo_lens::draw_prompt(frame, area, self.mailbox.todo_page.prompt.as_ref(), theme);
 
         // Send confirmation overlay
         let time_preview = self.compose.pending_time.lines();
@@ -600,6 +623,7 @@ impl App {
                 scroll_offset: self.modals.help_scroll_offset,
                 query: &self.modals.help_query,
                 selected: self.modals.help_selected,
+                mode_guide: self.help_mode_guide(),
                 _marker: std::marker::PhantomData,
             },
             theme,

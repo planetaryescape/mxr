@@ -51,6 +51,20 @@ pub(crate) enum AsyncResult {
     Subscriptions(Result<Vec<SubscriptionSummary>, MxrError>),
     OwedReplies(Result<Vec<mxr_protocol::OwedReplyRowData>, MxrError>),
     Desk(Result<crate::app::DeskPageState, MxrError>),
+    /// To do's runway and, when the daemon served it, its guide.
+    TodoRunway(
+        Result<
+            (
+                mxr_protocol::TodoRunwayData,
+                Option<mxr_protocol::ModeGuideData>,
+            ),
+            MxrError,
+        >,
+    ),
+    TodoExpired(Result<Vec<mxr_protocol::TodoData>, MxrError>),
+    TodoCatchup(Result<mxr_protocol::TodoCatchupData, MxrError>),
+    /// The dry run of letting go of the whole catch-up.
+    TodoCatchupPreview(Result<mxr_protocol::TodoChangeData, MxrError>),
     Place(
         crate::app::PlaceFetch,
         Result<crate::app::PlacePageState, MxrError>,

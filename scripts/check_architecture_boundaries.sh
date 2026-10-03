@@ -38,6 +38,7 @@ ALLOW = {
     "mxr-provider-outlook": {"mxr-core", "mxr-mail-parse", "mxr-outbound"},
     "mxr-provider-smtp": {"mxr-core", "mxr-outbound"},
     "mxr-test-support": set(),
+    "mxr-todo": {"mxr-core", "mxr-reader", "mxr-store"},
     "mxr-tui": {
         "mxr-client",
         "mxr-compose",

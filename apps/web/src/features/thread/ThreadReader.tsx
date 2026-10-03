@@ -30,6 +30,7 @@ import {
   threadGistQuery,
 } from "./context/api";
 import { ASK_MARK_ATTRIBUTE } from "./context/askQuote";
+import { LINK_MARK_ATTRIBUTE, type LinkHighlight } from "./linkHighlight";
 import { ContextBlock } from "./context/ContextBlock";
 import { isLongThread } from "./context/longThread";
 import { firstName } from "./context/contextFormat";
@@ -51,9 +52,11 @@ const LANDING_MARGIN_PX = 160;
 export function ThreadReader({
   data,
   focusMessageId,
+  linkHighlight,
 }: {
   data: ThreadResponse;
   focusMessageId?: string;
+  linkHighlight?: LinkHighlight;
 }) {
   const nav = useReaderNav();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -158,19 +161,49 @@ export function ThreadReader({
   });
   const askQuote = gist.data?.status === "ready" ? (gist.data.ask?.quote ?? null) : null;
 
+  // Opened from a To do row: the link the row is about is marked in its
+  // message, which opens, and the reader scrolls to it. Nothing opens it.
+  const link = linkHighlight ?? null;
+  const linkMessageId = link
+    ? messages.some((message) => message.id === link.messageId)
+      ? link.messageId
+      : messages.at(-1)?.id
+    : undefined;
+  useEffect(() => {
+    if (!linkMessageId) return;
+    setExpanded((current) =>
+      current.has(linkMessageId) ? current : new Set(current).add(linkMessageId),
+    );
+    const reveal = () => scrollToMark(linkMessageId, `[${LINK_MARK_ATTRIBUTE}]`, "auto");
+    // A link written as plain text in the formatted view has no anchor to
+    // mark there; the reader view links it, so fall back to that.
+    const timers = [
+      window.setTimeout(reveal, 150),
+      window.setTimeout(() => {
+        if (!reveal() && view === "formatted") setView("reader");
+      }, 600),
+      window.setTimeout(reveal, 900),
+    ];
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+    // Once per link: a view change must not undo the reader's choice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkMessageId]);
+
   // "Show in message": expand the message, then scroll to its mark. The
   // formatted view marks inside the frame when the quote's text survives
   // sanitizing; when it doesn't, fall back to the reader view.
   const pendingReveal = useRef(false);
-  const scrollToAskMark = (): boolean => {
-    if (!askQuote) return false;
-    const card = cardRefs.current.get(askQuote.message_id);
+  const scrollToMark = (
+    messageId: string,
+    selector: string,
+    behavior: ScrollBehavior = "smooth",
+  ): boolean => {
+    const card = cardRefs.current.get(messageId);
     const container = scrollRef.current;
     if (!card || !container) return false;
-    const selector = `[${ASK_MARK_ATTRIBUTE}]`;
     const inPage = card.querySelector<HTMLElement>(selector);
     if (inPage) {
-      inPage.scrollIntoView({ block: "center", behavior: "smooth" });
+      inPage.scrollIntoView({ block: "center", behavior });
       return true;
     }
     const frame = card.querySelector("iframe");
@@ -180,9 +213,11 @@ export function ThreadReader({
       frame.getBoundingClientRect().top +
       inFrame.getBoundingClientRect().top -
       container.getBoundingClientRect().top;
-    container.scrollBy({ top: top - container.clientHeight / 3, behavior: "smooth" });
+    container.scrollBy({ top: top - container.clientHeight / 3, behavior });
     return true;
   };
+  const scrollToAskMark = (): boolean =>
+    askQuote ? scrollToMark(askQuote.message_id, `[${ASK_MARK_ATTRIBUTE}]`) : false;
   const revealAsk = () => {
     if (!askQuote) return;
     const index = messages.findIndex((message) => message.id === askQuote.message_id);
@@ -402,6 +437,15 @@ export function ThreadReader({
             onResolvePromise={(id) => resolve.mutate(id)}
             resolving={resolve.isPending}
           />
+          {link ? (
+            <p
+              data-testid="todo-link-note"
+              className="mx-5 mt-4 border-l-2 border-primary pl-3 text-[13px] text-foreground/90"
+            >
+              From To do: {link.title}. The link it is about is marked below
+              {link.domain ? `, and goes to ${link.domain}` : ""}. Check it before you follow it.
+            </p>
+          ) : null}
           {summary || summarize.isPending ? (
             <div className="px-5 pt-4">
               {summary ? (
@@ -431,6 +475,7 @@ export function ThreadReader({
               showSignature={showSignature}
               remoteAllowedForThread={remoteAllowed}
               askQuote={askQuote?.message_id === message.id ? askQuote.text : undefined}
+              highlightLink={message.id === linkMessageId ? link?.url : undefined}
               onToggle={() => {
                 setFocusIndex(index);
                 setExpanded((current) => {

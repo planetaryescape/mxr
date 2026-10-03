@@ -837,7 +837,7 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 ## D117: The open modes questions are decided, so building can start
 
 **Chosen**: The values calls left in blueprint 22 are decided as listed in its "Decisions made on BK's behalf" section.
-- **Money and links:** a strict pay-link gate, and no weekly money total.
+- **Money and links:** no one-click pay link in phase 1 (amended 2026-10-03: the action opens the email with the link highlighted, after two review rounds broke every gate; see `docs/issues/one-click-pay-link.md`), and no weekly money total.
 - **Archive and Reading:** archive on last done stays on; highlights go to Archive search and a Markdown export.
 - **Accuracy and identity:** a measured bar for the To do badge, and manual person merge with suggestions.
 - **Interaction and privacy:** Got it stays on `.`; Reading engagement tracking is governed by `MXR_ACTIVITY`.

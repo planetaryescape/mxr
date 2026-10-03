@@ -51,6 +51,20 @@ pub(crate) enum AsyncResult {
     Subscriptions(Result<Vec<SubscriptionSummary>, MxrError>),
     OwedReplies(Result<Vec<mxr_protocol::OwedReplyRowData>, MxrError>),
     Desk(Result<crate::app::DeskPageState, MxrError>),
+    /// To do's runway and, when the daemon served it, its guide.
+    TodoRunway(
+        Result<
+            (
+                mxr_protocol::TodoRunwayData,
+                Option<mxr_protocol::ModeGuideData>,
+            ),
+            MxrError,
+        >,
+    ),
+    TodoExpired(Result<Vec<mxr_protocol::TodoData>, MxrError>),
+    TodoCatchup(Result<mxr_protocol::TodoCatchupData, MxrError>),
+    /// The dry run of letting go of the whole catch-up.
+    TodoCatchupPreview(Result<mxr_protocol::TodoChangeData, MxrError>),
     Place(
         crate::app::PlaceFetch,
         Result<crate::app::PlacePageState, MxrError>,
@@ -63,6 +77,8 @@ pub(crate) enum AsyncResult {
     CalendarInvites(Result<Vec<mxr_protocol::CalendarInviteData>, MxrError>),
     /// Envelope fetched for an invite opened from the calendar-invites lens.
     InviteEnvelopeOpened(Result<Envelope, MxrError>),
+    /// A To do row's email, with the link to mark in it.
+    TodoEnvelopeOpened(Result<Envelope, MxrError>, Option<String>),
     Briefing(Result<mxr_protocol::ThreadBriefingData, MxrError>),
     Whois(Result<mxr_protocol::EntityExplanationData, MxrError>),
     Expert(Result<Vec<mxr_protocol::ExpertSuggestionData>, MxrError>),

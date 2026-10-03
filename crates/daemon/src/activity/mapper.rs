@@ -806,6 +806,23 @@ pub fn map_request(
                 "signature default config is not in the activity catalog"
             );
         }
+        Request::GetTodoRunway { .. }
+        | Request::ListTodos { .. }
+        | Request::GetTodo { .. }
+        | Request::SetTodoState { .. }
+        | Request::ScheduleTodo { .. }
+        | Request::UpdateTodo { .. }
+        | Request::CreateTodo { .. }
+        | Request::GetTodoCatchup { .. }
+        | Request::SetTodoCatchup { .. } => {
+            skip_activity!("todo", "To do requests are not in the activity catalog yet");
+        }
+        Request::GetModeGuide { .. } | Request::SetModeGuideSeen { .. } => {
+            skip_activity!(
+                "mode_guide",
+                "teaching copy and its seen state are not activity"
+            );
+        }
         Request::ResolveCommitment { .. }
         | Request::RecordPromise { .. }
         | Request::WatchCadence { .. }

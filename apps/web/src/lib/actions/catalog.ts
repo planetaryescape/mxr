@@ -18,6 +18,7 @@ import type { ShellResponse } from "@/features/mailbox/types";
 import { placeActions } from "@/features/places/actions";
 import { rulesActions } from "@/features/rules/actions";
 import { screenerActions } from "@/features/screener/actions";
+import { todoActions } from "@/features/todo/actions";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
 import { navigationActions } from "./navigationActions";
@@ -58,6 +59,7 @@ const featureActions: Action[] = [
   ...screenerActions,
   ...focusActions,
   ...placeActions,
+  ...todoActions,
   ...diagnosticsActions,
   ...rulesActions,
   ...accountsActions,

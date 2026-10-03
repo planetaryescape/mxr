@@ -32,6 +32,9 @@ impl App {
         if matches!(self.mailbox.mailbox_view, MailboxView::Place(_)) {
             return self.mailbox.place_page.row_count();
         }
+        if self.mailbox.mailbox_view == MailboxView::Todo {
+            return self.mailbox.todo_page.row_count();
+        }
         self.mail_list_rows().len()
     }
 
@@ -139,7 +142,7 @@ impl App {
     pub(crate) fn context_envelope(&self) -> Option<&Envelope> {
         // The desk list has no envelope of its own under the cursor; falling
         // back to the mailbox or reader would act on unrelated mail.
-        if self.desk_list_focused() || self.place_list_focused() {
+        if self.desk_list_focused() || self.place_list_focused() || self.todo_list_focused() {
             return None;
         }
         if self.screen == Screen::Search {
@@ -492,6 +495,7 @@ impl App {
     }
 
     pub(super) fn open_envelope(&mut self, env: Envelope) {
+        self.mailbox.todo_link = None;
         self.close_attachment_panel();
         self.mailbox.signature_expanded = false;
         self.mailbox.viewed_thread = None;

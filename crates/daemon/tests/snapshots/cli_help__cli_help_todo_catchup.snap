@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+The first run's one-time catch-up: things from before mxr sorted your mail that might still need you. Keep or let go of each
+
+Usage: mxr todo catchup [OPTIONS]
+
+Options:
+      --keep <TODO_ID>...      Keep these: they join the runway and are yours from then on
+      --let-go <TODO_ID>...    Let go of these: they join the Expired list
+      --let-go-all             Let go of everything still in the catch-up
+      --undecide <TODO_ID>...  Put rows you kept or let go back in the catch-up, undecided
+      --dry-run                Show what would change without changing anything
+      --account <ACCOUNT>      Limit to one account; the default covers every account
+      --format <FORMAT>        [possible values: table, json, jsonl, csv, ids]
+  -h, --help                   Print help

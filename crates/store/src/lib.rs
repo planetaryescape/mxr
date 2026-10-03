@@ -7,6 +7,21 @@
     )
 )]
 
+/// SQL that holds for a to-do the rules found and the user hasn't made or
+/// edited: the rows re-runs may rewrite, the sweep may expire and a mail
+/// delete takes with it. `TodoRecord::user_touched` is the Rust side.
+/// Pass a table prefix such as `"todos."`, or `""`.
+macro_rules! todo_untouched_sql {
+    ($prefix:literal) => {
+        concat!(
+            $prefix,
+            "user_edited = 0 AND ",
+            $prefix,
+            "origin NOT IN ('manual', 'handoff')"
+        )
+    };
+}
+
 mod account;
 mod analytics;
 mod auto_reminders;
@@ -35,6 +50,7 @@ mod message;
 mod message_deletion;
 mod message_events;
 mod message_flags;
+mod mode_views;
 mod mutation_dedup;
 mod mutation_jobs;
 mod owed_replies;
@@ -62,6 +78,8 @@ mod test_fixtures;
 mod thread;
 mod thread_context;
 mod thread_summary;
+mod todo_first_run;
+mod todos;
 mod triage;
 mod undo;
 mod user_activity;
@@ -105,12 +123,29 @@ pub use snippets::Snippet;
 pub use sync_log::{SyncLogEntry, SyncStatus};
 pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 pub use sync_upsert::SyncUpsert;
+pub use todo_first_run::{PromiseForTodo, TodoRun, TodoScanRow};
+pub use todos::{TodoCatchup, TodoRecord, TodoState, TodoUpsert};
 pub use voice_samples::{MyReplySample, MySentSample};
 
 /// Bind parameters per `IN (...)` query. SQLite's default limit is 32,766;
 /// this leaves room for the query's other binds and keeps a page-sized id
 /// list from silently outgrowing it.
 pub(crate) const SQLITE_BIND_CHUNK: usize = 500;
+
+/// `?, ?, ?` for an `IN (...)` list of `count` binds.
+pub(crate) fn in_list(count: usize) -> String {
+    vec!["?"; count].join(", ")
+}
+
+/// `?2, ?3, ...`: an `IN (...)` list after a numbered `?1`. SQLite numbers a
+/// bare `?` after `?1` as `?2`, but sqlx counts bare ones from 1, so the
+/// list must be numbered too.
+pub(crate) fn in_list_after_first(count: usize) -> String {
+    (2..count + 2)
+        .map(|index| format!("?{index}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
 
 /// SQL condition that holds when every message id in the JSON array bound
 /// at `?param` still exists. Model output cached under it cannot outlive a

@@ -20,6 +20,7 @@ interface Crumb {
 
 const PAGE_TITLES: Record<string, string> = {
   desk: "Desk",
+  todo: "To do",
   search: "Search",
   drafts: "Drafts",
   "reply-queue": "Reply queue",
@@ -45,7 +46,7 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 /** Pages whose second path segment is an open conversation. */
-const THREAD_PLACES = new Set(["search", "desk", "reading", "paper-trail"]);
+const THREAD_PLACES = new Set(["search", "desk", "todo", "reading", "paper-trail"]);
 
 function threadIdInPath(parts: string[]): string | undefined {
   if (parts[0] === "m") return parts[1] === "label" || parts[1] === "saved" ? parts[3] : parts[2];
@@ -90,7 +91,7 @@ function useBreadcrumb(path: string, search: string): Crumb[] {
     if (openThreadId) crumbs.push({ label: subject });
     return crumbs;
   }
-  if (parts[0] === "desk" || parts[0] === "reading" || parts[0] === "paper-trail") {
+  if (THREAD_PLACES.has(parts[0] ?? "")) {
     const crumbs: Crumb[] = [{ label: title, to: `/${parts[0]}` }];
     if (openThreadId) crumbs.push({ label: subject });
     return crumbs;

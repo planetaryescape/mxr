@@ -192,6 +192,7 @@ impl App {
             | MutationEffect::StatusOnly(_)
             | MutationEffect::RefreshPlaces(_)
             | MutationEffect::SenderMoved(_)
+            | MutationEffect::Todo(_)
             | MutationEffect::SentSuccess { .. } => {}
         }
     }
@@ -269,6 +270,12 @@ impl App {
                 }
             }
             MutationEffect::StatusOnly(msg) => {
+                if show_completion_status && !msg.is_empty() {
+                    self.push_toast(Toast::success(msg));
+                }
+            }
+            MutationEffect::Todo(msg) => {
+                self.refresh_todo();
                 if show_completion_status && !msg.is_empty() {
                     self.push_toast(Toast::success(msg));
                 }
@@ -465,6 +472,7 @@ impl App {
             | MutationEffect::StatusOnly(_)
             | MutationEffect::RefreshPlaces(_)
             | MutationEffect::SenderMoved(_)
+            | MutationEffect::Todo(_)
             | MutationEffect::SentSuccess { .. } => MutationSnapshot::None,
         }
     }
@@ -577,6 +585,7 @@ impl App {
     ) {
         self.handle_mutation_reconciliation_failed(id);
         self.pending_optimistic.clear(id);
+        self.reopen_todo_card_after_failure(id);
         self.refresh_mailbox_after_mutation_failure();
         if best_effort {
             self.push_toast(Toast::warn("Mailbox refreshing to reconcile state"));

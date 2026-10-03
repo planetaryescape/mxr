@@ -82,7 +82,9 @@ use utoipa::{
         mail_time_resolve, mail_thread_context, mail_thread_gist, mail_thread_gists,
         compose_session_promises, mail_commitments_record,
         mail_place_list, mail_place_sweep, mail_message_kind, mail_messages_pin,
-        mail_sender_kind
+        mail_sender_kind, mail_todos_runway, mail_todos_create, mail_todos_in_state,
+        mail_todo_get, mail_todos_state, mail_todo_schedule, mail_todo_edit,
+        mail_todos_catchup_get, mail_todos_catchup_set, mail_mode_guide, mail_mode_card
     ),
     components(schemas(
         Request,
@@ -96,6 +98,12 @@ use utoipa::{
         DeskLaterBody,
         ThreadGistsBody,
         SenderKindBody,
+        crate::todo_routes::TodoStateBody,
+        crate::todo_routes::TodoScheduleBody,
+        crate::todo_routes::TodoEditBody,
+        crate::todo_routes::TodoCreateBody,
+        crate::todo_routes::TodoCatchupBody,
+        crate::mode_routes::ModeCardBody,
     )),
     modifiers(&BearerSecurity),
     security(("bearer" = []))
@@ -368,6 +376,160 @@ struct ThreadGistsBody {
 )]
 #[allow(dead_code)]
 fn mail_thread_gists() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/todos",
+    summary = "The To do runway: Now, Coming up by week, Later, Whenever and Done this week",
+    params(
+        ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
+        ("mark_seen" = Option<bool>, Query, description = "Record that To do was opened, so the expired count starts again"),
+    ),
+    responses(
+        (status = 200, description = "The `TodoRunway` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_todos_runway() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/todos",
+    summary = "Make a to-do from a message yourself (dry_run previews)",
+    request_body = crate::todo_routes::TodoCreateBody,
+    responses(
+        (status = 200, description = "The `TodoChange` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_todos_create() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/todos/in/{state}",
+    summary = "Every to-do in one state, newest change first; `expired` is the Expired list",
+    params(
+        ("state" = String, Path, description = "`open`, `done`, `dismissed` or `expired`"),
+        ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
+        ("limit" = Option<u32>, Query, description = "Rows (default 200)"),
+    ),
+    responses(
+        (status = 200, description = "The `Todos` variant", body = ResponseData),
+        (status = 400, description = "Unknown state"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_todos_in_state() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/todos/{todo_id}",
+    summary = "One to-do with where each of its fields came from",
+    params(("todo_id" = String, Path, description = "A full id or a unique prefix")),
+    responses(
+        (status = 200, description = "The `Todo` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_todo_get() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/todos/state",
+    summary = "Tick off, reopen or mark to-dos not a to-do (dry_run previews)",
+    request_body = crate::todo_routes::TodoStateBody,
+    responses(
+        (status = 200, description = "The `TodoChange` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_todos_state() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/todos/{todo_id}/schedule",
+    summary = "Show a to-do on your own date, or clear it (dry_run previews)",
+    params(("todo_id" = String, Path, description = "A full id or a unique prefix")),
+    request_body = crate::todo_routes::TodoScheduleBody,
+    responses(
+        (status = 200, description = "The `TodoChange` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_todo_schedule() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/todos/{todo_id}/edit",
+    summary = "Correct a to-do's fields; it is yours from then on (dry_run previews)",
+    params(("todo_id" = String, Path, description = "A full id or a unique prefix")),
+    request_body = crate::todo_routes::TodoEditBody,
+    responses(
+        (status = 200, description = "The `TodoChange` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_todo_edit() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/todos/catchup",
+    summary = "The first run's one-time catch-up, with what was already over",
+    params(("account" = Option<String>, Query, description = "Account id; omitted covers every account")),
+    responses(
+        (status = 200, description = "The `TodoCatchup` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_todos_catchup_get() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/modes/guide",
+    summary = "How a mode explains itself: header, empty states, first-encounter card, why template and keys",
+    params(("mode" = Option<String>, Query, description = "`todo`; omitted returns every shipped mode")),
+    responses(
+        (status = 200, description = "The `ModeGuides` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_mode_guide() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/modes/{mode}/card",
+    summary = "Retire a mode's first-encounter card in every client, or show it again",
+    params(("mode" = String, Path, description = "`todo`")),
+    request_body = crate::mode_routes::ModeCardBody,
+    responses(
+        (status = 200, description = "The `ModeGuides` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_mode_card() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/todos/catchup",
+    summary = "Keep or let go in the catch-up; let_go_all takes every row still waiting (dry_run previews)",
+    request_body = crate::todo_routes::TodoCatchupBody,
+    responses(
+        (status = 200, description = "The `TodoChange` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_todos_catchup_set() {}
 
 /// Body of `POST /api/v1/mail/places/{place}/sweep`.
 #[derive(utoipa::ToSchema)]

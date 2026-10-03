@@ -1639,6 +1639,80 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if std::mem::take(&mut app.mailbox.todo_page.pending_refresh) {
+            let mark_seen = std::mem::take(&mut app.mailbox.todo_page.pending_mark_seen);
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                AsyncResult::TodoRunway(fetch_todo_runway(&bg, mark_seen).await)
+            });
+        }
+
+        if let Some(list) = app.mailbox.todo_page.pending_list.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                match list {
+                    crate::app::TodoListFetch::Expired => {
+                        let resp = ipc_call(
+                            &bg,
+                            Request::ListTodos {
+                                account_id: None,
+                                state: mxr_protocol::TodoStateData::Expired,
+                                limit: 200,
+                            },
+                        )
+                        .await;
+                        AsyncResult::TodoExpired(match resp {
+                            Ok(Response::Ok {
+                                data: ResponseData::Todos { todos },
+                            }) => Ok(todos),
+                            Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                            Err(e) => Err(e),
+                            _ => Err(MxrError::Ipc("unexpected response to ListTodos".into())),
+                        })
+                    }
+                    crate::app::TodoListFetch::Catchup => {
+                        let resp =
+                            ipc_call(&bg, Request::GetTodoCatchup { account_id: None }).await;
+                        AsyncResult::TodoCatchup(match resp {
+                            Ok(Response::Ok {
+                                data: ResponseData::TodoCatchup { catchup },
+                            }) => Ok(catchup),
+                            Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                            Err(e) => Err(e),
+                            _ => Err(MxrError::Ipc(
+                                "unexpected response to GetTodoCatchup".into(),
+                            )),
+                        })
+                    }
+                }
+            });
+        }
+
+        if std::mem::take(&mut app.mailbox.todo_page.pending_catchup_preview) {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::SetTodoCatchup {
+                        account_id: None,
+                        decision: mxr_protocol::TodoCatchupDecisionData::LetGoAll,
+                        dry_run: true,
+                    },
+                )
+                .await;
+                AsyncResult::TodoCatchupPreview(match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::TodoChange { change },
+                    }) => Ok(change),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to SetTodoCatchup".into(),
+                    )),
+                })
+            });
+        }
+
         let place_fetches = app
             .mailbox
             .pending_place_refresh
@@ -1709,6 +1783,28 @@ pub async fn run() -> anyhow::Result<()> {
                     _ => Err(MxrError::Ipc("unexpected response to ListInvites".into())),
                 };
                 AsyncResult::CalendarInvites(result)
+            });
+        }
+
+        if let Some(open) = app.mailbox.todo_page.pending_open.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::GetEnvelope {
+                        message_id: open.message_id,
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Envelope { envelope },
+                    }) => Ok(envelope),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response to GetEnvelope".into())),
+                };
+                AsyncResult::TodoEnvelopeOpened(result, open.link)
             });
         }
 
@@ -2087,6 +2183,23 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::InviteResponseSent { .. },
                     }) => Ok(effect),
+                    Ok(Response::Ok {
+                        data: ResponseData::ModeGuides { .. },
+                    }) => Ok(effect),
+                    Ok(Response::Ok {
+                        data: ResponseData::TodoChange { change },
+                    }) => {
+                        if let Some(undo) = todo_undo(&change) {
+                            let _ = result_tx_inner.send(AsyncResult::UndoCaptured(undo));
+                        }
+                        if change.changed.is_empty() {
+                            // Nothing was in a state this applies to: say
+                            // so in the daemon's words, and refetch.
+                            Ok(app::MutationEffect::Todo(change.summary))
+                        } else {
+                            Ok(effect)
+                        }
+                    }
                     Ok(Response::Ok {
                         data:
                             ResponseData::SenderKindSet {
@@ -3252,6 +3365,23 @@ pub async fn run() -> anyhow::Result<()> {
                             app.refresh_places();
                             app.status_message = Some(format!("Sweep stopped: {e}"));
                         }
+                        AsyncResult::TodoRunway(Ok((runway, guide))) => {
+                            app.set_todo_runway(runway, guide);
+                        }
+                        AsyncResult::TodoRunway(Err(e)) => {
+                            app.status_message = Some(format!("Couldn't load To do: {e}"));
+                        }
+                        AsyncResult::TodoExpired(Ok(todos)) => app.set_todo_expired(todos),
+                        AsyncResult::TodoCatchup(Ok(catchup)) => app.set_todo_catchup(catchup),
+                        AsyncResult::TodoExpired(Err(e)) | AsyncResult::TodoCatchup(Err(e)) => {
+                            app.status_message = Some(format!("Couldn't load the list: {e}"));
+                        }
+                        AsyncResult::TodoCatchupPreview(Ok(preview)) => {
+                            app.show_catchup_preview(preview);
+                        }
+                        AsyncResult::TodoCatchupPreview(Err(e)) => {
+                            app.status_message = Some(format!("Couldn't preview: {e}"));
+                        }
                         AsyncResult::Desk(Ok(desk)) => app.set_desk(desk),
                         AsyncResult::Desk(Err(e)) => {
                             app.status_message = Some(format!("Desk error: {e}"));
@@ -3268,6 +3398,12 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::CalendarInvites(Err(e)) => {
                             app.status_message = Some(format!("Calendar invites error: {e}"));
+                        }
+                        AsyncResult::TodoEnvelopeOpened(Ok(envelope), link) => {
+                            app.open_todo_envelope(envelope, link);
+                        }
+                        AsyncResult::TodoEnvelopeOpened(Err(e), _) => {
+                            app.status_message = Some(format!("Open email failed: {e}"));
                         }
                         AsyncResult::InviteEnvelopeOpened(Ok(envelope)) => {
                             app.open_invite_envelope(envelope);
@@ -3637,6 +3773,73 @@ pub(crate) fn desk_request() -> Request {
 
 #[cfg(test)]
 mod tests;
+
+/// The runway and To do's guide, fetched together so the header, the card
+/// and the rows arrive at once. A guide error leaves the rows on screen.
+async fn fetch_todo_runway(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    mark_seen: bool,
+) -> Result<
+    (
+        mxr_protocol::TodoRunwayData,
+        Option<mxr_protocol::ModeGuideData>,
+    ),
+    MxrError,
+> {
+    // Independent reads: ask for both at once.
+    let (runway, guide) = tokio::join!(
+        ipc_call(
+            bg,
+            Request::GetTodoRunway {
+                account_id: None,
+                mark_seen,
+            },
+        ),
+        ipc_call(
+            bg,
+            Request::GetModeGuide {
+                mode: Some(crate::app::TODO_MODE.into()),
+            },
+        ),
+    );
+    let runway = match runway {
+        Ok(Response::Ok {
+            data: ResponseData::TodoRunway { runway },
+        }) => runway,
+        Ok(Response::Error { message, .. }) => return Err(MxrError::Ipc(message)),
+        Err(e) => return Err(e),
+        _ => return Err(MxrError::Ipc("unexpected response to GetTodoRunway".into())),
+    };
+    let guide = match guide {
+        Ok(Response::Ok {
+            data: ResponseData::ModeGuides { mut guides },
+        }) if !guides.is_empty() => Some(guides.remove(0)),
+        _ => None,
+    };
+    Ok((runway, guide))
+}
+
+/// `u` for a to-do change: put the rows back. A catch-up decision goes
+/// back to undecided in the batch; anything else back on the runway.
+pub(crate) fn todo_undo(change: &mxr_protocol::TodoChangeData) -> Option<app::PendingUndo> {
+    if change.dry_run || change.changed.is_empty() {
+        return None;
+    }
+    let ids: Vec<String> = change.changed.iter().map(|todo| todo.id.clone()).collect();
+    let (action, verb_past) = match change.action.as_str() {
+        "done" => (app::UndoAction::Todos(ids), "Ticked off"),
+        "dismiss" => (app::UndoAction::Todos(ids), "Marked not a to-do"),
+        "keep" => (app::UndoAction::Catchup(ids), "Kept"),
+        "let_go" => (app::UndoAction::Catchup(ids), "Let go of"),
+        _ => return None,
+    };
+    Some(app::PendingUndo {
+        action,
+        verb_past: verb_past.into(),
+        count: u32::try_from(change.changed.len()).unwrap_or(u32::MAX),
+        applied_at: std::time::Instant::now(),
+    })
+}
 
 #[cfg(test)]
 mod undo_retry_tests {

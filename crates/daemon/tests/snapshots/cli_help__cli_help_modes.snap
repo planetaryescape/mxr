@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+How each mode explains itself: its job, empty states, card and keys
+
+Usage: mxr modes [OPTIONS] <COMMAND>
+
+Commands:
+  explain  What a mode is for, what lands there, its first-encounter card and its keys. Every mode that has shipped when none is named
+  card     Retire a mode's first-encounter card in every client, as closing it does, or bring it back with --show
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

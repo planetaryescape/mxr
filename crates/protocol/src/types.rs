@@ -4,16 +4,20 @@ use serde::{Deserialize, Serialize};
 
 mod desk;
 mod draft_provenance;
+mod mode_guide;
 mod places;
 mod platform;
 mod promises;
 mod thread_context;
+mod todos;
 pub use desk::*;
 pub use draft_provenance::*;
+pub use mode_guide::*;
 pub use places::*;
 pub use platform::*;
 pub use promises::*;
 pub use thread_context::*;
+pub use todos::*;
 
 /// IPC items are grouped conceptually, even though the wire format stays flat.
 ///
@@ -75,6 +79,14 @@ fn default_desk_lane_limit() -> u32 {
 
 fn default_place_limit() -> u32 {
     50
+}
+
+fn default_todo_limit() -> u32 {
+    200
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_place_messages_per_bundle() -> u32 {
@@ -1618,6 +1630,108 @@ pub enum Request {
         #[serde(default)]
         dry_run: bool,
     },
+    // ----- To do -----
+    /// The To do runway: Now, Coming up by week, Later, Whenever and Done
+    /// this week, with the headline, the empty state and the catch-up
+    /// count. `mark_seen` records that To do was opened, so the next
+    /// "expired since you last looked" counts from now. Returns
+    /// `ResponseData::TodoRunway`.
+    GetTodoRunway {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default)]
+        mark_seen: bool,
+    },
+    /// Rows in one state, newest change first: `expired` is the Expired
+    /// list. Returns `ResponseData::Todos`.
+    ListTodos {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        state: TodoStateData,
+        #[serde(default = "default_todo_limit")]
+        limit: u32,
+    },
+    /// One row with every field's provenance. Takes a full id or a unique
+    /// prefix. Returns `ResponseData::Todo`.
+    GetTodo {
+        todo_id: String,
+    },
+    /// Tick off, reopen or mark "not a to-do". Returns
+    /// `ResponseData::TodoChange`.
+    SetTodoState {
+        todo_ids: Vec<String>,
+        action: TodoStateActionData,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Show the row on your own date ("mon 9am", "in 3d", RFC3339), or
+    /// clear it with `when: None`. Resolved in `time_zone`, else the
+    /// daemon's. Returns `ResponseData::TodoChange`.
+    ScheduleTodo {
+        todo_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        when: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        time_zone: Option<String>,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Correct fields; the row is yours from then on. Returns
+    /// `ResponseData::TodoChange`.
+    UpdateTodo {
+        todo_id: String,
+        edits: Vec<TodoEditData>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        time_zone: Option<String>,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Make a to-do from a message yourself. `kind` defaults to `other`;
+    /// `due` is a phrase or RFC3339. Returns `ResponseData::TodoChange`.
+    CreateTodo {
+        message_id: MessageId,
+        title: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        due: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        time_zone: Option<String>,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// The first run's one-time catch-up batch. Returns
+    /// `ResponseData::TodoCatchup`.
+    GetTodoCatchup {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+    },
+    /// Keep or let go in the catch-up; `let_go_all` takes every row still
+    /// waiting. Returns `ResponseData::TodoChange`.
+    SetTodoCatchup {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        decision: TodoCatchupDecisionData,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    // ----- Teaching in place -----
+    /// How a mode explains itself: header, empty states, first-encounter
+    /// card, why template and keys, with whether the card was retired.
+    /// `mode: None` returns every shipped mode. Returns
+    /// `ResponseData::ModeGuides`.
+    GetModeGuide {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mode: Option<String>,
+    },
+    /// Retire a mode's first-encounter card on this profile, so it stays
+    /// closed in every client; `seen: false` brings it back. Returns
+    /// `ResponseData::ModeGuides` with the one mode.
+    SetModeGuideSeen {
+        mode: String,
+        #[serde(default = "default_true")]
+        seen: bool,
+    },
     /// A place (Reading or Paper trail): inbox mail of that kind grouped by
     /// sender, newest bundle first, each with the reason it is there.
     /// `account_id: None` covers every enabled account.
@@ -1852,6 +1966,17 @@ impl Request {
             | Self::DeferThreads { .. }
             | Self::DetectPromises { .. }
             | Self::RecordPromise { .. }
+            | Self::GetTodoRunway { .. }
+            | Self::ListTodos { .. }
+            | Self::GetTodo { .. }
+            | Self::SetTodoState { .. }
+            | Self::ScheduleTodo { .. }
+            | Self::UpdateTodo { .. }
+            | Self::CreateTodo { .. }
+            | Self::GetTodoCatchup { .. }
+            | Self::SetTodoCatchup { .. }
+            | Self::GetModeGuide { .. }
+            | Self::SetModeGuideSeen { .. }
             | Self::GetRecipientBriefing { .. }
             | Self::SuggestCollaborators { .. }
             | Self::FindExpert { .. }
@@ -2808,6 +2933,30 @@ pub enum ResponseData {
         commitment: CommitmentData,
         dry_run: bool,
     },
+    /// Returned by `Request::GetTodoRunway`.
+    TodoRunway {
+        runway: TodoRunwayData,
+    },
+    /// Returned by `Request::ListTodos`.
+    Todos {
+        todos: Vec<TodoData>,
+    },
+    /// Returned by `Request::GetTodo`.
+    Todo {
+        todo: TodoData,
+    },
+    /// Returned by every to-do mutation.
+    TodoChange {
+        change: TodoChangeData,
+    },
+    /// Returned by `Request::GetTodoCatchup`.
+    TodoCatchup {
+        catchup: TodoCatchupData,
+    },
+    /// Returned by `Request::GetModeGuide` and `Request::SetModeGuideSeen`.
+    ModeGuides {
+        guides: Vec<ModeGuideData>,
+    },
     /// Returned by `Request::ListPlace`.
     Place {
         place: MailPlaceData,
@@ -2986,6 +3135,12 @@ impl ResponseData {
             | Self::ThreadsDeferred { .. }
             | Self::Promises { .. }
             | Self::RecordedPromise { .. }
+            | Self::TodoRunway { .. }
+            | Self::Todos { .. }
+            | Self::Todo { .. }
+            | Self::TodoChange { .. }
+            | Self::TodoCatchup { .. }
+            | Self::ModeGuides { .. }
             | Self::RecipientBriefing { .. }
             | Self::SuggestedCollaborators { .. }
             | Self::ExpertSuggestions { .. }

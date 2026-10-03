@@ -83,6 +83,7 @@ impl IpcClient {
         self.conn
             .request_response(req, |_| {}, request_timeout())
             .await
+            .map(crate::output::sanitize_response)
             .map_err(map_request_error)
     }
 
@@ -106,6 +107,7 @@ impl IpcClient {
         self.conn
             .request_response(req, on_event, None)
             .await
+            .map(crate::output::sanitize_response)
             .map_err(map_request_error)
     }
 

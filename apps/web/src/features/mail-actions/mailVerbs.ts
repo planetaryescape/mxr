@@ -177,6 +177,19 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
         waiting: deskLaneOf(target.threadId) === "waiting",
       });
     },
+    makeTodo: () => {
+      const target = single(hooks.getTarget(), "Make a to-do");
+      const primary = target?.primary;
+      if (!primary || refuseWhileDaemonDown("add a to-do")) return;
+      const who = parseAddress(primary.sender_detail ?? primary.sender);
+      const name = (who.name || who.email || "").split(/[\s@]/)[0];
+      openMailDialog({
+        kind: "todo-make",
+        messageId: primary.id,
+        suggestion: name ? `Reply to ${name}` : "",
+        subject: primary.subject || undefined,
+      });
+    },
     reply: openReply("single"),
     replyAll: openReply("all"),
     forward: openReply("forward"),

@@ -1,0 +1,18 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Show a to-do on your own date ("mon 9am", "in 3d", "fri"). The due date stays as it is
+
+Usage: mxr todo snooze [OPTIONS] <TODO_ID> [WHEN]...
+
+Arguments:
+  <TODO_ID>
+  [WHEN]...  When it should show up
+
+Options:
+      --clear              Go back to the date mxr worked out
+      --dry-run
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

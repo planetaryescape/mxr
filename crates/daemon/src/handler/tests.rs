@@ -692,6 +692,7 @@ mod platform_and_export;
 mod routing_and_search;
 mod stars;
 mod thread_gists;
+mod todo;
 
 /// The dispatch future holds every request arm's state inline. Past about a
 /// megabyte it overflows a Tokio worker's 2 MiB stack in debug builds (the

@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { ModeHelp, modeOfScopes } from "@/features/modes/ModeHelp";
 import { type ShortcutHint, useActionContext, useShortcutSections } from "@/lib/actions";
 
 interface HelpDialogProps {
@@ -25,6 +26,7 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
   const [query, setQuery] = useState("");
   const ctx = useActionContext();
   const sections = useShortcutSections(ctx);
+  const mode = modeOfScopes(ctx.scopes);
   const normalized = query.trim().toLowerCase();
   const visible = useMemo(() => {
     if (!normalized) return sections;
@@ -55,6 +57,7 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
             Keys follow the mxr TUI. Type to filter; Esc closes.
           </DialogDescription>
         </DialogHeader>
+        {mode ? <ModeHelp mode={mode} /> : null}
         <Input
           autoFocus
           aria-label="Filter shortcuts"

@@ -684,6 +684,26 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    #[command(
+        about = mxr_protocol::todo_copy::HEADER,
+        long_about = TODO_LONG_ABOUT
+    )]
+    Todo {
+        #[command(subcommand)]
+        action: Option<TodoAction>,
+        /// Limit to one account; the default covers every account.
+        #[arg(long, global = true)]
+        account: Option<String>,
+        #[arg(long, global = true)]
+        format: Option<OutputFormat>,
+    },
+    /// How each mode explains itself: its job, empty states, card and keys
+    Modes {
+        #[command(subcommand)]
+        action: ModesAction,
+        #[arg(long, global = true)]
+        format: Option<OutputFormat>,
+    },
     /// Track packages and deliveries detected in your mail
     Deliveries {
         #[command(subcommand)]
@@ -2015,6 +2035,139 @@ pub enum SnippetsAction {
     },
     /// Delete a snippet by name
     Remove { name: String },
+}
+
+const TODO_LONG_ABOUT: &str = "Things email asked you to do, ordered by when to act.
+
+Each row is one thing to do, written as what to do rather than the email's subject (\"Pay council tax\"), with who it's for, how much, when to act and when it's due. A row shows up on the day you should start on it: a bill three days before it's due, a renewal two weeks before, a verify link at once. Bills, failed payments, renewals, sign and verify requests, invites and the promises you made land here. A payment collected by direct debit or card on file is not a to-do; a failed one is.
+
+With no subcommand, prints the runway: Now, Coming up by week, Later, Whenever and Done this week.";
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum TodoAction {
+    /// The runway (the default), or every row in one state.
+    List {
+        /// The Expired list: rows past their window or let go. Undo restores one.
+        #[arg(long, conflicts_with = "state")]
+        expired: bool,
+        /// Every row in this state instead of the runway.
+        #[arg(long, value_enum)]
+        state: Option<TodoStateArg>,
+        /// Rows to list with --expired or --state.
+        #[arg(long, default_value_t = 200)]
+        limit: u32,
+    },
+    /// Where each field of a to-do came from: schema.org, a pattern in the
+    /// email, the lead-time table, a model, or you.
+    Why { todo_id: String },
+    /// Tick off to-dos.
+    Done {
+        #[arg(value_name = "TODO_ID", required = true)]
+        todo_ids: Vec<String>,
+        /// Show what would change without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Reopen to-dos you ticked off, marked not a to-do, or that expired.
+    /// A reopened row is yours: it never expires again.
+    Undo {
+        #[arg(value_name = "TODO_ID", required = true)]
+        todo_ids: Vec<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Not a to-do: kept as a correction and never shown again.
+    Dismiss {
+        #[arg(value_name = "TODO_ID", required = true)]
+        todo_ids: Vec<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Show a to-do on your own date ("mon 9am", "in 3d", "fri"). The due
+    /// date stays as it is.
+    Snooze {
+        todo_id: String,
+        /// When it should show up.
+        #[arg(value_name = "WHEN", required_unless_present = "clear", num_args = 1..)]
+        when: Vec<String>,
+        /// Go back to the date mxr worked out.
+        #[arg(long, conflicts_with = "when")]
+        clear: bool,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Correct a to-do: title, due, amount, counterparty or kind, as
+    /// field=value. The row is yours from then on.
+    Edit {
+        todo_id: String,
+        #[arg(value_name = "FIELD=VALUE", required = true)]
+        edits: Vec<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Add a to-do from a message yourself.
+    Add {
+        /// The message it's about.
+        #[arg(long = "from", value_name = "MESSAGE_ID")]
+        message_id: String,
+        /// What to do, starting with the verb: "Send the signed form".
+        #[arg(long)]
+        title: String,
+        /// When it's due: "fri", "9 oct", "in 2w".
+        #[arg(long)]
+        due: Option<String>,
+        /// bill, renewal, sign, rsvp, promise, other, ... (default other).
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// The first run's one-time catch-up: things from before mxr sorted
+    /// your mail that might still need you. Keep or let go of each.
+    Catchup {
+        /// Keep these: they join the runway and are yours from then on.
+        #[arg(long, value_name = "TODO_ID", num_args = 1.., conflicts_with_all = ["let_go", "let_go_all", "undecide"])]
+        keep: Vec<String>,
+        /// Let go of these: they join the Expired list.
+        #[arg(long, value_name = "TODO_ID", num_args = 1.., conflicts_with_all = ["let_go_all", "undecide"])]
+        let_go: Vec<String>,
+        /// Let go of everything still in the catch-up.
+        #[arg(long, conflicts_with = "undecide")]
+        let_go_all: bool,
+        /// Put rows you kept or let go back in the catch-up, undecided.
+        #[arg(long, value_name = "TODO_ID", num_args = 1..)]
+        undecide: Vec<String>,
+        /// Show what would change without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ModesAction {
+    /// What a mode is for, what lands there, its first-encounter card and
+    /// its keys. Every mode that has shipped when none is named.
+    Explain {
+        /// The mode, such as todo.
+        mode: Option<String>,
+    },
+    /// Retire a mode's first-encounter card in every client, as closing it
+    /// does, or bring it back with --show.
+    Card {
+        /// The mode, such as todo.
+        mode: String,
+        /// Show the card again the next time the mode has items.
+        #[arg(long)]
+        show: bool,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum TodoStateArg {
+    Open,
+    Done,
+    Dismissed,
+    Expired,
 }
 
 #[derive(Debug, Clone, Subcommand)]

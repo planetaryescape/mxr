@@ -464,6 +464,18 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Navigation".into(),
         },
         PaletteCommand {
+            label: "To do".into(),
+            shortcut: "gx".into(),
+            action: Action::OpenTodo,
+            category: "Navigation".into(),
+        },
+        PaletteCommand {
+            label: "Make a to-do from this conversation".into(),
+            shortcut: "t".into(),
+            action: Action::CreateTodoFromMessage,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
             label: "Reading".into(),
             shortcut: "gr".into(),
             action: Action::OpenPlace(mxr_protocol::MailPlaceData::Reading),

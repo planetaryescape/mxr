@@ -250,13 +250,14 @@ for the smart tier and GPT-6.1 Sol (GPT-6 Astra available in config) for
   or "you", on hover and in JSON. An unchecked money or date field carries
   an open dot. Expensify and Paperless both report wrong dates and totals
   from extraction (archive.md §3).
-- **One-click money links are gated.** A "Pay on camden.gov.uk" button
-  appears only when DMARC passes for the sender's domain (`auth_results`
-  in `crates/mail-parse/src/lib.rs`) and the link's registrable domain
-  matches the sender's or one seen in earlier authenticated mail from
-  them. Otherwise the row says "Open email to pay" and shows the raw
-  domain. The domain is always visible before Enter, and the TUI footer
-  prints it (todo.md §5, §9). How strict the gate is stays BK's call.
+- **No one-click money links.** A to-do's action opens the source email in
+  mxr with the link it is about highlighted ("Open email to pay"), and
+  shows that link's domain. mxr never opens a pay, verify or sign link
+  from the row. Two review rounds found a way past every gate tried
+  (forged authentication results, primed or backdated sender history,
+  subdomains, lookalikes, redirects and click trackers), so the one-click
+  link is deferred until a design survives review:
+  [one-click-pay-link.md](../issues/one-click-pay-link.md).
 - **Badges count work only:** Now, and To do's Now band.
 
 ## Now shows at most ten things in four fixed sections
@@ -381,12 +382,12 @@ OmniFocus: when it's due, when you must act, and when you chose to do it.
 | To do 3|  3 things need you this week. Council tax first, act by Wed.  [ Do this week ]|
 |        |  NOW                                                                          |
 |        |  Pay council tax             Camden Council   £142.00                         |
-|        |    [######----]  act by Wed 7 · due Fri 9        [ Pay on camden.gov.uk  ↵ ]  |
+|        |    [######----]  act by Wed 7 · due Fri 9        [ Open email to pay     ↵ ]  |
 |        |    from Camden Council, 28 Sep · Here because: "payment due 9 October" (rule) |
 |        |  Send the signed engagement form   Priya Shah (you promised)                  |
 |        |    [########--]  act by Thu 8 · due Fri 9        [ Reply to Priya        ↵ ]  |
 |        |  Verify your new sign-in email   Octopus Energy                               |
-|        |    link expires today 18:00                      [ Verify on octopus...  ↵ ]  |
+|        |    link expires today 18:00                      [ Open email to verify  ↵ ]  |
 |        |  COMING UP                                                                    |
 |        |  wk of 12 Oct  RSVP Sam's leaving drinks            shows up Mon 12 · Thu 15  |
 |        |  wk of 19 Oct  Renew car insurance  Admiral £412    shows up Mon 19 · due 26  |
@@ -401,7 +402,8 @@ Coming up (30 days by week, dimmed, "shows up Mon 12"), Whenever
 surface date to deadline in the accent colour, never red; past the deadline
 it reads "was due Fri" (D101). Selecting a row opens a side panel of
 editable field chips, each with its source sentence. Enter does the one
-thing: opens the gated link, starts the reply, or answers the RSVP.
+thing: opens the email with its link highlighted, starts the reply, or
+answers the RSVP.
 "Do this week" (`g F`) steps through Now like Focus & reply. Returning to
 the window within 10 minutes of Enter on a link asks "Done?" with `e`. A
 bill collected by direct debit or card on file is an Update, as Monzo
@@ -1316,8 +1318,8 @@ chunking.
 
 - **Check:** in the demo, Camden's council tax email (schema.org
   `Invoice`) reads "Pay council tax, Camden Council, £142.00, act by Wed 7
-  · due Fri 9" with "Pay on camden.gov.uk"; a lookalike-domain copy shows
-  "Open email to pay" and the raw domain; the receipt turns it into "Looks
+  · due Fri 9" with "Open email to pay" and the council's domain, as does
+  a lookalike-domain copy with its own domain; the receipt turns it into "Looks
   done"; a bill due in five days appears on the desk three days before,
   once, across a restart; an RSVP for an event that ended yesterday is
   never in To do. On BK's real mail `mxr todo --format json` lists
@@ -1587,9 +1589,11 @@ BK asked on 2026-10-02 for these to be decided for him ("review and decide
 for me, I just want a working app"). Each follows the research and the
 rules above; D117 records them.
 
-- **Pay-link gate.** A one-click pay button needs three things: DMARC pass,
-  the link's registrable domain matching the sender's, and earlier mail
-  from that domain. Anything else shows "Open email to pay".
+- **Pay links.** No one-click pay link in phase 1: the action opens the
+  email with the link highlighted, and the link is never opened from the
+  row. Every gate tried had a way around it (see
+  [one-click-pay-link.md](../issues/one-click-pay-link.md)); the one-click
+  link returns only with a design that survives review.
 - **No weekly money total.** Per-item amounts only. A running total reads
   as financial advice and adds worry without an action.
 - **Archive on last done.** Stays on by default. Toasts say which happened,

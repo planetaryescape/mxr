@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Add a to-do from a message yourself
+
+Usage: mxr todo add [OPTIONS] --from <MESSAGE_ID> --title <TITLE>
+
+Options:
+      --from <MESSAGE_ID>  The message it's about
+      --title <TITLE>      What to do, starting with the verb: "Send the signed form"
+      --due <DUE>          When it's due: "fri", "9 oct", "in 2w"
+      --kind <KIND>        bill, renewal, sign, rsvp, promise, other, ... (default other)
+      --dry-run
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

@@ -37,6 +37,8 @@ pub struct HelpModalState<'a> {
     pub scroll_offset: u16,
     pub query: &'a str,
     pub selected: usize,
+    /// The mode on screen, when it has a guide: help leads with it.
+    pub mode_guide: Option<&'a mxr_protocol::ModeGuideData>,
     pub _marker: std::marker::PhantomData<&'a ()>,
 }
 
@@ -63,8 +65,30 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HelpModalState<'_>, theme: &cr
     }
 }
 
+/// `?` in a mode starts with the mode: what it is for, what lands there,
+/// its card, then its keys with their verbs. A closed card is found again
+/// here.
+fn mode_section(guide: &mxr_protocol::ModeGuideData) -> HelpSection {
+    let mut entries = vec![
+        ("What it's for".to_string(), guide.header.clone()),
+        ("What lands here".to_string(), guide.lands_here.clone()),
+        ("How it works".to_string(), guide.card.clone()),
+    ];
+    entries.extend(
+        guide
+            .keys
+            .iter()
+            .map(|key| (key.key.clone(), key.verb.clone())),
+    );
+    HelpSection {
+        title: guide.name.clone(),
+        entries,
+    }
+}
+
 fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
-    let mut sections = vec![
+    let mut sections: Vec<HelpSection> = state.mode_guide.map(mode_section).into_iter().collect();
+    sections.extend(vec![
         HelpSection {
             title: "Start Here".into(),
             entries: vec![
@@ -124,7 +148,7 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
             title: "Most Common Actions".into(),
             entries: context_entries(state),
         },
-    ];
+    ]);
 
     sections.extend(screen_sections(state.ui_context));
     sections.push(HelpSection {
@@ -703,6 +727,7 @@ mod tests {
             scroll_offset: 0,
             query,
             selected: 0,
+            mode_guide: None,
             _marker: std::marker::PhantomData,
         }
     }

@@ -1,7 +1,7 @@
 use super::*;
 use ratatui::crossterm;
 
-fn plain_or_shift(modifiers: KeyModifiers) -> bool {
+pub(super) fn plain_or_shift(modifiers: KeyModifiers) -> bool {
     modifiers.is_empty() || modifiers == KeyModifiers::SHIFT
 }
 
@@ -56,6 +56,7 @@ impl App {
             scroll_offset: self.modals.help_scroll_offset,
             query: &self.modals.help_query,
             selected: self.modals.help_selected,
+            mode_guide: self.help_mode_guide(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -148,7 +149,10 @@ impl App {
         self.modals.help_selected = self.modals.help_selected.saturating_sub(8);
     }
 
-    fn contextual_input_action(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+    pub(super) fn contextual_input_action(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> Option<Action> {
         let action = self.input.handle_key(key)?;
         crate::action::action_allowed_in_context(&action, self.current_ui_context())
             .then_some(action)
@@ -189,6 +193,7 @@ impl App {
                 Some(Action::AttachmentList)
             }
             (KeyCode::Char('L'), modifiers) if plain_or_shift(modifiers) => Some(Action::OpenLinks),
+            (KeyCode::Char('t'), KeyModifiers::NONE) => Some(Action::CreateTodoFromMessage),
             (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::ExportThread)
             }
@@ -920,6 +925,11 @@ impl App {
             return self.reply_later_prompt_key(key.code, key.modifiers);
         }
 
+        if self.mailbox.todo_page.prompt.is_some() {
+            self.todo_prompt_key(key.code, key.modifiers);
+            return None;
+        }
+
         if self.modals.snooze_panel.visible {
             // Custom-input mode: text-entry takes precedence over list navigation.
             if self.modals.snooze_panel.custom_input.is_some() {
@@ -1351,6 +1361,9 @@ impl App {
             }
             ActivePane::MailList if matches!(self.mailbox.mailbox_view, MailboxView::Place(_)) => {
                 self.place_lens_key(key)
+            }
+            ActivePane::MailList if self.mailbox.mailbox_view == MailboxView::Todo => {
+                self.todo_lens_key(key)
             }
             ActivePane::MailList => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),

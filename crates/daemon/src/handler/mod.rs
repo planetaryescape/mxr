@@ -39,6 +39,7 @@ mod helpers;
 mod humanizer;
 mod mail_kind;
 mod mailbox;
+mod mode_guide;
 mod mutations;
 mod notifications;
 mod owed;
@@ -62,6 +63,8 @@ mod thread_context;
 mod thread_gist;
 pub(crate) mod thread_gists;
 mod time;
+mod todo_view;
+pub(crate) mod todos;
 mod triage;
 mod user_voice;
 mod whois;
@@ -1262,6 +1265,71 @@ async fn dispatch(
             due_at,
             dry_run,
         } => promises::record_promise(state, message_id, what, *due_at, *dry_run).await,
+        Request::GetTodoRunway {
+            account_id,
+            mark_seen,
+        } => todos::get_runway(state, account_id.as_ref(), *mark_seen).await,
+        Request::ListTodos {
+            account_id,
+            state: todo_state,
+            limit,
+        } => todos::list_todos(state, account_id.as_ref(), *todo_state, *limit).await,
+        Request::GetTodo { todo_id } => todos::get_todo(state, todo_id).await,
+        Request::SetTodoState {
+            todo_ids,
+            action,
+            dry_run,
+        } => todos::set_state(state, todo_ids, *action, *dry_run).await,
+        Request::ScheduleTodo {
+            todo_id,
+            when,
+            time_zone,
+            dry_run,
+        } => {
+            todos::schedule(
+                state,
+                todo_id,
+                when.as_deref(),
+                time_zone.as_deref(),
+                *dry_run,
+            )
+            .await
+        }
+        Request::UpdateTodo {
+            todo_id,
+            edits,
+            time_zone,
+            dry_run,
+        } => todos::update(state, todo_id, edits, time_zone.as_deref(), *dry_run).await,
+        Request::CreateTodo {
+            message_id,
+            title,
+            kind,
+            due,
+            time_zone,
+            dry_run,
+        } => {
+            todos::create(
+                state,
+                message_id,
+                title,
+                kind.as_deref(),
+                due.as_deref(),
+                time_zone.as_deref(),
+                *dry_run,
+            )
+            .await
+        }
+        Request::GetTodoCatchup { account_id } => {
+            todos::get_catchup(state, account_id.as_ref()).await
+        }
+        Request::SetTodoCatchup {
+            account_id,
+            decision,
+            dry_run,
+        } => todos::set_catchup(state, account_id.as_ref(), decision, *dry_run).await,
+        Request::GetModeGuide { mode } => mode_guide::get(state, mode.as_deref()).await,
+        Request::SetModeGuideSeen { mode, seen } => mode_guide::set_seen(state, mode, *seen).await,
         Request::GetRecipientBriefing {
             account_id,
             email,
@@ -1697,6 +1765,16 @@ async fn request_account_scope(
         | Request::ScanDeliveries {
             account_id: None, ..
         }
+        | Request::GetTodoRunway {
+            account_id: None, ..
+        }
+        | Request::ListTodos {
+            account_id: None, ..
+        }
+        | Request::GetTodoCatchup { account_id: None }
+        | Request::SetTodoCatchup {
+            account_id: None, ..
+        }
         | Request::ListSenders {
             account_id: None, ..
         }
@@ -1738,9 +1816,22 @@ async fn request_account_scope(
             source: PromiseSourceData::SentMessage { message_id },
             ..
         }
-        | Request::RecordPromise { message_id, .. } => {
+        | Request::RecordPromise { message_id, .. }
+        | Request::CreateTodo { message_id, .. } => {
             envelope_account_scope(state, std::slice::from_ref(message_id)).await
         }
+        Request::GetTodo { todo_id }
+        | Request::ScheduleTodo { todo_id, .. }
+        | Request::UpdateTodo { todo_id, .. } => {
+            todos::todo_accounts(state, std::slice::from_ref(todo_id))
+                .await
+                .map(RequestAccountScope::Accounts)
+                .map_err(|error| error.to_string())
+        }
+        Request::SetTodoState { todo_ids, .. } => todos::todo_accounts(state, todo_ids)
+            .await
+            .map(RequestAccountScope::Accounts)
+            .map_err(|error| error.to_string()),
         Request::GetMessageKind { message_id } => {
             envelope_account_scope(state, std::slice::from_ref(message_id)).await
         }
@@ -1996,6 +2087,11 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListSnippets
         | Request::ListDeliveries { .. }
         | Request::GetDelivery { .. }
+        | Request::GetTodoRunway { .. }
+        | Request::ListTodos { .. }
+        | Request::GetTodo { .. }
+        | Request::GetTodoCatchup { .. }
+        | Request::GetModeGuide { .. }
         | Request::ListSignatures
         | Request::ListSignatureDefaults
         | Request::ResolveSignature { .. }
@@ -2148,6 +2244,12 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::RebuildRelationshipProfile { .. }
         | Request::ResolveCommitment { .. }
         | Request::RecordPromise { .. }
+        | Request::SetTodoState { .. }
+        | Request::ScheduleTodo { .. }
+        | Request::UpdateTodo { .. }
+        | Request::CreateTodo { .. }
+        | Request::SetTodoCatchup { .. }
+        | Request::SetModeGuideSeen { .. }
         | Request::RebuildUserVoice { .. }
         | Request::SetScreenerDecision { .. }
         | Request::ClearScreenerDecision { .. }
@@ -2360,6 +2462,17 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetThreadGists { .. } => "get_thread_gists",
         Request::DetectPromises { .. } => "detect_promises",
         Request::RecordPromise { .. } => "record_promise",
+        Request::GetTodoRunway { .. } => "get_todo_runway",
+        Request::ListTodos { .. } => "list_todos",
+        Request::GetTodo { .. } => "get_todo",
+        Request::SetTodoState { .. } => "set_todo_state",
+        Request::ScheduleTodo { .. } => "schedule_todo",
+        Request::UpdateTodo { .. } => "update_todo",
+        Request::CreateTodo { .. } => "create_todo",
+        Request::GetTodoCatchup { .. } => "get_todo_catchup",
+        Request::SetTodoCatchup { .. } => "set_todo_catchup",
+        Request::GetModeGuide { .. } => "get_mode_guide",
+        Request::SetModeGuideSeen { .. } => "set_mode_guide_seen",
         Request::GetRecipientBriefing { .. } => "get_recipient_briefing",
         Request::SuggestCollaborators { .. } => "suggest_collaborators",
         Request::FindExpert { .. } => "find_expert",
@@ -2431,6 +2544,10 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::BackfillCalendarInvites { account_id }
         | Request::ListDeliveries { account_id, .. }
         | Request::ScanDeliveries { account_id, .. }
+        | Request::GetTodoRunway { account_id, .. }
+        | Request::ListTodos { account_id, .. }
+        | Request::GetTodoCatchup { account_id }
+        | Request::SetTodoCatchup { account_id, .. }
         | Request::ListSenders { account_id, .. }
         | Request::ListStorageBreakdown { account_id, .. }
         | Request::ListLargestMessages { account_id, .. }

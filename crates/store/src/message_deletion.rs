@@ -85,6 +85,12 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
         "sent_draft_receipts",
         MessageDeletionRule::KeptNoText("ids a sent draft became"),
     ),
+    (
+        "todo_runs",
+        MessageDeletionRule::KeptNoText(
+            "the first run's newest-first position: an id and a date, never text",
+        ),
+    ),
 ];
 
 /// Failed cleanups of a deleted message's files before it is left alone.
@@ -207,6 +213,25 @@ impl super::Store {
             "DELETE FROM contact_commitments WHERE account_id = ?1
                AND evidence_msg_id IN (SELECT id FROM temp.mxr_deleting)",
             "DELETE FROM event_log WHERE message_id IN (SELECT id FROM temp.mxr_deleting)",
+            // A detected to-do goes with its email. One the user made or
+            // edited is theirs and stays, without the words it copied from
+            // the email; the foreign keys then clear its pointers to it.
+            concat!(
+                "DELETE FROM todos WHERE account_id = ?1
+                   AND source_message_id IN (SELECT id FROM temp.mxr_deleting)
+                   AND scheduled_for IS NULL AND ",
+                todo_untouched_sql!("")
+            ),
+            "UPDATE todos SET due_words = NULL, action_url = NULL,
+                    looks_done_reason = NULL, reason = 'Its email was deleted.',
+                    field_sources = COALESCE(
+                        (SELECT json_group_object(key, json_remove(value, '$.evidence'))
+                         FROM json_each(todos.field_sources)), '{}')
+               WHERE account_id = ?1
+                 AND source_message_id IN (SELECT id FROM temp.mxr_deleting)",
+            "UPDATE todos SET looks_done_reason = NULL
+               WHERE account_id = ?1
+                 AND looks_done_message_id IN (SELECT id FROM temp.mxr_deleting)",
             "CREATE TEMP TABLE mxr_deleting_deliveries AS
                SELECT DISTINCT delivery_id AS id FROM delivery_messages
                WHERE message_id IN (SELECT id FROM temp.mxr_deleting)",

@@ -64,6 +64,26 @@
   }
 }
 
+/*
+ * A ticked-off to-do folds up and fades; the next row takes its place.
+ * Reduced motion drops it at once (todoVerbs never starts the fold).
+ */
+@utility todo-fold {
+  animation: todo-fold var(--motion-duration-base) var(--motion-ease) forwards;
+  transform-origin: top;
+}
+
+:root[data-motion="reduced"] .todo-fold {
+  animation: none;
+}
+
+@keyframes todo-fold {
+  to {
+    opacity: 0;
+    transform: scaleY(0.4);
+  }
+}
+
 @keyframes row-exit {
   to {
     opacity: 0;

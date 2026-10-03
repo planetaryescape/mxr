@@ -114,6 +114,7 @@ fn message_view_snapshot() {
         bulk_selected: false,
         has_unsubscribe: true,
         signature_expanded: false,
+        highlight_link: None,
         assets_loading: false,
     };
 
@@ -319,6 +320,7 @@ fn sidebar_snapshot() {
                 subscription_count: 2,
                 desk_active: false,
                 desk_count: 3,
+                todo_active: false,
                 reading_active: false,
                 paper_trail_active: false,
                 owed_active: false,
@@ -379,6 +381,7 @@ fn search_page_snapshot() {
         bulk_selected: false,
         has_unsubscribe: true,
         signature_expanded: false,
+        highlight_link: None,
         assets_loading: false,
     }];
 
@@ -773,6 +776,7 @@ fn help_modal_snapshot() {
                 scroll_offset: 0,
                 query: "",
                 selected: 0,
+                mode_guide: None,
                 _marker: std::marker::PhantomData,
             },
             &mxr_tui::theme::Theme::default(),

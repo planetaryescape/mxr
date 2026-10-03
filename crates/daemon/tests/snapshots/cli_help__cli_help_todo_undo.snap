@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Reopen to-dos you ticked off, marked not a to-do, or that expired. A reopened row is yours: it never expires again
+
+Usage: mxr todo undo [OPTIONS] <TODO_ID>...
+
+Arguments:
+  <TODO_ID>...
+
+Options:
+      --dry-run
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

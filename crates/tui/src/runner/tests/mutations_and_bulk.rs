@@ -1172,9 +1172,10 @@ fn flattened_sidebar_navigation_reaches_saved_searches() {
     }];
     app.mailbox.active_pane = ActivePane::Sidebar;
 
-    // Sidebar order: INBOX, Desk, Reading, Paper trail, AllMail,
-    // Subscriptions, Owed (Slice 2.3), CalendarInvites, SavedSearch. Eight
+    // Sidebar order: INBOX, Desk, To do, Reading, Paper trail, AllMail,
+    // Subscriptions, Owed (Slice 2.3), CalendarInvites, SavedSearch. Nine
     // `j` presses to reach the saved search.
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));

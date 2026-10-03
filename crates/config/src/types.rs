@@ -31,6 +31,7 @@ pub struct MxrConfig {
     pub activity: ActivityConfig,
     pub deliveries: DeliveriesConfig,
     pub notifications: NotificationConfig,
+    pub todo: TodoConfig,
 }
 
 /// Package/delivery tracking. Detection is local-first; the optional LLM
@@ -46,6 +47,26 @@ pub struct DeliveriesConfig {
 impl Default for DeliveriesConfig {
     fn default() -> Self {
         Self { enabled: true }
+    }
+}
+
+/// To do: things email asked you to do. Detection is rules only and local.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TodoConfig {
+    /// Find to-dos in new mail and run the first run over history.
+    pub enabled: bool,
+    /// The first run's catch-up window: undated to-dos from this many days
+    /// back are shown once to keep or let go; older ones are let go.
+    pub catchup_days: u32,
+}
+
+impl Default for TodoConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            catchup_days: 14,
+        }
     }
 }
 

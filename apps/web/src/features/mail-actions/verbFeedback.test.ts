@@ -33,6 +33,14 @@ const STATE_CHANGING = [
   "focus.send",
   "focus.remind",
   "focus.snooze",
+  "todo.done",
+  "todo.dismiss",
+  "todo.schedule",
+  "todo.edit",
+  "todo.catchup-keep",
+  "todo.catchup-let-go",
+  "todo.catchup-let-go-all",
+  "mail.make-todo",
 ];
 
 describe("verb feedback table", () => {

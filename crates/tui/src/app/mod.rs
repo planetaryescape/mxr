@@ -38,6 +38,7 @@ mod selection_helpers;
 mod semantic_actions;
 mod sidebar_helpers;
 mod state;
+mod todo_actions;
 use crate::action::{Action, PatternKind, ScreenContext, UiContext};
 use crate::async_result::SearchResultData;
 use crate::client::Client;
@@ -72,6 +73,7 @@ pub(crate) use promises::{PROMISE_ANSWER_GUARD, PROMISE_PROMPT_TTL};
 pub use row_gists::{RowGist, RowGistState, RowGists};
 use state::PendingPreviewRead;
 pub use state::*;
+pub(crate) use todo_actions::TODO_MODE;
 
 const PREVIEW_MARK_READ_DELAY: Duration = Duration::from_secs(5);
 pub const SEARCH_PAGE_SIZE: u32 = 200;
@@ -118,6 +120,9 @@ pub enum MutationEffect {
     /// A sender moved to another kind by the user: refresh like
     /// `RefreshPlaces`, and offer `u` to move it back.
     SenderMoved(String),
+    /// A to-do changed (ticked off, scheduled, edited, made, restored,
+    /// kept or let go): refetch the lens and say what happened.
+    Todo(String),
     /// Successful SendDraft. Refreshes the active label so a Sent-view user
     /// sees the just-sent message immediately (no manual sync), and shows
     /// `status` in the status bar.
@@ -187,6 +192,11 @@ pub enum UndoAction {
         sender_email: String,
         previous: Option<mxr_protocol::SenderKindData>,
     },
+    /// To-dos ticked off or dismissed: put them back on the runway
+    /// (`SetTodoState` undo).
+    Todos(Vec<String>),
+    /// Catch-up rows kept or let go: back in the batch, undecided.
+    Catchup(Vec<String>),
 }
 
 /// Captured handle for a recent undoable mutation. The TUI uses this to

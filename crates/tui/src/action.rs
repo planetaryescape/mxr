@@ -88,6 +88,40 @@ pub enum Action {
     /// Open the calendar-invites lens (sidebar item). Loads invites via
     /// `Request::ListInvites` into the dedicated lens view.
     OpenCalendarInvites,
+    /// Open To do (`g x`): things email asked you to do, as a runway
+    /// ordered by when to act (`Request::GetTodoRunway`).
+    OpenTodo,
+    /// Enter on a to-do: open its link when the pay-link gate passed,
+    /// otherwise its email.
+    TodoPrimary,
+    /// `e`: tick the to-do off, with `u` to undo.
+    TodoDone,
+    /// `Z`: show it on a date you type, previewed as you type.
+    TodoSchedule,
+    /// `,`: correct a field as `field=value`.
+    TodoEdit,
+    /// `X`: not a to-do; kept as a correction.
+    TodoDismiss,
+    /// `o`: open the email the to-do came from.
+    TodoOpenEmail,
+    /// Esc on the first-encounter card: retire it in every client.
+    TodoCloseCard,
+    /// The Expired list, one key from restore.
+    TodoOpenExpired,
+    /// The first run's one-time catch-up.
+    TodoOpenCatchup,
+    /// Back from the Expired list or the catch-up to the runway.
+    TodoShowRunway,
+    /// Put an expired row back on the runway.
+    TodoRestore,
+    /// Keep the catch-up row under the cursor.
+    CatchupKeep,
+    /// Let go of the catch-up row under the cursor.
+    CatchupLetGo,
+    /// Preview letting go of the whole catch-up, or confirm the preview.
+    CatchupLetGoAll,
+    /// `t` on a conversation: make a to-do from it.
+    CreateTodoFromMessage,
     GoToLabel,
     // Command palette
     OpenCommandPalette,

@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TodoRouteImport } from './routes/todo'
 import { Route as SubscriptionsRouteImport } from './routes/subscriptions'
 import { Route as SnoozedRouteImport } from './routes/snoozed'
 import { Route as SearchRouteImport } from './routes/search'
@@ -31,6 +32,7 @@ import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as AccountsRouteImport } from './routes/accounts'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TodoThreadIdRouteImport } from './routes/todo.$threadId'
 import { Route as SnoozedThreadIdRouteImport } from './routes/snoozed.$threadId'
 import { Route as SettingsSectionRouteImport } from './routes/settings.$section'
 import { Route as SenderAddressRouteImport } from './routes/sender.$address'
@@ -52,6 +54,11 @@ import { Route as MMailboxThreadIdRouteImport } from './routes/m.$mailbox.$threa
 import { Route as MSavedSlugThreadIdRouteImport } from './routes/m.saved.$slug.$threadId'
 import { Route as MLabelNameThreadIdRouteImport } from './routes/m.label.$name.$threadId'
 
+const TodoRoute = TodoRouteImport.update({
+  id: '/todo',
+  path: '/todo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SubscriptionsRoute = SubscriptionsRouteImport.update({
   id: '/subscriptions',
   path: '/subscriptions',
@@ -161,6 +168,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const TodoThreadIdRoute = TodoThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => TodoRoute,
 } as any)
 const SnoozedThreadIdRoute = SnoozedThreadIdRouteImport.update({
   id: '/$threadId',
@@ -286,6 +298,7 @@ export interface FileRoutesByFullPath {
   '/search': typeof SearchRouteWithChildren
   '/snoozed': typeof SnoozedRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
+  '/todo': typeof TodoRouteWithChildren
   '/accounts/$key': typeof AccountsKeyRoute
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
@@ -301,6 +314,7 @@ export interface FileRoutesByFullPath {
   '/sender/$address': typeof SenderAddressRoute
   '/settings/$section': typeof SettingsSectionRoute
   '/snoozed/$threadId': typeof SnoozedThreadIdRoute
+  '/todo/$threadId': typeof TodoThreadIdRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRouteWithChildren
   '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
@@ -330,6 +344,7 @@ export interface FileRoutesByTo {
   '/search': typeof SearchRouteWithChildren
   '/snoozed': typeof SnoozedRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
+  '/todo': typeof TodoRouteWithChildren
   '/accounts/$key': typeof AccountsKeyRoute
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
@@ -345,6 +360,7 @@ export interface FileRoutesByTo {
   '/sender/$address': typeof SenderAddressRoute
   '/settings/$section': typeof SettingsSectionRoute
   '/snoozed/$threadId': typeof SnoozedThreadIdRoute
+  '/todo/$threadId': typeof TodoThreadIdRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRouteWithChildren
   '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
@@ -375,6 +391,7 @@ export interface FileRoutesById {
   '/search': typeof SearchRouteWithChildren
   '/snoozed': typeof SnoozedRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
+  '/todo': typeof TodoRouteWithChildren
   '/accounts/$key': typeof AccountsKeyRoute
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
@@ -390,6 +407,7 @@ export interface FileRoutesById {
   '/sender/$address': typeof SenderAddressRoute
   '/settings/$section': typeof SettingsSectionRoute
   '/snoozed/$threadId': typeof SnoozedThreadIdRoute
+  '/todo/$threadId': typeof TodoThreadIdRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRouteWithChildren
   '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
@@ -421,6 +439,7 @@ export interface FileRouteTypes {
     | '/search'
     | '/snoozed'
     | '/subscriptions'
+    | '/todo'
     | '/accounts/$key'
     | '/analytics/$dashboard'
     | '/compose/$draftId'
@@ -436,6 +455,7 @@ export interface FileRouteTypes {
     | '/sender/$address'
     | '/settings/$section'
     | '/snoozed/$threadId'
+    | '/todo/$threadId'
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
@@ -465,6 +485,7 @@ export interface FileRouteTypes {
     | '/search'
     | '/snoozed'
     | '/subscriptions'
+    | '/todo'
     | '/accounts/$key'
     | '/analytics/$dashboard'
     | '/compose/$draftId'
@@ -480,6 +501,7 @@ export interface FileRouteTypes {
     | '/sender/$address'
     | '/settings/$section'
     | '/snoozed/$threadId'
+    | '/todo/$threadId'
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
@@ -509,6 +531,7 @@ export interface FileRouteTypes {
     | '/search'
     | '/snoozed'
     | '/subscriptions'
+    | '/todo'
     | '/accounts/$key'
     | '/analytics/$dashboard'
     | '/compose/$draftId'
@@ -524,6 +547,7 @@ export interface FileRouteTypes {
     | '/sender/$address'
     | '/settings/$section'
     | '/snoozed/$threadId'
+    | '/todo/$threadId'
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
@@ -554,6 +578,7 @@ export interface RootRouteChildren {
   SearchRoute: typeof SearchRouteWithChildren
   SnoozedRoute: typeof SnoozedRouteWithChildren
   SubscriptionsRoute: typeof SubscriptionsRoute
+  TodoRoute: typeof TodoRouteWithChildren
   ComposeDraftIdRoute: typeof ComposeDraftIdRoute
   ComposeNewRoute: typeof ComposeNewRoute
   MMailboxRoute: typeof MMailboxRouteWithChildren
@@ -565,6 +590,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/todo': {
+      id: '/todo'
+      path: '/todo'
+      fullPath: '/todo'
+      preLoaderRoute: typeof TodoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/subscriptions': {
       id: '/subscriptions'
       path: '/subscriptions'
@@ -718,6 +750,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/todo/$threadId': {
+      id: '/todo/$threadId'
+      path: '/$threadId'
+      fullPath: '/todo/$threadId'
+      preLoaderRoute: typeof TodoThreadIdRouteImport
+      parentRoute: typeof TodoRoute
     }
     '/snoozed/$threadId': {
       id: '/snoozed/$threadId'
@@ -973,6 +1012,16 @@ const SnoozedRouteChildren: SnoozedRouteChildren = {
 const SnoozedRouteWithChildren =
   SnoozedRoute._addFileChildren(SnoozedRouteChildren)
 
+interface TodoRouteChildren {
+  TodoThreadIdRoute: typeof TodoThreadIdRoute
+}
+
+const TodoRouteChildren: TodoRouteChildren = {
+  TodoThreadIdRoute: TodoThreadIdRoute,
+}
+
+const TodoRouteWithChildren = TodoRoute._addFileChildren(TodoRouteChildren)
+
 interface MMailboxRouteChildren {
   MMailboxThreadIdRoute: typeof MMailboxThreadIdRoute
 }
@@ -1032,6 +1081,7 @@ const rootRouteChildren: RootRouteChildren = {
   SearchRoute: SearchRouteWithChildren,
   SnoozedRoute: SnoozedRouteWithChildren,
   SubscriptionsRoute: SubscriptionsRoute,
+  TodoRoute: TodoRouteWithChildren,
   ComposeDraftIdRoute: ComposeDraftIdRoute,
   ComposeNewRoute: ComposeNewRoute,
   MMailboxRoute: MMailboxRouteWithChildren,

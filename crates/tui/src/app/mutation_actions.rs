@@ -162,6 +162,30 @@ impl App {
                                 );
                             }
                         }
+                        UndoAction::Todos(todo_ids) => {
+                            self.queue_mutation(
+                                Request::SetTodoState {
+                                    todo_ids,
+                                    action: mxr_protocol::TodoStateActionData::Undo,
+                                    dry_run: false,
+                                },
+                                MutationEffect::Todo("Back on the runway".into()),
+                                status,
+                            );
+                        }
+                        UndoAction::Catchup(todo_ids) => {
+                            self.queue_mutation(
+                                Request::SetTodoCatchup {
+                                    account_id: None,
+                                    decision: mxr_protocol::TodoCatchupDecisionData::Undecide {
+                                        todo_ids,
+                                    },
+                                    dry_run: false,
+                                },
+                                MutationEffect::Todo("Back in the catch-up".into()),
+                                status,
+                            );
+                        }
                         // Setting the previous kind again is the undo; its
                         // own answer offers no further undo.
                         UndoAction::SenderKind {

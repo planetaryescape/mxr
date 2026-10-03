@@ -53,7 +53,12 @@ fn g_x_opens_to_do_and_enter_opens_the_email_never_the_link() {
     assert!(message_id.is_some());
     press(&mut app, KeyCode::Enter);
     assert_eq!(
-        app.mailbox.pending_invite_open, message_id,
+        app.mailbox
+            .todo_page
+            .pending_open
+            .as_ref()
+            .map(|open| open.message_id.clone()),
+        message_id,
         "Open email to pay opens the email"
     );
     assert!(app
@@ -312,4 +317,60 @@ fn undoing_a_catch_up_decision_puts_the_rows_back_undecided() {
             queued(&app)
         );
     }
+}
+
+#[test]
+fn enter_opens_the_source_message_with_its_link_to_mark() {
+    let mut app = todo_app(true);
+    let bill = app.mailbox.todo_page.runway.as_ref().unwrap().now[0].clone();
+    press(&mut app, KeyCode::Enter);
+    let open = app
+        .mailbox
+        .todo_page
+        .pending_open
+        .clone()
+        .expect("Enter asks for the source message");
+    assert_eq!(Some(open.message_id), bill.source_message_id);
+    assert_eq!(open.link.as_deref(), Some("https://www.camden.gov.uk/pay"));
+
+    // Once the envelope lands, that message (not the newest) is the one shown,
+    // and its link is the one marked.
+    let thread = mxr_core::id::ThreadId::new();
+    let mut source = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .subject("Your council tax bill")
+        .thread_id(thread.clone())
+        .date(chrono::Utc::now() - chrono::Duration::days(2))
+        .flags(mxr_core::types::MessageFlags::READ)
+        .build();
+    source.id = bill.source_message_id.clone().unwrap();
+    let newer = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .subject("Re: Your council tax bill")
+        .thread_id(thread)
+        .build();
+    app.mailbox.all_envelopes = vec![source.clone(), newer];
+    app.open_todo_envelope(source.clone(), open.link);
+    assert_eq!(
+        app.mailbox
+            .viewing_envelope
+            .as_ref()
+            .map(|env| env.id.clone()),
+        Some(source.id.clone())
+    );
+    assert_eq!(
+        app.mailbox.todo_link,
+        Some((source.id, "https://www.camden.gov.uk/pay".to_string()))
+    );
+}
+
+#[test]
+fn a_failed_card_close_shows_the_card_again() {
+    let mut app = todo_app(false);
+    press(&mut app, KeyCode::Esc);
+    assert!(!app.mailbox.todo_page.card_visible());
+    let id = app.pending_mutation_queue[0].id;
+    app.handle_mutation_failure_result(id, true, &mxr_core::MxrError::Ipc("down".into()));
+    assert!(
+        app.mailbox.todo_page.card_visible(),
+        "the daemon never stored it, so the card is still unseen"
+    );
 }

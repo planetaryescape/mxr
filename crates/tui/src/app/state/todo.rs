@@ -18,6 +18,14 @@ pub enum TodoPanel {
     Catchup,
 }
 
+/// The email a row is about, to open with its link marked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TodoOpen {
+    pub message_id: MessageId,
+    /// The link the row is about; marked in the message, never opened.
+    pub link: Option<String>,
+}
+
 /// A list the runtime should fetch for the lens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoListFetch {
@@ -70,6 +78,11 @@ pub struct TodoPageState {
     pub prompt: Option<TodoPromptState>,
     /// Ask the runtime for the runway and the guide.
     pub pending_refresh: bool,
+    /// Ask the runtime for the source message of the row under the cursor.
+    pub pending_open: Option<TodoOpen>,
+    /// The `SetModeGuideSeen` sent when the card closed here, so a failed
+    /// write can show the card again.
+    pub card_close_mutation: Option<crate::app::MutationId>,
     /// The next refresh records that To do was opened. Only opening the
     /// lens does: a refresh after a change must not reset the count.
     pub pending_mark_seen: bool,

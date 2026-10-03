@@ -600,6 +600,9 @@ pub struct MailboxState {
     /// (`Request::GetEnvelope`) and then opens the message view — both carry
     /// only a `message_id`.
     pub pending_invite_open: Option<MessageId>,
+    /// A To do row's link, marked in that message of the open thread.
+    /// Cleared when any other message is opened.
+    pub todo_link: Option<(MessageId, String)>,
     pub pending_commitment_counts_refresh: bool,
     pub open_commitment_counts: HashMap<(mxr_core::AccountId, mxr_core::ThreadId), u32>,
     pub reply_later_message_ids: HashSet<MessageId>,
@@ -695,6 +698,7 @@ impl MailboxState {
             sender_kind_menu: None,
             pending_calendar_invites_refresh: false,
             pending_invite_open: None,
+            todo_link: None,
             pending_commitment_counts_refresh: false,
             open_commitment_counts: HashMap::new(),
             reply_later_message_ids: HashSet::new(),

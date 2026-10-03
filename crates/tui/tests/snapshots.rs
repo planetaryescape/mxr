@@ -114,6 +114,7 @@ fn message_view_snapshot() {
         bulk_selected: false,
         has_unsubscribe: true,
         signature_expanded: false,
+        highlight_link: None,
         assets_loading: false,
     };
 
@@ -380,6 +381,7 @@ fn search_page_snapshot() {
         bulk_selected: false,
         has_unsubscribe: true,
         signature_expanded: false,
+        highlight_link: None,
         assets_loading: false,
     }];
 

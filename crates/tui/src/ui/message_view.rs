@@ -23,6 +23,8 @@ pub struct ThreadMessageBlock {
     pub bulk_selected: bool,
     pub has_unsubscribe: bool,
     pub signature_expanded: bool,
+    /// A To do row's link, marked where it appears in this message.
+    pub highlight_link: Option<String>,
     /// Phase 3.4: true while remote HTML assets for this message are
     /// being fetched. Drives the "Loading external assets…" chip in
     /// `body_metadata_lines`.
@@ -246,12 +248,17 @@ pub fn draw(
                         metadata.remote_content_enabled,
                     ));
                 } else {
-                    text_lines.extend(process_body_lines(
+                    let body = process_body_lines(
                         rendered,
                         theme,
                         message.signature_expanded,
                         metadata.reader_applied,
-                    ));
+                    );
+                    match &message.highlight_link {
+                        Some(link) => text_lines
+                            .extend(body.into_iter().map(|line| mark_link(line, link, theme))),
+                        None => text_lines.extend(body),
+                    }
                     blocks.push(RenderBlock::Text(text_lines));
                 }
             }
@@ -1191,6 +1198,38 @@ fn flush_quotes(buffer: &mut Vec<String>, lines: &mut Vec<Line<'static>>, theme:
     }
 }
 
+/// The same link, ignoring a trailing slash and the case of scheme and host.
+fn same_link(a: &str, b: &str) -> bool {
+    let normal = |value: &str| {
+        let value = value.trim().trim_end_matches('/');
+        match value.split_once("://") {
+            Some((scheme, rest)) => {
+                let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+                format!(
+                    "{}://{}/{path}",
+                    scheme.to_ascii_lowercase(),
+                    host.to_ascii_lowercase()
+                )
+            }
+            None => value.to_string(),
+        }
+    };
+    normal(a) == normal(b)
+}
+
+/// Mark the To do row's link where it appears: reversed and bold, so it
+/// stands out before anyone follows it. Nothing here opens it.
+fn mark_link(mut line: Line<'static>, link: &str, theme: &Theme) -> Line<'static> {
+    for span in &mut line.spans {
+        if same_link(&span.content, link) {
+            span.style = Style::default()
+                .fg(theme.link_fg)
+                .add_modifier(Modifier::REVERSED | Modifier::BOLD);
+        }
+    }
+    line
+}
+
 /// Split a line into spans, highlighting URLs in link_fg with underline.
 fn style_line_with_links(line: &str, theme: &Theme) -> Line<'static> {
     let link_style = Style::default()
@@ -1296,6 +1335,7 @@ mod tests {
             bulk_selected: true,
             has_unsubscribe: false,
             signature_expanded: false,
+            highlight_link: None,
             assets_loading: false,
         };
 
@@ -1339,6 +1379,7 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: false,
             signature_expanded: false,
+            highlight_link: None,
             assets_loading: false,
         };
 
@@ -1386,6 +1427,7 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: false,
             signature_expanded: false,
+            highlight_link: None,
             assets_loading: false,
         };
 
@@ -1438,6 +1480,7 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: false,
             signature_expanded: false,
+            highlight_link: None,
             assets_loading: false,
         };
 
@@ -1492,6 +1535,7 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: false,
             signature_expanded: false,
+            highlight_link: None,
             assets_loading: false,
         };
 
@@ -1541,6 +1585,7 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: true,
             signature_expanded: false,
+            highlight_link: None,
             assets_loading: false,
         };
 
@@ -1597,6 +1642,7 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: false,
             signature_expanded: false,
+            highlight_link: None,
             assets_loading: false,
         };
 
@@ -1656,6 +1702,7 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: false,
             signature_expanded: false,
+            highlight_link: None,
             assets_loading: false,
         };
 
@@ -1691,5 +1738,24 @@ mod tests {
             rendered.contains("after"),
             "expected 'after' in rendered output"
         );
+    }
+
+    #[test]
+    fn a_to_do_link_is_marked_where_it_appears() {
+        let theme = Theme::default();
+        let line = style_line_with_links("Pay here: https://www.Camden.gov.uk/pay/ today", &theme);
+        let marked = mark_link(line, "https://www.camden.gov.uk/pay", &theme);
+        let link = marked
+            .spans
+            .iter()
+            .find(|span| span.content.starts_with("https://"))
+            .unwrap();
+        assert!(link.style.add_modifier.contains(Modifier::REVERSED));
+        let other = style_line_with_links("See https://example.com/other", &theme);
+        let unmarked = mark_link(other, "https://www.camden.gov.uk/pay", &theme);
+        assert!(unmarked
+            .spans
+            .iter()
+            .all(|span| !span.style.add_modifier.contains(Modifier::REVERSED)));
     }
 }

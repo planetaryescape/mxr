@@ -50,4 +50,6 @@ pub use search::{
     SearchPane, SearchState, SearchTarget, SearchUiStatus,
 };
 pub use toasts::{Toast, ToastQueue, ToastSeverity, TOAST_DEFAULT_TTL, TOAST_MAX_VISIBLE};
-pub use todo::{TodoListFetch, TodoPageState, TodoPanel, TodoPromptKind, TodoPromptState};
+pub use todo::{
+    TodoListFetch, TodoOpen, TodoPageState, TodoPanel, TodoPromptKind, TodoPromptState,
+};

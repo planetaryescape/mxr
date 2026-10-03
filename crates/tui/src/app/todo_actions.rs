@@ -153,9 +153,19 @@ impl App {
     }
 
     fn open_todo_email(&mut self, todo: &TodoData) {
-        match &todo.source_message_id {
+        // The action names the message its link is in; the row's source
+        // message otherwise.
+        let message_id = todo
+            .action
+            .as_ref()
+            .and_then(|action| action.message_id.clone())
+            .or_else(|| todo.source_message_id.clone());
+        match message_id {
             Some(message_id) => {
-                self.mailbox.pending_invite_open = Some(message_id.clone());
+                self.mailbox.todo_page.pending_open = Some(crate::app::TodoOpen {
+                    message_id,
+                    link: todo.action.as_ref().map(|action| action.url.clone()),
+                });
                 self.status_message = Some(
                     match todo.action.as_ref().and_then(|action| action.domain.as_deref()) {
                         Some(domain) => format!(
@@ -236,7 +246,7 @@ impl App {
             return;
         }
         page.card_closed = true;
-        self.queue_best_effort_mutation(
+        let id = self.queue_best_effort_mutation(
             Request::SetModeGuideSeen {
                 mode: TODO_MODE.into(),
                 seen: true,
@@ -244,6 +254,38 @@ impl App {
             MutationEffect::StatusOnly(String::new()),
             String::new(),
         );
+        self.mailbox.todo_page.card_close_mutation = Some(id);
+    }
+
+    /// The daemon didn't store the closed card: show it again, so it isn't
+    /// gone here while every other client still shows it.
+    pub(crate) fn reopen_todo_card_after_failure(&mut self, failed: crate::app::MutationId) {
+        let page = &mut self.mailbox.todo_page;
+        if page.card_close_mutation == Some(failed) {
+            page.card_close_mutation = None;
+            page.card_closed = false;
+        }
+    }
+
+    /// Called once `GetEnvelope` answers for a row's email: show that
+    /// message, not the newest in its thread, with the row's link marked.
+    pub(crate) fn open_todo_envelope(
+        &mut self,
+        env: mxr_core::types::Envelope,
+        link: Option<String>,
+    ) {
+        let id = env.id.clone();
+        self.open_invite_envelope(env);
+        if let Some(index) = self
+            .mailbox
+            .viewed_thread_messages
+            .iter()
+            .position(|message| message.id == id)
+        {
+            self.mailbox.thread_selected_index = index;
+            self.sync_focused_thread_envelope();
+        }
+        self.mailbox.todo_link = link.map(|link| (id, link));
     }
 
     fn open_todo_prompt(&mut self, edit: bool) {

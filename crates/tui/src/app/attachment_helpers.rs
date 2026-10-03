@@ -263,6 +263,12 @@ impl App {
                 bulk_selected: self.mailbox.selected_set.contains(&message.id),
                 has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
                 signature_expanded: self.mailbox.signature_expanded,
+                highlight_link: self
+                    .mailbox
+                    .todo_link
+                    .as_ref()
+                    .filter(|(id, _)| *id == message.id)
+                    .map(|(_, link)| link.clone()),
                 // Phase 3.4: true while a remote-asset fetch is queued
                 // or in-flight for this message. Drives the
                 // "Loading external assets…" chip in the message

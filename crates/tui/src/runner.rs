@@ -1786,6 +1786,28 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if let Some(open) = app.mailbox.todo_page.pending_open.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::GetEnvelope {
+                        message_id: open.message_id,
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Envelope { envelope },
+                    }) => Ok(envelope),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response to GetEnvelope".into())),
+                };
+                AsyncResult::TodoEnvelopeOpened(result, open.link)
+            });
+        }
+
         if let Some(message_id) = app.mailbox.pending_invite_open.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
@@ -3376,6 +3398,12 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::CalendarInvites(Err(e)) => {
                             app.status_message = Some(format!("Calendar invites error: {e}"));
+                        }
+                        AsyncResult::TodoEnvelopeOpened(Ok(envelope), link) => {
+                            app.open_todo_envelope(envelope, link);
+                        }
+                        AsyncResult::TodoEnvelopeOpened(Err(e), _) => {
+                            app.status_message = Some(format!("Open email failed: {e}"));
                         }
                         AsyncResult::InviteEnvelopeOpened(Ok(envelope)) => {
                             app.open_invite_envelope(envelope);

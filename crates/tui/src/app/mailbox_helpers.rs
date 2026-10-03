@@ -495,6 +495,7 @@ impl App {
     }
 
     pub(super) fn open_envelope(&mut self, env: Envelope) {
+        self.mailbox.todo_link = None;
         self.close_attachment_panel();
         self.mailbox.signature_expanded = false;
         self.mailbox.viewed_thread = None;

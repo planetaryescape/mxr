@@ -18,7 +18,7 @@ export type ReaderView = "formatted" | "reader" | "plain";
 /** Undo-send window in seconds; 0 sends immediately. */
 export type UndoSendSeconds = 0 | 5 | 10 | 30;
 /** Where `/` lands: what needs you, or what arrived. */
-export type HomeView = "desk" | "inbox";
+export type HomeView = "now" | "inbox";
 
 export interface UiPrefsState {
   home: HomeView;
@@ -68,7 +68,7 @@ export interface UiPrefsState {
 export const useUiPrefs = create<UiPrefsState>()(
   persist(
     (set) => ({
-      home: "desk",
+      home: "now",
       // Follow the OS appearance until someone picks a theme.
       theme: "system",
       density: "regular",
@@ -139,7 +139,7 @@ export const useUiPrefs = create<UiPrefsState>()(
     {
       name: "mxr.uiPrefs",
       storage: createJSONStorage(() => uiPrefsStorage()),
-      version: 3,
+      version: 4,
       // persist merges what migrate returns over the defaults, so a partial
       // state is what it expects at runtime; its type says the whole store.
       migrate: (persisted, version) => migrateUiPrefs(persisted, version) as UiPrefsState,
@@ -150,14 +150,18 @@ export const useUiPrefs = create<UiPrefsState>()(
 /**
  * v3 folds the sidebar's new "More" and "Labels" groups for people who
  * already had saved prefs, so the sidebar opens on places for everyone.
- * Earlier versions carried no shape changes, so their state is kept.
+ * v4: Now replaced the desk as the front page, so a saved "desk" home is
+ * Now. Earlier versions carried no shape changes, so their state is kept.
  */
 export function migrateUiPrefs(persisted: unknown, version: number): Partial<UiPrefsState> {
-  const state: Partial<UiPrefsState> =
+  let state: Partial<UiPrefsState> =
     persisted && typeof persisted === "object" ? (persisted as Partial<UiPrefsState>) : {};
-  if (version >= 3) return state;
-  const folded = Array.isArray(state.collapsedSections) ? state.collapsedSections : ["tools"];
-  return { ...state, collapsedSections: [...new Set([...folded, "more", "labels"])] };
+  if (version < 3) {
+    const folded = Array.isArray(state.collapsedSections) ? state.collapsedSections : ["tools"];
+    state = { ...state, collapsedSections: [...new Set([...folded, "more", "labels"])] };
+  }
+  if (version < 4 && state.home !== "inbox") state = { ...state, home: "now" };
+  return state;
 }
 
 const memoryPrefsStorage = new Map<string, string>();

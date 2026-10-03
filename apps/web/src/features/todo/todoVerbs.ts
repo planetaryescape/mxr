@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { create } from "zustand";
 
 import { claimUndo, offerUndo } from "@/features/mail-actions/mailUndo";
+import { markModeDone } from "@/features/modes/modeDone";
 import { soundFor, VERB_FEEDBACK, type Verb } from "@/features/mail-actions/verbFeedback";
 import { playSound } from "@/features/sound/player";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
@@ -161,6 +162,29 @@ export function markDone(todos: readonly Todo[]) {
     failure: "Couldn't tick it off",
     ids,
   });
+}
+
+/**
+ * `e` on a to-do that came from an email: done in To do through
+ * `SetModeDone`, which ticks off the thread's open rows and, when no other
+ * mode holds the email, archives it, so the toast says which happened
+ * ("Ticked off. Archived in Gmail."). Undo is the daemon's. A to-do with no
+ * email is ticked off on its own.
+ */
+export async function tickOff(todo: Todo): Promise<void> {
+  const threadId = todo.thread_id;
+  if (!threadId) {
+    await markDone([todo]);
+    return;
+  }
+  if (refuseWhileDaemonDown("tick it off")) return;
+  startLeaving([todo.id]);
+  try {
+    await markModeDone("todo", [threadId]);
+  } finally {
+    await refreshTodos({ guide: true });
+    useTodoHidden.getState().show([todo.id]);
+  }
 }
 
 /** `X`: not a to-do, kept as a correction so that email never comes back. */

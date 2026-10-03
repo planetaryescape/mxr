@@ -35,10 +35,11 @@ const SCOPE_TITLE: Record<Exclude<ActionScope, "global">, string> = {
   sidebar: "Sidebar",
   screener: "Screener",
   focus: "Focus & reply",
-  place: "Reading and Paper trail",
+  place: "Updates and Reading",
   todo: "To do",
   catchup: "To do: catch-up",
   expired: "To do: Expired list",
+  now: "Now",
 };
 
 const GLOBAL_GROUP_TITLE: Partial<Record<ActionGroup, string>> = {

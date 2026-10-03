@@ -24,6 +24,12 @@ async function blockingViolations(page: Page): Promise<string[]> {
 }
 
 const ROUTES = [
+  "/now",
+  "/messages",
+  "/updates",
+  "/reading",
+  "/archive",
+  "/find",
   "/desk",
   "/desk?lane=waiting",
   "/todo",

@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { fetchThread } from "@/features/mailbox/api";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
+import { EarlyModeNote } from "@/features/modes/EarlyModeNote";
+import { markModeDone } from "@/features/modes/modeDone";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { MessageContent } from "@/features/thread/MessageCard";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
@@ -57,6 +59,7 @@ export function ReadingRoute() {
   const lowTide = useLowTide("reading", status.isLoading || status.isError, issues.length > 0);
   return (
     <PlaceLayout basePath="/reading" label="Reading" threadIds={threadIds} wideReader>
+      <EarlyModeNote mode="reading" />
       <PlaceHeader
         title="Reading"
         meta={
@@ -164,6 +167,7 @@ function Feed({ issues, place }: { issues: ReadingIssue[]; place: ReturnType<typ
     down: () => move(1),
     up: () => move(-1),
     open: () => current && nav?.open(current.message.thread_id),
+    done: () => current && void markModeDone("reading", [current.message.thread_id]),
     pin: () => current && void togglePin(current.message),
     sweepBundle: () =>
       current &&

@@ -21,6 +21,8 @@ export type OtherVerb =
   | "unsubscribe"
   | "sweep"
   | "desk-done"
+  | "mode-done"
+  | "digest-let-go"
   | "pin"
   | "move-sender"
   | "todo-done"
@@ -251,6 +253,25 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     sound: "archived",
     undo: "daemon-mutation",
   },
+  "mode-done": {
+    // Done here, per mode (features/modes/modeDone): other modes keep the
+    // thread, and the provider archive happens only when none does.
+    actions: ["now.done", "place.done"],
+    alsoFrom: `e on a Messages row, the check on a Now row, ${SWIPE} (short right) in Messages`,
+    optimistic: "The row leaves this mode at once; the toast says where it still is.",
+    pastTense: "Done",
+    sound: "archived",
+    undo: "daemon-mutation",
+  },
+  "digest-let-go": {
+    actions: ["now.let-go-digest"],
+    alsoFrom: "the Let go button on Now's Updates card",
+    optimistic: "The card leaves Now once you confirm the preview.",
+    pastTense: "Let go",
+    sound: "archived",
+    undo: "daemon-mutation",
+    confirm: "Previews the daemon's dry run: how many updates and which stay in To do",
+  },
   pin: {
     actions: ["place.pin"],
     alsoFrom: "the pin button on a Paper trail or Reading message",
@@ -260,12 +281,14 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     undo: "toggle",
   },
   "todo-done": {
+    // From an email it is done in To do (`SetModeDone`): the daemon's toast
+    // says whether the email was archived, and its undo puts both back.
     actions: ["todo.done"],
-    alsoFrom: "the check on a To do row",
+    alsoFrom: "the check on a To do row, e on a Now row under Due soon",
     optimistic: "The row folds up and joins Done this week.",
     pastTense: "Ticked off",
     sound: "archived",
-    undo: "reverse-request",
+    undo: "daemon-mutation",
   },
   "todo-dismiss": {
     actions: ["todo.dismiss"],

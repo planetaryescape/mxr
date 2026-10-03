@@ -1,10 +1,10 @@
 /*
- * Keys in Reading and Paper trail. The mounted place view registers what
+ * Keys in Updates (built on Paper trail) and Reading. The mounted place view registers what
  * each command does (`useScopeController("place", …)`); the reader keeps
  * its own keys while it has focus.
  */
 
-import { Archive, Pin, Shuffle } from "lucide-react";
+import { Archive, Check, Pin, Shuffle } from "lucide-react";
 
 import type { Action, CommandAction } from "@/lib/actions/types";
 
@@ -36,6 +36,11 @@ export const placeActions: Action[] = [
     group: "Move",
     aliases: ["o"],
     hideInPalette: true,
+  }),
+  placeAction("place.done", "done", "Done here: let go of this in Updates or Reading", "e", {
+    shortLabel: "Done here",
+    icon: Check,
+    description: "On a sender's row in Updates, every message of theirs shown here",
   }),
   placeAction("place.pin", "pin", "Pin or unpin (a sweep leaves pins)", "p", {
     shortLabel: "Pin",

@@ -9,7 +9,7 @@
 import { getRegistry } from "./registry";
 import type { ActionScope } from "./types";
 
-export type ParityContext = "list" | "reader" | "sidebar" | "place" | "screener" | "todo";
+export type ParityContext = "list" | "reader" | "sidebar" | "place" | "screener" | "todo" | "now";
 
 /** The web scopes live in each context, innermost first. */
 const CONTEXT_SCOPES: Record<ParityContext, ActionScope[]> = {
@@ -18,6 +18,7 @@ const CONTEXT_SCOPES: Record<ParityContext, ActionScope[]> = {
   sidebar: ["sidebar", "global"],
   place: ["place", "global"],
   todo: ["todo", "global"],
+  now: ["now", "global"],
   // The TUI's screener is a modal that swallows every other key.
   screener: ["screener"],
 };
@@ -32,7 +33,10 @@ export const SAME_ACTION: Record<string, string[]> = {
   "shell.help": ["Help"],
   "shell.compose": ["Compose"],
   "mail.undo": ["UndoLastMutation"],
-  "nav.desk": ["OpenDesk"],
+  "nav.now": ["OpenNow"],
+  "nav.messages": ["OpenMessages"],
+  "nav.updates": ["OpenPlace(PaperTrail)"],
+  "nav.archive-mode": ["OpenArchiveMode"],
   "nav.inbox": ["GoToInbox", "OpenSavedSearchByIndex(0)"],
   "nav.starred": ["GoToStarred"],
   "nav.sent": ["GoToSent"],
@@ -47,8 +51,6 @@ export const SAME_ACTION: Record<string, string[]> = {
   "nav.owed": ["OpenOwedReplies"],
   "nav.invites": ["OpenCalendarInvites"],
   "nav.reading": ["OpenPlace(Reading)"],
-  "nav.paper-trail": ["OpenPlace(PaperTrail)"],
-  "nav.subscriptions": ["OpenSubscriptions"],
   "nav.screener": ["OpenScreenerQueue"],
   "nav.tab-mail": ["OpenTab1"],
   "nav.search-page": ["OpenTab2"],
@@ -140,6 +142,8 @@ export const SAME_ACTION: Record<string, string[]> = {
   "place.sweep-all": ["SweepPlace"],
   "place.move-sender": ["OpenSenderKindMenu"],
   "place.unsubscribe": ["Unsubscribe"],
+  // The TUI's place lens takes its Archive key as done here in the mode.
+  "place.done": ["Archive"],
   "nav.todo": ["OpenTodo"],
   "mail.make-todo": ["CreateTodoFromMessage"],
   "todo.down": ["MoveDown"],
@@ -152,6 +156,14 @@ export const SAME_ACTION: Record<string, string[]> = {
   "todo.source": ["TodoOpenEmail"],
   "todo.expired": ["TodoOpenExpired"],
   "todo.catchup": ["TodoOpenCatchup"],
+  "now.down": ["MoveDown"],
+  "now.up": ["MoveUp"],
+  "now.open": ["NowOpen"],
+  "now.done": ["NowDone"],
+  "now.reply": ["Reply"],
+  "now.open-email": ["NowOpenEmail"],
+  "now.let-go-digest": ["NowLetGoDigest"],
+  "now.close-card": ["NowCloseCard"],
 };
 
 export interface KeymapDifference {
@@ -319,7 +331,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "place",
     // prettier-ignore
-    keys: ["!", "#", "B", "E", "F", "I", "L", "O", "R", "U", "V", "W", "Z", "a", "b", "e", "f", "l", "m", "r", "s", "t", "v", "x", "y", "i a", "i m", "i d", "i A", "i M", "i D"],
+    keys: ["!", "#", "B", "E", "F", "I", "L", "O", "R", "U", "V", "W", "Z", "a", "b", "f", "l", "m", "r", "s", "t", "v", "x", "y", "i a", "i m", "i d", "i A", "i M", "i D"],
     bound: "tui",
     why: "Web rows here are bundles, and mail keys work once one is open in the reader; the TUI lens acts on the message under the cursor",
   },
@@ -358,6 +370,32 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   },
   {
     context: "todo",
+    keys: ["c"],
+    bound: "web",
+    why: "Compose works everywhere on the web; the TUI lens keeps c free",
+  },
+  // Now.
+  {
+    context: "now",
+    // prettier-ignore
+    keys: ["G", "g g", "H", "L", "M", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
+    bound: "tui",
+    why: "The TUI lens shares the list's motions and pane keys; the web Now moves with j and k",
+  },
+  {
+    context: "now",
+    keys: ["i a", "i m", "i d", "i A", "i M", "i D"],
+    bound: "tui",
+    why: "The TUI lens passes invite answers through; the web answers an invite from the reader",
+  },
+  {
+    context: "now",
+    keys: ["t"],
+    bound: "tui",
+    why: "The TUI makes a to-do from a Now row; on the web, open the row and press t there",
+  },
+  {
+    context: "now",
     keys: ["c"],
     bound: "web",
     why: "Compose works everywhere on the web; the TUI lens keeps c free",

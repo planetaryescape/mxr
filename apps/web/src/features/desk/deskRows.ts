@@ -78,6 +78,8 @@ export function deskGroups(
   only?: DeskLaneKind,
   /** Conversations leaving optimistically (Done in flight). */
   hidden: ReadonlySet<string> = new Set(),
+  /** Where a lane's own page lives: the desk, or Messages built on it. */
+  basePath = "/desk",
 ): DeskGroups {
   const index: DeskRowIndex = new Map();
   const byThread = new Map<string, DeskRow>();
@@ -104,7 +106,7 @@ export function deskGroups(
       count: total,
       more:
         !only && total > shown.length
-          ? { label: `Show all ${total}`, href: `/desk?lane=${lane}` }
+          ? { label: `Show all ${total}`, href: `${basePath}?lane=${lane}` }
           : undefined,
       action:
         lane === "owed"

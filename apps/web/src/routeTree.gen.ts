@@ -9,154 +9,61 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TodoRouteImport } from './routes/todo'
-import { Route as SubscriptionsRouteImport } from './routes/subscriptions'
-import { Route as SnoozedRouteImport } from './routes/snoozed'
-import { Route as SearchRouteImport } from './routes/search'
-import { Route as ScreenerRouteImport } from './routes/screener'
-import { Route as RulesRouteImport } from './routes/rules'
-import { Route as ReplyQueueRouteImport } from './routes/reply-queue'
-import { Route as ReadingRouteImport } from './routes/reading'
-import { Route as PaperTrailRouteImport } from './routes/paper-trail'
-import { Route as OwedRouteImport } from './routes/owed'
-import { Route as OnboardingRouteImport } from './routes/onboarding'
-import { Route as JobsRouteImport } from './routes/jobs'
-import { Route as InvitesRouteImport } from './routes/invites'
-import { Route as FocusRouteImport } from './routes/focus'
-import { Route as DraftsRouteImport } from './routes/drafts'
-import { Route as DiagnosticsRouteImport } from './routes/diagnostics'
-import { Route as DevRouteImport } from './routes/dev'
-import { Route as DeskRouteImport } from './routes/desk'
-import { Route as DeliveriesRouteImport } from './routes/deliveries'
-import { Route as AnalyticsRouteImport } from './routes/analytics'
-import { Route as ActivityRouteImport } from './routes/activity'
-import { Route as AccountsRouteImport } from './routes/accounts'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as TodoThreadIdRouteImport } from './routes/todo.$threadId'
-import { Route as SnoozedThreadIdRouteImport } from './routes/snoozed.$threadId'
-import { Route as SettingsSectionRouteImport } from './routes/settings.$section'
-import { Route as SenderAddressRouteImport } from './routes/sender.$address'
-import { Route as SearchThreadIdRouteImport } from './routes/search.$threadId'
-import { Route as RulesIdRouteImport } from './routes/rules.$id'
-import { Route as ReplyQueueThreadIdRouteImport } from './routes/reply-queue.$threadId'
-import { Route as ReadingThreadIdRouteImport } from './routes/reading.$threadId'
-import { Route as PaperTrailThreadIdRouteImport } from './routes/paper-trail.$threadId'
-import { Route as OwedThreadIdRouteImport } from './routes/owed.$threadId'
-import { Route as MMailboxRouteImport } from './routes/m.$mailbox'
-import { Route as DeskThreadIdRouteImport } from './routes/desk.$threadId'
-import { Route as ComposeNewRouteImport } from './routes/compose.new'
-import { Route as ComposeDraftIdRouteImport } from './routes/compose.$draftId'
-import { Route as AnalyticsDashboardRouteImport } from './routes/analytics.$dashboard'
+import { Route as AccountsRouteImport } from './routes/accounts'
+import { Route as ActivityRouteImport } from './routes/activity'
+import { Route as AnalyticsRouteImport } from './routes/analytics'
+import { Route as ArchiveRouteImport } from './routes/archive'
+import { Route as DeliveriesRouteImport } from './routes/deliveries'
+import { Route as DeskRouteImport } from './routes/desk'
+import { Route as DevRouteImport } from './routes/dev'
+import { Route as DiagnosticsRouteImport } from './routes/diagnostics'
+import { Route as DraftsRouteImport } from './routes/drafts'
+import { Route as FindRouteImport } from './routes/find'
+import { Route as FocusRouteImport } from './routes/focus'
+import { Route as InvitesRouteImport } from './routes/invites'
+import { Route as JobsRouteImport } from './routes/jobs'
+import { Route as MessagesRouteImport } from './routes/messages'
+import { Route as NowRouteImport } from './routes/now'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as OwedRouteImport } from './routes/owed'
+import { Route as PaperTrailRouteImport } from './routes/paper-trail'
+import { Route as ReadingRouteImport } from './routes/reading'
+import { Route as ReplyQueueRouteImport } from './routes/reply-queue'
+import { Route as RulesRouteImport } from './routes/rules'
+import { Route as ScreenerRouteImport } from './routes/screener'
+import { Route as SearchRouteImport } from './routes/search'
+import { Route as SnoozedRouteImport } from './routes/snoozed'
+import { Route as SubscriptionsRouteImport } from './routes/subscriptions'
+import { Route as TodoRouteImport } from './routes/todo'
+import { Route as UpdatesRouteImport } from './routes/updates'
 import { Route as AccountsKeyRouteImport } from './routes/accounts.$key'
-import { Route as MSavedSlugRouteImport } from './routes/m.saved.$slug'
-import { Route as MLabelNameRouteImport } from './routes/m.label.$name'
+import { Route as AnalyticsDashboardRouteImport } from './routes/analytics.$dashboard'
+import { Route as ComposeDraftIdRouteImport } from './routes/compose.$draftId'
+import { Route as ComposeNewRouteImport } from './routes/compose.new'
+import { Route as DeskThreadIdRouteImport } from './routes/desk.$threadId'
+import { Route as MMailboxRouteImport } from './routes/m.$mailbox'
+import { Route as MessagesThreadIdRouteImport } from './routes/messages.$threadId'
+import { Route as OwedThreadIdRouteImport } from './routes/owed.$threadId'
+import { Route as PaperTrailThreadIdRouteImport } from './routes/paper-trail.$threadId'
+import { Route as ReadingThreadIdRouteImport } from './routes/reading.$threadId'
+import { Route as ReplyQueueThreadIdRouteImport } from './routes/reply-queue.$threadId'
+import { Route as RulesIdRouteImport } from './routes/rules.$id'
+import { Route as SearchThreadIdRouteImport } from './routes/search.$threadId'
+import { Route as SenderAddressRouteImport } from './routes/sender.$address'
+import { Route as SettingsSectionRouteImport } from './routes/settings.$section'
+import { Route as SnoozedThreadIdRouteImport } from './routes/snoozed.$threadId'
+import { Route as TodoThreadIdRouteImport } from './routes/todo.$threadId'
+import { Route as UpdatesThreadIdRouteImport } from './routes/updates.$threadId'
 import { Route as MMailboxThreadIdRouteImport } from './routes/m.$mailbox.$threadId'
-import { Route as MSavedSlugThreadIdRouteImport } from './routes/m.saved.$slug.$threadId'
+import { Route as MLabelNameRouteImport } from './routes/m.label.$name'
+import { Route as MSavedSlugRouteImport } from './routes/m.saved.$slug'
 import { Route as MLabelNameThreadIdRouteImport } from './routes/m.label.$name.$threadId'
+import { Route as MSavedSlugThreadIdRouteImport } from './routes/m.saved.$slug.$threadId'
 
-const TodoRoute = TodoRouteImport.update({
-  id: '/todo',
-  path: '/todo',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SubscriptionsRoute = SubscriptionsRouteImport.update({
-  id: '/subscriptions',
-  path: '/subscriptions',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SnoozedRoute = SnoozedRouteImport.update({
-  id: '/snoozed',
-  path: '/snoozed',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SearchRoute = SearchRouteImport.update({
-  id: '/search',
-  path: '/search',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ScreenerRoute = ScreenerRouteImport.update({
-  id: '/screener',
-  path: '/screener',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RulesRoute = RulesRouteImport.update({
-  id: '/rules',
-  path: '/rules',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ReplyQueueRoute = ReplyQueueRouteImport.update({
-  id: '/reply-queue',
-  path: '/reply-queue',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ReadingRoute = ReadingRouteImport.update({
-  id: '/reading',
-  path: '/reading',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PaperTrailRoute = PaperTrailRouteImport.update({
-  id: '/paper-trail',
-  path: '/paper-trail',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OwedRoute = OwedRouteImport.update({
-  id: '/owed',
-  path: '/owed',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OnboardingRoute = OnboardingRouteImport.update({
-  id: '/onboarding',
-  path: '/onboarding',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const JobsRoute = JobsRouteImport.update({
-  id: '/jobs',
-  path: '/jobs',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InvitesRoute = InvitesRouteImport.update({
-  id: '/invites',
-  path: '/invites',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const FocusRoute = FocusRouteImport.update({
-  id: '/focus',
-  path: '/focus',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DraftsRoute = DraftsRouteImport.update({
-  id: '/drafts',
-  path: '/drafts',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DiagnosticsRoute = DiagnosticsRouteImport.update({
-  id: '/diagnostics',
-  path: '/diagnostics',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DevRoute = DevRouteImport.update({
-  id: '/dev',
-  path: '/dev',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DeskRoute = DeskRouteImport.update({
-  id: '/desk',
-  path: '/desk',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DeliveriesRoute = DeliveriesRouteImport.update({
-  id: '/deliveries',
-  path: '/deliveries',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AnalyticsRoute = AnalyticsRouteImport.update({
-  id: '/analytics',
-  path: '/analytics',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ActivityRoute = ActivityRouteImport.update({
-  id: '/activity',
-  path: '/activity',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AccountsRoute = AccountsRouteImport.update({
@@ -164,64 +71,154 @@ const AccountsRoute = AccountsRouteImport.update({
   path: '/accounts',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const ActivityRoute = ActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TodoThreadIdRoute = TodoThreadIdRouteImport.update({
-  id: '/$threadId',
-  path: '/$threadId',
-  getParentRoute: () => TodoRoute,
-} as any)
-const SnoozedThreadIdRoute = SnoozedThreadIdRouteImport.update({
-  id: '/$threadId',
-  path: '/$threadId',
-  getParentRoute: () => SnoozedRoute,
-} as any)
-const SettingsSectionRoute = SettingsSectionRouteImport.update({
-  id: '/settings/$section',
-  path: '/settings/$section',
+const AnalyticsRoute = AnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SenderAddressRoute = SenderAddressRouteImport.update({
-  id: '/sender/$address',
-  path: '/sender/$address',
+const ArchiveRoute = ArchiveRouteImport.update({
+  id: '/archive',
+  path: '/archive',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SearchThreadIdRoute = SearchThreadIdRouteImport.update({
-  id: '/$threadId',
-  path: '/$threadId',
-  getParentRoute: () => SearchRoute,
+const DeliveriesRoute = DeliveriesRouteImport.update({
+  id: '/deliveries',
+  path: '/deliveries',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const RulesIdRoute = RulesIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => RulesRoute,
+const DeskRoute = DeskRouteImport.update({
+  id: '/desk',
+  path: '/desk',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const ReplyQueueThreadIdRoute = ReplyQueueThreadIdRouteImport.update({
-  id: '/$threadId',
-  path: '/$threadId',
-  getParentRoute: () => ReplyQueueRoute,
+const DevRoute = DevRouteImport.update({
+  id: '/dev',
+  path: '/dev',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const ReadingThreadIdRoute = ReadingThreadIdRouteImport.update({
-  id: '/$threadId',
-  path: '/$threadId',
-  getParentRoute: () => ReadingRoute,
+const DiagnosticsRoute = DiagnosticsRouteImport.update({
+  id: '/diagnostics',
+  path: '/diagnostics',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const PaperTrailThreadIdRoute = PaperTrailThreadIdRouteImport.update({
-  id: '/$threadId',
-  path: '/$threadId',
-  getParentRoute: () => PaperTrailRoute,
+const DraftsRoute = DraftsRouteImport.update({
+  id: '/drafts',
+  path: '/drafts',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const OwedThreadIdRoute = OwedThreadIdRouteImport.update({
-  id: '/$threadId',
-  path: '/$threadId',
-  getParentRoute: () => OwedRoute,
+const FindRoute = FindRouteImport.update({
+  id: '/find',
+  path: '/find',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const MMailboxRoute = MMailboxRouteImport.update({
-  id: '/m/$mailbox',
-  path: '/m/$mailbox',
+const FocusRoute = FocusRouteImport.update({
+  id: '/focus',
+  path: '/focus',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvitesRoute = InvitesRouteImport.update({
+  id: '/invites',
+  path: '/invites',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JobsRoute = JobsRouteImport.update({
+  id: '/jobs',
+  path: '/jobs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MessagesRoute = MessagesRouteImport.update({
+  id: '/messages',
+  path: '/messages',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NowRoute = NowRouteImport.update({
+  id: '/now',
+  path: '/now',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OwedRoute = OwedRouteImport.update({
+  id: '/owed',
+  path: '/owed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PaperTrailRoute = PaperTrailRouteImport.update({
+  id: '/paper-trail',
+  path: '/paper-trail',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReadingRoute = ReadingRouteImport.update({
+  id: '/reading',
+  path: '/reading',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReplyQueueRoute = ReplyQueueRouteImport.update({
+  id: '/reply-queue',
+  path: '/reply-queue',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RulesRoute = RulesRouteImport.update({
+  id: '/rules',
+  path: '/rules',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ScreenerRoute = ScreenerRouteImport.update({
+  id: '/screener',
+  path: '/screener',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SearchRoute = SearchRouteImport.update({
+  id: '/search',
+  path: '/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SnoozedRoute = SnoozedRouteImport.update({
+  id: '/snoozed',
+  path: '/snoozed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SubscriptionsRoute = SubscriptionsRouteImport.update({
+  id: '/subscriptions',
+  path: '/subscriptions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TodoRoute = TodoRouteImport.update({
+  id: '/todo',
+  path: '/todo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UpdatesRoute = UpdatesRouteImport.update({
+  id: '/updates',
+  path: '/updates',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountsKeyRoute = AccountsKeyRouteImport.update({
+  id: '/$key',
+  path: '/$key',
+  getParentRoute: () => AccountsRoute,
+} as any)
+const AnalyticsDashboardRoute = AnalyticsDashboardRouteImport.update({
+  id: '/$dashboard',
+  path: '/$dashboard',
+  getParentRoute: () => AnalyticsRoute,
+} as any)
+const ComposeDraftIdRoute = ComposeDraftIdRouteImport.update({
+  id: '/compose/$draftId',
+  path: '/compose/$draftId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ComposeNewRoute = ComposeNewRouteImport.update({
+  id: '/compose/new',
+  path: '/compose/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeskThreadIdRoute = DeskThreadIdRouteImport.update({
@@ -229,50 +226,95 @@ const DeskThreadIdRoute = DeskThreadIdRouteImport.update({
   path: '/$threadId',
   getParentRoute: () => DeskRoute,
 } as any)
-const ComposeNewRoute = ComposeNewRouteImport.update({
-  id: '/compose/new',
-  path: '/compose/new',
+const MMailboxRoute = MMailboxRouteImport.update({
+  id: '/m/$mailbox',
+  path: '/m/$mailbox',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ComposeDraftIdRoute = ComposeDraftIdRouteImport.update({
-  id: '/compose/$draftId',
-  path: '/compose/$draftId',
+const MessagesThreadIdRoute = MessagesThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => MessagesRoute,
+} as any)
+const OwedThreadIdRoute = OwedThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => OwedRoute,
+} as any)
+const PaperTrailThreadIdRoute = PaperTrailThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => PaperTrailRoute,
+} as any)
+const ReadingThreadIdRoute = ReadingThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => ReadingRoute,
+} as any)
+const ReplyQueueThreadIdRoute = ReplyQueueThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => ReplyQueueRoute,
+} as any)
+const RulesIdRoute = RulesIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => RulesRoute,
+} as any)
+const SearchThreadIdRoute = SearchThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => SearchRoute,
+} as any)
+const SenderAddressRoute = SenderAddressRouteImport.update({
+  id: '/sender/$address',
+  path: '/sender/$address',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AnalyticsDashboardRoute = AnalyticsDashboardRouteImport.update({
-  id: '/$dashboard',
-  path: '/$dashboard',
-  getParentRoute: () => AnalyticsRoute,
-} as any)
-const AccountsKeyRoute = AccountsKeyRouteImport.update({
-  id: '/$key',
-  path: '/$key',
-  getParentRoute: () => AccountsRoute,
-} as any)
-const MSavedSlugRoute = MSavedSlugRouteImport.update({
-  id: '/m/saved/$slug',
-  path: '/m/saved/$slug',
+const SettingsSectionRoute = SettingsSectionRouteImport.update({
+  id: '/settings/$section',
+  path: '/settings/$section',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MLabelNameRoute = MLabelNameRouteImport.update({
-  id: '/m/label/$name',
-  path: '/m/label/$name',
-  getParentRoute: () => rootRouteImport,
+const SnoozedThreadIdRoute = SnoozedThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => SnoozedRoute,
+} as any)
+const TodoThreadIdRoute = TodoThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => TodoRoute,
+} as any)
+const UpdatesThreadIdRoute = UpdatesThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => UpdatesRoute,
 } as any)
 const MMailboxThreadIdRoute = MMailboxThreadIdRouteImport.update({
   id: '/$threadId',
   path: '/$threadId',
   getParentRoute: () => MMailboxRoute,
 } as any)
-const MSavedSlugThreadIdRoute = MSavedSlugThreadIdRouteImport.update({
-  id: '/$threadId',
-  path: '/$threadId',
-  getParentRoute: () => MSavedSlugRoute,
+const MLabelNameRoute = MLabelNameRouteImport.update({
+  id: '/m/label/$name',
+  path: '/m/label/$name',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MSavedSlugRoute = MSavedSlugRouteImport.update({
+  id: '/m/saved/$slug',
+  path: '/m/saved/$slug',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const MLabelNameThreadIdRoute = MLabelNameThreadIdRouteImport.update({
   id: '/$threadId',
   path: '/$threadId',
   getParentRoute: () => MLabelNameRoute,
+} as any)
+const MSavedSlugThreadIdRoute = MSavedSlugThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => MSavedSlugRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -280,14 +322,18 @@ export interface FileRoutesByFullPath {
   '/accounts': typeof AccountsRouteWithChildren
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
+  '/archive': typeof ArchiveRoute
   '/deliveries': typeof DeliveriesRoute
   '/desk': typeof DeskRouteWithChildren
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
   '/drafts': typeof DraftsRoute
+  '/find': typeof FindRoute
   '/focus': typeof FocusRoute
   '/invites': typeof InvitesRoute
   '/jobs': typeof JobsRoute
+  '/messages': typeof MessagesRouteWithChildren
+  '/now': typeof NowRoute
   '/onboarding': typeof OnboardingRoute
   '/owed': typeof OwedRouteWithChildren
   '/paper-trail': typeof PaperTrailRouteWithChildren
@@ -299,12 +345,14 @@ export interface FileRoutesByFullPath {
   '/snoozed': typeof SnoozedRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
   '/todo': typeof TodoRouteWithChildren
+  '/updates': typeof UpdatesRouteWithChildren
   '/accounts/$key': typeof AccountsKeyRoute
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
   '/compose/new': typeof ComposeNewRoute
   '/desk/$threadId': typeof DeskThreadIdRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
+  '/messages/$threadId': typeof MessagesThreadIdRoute
   '/owed/$threadId': typeof OwedThreadIdRoute
   '/paper-trail/$threadId': typeof PaperTrailThreadIdRoute
   '/reading/$threadId': typeof ReadingThreadIdRoute
@@ -315,6 +363,7 @@ export interface FileRoutesByFullPath {
   '/settings/$section': typeof SettingsSectionRoute
   '/snoozed/$threadId': typeof SnoozedThreadIdRoute
   '/todo/$threadId': typeof TodoThreadIdRoute
+  '/updates/$threadId': typeof UpdatesThreadIdRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRouteWithChildren
   '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
@@ -326,14 +375,18 @@ export interface FileRoutesByTo {
   '/accounts': typeof AccountsRouteWithChildren
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
+  '/archive': typeof ArchiveRoute
   '/deliveries': typeof DeliveriesRoute
   '/desk': typeof DeskRouteWithChildren
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
   '/drafts': typeof DraftsRoute
+  '/find': typeof FindRoute
   '/focus': typeof FocusRoute
   '/invites': typeof InvitesRoute
   '/jobs': typeof JobsRoute
+  '/messages': typeof MessagesRouteWithChildren
+  '/now': typeof NowRoute
   '/onboarding': typeof OnboardingRoute
   '/owed': typeof OwedRouteWithChildren
   '/paper-trail': typeof PaperTrailRouteWithChildren
@@ -345,12 +398,14 @@ export interface FileRoutesByTo {
   '/snoozed': typeof SnoozedRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
   '/todo': typeof TodoRouteWithChildren
+  '/updates': typeof UpdatesRouteWithChildren
   '/accounts/$key': typeof AccountsKeyRoute
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
   '/compose/new': typeof ComposeNewRoute
   '/desk/$threadId': typeof DeskThreadIdRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
+  '/messages/$threadId': typeof MessagesThreadIdRoute
   '/owed/$threadId': typeof OwedThreadIdRoute
   '/paper-trail/$threadId': typeof PaperTrailThreadIdRoute
   '/reading/$threadId': typeof ReadingThreadIdRoute
@@ -361,6 +416,7 @@ export interface FileRoutesByTo {
   '/settings/$section': typeof SettingsSectionRoute
   '/snoozed/$threadId': typeof SnoozedThreadIdRoute
   '/todo/$threadId': typeof TodoThreadIdRoute
+  '/updates/$threadId': typeof UpdatesThreadIdRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRouteWithChildren
   '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
@@ -373,14 +429,18 @@ export interface FileRoutesById {
   '/accounts': typeof AccountsRouteWithChildren
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
+  '/archive': typeof ArchiveRoute
   '/deliveries': typeof DeliveriesRoute
   '/desk': typeof DeskRouteWithChildren
   '/dev': typeof DevRoute
   '/diagnostics': typeof DiagnosticsRoute
   '/drafts': typeof DraftsRoute
+  '/find': typeof FindRoute
   '/focus': typeof FocusRoute
   '/invites': typeof InvitesRoute
   '/jobs': typeof JobsRoute
+  '/messages': typeof MessagesRouteWithChildren
+  '/now': typeof NowRoute
   '/onboarding': typeof OnboardingRoute
   '/owed': typeof OwedRouteWithChildren
   '/paper-trail': typeof PaperTrailRouteWithChildren
@@ -392,12 +452,14 @@ export interface FileRoutesById {
   '/snoozed': typeof SnoozedRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
   '/todo': typeof TodoRouteWithChildren
+  '/updates': typeof UpdatesRouteWithChildren
   '/accounts/$key': typeof AccountsKeyRoute
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
   '/compose/new': typeof ComposeNewRoute
   '/desk/$threadId': typeof DeskThreadIdRoute
   '/m/$mailbox': typeof MMailboxRouteWithChildren
+  '/messages/$threadId': typeof MessagesThreadIdRoute
   '/owed/$threadId': typeof OwedThreadIdRoute
   '/paper-trail/$threadId': typeof PaperTrailThreadIdRoute
   '/reading/$threadId': typeof ReadingThreadIdRoute
@@ -408,6 +470,7 @@ export interface FileRoutesById {
   '/settings/$section': typeof SettingsSectionRoute
   '/snoozed/$threadId': typeof SnoozedThreadIdRoute
   '/todo/$threadId': typeof TodoThreadIdRoute
+  '/updates/$threadId': typeof UpdatesThreadIdRoute
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRouteWithChildren
   '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
@@ -421,14 +484,18 @@ export interface FileRouteTypes {
     | '/accounts'
     | '/activity'
     | '/analytics'
+    | '/archive'
     | '/deliveries'
     | '/desk'
     | '/dev'
     | '/diagnostics'
     | '/drafts'
+    | '/find'
     | '/focus'
     | '/invites'
     | '/jobs'
+    | '/messages'
+    | '/now'
     | '/onboarding'
     | '/owed'
     | '/paper-trail'
@@ -440,12 +507,14 @@ export interface FileRouteTypes {
     | '/snoozed'
     | '/subscriptions'
     | '/todo'
+    | '/updates'
     | '/accounts/$key'
     | '/analytics/$dashboard'
     | '/compose/$draftId'
     | '/compose/new'
     | '/desk/$threadId'
     | '/m/$mailbox'
+    | '/messages/$threadId'
     | '/owed/$threadId'
     | '/paper-trail/$threadId'
     | '/reading/$threadId'
@@ -456,6 +525,7 @@ export interface FileRouteTypes {
     | '/settings/$section'
     | '/snoozed/$threadId'
     | '/todo/$threadId'
+    | '/updates/$threadId'
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
@@ -467,14 +537,18 @@ export interface FileRouteTypes {
     | '/accounts'
     | '/activity'
     | '/analytics'
+    | '/archive'
     | '/deliveries'
     | '/desk'
     | '/dev'
     | '/diagnostics'
     | '/drafts'
+    | '/find'
     | '/focus'
     | '/invites'
     | '/jobs'
+    | '/messages'
+    | '/now'
     | '/onboarding'
     | '/owed'
     | '/paper-trail'
@@ -486,12 +560,14 @@ export interface FileRouteTypes {
     | '/snoozed'
     | '/subscriptions'
     | '/todo'
+    | '/updates'
     | '/accounts/$key'
     | '/analytics/$dashboard'
     | '/compose/$draftId'
     | '/compose/new'
     | '/desk/$threadId'
     | '/m/$mailbox'
+    | '/messages/$threadId'
     | '/owed/$threadId'
     | '/paper-trail/$threadId'
     | '/reading/$threadId'
@@ -502,6 +578,7 @@ export interface FileRouteTypes {
     | '/settings/$section'
     | '/snoozed/$threadId'
     | '/todo/$threadId'
+    | '/updates/$threadId'
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
@@ -513,14 +590,18 @@ export interface FileRouteTypes {
     | '/accounts'
     | '/activity'
     | '/analytics'
+    | '/archive'
     | '/deliveries'
     | '/desk'
     | '/dev'
     | '/diagnostics'
     | '/drafts'
+    | '/find'
     | '/focus'
     | '/invites'
     | '/jobs'
+    | '/messages'
+    | '/now'
     | '/onboarding'
     | '/owed'
     | '/paper-trail'
@@ -532,12 +613,14 @@ export interface FileRouteTypes {
     | '/snoozed'
     | '/subscriptions'
     | '/todo'
+    | '/updates'
     | '/accounts/$key'
     | '/analytics/$dashboard'
     | '/compose/$draftId'
     | '/compose/new'
     | '/desk/$threadId'
     | '/m/$mailbox'
+    | '/messages/$threadId'
     | '/owed/$threadId'
     | '/paper-trail/$threadId'
     | '/reading/$threadId'
@@ -548,6 +631,7 @@ export interface FileRouteTypes {
     | '/settings/$section'
     | '/snoozed/$threadId'
     | '/todo/$threadId'
+    | '/updates/$threadId'
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
@@ -560,14 +644,18 @@ export interface RootRouteChildren {
   AccountsRoute: typeof AccountsRouteWithChildren
   ActivityRoute: typeof ActivityRoute
   AnalyticsRoute: typeof AnalyticsRouteWithChildren
+  ArchiveRoute: typeof ArchiveRoute
   DeliveriesRoute: typeof DeliveriesRoute
   DeskRoute: typeof DeskRouteWithChildren
   DevRoute: typeof DevRoute
   DiagnosticsRoute: typeof DiagnosticsRoute
   DraftsRoute: typeof DraftsRoute
+  FindRoute: typeof FindRoute
   FocusRoute: typeof FocusRoute
   InvitesRoute: typeof InvitesRoute
   JobsRoute: typeof JobsRoute
+  MessagesRoute: typeof MessagesRouteWithChildren
+  NowRoute: typeof NowRoute
   OnboardingRoute: typeof OnboardingRoute
   OwedRoute: typeof OwedRouteWithChildren
   PaperTrailRoute: typeof PaperTrailRouteWithChildren
@@ -579,6 +667,7 @@ export interface RootRouteChildren {
   SnoozedRoute: typeof SnoozedRouteWithChildren
   SubscriptionsRoute: typeof SubscriptionsRoute
   TodoRoute: typeof TodoRouteWithChildren
+  UpdatesRoute: typeof UpdatesRouteWithChildren
   ComposeDraftIdRoute: typeof ComposeDraftIdRoute
   ComposeNewRoute: typeof ComposeNewRoute
   MMailboxRoute: typeof MMailboxRouteWithChildren
@@ -590,151 +679,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/todo': {
-      id: '/todo'
-      path: '/todo'
-      fullPath: '/todo'
-      preLoaderRoute: typeof TodoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/subscriptions': {
-      id: '/subscriptions'
-      path: '/subscriptions'
-      fullPath: '/subscriptions'
-      preLoaderRoute: typeof SubscriptionsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/snoozed': {
-      id: '/snoozed'
-      path: '/snoozed'
-      fullPath: '/snoozed'
-      preLoaderRoute: typeof SnoozedRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/search': {
-      id: '/search'
-      path: '/search'
-      fullPath: '/search'
-      preLoaderRoute: typeof SearchRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/screener': {
-      id: '/screener'
-      path: '/screener'
-      fullPath: '/screener'
-      preLoaderRoute: typeof ScreenerRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/rules': {
-      id: '/rules'
-      path: '/rules'
-      fullPath: '/rules'
-      preLoaderRoute: typeof RulesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/reply-queue': {
-      id: '/reply-queue'
-      path: '/reply-queue'
-      fullPath: '/reply-queue'
-      preLoaderRoute: typeof ReplyQueueRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/reading': {
-      id: '/reading'
-      path: '/reading'
-      fullPath: '/reading'
-      preLoaderRoute: typeof ReadingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/paper-trail': {
-      id: '/paper-trail'
-      path: '/paper-trail'
-      fullPath: '/paper-trail'
-      preLoaderRoute: typeof PaperTrailRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/owed': {
-      id: '/owed'
-      path: '/owed'
-      fullPath: '/owed'
-      preLoaderRoute: typeof OwedRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/onboarding': {
-      id: '/onboarding'
-      path: '/onboarding'
-      fullPath: '/onboarding'
-      preLoaderRoute: typeof OnboardingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/jobs': {
-      id: '/jobs'
-      path: '/jobs'
-      fullPath: '/jobs'
-      preLoaderRoute: typeof JobsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/invites': {
-      id: '/invites'
-      path: '/invites'
-      fullPath: '/invites'
-      preLoaderRoute: typeof InvitesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/focus': {
-      id: '/focus'
-      path: '/focus'
-      fullPath: '/focus'
-      preLoaderRoute: typeof FocusRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/drafts': {
-      id: '/drafts'
-      path: '/drafts'
-      fullPath: '/drafts'
-      preLoaderRoute: typeof DraftsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/diagnostics': {
-      id: '/diagnostics'
-      path: '/diagnostics'
-      fullPath: '/diagnostics'
-      preLoaderRoute: typeof DiagnosticsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dev': {
-      id: '/dev'
-      path: '/dev'
-      fullPath: '/dev'
-      preLoaderRoute: typeof DevRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/desk': {
-      id: '/desk'
-      path: '/desk'
-      fullPath: '/desk'
-      preLoaderRoute: typeof DeskRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/deliveries': {
-      id: '/deliveries'
-      path: '/deliveries'
-      fullPath: '/deliveries'
-      preLoaderRoute: typeof DeliveriesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/analytics': {
-      id: '/analytics'
-      path: '/analytics'
-      fullPath: '/analytics'
-      preLoaderRoute: typeof AnalyticsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/activity': {
-      id: '/activity'
-      path: '/activity'
-      fullPath: '/activity'
-      preLoaderRoute: typeof ActivityRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/accounts': {
@@ -744,88 +693,214 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/activity': {
+      id: '/activity'
+      path: '/activity'
+      fullPath: '/activity'
+      preLoaderRoute: typeof ActivityRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/todo/$threadId': {
-      id: '/todo/$threadId'
-      path: '/$threadId'
-      fullPath: '/todo/$threadId'
-      preLoaderRoute: typeof TodoThreadIdRouteImport
-      parentRoute: typeof TodoRoute
-    }
-    '/snoozed/$threadId': {
-      id: '/snoozed/$threadId'
-      path: '/$threadId'
-      fullPath: '/snoozed/$threadId'
-      preLoaderRoute: typeof SnoozedThreadIdRouteImport
-      parentRoute: typeof SnoozedRoute
-    }
-    '/settings/$section': {
-      id: '/settings/$section'
-      path: '/settings/$section'
-      fullPath: '/settings/$section'
-      preLoaderRoute: typeof SettingsSectionRouteImport
+    '/analytics': {
+      id: '/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sender/$address': {
-      id: '/sender/$address'
-      path: '/sender/$address'
-      fullPath: '/sender/$address'
-      preLoaderRoute: typeof SenderAddressRouteImport
+    '/archive': {
+      id: '/archive'
+      path: '/archive'
+      fullPath: '/archive'
+      preLoaderRoute: typeof ArchiveRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/search/$threadId': {
-      id: '/search/$threadId'
-      path: '/$threadId'
-      fullPath: '/search/$threadId'
-      preLoaderRoute: typeof SearchThreadIdRouteImport
-      parentRoute: typeof SearchRoute
+    '/deliveries': {
+      id: '/deliveries'
+      path: '/deliveries'
+      fullPath: '/deliveries'
+      preLoaderRoute: typeof DeliveriesRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/rules/$id': {
-      id: '/rules/$id'
-      path: '/$id'
-      fullPath: '/rules/$id'
-      preLoaderRoute: typeof RulesIdRouteImport
-      parentRoute: typeof RulesRoute
+    '/desk': {
+      id: '/desk'
+      path: '/desk'
+      fullPath: '/desk'
+      preLoaderRoute: typeof DeskRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/reply-queue/$threadId': {
-      id: '/reply-queue/$threadId'
-      path: '/$threadId'
-      fullPath: '/reply-queue/$threadId'
-      preLoaderRoute: typeof ReplyQueueThreadIdRouteImport
-      parentRoute: typeof ReplyQueueRoute
+    '/dev': {
+      id: '/dev'
+      path: '/dev'
+      fullPath: '/dev'
+      preLoaderRoute: typeof DevRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/reading/$threadId': {
-      id: '/reading/$threadId'
-      path: '/$threadId'
-      fullPath: '/reading/$threadId'
-      preLoaderRoute: typeof ReadingThreadIdRouteImport
-      parentRoute: typeof ReadingRoute
+    '/diagnostics': {
+      id: '/diagnostics'
+      path: '/diagnostics'
+      fullPath: '/diagnostics'
+      preLoaderRoute: typeof DiagnosticsRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/paper-trail/$threadId': {
-      id: '/paper-trail/$threadId'
-      path: '/$threadId'
-      fullPath: '/paper-trail/$threadId'
-      preLoaderRoute: typeof PaperTrailThreadIdRouteImport
-      parentRoute: typeof PaperTrailRoute
+    '/drafts': {
+      id: '/drafts'
+      path: '/drafts'
+      fullPath: '/drafts'
+      preLoaderRoute: typeof DraftsRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/owed/$threadId': {
-      id: '/owed/$threadId'
-      path: '/$threadId'
-      fullPath: '/owed/$threadId'
-      preLoaderRoute: typeof OwedThreadIdRouteImport
-      parentRoute: typeof OwedRoute
+    '/find': {
+      id: '/find'
+      path: '/find'
+      fullPath: '/find'
+      preLoaderRoute: typeof FindRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/m/$mailbox': {
-      id: '/m/$mailbox'
-      path: '/m/$mailbox'
-      fullPath: '/m/$mailbox'
-      preLoaderRoute: typeof MMailboxRouteImport
+    '/focus': {
+      id: '/focus'
+      path: '/focus'
+      fullPath: '/focus'
+      preLoaderRoute: typeof FocusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invites': {
+      id: '/invites'
+      path: '/invites'
+      fullPath: '/invites'
+      preLoaderRoute: typeof InvitesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jobs': {
+      id: '/jobs'
+      path: '/jobs'
+      fullPath: '/jobs'
+      preLoaderRoute: typeof JobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/messages': {
+      id: '/messages'
+      path: '/messages'
+      fullPath: '/messages'
+      preLoaderRoute: typeof MessagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/now': {
+      id: '/now'
+      path: '/now'
+      fullPath: '/now'
+      preLoaderRoute: typeof NowRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/owed': {
+      id: '/owed'
+      path: '/owed'
+      fullPath: '/owed'
+      preLoaderRoute: typeof OwedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/paper-trail': {
+      id: '/paper-trail'
+      path: '/paper-trail'
+      fullPath: '/paper-trail'
+      preLoaderRoute: typeof PaperTrailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reading': {
+      id: '/reading'
+      path: '/reading'
+      fullPath: '/reading'
+      preLoaderRoute: typeof ReadingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reply-queue': {
+      id: '/reply-queue'
+      path: '/reply-queue'
+      fullPath: '/reply-queue'
+      preLoaderRoute: typeof ReplyQueueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rules': {
+      id: '/rules'
+      path: '/rules'
+      fullPath: '/rules'
+      preLoaderRoute: typeof RulesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/screener': {
+      id: '/screener'
+      path: '/screener'
+      fullPath: '/screener'
+      preLoaderRoute: typeof ScreenerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/search': {
+      id: '/search'
+      path: '/search'
+      fullPath: '/search'
+      preLoaderRoute: typeof SearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/snoozed': {
+      id: '/snoozed'
+      path: '/snoozed'
+      fullPath: '/snoozed'
+      preLoaderRoute: typeof SnoozedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/subscriptions': {
+      id: '/subscriptions'
+      path: '/subscriptions'
+      fullPath: '/subscriptions'
+      preLoaderRoute: typeof SubscriptionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/todo': {
+      id: '/todo'
+      path: '/todo'
+      fullPath: '/todo'
+      preLoaderRoute: typeof TodoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/updates': {
+      id: '/updates'
+      path: '/updates'
+      fullPath: '/updates'
+      preLoaderRoute: typeof UpdatesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/accounts/$key': {
+      id: '/accounts/$key'
+      path: '/$key'
+      fullPath: '/accounts/$key'
+      preLoaderRoute: typeof AccountsKeyRouteImport
+      parentRoute: typeof AccountsRoute
+    }
+    '/analytics/$dashboard': {
+      id: '/analytics/$dashboard'
+      path: '/$dashboard'
+      fullPath: '/analytics/$dashboard'
+      preLoaderRoute: typeof AnalyticsDashboardRouteImport
+      parentRoute: typeof AnalyticsRoute
+    }
+    '/compose/$draftId': {
+      id: '/compose/$draftId'
+      path: '/compose/$draftId'
+      fullPath: '/compose/$draftId'
+      preLoaderRoute: typeof ComposeDraftIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/compose/new': {
+      id: '/compose/new'
+      path: '/compose/new'
+      fullPath: '/compose/new'
+      preLoaderRoute: typeof ComposeNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/desk/$threadId': {
@@ -835,47 +910,96 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DeskThreadIdRouteImport
       parentRoute: typeof DeskRoute
     }
-    '/compose/new': {
-      id: '/compose/new'
-      path: '/compose/new'
-      fullPath: '/compose/new'
-      preLoaderRoute: typeof ComposeNewRouteImport
+    '/m/$mailbox': {
+      id: '/m/$mailbox'
+      path: '/m/$mailbox'
+      fullPath: '/m/$mailbox'
+      preLoaderRoute: typeof MMailboxRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/compose/$draftId': {
-      id: '/compose/$draftId'
-      path: '/compose/$draftId'
-      fullPath: '/compose/$draftId'
-      preLoaderRoute: typeof ComposeDraftIdRouteImport
+    '/messages/$threadId': {
+      id: '/messages/$threadId'
+      path: '/$threadId'
+      fullPath: '/messages/$threadId'
+      preLoaderRoute: typeof MessagesThreadIdRouteImport
+      parentRoute: typeof MessagesRoute
+    }
+    '/owed/$threadId': {
+      id: '/owed/$threadId'
+      path: '/$threadId'
+      fullPath: '/owed/$threadId'
+      preLoaderRoute: typeof OwedThreadIdRouteImport
+      parentRoute: typeof OwedRoute
+    }
+    '/paper-trail/$threadId': {
+      id: '/paper-trail/$threadId'
+      path: '/$threadId'
+      fullPath: '/paper-trail/$threadId'
+      preLoaderRoute: typeof PaperTrailThreadIdRouteImport
+      parentRoute: typeof PaperTrailRoute
+    }
+    '/reading/$threadId': {
+      id: '/reading/$threadId'
+      path: '/$threadId'
+      fullPath: '/reading/$threadId'
+      preLoaderRoute: typeof ReadingThreadIdRouteImport
+      parentRoute: typeof ReadingRoute
+    }
+    '/reply-queue/$threadId': {
+      id: '/reply-queue/$threadId'
+      path: '/$threadId'
+      fullPath: '/reply-queue/$threadId'
+      preLoaderRoute: typeof ReplyQueueThreadIdRouteImport
+      parentRoute: typeof ReplyQueueRoute
+    }
+    '/rules/$id': {
+      id: '/rules/$id'
+      path: '/$id'
+      fullPath: '/rules/$id'
+      preLoaderRoute: typeof RulesIdRouteImport
+      parentRoute: typeof RulesRoute
+    }
+    '/search/$threadId': {
+      id: '/search/$threadId'
+      path: '/$threadId'
+      fullPath: '/search/$threadId'
+      preLoaderRoute: typeof SearchThreadIdRouteImport
+      parentRoute: typeof SearchRoute
+    }
+    '/sender/$address': {
+      id: '/sender/$address'
+      path: '/sender/$address'
+      fullPath: '/sender/$address'
+      preLoaderRoute: typeof SenderAddressRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/analytics/$dashboard': {
-      id: '/analytics/$dashboard'
-      path: '/$dashboard'
-      fullPath: '/analytics/$dashboard'
-      preLoaderRoute: typeof AnalyticsDashboardRouteImport
-      parentRoute: typeof AnalyticsRoute
-    }
-    '/accounts/$key': {
-      id: '/accounts/$key'
-      path: '/$key'
-      fullPath: '/accounts/$key'
-      preLoaderRoute: typeof AccountsKeyRouteImport
-      parentRoute: typeof AccountsRoute
-    }
-    '/m/saved/$slug': {
-      id: '/m/saved/$slug'
-      path: '/m/saved/$slug'
-      fullPath: '/m/saved/$slug'
-      preLoaderRoute: typeof MSavedSlugRouteImport
+    '/settings/$section': {
+      id: '/settings/$section'
+      path: '/settings/$section'
+      fullPath: '/settings/$section'
+      preLoaderRoute: typeof SettingsSectionRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/m/label/$name': {
-      id: '/m/label/$name'
-      path: '/m/label/$name'
-      fullPath: '/m/label/$name'
-      preLoaderRoute: typeof MLabelNameRouteImport
-      parentRoute: typeof rootRouteImport
+    '/snoozed/$threadId': {
+      id: '/snoozed/$threadId'
+      path: '/$threadId'
+      fullPath: '/snoozed/$threadId'
+      preLoaderRoute: typeof SnoozedThreadIdRouteImport
+      parentRoute: typeof SnoozedRoute
+    }
+    '/todo/$threadId': {
+      id: '/todo/$threadId'
+      path: '/$threadId'
+      fullPath: '/todo/$threadId'
+      preLoaderRoute: typeof TodoThreadIdRouteImport
+      parentRoute: typeof TodoRoute
+    }
+    '/updates/$threadId': {
+      id: '/updates/$threadId'
+      path: '/$threadId'
+      fullPath: '/updates/$threadId'
+      preLoaderRoute: typeof UpdatesThreadIdRouteImport
+      parentRoute: typeof UpdatesRoute
     }
     '/m/$mailbox/$threadId': {
       id: '/m/$mailbox/$threadId'
@@ -884,12 +1008,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MMailboxThreadIdRouteImport
       parentRoute: typeof MMailboxRoute
     }
-    '/m/saved/$slug/$threadId': {
-      id: '/m/saved/$slug/$threadId'
-      path: '/$threadId'
-      fullPath: '/m/saved/$slug/$threadId'
-      preLoaderRoute: typeof MSavedSlugThreadIdRouteImport
-      parentRoute: typeof MSavedSlugRoute
+    '/m/label/$name': {
+      id: '/m/label/$name'
+      path: '/m/label/$name'
+      fullPath: '/m/label/$name'
+      preLoaderRoute: typeof MLabelNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/m/saved/$slug': {
+      id: '/m/saved/$slug'
+      path: '/m/saved/$slug'
+      fullPath: '/m/saved/$slug'
+      preLoaderRoute: typeof MSavedSlugRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/m/label/$name/$threadId': {
       id: '/m/label/$name/$threadId'
@@ -897,6 +1028,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/m/label/$name/$threadId'
       preLoaderRoute: typeof MLabelNameThreadIdRouteImport
       parentRoute: typeof MLabelNameRoute
+    }
+    '/m/saved/$slug/$threadId': {
+      id: '/m/saved/$slug/$threadId'
+      path: '/$threadId'
+      fullPath: '/m/saved/$slug/$threadId'
+      preLoaderRoute: typeof MSavedSlugThreadIdRouteImport
+      parentRoute: typeof MSavedSlugRoute
     }
   }
 }
@@ -934,6 +1072,18 @@ const DeskRouteChildren: DeskRouteChildren = {
 }
 
 const DeskRouteWithChildren = DeskRoute._addFileChildren(DeskRouteChildren)
+
+interface MessagesRouteChildren {
+  MessagesThreadIdRoute: typeof MessagesThreadIdRoute
+}
+
+const MessagesRouteChildren: MessagesRouteChildren = {
+  MessagesThreadIdRoute: MessagesThreadIdRoute,
+}
+
+const MessagesRouteWithChildren = MessagesRoute._addFileChildren(
+  MessagesRouteChildren,
+)
 
 interface OwedRouteChildren {
   OwedThreadIdRoute: typeof OwedThreadIdRoute
@@ -1022,6 +1172,17 @@ const TodoRouteChildren: TodoRouteChildren = {
 
 const TodoRouteWithChildren = TodoRoute._addFileChildren(TodoRouteChildren)
 
+interface UpdatesRouteChildren {
+  UpdatesThreadIdRoute: typeof UpdatesThreadIdRoute
+}
+
+const UpdatesRouteChildren: UpdatesRouteChildren = {
+  UpdatesThreadIdRoute: UpdatesThreadIdRoute,
+}
+
+const UpdatesRouteWithChildren =
+  UpdatesRoute._addFileChildren(UpdatesRouteChildren)
+
 interface MMailboxRouteChildren {
   MMailboxThreadIdRoute: typeof MMailboxThreadIdRoute
 }
@@ -1063,14 +1224,18 @@ const rootRouteChildren: RootRouteChildren = {
   AccountsRoute: AccountsRouteWithChildren,
   ActivityRoute: ActivityRoute,
   AnalyticsRoute: AnalyticsRouteWithChildren,
+  ArchiveRoute: ArchiveRoute,
   DeliveriesRoute: DeliveriesRoute,
   DeskRoute: DeskRouteWithChildren,
   DevRoute: DevRoute,
   DiagnosticsRoute: DiagnosticsRoute,
   DraftsRoute: DraftsRoute,
+  FindRoute: FindRoute,
   FocusRoute: FocusRoute,
   InvitesRoute: InvitesRoute,
   JobsRoute: JobsRoute,
+  MessagesRoute: MessagesRouteWithChildren,
+  NowRoute: NowRoute,
   OnboardingRoute: OnboardingRoute,
   OwedRoute: OwedRouteWithChildren,
   PaperTrailRoute: PaperTrailRouteWithChildren,
@@ -1082,6 +1247,7 @@ const rootRouteChildren: RootRouteChildren = {
   SnoozedRoute: SnoozedRouteWithChildren,
   SubscriptionsRoute: SubscriptionsRoute,
   TodoRoute: TodoRouteWithChildren,
+  UpdatesRoute: UpdatesRouteWithChildren,
   ComposeDraftIdRoute: ComposeDraftIdRoute,
   ComposeNewRoute: ComposeNewRoute,
   MMailboxRoute: MMailboxRouteWithChildren,

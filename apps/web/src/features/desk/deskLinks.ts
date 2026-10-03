@@ -12,7 +12,7 @@ interface LinkBase {
 /** Each destination with exactly the params or search it takes. */
 export type ElsewhereLink = LinkBase &
   (
-    | { to: "/reading" | "/paper-trail" | "/deliveries" | "/invites" }
+    | { to: "/reading" | "/updates" | "/deliveries" | "/invites" }
     | { to: "/screener"; search: { account?: string } }
   );
 
@@ -34,10 +34,10 @@ export function elsewhereLinks(counts: DeskElsewhere): ElsewhereLink[] {
     },
     {
       key: "paper_trail",
-      label: "Paper trail",
+      label: "Updates",
       count: counts.paper_trail,
       suffix: "this week",
-      to: "/paper-trail",
+      to: "/updates",
     },
     { key: "deliveries", label: "Deliveries", count: counts.deliveries, to: "/deliveries" },
     { key: "invites", label: "Invites", count: counts.invites, to: "/invites" },

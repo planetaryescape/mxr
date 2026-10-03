@@ -13,12 +13,12 @@ describe("everything-else links", () => {
     });
     expect(links.map((link) => [link.label, link.count])).toEqual([
       ["Reading", 7],
-      ["Paper trail", 3],
+      ["Updates", 3],
       ["Invites", 1],
       ["Screener", 2],
     ]);
     expect(links[0]).toMatchObject({ to: "/reading", suffix: "this week" });
-    expect(links[1]).toMatchObject({ to: "/paper-trail", suffix: "this week" });
+    expect(links[1]).toMatchObject({ to: "/updates", suffix: "this week" });
   });
 
   test("the screener link opens the account whose senders were counted", () => {

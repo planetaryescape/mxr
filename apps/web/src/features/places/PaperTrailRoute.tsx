@@ -15,6 +15,8 @@ import {
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
+import { EarlyModeNote } from "@/features/modes/EarlyModeNote";
+import { markModeDone } from "@/features/modes/modeDone";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
 import { targetFromRows } from "@/features/mail-actions/target";
@@ -58,8 +60,8 @@ function shownUnpinned(bundles: readonly PlaceBundle[], open: (bundle: PlaceBund
 }
 
 /**
- * Paper trail: receipts, notifications and automated mail, one row per
- * sender. A row opens to its messages; pin the few that matter and sweep
+ * Updates, an early version on Paper trail: receipts, notifications and
+ * automated mail, one row per sender, until the twice-daily digest ships. A row opens to its messages; pin the few that matter and sweep
  * the rest. Counts here are facts, never badges: none of this is work.
  */
 export function PaperTrailRoute() {
@@ -76,9 +78,10 @@ export function PaperTrailRoute() {
   const phase = useDelayedPending(status.isLoading);
   const lowTide = useLowTide("paper_trail", status.isLoading || status.isError, bundles.length > 0);
   return (
-    <PlaceLayout basePath="/paper-trail" label="Paper trail" threadIds={threadIds}>
+    <PlaceLayout basePath="/updates" label="Updates" threadIds={threadIds}>
+      <EarlyModeNote mode="updates" />
       <PlaceHeader
-        title="Paper trail"
+        title="Updates"
         meta={
           total > 0
             ? `${plural(total, "message")} from ${plural(senders, "sender")}. Pin what matters, sweep the rest.`
@@ -228,6 +231,16 @@ function Bundles({
     down: () => move(1),
     up: () => move(-1),
     open: () => current && activate(current),
+    // Done here in Updates: one message's thread, or every thread of the
+    // sender's bundle (let go of this source).
+    done: () => {
+      if (!current) return;
+      const threads =
+        current.type === "message"
+          ? [current.message.thread_id]
+          : current.bundle.messages.map((message) => message.thread_id);
+      void markModeDone("updates", threads);
+    },
     pin: () => {
       if (!current) return;
       if (current.type === "message") {

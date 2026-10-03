@@ -8,7 +8,7 @@ import {
 } from "@/state/uiPrefsStore";
 
 const HOMES: { value: HomeView; label: string }[] = [
-  { value: "desk", label: "Desk" },
+  { value: "now", label: "Now" },
   { value: "inbox", label: "Inbox" },
 ];
 
@@ -45,7 +45,7 @@ export function AppearanceSection() {
     <div>
       <SelectSetting
         label="Home"
-        description="Where mxr opens. The desk shows what needs you; the inbox shows what arrived, newest first."
+        description="Where mxr opens. Now shows the few things that need you; the inbox shows what arrived, newest first."
         value={home}
         options={HOMES}
         onChange={setHome}

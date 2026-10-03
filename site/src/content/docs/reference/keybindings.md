@@ -419,7 +419,10 @@ Work on every page except while typing in a field or compose.
 | Key | Action | Note |
 |-----|--------|------|
 | `g 1` … `g 9` | Open saved search 1 to 9 | In sidebar order, as the TUI's tab strip |
-| `g h` | Go to Desk |  |
+| `g h` | Go to Now |  |
+| `g m` | Go to Messages |  |
+| `g u`, `g p` | Go to Updates |  |
+| `g e` | Go to Archive |  |
 | `g w` | Waiting on | A lane of the desk lens in the TUI |
 | `g i`, `g 0` | Go to Inbox |  |
 | `g s` | Go to Starred |  |
@@ -438,8 +441,6 @@ Work on every page except while typing in a field or compose.
 | `g o` | Owed replies |  |
 | `g v`, `9` | Calendar invites |  |
 | `g r` | Reading |  |
-| `g p` | Paper trail |  |
-| `g u` | Subscriptions |  |
 | `g S`, `8` | Screener |  |
 | `1` | Mail |  |
 | `2` | Search page |  |
@@ -588,6 +589,7 @@ Bundles of mail that isn't from people. The reader keeps its own keys.
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter`, `o` | Open, or expand a bundle |  |
+| `e` | Done here: let go of this in Updates or Reading |  |
 | `p` | Pin or unpin (a sweep leaves pins) |  |
 | `S` | Sweep this sender's bundle… | Previews the daemon's dry run first; undo afterwards |
 | `A` | Sweep the whole place… | Everything unpinned here; previews first and opens on Cancel (Tab, then Enter) |

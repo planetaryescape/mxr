@@ -24,7 +24,7 @@ import { fetchRunway, TODO_KEY, type Todo, type TodoRunway } from "./api";
 import { TodoCatchupView, TodoExpiredView } from "./TodoCatchupView";
 import { TodoRow } from "./TodoRow";
 import { openCount, primaryAction, runwayItems, type RunwayItem } from "./todoRows";
-import { markDone, markNotTodo, restoreTodos, useTodoHidden } from "./todoVerbs";
+import { markNotTodo, restoreTodos, tickOff, useTodoHidden } from "./todoVerbs";
 
 /**
  * The runway for the account scope. The first fetch on each visit records
@@ -251,7 +251,7 @@ function Bands({
     },
     [navigate, openEmail, retireCard, setActivePane],
   );
-  const done = useCallback((todo: Todo) => void markDone([todo]), []);
+  const done = useCallback((todo: Todo) => void tickOff(todo), []);
   const restore = useCallback((todo: Todo) => void restoreTodos([todo]), []);
   const select = useCallback((todo: Todo) => setCursorId(todo.id), []);
   const toggleSource = useCallback(

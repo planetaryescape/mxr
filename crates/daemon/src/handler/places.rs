@@ -103,7 +103,7 @@ impl AccountKinds {
     }
 
     /// Mail you sent (or sent to yourself) never belongs to a place.
-    fn is_outbound(&self, message: &PlaceMessage) -> bool {
+    pub(super) fn is_outbound(&self, message: &PlaceMessage) -> bool {
         message.direction == "outbound"
             || (message.direction != "inbound" && self.is_self(&message.from_email))
     }

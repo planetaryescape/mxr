@@ -1205,7 +1205,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Done here: threads leave one mode, archived only when no other mode holds them (dry_run previews) */
+        /** Done here: threads, a sender's threads or named to-dos leave one mode, archived only when no other mode holds them (dry_run previews) */
         post: operations["mail_mode_done"];
         delete?: never;
         options?: never;
@@ -4757,7 +4757,10 @@ export interface components {
         ModeDoneBody: {
             /** @description Preview only: the same plan, nothing changed. */
             dry_run?: boolean;
-            thread_ids: string[];
+            sender?: null | components["schemas"]["ModeDoneSenderData"];
+            thread_ids?: string[];
+            /** @description To do only: tick off just these rows. */
+            todo_ids?: string[];
         };
         /** @description What done in one mode did to one thread, or with `dry_run` would do. */
         ModeDoneOutcomeData: {
@@ -4789,6 +4792,11 @@ export interface components {
             thread_id: components["schemas"]["ThreadId"];
             /** @description To do: the rows ticked off. */
             todos_ticked?: string[];
+        };
+        /** @description Every thread of one sender's in a mode, for done on a sender's row. */
+        ModeDoneSenderData: {
+            account_id: components["schemas"]["AccountId"];
+            sender_email: string;
         };
         /**
          * @description Returned in `ResponseData::ModeGuides`: one mode's teaching copy and
@@ -5246,6 +5254,12 @@ export interface components {
             /** @description "g h". */
             key: string;
             name: string;
+            /**
+             * Format: int32
+             * @description Messages: person mail in the inbox no lane holds, kept until done
+             *     there. Not in `count`, which counts people.
+             */
+            quiet?: number | null;
             status: components["schemas"]["RailStatusData"];
         };
         /** @description A page under More. */
@@ -6516,7 +6530,9 @@ export interface components {
             cmd: "SetModeDone";
             dry_run?: boolean;
             mode: components["schemas"]["ModeKindData"];
-            thread_ids: components["schemas"]["ThreadId"][];
+            sender?: null | components["schemas"]["ModeDoneSenderData"];
+            thread_ids?: components["schemas"]["ThreadId"][];
+            todo_ids?: string[];
         } | {
             account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */

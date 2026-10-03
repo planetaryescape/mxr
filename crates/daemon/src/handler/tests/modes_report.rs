@@ -163,9 +163,18 @@ async fn modes_report() {
     // Done's preview on threads that are in a mode: plans only, no writes.
     for mode in [ModeKindData::Messages, ModeKindData::Updates] {
         let started = Instant::now();
-        let response = mode_done::set_mode_done(&state, &sample, mode, true)
-            .await
-            .unwrap();
+        let response = mode_done::set_mode_done(
+            &state,
+            mode_done::DoneRequest {
+                thread_ids: &sample,
+                mode,
+                dry_run: true,
+                todo_ids: &[],
+                sender: None,
+            },
+        )
+        .await
+        .unwrap();
         let ResponseData::ModeDone { items, .. } = response else {
             panic!("expected ModeDone")
         };

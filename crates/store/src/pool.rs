@@ -999,6 +999,25 @@ const MIGRATIONS: &[Migration] = &[
             MigrationStep::Sql(include_str!("../migrations/062_done_watermark_by_date.sql")),
         ]),
     },
+    // Done marks also keep the ids of the messages they saw, so a message
+    // the mark never saw is new whatever its Date header says. NULL on
+    // older marks, which keep the (date, id) watermark and count.
+    Migration {
+        version: 63,
+        name: "done_marks_covered_ids",
+        kind: MigrationKind::Composite(&[
+            MigrationStep::AddColumn {
+                table: "desk_dismissals",
+                column: "covered_ids",
+                sql: "ALTER TABLE desk_dismissals ADD COLUMN covered_ids TEXT",
+            },
+            MigrationStep::AddColumn {
+                table: "mode_done",
+                column: "covered_ids",
+                sql: "ALTER TABLE mode_done ADD COLUMN covered_ids TEXT",
+            },
+        ]),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

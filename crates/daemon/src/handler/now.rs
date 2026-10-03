@@ -7,23 +7,22 @@
 
 use super::desk::{compose_desk, desk_lane};
 use super::mode_rules::{
-    age_label, day_part, more_line, now_headline, overload_line, reading_fade, screener_question,
-    updates_card_since, updates_line, EVENING_HOUR,
+    age_label, day_part, more_line, now_headline, overload_line, reading_fade, updates_card_since,
+    updates_line, EVENING_HOUR,
 };
-use super::modes::{inbox_modes, InboxModes};
+use super::modes::{inbox_modes, place_threads, InboxModes};
 use super::places::{scoped_accounts, Placed};
 use super::todo_view::{bands, day_label, start_of_week};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Local, TimeZone, Timelike, Utc};
-use mxr_core::id::AccountId;
+use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::MessageFlags;
 use mxr_protocol::{
     now_copy, DeskLaneKind, DeskRowData, ModeKindData, NowData, NowDueData, NowPeopleData,
     NowPersonData, NowReadingPickData, NowTodoData, NowUpdateSourceData, NowUpdatesCardData,
-    ResponseData, SenderKindData, TodoData, TodoNextData, NOW_SECTION_CAP,
+    ResponseData, ScreenerQuestionData, TodoData, TodoNextData, NOW_SECTION_CAP,
 };
-use mxr_store::ScreenerDisposition;
 use std::collections::{HashMap, HashSet};
 
 /// What Now and the rail are built from, read once.
@@ -133,9 +132,9 @@ where
     let started = std::time::Instant::now();
     let accounts = scoped_accounts(state, account_id).await?;
     let snapshot = snapshot(state, account_id, &accounts, now, tz).await?;
-    let decisions = sender_decisions(state, &accounts).await?;
+    let asks = sender_questions(state, &snapshot, now).await?;
 
-    let people = people_section(&snapshot, &decisions, now);
+    let people = people_section(&snapshot, &asks, now);
     let due_soon = due_section(&snapshot);
     let updates = updates_card(&snapshot.inbox.updates, updates_card_since(now, tz));
     let evening = now.with_timezone(tz).hour() >= EVENING_HOUR;
@@ -205,29 +204,34 @@ where
     })
 }
 
-/// Each account's decisions about senders, so a new sender's row can ask
-/// (D117).
-async fn sender_decisions(
+/// The new-sender question for each shown person row, from membership's
+/// own first-time check (D117), so Now asks exactly when Messages would.
+async fn sender_questions(
     state: &AppState,
-    accounts: &[AccountId],
-) -> Result<HashMap<AccountId, HashMap<String, ScreenerDisposition>>, HandlerError> {
-    let mut decided = HashMap::new();
-    for account in accounts {
-        let decisions = state
-            .store
-            .list_screener_decisions(account)
-            .await?
-            .into_iter()
-            .map(|d| (d.sender_email.to_ascii_lowercase(), d.disposition))
-            .collect();
-        decided.insert(account.clone(), decisions);
+    snapshot: &NowSnapshot,
+    now: DateTime<Utc>,
+) -> Result<HashMap<ThreadId, ScreenerQuestionData>, HandlerError> {
+    let mut by_account: HashMap<AccountId, Vec<ThreadId>> = HashMap::new();
+    for row in snapshot.person_rows().take(NOW_SECTION_CAP) {
+        by_account
+            .entry(row.account_id.clone())
+            .or_default()
+            .push(row.thread_id.clone());
     }
-    Ok(decided)
+    let mut asks = HashMap::new();
+    for (account, threads) in by_account {
+        for placement in place_threads(state, &account, &threads, now).await? {
+            if let Some(question) = placement.data.new_sender {
+                asks.insert(placement.data.thread_id, question);
+            }
+        }
+    }
+    Ok(asks)
 }
 
 fn people_section(
     snapshot: &NowSnapshot,
-    decisions: &HashMap<AccountId, HashMap<String, ScreenerDisposition>>,
+    asks: &HashMap<ThreadId, ScreenerQuestionData>,
     now: DateTime<Utc>,
 ) -> NowPeopleData {
     let total = snapshot.your_turn_total();
@@ -235,19 +239,7 @@ fn people_section(
         .person_rows()
         .take(NOW_SECTION_CAP)
         .map(|row| {
-            let undecided = decisions
-                .get(&row.account_id)
-                .and_then(|decided| decided.get(&row.counterparty_email.to_ascii_lowercase()))
-                .is_none_or(|decision| *decision == ScreenerDisposition::Unknown);
-            let new_sender = (row.lane == DeskLaneKind::PeopleNew && undecided)
-                .then(|| {
-                    screener_question(
-                        &row.account_id,
-                        &row.counterparty_email,
-                        SenderKindData::People,
-                    )
-                })
-                .flatten();
+            let new_sender = asks.get(&row.thread_id).cloned();
             NowPersonData {
                 why: format!(
                     "From Messages: {}, {}.",
@@ -261,7 +253,7 @@ fn people_section(
         .collect();
     NowPeopleData {
         more_line: more_line(total, rows.len(), ModeKindData::Messages),
-        overload_line: overload_line(distinct_people([&snapshot.owed]), rows.len()),
+        overload_line: overload_line(total, distinct_people([&snapshot.owed]), rows.len()),
         rows,
         total,
     }

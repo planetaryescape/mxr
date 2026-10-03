@@ -581,7 +581,7 @@ fn mail_mode_membership_post() {}
 #[utoipa::path(
     post,
     path = "/api/v1/mail/modes/{mode}/done",
-    summary = "Done here: threads leave one mode, archived only when no other mode holds them (dry_run previews)",
+    summary = "Done here: threads, a sender's threads or named to-dos leave one mode, archived only when no other mode holds them (dry_run previews)",
     params(("mode" = String, Path, description = "`messages`, `todo`, `updates` or `reading`")),
     request_body = crate::mode_routes::ModeDoneBody,
     responses(

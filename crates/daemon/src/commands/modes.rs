@@ -7,8 +7,8 @@ use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format, terminal_text};
 use mxr_protocol::{
-    ModeDoneOutcomeData, ModeGuideData, ModeKindData, RailData, RailStatusData, Request, Response,
-    ResponseData, ThreadModesData,
+    ModeDoneOutcomeData, ModeDoneSenderData, ModeGuideData, ModeKindData, RailData, RailStatusData,
+    Request, Response, ResponseData, ThreadModesData,
 };
 use std::fmt::Write as _;
 
@@ -28,8 +28,29 @@ pub async fn run(action: ModesAction, format: Option<OutputFormat>) -> anyhow::R
         ModesAction::Done {
             thread_ids,
             mode,
+            todo_ids,
+            sender,
+            account,
             dry_run,
-        } => return done(&mut client, &thread_ids, &mode, dry_run, format).await,
+        } => {
+            let sender = match (sender, account) {
+                (Some(sender_email), Some(account)) => Some(ModeDoneSenderData {
+                    account_id: account
+                        .parse()
+                        .map_err(|_| anyhow::anyhow!("not an account id: {account}"))?,
+                    sender_email,
+                }),
+                _ => None,
+            };
+            let request = DoneArgs {
+                thread_ids: &thread_ids,
+                mode: &mode,
+                todo_ids,
+                sender,
+                dry_run,
+            };
+            return done(&mut client, request, format).await;
+        }
     };
     let guides = expect_response(client.request(request).await?, |response| match response {
         Response::Ok {
@@ -83,10 +104,13 @@ fn rail_text(rail: &RailData) -> String {
             .or(entry.count)
             .map(|n| n.to_string())
             .unwrap_or_default();
-        let note = match (entry.status, &entry.early_note) {
+        let mut note = match (entry.status, &entry.early_note) {
             (RailStatusData::Early, Some(note)) => format!("  {note}"),
             _ => String::new(),
         };
+        if let Some(quiet) = entry.quiet.filter(|n| *n > 0) {
+            let _ = write!(note, " Quiet: {quiet}.");
+        }
         let _ = writeln!(
             out,
             "  {:<9} {:<4} {:>4}{note}",
@@ -172,22 +196,33 @@ fn membership_text(thread: &ThreadModesData) -> String {
     out
 }
 
+struct DoneArgs<'a> {
+    thread_ids: &'a [String],
+    mode: &'a str,
+    todo_ids: Vec<String>,
+    sender: Option<ModeDoneSenderData>,
+    dry_run: bool,
+}
+
 async fn done(
     client: &mut IpcClient,
-    thread_ids: &[String],
-    mode: &str,
-    dry_run: bool,
+    args: DoneArgs<'_>,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
-    let mode = ModeKindData::parse(mode).ok_or_else(|| {
-        anyhow::anyhow!("no mode \"{mode}\": use messages, todo, updates or reading")
+    let mode = ModeKindData::parse(args.mode).ok_or_else(|| {
+        anyhow::anyhow!(
+            "no mode \"{}\": use messages, todo, updates or reading",
+            args.mode
+        )
     })?;
     let (items, dry_run, mutation_id, undo_unavailable) = expect_response(
         client
             .request(Request::SetModeDone {
-                thread_ids: parse_thread_ids(thread_ids)?,
+                thread_ids: parse_thread_ids(args.thread_ids)?,
                 mode,
-                dry_run,
+                dry_run: args.dry_run,
+                todo_ids: args.todo_ids,
+                sender: args.sender,
             })
             .await?,
         |response| match response {

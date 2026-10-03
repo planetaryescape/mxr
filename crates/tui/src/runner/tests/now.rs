@@ -136,7 +136,7 @@ fn e_on_a_person_is_done_in_messages_and_u_undoes_it() {
     press(&mut app, KeyCode::Char('e'));
     assert!(matches!(
         queued(&app).as_slice(),
-        [Request::SetModeDone { thread_ids, mode: ModeKindData::Messages, dry_run: false }]
+        [Request::SetModeDone { thread_ids, mode: ModeKindData::Messages, dry_run: false, .. }]
             if thread_ids == &vec![thread.clone()]
     ));
     let people = &app.mailbox.now_page.now.as_ref().unwrap().people.rows;
@@ -194,14 +194,14 @@ fn the_last_mode_letting_go_says_it_archived_in_gmail() {
 #[test]
 fn e_on_a_due_row_is_done_in_to_do_for_its_thread() {
     let mut app = now_app(true);
-    let todo = &app.mailbox.now_page.now.as_ref().unwrap().due_soon.todos[0];
+    let todo = app.mailbox.now_page.now.as_ref().unwrap().due_soon.todos[0].clone();
     let thread = todo.todo.thread_id.clone().expect("a thread");
     app.mailbox.selected_index = 3;
     press(&mut app, KeyCode::Char('e'));
     assert!(matches!(
         queued(&app).as_slice(),
-        [Request::SetModeDone { thread_ids, mode: ModeKindData::Todo, .. }]
-            if thread_ids == &vec![thread.clone()]
+        [Request::SetModeDone { thread_ids, mode: ModeKindData::Todo, todo_ids, .. }]
+            if thread_ids == &vec![thread.clone()] && todo_ids == &vec![todo.todo.id.clone()]
     ));
 }
 
@@ -244,7 +244,7 @@ fn a_letting_go_of_the_digest_is_previewed_and_commits_what_was_previewed() {
     press(&mut app, KeyCode::Enter);
     assert!(matches!(
         queued(&app).as_slice(),
-        [Request::SetModeDone { thread_ids, mode: ModeKindData::Updates, dry_run: false }]
+        [Request::SetModeDone { thread_ids, mode: ModeKindData::Updates, dry_run: false, .. }]
             if thread_ids == &card_threads
     ));
     assert!(app.mailbox.now_page.now.as_ref().unwrap().updates.is_none());

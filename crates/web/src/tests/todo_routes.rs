@@ -207,7 +207,7 @@ async fn now_rail_membership_and_done_routes_forward_their_requests() {
     ));
     assert!(matches!(
         &seen[5],
-        Request::SetModeDone { mode: ModeKindData::Messages, dry_run: true, thread_ids } if thread_ids.len() == 1
+        Request::SetModeDone { mode: ModeKindData::Messages, dry_run: true, thread_ids, .. } if thread_ids.len() == 1
     ));
     assert!(matches!(
         &seen[6],

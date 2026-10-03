@@ -1672,6 +1672,8 @@ pub async fn run() -> anyhow::Result<()> {
                         thread_ids: thread_ids.clone(),
                         mode: mxr_protocol::ModeKindData::Updates,
                         dry_run: true,
+                        todo_ids: Vec::new(),
+                        sender: None,
                     },
                 )
                 .await;

@@ -2189,17 +2189,26 @@ pub enum ModesAction {
         thread: Option<String>,
     },
     /// Done here: the conversations leave one mode until someone writes
-    /// again (in To do, their open to-dos are ticked off). When no other
-    /// mode holds a conversation it is archived at your provider too,
-    /// unless `modes.archive_on_last_done` is off. Prints what happened
-    /// and an undo id for `mxr undo`.
+    /// again (in To do, their open to-dos are ticked off, or only those
+    /// named with --todo). When no other mode holds a conversation it is
+    /// archived at your provider too, unless `modes.archive_on_last_done`
+    /// is off. Prints what happened and an undo id for `mxr undo`.
     Done {
         /// Thread ids, as `mxr now --format ids` prints them.
-        #[arg(required = true)]
+        #[arg(required_unless_present = "sender")]
         thread_ids: Vec<String>,
         /// The mode to be done in: messages, todo, updates or reading.
         #[arg(long)]
         mode: String,
+        /// To do only: tick off just this to-do (repeat for more).
+        #[arg(long = "todo", value_name = "TODO_ID")]
+        todo_ids: Vec<String>,
+        /// Updates or Reading: every conversation of this sender's there.
+        #[arg(long, value_name = "EMAIL", requires = "account")]
+        sender: Option<String>,
+        /// The sender's account, with --sender.
+        #[arg(long, value_name = "ACCOUNT_ID")]
+        account: Option<String>,
         /// Show what done would change without changing anything.
         #[arg(long)]
         dry_run: bool,

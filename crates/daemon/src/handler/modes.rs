@@ -73,6 +73,8 @@ pub(super) async fn messages_dismissals(
 /// One thread placed in its modes, with what done needs to act on it.
 pub(super) struct Placement {
     pub data: ThreadModesData,
+    /// In Messages as quiet: person mail in the inbox no lane holds.
+    pub quiet: bool,
     /// Every message of the thread, in storage order within date order.
     pub messages: Vec<DeskMessage>,
     /// Open to-do rows on the thread.
@@ -160,6 +162,24 @@ pub(super) async fn place_threads(
         }
     }
     let marks = store.mode_done_for_threads(account_id, thread_ids).await?;
+    // Who you have ever written to, among the senders a new-sender
+    // question could be about: the lanes above only saw these threads.
+    let mut maybe_new: Vec<String> = messages
+        .iter()
+        .filter(|m| {
+            !is_outbound(m, &is_self) && m.date >= now - Duration::days(SCREENER_NEW_SENDER_DAYS)
+        })
+        .map(|m| m.from.email.to_ascii_lowercase())
+        .filter(|email| {
+            senders
+                .screener
+                .get(email)
+                .is_none_or(|decision| *decision == ScreenerDisposition::Unknown)
+        })
+        .collect();
+    maybe_new.sort_unstable();
+    maybe_new.dedup();
+    let written_to = store.addresses_written_to(account_id, &maybe_new).await?;
     let provider = store
         .get_account(account_id)
         .await?
@@ -179,10 +199,17 @@ pub(super) async fn place_threads(
             todos: &thread_todos,
             marks: &marks,
             senders: &senders,
+            written_to: &written_to,
             is_self: &is_self,
             now,
         });
+        let quiet = !rows.contains_key(&thread_id)
+            && data
+                .modes
+                .iter()
+                .any(|entry| entry.mode == ModeKindData::Messages);
         placements.push(Placement {
+            quiet,
             data,
             messages: thread.to_vec(),
             todos: thread_todos,
@@ -201,6 +228,8 @@ struct PlaceInputs<'a> {
     todos: &'a [TodoRecord],
     marks: &'a HashMap<(ThreadId, String), DeskDismissal>,
     senders: &'a Senders,
+    /// Senders you have ever written to, anywhere in the account.
+    written_to: &'a HashSet<String>,
     is_self: &'a dyn Fn(&str) -> bool,
     now: DateTime<Utc>,
 }
@@ -361,6 +390,7 @@ fn new_sender(inputs: &PlaceInputs<'_>) -> Option<mxr_protocol::ScreenerQuestion
     let contact = inputs.senders.contacts.get(&key);
     let since = inputs.now - Duration::days(SCREENER_NEW_SENDER_DAYS);
     let wrote_to = contact.is_some_and(|c| c.total_outbound > 0)
+        || inputs.written_to.contains(&key)
         || thread.iter().any(|m| is_outbound(m, inputs.is_self));
     if wrote_to || contact.is_some_and(|c| c.first_seen_at < since) || latest.date < since {
         return None;
@@ -574,7 +604,46 @@ fn mode_entry(mode: ModeKindData, count: Option<u32>) -> RailEntryData {
         },
         early_note: early_note(mode).map(str::to_string),
         header: mode_guide(mode.id()).map(|guide| guide.header.to_string()),
+        quiet: None,
     }
+}
+
+/// How many threads Messages keeps as quiet: person mail in the inbox no
+/// lane holds and nobody marked done there.
+pub(super) async fn quiet_count(
+    state: &AppState,
+    accounts: &[AccountId],
+    now: DateTime<Utc>,
+) -> Result<u32, HandlerError> {
+    let mut quiet = 0u32;
+    for account in accounts {
+        let candidates = state.store.place_candidates(account).await?;
+        let mut senders: Vec<String> = candidates
+            .iter()
+            .map(|m| m.from_email.to_ascii_lowercase())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        senders.sort_unstable();
+        let kinds = super::places::AccountKinds::load(state, account, &senders).await?;
+        let mut seen: HashSet<&ThreadId> = HashSet::new();
+        let mut threads: Vec<ThreadId> = Vec::new();
+        for message in &candidates {
+            if message.snoozed || kinds.is_outbound(message) {
+                continue;
+            }
+            if mail_kind::classify(&kinds.signals(message)).kind == mail_kind::SenderKind::Person
+                && seen.insert(&message.thread_id)
+            {
+                threads.push(message.thread_id.clone());
+            }
+        }
+        for chunk in threads.chunks(MEMBERSHIP_MAX_THREADS) {
+            let placed = place_threads(state, account, chunk, now).await?;
+            quiet += u32::try_from(placed.iter().filter(|p| p.quiet).count()).unwrap_or(u32::MAX);
+        }
+    }
+    Ok(quiet)
 }
 
 pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
@@ -596,9 +665,13 @@ pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -
         status: RailStatusData::Built,
         early_note: None,
         header: mode_guide("now").map(|guide| guide.header.to_string()),
+        quiet: None,
     }];
     entries.extend([
-        mode_entry(ModeKindData::Messages, Some(snapshot.people_total())),
+        RailEntryData {
+            quiet: Some(quiet_count(state, &accounts, now).await?),
+            ..mode_entry(ModeKindData::Messages, Some(snapshot.people_total()))
+        },
         mode_entry(ModeKindData::Todo, count(snapshot.due_now.len())),
         mode_entry(ModeKindData::Updates, count(snapshot.inbox.updates.len())),
         mode_entry(ModeKindData::Reading, count(snapshot.inbox.reading.len())),
@@ -614,6 +687,7 @@ pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -
         status: RailStatusData::Built,
         early_note: None,
         header: Some(rail_copy::INBOX_HEADER.to_string()),
+        quiet: None,
     });
     let link = |id: &str, name: &str, key: Option<&str>, note: Option<&str>| RailLinkData {
         id: id.to_string(),

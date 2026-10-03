@@ -1771,12 +1771,21 @@ pub enum Request {
     /// the provider too. Each outcome carries the handoff copy. `dry_run`
     /// returns the same plan without changing anything; the real run
     /// returns one `mutation_id` for `UndoMutation`. Archive has no done.
-    /// Returns `ResponseData::ModeDone`.
+    /// In To do, `todo_ids` ticks off only those rows; To do lets go of a
+    /// thread only once none of its to-dos is open. `sender` adds every
+    /// thread of that sender's in the mode (Updates or Reading), resolved
+    /// here so the preview and the run cover the same set. Returns
+    /// `ResponseData::ModeDone`.
     SetModeDone {
+        #[serde(default)]
         thread_ids: Vec<ThreadId>,
         mode: ModeKindData,
         #[serde(default)]
         dry_run: bool,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        todo_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sender: Option<ModeDoneSenderData>,
     },
     /// A place (Reading or Paper trail): inbox mail of that kind grouped by
     /// sender, newest bundle first, each with the reason it is there.

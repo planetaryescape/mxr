@@ -137,7 +137,8 @@ async fn now_caps_each_section_at_three_and_says_how_many_more() {
             + usize::from(data.reading.is_some())
     );
     assert!(
-        data.headline.contains("5 people, 4 things to act on."),
+        data.headline
+            .contains("5 people waiting on you, 4 things to act on."),
         "{}",
         data.headline
     );
@@ -153,7 +154,7 @@ async fn a_long_you_owe_becomes_one_line() {
     let data = now_at(&fx, Utc::now()).await;
     assert_eq!(
         data.people.overload_line.as_deref(),
-        Some("7 people are waiting on you. The three below are furthest past your usual pace.")
+        Some("7 people waiting on you. Start with the three below, furthest past your usual pace.")
     );
     assert_eq!(data.people.rows.len(), 3);
 }
@@ -393,4 +394,118 @@ async fn the_reading_pick_is_an_unread_issue_inside_its_sources_fade() {
         .reading
         .expect("an issue inside the fade");
     assert_eq!(pick.message_id, fresh.id);
+}
+
+#[tokio::test]
+async fn now_only_asks_about_a_sender_who_is_new() {
+    let fx = Fixture::new().await;
+    // Iris first wrote a month ago, and again today; you never answered.
+    let old = ThreadId::new();
+    mail(
+        &fx,
+        &old,
+        "iris@people.example",
+        "Hello",
+        Duration::days(30),
+    )
+    .await;
+    let today = ThreadId::new();
+    mail(
+        &fx,
+        &today,
+        "iris@people.example",
+        "Coffee?",
+        Duration::hours(2),
+    )
+    .await;
+    fx.state.store.refresh_contacts().await.unwrap();
+
+    let data = now_at(&fx, Utc::now()).await;
+    let iris = data
+        .people
+        .rows
+        .iter()
+        .find(|row| row.row.counterparty_email == "iris@people.example")
+        .expect("Iris's turn");
+    assert!(
+        iris.new_sender.is_none(),
+        "first seen a month ago: not a first-time sender"
+    );
+}
+
+#[tokio::test]
+async fn the_people_numbers_on_now_add_up() {
+    let fx = Fixture::new().await;
+    for index in 0..7 {
+        owed(&fx, &format!("p{index}@people.example")).await;
+    }
+    for index in 0..4 {
+        let thread = ThreadId::new();
+        mail(
+            &fx,
+            &thread,
+            &format!("n{index}@new.example"),
+            "Hello",
+            Duration::hours(3),
+        )
+        .await;
+    }
+    let data = now_at(&fx, Utc::now()).await;
+    let total = data.people.total;
+    assert_eq!(total, 11, "your turn: 7 you've written to and 4 new");
+    assert!(
+        data.headline.contains("11 people waiting on you"),
+        "{}",
+        data.headline
+    );
+    let line = data
+        .people
+        .overload_line
+        .as_deref()
+        .expect("a long list is one line");
+    assert!(
+        line.starts_with("11 people waiting on you: 7 you've written to, 4 new."),
+        "{line}"
+    );
+    let shown = data.people.rows.len() as u32;
+    assert_eq!(
+        data.people.more_line.as_deref(),
+        Some(format!("and {} more in Messages", total - shown).as_str())
+    );
+}
+
+#[tokio::test]
+async fn someone_you_have_written_to_is_never_asked_about() {
+    let fx = Fixture::new().await;
+    // You wrote to Leo last week in one thread; today he starts another.
+    let earlier = ThreadId::new();
+    let mut mine = fx
+        .message(
+            &earlier,
+            ME,
+            "leo@workbench.example",
+            Duration::days(6),
+            None,
+        )
+        .await;
+    mine.subject = "Notes".into();
+    fx.store_envelope(&mine, MessageDirection::Outbound).await;
+    let today = ThreadId::new();
+    mail(
+        &fx,
+        &today,
+        "leo@workbench.example",
+        "Research notes",
+        Duration::hours(2),
+    )
+    .await;
+
+    let data = now_at(&fx, Utc::now()).await;
+    let leo = data
+        .people
+        .rows
+        .iter()
+        .find(|row| row.row.counterparty_email == "leo@workbench.example")
+        .expect("Leo's turn");
+    assert!(leo.new_sender.is_none(), "you've written to Leo");
 }

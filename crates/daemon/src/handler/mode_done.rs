@@ -17,15 +17,17 @@
 //! state plus the marks, rows and promises as they were.
 
 use super::mode_rules::{due_detail, handoff_copy, provider_name, Handoff, StillIn};
-use super::modes::{mark_name, place_threads, threads_by_account, Placement};
+use super::modes::{mark_name, place_threads, threads_by_account, without_done, Placement};
 use super::mutations::{apply_mutation_batch, UNDO_WINDOW_SECS};
+use super::places::placed_inbox;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Local, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::MessageFlags;
 use mxr_protocol::{
-    AccountMutationResultData, ModeDoneOutcomeData, ModeKindData, MutationCommand, ResponseData,
+    AccountMutationResultData, ModeDoneOutcomeData, ModeDoneSenderData, ModeKindData,
+    MutationCommand, ResponseData, SenderKindData,
 };
 use mxr_store::{
     CommitmentPrior, CommitmentStatus, DeskDismissal, DeskUndo, ModeDoneMark, TodoRecord,
@@ -101,21 +103,46 @@ impl Plan {
     }
 }
 
-pub(super) async fn set_mode_done(
-    state: &AppState,
-    thread_ids: &[ThreadId],
-    mode: ModeKindData,
-    dry_run: bool,
-) -> HandlerResult {
+/// One `SetModeDone`, as the handler hands it over.
+pub(super) struct DoneRequest<'a> {
+    pub thread_ids: &'a [ThreadId],
+    pub mode: ModeKindData,
+    pub dry_run: bool,
+    /// To do: only these rows; empty ticks off every open row.
+    pub todo_ids: &'a [String],
+    /// Every thread of this sender's in the mode, added to `thread_ids`.
+    pub sender: Option<&'a ModeDoneSenderData>,
+}
+
+pub(super) async fn set_mode_done(state: &AppState, request: DoneRequest<'_>) -> HandlerResult {
+    let DoneRequest {
+        mode,
+        dry_run,
+        todo_ids,
+        sender,
+        ..
+    } = request;
     if mode == ModeKindData::Archive {
         return Err(HandlerError::InvalidRequest(
             "Archive has no done: records stay filed.".into(),
         ));
     }
-    if thread_ids.is_empty() {
+    if !todo_ids.is_empty() && mode != ModeKindData::Todo {
+        return Err(HandlerError::InvalidRequest(
+            "todo_ids only go with To do".into(),
+        ));
+    }
+    let mut thread_ids = request.thread_ids.to_vec();
+    if let Some(sender) = sender {
+        for thread in sender_threads(state, mode, sender).await? {
+            if !thread_ids.contains(&thread) {
+                thread_ids.push(thread);
+            }
+        }
+    } else if thread_ids.is_empty() {
         return Err(HandlerError::InvalidRequest("no threads given".into()));
     }
-    let plans = plan(state, thread_ids, mode, Utc::now()).await?;
+    let plans = plan(state, &thread_ids, mode, todo_ids, Utc::now()).await?;
     if dry_run {
         return Ok(ResponseData::ModeDone {
             items: plans.iter().map(Plan::outcome).collect(),
@@ -127,10 +154,44 @@ pub(super) async fn set_mode_done(
     run(state, plans).await
 }
 
+/// Every thread of one sender's that `mode` holds now, newest first: the
+/// same mail its early view lists, minus what was already done there.
+async fn sender_threads(
+    state: &AppState,
+    mode: ModeKindData,
+    sender: &ModeDoneSenderData,
+) -> Result<Vec<ThreadId>, HandlerError> {
+    let kind = match mode {
+        ModeKindData::Updates => SenderKindData::PaperTrail,
+        ModeKindData::Reading => SenderKindData::Reading,
+        _ => {
+            return Err(HandlerError::InvalidRequest(
+                "done for a sender is for Updates and Reading".into(),
+            ))
+        }
+    };
+    let accounts = [sender.account_id.clone()];
+    let placed: Vec<_> = placed_inbox(state, &accounts, Some(&sender.sender_email))
+        .await?
+        .into_iter()
+        .filter(|item| item.kind.kind == kind)
+        .collect();
+    let mut placed = without_done(state, &accounts, &[mode], placed).await?;
+    placed.sort_by_key(|item| std::cmp::Reverse(item.message.date));
+    let mut threads: Vec<ThreadId> = Vec::new();
+    for item in placed {
+        if !threads.contains(&item.message.thread_id) {
+            threads.push(item.message.thread_id);
+        }
+    }
+    Ok(threads)
+}
+
 async fn plan(
     state: &AppState,
     thread_ids: &[ThreadId],
     mode: ModeKindData,
+    todo_ids: &[String],
     now: DateTime<Utc>,
 ) -> Result<Vec<Plan>, HandlerError> {
     let archive_on_last_done = state.config_snapshot().modes.archive_on_last_done;
@@ -150,7 +211,7 @@ async fn plan(
                 return Plan::failed(thread_id, mode, "this thread is already in the request");
             }
             match placed.get(thread_id) {
-                Some(placement) => plan_one(placement, mode, archive_on_last_done, now),
+                Some(placement) => plan_one(placement, mode, todo_ids, archive_on_last_done, now),
                 None => Plan::failed(thread_id, mode, "conversation not found"),
             }
         })
@@ -160,11 +221,18 @@ async fn plan(
 fn plan_one(
     placement: &Placement,
     mode: ModeKindData,
+    todo_ids: &[String],
     archive_on_last_done: bool,
     now: DateTime<Utc>,
 ) -> Plan {
     let data = &placement.data;
     let provider = provider_name(placement.provider.as_ref());
+    // To do: the rows this done ticks off, and the ones it leaves open.
+    let (ticked, still_open): (Vec<TodoRecord>, Vec<TodoRecord>) = placement
+        .todos
+        .iter()
+        .cloned()
+        .partition(|todo| todo_ids.is_empty() || todo_ids.contains(&todo.id));
     // Only the mode holding a thread can let it go: done elsewhere would
     // archive mail no mode placed, such as an invite still to answer.
     let refusal = if data.modes.iter().any(|entry| entry.mode == mode) {
@@ -176,6 +244,10 @@ fn plan_one(
     } else {
         Some(format!("not in {}", mode.name()))
     };
+    let refusal = refusal.or_else(|| {
+        (mode == ModeKindData::Todo && ticked.is_empty())
+            .then(|| "that to-do is not open on this conversation".to_string())
+    });
     if let Some(refusal) = refusal {
         let mut plan = Plan::failed(&data.thread_id, mode, refusal);
         plan.account_id = Some(data.account_id.clone());
@@ -192,18 +264,24 @@ fn plan_one(
             mode: name.to_string(),
             through,
         });
+    // To do still holds the thread while any of its to-dos stays open,
+    // so ticking one of two off never lets the email go.
     let still_in: Vec<StillIn> = data
         .modes
         .iter()
         .map(|entry| entry.mode)
-        .filter(|held| *held != mode && held.holds_inbox())
+        .filter(|held| held.holds_inbox())
+        .filter(|held| *held != mode || (mode == ModeKindData::Todo && !still_open.is_empty()))
         .map(|held| StillIn {
             mode: held,
             detail: (held == ModeKindData::Todo)
                 .then(|| {
-                    placement
-                        .todos
-                        .iter()
+                    let open = if mode == ModeKindData::Todo {
+                        &still_open
+                    } else {
+                        &placement.todos
+                    };
+                    open.iter()
                         .filter_map(|todo| todo.due_at)
                         .min()
                         .map(|due| due_detail(due, now, &Local))
@@ -234,7 +312,7 @@ fn plan_one(
         mode,
         mark,
         todos: if mode == ModeKindData::Todo {
-            placement.todos.clone()
+            ticked
         } else {
             Vec::new()
         },

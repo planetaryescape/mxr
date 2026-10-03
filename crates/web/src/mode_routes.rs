@@ -7,7 +7,7 @@ use super::place_routes::parse_optional_account;
 use super::routes_v6::{dispatch, passthrough};
 use super::*;
 use mxr_core::id::{MessageId, ThreadId};
-use mxr_protocol::ModeKindData;
+use mxr_protocol::{ModeDoneSenderData, ModeKindData};
 
 #[derive(Debug, Deserialize)]
 struct AccountQuery {
@@ -119,11 +119,18 @@ async fn post_membership(
 /// Body of `POST /api/v1/mail/modes/{mode}/done`.
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct ModeDoneBody {
+    #[serde(default)]
     #[schema(value_type = Vec<String>)]
     thread_ids: Vec<ThreadId>,
     /// Preview only: the same plan, nothing changed.
     #[serde(default)]
     dry_run: bool,
+    /// To do only: tick off just these rows.
+    #[serde(default)]
+    todo_ids: Vec<String>,
+    /// Updates or Reading: every thread of this sender's there.
+    #[serde(default)]
+    sender: Option<ModeDoneSenderData>,
 }
 
 fn parse_mode(raw: &str) -> Result<ModeKindData, BridgeError> {
@@ -141,9 +148,9 @@ async fn set_done(
     Json(body): Json<ModeDoneBody>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     let mode = parse_mode(&mode)?;
-    if body.thread_ids.is_empty() {
+    if body.thread_ids.is_empty() && body.sender.is_none() {
         return Err(BridgeError::BadRequest(
-            "thread_ids must not be empty".into(),
+            "name thread_ids or a sender".into(),
         ));
     }
     let response = dispatch(
@@ -154,6 +161,8 @@ async fn set_done(
             thread_ids: body.thread_ids,
             mode,
             dry_run: body.dry_run,
+            todo_ids: body.todo_ids,
+            sender: body.sender,
         },
     )
     .await?;

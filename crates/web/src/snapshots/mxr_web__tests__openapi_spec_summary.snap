@@ -152,6 +152,7 @@ expression: summary
     "ModeCardBody",
     "ModeDoneBody",
     "ModeDoneOutcomeData",
+    "ModeDoneSenderData",
     "ModeGuideData",
     "ModeKeyData",
     "ModeKindData",

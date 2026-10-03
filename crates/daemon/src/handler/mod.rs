@@ -1347,7 +1347,21 @@ async fn dispatch(
             thread_ids,
             mode,
             dry_run,
-        } => mode_done::set_mode_done(state, thread_ids, *mode, *dry_run).await,
+            todo_ids,
+            sender,
+        } => {
+            mode_done::set_mode_done(
+                state,
+                mode_done::DoneRequest {
+                    thread_ids,
+                    mode: *mode,
+                    dry_run: *dry_run,
+                    todo_ids,
+                    sender: sender.as_ref(),
+                },
+            )
+            .await
+        }
         Request::GetRecipientBriefing {
             account_id,
             email,
@@ -1905,7 +1919,15 @@ async fn request_account_scope(
             let thread_ids: Vec<_> = items.iter().map(|item| item.thread_id.clone()).collect();
             thread_account_scope(state, &thread_ids).await
         }
-        Request::SetModeDone { thread_ids, .. } => thread_account_scope(state, thread_ids).await,
+        Request::SetModeDone {
+            thread_ids, sender, ..
+        } => {
+            let mut scope = thread_account_scope(state, thread_ids).await?;
+            if let (Some(sender), RequestAccountScope::Accounts(accounts)) = (sender, &mut scope) {
+                push_unique_account(accounts, sender.account_id.clone());
+            }
+            Ok(scope)
+        }
         Request::GetModeMembership {
             message_id,
             thread_id,

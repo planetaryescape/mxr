@@ -162,6 +162,14 @@ pub struct ThreadModesData {
     pub new_sender: Option<ScreenerQuestionData>,
 }
 
+/// Every thread of one sender's in a mode, for done on a sender's row.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ModeDoneSenderData {
+    pub account_id: AccountId,
+    pub sender_email: String,
+}
+
 /// What done in one mode did to one thread, or with `dry_run` would do.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -232,6 +240,10 @@ pub struct RailEntryData {
     /// built.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub header: Option<String>,
+    /// Messages: person mail in the inbox no lane holds, kept until done
+    /// there. Not in `count`, which counts people.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quiet: Option<u32>,
 }
 
 /// A page under More.

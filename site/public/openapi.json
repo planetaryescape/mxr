@@ -1318,7 +1318,7 @@
     "/api/v1/mail/modes/{mode}/done": {
       "post": {
         "tags": [],
-        "summary": "Done here: threads leave one mode, archived only when no other mode holds them (dry_run previews)",
+        "summary": "Done here: threads, a sender's threads or named to-dos leave one mode, archived only when no other mode holds them (dry_run previews)",
         "operationId": "mail_mode_done",
         "parameters": [
           {
@@ -8996,19 +8996,34 @@
       "ModeDoneBody": {
         "type": "object",
         "description": "Body of `POST /api/v1/mail/modes/{mode}/done`.",
-        "required": [
-          "thread_ids"
-        ],
         "properties": {
           "dry_run": {
             "type": "boolean",
             "description": "Preview only: the same plan, nothing changed."
+          },
+          "sender": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModeDoneSenderData",
+                "description": "Updates or Reading: every thread of this sender's there."
+              }
+            ]
           },
           "thread_ids": {
             "type": "array",
             "items": {
               "type": "string"
             }
+          },
+          "todo_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "To do only: tick off just these rows."
           }
         }
       },
@@ -9083,6 +9098,22 @@
               "type": "string"
             },
             "description": "To do: the rows ticked off."
+          }
+        }
+      },
+      "ModeDoneSenderData": {
+        "type": "object",
+        "description": "Every thread of one sender's in a mode, for done on a sender's row.",
+        "required": [
+          "account_id",
+          "sender_email"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "sender_email": {
+            "type": "string"
           }
         }
       },
@@ -10432,6 +10463,15 @@
           },
           "name": {
             "type": "string"
+          },
+          "quiet": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Messages: person mail in the inbox no lane holds, kept until done\nthere. Not in `count`, which counts people.",
+            "minimum": 0
           },
           "status": {
             "$ref": "#/components/schemas/RailStatusData"
@@ -16035,9 +16075,8 @@
           },
           {
             "type": "object",
-            "description": "Done here: the thread leaves `mode` until a new message arrives\n(To do ticks its open rows off). When no other mode holds the\nthread and `modes.archive_on_last_done` is on, it is archived at\nthe provider too. Each outcome carries the handoff copy. `dry_run`\nreturns the same plan without changing anything; the real run\nreturns one `mutation_id` for `UndoMutation`. Archive has no done.\nReturns `ResponseData::ModeDone`.",
+            "description": "Done here: the thread leaves `mode` until a new message arrives\n(To do ticks its open rows off). When no other mode holds the\nthread and `modes.archive_on_last_done` is on, it is archived at\nthe provider too. Each outcome carries the handoff copy. `dry_run`\nreturns the same plan without changing anything; the real run\nreturns one `mutation_id` for `UndoMutation`. Archive has no done.\nIn To do, `todo_ids` ticks off only those rows; To do lets go of a\nthread only once none of its to-dos is open. `sender` adds every\nthread of that sender's in the mode (Updates or Reading), resolved\nhere so the preview and the run cover the same set. Returns\n`ResponseData::ModeDone`.",
             "required": [
-              "thread_ids",
               "mode",
               "cmd"
             ],
@@ -16054,10 +16093,26 @@
               "mode": {
                 "$ref": "#/components/schemas/ModeKindData"
               },
+              "sender": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ModeDoneSenderData"
+                  }
+                ]
+              },
               "thread_ids": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/ThreadId"
+                }
+              },
+              "todo_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
                 }
               }
             }

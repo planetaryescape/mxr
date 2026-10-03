@@ -35,7 +35,7 @@ pub struct DeskDismissalPrior {
 /// A stored watermark as undo keeps it. An entry saved before the
 /// (date, id) watermark has neither field and puts back a mark that covers
 /// nothing, which only means the thread shows again.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeskDismissalRow {
     #[serde(default)]
     pub through_date: i64,
@@ -43,6 +43,9 @@ pub struct DeskDismissalRow {
     pub through_message_id: uuid::Uuid,
     pub through_count: i64,
     pub dismissed_at: i64,
+    /// The messages the mark saw; absent on an older mark.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub covered_ids: Option<Vec<uuid::Uuid>>,
 }
 
 impl DeskDismissalRow {
@@ -52,6 +55,7 @@ impl DeskDismissalRow {
             through_message_id: through.through_id,
             through_count: i64::try_from(through.through_count).unwrap_or(i64::MAX),
             dismissed_at,
+            covered_ids: through.covered.as_ref().map(|ids| ids.to_vec()),
         }
     }
 
@@ -62,6 +66,14 @@ impl DeskDismissalRow {
         let through = crate::desk::dismissal_from_row(row)?;
         Ok(Self::new(&through, row.try_get(dismissed_at_column)?))
     }
+}
+
+/// The covered ids as stored: a JSON array, or NULL on an older mark.
+pub(crate) fn covered_json(row: &DeskDismissalRow) -> Result<Option<String>, sqlx::Error> {
+    row.covered_ids
+        .as_ref()
+        .map(|ids| serde_json::to_string(ids).map_err(|e| sqlx::Error::Encode(Box::new(e))))
+        .transpose()
 }
 
 fn pairs_json(pairs: &[(AccountId, ThreadId)]) -> Result<String, sqlx::Error> {
@@ -81,13 +93,14 @@ async fn upsert_dismissal(
     sqlx::query(
         "INSERT INTO desk_dismissals
              (account_id, thread_id, through_rowid, through_date, through_message_id,
-              through_count, dismissed_at)
-         VALUES (?1, ?2, 0, ?3, ?4, ?5, ?6)
+              through_count, dismissed_at, covered_ids)
+         VALUES (?1, ?2, 0, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT(account_id, thread_id) DO UPDATE SET
              through_date = excluded.through_date,
              through_message_id = excluded.through_message_id,
              through_count = excluded.through_count,
-             dismissed_at = excluded.dismissed_at",
+             dismissed_at = excluded.dismissed_at,
+             covered_ids = excluded.covered_ids",
     )
     .bind(account_id.as_str())
     .bind(thread_id.as_str())
@@ -95,6 +108,7 @@ async fn upsert_dismissal(
     .bind(row.through_message_id.to_string())
     .bind(row.through_count)
     .bind(row.dismissed_at)
+    .bind(covered_json(&row)?)
     .execute(tx)
     .await?;
     Ok(())
@@ -113,7 +127,7 @@ impl super::Store {
         let wanted = pairs_json(pairs)?;
         let rows = sqlx::query(
             r#"SELECT d.account_id, d.thread_id, d.through_date, d.through_message_id,
-                      d.through_count, d.dismissed_at
+                      d.through_count, d.dismissed_at, d.covered_ids
                FROM json_each(?1) wanted
                JOIN desk_dismissals d
                  ON d.account_id = json_extract(wanted.value, '$[0]')
@@ -137,7 +151,7 @@ impl super::Store {
             .map(|(account_id, thread_id)| DeskDismissalPrior {
                 prior: existing
                     .get(&(account_id.clone(), thread_id.clone()))
-                    .copied(),
+                    .cloned(),
                 account_id: account_id.clone(),
                 thread_id: thread_id.clone(),
             })
@@ -171,9 +185,10 @@ impl super::Store {
         }
         let mut tx = self.writer().begin().await?;
         for entry in priors {
-            match entry.prior {
+            match &entry.prior {
                 Some(row) => {
-                    upsert_dismissal(&mut tx, &entry.account_id, &entry.thread_id, row).await?;
+                    upsert_dismissal(&mut tx, &entry.account_id, &entry.thread_id, row.clone())
+                        .await?;
                 }
                 None => {
                     sqlx::query(

@@ -68,17 +68,15 @@ pub(super) fn record_evidence(from_email: &str, subject: &str) -> Option<String>
         .map(|part| format!("sent from a {part} address"))
 }
 
-/// A mode's done mark still holds when every message of the mode was
-/// there when it was made. Updates and Reading read only their own
-/// messages, so your reply in a notification thread doesn't bring the
-/// notification back.
+/// A mode's done mark still holds when it saw every message of the mode
+/// (its id list; an older mark, its watermark). Updates and Reading read
+/// only their own messages, so your reply in a notification thread
+/// doesn't bring the notification back.
 pub(super) fn mark_covers<'a>(
     mark: &DeskDismissal,
     messages: impl IntoIterator<Item = (DateTime<Utc>, &'a mxr_core::id::MessageId)>,
 ) -> bool {
-    messages
-        .into_iter()
-        .all(|(date, id)| mark.reaches_at(date, id))
+    messages.into_iter().all(|(date, id)| mark.saw(date, id))
 }
 
 /// The desk's own dismissals and done-in-Messages marks, as one map: a
@@ -89,14 +87,16 @@ pub(super) fn merge_marks(
     marks: HashMap<mxr_core::id::ThreadId, DeskDismissal>,
 ) -> HashMap<mxr_core::id::ThreadId, DeskDismissal> {
     for (thread, mark) in marks {
-        dismissals
-            .entry(thread)
-            .and_modify(|existing| {
-                if mark.order_key() > existing.order_key() {
-                    *existing = mark;
+        match dismissals.entry(thread) {
+            std::collections::hash_map::Entry::Occupied(mut existing) => {
+                if mark.order_key() > existing.get().order_key() {
+                    existing.insert(mark);
                 }
-            })
-            .or_insert(mark);
+            }
+            std::collections::hash_map::Entry::Vacant(slot) => {
+                slot.insert(mark);
+            }
+        }
     }
     dismissals
 }
@@ -352,11 +352,14 @@ fn count_phrase(count: u32, one: &str, many: &str) -> String {
     }
 }
 
-/// "Friday afternoon. 3 people, 2 things to act on."
+/// "Friday afternoon. 3 people waiting on you, 2 things to act on."
 pub(super) fn now_headline(day_part: &str, people: u32, due: u32) -> String {
     let mut counts = Vec::new();
     if people > 0 {
-        counts.push(count_phrase(people, "person", "people"));
+        counts.push(format!(
+            "{} waiting on you",
+            count_phrase(people, "person", "people")
+        ));
     }
     if due > 0 {
         counts.push(count_phrase(due, "thing to act on", "things to act on"));
@@ -374,20 +377,33 @@ pub(super) fn more_line(total: u32, shown: usize, mode: ModeKindData) -> Option<
     (more > 0).then(|| format!("and {more} more in {}", mode.name()))
 }
 
-/// You owe past this many people becomes one line instead of a pile.
-pub(super) const OVERLOAD_OWED: u32 = 5;
+/// People waiting on you past this many becomes one line instead of a pile.
+pub(super) const OVERLOAD_PEOPLE: u32 = 5;
 
-/// "11 people are waiting on you. The three below are furthest past your
-/// usual pace." (Sunsama's workload warning; the rows are already sorted
-/// by how far past the usual pace they are.)
-pub(super) fn overload_line(owed: u32, shown: usize) -> Option<String> {
-    (owed > OVERLOAD_OWED).then(|| {
+/// "11 people waiting on you: 7 you've written to, 4 new. Start with the
+/// three below." (Sunsama's workload warning.) `total` is the same number
+/// the headline and "and N more" count from, and `owed + new == total`, so
+/// every number on Now checks against the others. You owe comes first,
+/// sorted by how far past your usual pace.
+pub(super) fn overload_line(total: u32, owed: u32, shown: usize) -> Option<String> {
+    (total > OVERLOAD_PEOPLE).then(|| {
+        let new = total.saturating_sub(owed);
         let which = match shown {
-            1 => "The one below is".to_string(),
-            2 => "The two below are".to_string(),
-            _ => "The three below are".to_string(),
+            1 => "the one below",
+            2 => "the two below",
+            _ => "the three below",
         };
-        format!("{owed} people are waiting on you. {which} furthest past your usual pace.")
+        if new == 0 {
+            format!(
+                "{total} people waiting on you. Start with {which}, furthest past your usual pace."
+            )
+        } else if owed == 0 {
+            format!("{total} new people waiting on you. Start with {which}.")
+        } else {
+            format!(
+                "{total} people waiting on you: {owed} you've written to, {new} new. Start with {which}."
+            )
+        }
     })
 }
 
@@ -485,16 +501,29 @@ mod tests {
             mxr_core::id::MessageId::new(),
             mxr_core::id::MessageId::new(),
         );
+        // An older mark, without its id list: the (date, id) watermark.
         let mark = DeskDismissal {
             through_date: 10,
             through_id: *newest.as_uuid(),
             through_count: 3,
+            covered: None,
         };
         assert!(mark_covers(&mark, [(at(4), &older), (at(10), &newest)]));
         assert!(!mark_covers(&mark, [(at(4), &older), (at(11), &later)]));
         // Same second: the id breaks the tie, and ids made later sort later.
         assert!(!mark_covers(&mark, [(at(10), &later)]));
         assert!(mark_covers(&mark, []));
+
+        // With its id list, a message the mark never saw is new even when
+        // it is dated before everything the mark saw.
+        let mut seen = vec![*older.as_uuid(), *newest.as_uuid()];
+        seen.sort_unstable();
+        let mark = DeskDismissal {
+            covered: Some(seen.into()),
+            ..mark
+        };
+        assert!(mark_covers(&mark, [(at(4), &older), (at(10), &newest)]));
+        assert!(!mark_covers(&mark, [(at(1), &later)]));
     }
 
     #[test]
@@ -505,6 +534,7 @@ mod tests {
             through_date: date,
             through_id: uuid::Uuid::nil(),
             through_count: 2,
+            covered: None,
         };
         let merged = merge_marks(
             HashMap::from([(thread.clone(), mark(5))]),
@@ -628,11 +658,11 @@ mod tests {
     fn now_lines_count_and_cap() {
         assert_eq!(
             now_headline("Friday afternoon", 3, 2),
-            "Friday afternoon. 3 people, 2 things to act on."
+            "Friday afternoon. 3 people waiting on you, 2 things to act on."
         );
         assert_eq!(
             now_headline("Friday afternoon", 1, 0),
-            "Friday afternoon. 1 person."
+            "Friday afternoon. 1 person waiting on you."
         );
         assert_eq!(now_headline("Friday night", 0, 0), "Friday night.");
         assert_eq!(
@@ -640,12 +670,16 @@ mod tests {
             Some("and 8 more in Messages")
         );
         assert!(more_line(3, 3, ModeKindData::Todo).is_none());
-        assert!(overload_line(OVERLOAD_OWED, 3).is_none());
+        assert!(overload_line(OVERLOAD_PEOPLE, OVERLOAD_PEOPLE, 3).is_none());
         assert_eq!(
-            overload_line(11, 3).as_deref(),
+            overload_line(11, 7, 3).as_deref(),
             Some(
-                "11 people are waiting on you. The three below are furthest past your usual pace."
+                "11 people waiting on you: 7 you've written to, 4 new. Start with the three below."
             )
+        );
+        assert_eq!(
+            overload_line(6, 0, 2).as_deref(),
+            Some("6 new people waiting on you. Start with the two below.")
         );
         assert_eq!(
             updates_line(23, 9, &["GitHub".into(), "Vercel".into(), "Stripe".into()]),

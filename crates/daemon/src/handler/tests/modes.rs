@@ -105,6 +105,8 @@ async fn done(
             thread_ids: vec![thread.clone()],
             mode,
             dry_run,
+            todo_ids: Vec::new(),
+            sender: None,
         },
     )
     .await
@@ -414,6 +416,8 @@ async fn archive_has_no_done_and_unknown_threads_say_so() {
             thread_ids: vec![thread.clone()],
             mode: ModeKindData::Archive,
             dry_run: true,
+            todo_ids: Vec::new(),
+            sender: None,
         }),
     };
     assert!(matches!(
@@ -428,6 +432,8 @@ async fn archive_has_no_done_and_unknown_threads_say_so() {
             thread_ids: vec![missing, thread.clone(), thread],
             mode: ModeKindData::Todo,
             dry_run: true,
+            todo_ids: Vec::new(),
+            sender: None,
         },
     )
     .await
@@ -744,4 +750,217 @@ async fn done_in_updates_takes_the_thread_out_of_its_early_view_while_to_do_keep
     assert_eq!(outcome.still_in, [ModeKindData::Todo]);
     assert!(in_inbox(&fx, &failed.id).await, "To do still holds it");
     assert!(!in_place(&fx).await, "done in Updates leaves Updates' view");
+}
+
+#[tokio::test]
+async fn desk_done_never_archives_a_thread_to_do_still_holds() {
+    let fx = Fixture::new().await;
+    let (thread, ask) = landlord(&fx).await;
+    add_todo(&fx, &ask.id, "tomorrow").await;
+    let ResponseData::DeskItemsResolved { items, .. } = request(
+        &fx,
+        Request::ResolveDeskItems {
+            items: vec![mxr_protocol::DeskDoneItemData {
+                thread_id: thread.clone(),
+                lane: Some(mxr_protocol::DeskLaneKind::Owed),
+                commitment_id: None,
+            }],
+            dry_run: false,
+        },
+    )
+    .await
+    else {
+        panic!("expected DeskItemsResolved")
+    };
+    assert!(items[0].error.is_none(), "{:?}", items[0].error);
+    assert_eq!(items[0].archived, 0, "To do still holds the thread");
+    assert!(in_inbox(&fx, &ask.id).await);
+    assert!(items[0].dismissed, "it still leaves the desk");
+}
+
+#[tokio::test]
+async fn a_late_message_with_an_older_date_brings_a_done_thread_back() {
+    let fx = Fixture::new().await;
+    let mut config = fx.state.config_snapshot();
+    config.modes.archive_on_last_done = false;
+    fx.state.set_config_for_test(config).await;
+
+    // Updates: done, then a notification arrives dated before the others.
+    let build = ThreadId::new();
+    let from = "notifications@github.com";
+    mail(&fx, &build, from, "Build failed", Duration::hours(2)).await;
+    done(&fx, &build, ModeKindData::Updates, false).await;
+    assert!(membership(&fx, &build).await.modes.is_empty());
+    mail(
+        &fx,
+        &build,
+        from,
+        "Build failed (delayed)",
+        Duration::hours(5),
+    )
+    .await;
+    assert_eq!(
+        modes(&membership(&fx, &build).await),
+        [ModeKindData::Updates],
+        "a message the mark never saw is new, whatever its Date says"
+    );
+
+    // Messages: done, a message deleted, and a new one dated earlier.
+    let (thread, ask) = landlord(&fx).await;
+    done(&fx, &thread, ModeKindData::Messages, false).await;
+    drop_message(&fx, &ask.id).await;
+    mail(
+        &fx,
+        &thread,
+        "sam@lettings.example",
+        "Re: Lease renewal",
+        Duration::days(3),
+    )
+    .await;
+    assert_eq!(
+        modes(&membership(&fx, &thread).await),
+        [ModeKindData::Messages],
+        "same count, older date, but a message the mark never saw"
+    );
+}
+
+async fn todo_done(fx: &Fixture, thread: &ThreadId, todo_ids: Vec<String>) -> ModeDoneOutcomeData {
+    match request(
+        fx,
+        Request::SetModeDone {
+            thread_ids: vec![thread.clone()],
+            mode: ModeKindData::Todo,
+            dry_run: false,
+            todo_ids,
+            sender: None,
+        },
+    )
+    .await
+    {
+        ResponseData::ModeDone { mut items, .. } => items.remove(0),
+        other => panic!("expected ModeDone, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn ticking_off_one_to_do_leaves_the_others_and_the_inbox() {
+    let fx = Fixture::new().await;
+    let (thread, ask) = landlord(&fx).await;
+    let first = add_todo(&fx, &ask.id, "tomorrow").await;
+    let second = match request(
+        &fx,
+        Request::CreateTodo {
+            message_id: ask.id.clone(),
+            title: "Book the boiler engineer".into(),
+            kind: None,
+            due: Some("friday".into()),
+            time_zone: None,
+            dry_run: false,
+        },
+    )
+    .await
+    {
+        ResponseData::TodoChange { change } => change.changed[0].id.clone(),
+        other => panic!("expected a to-do, got {other:?}"),
+    };
+    done(&fx, &thread, ModeKindData::Messages, false).await;
+
+    let outcome = todo_done(&fx, &thread, vec![first.clone()]).await;
+    assert_eq!(outcome.todos_ticked, vec![first.clone()]);
+    assert_eq!(outcome.still_in, [ModeKindData::Todo], "one to-do is left");
+    assert_eq!(outcome.archived, 0);
+    assert!(in_inbox(&fx, &ask.id).await);
+    assert_eq!(todo_state(&fx, &second).await, mxr_store::TodoState::Open);
+
+    let outcome = todo_done(&fx, &thread, vec![second.clone()]).await;
+    assert!(outcome.still_in.is_empty());
+    assert_eq!(outcome.archived, 1, "the last to-do was the last mode");
+}
+
+#[tokio::test]
+async fn done_for_a_sender_covers_every_thread_of_theirs_in_the_mode() {
+    let fx = Fixture::new().await;
+    let from = "notifications@github.com";
+    let mut threads = Vec::new();
+    for index in 0..25 {
+        let thread = ThreadId::new();
+        mail(
+            &fx,
+            &thread,
+            from,
+            &format!("Build {index} passed"),
+            Duration::hours(1),
+        )
+        .await;
+        threads.push(thread);
+    }
+    let other = ThreadId::new();
+    mail(
+        &fx,
+        &other,
+        "alerts@vercel.example",
+        "Deploy ok",
+        Duration::hours(1),
+    )
+    .await;
+
+    let sender = Some(mxr_protocol::ModeDoneSenderData {
+        account_id: fx.account.clone(),
+        sender_email: from.into(),
+    });
+    let ResponseData::ModeDone { items, .. } = request(
+        &fx,
+        Request::SetModeDone {
+            thread_ids: Vec::new(),
+            mode: ModeKindData::Updates,
+            dry_run: true,
+            todo_ids: Vec::new(),
+            sender: sender.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("expected ModeDone")
+    };
+    assert_eq!(
+        items.len(),
+        25,
+        "the preview counts all of the sender's threads"
+    );
+    let ResponseData::ModeDone { items, .. } = request(
+        &fx,
+        Request::SetModeDone {
+            thread_ids: Vec::new(),
+            mode: ModeKindData::Updates,
+            dry_run: false,
+            todo_ids: Vec::new(),
+            sender,
+        },
+    )
+    .await
+    else {
+        panic!("expected ModeDone")
+    };
+    assert_eq!(items.len(), 25);
+    assert!(membership(&fx, &threads[24]).await.modes.is_empty());
+    assert_eq!(
+        modes(&membership(&fx, &other).await),
+        [ModeKindData::Updates]
+    );
+}
+
+#[tokio::test]
+async fn quiet_mail_is_counted_on_the_rail_beside_messages() {
+    let fx = Fixture::new().await;
+    quiet_person(&fx, Duration::days(45)).await;
+    let ResponseData::Rail { rail } = request(&fx, Request::GetRail { account_id: None }).await
+    else {
+        panic!("expected Rail")
+    };
+    let messages = rail
+        .entries
+        .iter()
+        .find(|entry| entry.id == "messages")
+        .unwrap();
+    assert_eq!(messages.quiet, Some(1));
 }

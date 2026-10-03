@@ -1721,7 +1721,7 @@ fn e_on_the_desk_is_done_here_for_that_row() {
     assert!(
         matches!(
             queued.as_slice(),
-            [Request::SetModeDone { thread_ids, mode: ModeKindData::Messages, dry_run: false }]
+            [Request::SetModeDone { thread_ids, mode: ModeKindData::Messages, dry_run: false, .. }]
                 if thread_ids == &vec![owed.thread_id.clone()]
         ),
         "{queued:?}"

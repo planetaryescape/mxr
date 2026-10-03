@@ -27,7 +27,7 @@ use chrono::Utc;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::MessageFlags;
 use mxr_protocol::{
-    AccountMutationResultData, DeskDoneItemData, DeskDoneOutcomeData, DeskLaneKind,
+    AccountMutationResultData, DeskDoneItemData, DeskDoneOutcomeData, DeskLaneKind, ModeKindData,
     MutationCommand, ResponseData,
 };
 use mxr_store::{
@@ -78,8 +78,10 @@ impl Plan {
         }
     }
 
+    /// Archived and read, rather than only read: a lane that archives,
+    /// when no other mode keeps the thread in the inbox.
     fn archives(&self) -> bool {
-        lane_archives(self.lane)
+        lane_archives(self.lane) && !self.archive.is_empty()
     }
 
     /// Every message the run changes, each once.
@@ -150,9 +152,10 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
                 .push(thread_id.clone());
         }
     }
+    let by_account_ids: Vec<(AccountId, Vec<ThreadId>)> = by_account.into_iter().collect();
     let mut threads: HashMap<ThreadId, Vec<DeskMessage>> = HashMap::new();
-    for (account, ids) in by_account {
-        for message in state.store.desk_messages_in_threads(&account, &ids).await? {
+    for (account, ids) in &by_account_ids {
+        for message in state.store.desk_messages_in_threads(account, ids).await? {
             threads
                 .entry(message.thread_id.clone())
                 .or_default()
@@ -176,6 +179,24 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
             .collect(),
     };
 
+    // The last-mode rule SetModeDone follows: the provider archive happens
+    // only when no other mode (To do, Updates, Reading) still holds the
+    // thread and `modes.archive_on_last_done` is on.
+    let archive_on_last_done = state.config_snapshot().modes.archive_on_last_done;
+    let mut held_elsewhere: HashSet<ThreadId> = HashSet::new();
+    for (account, ids) in &by_account_ids {
+        for placement in super::modes::place_threads(state, account, ids, Utc::now()).await? {
+            let held = placement
+                .data
+                .modes
+                .iter()
+                .any(|entry| entry.mode != ModeKindData::Messages && entry.mode.holds_inbox());
+            if held || !archive_on_last_done {
+                held_elsewhere.insert(placement.data.thread_id);
+            }
+        }
+    }
+
     let mut plans = Vec::with_capacity(items.len());
     let mut seen: HashSet<&ThreadId> = HashSet::new();
     for item in items {
@@ -194,6 +215,12 @@ async fn plan(state: &AppState, items: &[DeskDoneItemData]) -> Result<Vec<Plan>,
                 None => Err("conversation not found".to_string()),
             }
         };
+        let plan = plan.map(|mut plan| {
+            if held_elsewhere.contains(&plan.thread_id) {
+                plan.archive.clear();
+            }
+            plan
+        });
         plans.push(plan.unwrap_or_else(|error| {
             let lane = item.lane.unwrap_or_else(|| {
                 if item.commitment_id.is_some() {

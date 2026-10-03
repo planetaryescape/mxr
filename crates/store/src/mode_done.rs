@@ -47,9 +47,10 @@ async fn upsert_mark(
     sqlx::query(
         "INSERT INTO mode_done
              (account_id, thread_id, mode, through_rowid, through_date, through_message_id,
-              through_count, done_at)
-         VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6, ?7)
+              through_count, done_at, covered_ids)
+         VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT(account_id, thread_id, mode) DO UPDATE SET
+             covered_ids = excluded.covered_ids,
              through_date = excluded.through_date,
              through_message_id = excluded.through_message_id,
              through_count = excluded.through_count,
@@ -62,6 +63,7 @@ async fn upsert_mark(
     .bind(row.through_message_id.to_string())
     .bind(row.through_count)
     .bind(row.dismissed_at)
+    .bind(crate::desk_done::covered_json(&row)?)
     .execute(tx)
     .await?;
     Ok(())
@@ -75,8 +77,8 @@ impl super::Store {
         mode: &str,
     ) -> Result<HashMap<ThreadId, DeskDismissal>, sqlx::Error> {
         let rows = sqlx::query(
-            "SELECT thread_id, through_date, through_message_id, through_count FROM mode_done
-             WHERE account_id = ?1 AND mode = ?2",
+            "SELECT thread_id, through_date, through_message_id, through_count, covered_ids
+             FROM mode_done WHERE account_id = ?1 AND mode = ?2",
         )
         .bind(account_id.as_str())
         .bind(mode)
@@ -105,7 +107,8 @@ impl super::Store {
             serde_json::to_string(&thread_ids.iter().map(ThreadId::as_str).collect::<Vec<_>>())
                 .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
         let rows = sqlx::query(
-            "SELECT thread_id, mode, through_date, through_message_id, through_count FROM mode_done
+            "SELECT thread_id, mode, through_date, through_message_id, through_count, covered_ids
+             FROM mode_done
              WHERE account_id = ?1 AND thread_id IN (SELECT value FROM json_each(?2))",
         )
         .bind(account_id.as_str())
@@ -134,7 +137,8 @@ impl super::Store {
         let mut priors = Vec::with_capacity(keys.len());
         for (account_id, thread_id, mode) in keys {
             let row = sqlx::query(
-                "SELECT through_date, through_message_id, through_count, done_at FROM mode_done
+                "SELECT through_date, through_message_id, through_count, done_at, covered_ids
+                 FROM mode_done
                  WHERE account_id = ?1 AND thread_id = ?2 AND mode = ?3",
             )
             .bind(account_id.as_str())
@@ -200,14 +204,14 @@ impl super::Store {
         }
         let mut tx = self.writer().begin().await?;
         for entry in priors {
-            match entry.prior {
+            match &entry.prior {
                 Some(row) => {
                     upsert_mark(
                         &mut tx,
                         &entry.account_id,
                         &entry.thread_id,
                         &entry.mode,
-                        row,
+                        row.clone(),
                     )
                     .await?;
                 }
@@ -251,6 +255,7 @@ mod tests {
                 through_date: date,
                 through_id: newest,
                 through_count: 2,
+                covered: None,
             },
         };
         store.mark_mode_done(&[mark("messages", 7)]).await.unwrap();
@@ -270,7 +275,10 @@ mod tests {
         let key = (account.id.clone(), thread.clone(), "messages".to_string());
         let updates_key = (account.id.clone(), thread.clone(), "updates".to_string());
         let priors = store.mode_done_priors(&[key, updates_key]).await.unwrap();
-        assert_eq!(priors[0].prior.map(|row| row.through_date), Some(7));
+        assert_eq!(
+            priors[0].prior.as_ref().map(|row| row.through_date),
+            Some(7)
+        );
         assert!(priors[1].prior.is_none());
 
         store

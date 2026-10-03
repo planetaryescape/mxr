@@ -204,6 +204,7 @@ impl App {
                                     active_pane: &self.mailbox.active_pane,
                                     row_gists: &self.row_gists.gists,
                                     gist_lines: self.row_gists.lines_reserved(),
+                                    quiet: self.rail_entry("messages").and_then(|e| e.quiet),
                                 },
                                 theme,
                             );
@@ -331,6 +332,7 @@ impl App {
                                     active_pane: &self.mailbox.active_pane,
                                     row_gists: &self.row_gists.gists,
                                     gist_lines: self.row_gists.lines_reserved(),
+                                    quiet: self.rail_entry("messages").and_then(|e| e.quiet),
                                 },
                                 theme,
                             );

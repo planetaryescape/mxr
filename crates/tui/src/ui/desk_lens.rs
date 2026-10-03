@@ -20,6 +20,9 @@ pub struct DeskView<'a> {
     /// A model is configured: every row keeps a line for its gist, so rows
     /// don't move as gists land.
     pub gist_lines: bool,
+    /// Person mail in the inbox no lane holds, from the rail: Messages
+    /// keeps it, so the title says how many (blueprint 22, Quiet).
+    pub quiet: Option<u32>,
 }
 
 /// Where the "what" column starts: marker (2) + who (20) + gap (2).
@@ -36,9 +39,15 @@ fn lane_title(kind: DeskLaneKind) -> &'static str {
 
 pub fn draw(frame: &mut Frame, area: Rect, view: &DeskView<'_>, theme: &crate::theme::Theme) {
     let is_focused = *view.active_pane == ActivePane::MailList;
+    let quiet = match view.quiet {
+        Some(n) if n > 0 => format!(" \u{b7} {n} quiet"),
+        _ => String::new(),
+    };
     let block = Block::bordered()
         // Messages is an early version built on the desk's lanes.
-        .title(" Messages \u{2500} early version: the desk's You owe, Due, Waiting on and New from people ")
+        .title(format!(
+            " Messages \u{2500} early version: the desk's You owe, Due, Waiting on and New from people{quiet} "
+        ))
         .border_type(BorderType::Rounded)
         .border_style(theme.border_style(is_focused));
     let inner = block.inner(area);
@@ -330,6 +339,7 @@ mod tests {
                     active_pane: &ActivePane::MailList,
                     row_gists,
                     gist_lines,
+                    quiet: None,
                 },
                 &crate::theme::Theme::default(),
             );

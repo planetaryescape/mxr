@@ -32,23 +32,28 @@ import { markDone, markNotTodo, restoreTodos, useTodoHidden } from "./todoVerbs"
  * the count it answered with is kept for the visit, since later refetches
  * count from that moment and say zero.
  */
-function useRunway() {
+export function useRunway() {
   const account = useUiPrefs((s) => s.accountScope);
-  const seen = useRef(false);
-  const [expiredOnOpen, setExpiredOnOpen] = useState(0);
+  const scope = account ?? "all";
+  // The scopes whose first look this visit has recorded: each account's
+  // "last looked" moves only when that account's To do is opened.
+  const seen = useRef(new Set<string>());
+  const [expired, setExpired] = useState<Record<string, number>>({});
   const runway = useQuery({
-    queryKey: [...TODO_KEY, "runway", account ?? "all"],
+    queryKey: [...TODO_KEY, "runway", scope],
     queryFn: async () => {
-      const markSeen = !seen.current;
-      seen.current = true;
+      const markSeen = !seen.current.has(scope);
+      seen.current.add(scope);
       const answer = await fetchRunway(account, markSeen);
-      if (markSeen) setExpiredOnOpen(answer.expired_since_last_looked);
+      if (markSeen) {
+        setExpired((counts) => ({ ...counts, [scope]: answer.expired_since_last_looked }));
+      }
       return answer;
     },
     staleTime: 15_000,
     refetchInterval: 60_000,
   });
-  return { runway, expiredOnOpen };
+  return { runway, expiredOnOpen: expired[scope] ?? 0 };
 }
 
 /**

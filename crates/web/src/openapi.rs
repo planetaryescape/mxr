@@ -84,7 +84,7 @@ use utoipa::{
         mail_place_list, mail_place_sweep, mail_message_kind, mail_messages_pin,
         mail_sender_kind, mail_todos_runway, mail_todos_create, mail_todos_in_state,
         mail_todo_get, mail_todos_state, mail_todo_schedule, mail_todo_edit,
-        mail_todos_catchup_get, mail_todos_catchup_set
+        mail_todos_catchup_get, mail_todos_catchup_set, mail_mode_guide, mail_mode_card
     ),
     components(schemas(
         Request,
@@ -103,6 +103,7 @@ use utoipa::{
         crate::todo_routes::TodoEditBody,
         crate::todo_routes::TodoCreateBody,
         crate::todo_routes::TodoCatchupBody,
+        crate::mode_routes::ModeCardBody,
     )),
     modifiers(&BearerSecurity),
     security(("bearer" = []))
@@ -489,6 +490,33 @@ fn mail_todo_edit() {}
 )]
 #[allow(dead_code)]
 fn mail_todos_catchup_get() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/modes/guide",
+    summary = "How a mode explains itself: header, empty states, first-encounter card, why template and keys",
+    params(("mode" = Option<String>, Query, description = "`todo`; omitted returns every shipped mode")),
+    responses(
+        (status = 200, description = "The `ModeGuides` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_mode_guide() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/modes/{mode}/card",
+    summary = "Retire a mode's first-encounter card in every client, or show it again",
+    params(("mode" = String, Path, description = "`todo`")),
+    request_body = crate::mode_routes::ModeCardBody,
+    responses(
+        (status = 200, description = "The `ModeGuides` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_mode_card() {}
 
 #[utoipa::path(
     post,

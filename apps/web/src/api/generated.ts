@@ -1144,6 +1144,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/modes/guide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** How a mode explains itself: header, empty states, first-encounter card, why template and keys */
+        get: operations["mail_mode_guide"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/modes/{mode}/card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire a mode's first-encounter card in every client, or show it again */
+        post: operations["mail_mode_card"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/mutation-jobs": {
         parameters: {
             query?: never;
@@ -4645,6 +4679,60 @@ export interface components {
             text_plain_format?: null | components["schemas"]["TextPlainFormat"];
             text_plain_source?: null | components["schemas"]["BodyPartSource"];
         };
+        /** @description Body of `POST /api/v1/mail/modes/{mode}/card`. */
+        ModeCardBody: {
+            /** @description True retires the card in every client; false shows it again. */
+            seen?: boolean;
+        };
+        /**
+         * @description Returned in `ResponseData::ModeGuides`: one mode's teaching copy and
+         *     whether its first-encounter card has been retired on this profile.
+         */
+        ModeGuideData: {
+            /**
+             * @description How to add one by hand from a conversation, for the never-had-any
+             *     state.
+             */
+            add_one: string;
+            /** @description The first-encounter card: one or two sentences. */
+            card: string;
+            /** @description The card's line of keys. */
+            card_keys: components["schemas"]["ModeKeyData"][];
+            /** @description The card was closed, or retired by using the mode's main verb. */
+            card_seen: boolean;
+            /** Format: date-time */
+            card_seen_at?: string | null;
+            /**
+             * @description The empty state once everything is handled. The runway appends when
+             *     the next thing shows up.
+             */
+            clear_for_now: string;
+            /** @description The first-run summary's line for this mode. */
+            first_run_line: string;
+            /** @description Under the mode's name, always visible: the job and its verb. */
+            header: string;
+            /** @description Every key the mode answers to, with its verb, for `?` and the footer. */
+            keys: components["schemas"]["ModeKeyData"][];
+            /** @description One line on what lands here, for `?`. */
+            lands_here: string;
+            /** @description The id clients and `mxr modes explain` use: "todo". */
+            mode: string;
+            /** @description "To do". */
+            name: string;
+            /** @description The empty state before anything has ever landed here. */
+            never_had_any: string;
+            /**
+             * @description How every row's why line reads: `{evidence}` and `{source}` are
+             *     filled per row.
+             */
+            why_template: string;
+        };
+        /** @description One key and the verb it does in this mode: "e tick off". */
+        ModeKeyData: {
+            /** @description As the clients print it: "Enter", "e", ",". */
+            key: string;
+            verb: string;
+        };
         /** @description Mutation commands for modifying messages. */
         MutationCommand: {
             message_ids: components["schemas"]["MessageId"][];
@@ -6089,6 +6177,15 @@ export interface components {
             decision: components["schemas"]["TodoCatchupDecisionData"];
             dry_run?: boolean;
         } | {
+            /** @enum {string} */
+            cmd: "GetModeGuide";
+            mode?: string | null;
+        } | {
+            /** @enum {string} */
+            cmd: "SetModeGuideSeen";
+            mode: string;
+            seen?: boolean;
+        } | {
             account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
             cmd: "ListPlace";
@@ -6822,6 +6919,10 @@ export interface components {
             catchup: components["schemas"]["TodoCatchupData"];
             /** @enum {string} */
             kind: "TodoCatchup";
+        } | {
+            guides: components["schemas"]["ModeGuideData"][];
+            /** @enum {string} */
+            kind: "ModeGuides";
         } | {
             account_id?: null | components["schemas"]["AccountId"];
             bundles: components["schemas"]["PlaceBundleData"][];
@@ -7735,6 +7836,10 @@ export interface components {
         } | {
             /** @enum {string} */
             decision: "let_go_all";
+        } | {
+            /** @enum {string} */
+            decision: "undecide";
+            todo_ids: string[];
         };
         /**
          * @description Returned by every to-do mutation. With `dry_run`, `changed` is what
@@ -9978,6 +10083,70 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description The `MessageKind` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_mode_guide: {
+        parameters: {
+            query?: {
+                /** @description `todo`; omitted returns every shipped mode */
+                mode?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `ModeGuides` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_mode_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description `todo` */
+                mode: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModeCardBody"];
+            };
+        };
+        responses: {
+            /** @description The `ModeGuides` variant */
             200: {
                 headers: {
                     [name: string]: unknown;

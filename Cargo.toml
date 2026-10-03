@@ -99,6 +99,10 @@ path = "crates/daemon/tests/archive_intelligence_cli.rs"
 name = "activity_invariants"
 path = "crates/daemon/tests/activity_invariants.rs"
 
+[[test]]
+name = "modes_cli"
+path = "crates/daemon/tests/modes_cli.rs"
+
 [features]
 # Default profile is intentionally minimal so CLI iteration is fast (~1m vs ~6m).
 # Activate the full local-semantic stack with `--features semantic-local`.

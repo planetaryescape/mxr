@@ -808,3 +808,206 @@ async fn a_catch_up_decision_scoped_to_one_account_never_touches_another() {
     assert!(change.changed.is_empty());
     assert_eq!(runway(&fx, now).await.catchup_count, 1);
 }
+
+async fn todo_guide(fx: &Fixture) -> mxr_protocol::ModeGuideData {
+    let ResponseData::ModeGuides { mut guides } = request(
+        fx,
+        Request::GetModeGuide {
+            mode: Some("to-do".to_string()),
+        },
+    )
+    .await
+    else {
+        panic!("expected ModeGuides")
+    };
+    assert_eq!(guides.len(), 1);
+    guides.remove(0)
+}
+
+#[tokio::test]
+async fn the_mode_guide_serves_to_do_copy_from_one_table() {
+    let fx = Fixture::new().await;
+    let guide = todo_guide(&fx).await;
+    assert_eq!(guide.mode, "todo");
+    assert_eq!(guide.header, mxr_protocol::todo_copy::HEADER);
+    assert_eq!(guide.never_had_any, mxr_protocol::todo_copy::NEVER_HAD_ANY);
+    assert_eq!(guide.card, mxr_protocol::todo_copy::CARD);
+    assert!(!guide.card_seen);
+    assert!(guide
+        .keys
+        .iter()
+        .any(|key| key.key == "e" && key.verb == "tick off"));
+    let ResponseData::ModeGuides { guides } =
+        request(&fx, Request::GetModeGuide { mode: None }).await
+    else {
+        panic!()
+    };
+    assert_eq!(
+        guides.iter().map(|g| g.mode.as_str()).collect::<Vec<_>>(),
+        vec!["todo"]
+    );
+    let refused = handle_request(
+        &fx.state,
+        &IpcMessage {
+            id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::GetModeGuide {
+                mode: Some("updates".to_string()),
+            }),
+        },
+    )
+    .await;
+    let IpcPayload::Response(Response::Error { message, .. }) = refused.payload else {
+        panic!("an unshipped mode is refused")
+    };
+    assert!(message.contains("Modes so far: todo"), "{message}");
+}
+
+#[tokio::test]
+async fn closing_the_card_holds_for_every_client_until_shown_again() {
+    let fx = Fixture::new().await;
+    let ResponseData::ModeGuides { guides } = request(
+        &fx,
+        Request::SetModeGuideSeen {
+            mode: "todo".to_string(),
+            seen: true,
+        },
+    )
+    .await
+    else {
+        panic!()
+    };
+    let first = guides[0].card_seen_at.expect("seen");
+    // A second close keeps the first time, and a fresh read agrees.
+    request(
+        &fx,
+        Request::SetModeGuideSeen {
+            mode: "todo".to_string(),
+            seen: true,
+        },
+    )
+    .await;
+    let guide = todo_guide(&fx).await;
+    assert!(guide.card_seen);
+    assert_eq!(guide.card_seen_at, Some(first));
+    request(
+        &fx,
+        Request::SetModeGuideSeen {
+            mode: "todo".to_string(),
+            seen: false,
+        },
+    )
+    .await;
+    assert!(!todo_guide(&fx).await.card_seen);
+}
+
+#[tokio::test]
+async fn ticking_off_retires_the_card_but_a_preview_does_not() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    finish_first_run(&fx, now).await;
+    let id = put(
+        &fx,
+        Mail::new(
+            ("Spotify", "no-reply@spotify.com"),
+            "We can't process your payment",
+            "We couldn't charge your card. Update your payment details.",
+            now,
+        ),
+    )
+    .await;
+    scan(&fx, &[id], now).await;
+    let todo_id = runway(&fx, now).await.now[0].id.clone();
+    let done = |dry_run| Request::SetTodoState {
+        todo_ids: vec![todo_id.clone()],
+        action: TodoStateActionData::Done,
+        dry_run,
+    };
+    request(&fx, done(true)).await;
+    assert!(!todo_guide(&fx).await.card_seen, "a preview is not a use");
+    request(&fx, done(false)).await;
+    assert!(todo_guide(&fx).await.card_seen);
+}
+
+#[tokio::test]
+async fn undeciding_puts_kept_and_let_go_rows_back_in_the_catch_up() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    for n in 0..3 {
+        put(
+            &fx,
+            Mail::new(
+                ("Priya Shah via DocuSign", "dse@docusign.net"),
+                "Please DocuSign: Engagement letter",
+                format!("Priya sent you document {n} to review and sign."),
+                now - Duration::hours(n + 1),
+            ),
+        )
+        .await;
+    }
+    finish_first_run(&fx, now).await;
+    let ResponseData::TodoCatchup { catchup } =
+        request(&fx, Request::GetTodoCatchup { account_id: None }).await
+    else {
+        panic!()
+    };
+    let ids: Vec<String> = catchup.todos.iter().map(|todo| todo.id.clone()).collect();
+    assert_eq!(ids.len(), 3);
+    let decide = |decision, dry_run| Request::SetTodoCatchup {
+        account_id: None,
+        decision,
+        dry_run,
+    };
+    request(
+        &fx,
+        decide(
+            TodoCatchupDecisionData::Keep {
+                todo_ids: vec![ids[0].clone()],
+            },
+            false,
+        ),
+    )
+    .await;
+    request(
+        &fx,
+        decide(
+            TodoCatchupDecisionData::LetGo {
+                todo_ids: vec![ids[1].clone()],
+            },
+            false,
+        ),
+    )
+    .await;
+    assert_eq!(runway(&fx, now).await.catchup_count, 1);
+
+    let undecide = |dry_run| {
+        decide(
+            TodoCatchupDecisionData::Undecide {
+                todo_ids: ids.clone(),
+            },
+            dry_run,
+        )
+    };
+    let ResponseData::TodoChange { change: preview } = request(&fx, undecide(true)).await else {
+        panic!()
+    };
+    let ResponseData::TodoChange { change } = request(&fx, undecide(false)).await else {
+        panic!()
+    };
+    let sorted = |todos: &[TodoData]| {
+        let mut ids: Vec<String> = todos.iter().map(|todo| todo.id.clone()).collect();
+        ids.sort();
+        ids
+    };
+    assert_eq!(sorted(&preview.changed), sorted(&change.changed));
+    assert_eq!(
+        change.changed.len(),
+        2,
+        "the undecided row is left as it is"
+    );
+    assert_eq!(change.unchanged, vec![ids[2].clone()]);
+    assert!(change.changed.iter().all(
+        |todo| todo.state == TodoStateData::Open && todo.catchup.as_deref() == Some("pending")
+    ));
+    assert_eq!(runway(&fx, now).await.catchup_count, 3);
+}

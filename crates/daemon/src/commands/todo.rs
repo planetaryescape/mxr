@@ -150,9 +150,12 @@ pub async fn run(
             keep,
             let_go,
             let_go_all,
+            undecide,
             dry_run,
         } => {
-            let decision = if !keep.is_empty() {
+            let decision = if !undecide.is_empty() {
+                Some(TodoCatchupDecisionData::Undecide { todo_ids: undecide })
+            } else if !keep.is_empty() {
                 Some(TodoCatchupDecisionData::Keep { todo_ids: keep })
             } else if !let_go.is_empty() {
                 Some(TodoCatchupDecisionData::LetGo { todo_ids: let_go })

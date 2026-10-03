@@ -697,6 +697,13 @@ pub enum Command {
         #[arg(long, global = true)]
         format: Option<OutputFormat>,
     },
+    /// How each mode explains itself: its job, empty states, card and keys
+    Modes {
+        #[command(subcommand)]
+        action: ModesAction,
+        #[arg(long, global = true)]
+        format: Option<OutputFormat>,
+    },
     /// Track packages and deliveries detected in your mail
     Deliveries {
         #[command(subcommand)]
@@ -2119,17 +2126,39 @@ pub enum TodoAction {
     /// your mail that might still need you. Keep or let go of each.
     Catchup {
         /// Keep these: they join the runway and are yours from then on.
-        #[arg(long, value_name = "TODO_ID", num_args = 1.., conflicts_with_all = ["let_go", "let_go_all"])]
+        #[arg(long, value_name = "TODO_ID", num_args = 1.., conflicts_with_all = ["let_go", "let_go_all", "undecide"])]
         keep: Vec<String>,
         /// Let go of these: they join the Expired list.
-        #[arg(long, value_name = "TODO_ID", num_args = 1.., conflicts_with = "let_go_all")]
+        #[arg(long, value_name = "TODO_ID", num_args = 1.., conflicts_with_all = ["let_go_all", "undecide"])]
         let_go: Vec<String>,
         /// Let go of everything still in the catch-up.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "undecide")]
         let_go_all: bool,
+        /// Put rows you kept or let go back in the catch-up, undecided.
+        #[arg(long, value_name = "TODO_ID", num_args = 1..)]
+        undecide: Vec<String>,
         /// Show what would change without changing anything.
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ModesAction {
+    /// What a mode is for, what lands there, its first-encounter card and
+    /// its keys. Every mode that has shipped when none is named.
+    Explain {
+        /// The mode, such as todo.
+        mode: Option<String>,
+    },
+    /// Retire a mode's first-encounter card in every client, as closing it
+    /// does, or bring it back with --show.
+    Card {
+        /// The mode, such as todo.
+        mode: String,
+        /// Show the card again the next time the mode has items.
+        #[arg(long)]
+        show: bool,
     },
 }
 

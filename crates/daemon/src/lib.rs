@@ -384,6 +384,10 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::todo::run(action, account, format).await?;
         }
+        Some(Command::Modes { action, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::modes::run(action, format).await?;
+        }
         Some(Command::Deliveries {
             action,
             account,

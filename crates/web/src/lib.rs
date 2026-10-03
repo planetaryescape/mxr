@@ -14,6 +14,7 @@ mod insight_routes;
 mod legacy;
 mod mailbox_threads;
 mod middleware;
+mod mode_routes;
 mod openapi;
 mod place_routes;
 mod promise_routes;

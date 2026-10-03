@@ -1,0 +1,75 @@
+---
+source: crates/daemon/tests/modes_cli.rs
+expression: "serde_json::to_string_pretty(&guides).unwrap()"
+---
+[
+  {
+    "add_one": "Press `t` on any email to add one yourself.",
+    "card": "Each row is one thing to do, written as what to do, not the email's subject. Act by the first date; the bar fills from when it showed up to when it's due, and Enter does what the button says.",
+    "card_keys": [
+      {
+        "key": "Enter",
+        "verb": "do it"
+      },
+      {
+        "key": "e",
+        "verb": "tick off"
+      },
+      {
+        "key": "Z",
+        "verb": "schedule"
+      },
+      {
+        "key": "X",
+        "verb": "not a to-do"
+      }
+    ],
+    "card_seen": false,
+    "clear_for_now": "Nothing needs you.",
+    "first_run_line": "What email asked you to do",
+    "header": "Things email asked you to do, ordered by when to act.",
+    "keys": [
+      {
+        "key": "Enter",
+        "verb": "do it"
+      },
+      {
+        "key": "e",
+        "verb": "tick off"
+      },
+      {
+        "key": "Z",
+        "verb": "schedule"
+      },
+      {
+        "key": ",",
+        "verb": "edit"
+      },
+      {
+        "key": "X",
+        "verb": "not a to-do"
+      },
+      {
+        "key": "o",
+        "verb": "open the email"
+      },
+      {
+        "key": "u",
+        "verb": "undo"
+      },
+      {
+        "key": "t",
+        "verb": "make a to-do from a conversation"
+      },
+      {
+        "key": "?",
+        "verb": "what is this"
+      }
+    ],
+    "lands_here": "Bills, failed payments, renewals, invites to answer, links to verify, forms to sign and promises you made.",
+    "mode": "todo",
+    "name": "To do",
+    "never_had_any": "When an email asks you to pay, sign, reply by a date or confirm something, it shows up here as one line: what to do and when to act.",
+    "why_template": "Here because: \"{evidence}\" ({source})."
+  }
+]

@@ -365,6 +365,9 @@ pub(super) async fn set_state(
         {
             mirror_promise(state, record, to, now).await?;
         }
+        if to == TodoState::Done && !changed_ids.is_empty() {
+            super::mode_guide::retire(state, MODE).await?;
+        }
         state.store.get_todos(&changed_ids).await?
     };
     Ok(change(dry_run, verb, done_word, &changed, unchanged, now))
@@ -742,6 +745,14 @@ pub(super) async fn create(
     ))
 }
 
+/// What a catch-up decision does to the rows it selects.
+#[derive(Clone, Copy)]
+enum Choice {
+    Keep,
+    LetGo,
+    Undecide,
+}
+
 pub(super) async fn set_catchup(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -755,51 +766,70 @@ pub(super) async fn set_catchup(
             && record.catchup == Some(TodoCatchup::Pending)
             && account_id.is_none_or(|account| record.account_id == *account)
     };
-    let (keep, (selected, unchanged)) = match decision {
+    let decided = |record: &TodoRecord| {
+        matches!(
+            (record.state, record.catchup),
+            (TodoState::Open, Some(TodoCatchup::Kept))
+                | (TodoState::Expired, Some(TodoCatchup::LetGo))
+        ) && account_id.is_none_or(|account| record.account_id == *account)
+    };
+    let (choice, (selected, unchanged)) = match decision {
         TodoCatchupDecisionData::Keep { todo_ids } => {
             let ids = resolve_todo_ids(state, todo_ids).await?;
-            (true, select(state, &ids, pending).await?)
+            (Choice::Keep, select(state, &ids, pending).await?)
         }
         TodoCatchupDecisionData::LetGo { todo_ids } => {
             let ids = resolve_todo_ids(state, todo_ids).await?;
-            (false, select(state, &ids, pending).await?)
+            (Choice::LetGo, select(state, &ids, pending).await?)
         }
         TodoCatchupDecisionData::LetGoAll => (
-            false,
+            Choice::LetGo,
             (
                 state.store.list_catchup_todos(account_id).await?,
                 Vec::new(),
             ),
         ),
+        TodoCatchupDecisionData::Undecide { todo_ids } => {
+            let ids = resolve_todo_ids(state, todo_ids).await?;
+            (Choice::Undecide, select(state, &ids, decided).await?)
+        }
     };
     let changed = if dry_run {
         selected
             .into_iter()
             .map(|mut record| {
-                if keep {
-                    record.catchup = Some(TodoCatchup::Kept);
-                    record.user_edited = true;
-                } else {
-                    record.catchup = Some(TodoCatchup::LetGo);
-                    record.state = TodoState::Expired;
-                    record.expired_at = Some(now);
+                match choice {
+                    Choice::Keep => {
+                        record.catchup = Some(TodoCatchup::Kept);
+                        record.user_edited = true;
+                    }
+                    Choice::LetGo => {
+                        record.catchup = Some(TodoCatchup::LetGo);
+                        record.state = TodoState::Expired;
+                        record.expired_at = Some(now);
+                    }
+                    Choice::Undecide => {
+                        record.catchup = Some(TodoCatchup::Pending);
+                        record.state = TodoState::Open;
+                        record.expired_at = None;
+                    }
                 }
                 record
             })
             .collect::<Vec<_>>()
     } else {
         let ids: Vec<String> = selected.iter().map(|record| record.id.clone()).collect();
-        let changed_ids = if keep {
-            state.store.keep_catchup_todos(&ids, now).await?
-        } else {
-            state.store.let_go_catchup_todos(&ids, now).await?
+        let changed_ids = match choice {
+            Choice::Keep => state.store.keep_catchup_todos(&ids, now).await?,
+            Choice::LetGo => state.store.let_go_catchup_todos(&ids, now).await?,
+            Choice::Undecide => state.store.undecide_catchup_todos(&ids, now).await?,
         };
         state.store.get_todos(&changed_ids).await?
     };
-    let (verb, word) = if keep {
-        ("keep", "Kept")
-    } else {
-        ("let_go", "Let go of")
+    let (verb, word) = match choice {
+        Choice::Keep => ("keep", "Kept"),
+        Choice::LetGo => ("let_go", "Let go of"),
+        Choice::Undecide => ("undecide", "Back in the catch-up:"),
     };
     Ok(change(dry_run, verb, word, &changed, unchanged, now))
 }

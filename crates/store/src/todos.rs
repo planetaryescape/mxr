@@ -629,6 +629,34 @@ impl super::Store {
         Ok(changed)
     }
 
+    /// Puts catch-up rows you kept or let go back in the batch, undecided:
+    /// the undo of either choice.
+    pub async fn undecide_catchup_todos(
+        &self,
+        ids: &[String],
+        now: DateTime<Utc>,
+    ) -> Result<Vec<String>, sqlx::Error> {
+        let mut changed = Vec::new();
+        for chunk in ids.chunks(crate::SQLITE_BIND_CHUNK) {
+            let sql = format!(
+                "UPDATE todos SET state = 'open', catchup = 'pending', expired_at = NULL,
+                        updated_at = ?1
+                 WHERE id IN ({})
+                   AND ((state = 'open' AND catchup = 'kept')
+                        OR (state = 'expired' AND catchup = 'let_go'))
+                 RETURNING id",
+                in_list_after_first(chunk.len())
+            );
+            let mut query =
+                sqlx::query_scalar::<_, String>(sqlx::AssertSqlSafe(sql)).bind(now.timestamp());
+            for id in chunk {
+                query = query.bind(id);
+            }
+            changed.extend(query.fetch_all(self.writer()).await?);
+        }
+        Ok(changed)
+    }
+
     /// What the first run found already over, by kind (the catch-up's
     /// overflow is counted separately).
     pub async fn count_todos_expired_at_birth_by_kind(

@@ -24,7 +24,6 @@ pub mod todo_copy {
     /// Oct."
     pub const CLEAR_FOR_NOW: &str = "Nothing needs you.";
     pub const CARD: &str = "Each row is one thing to do, written as what to do, not the email's subject. Act by the first date; the bar fills from when it showed up to when it's due, and Enter does what the button says.";
-    pub const CARD_KEYS: &str = "Enter do it · e tick off · Z schedule · X not a to-do";
     /// The first run's summary card title.
     pub const FIRST_RUN_TITLE: &str = "Your last two weeks, sorted";
     /// The first run's summary line for To do, after the counts.
@@ -323,6 +322,10 @@ pub enum TodoCatchupDecisionData {
     },
     /// Every row still waiting in the batch.
     LetGoAll,
+    /// Back to undecided in the batch: the undo of keep or let go.
+    Undecide {
+        todo_ids: Vec<String>,
+    },
 }
 
 /// One edit: `field` is title, due, amount, counterparty or kind; an

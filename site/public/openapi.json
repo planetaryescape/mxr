@@ -1161,6 +1161,82 @@
         }
       }
     },
+    "/api/v1/mail/modes/guide": {
+      "get": {
+        "tags": [],
+        "summary": "How a mode explains itself: header, empty states, first-encounter card, why template and keys",
+        "operationId": "mail_mode_guide",
+        "parameters": [
+          {
+            "name": "mode",
+            "in": "query",
+            "description": "`todo`; omitted returns every shipped mode",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `ModeGuides` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/modes/{mode}/card": {
+      "post": {
+        "tags": [],
+        "summary": "Retire a mode's first-encounter card in every client, or show it again",
+        "operationId": "mail_mode_card",
+        "parameters": [
+          {
+            "name": "mode",
+            "in": "path",
+            "description": "`todo`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModeCardBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ModeGuides` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/mutation-jobs": {
       "post": {
         "tags": [],
@@ -8717,6 +8793,119 @@
           }
         }
       },
+      "ModeCardBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/modes/{mode}/card`.",
+        "properties": {
+          "seen": {
+            "type": "boolean",
+            "description": "True retires the card in every client; false shows it again."
+          }
+        }
+      },
+      "ModeGuideData": {
+        "type": "object",
+        "description": "Returned in `ResponseData::ModeGuides`: one mode's teaching copy and\nwhether its first-encounter card has been retired on this profile.",
+        "required": [
+          "mode",
+          "name",
+          "header",
+          "never_had_any",
+          "add_one",
+          "clear_for_now",
+          "lands_here",
+          "card",
+          "card_keys",
+          "why_template",
+          "keys",
+          "first_run_line",
+          "card_seen"
+        ],
+        "properties": {
+          "add_one": {
+            "type": "string",
+            "description": "How to add one by hand from a conversation, for the never-had-any\nstate."
+          },
+          "card": {
+            "type": "string",
+            "description": "The first-encounter card: one or two sentences."
+          },
+          "card_keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModeKeyData"
+            },
+            "description": "The card's line of keys."
+          },
+          "card_seen": {
+            "type": "boolean",
+            "description": "The card was closed, or retired by using the mode's main verb."
+          },
+          "card_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "clear_for_now": {
+            "type": "string",
+            "description": "The empty state once everything is handled. The runway appends when\nthe next thing shows up."
+          },
+          "first_run_line": {
+            "type": "string",
+            "description": "The first-run summary's line for this mode."
+          },
+          "header": {
+            "type": "string",
+            "description": "Under the mode's name, always visible: the job and its verb."
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModeKeyData"
+            },
+            "description": "Every key the mode answers to, with its verb, for `?` and the footer."
+          },
+          "lands_here": {
+            "type": "string",
+            "description": "One line on what lands here, for `?`."
+          },
+          "mode": {
+            "type": "string",
+            "description": "The id clients and `mxr modes explain` use: \"todo\"."
+          },
+          "name": {
+            "type": "string",
+            "description": "\"To do\"."
+          },
+          "never_had_any": {
+            "type": "string",
+            "description": "The empty state before anything has ever landed here."
+          },
+          "why_template": {
+            "type": "string",
+            "description": "How every row's why line reads: `{evidence}` and `{source}` are\nfilled per row."
+          }
+        }
+      },
+      "ModeKeyData": {
+        "type": "object",
+        "description": "One key and the verb it does in this mode: \"e tick off\".",
+        "required": [
+          "key",
+          "verb"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "As the clients print it: \"Enter\", \"e\", \",\"."
+          },
+          "verb": {
+            "type": "string"
+          }
+        }
+      },
       "MutationCommand": {
         "oneOf": [
           {
@@ -14915,6 +15104,49 @@
           },
           {
             "type": "object",
+            "description": "How a mode explains itself: header, empty states, first-encounter\ncard, why template and keys, with whether the card was retired.\n`mode: None` returns every shipped mode. Returns\n`ResponseData::ModeGuides`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetModeGuide"
+                ]
+              },
+              "mode": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Retire a mode's first-encounter card on this profile, so it stays\nclosed in every client; `seen: false` brings it back. Returns\n`ResponseData::ModeGuides` with the one mode.",
+            "required": [
+              "mode",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetModeGuideSeen"
+                ]
+              },
+              "mode": {
+                "type": "string"
+              },
+              "seen": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "A place (Reading or Paper trail): inbox mail of that kind grouped by\nsender, newest bundle first, each with the reason it is there.\n`account_id: None` covers every enabled account.",
             "required": [
               "place",
@@ -18263,6 +18495,28 @@
           },
           {
             "type": "object",
+            "description": "Returned by `Request::GetModeGuide` and `Request::SetModeGuideSeen`.",
+            "required": [
+              "guides",
+              "kind"
+            ],
+            "properties": {
+              "guides": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModeGuideData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ModeGuides"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Returned by `Request::ListPlace`.",
             "required": [
               "place",
@@ -21015,6 +21269,28 @@
                 "enum": [
                   "let_go_all"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Back to undecided in the batch: the undo of keep or let go.",
+            "required": [
+              "todo_ids",
+              "decision"
+            ],
+            "properties": {
+              "decision": {
+                "type": "string",
+                "enum": [
+                  "undecide"
+                ]
+              },
+              "todo_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             }
           }

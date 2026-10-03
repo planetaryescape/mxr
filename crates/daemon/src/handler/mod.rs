@@ -39,6 +39,7 @@ mod helpers;
 mod humanizer;
 mod mail_kind;
 mod mailbox;
+mod mode_guide;
 mod mutations;
 mod notifications;
 mod owed;
@@ -1327,6 +1328,8 @@ async fn dispatch(
             decision,
             dry_run,
         } => todos::set_catchup(state, account_id.as_ref(), decision, *dry_run).await,
+        Request::GetModeGuide { mode } => mode_guide::get(state, mode.as_deref()).await,
+        Request::SetModeGuideSeen { mode, seen } => mode_guide::set_seen(state, mode, *seen).await,
         Request::GetRecipientBriefing {
             account_id,
             email,
@@ -2088,6 +2091,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListTodos { .. }
         | Request::GetTodo { .. }
         | Request::GetTodoCatchup { .. }
+        | Request::GetModeGuide { .. }
         | Request::ListSignatures
         | Request::ListSignatureDefaults
         | Request::ResolveSignature { .. }
@@ -2245,6 +2249,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::UpdateTodo { .. }
         | Request::CreateTodo { .. }
         | Request::SetTodoCatchup { .. }
+        | Request::SetModeGuideSeen { .. }
         | Request::RebuildUserVoice { .. }
         | Request::SetScreenerDecision { .. }
         | Request::ClearScreenerDecision { .. }
@@ -2466,6 +2471,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::CreateTodo { .. } => "create_todo",
         Request::GetTodoCatchup { .. } => "get_todo_catchup",
         Request::SetTodoCatchup { .. } => "set_todo_catchup",
+        Request::GetModeGuide { .. } => "get_mode_guide",
+        Request::SetModeGuideSeen { .. } => "set_mode_guide_seen",
         Request::GetRecipientBriefing { .. } => "get_recipient_briefing",
         Request::SuggestCollaborators { .. } => "suggest_collaborators",
         Request::FindExpert { .. } => "find_expert",

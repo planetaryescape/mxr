@@ -12,6 +12,9 @@
 //!   date; the demo command keeps it as a promise.
 //! * A bank statement and a Klarna payment collected automatically: an
 //!   update and a scheduled payment, neither a to-do.
+//! * A water bill already past its due date and an undated tenancy renewal
+//!   to sign: backlog from before the first run, so they wait in the
+//!   one-time catch-up instead of landing in Now.
 
 use super::{build_demo_msg, DemoMessage};
 use chrono::{DateTime, Duration, Utc};
@@ -19,7 +22,7 @@ use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::{Address, Envelope, MessageBody, MessageFlags, UnsubscribeMethod};
 
 /// Messages `todo_demo_messages` returns.
-pub(super) const TODO_DEMO_MESSAGE_COUNT: usize = 9;
+pub(super) const TODO_DEMO_MESSAGE_COUNT: usize = 11;
 
 /// The sent message the demo command records as an undated promise.
 const TODO_DEMO_PROMISE_SUBJECT: &str = "Re: Engagement form";
@@ -79,6 +82,7 @@ pub(super) fn todo_demo_messages(
     let event = now - Duration::days(1);
     let reply_by = now - Duration::days(4);
     let collected = now + Duration::days(3);
+    let water_due = now - Duration::days(2);
 
     let mut built = Vec::with_capacity(TODO_DEMO_MESSAGE_COUNT);
     let mut push = |message: DemoMessage, thread_id: ThreadId, html: Option<String>, auth: bool| {
@@ -201,5 +205,51 @@ pub(super) fn todo_demo_messages(
         false,
     );
 
+    push(
+        message(
+            address("Thames Water", "billing@thameswater.co.uk"),
+            self_addr,
+            "Reminder: your water bill",
+            format!(
+                "Hi Alex,\n\nYour water bill of £48.20 was due on {}. Please pay now to avoid a late payment charge: https://www.thameswater.co.uk/pay-my-bill\n\nThames Water",
+                water_due.format("%-d %B %Y")
+            ),
+            now - Duration::days(9),
+        ),
+        thread(account_id, "water"),
+        None,
+        false,
+    );
+
+    push(
+        message(
+            address("Foxtons via DocuSign", "dse@docusign.net"),
+            self_addr,
+            "Please DocuSign: Tenancy renewal",
+            "Foxtons sent you a document to review and sign: Tenancy renewal for Flat 2, 14 Albert Street.\n\nREVIEW DOCUMENT https://www.docusign.net/Signing/?ti=demo-tenancy".to_string(),
+            now - Duration::days(3),
+        ),
+        thread(account_id, "tenancy"),
+        None,
+        false,
+    );
+
     built
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_count_matches_the_mail_built() {
+        let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
+        let me = address("Alex Demo", "alex@demo.mxr.local");
+        let built = todo_demo_messages(&account_id, &me, Utc::now(), 1);
+        assert_eq!(built.len(), TODO_DEMO_MESSAGE_COUNT);
+        assert_eq!(
+            built[TODO_DEMO_PROMISE_POSITION].0.subject,
+            TODO_DEMO_PROMISE_SUBJECT
+        );
+    }
 }

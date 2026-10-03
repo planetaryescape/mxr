@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 mod desk;
 mod draft_provenance;
+mod mode_guide;
 mod places;
 mod platform;
 mod promises;
@@ -11,6 +12,7 @@ mod thread_context;
 mod todos;
 pub use desk::*;
 pub use draft_provenance::*;
+pub use mode_guide::*;
 pub use places::*;
 pub use platform::*;
 pub use promises::*;
@@ -81,6 +83,10 @@ fn default_place_limit() -> u32 {
 
 fn default_todo_limit() -> u32 {
     200
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_place_messages_per_bundle() -> u32 {
@@ -1709,6 +1715,23 @@ pub enum Request {
         #[serde(default)]
         dry_run: bool,
     },
+    // ----- Teaching in place -----
+    /// How a mode explains itself: header, empty states, first-encounter
+    /// card, why template and keys, with whether the card was retired.
+    /// `mode: None` returns every shipped mode. Returns
+    /// `ResponseData::ModeGuides`.
+    GetModeGuide {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mode: Option<String>,
+    },
+    /// Retire a mode's first-encounter card on this profile, so it stays
+    /// closed in every client; `seen: false` brings it back. Returns
+    /// `ResponseData::ModeGuides` with the one mode.
+    SetModeGuideSeen {
+        mode: String,
+        #[serde(default = "default_true")]
+        seen: bool,
+    },
     /// A place (Reading or Paper trail): inbox mail of that kind grouped by
     /// sender, newest bundle first, each with the reason it is there.
     /// `account_id: None` covers every enabled account.
@@ -1952,6 +1975,8 @@ impl Request {
             | Self::CreateTodo { .. }
             | Self::GetTodoCatchup { .. }
             | Self::SetTodoCatchup { .. }
+            | Self::GetModeGuide { .. }
+            | Self::SetModeGuideSeen { .. }
             | Self::GetRecipientBriefing { .. }
             | Self::SuggestCollaborators { .. }
             | Self::FindExpert { .. }
@@ -2928,6 +2953,10 @@ pub enum ResponseData {
     TodoCatchup {
         catchup: TodoCatchupData,
     },
+    /// Returned by `Request::GetModeGuide` and `Request::SetModeGuideSeen`.
+    ModeGuides {
+        guides: Vec<ModeGuideData>,
+    },
     /// Returned by `Request::ListPlace`.
     Place {
         place: MailPlaceData,
@@ -3111,6 +3140,7 @@ impl ResponseData {
             | Self::Todo { .. }
             | Self::TodoChange { .. }
             | Self::TodoCatchup { .. }
+            | Self::ModeGuides { .. }
             | Self::RecipientBriefing { .. }
             | Self::SuggestedCollaborators { .. }
             | Self::ExpertSuggestions { .. }

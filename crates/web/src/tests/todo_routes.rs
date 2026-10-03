@@ -130,3 +130,33 @@ async fn todo_routes_reject_bad_input_before_the_daemon() {
     }
     assert!(seen.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn mode_guide_routes_forward_their_requests() {
+    let (_temp, addr, seen) = serve_recording().await;
+    let client = reqwest::Client::new();
+    for request in [
+        client.get(format!("http://{addr}/api/v1/mail/modes/guide?mode=todo")),
+        client.get(format!("http://{addr}/api/v1/mail/modes/guide")),
+        client
+            .post(format!("http://{addr}/api/v1/mail/modes/todo/card"))
+            .json(&serde_json::json!({})),
+        client
+            .post(format!("http://{addr}/api/v1/mail/modes/todo/card"))
+            .json(&serde_json::json!({ "seen": false })),
+    ] {
+        let response = request.bearer_auth(TEST_AUTH_TOKEN).send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+    }
+    let seen = seen.lock().unwrap();
+    assert!(matches!(&seen[0], Request::GetModeGuide { mode: Some(mode) } if mode == "todo"));
+    assert!(matches!(&seen[1], Request::GetModeGuide { mode: None }));
+    assert!(matches!(
+        &seen[2],
+        Request::SetModeGuideSeen { mode, seen: true } if mode == "todo"
+    ));
+    assert!(matches!(
+        &seen[3],
+        Request::SetModeGuideSeen { seen: false, .. }
+    ));
+}

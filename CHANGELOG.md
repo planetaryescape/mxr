@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.53](https://github.com/planetaryescape/mxr/compare/v0.6.52...v0.6.53) (2026-10-03)
+
+
+### Features
+
+* Now is the front page and the rail is the modes ([#288](https://github.com/planetaryescape/mxr/issues/288)) ([ad78800](https://github.com/planetaryescape/mxr/commit/ad78800f83c3b3e7a5e1419eb89a7729f20f17ff))
+
 ## [0.6.52](https://github.com/planetaryescape/mxr/compare/v0.6.51...v0.6.52) (2026-10-03)
 
 

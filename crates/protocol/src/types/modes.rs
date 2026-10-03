@@ -260,7 +260,10 @@ pub struct RailData {
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::unwrap_used, reason = "tests unwrap for direct fixture failures")]
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap for direct fixture failures"
+    )]
 
     use super::*;
 

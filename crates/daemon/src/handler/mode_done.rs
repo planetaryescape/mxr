@@ -165,8 +165,19 @@ fn plan_one(
 ) -> Plan {
     let data = &placement.data;
     let provider = provider_name(placement.provider.as_ref());
-    if mode == ModeKindData::Todo && placement.todos.is_empty() {
-        let mut plan = Plan::failed(&data.thread_id, mode, "no open to-do on this conversation");
+    // Only the mode holding a thread can let it go: done elsewhere would
+    // archive mail no mode placed, such as an invite still to answer.
+    let refusal = if data.modes.iter().any(|entry| entry.mode == mode) {
+        None
+    } else if data.done_in.contains(&mode) {
+        Some(format!("already done in {}", mode.name()))
+    } else if mode == ModeKindData::Todo {
+        Some("no open to-do on this conversation".to_string())
+    } else {
+        Some(format!("not in {}", mode.name()))
+    };
+    if let Some(refusal) = refusal {
+        let mut plan = Plan::failed(&data.thread_id, mode, refusal);
         plan.account_id = Some(data.account_id.clone());
         plan.provider = provider;
         return plan;

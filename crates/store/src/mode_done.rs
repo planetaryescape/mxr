@@ -183,6 +183,30 @@ impl super::Store {
         tx.commit().await
     }
 
+    /// Clear threads' marks in one mode, wherever they are. Returns how
+    /// many were cleared.
+    pub async fn clear_mode_done(
+        &self,
+        thread_ids: &[ThreadId],
+        mode: &str,
+    ) -> Result<u64, sqlx::Error> {
+        if thread_ids.is_empty() {
+            return Ok(0);
+        }
+        let wanted =
+            serde_json::to_string(&thread_ids.iter().map(ThreadId::as_str).collect::<Vec<_>>())
+                .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
+        let result = sqlx::query(
+            "DELETE FROM mode_done
+             WHERE mode = ?2 AND thread_id IN (SELECT value FROM json_each(?1))",
+        )
+        .bind(wanted)
+        .bind(mode)
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected())
+    }
+
     /// Put marks back as they were: the prior row, or none.
     pub async fn put_back_mode_done(&self, priors: &[ModeDonePrior]) -> Result<(), sqlx::Error> {
         if priors.is_empty() {

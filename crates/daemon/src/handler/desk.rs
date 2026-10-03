@@ -599,6 +599,9 @@ pub(super) async fn restore_threads(
     state: &AppState,
     thread_ids: &[mxr_core::id::ThreadId],
 ) -> HandlerResult {
-    let restored = state.store.restore_desk_threads(thread_ids).await?;
+    // The desk reads done-in-Messages marks as dismissals too, so restoring
+    // clears both, or a thread done in Messages would stay hidden.
+    let restored = state.store.restore_desk_threads(thread_ids).await?
+        + state.store.clear_mode_done(thread_ids, "messages").await?;
     Ok(ResponseData::DeskThreadsRestored { restored })
 }

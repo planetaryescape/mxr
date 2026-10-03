@@ -497,3 +497,46 @@ async fn the_rail_lists_now_the_modes_and_inbox_with_keys_and_counts() {
         "the Screener lives under More"
     );
 }
+
+#[tokio::test]
+async fn only_the_mode_holding_a_thread_can_let_it_go() {
+    let fx = Fixture::new().await;
+    let (thread, ask) = landlord(&fx).await;
+
+    let (outcome, _) = done(&fx, &thread, ModeKindData::Updates, true).await;
+    assert_eq!(outcome.error.as_deref(), Some("not in Updates"));
+    assert_eq!(outcome.archived, 0);
+
+    done(&fx, &thread, ModeKindData::Messages, false).await;
+    // Archived by the last mode letting go; done again is refused.
+    let (again, _) = done(&fx, &thread, ModeKindData::Messages, true).await;
+    assert_eq!(again.error.as_deref(), Some("already done in Messages"));
+    assert!(!in_inbox(&fx, &ask.id).await);
+}
+
+#[tokio::test]
+async fn restoring_on_the_desk_brings_back_a_thread_done_in_messages() {
+    let fx = Fixture::new().await;
+    let mut config = fx.state.config_snapshot();
+    config.modes.archive_on_last_done = false;
+    fx.state.set_config_for_test(config).await;
+    let (thread, _) = landlord(&fx).await;
+    done(&fx, &thread, ModeKindData::Messages, false).await;
+    assert!(membership(&fx, &thread).await.modes.is_empty());
+
+    let ResponseData::DeskThreadsRestored { restored } = request(
+        &fx,
+        Request::RestoreDeskThreads {
+            thread_ids: vec![thread.clone()],
+        },
+    )
+    .await
+    else {
+        panic!("expected DeskThreadsRestored")
+    };
+    assert_eq!(restored, 1);
+    assert_eq!(
+        modes(&membership(&fx, &thread).await),
+        [ModeKindData::Messages]
+    );
+}

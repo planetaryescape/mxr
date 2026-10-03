@@ -3,7 +3,7 @@
 //! daemon.
 
 use super::*;
-use mxr_protocol::{TodoCatchupDecisionData, TodoStateActionData, TodoStateData};
+use mxr_protocol::{ModeKindData, TodoCatchupDecisionData, TodoStateActionData, TodoStateData};
 use std::sync::{Arc, Mutex};
 
 async fn serve_recording() -> (TempDir, std::net::SocketAddr, Arc<Mutex<Vec<Request>>>) {
@@ -159,4 +159,86 @@ async fn mode_guide_routes_forward_their_requests() {
         &seen[3],
         Request::SetModeGuideSeen { seen: false, .. }
     ));
+}
+
+#[tokio::test]
+async fn now_rail_membership_and_done_routes_forward_their_requests() {
+    let (_temp, addr, seen) = serve_recording().await;
+    let client = reqwest::Client::new();
+    let account = AccountId::new();
+    let thread = ThreadId::new();
+    let message = MessageId::new();
+    for request in [
+        client.get(format!("http://{addr}/api/v1/mail/now")),
+        client.get(format!("http://{addr}/api/v1/mail/rail?account={account}")),
+        client.get(format!(
+            "http://{addr}/api/v1/mail/modes/membership?thread_id={thread}"
+        )),
+        client.get(format!(
+            "http://{addr}/api/v1/mail/modes/membership?message_id={message}"
+        )),
+        client
+            .post(format!("http://{addr}/api/v1/mail/modes/membership"))
+            .json(&serde_json::json!({ "thread_ids": [thread.to_string()] })),
+        client
+            .post(format!("http://{addr}/api/v1/mail/modes/messages/done"))
+            .json(&serde_json::json!({ "thread_ids": [thread.to_string()], "dry_run": true })),
+        client
+            .post(format!("http://{addr}/api/v1/mail/modes/to-do/done"))
+            .json(&serde_json::json!({ "thread_ids": [thread.to_string()] })),
+    ] {
+        let response = request.bearer_auth(TEST_AUTH_TOKEN).send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+    }
+    let seen = seen.lock().unwrap();
+    assert!(matches!(&seen[0], Request::GetNow { account_id: None }));
+    assert!(matches!(&seen[1], Request::GetRail { account_id: Some(id) } if *id == account));
+    assert!(matches!(
+        &seen[2],
+        Request::GetModeMembership { thread_id: Some(id), message_id: None, thread_ids } if *id == thread && thread_ids.is_empty()
+    ));
+    assert!(matches!(
+        &seen[3],
+        Request::GetModeMembership { message_id: Some(id), thread_id: None, .. } if *id == message
+    ));
+    assert!(matches!(
+        &seen[4],
+        Request::GetModeMembership { thread_ids, .. } if thread_ids == &vec![thread.clone()]
+    ));
+    assert!(matches!(
+        &seen[5],
+        Request::SetModeDone { mode: ModeKindData::Messages, dry_run: true, thread_ids } if thread_ids.len() == 1
+    ));
+    assert!(matches!(
+        &seen[6],
+        Request::SetModeDone {
+            mode: ModeKindData::Todo,
+            dry_run: false,
+            ..
+        }
+    ));
+}
+
+#[tokio::test]
+async fn mode_routes_reject_bad_input_before_the_daemon() {
+    let (_temp, addr, seen) = serve_recording().await;
+    let client = reqwest::Client::new();
+    let thread = ThreadId::new();
+    for request in [
+        client.get(format!("http://{addr}/api/v1/mail/modes/membership")),
+        client
+            .post(format!("http://{addr}/api/v1/mail/modes/membership"))
+            .json(&serde_json::json!({ "thread_ids": [] })),
+        client
+            .post(format!("http://{addr}/api/v1/mail/modes/now/done"))
+            .json(&serde_json::json!({ "thread_ids": [thread.to_string()] })),
+        client
+            .post(format!("http://{addr}/api/v1/mail/modes/messages/done"))
+            .json(&serde_json::json!({ "thread_ids": [] })),
+        client.get(format!("http://{addr}/api/v1/mail/now?account=nope")),
+    ] {
+        let response = request.bearer_auth(TEST_AUTH_TOKEN).send().await.unwrap();
+        assert!(response.status().is_client_error(), "{}", response.status());
+    }
+    assert!(seen.lock().unwrap().is_empty());
 }

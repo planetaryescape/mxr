@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.51"
+    "version": "0.6.52"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -1194,6 +1194,84 @@
         }
       }
     },
+    "/api/v1/mail/modes/membership": {
+      "get": {
+        "tags": [],
+        "summary": "Which modes hold one thread and why, named by the thread or one of its messages",
+        "operationId": "mail_mode_membership_get",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "query",
+            "description": "The thread",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "query",
+            "description": "Or one of its messages",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `ModeMembership` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Neither id given"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "Which modes hold each of up to 100 threads, in request order",
+        "operationId": "mail_mode_membership_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModeMembershipBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ModeMembership` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No threads, or more than 100"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/modes/{mode}/card": {
       "post": {
         "tags": [],
@@ -1230,6 +1308,52 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/modes/{mode}/done": {
+      "post": {
+        "tags": [],
+        "summary": "Done here: threads leave one mode, archived only when no other mode holds them (dry_run previews)",
+        "operationId": "mail_mode_done",
+        "parameters": [
+          {
+            "name": "mode",
+            "in": "path",
+            "description": "`messages`, `todo`, `updates` or `reading`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModeDoneBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ModeDone` variant: one outcome per thread with its handoff copy, and the undo id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown mode or no threads"
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -1402,6 +1526,39 @@
         }
       }
     },
+    "/api/v1/mail/now": {
+      "get": {
+        "tags": [],
+        "summary": "Now: People, Due soon, one Updates card and an evening Reading pick, at most three items each",
+        "operationId": "mail_now",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `Now` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/owed": {
       "get": {
         "tags": [],
@@ -1544,6 +1701,39 @@
         "responses": {
           "200": {
             "description": "The `PlaceSwept` variant: the preview, and the archive job unless dry_run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/rail": {
+      "get": {
+        "tags": [],
+        "summary": "The rail: Now, the five modes and Inbox with keys, counts and early-version notes, plus More",
+        "operationId": "mail_rail",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `Rail` variant",
             "content": {
               "application/json": {
                 "schema": {
@@ -8803,6 +8993,99 @@
           }
         }
       },
+      "ModeDoneBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/modes/{mode}/done`.",
+        "required": [
+          "thread_ids"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "description": "Preview only: the same plan, nothing changed."
+          },
+          "thread_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ModeDoneOutcomeData": {
+        "type": "object",
+        "description": "What done in one mode did to one thread, or with `dry_run` would do.",
+        "required": [
+          "thread_id",
+          "mode",
+          "provider",
+          "copy"
+        ],
+        "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AccountId",
+                "description": "Absent when the thread was not found."
+              }
+            ]
+          },
+          "archived": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages archived at the provider because the last mode let go.",
+            "minimum": 0
+          },
+          "copy": {
+            "type": "string",
+            "description": "The handoff toast: \"Done in Messages. Still in To do (due Wed).\" or\n\"Done. Archived in Gmail.\""
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why this thread was not done. The others still are."
+          },
+          "marked": {
+            "type": "boolean",
+            "description": "Messages, Updates, Reading: the mode's done mark was written."
+          },
+          "marked_read": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages marked read with that archive.",
+            "minimum": 0
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ModeKindData"
+          },
+          "provider": {
+            "type": "string",
+            "description": "\"Gmail\", \"Outlook\" or \"the mail server\": named in `copy`."
+          },
+          "still_in": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModeKindData"
+            },
+            "description": "Modes still holding the thread after this."
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "todos_ticked": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "To do: the rows ticked off."
+          }
+        }
+      },
       "ModeGuideData": {
         "type": "object",
         "description": "Returned in `ResponseData::ModeGuides`: one mode's teaching copy and\nwhether its first-encounter card has been retired on this profile.",
@@ -8903,6 +9186,76 @@
           },
           "verb": {
             "type": "string"
+          }
+        }
+      },
+      "ModeKindData": {
+        "type": "string",
+        "description": "One of the five modes. Now is a view over them, and Inbox a lens.",
+        "enum": [
+          "messages",
+          "todo",
+          "updates",
+          "reading",
+          "archive"
+        ]
+      },
+      "ModeMembershipBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/modes/membership`.",
+        "required": [
+          "thread_ids"
+        ],
+        "properties": {
+          "thread_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "At most 100 threads, answered in this order."
+          }
+        }
+      },
+      "ModeMembershipData": {
+        "type": "object",
+        "description": "One mode holding a thread, and why.",
+        "required": [
+          "mode",
+          "name",
+          "key",
+          "reason",
+          "also_in"
+        ],
+        "properties": {
+          "also_in": {
+            "type": "string",
+            "description": "The line other modes show: \"Also in To do: Sign the lease, act by\nMon 13 Oct · due Wed 15 Oct\"."
+          },
+          "early": {
+            "type": "boolean",
+            "description": "The mode's view is an early version built on an existing one."
+          },
+          "key": {
+            "type": "string",
+            "description": "\"g x\"."
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ModeKindData"
+          },
+          "name": {
+            "type": "string",
+            "description": "\"To do\"."
+          },
+          "reason": {
+            "type": "string",
+            "description": "\"Here because: Sam wrote to you and you've written to them (rule).\""
+          },
+          "todo_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "To do: the open rows holding the thread."
           }
         }
       },
@@ -9388,6 +9741,321 @@
           }
         }
       },
+      "NowData": {
+        "type": "object",
+        "description": "Returned by `Request::GetNow`.",
+        "required": [
+          "generated_at",
+          "header",
+          "headline",
+          "people",
+          "due_soon",
+          "item_count",
+          "first_run"
+        ],
+        "properties": {
+          "due_soon": {
+            "$ref": "#/components/schemas/NowDueData"
+          },
+          "empty_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when every section is empty: \"Clear. The next to-do surfaces\nMon 19 Oct 09:00.\" or the never-had-any line."
+          },
+          "first_run": {
+            "$ref": "#/components/schemas/TodoFirstRunData",
+            "description": "The newest-first first run, for \"Sorting your mail\" while it runs."
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "header": {
+            "type": "string",
+            "description": "`now_copy::HEADER`."
+          },
+          "headline": {
+            "type": "string",
+            "description": "\"Friday afternoon. 3 people, 2 things to act on.\""
+          },
+          "item_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Items shown across all sections: never more than ten.",
+            "minimum": 0
+          },
+          "next_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the next to-do surfaces, for the low tide scene."
+          },
+          "not_now": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"Not now: Reading 6 this week\", while the pick isn't showing."
+          },
+          "people": {
+            "$ref": "#/components/schemas/NowPeopleData",
+            "description": "The sections, in their fixed order. An empty one is omitted by\nclients; its total says so."
+          },
+          "reading": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NowReadingPickData",
+                "description": "From 17:00 local time only."
+              }
+            ]
+          },
+          "updates": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NowUpdatesCardData"
+              }
+            ]
+          }
+        }
+      },
+      "NowDueData": {
+        "type": "object",
+        "description": "Due soon: To do's Now band, by act-by.",
+        "required": [
+          "todos",
+          "total"
+        ],
+        "properties": {
+          "more_line": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "todos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NowTodoData"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "NowPeopleData": {
+        "type": "object",
+        "description": "People: whose turn it is, from Messages.",
+        "required": [
+          "rows",
+          "total"
+        ],
+        "properties": {
+          "more_line": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"and 8 more in Messages\", when there are more."
+          },
+          "overload_line": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When You owe runs long: \"11 people are waiting on you. The three\nbelow have waited longest past your usual pace.\""
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NowPersonData"
+            },
+            "description": "At most three people, each once at their most pressing\nconversation: You owe first, then New from people, then Waiting on."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Every person in Messages, shown or not.",
+            "minimum": 0
+          }
+        }
+      },
+      "NowPersonData": {
+        "type": "object",
+        "description": "A person row: a desk row from You owe, New from people or Waiting on.",
+        "required": [
+          "row",
+          "why"
+        ],
+        "properties": {
+          "new_sender": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScreenerQuestionData",
+                "description": "A first-time sender: the one question, on the row (D117)."
+              }
+            ]
+          },
+          "row": {
+            "$ref": "#/components/schemas/DeskRowData"
+          },
+          "why": {
+            "type": "string",
+            "description": "\"From Messages: Maya wrote to you 22h ago.\""
+          }
+        }
+      },
+      "NowReadingPickData": {
+        "type": "object",
+        "description": "The evening's one thing to read.",
+        "required": [
+          "account_id",
+          "message_id",
+          "thread_id",
+          "sender_email",
+          "subject",
+          "date",
+          "why"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "sender_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "why": {
+            "type": "string",
+            "description": "\"From Reading: you've opened 9 of the last 10 from Long Reads.\""
+          }
+        }
+      },
+      "NowTodoData": {
+        "type": "object",
+        "description": "A to-do on Now.",
+        "required": [
+          "todo",
+          "why"
+        ],
+        "properties": {
+          "todo": {
+            "$ref": "#/components/schemas/TodoData"
+          },
+          "why": {
+            "type": "string",
+            "description": "\"From To do: act by Wed 7 Oct · due Fri 9 Oct.\""
+          }
+        }
+      },
+      "NowUpdateSourceData": {
+        "type": "object",
+        "description": "One source on the Updates card.",
+        "required": [
+          "sender_email",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "sender_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "NowUpdatesCardData": {
+        "type": "object",
+        "description": "The Updates card: one item, whatever the count. An early version: a\ncount and the busiest sources from automated mail in the inbox, until\nthe twice-daily digest ships.",
+        "required": [
+          "message_count",
+          "source_count",
+          "top_sources",
+          "line",
+          "since",
+          "thread_ids",
+          "early"
+        ],
+        "properties": {
+          "early": {
+            "type": "boolean"
+          },
+          "line": {
+            "type": "string",
+            "description": "\"23 updates from 9 sources. Most from GitHub, Vercel and Stripe.\""
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The card counts updates from here: the digest cut before the latest\none, never more than two days back."
+          },
+          "source_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "thread_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadId"
+            },
+            "description": "The card's threads, newest first: what letting go of the digest\n(`SetModeDone` in Updates) acts on."
+          },
+          "top_sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NowUpdateSourceData"
+            },
+            "description": "The busiest three sources."
+          }
+        }
+      },
       "OwedReplyHereData": {
         "type": "object",
         "required": [
@@ -9677,6 +10345,135 @@
           }
         ],
         "description": "Where `DetectPromises` looks."
+      },
+      "RailData": {
+        "type": "object",
+        "description": "Returned by `Request::GetRail`.",
+        "required": [
+          "generated_at",
+          "entries",
+          "more"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RailEntryData"
+            },
+            "description": "Now, the five modes, then Inbox."
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "more": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RailLinkData"
+            },
+            "description": "Under More: the Screener (off the rail, D117) and the rest."
+          }
+        }
+      },
+      "RailEntryData": {
+        "type": "object",
+        "description": "One rail entry: Now, a mode, or Inbox.",
+        "required": [
+          "id",
+          "name",
+          "key",
+          "group",
+          "status"
+        ],
+        "properties": {
+          "badge": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "A badge counts work only, so only Now has one.",
+            "minimum": 0
+          },
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "What the entry holds now, for a quiet count. Absent where a count\nmeans nothing (Archive, Inbox).",
+            "minimum": 0
+          },
+          "early_note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For an early version: what it is built on, for the clients' \"early\nversion\" note."
+          },
+          "group": {
+            "type": "string",
+            "description": "`home` (Now), `modes`, or `lens` (Inbox): the rail's three groups."
+          },
+          "header": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The line under the name, from the mode's guide where the mode is\nbuilt."
+          },
+          "id": {
+            "type": "string",
+            "description": "\"now\", \"messages\", \"todo\", \"updates\", \"reading\", \"archive\", \"inbox\"."
+          },
+          "key": {
+            "type": "string",
+            "description": "\"g h\"."
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RailStatusData"
+          }
+        }
+      },
+      "RailLinkData": {
+        "type": "object",
+        "description": "A page under More.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"Every sender you've decided on, and new ones to decide.\""
+          }
+        }
+      },
+      "RailStatusData": {
+        "type": "string",
+        "description": "Built in its researched shape, or an early version on an existing view.",
+        "enum": [
+          "built",
+          "early"
+        ]
       },
       "RecipientSendTimeRowData": {
         "type": "object",
@@ -15147,6 +15944,126 @@
           },
           {
             "type": "object",
+            "description": "Now, the front page: People, Due soon, one Updates card and an\nevening Reading pick, at most three items each, with \"and N more\"\nlines and the clear state. Local reads only. Returns\n`ResponseData::Now`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetNow"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The rail: Now, the five modes and Inbox in order, each with its\nkey, count, badge (work only: Now) and whether it is built or an\nearly version on an existing view, plus the pages under More.\nReturns `ResponseData::Rail`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetRail"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Which modes hold a thread and why, computed from the desk's lanes,\nopen to-dos, the sender classifier and per-mode done marks. Name\nthe thread by `thread_id`, by one of its messages, or many at once\nin `thread_ids` (at most 100). Returns `ResponseData::ModeMembership`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetModeMembership"
+                ]
+              },
+              "message_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MessageId"
+                  }
+                ]
+              },
+              "thread_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ThreadId"
+                  }
+                ]
+              },
+              "thread_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadId"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Done here: the thread leaves `mode` until a new message arrives\n(To do ticks its open rows off). When no other mode holds the\nthread and `modes.archive_on_last_done` is on, it is archived at\nthe provider too. Each outcome carries the handoff copy. `dry_run`\nreturns the same plan without changing anything; the real run\nreturns one `mutation_id` for `UndoMutation`. Archive has no done.\nReturns `ResponseData::ModeDone`.",
+            "required": [
+              "thread_ids",
+              "mode",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetModeDone"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "mode": {
+                "$ref": "#/components/schemas/ModeKindData"
+              },
+              "thread_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadId"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "A place (Reading or Paper trail): inbox mail of that kind grouped by\nsender, newest bundle first, each with the reason it is there.\n`account_id: None` covers every enabled account.",
             "required": [
               "place",
@@ -18517,6 +19434,102 @@
           },
           {
             "type": "object",
+            "description": "Returned by `Request::GetNow`.",
+            "required": [
+              "now",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Now"
+                ]
+              },
+              "now": {
+                "$ref": "#/components/schemas/NowData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetRail`.",
+            "required": [
+              "rail",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Rail"
+                ]
+              },
+              "rail": {
+                "$ref": "#/components/schemas/RailData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetModeMembership`, one entry per thread\nfound, in request order.",
+            "required": [
+              "threads",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ModeMembership"
+                ]
+              },
+              "threads": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadModesData"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::SetModeDone`, one outcome per thread in\nrequest order. `mutation_id` undoes the whole run.",
+            "required": [
+              "items",
+              "dry_run",
+              "kind"
+            ],
+            "properties": {
+              "dry_run": {
+                "type": "boolean"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModeDoneOutcomeData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ModeDone"
+                ]
+              },
+              "mutation_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "undo_unavailable": {
+                "type": "boolean",
+                "description": "Something changed but its undo could not be saved."
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Returned by `Request::ListPlace`.",
             "required": [
               "place",
@@ -19080,6 +20093,23 @@
           }
         }
       },
+      "ScreenerChoiceData": {
+        "type": "object",
+        "required": [
+          "kind",
+          "label"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/SenderKindData",
+            "description": "What `SetSenderKind` stores."
+          },
+          "label": {
+            "type": "string",
+            "description": "\"Messages\", \"Updates\", \"Reading\", \"Block\"."
+          }
+        }
+      },
       "ScreenerDecisionData": {
         "type": "object",
         "required": [
@@ -19119,6 +20149,35 @@
           "paper_trail",
           "unknown"
         ]
+      },
+      "ScreenerQuestionData": {
+        "type": "object",
+        "description": "A first-time sender's one question, asked on their row in the mode\ntheir mail landed in (D117). Answering is `SetSenderKind`.",
+        "required": [
+          "account_id",
+          "sender_email",
+          "question",
+          "choices"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScreenerChoiceData"
+            },
+            "description": "The answers, the current mode's first."
+          },
+          "question": {
+            "type": "string",
+            "description": "\"New sender. Keep in Messages?\""
+          },
+          "sender_email": {
+            "type": "string"
+          }
+        }
       },
       "ScreenerQueueEntryData": {
         "type": "object",
@@ -20866,6 +21925,63 @@
       "ThreadId": {
         "type": "string",
         "format": "uuid"
+      },
+      "ThreadModesData": {
+        "type": "object",
+        "description": "Every mode one thread is in, returned by `Request::GetModeMembership`.",
+        "required": [
+          "account_id",
+          "thread_id",
+          "subject",
+          "modes",
+          "in_inbox"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "done_in": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModeKindData"
+            },
+            "description": "Modes this thread was marked done in and stays out of until a new\nmessage arrives."
+          },
+          "held_by": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModeKindData"
+            },
+            "description": "The modes keeping it in the provider's inbox: Inbox's \"held by To\ndo\" chip. Archive never holds."
+          },
+          "in_inbox": {
+            "type": "boolean",
+            "description": "Any message of the thread is in the provider's inbox."
+          },
+          "modes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModeMembershipData"
+            },
+            "description": "In rail order. Empty when no mode holds it (Inbox still shows it)."
+          },
+          "new_sender": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScreenerQuestionData"
+              }
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
       },
       "ThreadPromiseData": {
         "type": "object",

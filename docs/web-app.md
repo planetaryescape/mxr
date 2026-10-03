@@ -36,12 +36,14 @@ Browser (apps/web SPA)  ──HTTP+WS──>  bridge (crates/web)  ──Unix so
 | HTML mail | DOMPurify, then a sandboxed `srcdoc` iframe | See "Reading" |
 | Charts | No chart library; `BarList` in `features/analytics/analyticsParts.tsx` draws CSS bars | Long labels stay readable and every row is a keyboard drill-down |
 | Distribution | `apps/web/dist` embedded with `include_dir!` behind the `web-ui` feature | One artifact |
-| Responsive floor | 900 px (half a laptop screen) | No phone build |
+| Responsive floor | 900 px for the desktop shell; under 640 px, five tabs (`components/MobileTabs.tsx`) | Blueprint 22 puts Now and the modes on a phone, inside the five-tab limit |
 | UI prefs | One global set in `state/uiPrefsStore.ts` | No per-account prefs |
 
 Rejected, do not propose: provider calls from the SPA, per-account UI prefs, a
-phone layout, a native desktop wrapper, redirect-based OAuth in the SPA
-(device code is canonical).
+native desktop wrapper, redirect-based OAuth in the SPA (device code is
+canonical). The phone layout was rejected until blueprint 22 asked for Now and
+the modes on a phone; it is five tabs over the same routes, not a separate
+build.
 
 ## `mxr web` launch model
 

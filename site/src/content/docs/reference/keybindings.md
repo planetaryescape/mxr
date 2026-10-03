@@ -113,7 +113,12 @@ help modal (`?`).
 
 | Key | Action |
 |-----|--------|
-| `gh` | Go to the Desk (what needs you) |
+| `gh` | Go to Now (the front page) |
+| `gm` | Messages (the desk lens, early version) |
+| `gx` | To do |
+| `gu` | Updates (Paper trail, early version) |
+| `gr` | Reading |
+| `ge` | Archive (records are coming) |
 | `gi` | Go to Inbox |
 | `gs` | Go to Starred |
 | `gt` | Go to Sent |
@@ -121,12 +126,10 @@ help modal (`?`).
 | `gE` | Local drafts and scheduled sends |
 | `ga` | Go to All Mail |
 | `gl` | Go to Label (picker) |
-| `gr` | Reading |
-| `gp` | Paper trail |
+| `gp` | Updates, as `gu` |
 | `gq` | Reply queue |
 | `go` | Owed replies |
 | `gv` | Calendar invites |
-| `gu` | Subscriptions |
 | `gS` | Screener |
 | `gA` | Analytics |
 | `gy` | Activity log |
@@ -213,13 +216,37 @@ profile are in the command palette only (`Ctrl-p`). Help once listed
 | `g 1`–`g 9` | Jump to saved-search 1–9 |
 | `g 0` | Clear saved-search filter (return to default inbox) |
 
-## Reading and Paper trail
+## Now
 
-Lenses in the sidebar (`gr`, `gp`). Mail keys act on the message under the
-cursor.
+The lens the TUI opens on (`gh`). Acting on a row does it in that row's own
+mode.
 
 | Key | Action |
 |-----|--------|
+| `j` / `k` | Next / previous row |
+| `Enter` | Open the row in its mode |
+| `e` | Done here (Messages for a person, To do for a due row; on the Updates card, as `A`) |
+| `r` | Reply to a person |
+| `o` | Open the email |
+| `t` | Make a to-do from the row's email |
+| `A` | Let go of the Updates card (previews first) |
+| `1`–`4` | Answer a new sender's question, on a row that asks one |
+| `Esc` | Close the note about Now |
+| `u` | Undo |
+
+## Messages
+
+The desk lens, as Messages' early version (`gm`). `e` is done in Messages;
+on a promise under Due it is the desk's Done, which keeps the promise.
+
+## Updates and Reading
+
+Lenses in the sidebar (`gu`, `gr`; `gp` opens Updates too). Mail keys act
+on the message under the cursor.
+
+| Key | Action |
+|-----|--------|
+| `e` | Done here: let go of the message's conversation in this mode |
 | `p` | Pin or unpin the message |
 | `K` | Move the sender to another place |
 | `S` | Sweep this sender's bundle (previews first) |

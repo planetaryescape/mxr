@@ -3,7 +3,7 @@ title: Desk and places
 description: The desk's lanes and Done rules, how mail is placed, and the JSON each command prints.
 ---
 
-This page lists the rules behind the [desk](/guides/desk/) and the two
+This page lists the rules behind the [desk](/guides/now/) and the two
 places, [Reading and Paper trail](/guides/reading-and-paper-trail/), and the
 output of their commands. For keys, see the
 [keybindings reference](/reference/keybindings/). For flags, see the generated

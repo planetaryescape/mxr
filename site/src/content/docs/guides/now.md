@@ -1,11 +1,147 @@
 ---
-title: Clear the desk
-description: Work through replies you owe, promises due, and threads waiting on others.
+title: Start from Now
+description: The few things that need you now, from every mode, and Messages, built on the desk.
 ---
 
-Open the desk, deal with each row, and put away the ones that need nothing
-from you. The desk shows what needs you instead of what arrived, in four
-lanes:
+Now is the front page: the few things that need you now, from every mode.
+It shows at most ten things, in four sections that never change order:
+
+- **People**: whose turn it is with you, from Messages. Never the people you
+  are waiting on.
+- **Due soon**: To do's Now band, overdue first, then by act-by date.
+- **Updates**: one card for the notifications since the last digest cut
+  (08:00 and 16:30), never more than two days back.
+- **For tonight**: from 17:00, one issue to read, from the newsletter you read
+  most.
+
+Each section shows at most three items, then "and 11 more in Messages". A
+long list of people becomes one line: "7 people are waiting on you. The three
+below are furthest past your usual pace." A section with nothing in it
+disappears, and when they all have, Now says "Clear." and when the next to-do
+surfaces. The caps live in the daemon, so the web app, the TUI and
+`mxr now` show the same ten things.
+
+Messages, Updates and Reading are early versions built on the desk, Paper
+trail and the Reading place, and Archive's records are not built yet. Each
+says "early version" where it shows. [Email modes](/guides/email-modes/) has
+the status of each mode.
+
+## Open Now
+
+The web app and the TUI open on Now. Press `g h` to come back to it from
+anywhere. From the command line:
+
+```bash
+mxr now --format table
+```
+
+```text
+Saturday morning. 14 people, 1 thing to act on.
+
+PEOPLE  (and 11 more in Messages)
+  7 people are waiting on you. The three below are furthest past your usual pace.
+  Samir Patel             Contract renewal details
+    From Messages: your turn with Samir Patel, 16h.
+  Leo Park                Research notes: terminal workflows
+    From Messages: your turn with Leo Park, 25h.
+  Ari Stone               Flight options for the Portland demo day
+    From Messages: your turn with Ari Stone, 18h.
+
+DUE SOON
+  Fix payment for Spotify  £11.99  act now
+
+UPDATES  (early version)
+  11 updates from 4 sources. Most from Account Verification, Build Watch and Pager Relay.
+
+Not now: Reading 5 this week
+```
+
+That is the demo mailbox on a Saturday morning. Every row says which mode it
+came from and why. `mxr now` prints JSON by default, with the same sections,
+caps and lines.
+
+## Act on a row in its own mode
+
+| Key | What it does |
+|---|---|
+| `j` / `k` | Next and previous row |
+| `Enter` | Open the row in its own mode: a person in Messages, a to-do in To do, the card in Updates, the pick in Reading |
+| `e` | Done here, in the row's mode |
+| `r` | Reply to a person |
+| `o` | Open the email |
+| `A` | Let go of the Updates card, after a preview |
+| `u` | Undo |
+| `?` | What Now is for, then its keys |
+
+Done here takes the conversation out of that one mode until a new message
+arrives. Other modes keep it, and the email is archived in your mail
+provider only when no mode holds it any more. The toast says which happened
+every time:
+
+```text
+Done in Messages. Still in To do (due Mon).
+Done. Archived in Gmail.
+```
+
+`u` or the toast's **Undo** puts it back. To keep mail in the inbox even when
+the last mode lets go, set `modes.archive_on_last_done = false`.
+
+`A` on the Updates card previews what letting go does ("Let go of 11 updates
+from 4 sources? 3 conversations leave your inbox. 1 conversation also in To
+do stays there.") and lets go only when you confirm.
+
+## See which other modes hold an email
+
+One email can be in several modes: the landlord who asks "are you around
+Thursday?" and sends a lease to sign by Monday is in Messages and To do. The
+reader and the rows in Messages say so, in that mode's words:
+
+```text
+Also in To do: Sign the document from Sam Okafor, act by Mon 5 Oct  g x
+```
+
+The `g` key opens that mode. From the command line:
+
+```bash
+mxr modes why MESSAGE_ID          # or --thread THREAD_ID
+```
+
+## Answer a new sender's one question
+
+When a person writes to you for the first time, their row asks once where
+their mail belongs: "New sender. Keep in Messages?" with Messages, Updates,
+Reading and Block as the answers. Answering moves the sender for their future
+mail too, and undo puts it back. Automated senders are never asked: their
+mail goes to Updates or Reading, and the row's why line names the rule. The
+[Screener](/guides/triage-flow/) page, under More, lists every sender you
+have decided on.
+
+## The rail
+
+The sidebar lists Now, the five modes and Inbox, with their keys:
+
+| Entry | Key | Opens |
+|---|---|---|
+| Now | `g h` | The front page; its badge counts people whose turn it is and things to act on |
+| Messages | `g m` | People, built on the desk's lanes (early version) |
+| To do | `g x` | Things email asked you to do, by when to act |
+| Updates | `g u` | Notifications, built on Paper trail (early version). `g p` opens it too |
+| Reading | `g r` | Newsletters and lists (early version) |
+| Archive | `g e` | Records, which are coming; search finds receipts until then |
+| Inbox | `g i` | Everything, newest first |
+
+Screener, Reply queue, Waiting on, Snoozed and Subscriptions are under
+**More**. Subscriptions no longer has a `g` key; `g u` opens Updates.
+`mxr modes rail` prints the same list with counts.
+
+On a phone the web app shows five tabs instead: Now, Messages, To do,
+Reading and Find. Find holds search, Archive and Inbox. Updates opens from
+the card on Now.
+
+## Messages, built on the desk
+
+Until Messages ships as people with their topics inside, it is the desk: four
+lanes of what needs you.
 
 - **You owe**: someone you have written to wrote last.
 - **Due**: a promise you made is coming due.
@@ -13,22 +149,22 @@ lanes:
 - **New from people**: a person you have not written to before.
 
 Every row says why it is there and how long it has been. Newsletters,
-receipts and notifications are not on the desk; they wait in
-[Reading and Paper trail](/guides/reading-and-paper-trail/). The exact lane
-rules are in the [desk reference](/reference/desk-and-places/#lanes).
+receipts and notifications are not here; they are in Updates and Reading.
+The exact lane rules are in the [reference](/reference/desk-and-places/#lanes).
 
-:::note
-The desk is the first version of Now, the front page of the planned
-[email modes](/guides/email-modes/). Under that plan Now draws from each
-mode, New from people moves into Messages, and Done in one mode no longer
-archives mail another mode still holds. None of that has shipped; the
-lanes below are how the desk works today.
-:::
+Person mail still in your inbox that no lane holds, such as a note from
+weeks ago you never answered, stays in Messages as quiet: it is nobody's
+turn, but nobody let it go either. It keeps the email from vanishing from
+every mode, and ticking off a to-do on it never archives it. The reader
+names it ("Also in Messages: quiet, from Iris Chen").
+
+In Messages, `e` is done in Messages, except on a promise under Due, where
+it is the desk's Done below. `/desk` still opens the desk itself.
 
 ## Open the desk
 
-The web app opens on the desk (`mxr web`). In the TUI, **Desk** is the first
-lens in the sidebar. From the command line:
+In the web app, Messages (`g m`) shows the desk's lanes. In the TUI,
+**Messages** in the sidebar opens the desk lens. From the command line:
 
 ```bash
 mxr desk
@@ -279,8 +415,8 @@ mxr cat "$(mxr desk --format json | jq -r '.owed.rows[0].message_id')"
 ## Make the inbox your home instead
 
 In the web app, set **Settings > Appearance > Home** to **Inbox**. The
-arrival-order inbox shows everything, Reading and Paper trail mail included,
-and the desk stays one step away. The TUI opens on the inbox.
+arrival-order inbox shows everything, Updates and Reading mail included,
+and Now stays one key away (`g h`).
 
 ## When a conversation is not where you expect
 

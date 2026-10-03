@@ -3,6 +3,10 @@ import starlight from '@astrojs/starlight';
 
 export default defineConfig({
   site: 'https://mxr.sh',
+  // Pages a later page replaced; old links still land.
+  redirects: {
+    '/guides/desk/': '/guides/now/',
+  },
   integrations: [
     starlight({
       title: 'mxr',
@@ -61,7 +65,7 @@ export default defineConfig({
           label: 'Your Day in mxr',
           items: [
             { label: 'Work Through Your Day', slug: 'guides/your-day' },
-            { label: 'Clear the Desk', slug: 'guides/desk' },
+            { label: 'Start from Now', slug: 'guides/now' },
             { label: 'Reply to Everyone You Owe', slug: 'guides/focus-and-reply' },
             { label: 'Clear Reading and Paper Trail', slug: 'guides/reading-and-paper-trail' },
           ],

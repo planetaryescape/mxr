@@ -19,7 +19,7 @@ in mxr uses it. Each feature has its own guide:
 | `mxr decisions rebuild` | [Archive intelligence](/guides/archive-intelligence/#the-decision-log--mxr-decisions) | extract explicit decisions from threads |
 | `mxr briefing thread` / `recipient` | [Briefings and loop-in](/guides/briefings-and-loop-in/) | dormant-thread / long-gap recap from the local thread transcript or relationship baseline |
 | delivery extraction | [Deliveries](/guides/deliveries/) | confirm a shortlisted email is a real shipment, extract merchant / carrier / items / ETA |
-| row and reader gists | [Clear the desk](/guides/desk/#see-what-each-row-asks) | one line on what a conversation is about and what it asks of you, with the ask quoted from the message |
+| row and reader gists | [Clear the desk](/guides/now/#see-what-each-row-asks) | one line on what a conversation is about and what it asks of you, with the ask quoted from the message |
 | `mxr triage` | [CLI: `mxr triage`](/reference/cli/triage/) | sort search results into action, FYI and routine, reusing the cached summary verdict |
 
 Every feature has an explicit disabled path when `[llm] enabled = false`.

@@ -37,7 +37,7 @@ has a key:
 |---|---|
 | **Send** | Sends the reply and moves to the next conversation. |
 | **Skip for now** | Moves it to the end of the queue. |
-| **Done, no reply needed** | Puts it away, as [Done on the desk](/guides/desk/#put-a-row-away-with-done) does, and moves on. |
+| **Done, no reply needed** | Puts it away, as [Done on the desk](/guides/now/#put-a-row-away-with-done) does, and moves on. |
 | **Snooze** | Takes a time in words, such as `tomorrow 9am` or `fri 3`. |
 | **Send, remind me if nobody replies** | Sends, and brings the conversation back if nobody writes by a time you type. |
 | **Draft for me** | Drafts the reply in your voice. Needs a [language model](/guides/llm-features/). |
@@ -96,7 +96,7 @@ The send never waits for this. The check runs during the send's countdown,
 and the offer stays until you answer:
 
 - **Remind me** keeps the promise as an open commitment due at that time. It
-  shows under **Due** on the [desk](/guides/desk/) and in the conversation's
+  shows under **Due** on the [desk](/guides/now/) and in the conversation's
   context. The toast that confirms it has its own Undo.
 - **Change time** takes a time in words.
 - **Not now** keeps nothing.

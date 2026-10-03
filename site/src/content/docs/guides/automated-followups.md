@@ -51,7 +51,7 @@ clients can surface the follow-up. It fires once, even if the daemon was
 stopped at the time and started later. Re-setting the reminder on the same
 message replaces the existing schedule. `mxr desk later THREAD_ID --at TIME`
 sets the same reminder on a conversation you wrote last, with a dry run and
-undo ([come back to it later](/guides/desk/#come-back-to-it-later)).
+undo ([come back to it later](/guides/now/#come-back-to-it-later)).
 
 ## Send Later
 

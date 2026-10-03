@@ -5,7 +5,7 @@ description: Read newsletters as a feed, then sweep receipts and notifications a
 
 Read what you want from newsletters and notifications, keep the few that
 matter, and archive the rest in one sweep. Mail that is not from a person
-never reaches the [desk](/guides/desk/). It goes to one of two places
+never reaches the [desk](/guides/now/). It goes to one of two places
 instead:
 
 | Place | What is in it | How it reads |

@@ -162,12 +162,12 @@ mxr semantic status
 
 | Mode | Status today | Shipped features that already serve it | Planned |
 |---|---|---|---|
-| Now | Partly built, as the desk | [The desk](/guides/desk/): You owe, Due, Waiting on and New from people lanes (`mxr desk`), with low tide when it's clear | Four fixed sections across the modes, at most ten items (phase 2) |
-| Messages | Not built as a mode | [Owed replies](/guides/forgotten-work/) (`mxr owed`), [Focus & reply](/guides/focus-and-reply/), the reply queue (`mxr replies`), [sender view](/guides/sender-view/), gists that say what a person asks | People as rows with their topics inside, Got it, thread-aware quote stripping (phase 3) |
-| To do | Not built as a mode | [Promises](/guides/forgotten-work/#commitments-promises-you-made) (`mxr commitments`) on the desk's Due lane, [calendar invites](/guides/calendar-invites/) (`mxr invites`), [reply later and snooze](/guides/triage-flow/) | Bills, renewals and forms detected with deadlines, act-by dates and one action button (phase 1) |
-| Updates | Partly built, as Paper trail | [Paper trail](/guides/reading-and-paper-trail/) (`mxr paper-trail`, `mxr sweep`), [deliveries](/guides/deliveries/) (`mxr deliveries`), [rules](/guides/rules/) | A briefing by source in two digests a day, let go in one key (phase 4) |
-| Reading | Partly built, as the Reading place | [Reading](/guides/reading-and-paper-trail/) (`mxr reading`), [subscriptions and unsubscribe](/guides/unsubscribe/) (`mxr subscriptions --rank`) | An edition with read time, a Later shelf, fading items (phase 5) |
-| Archive | Not built as a mode | [Search](/guides/search/), [semantic search](/guides/semantic-search/), [archive intelligence](/guides/archive-intelligence/) (`mxr ask`, `mxr decisions`), pins in Paper trail | Records with an answer box: ask "lisbon booking" and get the reference back (phase 6) |
+| Now | Built | [Now](/guides/now/) (`mxr now`, `g h`): People, Due soon, the Updates card and an evening Reading pick, at most ten things; the rail (`mxr modes rail`), done here per mode (`mxr modes done`) and "Also in" (`mxr modes why`) | The first-run progress card and catch-up across every mode |
+| Messages | Early version, on the desk (`g m`) | [The desk's lanes](/guides/now/#messages-built-on-the-desk) (`mxr desk`), with quiet for person mail no lane holds, [owed replies](/guides/forgotten-work/) (`mxr owed`), [Focus & reply](/guides/focus-and-reply/), the reply queue (`mxr replies`), [sender view](/guides/sender-view/) | People as rows with their topics inside, Got it, thread-aware quote stripping (phase 3) |
+| To do | Built (`g x`) | `mxr todo`: bills, renewals, forms and promises as one row each, with act-by dates; [calendar invites](/guides/calendar-invites/) (`mxr invites`) | A rail badge once `mxr modes eval` shows under one false to-do a week |
+| Updates | Early version, on Paper trail (`g u`) | [Paper trail](/guides/reading-and-paper-trail/) (`mxr paper-trail`, `mxr sweep`), done here with `e`, [deliveries](/guides/deliveries/) (`mxr deliveries`), [rules](/guides/rules/) | A briefing by source in two digests a day, let go in one key (phase 4) |
+| Reading | Early version, on the Reading place (`g r`) | [Reading](/guides/reading-and-paper-trail/) (`mxr reading`), done here with `e`, [subscriptions and unsubscribe](/guides/unsubscribe/) (`mxr subscriptions --rank`) | An edition with read time, a Later shelf, fading items (phase 5) |
+| Archive | Coming (`g e` says so) | [Search](/guides/search/), [semantic search](/guides/semantic-search/), [archive intelligence](/guides/archive-intelligence/) (`mxr ask`, `mxr decisions`), pins in Paper trail | Records with an answer box: ask "lisbon booking" and get the reference back (phase 6) |
 
 Classification by your own model is phase 7. Phase numbers come from the
 plan and can change; this page changes when each phase ships.
@@ -196,6 +196,6 @@ deletes everything derived from it" as a rule every new store must follow.
 
 - [Work through your day](/guides/your-day/): today's workflow, start to
   finish
-- [Clear the desk](/guides/desk/)
+- [Clear the desk](/guides/now/)
 - [Clear Reading and Paper trail](/guides/reading-and-paper-trail/)
 - [Glossary](/guides/glossary/#email-modes)

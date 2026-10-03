@@ -60,7 +60,7 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 ## The desk and places
 
-**Desk**: the web app's home and a TUI lens: what needs you, not what arrived. Four lanes, each row with its reason and age. CLI: `mxr desk`. See [Clear the desk](/guides/desk/).
+**Desk**: the web app's home and a TUI lens: what needs you, not what arrived. Four lanes, each row with its reason and age. CLI: `mxr desk`. See [Clear the desk](/guides/now/).
 
 **Lane**: one section of the desk. **You owe** (someone you are in conversation with wrote last), **Due** (a promise you made is coming due), **Waiting on** (you wrote last and they have not answered), **New from people** (a person you have not written to before). The rules are in the [desk reference](/reference/desk-and-places/#lanes).
 
@@ -89,34 +89,39 @@ mxr's plan treats email as five apps sharing one inbox. See
 ships today. Terms marked **(planned)** name parts of the plan that are not
 in a release yet; the rest exist today.
 
-**Mode** (planned): one of the five jobs email does, each with its own view,
-unit and verbs: Messages, To do, Updates, Reading and Archive. One email
-can be in several modes at once. Today the desk, Reading and Paper trail
-cover parts of these jobs.
+**Mode**: one of the five jobs email does, each with its own view, unit and
+verbs: Messages, To do, Updates, Reading and Archive. One email can be in
+several modes at once; `mxr modes why` says which and why. To do is built;
+Messages, Updates and Reading are early versions on the desk, Paper trail and
+the Reading place; Archive's records are coming.
 
-**Messages** (planned): the mode for people you are in conversation with,
-one row per person with their conversations as topics inside. Today's
-nearest features are the desk's You owe and Waiting on lanes, `mxr owed`
-and Focus & reply.
+**Messages** (early version): the mode for people you are in conversation
+with (`g m`). Today it is the desk's lanes; one row per person with their
+conversations as topics inside is planned.
 
-**To do** (planned): the mode for things you must act on, each titled as
-an instruction ("Pay council tax") with a due date and an act-by date.
-Today's nearest features are promises (`mxr commitments`) on the desk's
-Due lane and calendar invites.
+**To do**: the mode for things you must act on, each titled as an
+instruction ("Pay council tax") with a due date and an act-by date
+(`mxr todo`, `g x`).
 
-**Updates** (planned): the mode for notifications, shown as a briefing by
-source in fixed digests and let go in one key. Today Paper trail and
-deliveries hold this mail.
+**Updates** (early version): the mode for notifications (`g u`). Today it
+is Paper trail; the briefing by source in fixed digests is planned.
 
-**Reading** (mode): the planned mode for newsletters and posts you chose,
-with a Later shelf. It grows out of today's Reading place, which exists.
+**Reading** (early version): the mode for newsletters and posts you chose
+(`g r`), today the Reading place. The Later shelf is planned.
 
 **Archive** (mode, planned): records such as receipts, orders and bookings,
 with an answer box that returns the field you asked for. Not the same as
 the archive action, which removes mail from your provider's inbox.
 
-**Now** (planned): the front page across the modes, at most ten items in
-four fixed sections. The desk is its first version.
+**Now**: the front page across the modes, at most ten items in four fixed
+sections (`mxr now`, `g h`). See [Start from Now](/guides/now/).
+
+**Rail**: the sidebar's list of Now, the five modes and Inbox, with their `g`
+keys (`mxr modes rail`).
+
+**Quiet**: person mail still in your inbox that no Messages lane holds.
+Messages keeps it until you mark it done there, so it never vanishes from
+every mode.
 
 **Inbox**: everything, in arrival order. Under the modes plan it stays as
 a lens over all mail, not a mode.
@@ -125,9 +130,10 @@ a lens over all mail, not a mode.
 making a to-do from a message (`t`) or letting a delivered parcel's order
 file itself in Archive. The toast names where the item went.
 
-**Done here** (planned): finishing an item in one mode without clearing it
-from the others. The provider archive happens when the last mode lets go.
-Today's **Done** on the desk archives at once.
+**Done here**: finishing an item in one mode without clearing it from the
+others (`e`, `mxr modes done`). The provider archive happens when the last
+mode lets go, and the toast says which happened. The desk's own **Done**,
+at `/desk`, still archives at once.
 
 **Reason**: the line that says why an item is where it is. Today
 `mxr why MESSAGE_ID` prints the place and the rule. Under the plan every

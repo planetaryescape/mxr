@@ -9,16 +9,15 @@ page with the detail. It works the same in the web app, the TUI and the CLI,
 because all three read the same daemon.
 
 :::note
-This is the workflow in v0.6.47. mxr is moving to
-[five email modes](/guides/email-modes/): the desk becomes Now, and Paper
-trail splits into Updates and Archive. Steps change here as each mode
-ships.
+mxr is moving to [five email modes](/guides/email-modes/). Now is the front
+page, and Messages, the mode for people, is the desk's lanes for now
+(`g m`). The steps below use the desk; they change as each mode ships.
 :::
 
 ## 1. Open the desk
 
 ```bash
-mxr web      # the web app opens on the desk
+mxr web      # the web app opens on Now; g m opens the desk's lanes
 mxr desk     # the same lanes in the terminal
 ```
 
@@ -26,8 +25,8 @@ The desk shows what needs you, not what arrived: **You owe**, **Due**,
 **Waiting on** and **New from people**. Every row says why it is there and how
 long it has been. Newsletters and notifications are not on it.
 
-In the TUI, **Desk** is the first lens in the sidebar.
-[Clear the desk](/guides/desk/) covers every lane.
+In the TUI, **Messages** in the sidebar opens the desk lens.
+[Start from Now](/guides/now/#messages-built-on-the-desk) covers every lane.
 
 ## 2. Put away what needs nothing
 
@@ -41,7 +40,7 @@ mxr desk done THREAD_ID
 ```
 
 Undo brings it back exactly as it was
-([Done](/guides/desk/#put-a-row-away-with-done)).
+([Done](/guides/now/#put-a-row-away-with-done)).
 
 ## 3. Answer everyone you owe
 
@@ -62,7 +61,7 @@ undo send and promises.
 answered. Nudge the ones that matter. Use Done on the ones you no longer
 need an answer to. To stop watching one until a time, press `b` and type it
 (`in 3d`): it leaves Waiting on and comes back then if nobody has replied
-([come back to it later](/guides/desk/#come-back-to-it-later)). Sending with
+([come back to it later](/guides/now/#come-back-to-it-later)). Sending with
 **Send and remind me if no reply in** does the same from the start
 ([automated follow-ups](/guides/automated-followups/)).
 

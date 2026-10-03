@@ -118,9 +118,8 @@ mxr
 mxr web
 ```
 
-The web app opens on the [desk](/guides/desk/): replies you owe, promises
-coming due, threads waiting on someone and new mail from people. In the TUI,
-the same desk is the first lens in the sidebar.
+The web app opens on [Now](/guides/now/): the few things that need you now,
+from every mode, at most ten. The TUI opens on the same Now.
 [Work through your day](/guides/your-day/) walks through it.
 
 ## 6. Or do it from the CLI

@@ -23,6 +23,7 @@ mod desk;
 mod desk_done;
 mod desk_lanes;
 mod desk_timers;
+mod conversation_shape;
 #[path = "diagnostics/mod.rs"]
 pub(crate) mod diagnostics_impl;
 mod draft_compose;
@@ -41,6 +42,10 @@ mod mail_kind;
 mod mailbox;
 mod mode_done;
 mod mode_guide;
+mod messages;
+mod messages_ack;
+mod messages_text;
+mod messages_view;
 mod mode_rules;
 mod modes;
 mod mutations;
@@ -1336,6 +1341,35 @@ async fn dispatch(
         Request::SetModeGuideSeen { mode, seen } => mode_guide::set_seen(state, mode, *seen).await,
         Request::GetNow { account_id } => now::get_now(state, account_id.as_ref()).await,
         Request::GetRail { account_id } => modes::get_rail(state, account_id.as_ref()).await,
+        Request::ListMessages {
+            account_id,
+            turn,
+            limit,
+        } => messages::list_messages(state, account_id.as_ref(), *turn, *limit).await,
+        Request::GetPerson {
+            account_id,
+            person,
+            topic,
+        } => messages::get_person(state, account_id.as_ref(), person, topic.as_ref()).await,
+        Request::AckMessage {
+            thread_id,
+            dry_run,
+            expect_text,
+        } => messages_ack::ack(state, thread_id, *dry_run, expect_text.as_deref()).await,
+        Request::MergePeople {
+            account_id,
+            into,
+            addresses,
+            dry_run,
+        } => messages::merge(state, account_id, into, addresses, *dry_run).await,
+        Request::SplitPerson {
+            account_id,
+            address,
+            dry_run,
+        } => messages::split(state, account_id, address, *dry_run).await,
+        Request::ListMergeSuggestions { account_id } => {
+            messages::merge_suggestions(state, account_id.as_ref()).await
+        }
         Request::GetModeMembership {
             message_id,
             thread_id,
@@ -1808,6 +1842,13 @@ async fn request_account_scope(
         | Request::GetTodoCatchup { account_id: None }
         | Request::GetNow { account_id: None }
         | Request::GetRail { account_id: None }
+        | Request::ListMessages {
+            account_id: None, ..
+        }
+        | Request::GetPerson {
+            account_id: None, ..
+        }
+        | Request::ListMergeSuggestions { account_id: None }
         | Request::SetTodoCatchup {
             account_id: None, ..
         }
@@ -1912,6 +1953,9 @@ async fn request_account_scope(
         | Request::ScheduleSend { draft_id, .. }
         | Request::CancelScheduledSend { draft_id } => draft_account_scope(state, draft_id).await,
         Request::DraftRefine { draft_id, .. } => draft_account_scope(state, draft_id).await,
+        Request::AckMessage { thread_id, .. } => {
+            thread_account_scope(state, std::slice::from_ref(thread_id)).await
+        }
         Request::DismissDeskThreads { thread_ids, .. }
         | Request::RestoreDeskThreads { thread_ids }
         | Request::DeferThreads { thread_ids, .. } => thread_account_scope(state, thread_ids).await,
@@ -2158,6 +2202,9 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetNow { .. }
         | Request::GetRail { .. }
         | Request::GetModeMembership { .. }
+        | Request::ListMessages { .. }
+        | Request::GetPerson { .. }
+        | Request::ListMergeSuggestions { .. }
         | Request::ListSignatures
         | Request::ListSignatureDefaults
         | Request::ResolveSignature { .. }
@@ -2225,7 +2272,8 @@ fn classify_request(req: &Request) -> RequestClass {
         Request::SendDraft { .. }
         | Request::SendStoredDraft { .. }
         | Request::ScheduleSend { .. }
-        | Request::RespondInvite { dry_run: false, .. } => Send,
+        | Request::RespondInvite { dry_run: false, .. }
+        | Request::AckMessage { dry_run: false, .. } => Send,
 
         // --- Destructive: irreversible / provider-destructive ---
         Request::Mutation { .. }
@@ -2246,6 +2294,9 @@ fn classify_request(req: &Request) -> RequestClass {
         // out of `Read`; `GetHtmlImageAssets`/attachment fetches do
         // remote egress and are deliberately not `Read` either.
         Request::RespondInvite { dry_run: true, .. }
+        | Request::AckMessage { dry_run: true, .. }
+        | Request::MergePeople { .. }
+        | Request::SplitPerson { .. }
         | Request::BackfillCalendarInvites { .. }
         | Request::MarkInviteAnswered { .. }
         | Request::GetHtmlImageAssets { .. }
@@ -2536,6 +2587,12 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetNow { .. } => "get_now",
         Request::GetRail { .. } => "get_rail",
         Request::GetModeMembership { .. } => "get_mode_membership",
+        Request::ListMessages { .. } => "list_messages",
+        Request::GetPerson { .. } => "get_person",
+        Request::AckMessage { .. } => "ack_message",
+        Request::MergePeople { .. } => "merge_people",
+        Request::SplitPerson { .. } => "split_person",
+        Request::ListMergeSuggestions { .. } => "list_merge_suggestions",
         Request::SetModeDone { .. } => "set_mode_done",
         Request::ScheduleTodo { .. } => "schedule_todo",
         Request::UpdateTodo { .. } => "update_todo",
@@ -2620,6 +2677,9 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::GetTodoCatchup { account_id }
         | Request::GetNow { account_id }
         | Request::GetRail { account_id }
+        | Request::ListMessages { account_id, .. }
+        | Request::GetPerson { account_id, .. }
+        | Request::ListMergeSuggestions { account_id }
         | Request::SetTodoCatchup { account_id, .. }
         | Request::ListSenders { account_id, .. }
         | Request::ListStorageBreakdown { account_id, .. }
@@ -2651,7 +2711,9 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::GetRecipientBriefing { account_id, .. }
         | Request::GetUserVoice { account_id }
         | Request::RebuildUserVoice { account_id }
-        | Request::SetSenderKind { account_id, .. } => Some(account_id),
+        | Request::SetSenderKind { account_id, .. }
+        | Request::MergePeople { account_id, .. }
+        | Request::SplitPerson { account_id, .. } => Some(account_id),
         Request::DraftCompose { account_id, .. } => account_id.as_ref(),
         Request::DraftEval { account_id, .. } => account_id.as_ref(),
         Request::SetSignatureDefault { account_id, .. }

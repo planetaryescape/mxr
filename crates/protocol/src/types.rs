@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 mod desk;
 mod draft_provenance;
+mod messages;
 mod mode_guide;
 mod modes;
 mod now;
@@ -14,6 +15,7 @@ mod thread_context;
 mod todos;
 pub use desk::*;
 pub use draft_provenance::*;
+pub use messages::*;
 pub use mode_guide::*;
 pub use modes::*;
 pub use now::*;
@@ -87,6 +89,10 @@ fn default_place_limit() -> u32 {
 
 fn default_todo_limit() -> u32 {
     200
+}
+
+fn default_messages_limit() -> u32 {
+    50
 }
 
 fn default_true() -> bool {
@@ -1787,6 +1793,68 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         sender: Option<ModeDoneSenderData>,
     },
+    /// Messages: people you talk with, one row each, in four bands (Your
+    /// turn, Pinned, Recent, Quiet), each row with its topics, a preview
+    /// of what they asked and your usual pace. Your turn shares the one
+    /// owed rule with Now. `turn` keeps only rows where it is that side's
+    /// turn; `limit` caps Recent and Quiet (totals count everything).
+    /// Local reads only. Returns `ResponseData::Messages`.
+    ListMessages {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        turn: Option<MessagesTurnData>,
+        #[serde(default = "default_messages_limit")]
+        limit: u32,
+    },
+    /// One person's page (or a group's): the relationship line, every
+    /// topic, and the selected topic as a conversation of new texts.
+    /// `person` is a row id (`person:<email>`, `group:<thread_id>`) or an
+    /// address. `topic` picks the conversation; by default the one whose
+    /// turn it is, else the latest. Returns `ResponseData::PersonPage`.
+    GetPerson {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        person: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        topic: Option<ThreadId>,
+    },
+    /// Got it: a short acknowledgement on `thread_id`, in your usual
+    /// greeting and sign-off for that person, built from a template with
+    /// no model. `dry_run` returns the exact text without sending; a real
+    /// run with `expect_text` refuses to send anything else, so what was
+    /// previewed is what goes. Returns `ResponseData::MessagesAck`.
+    AckMessage {
+        thread_id: ThreadId,
+        #[serde(default)]
+        dry_run: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expect_text: Option<String>,
+    },
+    /// Merge addresses into one person, by hand (D117): `into` becomes the
+    /// person's primary address. `dry_run` shows the result without
+    /// storing it. Returns `ResponseData::PersonMerge`.
+    MergePeople {
+        account_id: AccountId,
+        into: String,
+        addresses: Vec<String>,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Take an address back out of its person. Returns
+    /// `ResponseData::PersonMerge`.
+    SplitPerson {
+        account_id: AccountId,
+        address: String,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Merges mxr suggests: the same name on addresses you've written to.
+    /// It never merges on its own. Returns `ResponseData::MergeSuggestions`.
+    ListMergeSuggestions {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+    },
     /// A place (Reading or Paper trail): inbox mail of that kind grouped by
     /// sender, newest bundle first, each with the reason it is there.
     /// `account_id: None` covers every enabled account.
@@ -2036,6 +2104,12 @@ impl Request {
             | Self::GetRail { .. }
             | Self::GetModeMembership { .. }
             | Self::SetModeDone { .. }
+            | Self::ListMessages { .. }
+            | Self::GetPerson { .. }
+            | Self::AckMessage { .. }
+            | Self::MergePeople { .. }
+            | Self::SplitPerson { .. }
+            | Self::ListMergeSuggestions { .. }
             | Self::GetRecipientBriefing { .. }
             | Self::SuggestCollaborators { .. }
             | Self::FindExpert { .. }
@@ -3040,6 +3114,26 @@ pub enum ResponseData {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         undo_unavailable: bool,
     },
+    /// Returned by `Request::ListMessages`.
+    Messages {
+        messages: MessagesData,
+    },
+    /// Returned by `Request::GetPerson`.
+    PersonPage {
+        page: PersonPageData,
+    },
+    /// Returned by `Request::AckMessage`.
+    MessagesAck {
+        ack: AckPlanData,
+    },
+    /// Returned by `Request::MergePeople` and `Request::SplitPerson`.
+    PersonMerge {
+        merge: PersonMergeData,
+    },
+    /// Returned by `Request::ListMergeSuggestions`.
+    MergeSuggestions {
+        suggestions: Vec<MergeSuggestionData>,
+    },
     /// Returned by `Request::ListPlace`.
     Place {
         place: MailPlaceData,
@@ -3228,6 +3322,11 @@ impl ResponseData {
             | Self::Rail { .. }
             | Self::ModeMembership { .. }
             | Self::ModeDone { .. }
+            | Self::Messages { .. }
+            | Self::PersonPage { .. }
+            | Self::MessagesAck { .. }
+            | Self::PersonMerge { .. }
+            | Self::MergeSuggestions { .. }
             | Self::RecipientBriefing { .. }
             | Self::SuggestedCollaborators { .. }
             | Self::ExpertSuggestions { .. }

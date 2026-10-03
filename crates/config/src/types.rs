@@ -33,6 +33,7 @@ pub struct MxrConfig {
     pub notifications: NotificationConfig,
     pub todo: TodoConfig,
     pub modes: ModesConfig,
+    pub messages: MessagesConfig,
 }
 
 /// Package/delivery tracking. Detection is local-first; the optional LLM
@@ -85,6 +86,27 @@ impl Default for ModesConfig {
     fn default() -> Self {
         Self {
             archive_on_last_done: true,
+        }
+    }
+}
+
+/// Messages: people you talk with (blueprint 22, phase 3). The thread
+/// shape thresholds are starting guesses to tune with `mxr modes eval`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MessagesConfig {
+    /// A thread with more recipients than this on one message, that you
+    /// never wrote in, is copied: it goes to Updates, not Messages.
+    pub large_thread_recipients: usize,
+    /// Messages lists conversations active this many days back.
+    pub recent_days: u32,
+}
+
+impl Default for MessagesConfig {
+    fn default() -> Self {
+        Self {
+            large_thread_recipients: 10,
+            recent_days: 30,
         }
     }
 }

@@ -250,6 +250,7 @@ async fn account_desk(
         dismissed: &dismissed,
         timers: &timers,
         is_self: &is_self,
+        shape: super::conversation_shape::shape_config(state),
         now,
     });
 

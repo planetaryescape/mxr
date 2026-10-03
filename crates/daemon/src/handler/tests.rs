@@ -685,6 +685,7 @@ mod deferral;
 mod desk;
 mod desk_done;
 mod html_drafts;
+mod messages;
 mod modes;
 mod modes_report;
 mod mutations_and_delivery;

@@ -25,11 +25,14 @@ pub(super) const WAITING_MIN_HOURS: i64 = 12;
 pub(super) const DUE_AHEAD_DAYS: i64 = 7;
 /// A person's usual pace needs at least this many past replies.
 pub(super) const USUAL_MIN_SAMPLES: usize = 2;
+/// Your turn lasts at least this long before it can go quiet.
+pub(super) const TURN_DECAY_FLOOR_DAYS: i64 = 7;
 /// Rows younger than this never show as overdue, whatever the usual pace.
 const OVERDUE_FLOOR_SECONDS: i64 = 60 * 60;
 /// Pace assumed for ordering when a person has no reply history.
 const DEFAULT_PACE_SECONDS: i64 = 24 * 60 * 60;
 
+use super::conversation_shape::{conversation_shape, Shape, ShapeConfig, ShapeInputs};
 use super::desk_timers::{DeskTimers, Timer};
 use super::mail_kind::{self, KindSignals};
 use super::mail_kind::{looks_automated, SenderKind};
@@ -117,6 +120,8 @@ pub(super) struct AccountInputs<'a> {
     /// Times you set: reply later, and "bring it back if nobody replies".
     pub timers: &'a DeskTimers,
     pub is_self: &'a dyn Fn(&str) -> bool,
+    /// The thread shape thresholds: a copied thread is nobody's turn.
+    pub shape: ShapeConfig,
     pub now: DateTime<Utc>,
 }
 
@@ -183,6 +188,26 @@ impl AccountInputs<'_> {
     /// notification in the thread is not.
     pub(super) fn answers(&self, message: &DeskMessage) -> bool {
         !self.is_outbound(message) && self.sender_kind(message) == SenderKind::Person
+    }
+
+    /// The thread's shape, judged by the shared rule (`conversation_shape`).
+    pub(super) fn shape(&self, thread: &[DeskMessage]) -> Shape {
+        let person_sender = |m: &DeskMessage| self.sender_kind(m) == SenderKind::Person;
+        let human_address = |email: &str| self.human_address(email);
+        conversation_shape(
+            thread,
+            &ShapeInputs {
+                is_self: self.is_self,
+                person_sender: &person_sender,
+                human_address: &human_address,
+                config: self.shape,
+            },
+        )
+    }
+
+    /// An address you wrote to that could be a person.
+    pub(super) fn human_address(&self, email: &str) -> bool {
+        super::conversation_shape::human_address(email, self.contacts, self.screener)
     }
 
     /// Only copied, not addressed: the reason says so.
@@ -388,6 +413,11 @@ fn thread_row(
     if inbound.trashed || !in_inbox || inputs.sender_kind(inbound) != SenderKind::Person {
         return None;
     }
+    // A thread you were only copied on, or one sent to a crowd, that you
+    // never wrote in is nobody's turn: it belongs in Updates.
+    if inputs.shape(conversation.all) == Shape::Copied {
+        return None;
+    }
     let email = inbound.from.email.as_str();
     let key = email.to_ascii_lowercase();
     let contact = inputs.contact(email);
@@ -412,6 +442,12 @@ fn thread_row(
         } else {
             "wrote to you".to_string()
         };
+        // Your turn decays: past max(3 times their cadence, 7 days), capped
+        // at the window, a turn nobody took goes quiet (blueprint 22's
+        // relevancy table; Kooti et al., WWW 2015).
+        if inbound.date < now - turn_decay(contact) {
+            return None;
+        }
         (DeskLaneKind::Owed, reason, Some(PaceDirection::Mine))
     } else {
         // A sender you allowed stays as long as the window would keep them
@@ -456,6 +492,16 @@ fn thread_row(
         ),
         pace,
     })
+}
+
+/// How long your turn with someone lasts before it goes quiet:
+/// max(3 times their cadence, 7 days), never past the window.
+pub(super) fn turn_decay(contact: Option<&DeskContact>) -> Duration {
+    let floor = Duration::days(TURN_DECAY_FLOOR_DAYS);
+    let cadence = contact
+        .and_then(|c| c.cadence_seconds)
+        .map_or(floor, |seconds| Duration::seconds(seconds.saturating_mul(3)));
+    cadence.max(floor).min(Duration::days(DESK_WINDOW_DAYS))
 }
 
 fn waiting_row(
@@ -759,6 +805,7 @@ mod tests {
             dismissed: &dismissed,
             timers: &timers,
             is_self: &is_self,
+            shape: ShapeConfig::default(),
             now: now(),
         })
     }
@@ -806,6 +853,7 @@ mod tests {
             total_inbound: 12,
             total_outbound: 4,
             is_list_sender: false,
+            cadence_seconds: None,
         };
         let lanes = lanes(&messages, &[contact]);
         let row = &lanes.rows[0].row;
@@ -900,6 +948,7 @@ mod tests {
             total_inbound: 1,
             total_outbound: 1,
             is_list_sender: false,
+            cadence_seconds: None,
         };
         assert_eq!(
             lanes(&messages, &[priya]).elsewhere.screener,

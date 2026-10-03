@@ -36,9 +36,10 @@ pub struct NowPersonData {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NowPeopleData {
-    /// At most three: You owe first, then New from people, then Waiting on.
+    /// At most three people, each once at their most pressing
+    /// conversation: You owe first, then New from people, then Waiting on.
     pub rows: Vec<NowPersonData>,
-    /// Every person row, shown or not.
+    /// Every person in Messages, shown or not.
     pub total: u32,
     /// "and 8 more in Messages", when there are more.
     #[serde(default, skip_serializing_if = "Option::is_none")]

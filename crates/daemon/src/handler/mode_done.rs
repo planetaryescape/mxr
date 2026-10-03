@@ -254,6 +254,9 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
         .collect();
 
     let mut snapshots: Vec<UndoEntrySnapshot> = Vec::new();
+    // Messages the archive fully changed; a failed one is undone but its
+    // thread isn't done.
+    let mut changed: HashSet<MessageId> = HashSet::new();
     let mut account_errors: HashMap<AccountId, String> = HashMap::new();
     let mut batch_error: Option<String> = None;
     if !archive_ids.is_empty() {
@@ -262,6 +265,7 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
         };
         match apply_mutation_batch(state, &cmd, &mutation_id, None).await {
             Ok(batch) => {
+                changed.extend(batch.changed.iter().map(|s| s.message_id.clone()));
                 snapshots.extend(batch.changed);
                 // A message that failed half way (read, not archived) is
                 // undone too.
@@ -284,11 +288,6 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
 
     // A thread is done only when every message it archives changed; the
     // rest keep their place in the mode, so running done again retries.
-    let changed: HashSet<&MessageId> = snapshots
-        .iter()
-        .filter(|s| !s.uncertain)
-        .map(|s| &s.message_id)
-        .collect();
     for plan in plans.iter_mut().filter(|plan| plan.error.is_none()) {
         if plan.archive.iter().all(|id| changed.contains(id)) {
             continue;

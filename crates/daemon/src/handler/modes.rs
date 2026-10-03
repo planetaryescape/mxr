@@ -32,7 +32,7 @@ use chrono::{DateTime, Duration, Local, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::UnsubscribeMethod;
 use mxr_protocol::{
-    mode_guide, rail_copy, DeskLaneKind, DeskRowData, ModeKindData, RailData, RailEntryData, RailLinkData,
+    mode_guide, rail_copy, DeskRowData, ModeKindData, RailData, RailEntryData, RailLinkData,
     RailStatusData, ResponseData, SenderKindData, ThreadModesData,
 };
 use mxr_store::{DeskDismissal, DeskMessage, ScreenerDisposition, TodoRecord};
@@ -212,10 +212,7 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
     let mut done_in = Vec::new();
 
     // Messages: the lane rules already left out a thread put away.
-    if let Some(row) = inputs
-        .row
-        .filter(|row| row.lane != DeskLaneKind::Due)
-    {
+    if let Some(row) = inputs.row {
         modes.push(messages_membership(row, is_early(ModeKindData::Messages)));
     }
     if mark(ModeKindData::Messages).is_some_and(|mark| mark.covers(thread)) {

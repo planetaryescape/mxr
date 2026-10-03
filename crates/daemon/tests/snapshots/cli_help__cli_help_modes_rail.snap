@@ -1,0 +1,12 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+The rail: Now, the five modes and Inbox, with each one's key and count, which are early versions, and the pages under More
+
+Usage: mxr modes rail [OPTIONS]
+
+Options:
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

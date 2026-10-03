@@ -29,13 +29,16 @@ fn render(now: &NowData, format: OutputFormat) -> anyhow::Result<String> {
     Ok(match format {
         OutputFormat::Json => format!("{}\n", serde_json::to_string_pretty(now)?),
         OutputFormat::Jsonl => items_jsonl(now)?,
+        // Thread ids, so they feed `mxr modes done` and `mxr modes why`.
         OutputFormat::Ids => {
             let mut out = String::new();
             for row in &now.people.rows {
                 let _ = writeln!(out, "{}", row.row.thread_id);
             }
             for todo in &now.due_soon.todos {
-                let _ = writeln!(out, "{}", todo.todo.id);
+                if let Some(thread_id) = &todo.todo.thread_id {
+                    let _ = writeln!(out, "{thread_id}");
+                }
             }
             if let Some(pick) = &now.reading {
                 let _ = writeln!(out, "{}", pick.thread_id);

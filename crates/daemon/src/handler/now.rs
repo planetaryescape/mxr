@@ -24,7 +24,7 @@ use mxr_protocol::{
     ResponseData, SenderKindData, TodoData, TodoNextData, NOW_SECTION_CAP,
 };
 use mxr_store::ScreenerDisposition;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// What Now and the rail are built from, read once.
 pub(super) struct NowSnapshot {
@@ -40,12 +40,34 @@ pub(super) struct NowSnapshot {
 impl NowSnapshot {
     /// Work only: people whose turn it is with you, and things to act on.
     pub(super) fn badge(&self) -> u32 {
-        count(self.owed.len() + self.people_new.len() + self.due_now.len())
+        distinct_people([&self.owed, &self.people_new]) + count(self.due_now.len())
     }
 
+    /// Everyone in Messages: People counts persons, not conversations.
     pub(super) fn people_total(&self) -> u32 {
-        count(self.owed.len() + self.people_new.len() + self.waiting.len())
+        distinct_people([&self.owed, &self.people_new, &self.waiting])
     }
+
+    /// Person rows in People's order (You owe, New from people, Waiting
+    /// on), each person once, at their most pressing conversation.
+    fn person_rows(&self) -> impl Iterator<Item = &DeskRowData> {
+        let mut seen = HashSet::new();
+        self.owed
+            .iter()
+            .chain(&self.people_new)
+            .chain(&self.waiting)
+            .filter(move |row| seen.insert(row.counterparty_email.to_ascii_lowercase()))
+    }
+}
+
+/// How many different people the rows are with.
+fn distinct_people<const N: usize>(lanes: [&Vec<DeskRowData>; N]) -> u32 {
+    let people: HashSet<String> = lanes
+        .into_iter()
+        .flatten()
+        .map(|row| row.counterparty_email.to_ascii_lowercase())
+        .collect();
+    count(people.len())
 }
 
 fn count(n: usize) -> u32 {
@@ -149,7 +171,7 @@ where
     });
     let headline = now_headline(
         &day_part(now, tz),
-        count(snapshot.owed.len() + snapshot.people_new.len()),
+        distinct_people([&snapshot.owed, &snapshot.people_new]),
         due_soon.total,
     );
     tracing::debug!(
@@ -201,10 +223,7 @@ fn people_section(
 ) -> NowPeopleData {
     let total = snapshot.people_total();
     let rows: Vec<NowPersonData> = snapshot
-        .owed
-        .iter()
-        .chain(&snapshot.people_new)
-        .chain(&snapshot.waiting)
+        .person_rows()
         .take(NOW_SECTION_CAP)
         .map(|row| {
             let undecided = decisions
@@ -233,7 +252,7 @@ fn people_section(
         .collect();
     NowPeopleData {
         more_line: more_line(total, rows.len(), ModeKindData::Messages),
-        overload_line: overload_line(count(snapshot.owed.len()), rows.len()),
+        overload_line: overload_line(distinct_people([&snapshot.owed]), rows.len()),
         rows,
         total,
     }

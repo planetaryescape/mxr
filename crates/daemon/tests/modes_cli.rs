@@ -40,8 +40,15 @@ fn modes_explain_prints_the_to_do_guide_and_card_state_holds() {
         &config_dir,
         &["modes", "explain", "--format", "json"],
     );
-    assert_eq!(again.as_array().unwrap().len(), 1);
-    assert_eq!(again[0]["card_seen"], true, "a new command sees it closed");
+    let modes: Vec<&str> = again
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|guide| guide["mode"].as_str().unwrap())
+        .collect();
+    assert_eq!(modes, ["now", "todo"], "every shipped mode, Now first");
+    assert_eq!(again[1]["card_seen"], true, "a new command sees it closed");
+    assert_eq!(again[0]["card_seen"], false, "closing one card leaves the others");
 
     let shown = run_json(
         &instance,
@@ -50,4 +57,34 @@ fn modes_explain_prints_the_to_do_guide_and_card_state_holds() {
         &["modes", "card", "todo", "--show", "--format", "json"],
     );
     assert_eq!(shown[0]["card_seen"], false, "{shown}");
+}
+
+#[test]
+fn now_and_the_rail_print_as_json_within_the_caps() {
+    let _guard = daemon_lock();
+    let temp = TempDir::new().expect("temp dir");
+    let (_daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "modes-now");
+
+    let now = run_json(&instance, &data_dir, &config_dir, &["now", "--format", "json"]);
+    assert_eq!(
+        now["header"],
+        "The few things that need you now, from every mode."
+    );
+    assert!(now["item_count"].as_u64().unwrap() <= 10, "{now}");
+    assert!(now["people"]["rows"].as_array().unwrap().len() <= 3);
+    assert!(now["due_soon"]["todos"].as_array().unwrap().len() <= 3);
+
+    let rail = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["modes", "rail", "--format", "json"],
+    );
+    let keys: Vec<&str> = rail["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(keys, ["g h", "g m", "g x", "g u", "g r", "g e", "g i"]);
 }

@@ -267,6 +267,10 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_modes", &["modes", "--help"]),
         ("cli_help_modes_explain", &["modes", "explain", "--help"]),
         ("cli_help_modes_card", &["modes", "card", "--help"]),
+        ("cli_help_modes_rail", &["modes", "rail", "--help"]),
+        ("cli_help_modes_why", &["modes", "why", "--help"]),
+        ("cli_help_modes_done", &["modes", "done", "--help"]),
+        ("cli_help_now", &["now", "--help"]),
         ("cli_help_deliveries", &["deliveries", "--help"]),
         (
             "cli_help_deliveries_list",
@@ -376,7 +380,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_briefing_gists", &["briefing", "gists", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 218);
+    assert_eq!(cases.len(), 222);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

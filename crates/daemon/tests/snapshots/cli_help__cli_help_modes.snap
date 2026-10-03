@@ -9,6 +9,9 @@ Usage: mxr modes [OPTIONS] <COMMAND>
 Commands:
   explain  What a mode is for, what lands there, its first-encounter card and its keys. Every mode that has shipped when none is named
   card     Retire a mode's first-encounter card in every client, as closing it does, or bring it back with --show
+  rail     The rail: Now, the five modes and Inbox, with each one's key and count, which are early versions, and the pages under More
+  why      Which modes hold a conversation, and why
+  done     Done here: the conversations leave one mode until someone writes again (in To do, their open to-dos are ticked off). When no other mode holds a conversation it is archived at your provider too, unless `modes.archive_on_last_done` is off. Prints what happened and an undo id for `mxr undo`
   help     Print this message or the help of the given subcommand(s)
 
 Options:

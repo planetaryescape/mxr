@@ -686,6 +686,7 @@ mod desk;
 mod desk_done;
 mod html_drafts;
 mod modes;
+mod modes_report;
 mod mutations_and_delivery;
 mod now;
 mod owed;

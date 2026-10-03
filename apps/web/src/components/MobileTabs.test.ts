@@ -9,8 +9,9 @@ describe("phone tabs", () => {
     expect(TABS.map((tab) => tab.label)).toEqual(["Now", "Messages", "To do", "Reading", "Find"]);
   });
 
-  test("Find holds Archive, search and the Inbox", () => {
+  test("Find holds Archive, Updates, search and the Inbox", () => {
     expect(owner("/archive")).toEqual(["find"]);
+    expect(owner("/updates")).toEqual(["find"]);
     expect(owner("/search")).toEqual(["find"]);
     expect(owner("/m/inbox/t1")).toEqual(["find"]);
     expect(owner("/find")).toEqual(["find"]);
@@ -19,6 +20,5 @@ describe("phone tabs", () => {
   test("each page belongs to one tab at most", () => {
     expect(owner("/messages/t1")).toEqual(["messages"]);
     expect(owner("/now")).toEqual(["now"]);
-    expect(owner("/updates")).toEqual([]);
   });
 });

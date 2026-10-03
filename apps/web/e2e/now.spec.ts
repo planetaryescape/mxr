@@ -163,6 +163,50 @@ test("the rail lists Now, the modes, then Inbox, and their keys open them", asyn
   }
 });
 
+test("a Now row opens from the keyboard: Tab reaches its link, Enter follows it", async ({
+  page,
+}) => {
+  await waitForNow(page);
+  await openApp(page, "/now");
+  const open = page.getByTestId("now-section-people").getByTestId("now-open").first();
+  await expect(open).toBeVisible();
+  await expect(open).toHaveAccessibleName(/^Open in Messages: /);
+  await open.focus();
+  await expect(open).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/messages\/[^/]+$/);
+});
+
+test("the people numbers on Now check against each other", async ({ page }) => {
+  await waitForNow(page);
+  const { now } = await bridge<{
+    now: {
+      headline: string;
+      people: { total: number; rows: unknown[]; more_line?: string; overload_line?: string };
+    };
+  }>(page, "/api/v1/mail/now");
+  const total = now.people.total;
+  if (total > 0) expect(now.headline).toContain(`${total} ${total === 1 ? "person" : "people"}`);
+  const more = total - now.people.rows.length;
+  if (more > 0) expect(now.people.more_line).toBe(`and ${more} more in Messages`);
+  if (now.people.overload_line) {
+    expect(now.people.overload_line).toMatch(new RegExp(`^${total} `));
+    const split = now.people.overload_line.match(/: (\d+) you've written to, (\d+) new\./);
+    if (split) expect(Number(split[1]) + Number(split[2])).toBe(total);
+  }
+});
+
+test("done on a sender's row in Updates previews all of their conversations", async ({ page }) => {
+  await openApp(page, "/updates");
+  // The cursor starts on the first sender's row.
+  await expect(page.getByTestId("place-bundle").first()).toBeVisible();
+  await page.keyboard.press("e");
+  const dialog = page.getByTestId("sender-done-dialog");
+  await expect(dialog).toContainText(/^Done with \d+ conversations? from /);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
 test("Paper trail's old address opens Updates", async ({ page }) => {
   await openApp(page, "/paper-trail");
   await expect(page).toHaveURL(/\/updates$/);
@@ -249,6 +293,7 @@ test.describe("on a phone", () => {
     await openApp(page, "/find");
     await expect(page.getByRole("searchbox").or(page.getByLabel("Search all mail"))).toBeVisible();
     await expect(page.getByRole("link", { name: /^Archive/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Updates/ })).toBeVisible();
     await expect(page.getByRole("link", { name: /^Inbox/ })).toBeVisible();
     await page.getByRole("link", { name: "Now" }).click();
     const card = page.getByTestId("now-section-updates");

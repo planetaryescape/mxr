@@ -16,6 +16,7 @@ import { invalidateMailQueries } from "@/features/mail-actions/mailQueryInvalida
 import { claimUndo, offerUndo, performUndo } from "@/features/mail-actions/mailUndo";
 import { soundFor } from "@/features/mail-actions/verbFeedback";
 import { playSound } from "@/features/sound/player";
+import { useUndo } from "@/state/undoStore";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { plural } from "@/lib/format";
 import { getActiveQueryClient } from "@/lib/queryClient";
@@ -65,11 +66,49 @@ export const useModeDone = create<ModeDoneState>((set) => ({
     ),
 }));
 
-export function doneModeRequest(mode: DoneMode, threadIds: readonly string[], dryRun: boolean) {
+/** Who a done covers besides its threads: named to-dos, or a sender's threads. */
+export interface DoneScope {
+  /** To do: tick off only these rows. */
+  todoIds?: readonly string[];
+  /** Updates or Reading: every thread of this sender's, resolved by the daemon. */
+  sender?: { account_id: string; sender_email: string };
+}
+
+export function doneModeRequest(
+  mode: DoneMode,
+  threadIds: readonly string[],
+  dryRun: boolean,
+  scope: DoneScope = {},
+) {
   return apiFetch<ModeDoneResponse>(`/api/v1/mail/modes/${mode}/done`, {
     method: "POST",
-    body: { thread_ids: threadIds, dry_run: dryRun },
+    body: {
+      thread_ids: threadIds,
+      dry_run: dryRun,
+      ...(scope.todoIds?.length ? { todo_ids: scope.todoIds } : {}),
+      ...(scope.sender ? { sender: scope.sender } : {}),
+    },
   });
+}
+
+/**
+ * Hand the claimed undo slot to `reverse`, when there is one: the slot
+ * otherwise empties when the claim settles.
+ */
+function keepUndo(
+  reverse: (() => Promise<boolean>) | null,
+  claim: () => Promise<boolean>,
+  mutationId: string | null,
+): (() => Promise<boolean>) | null {
+  if (!reverse) return null;
+  const undo = async () => {
+    useUndo.getState().retireUndo(undo);
+    return reverse();
+  };
+  if (useUndo.getState().lastUndo === claim) {
+    useUndo.getState().recordUndo(undo, mutationId ?? undefined);
+  }
+  return undo;
 }
 
 /**
@@ -85,7 +124,7 @@ export function doneToast(done: readonly ModeDoneOutcome[]): string {
   return same ? `${count}: ${first.copy}` : `Done with ${count}.`;
 }
 
-export interface ModeDoneOptions {
+export interface ModeDoneOptions extends DoneScope {
   /** Runs after an undo of this done succeeded. */
   onUndone?: () => void;
   /** The toast, when the verb has its own words (letting go of a digest). */
@@ -103,12 +142,14 @@ export async function markModeDone(
   options: ModeDoneOptions = {},
 ): Promise<boolean> {
   const unique = [...new Set(threadIds)];
-  if (unique.length === 0 || refuseWhileDaemonDown("mark it done")) return false;
+  if ((unique.length === 0 && !options.sender) || refuseWhileDaemonDown("mark it done")) {
+    return false;
+  }
   useModeDone.getState().hide(mode, unique);
   // The row is gone at once, so `u` may come before the daemon answers.
   const claim = claimUndo();
   try {
-    const result = await doneModeRequest(mode, unique, false);
+    const result = await doneModeRequest(mode, unique, false, options);
     const failed = result.items.filter((item) => item.error);
     const done = result.items.filter((item) => !item.error);
     const mutationId = result.mutation_id ?? null;
@@ -136,11 +177,18 @@ export async function markModeDone(
       );
       if (result.undo_unavailable) toast.warning("Done, but its undo couldn't be saved");
     } else {
-      claim.settle(null);
+      // Nothing was done, but something may have changed part way (read,
+      // not archived): the daemon kept an undo for it, so `u` and the
+      // failure toast reach it.
+      claim.settle(keepUndo(reverse, claim.run, mutationId));
     }
     if (failed.length > 0) {
       toast.error(`Couldn't mark ${plural(failed.length, "conversation")} done`, {
         description: failed[0]?.error ?? undefined,
+        action:
+          done.length === 0 && reverse
+            ? { label: "Undo", onClick: () => void reverse() }
+            : undefined,
       });
     }
     await refreshModes();

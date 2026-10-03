@@ -40,7 +40,7 @@ export const placeActions: Action[] = [
   placeAction("place.done", "done", "Done here: let go of this in Updates or Reading", "e", {
     shortLabel: "Done here",
     icon: Check,
-    description: "On a sender's row in Updates, every message of theirs shown here",
+    description: "On a sender's row in Updates, every conversation of theirs, after a preview",
   }),
   placeAction("place.pin", "pin", "Pin or unpin (a sweep leaves pins)", "p", {
     shortLabel: "Pin",

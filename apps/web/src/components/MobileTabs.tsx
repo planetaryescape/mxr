@@ -36,7 +36,8 @@ export const TABS: Tab[] = [
     to: "/find",
     label: "Find",
     Icon: Search,
-    owns: (path) => ["/find", "/archive", "/search", "/m"].some((base) => under(base)(path)),
+    owns: (path) =>
+      ["/find", "/archive", "/updates", "/search", "/m"].some((base) => under(base)(path)),
   },
 ];
 

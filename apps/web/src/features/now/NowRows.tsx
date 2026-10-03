@@ -11,7 +11,7 @@ import { NewSenderQuestion } from "@/features/modes/NewSenderQuestion";
 import { cn } from "@/lib/utils";
 import { useClockLabel } from "@/lib/minuteClock";
 
-import { sinceLabel, type NowItem } from "./nowItems";
+import { itemPath, sinceLabel, type NowItem } from "./nowItems";
 
 type Person = Extract<NowItem, { kind: "person" }>;
 type Due = Extract<NowItem, { kind: "todo" }>;
@@ -22,7 +22,6 @@ interface RowState {
   index: number;
   focused: boolean;
   onSelect: (item: NowItem) => void;
-  onOpen: (item: NowItem) => void;
   onDone: (item: NowItem) => void;
 }
 
@@ -59,17 +58,27 @@ export function SectionHeading({
   );
 }
 
-/** The row frame every Now item shares: cursor bar, click to open. */
+/**
+ * The row frame every Now item shares: the cursor bar, the row's main text
+ * as a real link into the row's own mode (Tab reaches it, Enter follows
+ * it, a screen reader names it), its own controls, and lines under it
+ * that carry links or buttons of their own.
+ */
 function RowFrame({
   item,
   state,
   label,
-  children,
+  main,
+  actions,
+  extra,
 }: {
   item: NowItem;
   state: RowState;
+  /** The link's accessible name: where it opens and what the row says. */
   label: string;
-  children: ReactNode;
+  main: ReactNode;
+  actions: ReactNode;
+  extra?: ReactNode;
 }) {
   return (
     <li
@@ -77,18 +86,27 @@ function RowFrame({
       data-testid="now-row"
       data-kind={item.kind}
       data-focused={state.focused ? "true" : undefined}
-      aria-label={label}
       onMouseEnter={() => state.onSelect(item)}
-      onClick={() => state.onOpen(item)}
       className={cn(
-        "group/now relative mx-2 grid cursor-default grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 rounded-md px-3 py-2",
+        "group/now relative mx-2 grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 rounded-md px-3 py-2",
         state.focused ? "bg-accent" : "hover:bg-accent/40",
       )}
     >
       {state.focused ? (
         <span aria-hidden className="absolute inset-y-1.5 left-0 w-[2px] rounded-full bg-primary" />
       ) : null}
-      {children}
+      <Link
+        to={itemPath(item)}
+        data-testid="now-open"
+        aria-label={label}
+        onFocus={() => state.onSelect(item)}
+        onClick={() => state.onSelect(item)}
+        className="block min-w-0 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {main}
+      </Link>
+      <span className="row-span-2 flex items-start gap-1">{actions}</span>
+      {extra ? <div className="min-w-0">{extra}</div> : null}
     </li>
   );
 }
@@ -132,90 +150,108 @@ export function PersonRow({
   const age = useClockLabel((now) => rowAge(row, now).label);
   const subject = row.subject.trim();
   return (
-    <RowFrame item={item} state={state} label={`${who}, ${subject}, ${item.person.why}`}>
-      <div className="min-w-0">
-        <p className="flex min-w-0 items-baseline gap-2 text-[13px]">
-          <span
-            className={cn("shrink-0", row.unread ? "font-semibold" : "text-foreground/90")}
-            title={row.counterparty_email}
-          >
-            {who}
-          </span>
-          {subject ? (
-            <span className="min-w-0 truncate text-muted-foreground">{subject}</span>
+    <RowFrame
+      item={item}
+      state={state}
+      label={`Open in Messages: ${who}, ${subject}. ${item.person.why}`}
+      main={
+        <>
+          <p className="flex min-w-0 items-baseline gap-2 text-[13px]">
+            <span
+              className={cn("shrink-0", row.unread ? "font-semibold" : "text-foreground/90")}
+              title={row.counterparty_email}
+            >
+              {who}
+            </span>
+            {subject ? (
+              <span className="min-w-0 truncate text-muted-foreground">{subject}</span>
+            ) : null}
+          </p>
+          <p data-testid="now-why" className="truncate text-[12px] text-muted-foreground">
+            {item.person.why}
+          </p>
+        </>
+      }
+      extra={
+        <>
+          {item.person.new_sender ? (
+            <NewSenderQuestion question={item.person.new_sender} label={who} />
           ) : null}
-        </p>
-        <p data-testid="now-why" className="truncate text-[12px] text-muted-foreground">
-          {item.person.why}
-        </p>
-        {item.person.new_sender ? (
-          <NewSenderQuestion question={item.person.new_sender} label={who} />
-        ) : null}
-        <AlsoInLine modes={modes} here="messages" keys={false} />
-      </div>
-      <span className="flex items-start gap-1">
-        <time
-          dateTime={row.since}
-          className="whitespace-nowrap font-mono text-2xs tabular-nums text-muted-foreground"
-        >
-          {age}
-        </time>
-        <button
-          type="button"
-          aria-label={`Reply to ${who}`}
-          title="Reply (r)"
-          onClick={(event) => {
-            event.stopPropagation();
-            onReply(item);
-          }}
-          className={cn(
-            "-my-1 grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
-            state.focused
-              ? "opacity-100"
-              : "pointer-fine:opacity-0 pointer-fine:group-hover/now:opacity-100",
-          )}
-        >
-          <Reply className="size-3.5" />
-        </button>
-        <DoneButton item={item} state={state} title="Done in Messages (e)" />
-      </span>
-    </RowFrame>
+          <AlsoInLine modes={modes} here="messages" keys={false} />
+        </>
+      }
+      actions={
+        <>
+          <time
+            dateTime={row.since}
+            className="whitespace-nowrap font-mono text-2xs tabular-nums text-muted-foreground"
+          >
+            {age}
+          </time>
+          <button
+            type="button"
+            aria-label={`Reply to ${who}`}
+            title="Reply (r)"
+            onClick={(event) => {
+              event.stopPropagation();
+              onReply(item);
+            }}
+            className={cn(
+              "-my-1 grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
+              state.focused
+                ? "opacity-100"
+                : "pointer-fine:opacity-0 pointer-fine:group-hover/now:opacity-100",
+            )}
+          >
+            <Reply className="size-3.5" />
+          </button>
+          <DoneButton item={item} state={state} title="Done in Messages (e)" />
+        </>
+      }
+    />
   );
 }
 
 export function TodoRow({ item, modes, ...state }: RowState & { item: Due; modes?: ThreadModes }) {
   const todo = item.todo.todo;
   return (
-    <RowFrame item={item} state={state} label={`${todo.title}, ${todo.when_label}`}>
-      <div className="min-w-0">
-        <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[13px]">
-          <span className="min-w-0 font-medium text-foreground/90">{todo.title}</span>
-          {todo.amount ? (
-            <span className="font-mono text-[12px] tabular-nums text-foreground/80">
-              {todo.amount.display}
-            </span>
-          ) : null}
-          {todo.person_label ? (
-            <span className="text-[12px] text-muted-foreground">{todo.person_label}</span>
-          ) : null}
-        </p>
-        <p data-testid="now-why" className="truncate text-[12px] text-muted-foreground">
-          {item.todo.why}
-        </p>
-        <AlsoInLine modes={modes} here="todo" keys={false} />
-      </div>
-      <span className="flex items-start gap-1">
-        <span
-          className={cn(
-            "whitespace-nowrap text-[12px]",
-            todo.overdue ? "text-warning" : "text-muted-foreground",
-          )}
-        >
-          {todo.when_label}
-        </span>
-        <DoneButton item={item} state={state} title="Tick off (e)" />
-      </span>
-    </RowFrame>
+    <RowFrame
+      item={item}
+      state={state}
+      label={`Open in To do: ${todo.title}, ${todo.when_label}. ${item.todo.why}`}
+      main={
+        <>
+          <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[13px]">
+            <span className="min-w-0 font-medium text-foreground/90">{todo.title}</span>
+            {todo.amount ? (
+              <span className="font-mono text-[12px] tabular-nums text-foreground/80">
+                {todo.amount.display}
+              </span>
+            ) : null}
+            {todo.person_label ? (
+              <span className="text-[12px] text-muted-foreground">{todo.person_label}</span>
+            ) : null}
+          </p>
+          <p data-testid="now-why" className="truncate text-[12px] text-muted-foreground">
+            {item.todo.why}
+          </p>
+        </>
+      }
+      extra={<AlsoInLine modes={modes} here="todo" keys={false} />}
+      actions={
+        <>
+          <span
+            className={cn(
+              "whitespace-nowrap text-[12px]",
+              todo.overdue ? "text-warning" : "text-muted-foreground",
+            )}
+          >
+            {todo.when_label}
+          </span>
+          <DoneButton item={item} state={state} title="Tick off (e)" />
+        </>
+      }
+    />
   );
 }
 
@@ -251,36 +287,39 @@ export function UpdatesCard({
         ) : null}
       </div>
       <ul className="grid grid-cols-[minmax(0,1fr)]">
-        <RowFrame item={item} state={state} label={card.line}>
+        <li
+          data-index={state.index}
+          data-testid="now-row"
+          data-kind={item.kind}
+          data-focused={state.focused ? "true" : undefined}
+          onMouseEnter={() => state.onSelect(item)}
+          className={cn(
+            "relative mx-2 rounded-md px-3 py-2",
+            state.focused ? "bg-accent" : "hover:bg-accent/40",
+          )}
+        >
+          {state.focused ? (
+            <span
+              aria-hidden
+              className="absolute inset-y-1.5 left-0 w-[2px] rounded-full bg-primary"
+            />
+          ) : null}
           <div className="min-w-0">
             <p data-testid="now-updates-line" className="text-[13px] text-foreground/90">
               {card.line}
             </p>
             <p className="mt-1.5 flex flex-wrap items-center gap-2">
-              <Button
-                asChild
-                size="sm"
-                variant="outline"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <Link to="/updates">
+              <Button asChild size="sm" variant="outline">
+                <Link to="/updates" onFocus={() => state.onSelect(item)}>
                   Open <KeyChip className="h-4 px-1">g u</KeyChip>
                 </Link>
               </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onLetGo();
-                }}
-              >
+              <Button size="sm" variant="ghost" onClick={onLetGo}>
                 Let go of this digest <KeyChip className="h-4 px-1">A</KeyChip>
               </Button>
             </p>
           </div>
-          <span />
-        </RowFrame>
+        </li>
       </ul>
     </section>
   );
@@ -294,18 +333,23 @@ export function ReadingRow({
   const pick = item.pick;
   const from = pick.sender_name?.trim() || pick.sender_email;
   return (
-    <RowFrame item={item} state={state} label={`${pick.subject}, from ${from}`}>
-      <div className="min-w-0">
-        <p className="flex min-w-0 items-baseline gap-2 text-[13px]">
-          <span className="min-w-0 truncate font-medium text-foreground/90">{pick.subject}</span>
-          <span className="shrink-0 text-[12px] text-muted-foreground">{from}</span>
-        </p>
-        <p data-testid="now-why" className="truncate text-[12px] text-muted-foreground">
-          {pick.why}
-        </p>
-        <AlsoInLine modes={modes} here="reading" keys={false} />
-      </div>
-      <DoneButton item={item} state={state} title="Let go (e)" />
-    </RowFrame>
+    <RowFrame
+      item={item}
+      state={state}
+      label={`Open in Reading: ${pick.subject}, from ${from}. ${pick.why}`}
+      main={
+        <>
+          <p className="flex min-w-0 items-baseline gap-2 text-[13px]">
+            <span className="min-w-0 truncate font-medium text-foreground/90">{pick.subject}</span>
+            <span className="shrink-0 text-[12px] text-muted-foreground">{from}</span>
+          </p>
+          <p data-testid="now-why" className="truncate text-[12px] text-muted-foreground">
+            {pick.why}
+          </p>
+        </>
+      }
+      extra={<AlsoInLine modes={modes} here="reading" keys={false} />}
+      actions={<DoneButton item={item} state={state} title="Let go (e)" />}
+    />
   );
 }

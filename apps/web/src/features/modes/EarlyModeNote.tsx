@@ -1,3 +1,5 @@
+import { plural } from "@/lib/format";
+
 import { useRailQuery } from "./rail";
 
 /**
@@ -19,6 +21,13 @@ export function EarlyModeNote({ mode }: { mode: string }) {
             early version
           </span>
           {entry.early_note ? <span>{entry.early_note}</span> : null}
+        </p>
+      ) : null}
+      {entry.quiet ? (
+        <p data-testid="quiet-line" className="mt-0.5">
+          {plural(entry.quiet, "quiet conversation")}: person mail still in your inbox that no lane
+          holds. They stay in Messages until you mark them done here, and are not in the count
+          beside Messages.
         </p>
       ) : null}
     </div>

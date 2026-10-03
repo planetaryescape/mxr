@@ -180,7 +180,9 @@ export async function tickOff(todo: Todo): Promise<void> {
   // markModeDone refuses on its own while the daemon is down.
   startLeaving([todo.id]);
   try {
-    await markModeDone("todo", [threadId]);
+    // Only this row: another to-do on the same email stays open, and the
+    // email stays in the inbox while it does.
+    await markModeDone("todo", [threadId], { todoIds: [todo.id] });
   } finally {
     await refreshTodos({ guide: true });
     useTodoHidden.getState().show([todo.id]);

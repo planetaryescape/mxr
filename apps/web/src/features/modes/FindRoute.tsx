@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { FolderArchive, Inbox, Search } from "lucide-react";
+import { Bell, FolderArchive, Inbox, Search } from "lucide-react";
 import { useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 
 /**
  * Find, the phone's fifth tab: search all mail, Archive (whose answer box
- * is a search) and the Inbox, everything newest first.
+ * is a search), Updates (Now's card is its door only while the card
+ * shows) and the Inbox, everything newest first.
  */
 export function FindRoute() {
   const navigate = useNavigate();
@@ -44,6 +45,9 @@ export function FindRoute() {
       <ul className="mt-4 grid gap-1 px-2">
         <FindLink to="/archive" Icon={FolderArchive} label="Archive">
           Receipts, orders, bookings and documents.
+        </FindLink>
+        <FindLink to="/updates" Icon={Bell} label="Updates">
+          Notifications and receipts from services, by sender.
         </FindLink>
         <FindLink to="/m/inbox" Icon={Inbox} label="Inbox">
           Everything, newest first.

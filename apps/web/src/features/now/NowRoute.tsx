@@ -177,7 +177,6 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
     index: position.get(item.key) ?? 0,
     focused: (position.get(item.key) ?? -1) === index,
     onSelect: select,
-    onOpen: open,
     onDone: done,
   });
   const people = items.filter((item): item is PersonItem => item.kind === "person");

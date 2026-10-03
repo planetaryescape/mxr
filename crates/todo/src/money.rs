@@ -93,7 +93,7 @@ static PRICED: Lazy<Regex> = Lazy::new(|| {
 /// Words that make an amount history, not what is owed now.
 static PAST: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r"(?i)(previous|last\s+(?:month|bill|statement|payment)|paid|credit|refund|was\b|saved?)",
+        r"(?i)\b(previous|last\s+(?:month|bill|statement|payment)|paid|credit|refund(?:ed)?|was|saved?)\b",
     )
     .expect("valid past regex")
 });
@@ -225,6 +225,13 @@ mod tests {
         let amount = pick_amount("Previous balance £100.00. Amount due £240.00 by 9 October.")
             .expect("amount");
         assert_eq!(amount.minor, 24000);
+        assert!(amount.checked);
+    }
+
+    #[test]
+    fn unpaid_is_not_paid() {
+        let amount = pick_amount("Unpaid amount due £100.00 by 9 October.").expect("amount");
+        assert_eq!(amount.minor, 10000);
         assert!(amount.checked);
     }
 

@@ -7,6 +7,7 @@
 import { create } from "zustand";
 
 import type { MailKind, SweepScope } from "@/features/places/api";
+import type { Todo } from "@/features/todo/api";
 
 import type { MailAction } from "./pendingMailOps";
 import type { MailTarget } from "./target";
@@ -46,6 +47,14 @@ export type MailDialog =
       senderLabel: string;
       current?: MailKind;
     }
+  /** To do: show a row on your own day (`Z`). */
+  | { kind: "todo-schedule"; todo: Todo }
+  /** To do: correct a row's fields (`,`). */
+  | { kind: "todo-edit"; todo: Todo }
+  /** Make a to-do from a conversation (`t`). */
+  | { kind: "todo-make"; messageId: string; suggestion: string; subject?: string }
+  /** To do's catch-up: preview letting go of every row, then do exactly that. */
+  | { kind: "todo-let-go-all"; account: string | null }
   | {
       kind: "confirm";
       target: MailTarget;

@@ -4,6 +4,7 @@ import { BLOCKED_IMAGE_CLASS, sanitizeHtml } from "@/lib/sanitizeHtml";
 import { useUiPrefs, type EmailHtmlTheme } from "@/state/uiPrefsStore";
 
 import { ASK_MARK_ATTRIBUTE, markQuoteInDocument } from "./context/askQuote";
+import { LINK_MARK_ATTRIBUTE, markLinkInDocument } from "./linkHighlight";
 
 interface MessageBodyProps {
   html: string;
@@ -14,6 +15,8 @@ interface MessageBodyProps {
    * no markup is ever built from it.
    */
   highlight?: string;
+  /** A link a to-do is about: marked where it sits, never opened. */
+  highlightLink?: string;
   /** Clicks inside the frame never reach the page; this reports them. */
   onInteract?: () => void;
 }
@@ -25,6 +28,7 @@ export function MessageBody({
   allowRemoteImages = false,
   theme = "dark",
   highlight,
+  highlightLink,
   onInteract,
 }: MessageBodyProps) {
   const onInteractRef = useRef(onInteract);
@@ -65,6 +69,13 @@ export function MessageBody({
     const body = iframeRef.current?.contentDocument?.body;
     if (body) marked.current = markQuoteInDocument(body, highlight ?? "") !== null;
   }, [highlight, loaded]);
+
+  const linkMarked = useRef(false);
+  useEffect(() => {
+    if (!loaded || (!highlightLink && !linkMarked.current)) return;
+    const body = iframeRef.current?.contentDocument?.body;
+    if (body) linkMarked.current = markLinkInDocument(body, highlightLink) !== null;
+  }, [highlightLink, loaded]);
 
   function resizeToContent() {
     try {
@@ -251,7 +262,7 @@ function blockedImageCss(theme: EmailHtmlTheme, p: EmailPalette): string {
 function askMarkCss(theme: EmailHtmlTheme, p: EmailPalette): string {
   const [background, rule] =
     theme === "dark" ? [p.askMark, p.askMarkRule] : [LIGHT_EMAIL.askMark, LIGHT_EMAIL.askMarkRule];
-  return `mark[${ASK_MARK_ATTRIBUTE}]{background:${background};color:inherit;border-bottom:1px solid ${rule};border-radius:2px;padding:0 .1em;-webkit-box-decoration-break:clone;box-decoration-break:clone}`;
+  return `mark[${ASK_MARK_ATTRIBUTE}]{background:${background};color:inherit;border-bottom:1px solid ${rule};border-radius:2px;padding:0 .1em;-webkit-box-decoration-break:clone;box-decoration-break:clone}a[${LINK_MARK_ATTRIBUTE}]{background:${background};outline:2px solid ${rule};outline-offset:2px;border-radius:2px}`;
 }
 
 const originalEmailCss = `html{color-scheme:light;background:#fff}body{box-sizing:border-box;max-width:860px;margin:0 auto;padding:20px 24px;font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;background:#fff;overflow-wrap:anywhere}*,*:before,*:after{box-sizing:border-box}table{max-width:100%;border-collapse:collapse}body>table{margin-left:auto;margin-right:auto}img{max-width:100%;height:auto}a[href]{color:#0369a1!important;text-decoration:underline!important;text-underline-offset:2px}a[href]:hover{color:#075985!important}`;

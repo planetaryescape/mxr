@@ -39,6 +39,8 @@ export interface MessageCardProps {
   remoteAllowedForThread: boolean;
   /** The ask's verified quote, when this message makes the ask. */
   askQuote?: string;
+  /** A link a to-do is about, marked in this message's body. */
+  highlightLink?: string;
   onToggle: () => void;
   onAllowRemote: () => void;
   /** Switch the reader to the formatted view (to show loaded images). */
@@ -62,6 +64,7 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
     showSignature,
     remoteAllowedForThread,
     askQuote,
+    highlightLink,
     onToggle,
     onAllowRemote,
     onShowFormatted,
@@ -190,6 +193,7 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
           showSignature={showSignature}
           remoteAllowed={remoteAllowedForThread}
           askQuote={askQuote}
+          highlightLink={highlightLink}
           onAllowRemote={onAllowRemote}
           onShowFormatted={onShowFormatted}
           senderEmail={sender.email}
@@ -227,6 +231,7 @@ export function MessageContent({
   showSignature,
   remoteAllowed,
   askQuote,
+  highlightLink,
   onAllowRemote,
   onShowFormatted,
   senderEmail,
@@ -238,6 +243,7 @@ export function MessageContent({
   showSignature: boolean;
   remoteAllowed: boolean;
   askQuote?: string;
+  highlightLink?: string;
   onAllowRemote: () => void;
   onShowFormatted: () => void;
   senderEmail: string | null;
@@ -286,6 +292,7 @@ export function MessageContent({
           allowRemoteImages={allowRemote}
           theme={emailHtmlTheme}
           highlight={askQuote}
+          highlightLink={highlightLink}
           onInteract={() => useMailboxPane.getState().setActivePane("reader")}
         />
         {parts.hasQuote && !showQuotes ? (
@@ -325,6 +332,7 @@ export function MessageContent({
         showSignature={showSignature}
         plain={view === "plain"}
         highlight={askQuote}
+        highlightLink={highlightLink}
       />
     </>
   );

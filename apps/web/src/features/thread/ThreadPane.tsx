@@ -12,6 +12,7 @@ import { threadContextQuery, threadGistQuery } from "./context/api";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 
 import { ReaderSkeleton } from "./ReaderSkeleton";
+import type { LinkHighlight } from "./linkHighlight";
 import { ThreadReader } from "./ThreadReader";
 
 /**
@@ -21,9 +22,12 @@ import { ThreadReader } from "./ThreadReader";
 export function ThreadPane({
   threadId,
   focusMessageId,
+  linkHighlight,
 }: {
   threadId: string;
   focusMessageId?: string;
+  /** A link to mark in its message: opened from a To do row. */
+  linkHighlight?: LinkHighlight;
 }) {
   const query = useQuery({
     queryKey: ["thread", threadId],
@@ -81,6 +85,7 @@ export function ThreadPane({
       key={`${query.data.thread.id}:${focusMessageId ?? ""}`}
       data={query.data}
       focusMessageId={focusMessageId}
+      linkHighlight={linkHighlight}
     />
   );
 }

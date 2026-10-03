@@ -22,7 +22,14 @@ export type OtherVerb =
   | "sweep"
   | "desk-done"
   | "pin"
-  | "move-sender";
+  | "move-sender"
+  | "todo-done"
+  | "todo-dismiss"
+  | "todo-schedule"
+  | "todo-edit"
+  | "todo-create"
+  | "todo-keep"
+  | "todo-let-go";
 
 export type Verb = MailAction | OtherVerb;
 
@@ -251,6 +258,58 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     pastTense: "Pinned",
     sound: null,
     undo: "toggle",
+  },
+  "todo-done": {
+    actions: ["todo.done"],
+    alsoFrom: "the check on a To do row",
+    optimistic: "The row folds up and joins Done this week.",
+    pastTense: "Ticked off",
+    sound: "archived",
+    undo: "reverse-request",
+  },
+  "todo-dismiss": {
+    actions: ["todo.dismiss"],
+    optimistic: "The row leaves To do and never comes back for that email.",
+    pastTense: "Not a to-do",
+    sound: null,
+    undo: "reverse-request",
+  },
+  "todo-schedule": {
+    actions: ["todo.schedule"],
+    optimistic: "Nothing moves until a time is chosen; then the row moves to that day.",
+    pastTense: "Scheduled",
+    sound: null,
+    undo: "reverse-request",
+  },
+  "todo-edit": {
+    actions: ["todo.edit"],
+    optimistic: "Nothing moves until the change is saved; then the row is yours.",
+    pastTense: "Changed",
+    sound: null,
+    undo: "reverse-request",
+  },
+  "todo-create": {
+    actions: ["mail.make-todo"],
+    optimistic: "Nothing moves until the title is saved; the to-do joins To do.",
+    pastTense: "Added to To do",
+    sound: null,
+    undo: "reverse-request",
+  },
+  "todo-keep": {
+    actions: ["todo.catchup-keep"],
+    optimistic: "The row leaves the catch-up and joins the runway.",
+    pastTense: "Kept",
+    sound: null,
+    undo: "reverse-request",
+  },
+  "todo-let-go": {
+    actions: ["todo.catchup-let-go", "todo.catchup-let-go-all"],
+    alsoFrom: "the Let go of all button, which previews first",
+    optimistic: "The rows leave the catch-up and join the Expired list.",
+    pastTense: "Let go of",
+    sound: null,
+    undo: "reverse-request",
+    confirm: "Let go of all: it previews the daemon's dry run.",
   },
   "move-sender": {
     actions: ["place.move-sender", "reader.move-sender"],

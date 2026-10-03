@@ -229,6 +229,54 @@ async function starredOutsideTheList(page: Page): Promise<Row> {
   throw new Error("the demo inbox has no conversation starred outside the list");
 }
 
+/** To do's runway with `title` under the cursor, once the demo's first run has it. */
+async function todoRow(page: Page, title: string, path = "/todo") {
+  await expect
+    .poll(
+      async () =>
+        JSON.stringify(
+          await bridge(
+            page,
+            path === "/todo" ? "/api/v1/mail/todos" : "/api/v1/mail/todos/catchup",
+          ),
+        ),
+      { timeout: 60_000 },
+    )
+    .toContain(title);
+  await openApp(page, path);
+  const row = page.getByTestId("todo-row").filter({ hasText: title }).first();
+  await row.getByText(title, { exact: false }).first().click();
+  await expect(row).toHaveAttribute("aria-current", "true");
+  return row;
+}
+
+/** A To do verb from its key: the toast in the table's words, then `u` restores. */
+function todoVerb(verb: Verb, key: string, title = "Fix payment for Spotify"): Journey {
+  return async (page) => {
+    await todoRow(page, title);
+    await page.keyboard.press(key);
+    await expectToast(page, verb);
+    await expect(page.getByTestId("todo-row").filter({ hasText: title })).toHaveCount(0);
+    await page.keyboard.press("u");
+    await expectUndone(page);
+    await expect(page.getByTestId("todo-row").filter({ hasText: title }).first()).toBeVisible();
+  };
+}
+
+/** A catch-up decision: the row leaves the batch, and `u` puts it back undecided. */
+function catchupVerb(verb: Verb, key: string): Journey {
+  return async (page) => {
+    const title = "Pay water bill";
+    await todoRow(page, title, "/todo?view=catchup");
+    await page.keyboard.press(key);
+    await expectToast(page, verb);
+    await expect(page.getByTestId("todo-row").filter({ hasText: title })).toHaveCount(0);
+    await page.keyboard.press("u");
+    await expectUndone(page);
+    await expect(page.getByTestId("todo-row").filter({ hasText: title })).toBeVisible();
+  };
+}
+
 const JOURNEYS: Partial<Record<Verb, Journey>> = {
   archive: rowVerb("archive", ["e"], { leaves: true }),
   "read-and-archive": rowVerb("read-and-archive", ["m"], { leaves: true }),
@@ -425,6 +473,59 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     await page.keyboard.press("e");
     await leavesThenUndoes(page, "desk-done", rowId);
   },
+
+  "todo-done": todoVerb("todo-done", "e"),
+  "todo-dismiss": todoVerb("todo-dismiss", "X"),
+
+  "todo-schedule": async (page) => {
+    const row = await todoRow(page, "Fix payment for Spotify");
+    await page.keyboard.press("Z");
+    const dialog = page.getByRole("dialog", { name: "Schedule" });
+    await dialog.getByRole("textbox").fill("in 3 days");
+    await expect(dialog.getByRole("button", { name: "Schedule" })).toBeEnabled();
+    await dialog.getByRole("button", { name: "Schedule" }).click();
+    await expectToast(page, "todo-schedule");
+    await expect(row).toHaveAttribute("data-band", "coming");
+    await page.keyboard.press("u");
+    await expectUndone(page);
+    await expect(
+      page.getByTestId("todo-row").filter({ hasText: "Fix payment for Spotify" }),
+    ).toHaveAttribute("data-band", "now");
+  },
+
+  "todo-edit": async (page) => {
+    await todoRow(page, "Fix payment for Spotify");
+    await page.keyboard.press(",");
+    const dialog = page.getByRole("dialog", { name: "Edit to-do" });
+    await dialog.getByLabel("What to do").fill("Update the Spotify card");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expectToast(page, "todo-edit");
+    await expect(
+      page.getByTestId("todo-title").filter({ hasText: "Update the Spotify card" }),
+    ).toBeVisible();
+    await page.keyboard.press("u");
+    await expectUndone(page);
+    await expect(
+      page.getByTestId("todo-title").filter({ hasText: "Fix payment for Spotify" }),
+    ).toBeVisible();
+  },
+
+  "todo-create": async (page) => {
+    await openList(page, "/m/inbox");
+    await mailRows(page).first().click();
+    await page.keyboard.press("t");
+    const dialog = page.getByRole("dialog", { name: "Make a to-do" });
+    await dialog.getByLabel("What to do").fill("Check the verbs table");
+    await dialog.getByRole("button", { name: "Add to To do" }).click();
+    await expectToast(page, "todo-create");
+    await page.keyboard.press("u");
+    await expectUndone(page);
+    const runway = JSON.stringify(await bridge(page, "/api/v1/mail/todos"));
+    expect(runway).not.toContain("Check the verbs table");
+  },
+
+  "todo-keep": catchupVerb("todo-keep", "Enter"),
+  "todo-let-go": catchupVerb("todo-let-go", "e"),
 
   pin: async (page) => {
     await withPaperTrailSender(page, async (sender) => {

@@ -5,6 +5,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { plural } from "@/lib/format";
 
 import { findQuote } from "./context/askQuote";
+import { LINK_MARK_ATTRIBUTE, sameLink } from "./linkHighlight";
 import { normalizeSegments, splitMessageText, type Segment } from "./textSegments";
 
 /**
@@ -19,6 +20,7 @@ export function MessageText({
   showSignature,
   plain = false,
   highlight,
+  highlightLink,
 }: {
   text: string;
   showQuotes: boolean;
@@ -27,6 +29,8 @@ export function MessageText({
   plain?: boolean;
   /** The ask's quote, marked where it appears. */
   highlight?: string;
+  /** A link a to-do is about, marked where it appears. */
+  highlightLink?: string;
 }) {
   const segments = useMemo(() => normalizeSegments(splitMessageText(text)), [text]);
   return (
@@ -45,6 +49,7 @@ export function MessageText({
           segment={segment}
           plain={plain}
           highlight={highlight}
+          highlightLink={highlightLink}
           forceOpen={
             segment.kind === "quote"
               ? showQuotes
@@ -63,14 +68,18 @@ function SegmentView({
   forceOpen,
   plain,
   highlight,
+  highlightLink,
 }: {
   segment: Segment;
   forceOpen: boolean;
   plain: boolean;
   highlight?: string;
+  highlightLink?: string;
 }) {
   const [open, setOpen] = useState(false);
-  if (segment.kind === "text") return <Paragraphs text={segment.text} highlight={highlight} />;
+  if (segment.kind === "text") {
+    return <Paragraphs text={segment.text} highlight={highlight} highlightLink={highlightLink} />;
+  }
   const expanded = forceOpen || open;
   const label = segment.kind === "quote" ? `${plural(segment.lines, "quoted line")}` : "Signature";
   if (!expanded) {
@@ -120,7 +129,15 @@ function stripQuoteMarks(text: string): string {
     .join("\n");
 }
 
-function Paragraphs({ text, highlight }: { text: string; highlight?: string }) {
+function Paragraphs({
+  text,
+  highlight,
+  highlightLink,
+}: {
+  text: string;
+  highlight?: string;
+  highlightLink?: string;
+}) {
   const { tidy, range } = useMemo(() => {
     const cleaned = text.replace(/\n{3,}/g, "\n\n").replace(/^\n+|\n+$/g, "");
     return { tidy: cleaned, range: highlight ? findQuote(cleaned, highlight) : null };
@@ -129,23 +146,23 @@ function Paragraphs({ text, highlight }: { text: string; highlight?: string }) {
     <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
       {range ? (
         <>
-          <Linkified text={tidy.slice(0, range.start)} />
+          <Linkified text={tidy.slice(0, range.start)} highlightLink={highlightLink} />
           <mark
             data-ask-quote=""
             className="rounded-[2px] border-b border-[var(--ask-mark-rule)] bg-[var(--ask-mark)] px-0.5 text-foreground [box-decoration-break:clone]"
           >
-            <Linkified text={tidy.slice(range.start, range.end)} />
+            <Linkified text={tidy.slice(range.start, range.end)} highlightLink={highlightLink} />
           </mark>
-          <Linkified text={tidy.slice(range.end)} />
+          <Linkified text={tidy.slice(range.end)} highlightLink={highlightLink} />
         </>
       ) : (
-        <Linkified text={tidy} />
+        <Linkified text={tidy} highlightLink={highlightLink} />
       )}
     </div>
   );
 }
 
-function Linkified({ text }: { text: string }) {
+function Linkified({ text, highlightLink }: { text: string; highlightLink?: string }) {
   const nodes = useMemo(() => {
     const links = findLinks(text, { defaultProtocol: "https" });
     if (links.length === 0) return [text];
@@ -153,13 +170,19 @@ function Linkified({ text }: { text: string }) {
     let cursor = 0;
     for (const link of links) {
       if (link.start > cursor) out.push(text.slice(cursor, link.start));
+      const marked = highlightLink ? sameLink(link.href, highlightLink) : false;
       out.push(
         <a
           key={`${link.start}-${link.end}`}
           href={link.href}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+          {...(marked ? { [LINK_MARK_ATTRIBUTE]: "" } : {})}
+          className={
+            marked
+              ? "rounded-[2px] bg-[var(--ask-mark)] text-primary underline decoration-primary underline-offset-2 outline outline-2 outline-offset-2 outline-[var(--ask-mark-rule)]"
+              : "text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+          }
         >
           {text.slice(link.start, link.end)}
         </a>,
@@ -168,6 +191,6 @@ function Linkified({ text }: { text: string }) {
     }
     if (cursor < text.length) out.push(text.slice(cursor));
     return out;
-  }, [text]);
+  }, [text, highlightLink]);
   return <>{nodes}</>;
 }

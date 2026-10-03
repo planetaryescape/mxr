@@ -9,7 +9,7 @@
 import { getRegistry } from "./registry";
 import type { ActionScope } from "./types";
 
-export type ParityContext = "list" | "reader" | "sidebar" | "place" | "screener";
+export type ParityContext = "list" | "reader" | "sidebar" | "place" | "screener" | "todo";
 
 /** The web scopes live in each context, innermost first. */
 const CONTEXT_SCOPES: Record<ParityContext, ActionScope[]> = {
@@ -17,6 +17,7 @@ const CONTEXT_SCOPES: Record<ParityContext, ActionScope[]> = {
   reader: ["reader", "global"],
   sidebar: ["sidebar", "global"],
   place: ["place", "global"],
+  todo: ["todo", "global"],
   // The TUI's screener is a modal that swallows every other key.
   screener: ["screener"],
 };
@@ -139,6 +140,18 @@ export const SAME_ACTION: Record<string, string[]> = {
   "place.sweep-all": ["SweepPlace"],
   "place.move-sender": ["OpenSenderKindMenu"],
   "place.unsubscribe": ["Unsubscribe"],
+  "nav.todo": ["OpenTodo"],
+  "mail.make-todo": ["CreateTodoFromMessage"],
+  "todo.down": ["MoveDown"],
+  "todo.up": ["MoveUp"],
+  "todo.primary": ["TodoPrimary"],
+  "todo.done": ["TodoDone"],
+  "todo.schedule": ["TodoSchedule"],
+  "todo.edit": ["TodoEdit"],
+  "todo.dismiss": ["TodoDismiss"],
+  "todo.source": ["TodoOpenEmail"],
+  "todo.expired": ["TodoOpenExpired"],
+  "todo.catchup": ["TodoOpenCatchup"],
 };
 
 export interface KeymapDifference {
@@ -306,7 +319,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "place",
     // prettier-ignore
-    keys: ["!", "#", "B", "E", "F", "I", "L", "O", "R", "U", "V", "W", "Z", "a", "b", "e", "f", "l", "m", "r", "s", "v", "x", "y", "i a", "i m", "i d", "i A", "i M", "i D"],
+    keys: ["!", "#", "B", "E", "F", "I", "L", "O", "R", "U", "V", "W", "Z", "a", "b", "e", "f", "l", "m", "r", "s", "t", "v", "x", "y", "i a", "i m", "i d", "i A", "i M", "i D"],
     bound: "tui",
     why: "Web rows here are bundles, and mail keys work once one is open in the reader; the TUI lens acts on the message under the cursor",
   },
@@ -322,6 +335,32 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     keys: ["h", "ArrowLeft", "ArrowRight", "Escape", "G", "g g", "H", "M", "Ctrl+d", "Ctrl+u"],
     bound: "tui",
     why: "Web places move with j and k and open with Enter or o",
+  },
+  // To do.
+  {
+    context: "todo",
+    // prettier-ignore
+    keys: ["G", "g g", "H", "L", "M", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
+    bound: "tui",
+    why: "The TUI lens shares the list's motions and pane keys; the web runway moves with j and k",
+  },
+  {
+    context: "todo",
+    keys: ["i a", "i m", "i d", "i A", "i M", "i D"],
+    bound: "tui",
+    why: "The TUI lens passes invite answers through; the web answers an invite from the reader",
+  },
+  {
+    context: "todo",
+    keys: ["Escape"],
+    bound: "web",
+    why: "Both close the To do card with Esc; the TUI's keymap probe can't see a key that needs the card on screen",
+  },
+  {
+    context: "todo",
+    keys: ["c"],
+    bound: "web",
+    why: "Compose works everywhere on the web; the TUI lens keeps c free",
   },
   // Screener.
   {

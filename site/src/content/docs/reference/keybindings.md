@@ -449,6 +449,7 @@ Work on every page except while typing in a field or compose.
 | `6` | Analytics (tab) |  |
 | `7` | Deliveries |  |
 | `g F` | Focus & reply | F in the TUI's reply queue |
+| `g x` | To do |  |
 
 ### Mail actions
 
@@ -468,6 +469,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `Z` | Snooze… |  |
 | `D` | Unsubscribe… |  |
 | `b` | Reply later… |  |
+| `t` | Make a to-do from this |  |
 | `r` | Reply |  |
 | `a` | Reply all |  |
 | `f` | Forward |  |

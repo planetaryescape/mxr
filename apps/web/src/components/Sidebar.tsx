@@ -14,6 +14,7 @@ import {
   Hourglass,
   Inbox,
   LampDesk,
+  ListTodo,
   ListChecks,
   MailX,
   Newspaper,
@@ -211,6 +212,8 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
     const deskWork = desk.data ? desk.data.owed.total + desk.data.due.total : undefined;
     const places: NavEntry[] = [
       { key: "desk", to: "/desk", label: "Desk", Icon: LampDesk, count: deskWork, shortcut: "g h" },
+      // No count: To do earns a badge only once its rules are measured (D117).
+      { key: "todo", to: "/todo", label: "To do", Icon: ListTodo, shortcut: "g x" },
       { key: "inbox", to: "/m/inbox", label: "Inbox", Icon: Inbox, shortcut: "g i" },
       {
         key: "reply-queue",

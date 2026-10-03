@@ -36,6 +36,9 @@ const SCOPE_TITLE: Record<Exclude<ActionScope, "global">, string> = {
   screener: "Screener",
   focus: "Focus & reply",
   place: "Reading and Paper trail",
+  todo: "To do",
+  catchup: "To do: catch-up",
+  expired: "To do: Expired list",
 };
 
 const GLOBAL_GROUP_TITLE: Partial<Record<ActionGroup, string>> = {

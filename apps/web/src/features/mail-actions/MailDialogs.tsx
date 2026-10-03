@@ -1,5 +1,11 @@
 import { SenderKindDialog } from "@/features/places/SenderKindDialog";
 import { SweepDialog } from "@/features/places/SweepDialog";
+import {
+  LetGoAllDialog,
+  MakeTodoDialog,
+  TodoEditDialog,
+  TodoScheduleDialog,
+} from "@/features/todo/TodoDialogs";
 
 import { ConfirmDialog } from "./dialogs/ConfirmDialog";
 import { LabelsDialog } from "./dialogs/LabelsDialog";
@@ -70,6 +76,21 @@ export function MailDialogs() {
           onClose={close}
         />
       );
+    case "todo-schedule":
+      return <TodoScheduleDialog todo={dialog.todo} onClose={close} />;
+    case "todo-edit":
+      return <TodoEditDialog todo={dialog.todo} onClose={close} />;
+    case "todo-make":
+      return (
+        <MakeTodoDialog
+          messageId={dialog.messageId}
+          suggestion={dialog.suggestion}
+          subject={dialog.subject}
+          onClose={close}
+        />
+      );
+    case "todo-let-go-all":
+      return <LetGoAllDialog account={dialog.account} onClose={close} />;
     case "confirm":
       return (
         <ConfirmDialog

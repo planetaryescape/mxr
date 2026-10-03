@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.52](https://github.com/planetaryescape/mxr/compare/v0.6.51...v0.6.52) (2026-10-03)
+
+
+### Features
+
+* To do, mail that asks you to act as a runway of instructions ([#285](https://github.com/planetaryescape/mxr/issues/285)) ([8975717](https://github.com/planetaryescape/mxr/commit/89757173a3a0f8baf4d29d752ec2cf9dc1ba4669))
+
+
+### Bug Fixes
+
+* clear new npm advisories and allow one with no fix in the docs build ([#286](https://github.com/planetaryescape/mxr/issues/286)) ([6929eee](https://github.com/planetaryescape/mxr/commit/6929eee265c5865d73c81edc57218418685cec59))
+
+
+### Documentation
+
+* email is five apps at once (blueprint 22, research, docs site and READMEs) ([#273](https://github.com/planetaryescape/mxr/issues/273)) ([ec60330](https://github.com/planetaryescape/mxr/commit/ec6033032a21b88fbdc01474a1dc78666d8ad56b))
+* the app teaches itself in place, with no tour ([#284](https://github.com/planetaryescape/mxr/issues/284)) ([76e22ce](https://github.com/planetaryescape/mxr/commit/76e22ce6901ac473a342dde36c416fca508ded67))
+
 ## [0.6.51](https://github.com/planetaryescape/mxr/compare/v0.6.50...v0.6.51) (2026-10-02)
 
 

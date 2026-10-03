@@ -28,8 +28,8 @@ use mxr_protocol::{
     AccountMutationResultData, ModeDoneOutcomeData, ModeKindData, MutationCommand, ResponseData,
 };
 use mxr_store::{
-    CommitmentPrior, CommitmentStatus, DeskUndo, ModeDoneMark, TodoRecord, TodoState,
-    TodoTickPrior, UndoEntry, UndoEntrySnapshot, UndoableMutationKind,
+    CommitmentPrior, CommitmentStatus, DeskDismissal, DeskUndo, ModeDoneMark, TodoRecord,
+    TodoState, TodoTickPrior, UndoEntry, UndoEntrySnapshot, UndoableMutationKind,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -182,20 +182,16 @@ fn plan_one(
         plan.provider = provider;
         return plan;
     }
-    let mark = mark_name(mode).map(|name| ModeDoneMark {
-        account_id: data.account_id.clone(),
-        thread_id: data.thread_id.clone(),
-        mode: name.to_string(),
-        // Storage order, as the marks are read: anything stored after
-        // this plan brings the thread back to this mode.
-        through_seq: placement
-            .messages
-            .iter()
-            .map(|m| m.seq)
-            .max()
-            .unwrap_or_default(),
-        through_count: i64::try_from(placement.messages.len()).unwrap_or(i64::MAX),
-    });
+    // The watermark of the messages this plan read: anything stored after
+    // it brings the thread back to this mode.
+    let mark = mark_name(mode)
+        .zip(DeskDismissal::through(&placement.messages))
+        .map(|(name, through)| ModeDoneMark {
+            account_id: data.account_id.clone(),
+            thread_id: data.thread_id.clone(),
+            mode: name.to_string(),
+            through,
+        });
     let still_in: Vec<StillIn> = data
         .modes
         .iter()

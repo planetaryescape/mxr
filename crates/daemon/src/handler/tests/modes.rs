@@ -540,3 +540,161 @@ async fn restoring_on_the_desk_brings_back_a_thread_done_in_messages() {
         [ModeKindData::Messages]
     );
 }
+
+#[tokio::test]
+async fn an_automated_new_sender_is_not_asked_and_lands_in_its_mode_saying_why() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    mail(
+        &fx,
+        &thread,
+        "alerts@newservice.example",
+        "Your weekly usage report",
+        Duration::hours(1),
+    )
+    .await;
+    let placed = membership(&fx, &thread).await;
+    assert!(
+        placed.new_sender.is_none(),
+        "only a person is asked about; machines go to their mode silently"
+    );
+    assert_eq!(modes(&placed), [ModeKindData::Updates]);
+    assert_eq!(
+        placed.modes[0].reason,
+        "Here because: automated sender (rule)."
+    );
+}
+
+/// Iris wrote weeks ago and you never answered or archived it: no lane
+/// holds it, but it is still person mail in the inbox.
+async fn quiet_person(fx: &Fixture, age: Duration) -> (ThreadId, Envelope) {
+    let thread = ThreadId::new();
+    let note = mail(
+        fx,
+        &thread,
+        "iris@people.example",
+        "Photos from the trip",
+        age,
+    )
+    .await;
+    // She is someone you've written to before, so she isn't new.
+    let other = ThreadId::new();
+    mail(fx, &other, ME, "Dinner?", Duration::days(90)).await;
+    (thread, note)
+}
+
+#[tokio::test]
+async fn person_mail_left_in_the_inbox_stays_in_messages_as_quiet() {
+    let fx = Fixture::new().await;
+    for age in [Duration::days(10), Duration::days(45)] {
+        let (thread, _) = quiet_person(&fx, age).await;
+        let placed = membership(&fx, &thread).await;
+        assert_eq!(
+            modes(&placed),
+            [ModeKindData::Messages],
+            "person mail in the inbox never vanishes from every mode ({age})"
+        );
+        assert_eq!(placed.held_by, [ModeKindData::Messages]);
+        let entry = &placed.modes[0];
+        assert!(
+            entry.reason.starts_with("Here because: quiet, "),
+            "{}",
+            entry.reason
+        );
+        assert!(
+            entry.also_in.starts_with("Also in Messages: quiet, "),
+            "{}",
+            entry.also_in
+        );
+    }
+}
+
+#[tokio::test]
+async fn ticking_off_a_to_do_on_a_quiet_thread_never_archives_it() {
+    let fx = Fixture::new().await;
+    let (thread, note) = quiet_person(&fx, Duration::days(45)).await;
+    let todo = add_todo(&fx, &note.id, "tomorrow").await;
+
+    let (outcome, _) = done(&fx, &thread, ModeKindData::Todo, false).await;
+    assert_eq!(outcome.todos_ticked, vec![todo]);
+    assert_eq!(outcome.still_in, [ModeKindData::Messages]);
+    assert_eq!(outcome.archived, 0, "nobody said done in Messages");
+    assert!(in_inbox(&fx, &note.id).await);
+
+    // Done in Messages is what lets it go.
+    let (outcome, _) = done(&fx, &thread, ModeKindData::Messages, false).await;
+    assert_eq!(outcome.archived, 1);
+    assert!(!in_inbox(&fx, &note.id).await);
+}
+
+/// Delete a message the way a provider expunge reaches the store, without
+/// the done-mark cleanup, so the next insert can take its rowid.
+async fn drop_message(fx: &Fixture, id: &MessageId) {
+    sqlx::query("DELETE FROM messages WHERE id = ?1")
+        .bind(id.as_str())
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+}
+
+async fn rowid(fx: &Fixture, id: &MessageId) -> i64 {
+    sqlx::query_scalar("SELECT rowid FROM messages WHERE id = ?1")
+        .bind(id.as_str())
+        .fetch_one(fx.state.store.reader())
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_new_message_brings_a_thread_back_even_when_sqlite_reuses_a_rowid() {
+    let fx = Fixture::new().await;
+    let mut config = fx.state.config_snapshot();
+    config.modes.archive_on_last_done = false;
+    fx.state.set_config_for_test(config).await;
+
+    // Updates: two notifications, done, the newest deleted, a new one in.
+    let build = ThreadId::new();
+    let from = "notifications@github.com";
+    mail(&fx, &build, from, "Build failed", Duration::hours(3)).await;
+    let newest = mail(&fx, &build, from, "Build failed again", Duration::hours(2)).await;
+    done(&fx, &build, ModeKindData::Updates, false).await;
+    assert!(membership(&fx, &build).await.modes.is_empty());
+    let reused = rowid(&fx, &newest.id).await;
+    drop_message(&fx, &newest.id).await;
+    let fresh = mail(&fx, &build, from, "Build fixed", Duration::minutes(5)).await;
+    assert_eq!(
+        rowid(&fx, &fresh.id).await,
+        reused,
+        "SQLite reused the rowid"
+    );
+    assert_eq!(
+        modes(&membership(&fx, &build).await),
+        [ModeKindData::Updates],
+        "the new notification is never hidden"
+    );
+
+    // Messages: Sam's ask, done, deleted, and a new message from Sam.
+    let (thread, ask) = landlord(&fx).await;
+    done(&fx, &thread, ModeKindData::Messages, false).await;
+    assert!(membership(&fx, &thread).await.modes.is_empty());
+    let reused = rowid(&fx, &ask.id).await;
+    drop_message(&fx, &ask.id).await;
+    let again = mail(
+        &fx,
+        &thread,
+        "sam@lettings.example",
+        "Re: Lease renewal",
+        Duration::minutes(5),
+    )
+    .await;
+    assert_eq!(
+        rowid(&fx, &again.id).await,
+        reused,
+        "SQLite reused the rowid"
+    );
+    assert_eq!(
+        modes(&membership(&fx, &thread).await),
+        [ModeKindData::Messages],
+        "Sam's new message brings the thread back to Messages"
+    );
+}

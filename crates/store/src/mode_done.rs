@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use std::collections::HashMap;
 
+use crate::desk::dismissal_from_row;
 use crate::{decode_id, DeskDismissal, DeskDismissalRow};
 
 /// Done in `mode` through the messages stored so far.
@@ -22,8 +23,7 @@ pub struct ModeDoneMark {
     pub thread_id: ThreadId,
     /// `messages`, `updates` or `reading`.
     pub mode: String,
-    pub through_seq: i64,
-    pub through_count: i64,
+    pub through: DeskDismissal,
 }
 
 /// A thread's mark in one mode before a write, so undo can put it back
@@ -37,13 +37,6 @@ pub struct ModeDonePrior {
     pub prior: Option<DeskDismissalRow>,
 }
 
-fn dismissal(row: &sqlx::sqlite::SqliteRow) -> Result<DeskDismissal, sqlx::Error> {
-    Ok(DeskDismissal {
-        through_seq: row.try_get("through_rowid")?,
-        through_count: row.try_get::<i64, _>("through_count")?.max(0) as usize,
-    })
-}
-
 async fn upsert_mark(
     tx: &mut sqlx::SqliteConnection,
     account_id: &AccountId,
@@ -53,17 +46,20 @@ async fn upsert_mark(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO mode_done
-             (account_id, thread_id, mode, through_rowid, through_count, done_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             (account_id, thread_id, mode, through_rowid, through_date, through_message_id,
+              through_count, done_at)
+         VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6, ?7)
          ON CONFLICT(account_id, thread_id, mode) DO UPDATE SET
-             through_rowid = excluded.through_rowid,
+             through_date = excluded.through_date,
+             through_message_id = excluded.through_message_id,
              through_count = excluded.through_count,
              done_at = excluded.done_at",
     )
     .bind(account_id.as_str())
     .bind(thread_id.as_str())
     .bind(mode)
-    .bind(row.through_seq)
+    .bind(row.through_date)
+    .bind(row.through_message_id.to_string())
     .bind(row.through_count)
     .bind(row.dismissed_at)
     .execute(tx)
@@ -79,7 +75,7 @@ impl super::Store {
         mode: &str,
     ) -> Result<HashMap<ThreadId, DeskDismissal>, sqlx::Error> {
         let rows = sqlx::query(
-            "SELECT thread_id, through_rowid, through_count FROM mode_done
+            "SELECT thread_id, through_date, through_message_id, through_count FROM mode_done
              WHERE account_id = ?1 AND mode = ?2",
         )
         .bind(account_id.as_str())
@@ -90,7 +86,7 @@ impl super::Store {
             .map(|row| {
                 Ok((
                     decode_id(row.try_get::<&str, _>("thread_id")?)?,
-                    dismissal(row)?,
+                    dismissal_from_row(row)?,
                 ))
             })
             .collect()
@@ -109,7 +105,7 @@ impl super::Store {
             serde_json::to_string(&thread_ids.iter().map(ThreadId::as_str).collect::<Vec<_>>())
                 .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
         let rows = sqlx::query(
-            "SELECT thread_id, mode, through_rowid, through_count FROM mode_done
+            "SELECT thread_id, mode, through_date, through_message_id, through_count FROM mode_done
              WHERE account_id = ?1 AND thread_id IN (SELECT value FROM json_each(?2))",
         )
         .bind(account_id.as_str())
@@ -123,7 +119,7 @@ impl super::Store {
                         decode_id(row.try_get::<&str, _>("thread_id")?)?,
                         row.try_get::<String, _>("mode")?,
                     ),
-                    dismissal(row)?,
+                    dismissal_from_row(row)?,
                 ))
             })
             .collect()
@@ -138,7 +134,7 @@ impl super::Store {
         let mut priors = Vec::with_capacity(keys.len());
         for (account_id, thread_id, mode) in keys {
             let row = sqlx::query(
-                "SELECT through_rowid, through_count, done_at FROM mode_done
+                "SELECT through_date, through_message_id, through_count, done_at FROM mode_done
                  WHERE account_id = ?1 AND thread_id = ?2 AND mode = ?3",
             )
             .bind(account_id.as_str())
@@ -147,13 +143,7 @@ impl super::Store {
             .fetch_optional(self.reader())
             .await?;
             let prior = row
-                .map(|row| {
-                    Ok::<_, sqlx::Error>(DeskDismissalRow {
-                        through_seq: row.try_get("through_rowid")?,
-                        through_count: row.try_get("through_count")?,
-                        dismissed_at: row.try_get("done_at")?,
-                    })
-                })
+                .map(|row| DeskDismissalRow::from_row(&row, "done_at"))
                 .transpose()?;
             priors.push(ModeDonePrior {
                 account_id: account_id.clone(),
@@ -173,11 +163,7 @@ impl super::Store {
         let now = Utc::now().timestamp();
         let mut tx = self.writer().begin().await?;
         for mark in marks {
-            let row = DeskDismissalRow {
-                through_seq: mark.through_seq,
-                through_count: mark.through_count,
-                dismissed_at: now,
-            };
+            let row = DeskDismissalRow::new(&mark.through, now);
             upsert_mark(&mut tx, &mark.account_id, &mark.thread_id, &mark.mode, row).await?;
         }
         tx.commit().await
@@ -256,12 +242,16 @@ mod tests {
         let account = test_account();
         store.insert_account(&account).await.unwrap();
         let thread = ThreadId::new();
-        let mark = |mode: &str, seq| ModeDoneMark {
+        let newest = uuid::Uuid::now_v7();
+        let mark = |mode: &str, date| ModeDoneMark {
             account_id: account.id.clone(),
             thread_id: thread.clone(),
             mode: mode.to_string(),
-            through_seq: seq,
-            through_count: 2,
+            through: DeskDismissal {
+                through_date: date,
+                through_id: newest,
+                through_count: 2,
+            },
         };
         store.mark_mode_done(&[mark("messages", 7)]).await.unwrap();
 
@@ -269,7 +259,8 @@ mod tests {
             .mode_done_marks(&account.id, "messages")
             .await
             .unwrap();
-        assert_eq!(messages[&thread].through_seq, 7);
+        assert_eq!(messages[&thread].through_date, 7);
+        assert_eq!(messages[&thread].through_id, newest);
         assert!(store
             .mode_done_marks(&account.id, "updates")
             .await
@@ -279,7 +270,7 @@ mod tests {
         let key = (account.id.clone(), thread.clone(), "messages".to_string());
         let updates_key = (account.id.clone(), thread.clone(), "updates".to_string());
         let priors = store.mode_done_priors(&[key, updates_key]).await.unwrap();
-        assert_eq!(priors[0].prior.map(|row| row.through_seq), Some(7));
+        assert_eq!(priors[0].prior.map(|row| row.through_date), Some(7));
         assert!(priors[1].prior.is_none());
 
         store
@@ -293,7 +284,7 @@ mod tests {
             .unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(
-            all[&(thread.clone(), "messages".to_string())].through_seq,
+            all[&(thread.clone(), "messages".to_string())].through_date,
             7
         );
     }

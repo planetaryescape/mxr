@@ -31,8 +31,9 @@ use mxr_protocol::{
     MutationCommand, ResponseData,
 };
 use mxr_store::{
-    CommitmentPrior, CommitmentStatus, ContactCommitmentRecord, DeskDismissalMark, DeskMessage,
-    DeskUndo, ReminderState, ReplyLaterState, UndoEntry, UndoEntrySnapshot, UndoableMutationKind,
+    CommitmentPrior, CommitmentStatus, ContactCommitmentRecord, DeskDismissal, DeskDismissalMark,
+    DeskMessage, DeskUndo, ReminderState, ReplyLaterState, UndoEntry, UndoEntrySnapshot,
+    UndoableMutationKind,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -266,14 +267,13 @@ async fn plan_item(
         .filter(|message| !message.flags.contains(MessageFlags::READ))
         .map(|message| message.id.clone())
         .collect();
-    // Storage order, as `DeskDismissal::covers` reads it: anything stored
-    // after this plan brings the conversation back. Due too, or keeping
-    // the promise would uncover the conversation's Waiting on row.
-    let mark = Some(DeskDismissalMark {
+    // The watermark `DeskDismissal::covers` reads: anything stored after
+    // this plan brings the conversation back. Due too, or keeping the
+    // promise would uncover the conversation's Waiting on row.
+    let mark = DeskDismissal::through(thread).map(|through| DeskDismissalMark {
         account_id: account_id.clone(),
         thread_id: item.thread_id.clone(),
-        through_seq: thread.iter().map(|m| m.seq).max().unwrap_or_default(),
-        through_count: thread.len() as i64,
+        through,
     });
     let reply_later = thread
         .iter()

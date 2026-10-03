@@ -90,6 +90,7 @@ async fn modes_report() {
     let mut combos: BTreeMap<String, usize> = BTreeMap::new();
     let mut per_mode: BTreeMap<&'static str, usize> = BTreeMap::new();
     let mut questions = 0usize;
+    let mut no_mode: BTreeMap<&'static str, usize> = BTreeMap::new();
     let mut threads = 0usize;
     let mut slowest_ms = 0f64;
     let mut sample: Vec<ThreadId> = Vec::new();
@@ -102,7 +103,22 @@ async fn modes_report() {
                 .await
                 .unwrap();
             slowest_ms = slowest_ms.max(batch.elapsed().as_secs_f64() * 1000.0);
+            let all: Vec<mxr_store::DeskMessage> = placed
+                .iter()
+                .flat_map(|placement| placement.messages.iter().cloned())
+                .collect();
+            let senders = crate::handler::desk::Senders::load(&state, &account, &all)
+                .await
+                .unwrap();
+            let is_self = crate::handler::desk::self_matcher(&state, &account)
+                .await
+                .unwrap();
             for placement in placed {
+                if placement.data.modes.is_empty() {
+                    *no_mode
+                        .entry(no_mode_reason(&placement, &senders, &is_self, at))
+                        .or_default() += 1;
+                }
                 threads += 1;
                 let names: Vec<&str> = placement
                     .data
@@ -139,6 +155,10 @@ async fn modes_report() {
         println!("  {combo}: {count}");
     }
     println!("  new-sender questions: {questions}");
+    println!("No mode, by why:");
+    for (reason, count) in &no_mode {
+        println!("  {reason}: {count}");
+    }
 
     // Done's preview on threads that are in a mode: plans only, no writes.
     for mode in [ModeKindData::Messages, ModeKindData::Updates] {
@@ -156,5 +176,59 @@ async fn modes_report() {
             items.len(),
             started.elapsed().as_secs_f64() * 1000.0
         );
+    }
+}
+
+/// Why a thread active in the window sits in no mode, judged on its
+/// newest inbound message still in the inbox. Counts only.
+fn no_mode_reason(
+    placement: &modes::Placement,
+    senders: &crate::handler::desk::Senders,
+    is_self: &dyn Fn(&str) -> bool,
+    at: chrono::DateTime<Utc>,
+) -> &'static str {
+    use crate::handler::desk_lanes::is_outbound;
+    use crate::handler::mail_kind::{classify, SenderKind};
+    let messages = &placement.messages;
+    if messages.iter().all(|m| m.trashed) {
+        return "all in trash or spam";
+    }
+    let inbound: Vec<&mxr_store::DeskMessage> = messages
+        .iter()
+        .filter(|m| !is_outbound(m, is_self) && !m.trashed)
+        .collect();
+    if inbound.is_empty() {
+        return if messages.iter().any(|m| m.in_inbox) {
+            "sent only, in inbox"
+        } else {
+            "sent only, not in inbox"
+        };
+    }
+    let in_inbox: Vec<&&mxr_store::DeskMessage> = inbound.iter().filter(|m| m.in_inbox).collect();
+    let Some(latest) = in_inbox.iter().max_by_key(|m| (m.date, m.seq)) else {
+        let latest = inbound.iter().max_by_key(|m| (m.date, m.seq)).unwrap();
+        return match classify(&modes::signals(latest, senders)).kind {
+            SenderKind::Person => "archived: person",
+            SenderKind::List => "archived: list or newsletter",
+            SenderKind::Automated => "archived: automated",
+            SenderKind::Denied => "archived: screened out",
+        };
+    };
+    if latest.snoozed {
+        return "in inbox: snoozed";
+    }
+    if latest.is_delivery {
+        return "in inbox: delivery";
+    }
+    if latest.is_invite {
+        return "in inbox: invite";
+    }
+    let old = latest.date < at - Duration::days(7);
+    match classify(&modes::signals(latest, senders)).kind {
+        SenderKind::Person if old => "in inbox: person, newest inbound over 7 days old",
+        SenderKind::Person => "in inbox: person, newest inbound within 7 days",
+        SenderKind::List => "in inbox: list or newsletter (done mark)",
+        SenderKind::Automated => "in inbox: automated (done mark)",
+        SenderKind::Denied => "in inbox: screened out",
     }
 }

@@ -91,6 +91,12 @@ pub struct NowUpdatesCardData {
     pub top_sources: Vec<NowUpdateSourceData>,
     /// "23 updates from 9 sources. Most from GitHub, Vercel and Stripe."
     pub line: String,
+    /// The card counts updates from here: the digest cut before the latest
+    /// one, never more than two days back.
+    pub since: chrono::DateTime<chrono::Utc>,
+    /// The card's threads, newest first: what letting go of the digest
+    /// (`SetModeDone` in Updates) acts on.
+    pub thread_ids: Vec<ThreadId>,
     pub early: bool,
 }
 

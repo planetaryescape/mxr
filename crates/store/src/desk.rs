@@ -56,19 +56,73 @@ pub struct DeskContact {
     pub is_list_sender: bool,
 }
 
-/// How far a thread had arrived when it was marked "done waiting".
+/// How far a thread had arrived when it was marked done: its newest
+/// message by (date, id) and how many messages it had. Message ids are
+/// stable and never reused, unlike rowids, so a message stored later is
+/// never hidden by a coincidence of numbering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeskDismissal {
-    pub through_seq: i64,
+    /// Unix seconds of the newest message's date.
+    pub through_date: i64,
+    pub through_id: uuid::Uuid,
     pub through_count: usize,
 }
 
 impl DeskDismissal {
-    /// Still dismissed: nothing was stored in the thread since.
-    pub fn covers(&self, thread: &[DeskMessage]) -> bool {
-        thread.len() <= self.through_count
-            && thread.iter().all(|message| message.seq <= self.through_seq)
+    /// The watermark that covers exactly `messages`; `None` when empty.
+    pub fn through<'a>(messages: impl IntoIterator<Item = &'a DeskMessage>) -> Option<Self> {
+        let mut count = 0;
+        let newest = messages
+            .into_iter()
+            .inspect(|_| count += 1)
+            .map(watermark_key)
+            .max()?;
+        Some(Self {
+            through_date: newest.0,
+            through_id: newest.1,
+            through_count: count,
+        })
     }
+
+    /// The message was there when the mark was made, by (date, id).
+    pub fn reaches(&self, message: &DeskMessage) -> bool {
+        self.reaches_at(message.date, &message.id)
+    }
+
+    /// `reaches` for a message known by its date and id.
+    pub fn reaches_at(&self, date: DateTime<Utc>, id: &MessageId) -> bool {
+        (date.timestamp(), *id.as_uuid()) <= (self.through_date, self.through_id)
+    }
+
+    /// Still dismissed: nothing was stored in the thread since. The count
+    /// catches a new message dated before the watermark.
+    pub fn covers(&self, thread: &[DeskMessage]) -> bool {
+        thread.len() <= self.through_count && thread.iter().all(|message| self.reaches(message))
+    }
+
+    /// Which of two marks on one thread is further along.
+    pub fn order_key(&self) -> (i64, uuid::Uuid, usize) {
+        (self.through_date, self.through_id, self.through_count)
+    }
+}
+
+/// A message's place in watermark order: date, then id. Uuid order is the
+/// order of their lowercase text, so SQL's `ORDER BY date, id` agrees.
+fn watermark_key(message: &DeskMessage) -> (i64, uuid::Uuid) {
+    (message.date.timestamp(), *message.id.as_uuid())
+}
+
+/// Read a watermark's columns (`through_date`, `through_message_id`,
+/// `through_count`) from a row.
+pub(crate) fn dismissal_from_row(
+    row: &sqlx::sqlite::SqliteRow,
+) -> Result<DeskDismissal, sqlx::Error> {
+    let id: &str = row.try_get("through_message_id")?;
+    Ok(DeskDismissal {
+        through_date: row.try_get("through_date")?,
+        through_id: uuid::Uuid::parse_str(id).map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+        through_count: row.try_get::<i64, _>("through_count")?.max(0) as usize,
+    })
 }
 
 /// One past reply with a counterparty (`reply_pairs`).
@@ -350,20 +404,17 @@ impl super::Store {
         account_id: &AccountId,
     ) -> Result<HashMap<ThreadId, DeskDismissal>, sqlx::Error> {
         let rows = sqlx::query(
-            "SELECT thread_id, through_rowid, through_count FROM desk_dismissals
-             WHERE account_id = ?1",
+            "SELECT thread_id, through_date, through_message_id, through_count
+             FROM desk_dismissals WHERE account_id = ?1",
         )
         .bind(account_id.as_str())
         .fetch_all(self.reader())
         .await?;
-        rows.into_iter()
+        rows.iter()
             .map(|row| {
                 Ok((
                     decode_id(row.try_get::<&str, _>("thread_id")?)?,
-                    DeskDismissal {
-                        through_seq: row.try_get("through_rowid")?,
-                        through_count: row.try_get::<i64, _>("through_count")?.max(0) as usize,
-                    },
+                    dismissal_from_row(row)?,
                 ))
             })
             .collect()
@@ -383,14 +434,20 @@ impl super::Store {
         let wanted =
             serde_json::to_string(&thread_ids.iter().map(ThreadId::as_str).collect::<Vec<_>>())
                 .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
-        // One selection for the preview and the write, so they agree.
-        // Storage order, not Date headers: a late message with an old Date
-        // still counts as new.
-        const SELECTION: &str = r#"SELECT account_id, thread_id,
-                      MAX(rowid) AS through_rowid, COUNT(*) AS through_count
-               FROM messages
-               WHERE thread_id IN (SELECT value FROM json_each(?1))
-               GROUP BY account_id, thread_id"#;
+        // One selection for the preview and the write, so they agree. The
+        // watermark is the newest message by (date, id) plus the count, as
+        // `DeskDismissal` reads it.
+        const SELECTION: &str = r#"SELECT t.account_id, t.thread_id, t.through_count,
+                      (SELECT m.date FROM messages m
+                       WHERE m.account_id = t.account_id AND m.thread_id = t.thread_id
+                       ORDER BY m.date DESC, m.id DESC LIMIT 1) AS through_date,
+                      (SELECT m.id FROM messages m
+                       WHERE m.account_id = t.account_id AND m.thread_id = t.thread_id
+                       ORDER BY m.date DESC, m.id DESC LIMIT 1) AS through_message_id
+               FROM (SELECT account_id, thread_id, COUNT(*) AS through_count
+                     FROM messages
+                     WHERE thread_id IN (SELECT value FROM json_each(?1))
+                     GROUP BY account_id, thread_id) t"#;
         let rows = if dry_run {
             sqlx::query(SELECTION)
                 .bind(&wanted)
@@ -399,11 +456,14 @@ impl super::Store {
         } else {
             let sql = format!(
                 "INSERT INTO desk_dismissals
-                     (account_id, thread_id, through_rowid, through_count, dismissed_at)
-                 SELECT account_id, thread_id, through_rowid, through_count, ?2
+                     (account_id, thread_id, through_rowid, through_date, through_message_id,
+                      through_count, dismissed_at)
+                 SELECT account_id, thread_id, 0, through_date, through_message_id,
+                        through_count, ?2
                  FROM ({SELECTION}) WHERE true
                  ON CONFLICT(account_id, thread_id) DO UPDATE SET
-                     through_rowid = excluded.through_rowid,
+                     through_date = excluded.through_date,
+                     through_message_id = excluded.through_message_id,
                      through_count = excluded.through_count,
                      dismissed_at = excluded.dismissed_at
                  RETURNING account_id, thread_id"
@@ -649,5 +709,76 @@ mod tests {
             .await
             .unwrap();
         assert!(!dismissals[&thread].covers(&thread_messages));
+    }
+
+    #[tokio::test]
+    async fn the_date_watermark_migration_backfills_rowid_marks() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let now = Utc::now();
+        let thread = ThreadId::new();
+        let first = envelope(
+            &account.id,
+            &thread,
+            "maya@example.com",
+            now - Duration::days(2),
+        );
+        let second = envelope(
+            &account.id,
+            &thread,
+            "maya@example.com",
+            now - Duration::days(1),
+        );
+        for message in [&first, &second] {
+            store
+                .upsert_envelope_with_direction(message, MessageDirection::Inbound)
+                .await
+                .unwrap();
+        }
+        // A mark as the rowid watermark wrote it, through the first message.
+        let first_rowid: i64 = sqlx::query_scalar("SELECT rowid FROM messages WHERE id = ?1")
+            .bind(first.id.as_str())
+            .fetch_one(store.reader())
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO desk_dismissals
+                 (account_id, thread_id, through_rowid, through_count, dismissed_at)
+             VALUES (?1, ?2, ?3, 1, 0)",
+        )
+        .bind(account.id.as_str())
+        .bind(thread.as_str())
+        .bind(first_rowid)
+        .execute(store.writer())
+        .await
+        .unwrap();
+
+        sqlx::raw_sql(include_str!("../migrations/062_done_watermark_by_date.sql"))
+            .execute(store.writer())
+            .await
+            .unwrap();
+        let mark = store.desk_dismissals(&account.id).await.unwrap()[&thread];
+        assert_eq!(mark.through_date, first.date.timestamp());
+        assert_eq!(mark.through_id, *first.id.as_uuid());
+        let messages = store
+            .desk_messages_in_threads(&account.id, std::slice::from_ref(&thread))
+            .await
+            .unwrap();
+        assert!(
+            !mark.covers(&messages),
+            "the second message came after the mark"
+        );
+        assert!(mark.reaches(&messages[0]));
+
+        // Running it again leaves a backfilled or new mark alone.
+        sqlx::raw_sql(include_str!("../migrations/062_done_watermark_by_date.sql"))
+            .execute(store.writer())
+            .await
+            .unwrap();
+        assert_eq!(
+            store.desk_dismissals(&account.id).await.unwrap()[&thread],
+            mark
+        );
     }
 }

@@ -251,3 +251,142 @@ async fn an_empty_now_says_clear_and_when_the_next_to_do_surfaces() {
     );
     assert!(data.next_at.is_some());
 }
+
+#[tokio::test]
+async fn people_on_now_is_your_turn_only() {
+    let fx = Fixture::new().await;
+    // Mark the first run done, so an empty Now says Clear.
+    let mut fingerprints = std::collections::HashMap::new();
+    while crate::handler::todos::tick(&fx.state, Utc::now(), &mut fingerprints)
+        .await
+        .unwrap()
+    {}
+    // You wrote last a day ago: waiting on them, not your turn.
+    let thread = ThreadId::new();
+    mail(&fx, &thread, ME, "Quote for the kitchen", Duration::days(1)).await;
+
+    let data = now_at(&fx, Utc::now()).await;
+    assert!(data.people.rows.is_empty(), "waiting rows are not People");
+    assert_eq!(data.people.total, 0);
+    assert_eq!(data.item_count, 0);
+    assert!(
+        data.empty_state
+            .as_deref()
+            .is_some_and(|line| line.starts_with("Clear.")),
+        "{:?}",
+        data.empty_state
+    );
+}
+
+#[tokio::test]
+async fn overdue_to_dos_lead_due_soon_so_the_cap_never_cuts_them() {
+    let fx = Fixture::new().await;
+    let mut ids = Vec::new();
+    for who in ["a", "b", "c", "d"] {
+        let ask = owed(&fx, &format!("{who}@people.example")).await;
+        ids.push(todo(&fx, &ask.id, &format!("Send form {who}")).await);
+    }
+    // The last one was due yesterday.
+    let late = ids.last().unwrap().clone();
+    sqlx::query("UPDATE todos SET due_at = ?1, act_by_at = ?2 WHERE id = ?3")
+        .bind((Utc::now() - Duration::days(1)).timestamp())
+        .bind((Utc::now() - Duration::days(3)).timestamp())
+        .bind(&late)
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+
+    let data = now_at(&fx, Utc::now()).await;
+    assert_eq!(data.due_soon.total, 4);
+    assert_eq!(data.due_soon.todos[0].todo.id, late, "overdue first");
+    assert!(data.due_soon.todos[0].todo.overdue);
+}
+
+#[tokio::test]
+async fn the_updates_card_covers_the_latest_cut_and_never_more_than_two_days() {
+    let fx = Fixture::new().await;
+    let at = today_at(18);
+    // Since 08:00 today (the cut before the 16:30 one): on the card.
+    for (source, age) in [("one", 1), ("two", 6)] {
+        let thread = ThreadId::new();
+        let mut note = mail(
+            &fx,
+            &thread,
+            &format!("notifications@{source}.example"),
+            "Build passed",
+            Duration::hours(age),
+        )
+        .await;
+        note.date = at - Duration::hours(age);
+        fx.store_envelope(&note, MessageDirection::Inbound).await;
+    }
+    // Months old and still in the inbox: never on today's card.
+    let thread = ThreadId::new();
+    let mut old = mail(
+        &fx,
+        &thread,
+        "notifications@old.example",
+        "Build passed",
+        Duration::days(90),
+    )
+    .await;
+    old.date = at - Duration::days(90);
+    fx.store_envelope(&old, MessageDirection::Inbound).await;
+
+    let card = now_at(&fx, at).await.updates.expect("a card");
+    assert_eq!(card.message_count, 2);
+    assert_eq!(card.source_count, 2);
+    assert_eq!(card.since, today_at(8));
+    assert_eq!(card.thread_ids.len(), 2, "letting go acts on the card's threads");
+
+    // In the morning the card reaches back to yesterday's 16:30 cut, but
+    // never past two days.
+    let morning = now_at(&fx, today_at(9)).await;
+    let since = morning.updates.map(|card| card.since);
+    assert!(since.is_none_or(|since| since >= today_at(9) - Duration::days(2)));
+}
+
+#[tokio::test]
+async fn the_reading_pick_is_an_unread_issue_inside_its_sources_fade() {
+    let fx = Fixture::new().await;
+    let at = today_at(18);
+    // A weekly newsletter: its fade is 14 days (twice a week, clamped).
+    // The only unread issue is 40 days old, so nothing is picked.
+    for (days, read) in [(40, false), (33, true), (26, true)] {
+        let thread = ThreadId::new();
+        let mut issue = mail(
+            &fx,
+            &thread,
+            "digest@weekly.example",
+            "This week",
+            Duration::days(days),
+        )
+        .await;
+        issue.date = at - Duration::days(days);
+        if read {
+            issue.flags |= MessageFlags::READ;
+        }
+        fx.store_envelope(&issue, MessageDirection::Inbound).await;
+    }
+    assert!(
+        now_at(&fx, at).await.reading.is_none(),
+        "an old newsletter is never tonight's pick"
+    );
+
+    let thread = ThreadId::new();
+    let mut fresh = mail(
+        &fx,
+        &thread,
+        "digest@weekly.example",
+        "This week",
+        Duration::days(2),
+    )
+    .await;
+    fresh.date = at - Duration::days(2);
+    fx.store_envelope(&fresh, MessageDirection::Inbound).await;
+    let pick = now_at(&fx, at)
+        .await
+        .reading
+        .expect("an issue inside the fade");
+    assert_eq!(pick.message_id, fresh.id);
+}

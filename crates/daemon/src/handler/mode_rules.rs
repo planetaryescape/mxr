@@ -68,11 +68,17 @@ pub(super) fn record_evidence(from_email: &str, subject: &str) -> Option<String>
         .map(|part| format!("sent from a {part} address"))
 }
 
-/// A mode's done mark still holds when no message of the mode was stored
-/// after it. Updates and Reading read only their own messages, so your
-/// reply in a notification thread doesn't bring the notification back.
-pub(super) fn mark_covers(mark: &DeskDismissal, seqs: impl IntoIterator<Item = i64>) -> bool {
-    seqs.into_iter().all(|seq| seq <= mark.through_seq)
+/// A mode's done mark still holds when every message of the mode was
+/// there when it was made. Updates and Reading read only their own
+/// messages, so your reply in a notification thread doesn't bring the
+/// notification back.
+pub(super) fn mark_covers<'a>(
+    mark: &DeskDismissal,
+    messages: impl IntoIterator<Item = (DateTime<Utc>, &'a mxr_core::id::MessageId)>,
+) -> bool {
+    messages
+        .into_iter()
+        .all(|(date, id)| mark.reaches_at(date, id))
 }
 
 /// The desk's own dismissals and done-in-Messages marks, as one map: a
@@ -86,9 +92,7 @@ pub(super) fn merge_marks(
         dismissals
             .entry(thread)
             .and_modify(|existing| {
-                if (mark.through_seq, mark.through_count)
-                    > (existing.through_seq, existing.through_count)
-                {
+                if mark.order_key() > existing.order_key() {
                     *existing = mark;
                 }
             })
@@ -179,6 +183,29 @@ pub(super) fn messages_membership(row: &DeskRowData, early: bool) -> ModeMembers
         ModeKindData::Messages,
         format!("Here because: {summary}, {} (rule).", row.reason),
         format!("Also in Messages: {summary}"),
+        early,
+    )
+}
+
+/// Messages' membership for person mail no lane holds: "quiet".
+pub(super) fn quiet_membership(
+    from: &mxr_core::types::Address,
+    date: DateTime<Utc>,
+    now: DateTime<Utc>,
+    early: bool,
+) -> ModeMembershipData {
+    let who = from
+        .name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(&from.email);
+    membership(
+        ModeKindData::Messages,
+        format!(
+            "Here because: quiet, {who} wrote {} ago and it is still in your inbox (rule).",
+            age_label(date, now)
+        ),
+        format!("Also in Messages: quiet, from {who}"),
         early,
     )
 }
@@ -381,6 +408,50 @@ pub(super) fn updates_line(messages: u32, sources: u32, top: &[String]) -> Strin
 /// The hour the Reading pick appears (Things' This Evening).
 pub(super) const EVENING_HOUR: u32 = 17;
 
+/// Updates' two digest cuts a day, local time (blueprint 22, Updates'
+/// rhythm).
+const DIGEST_CUTS: [(u32, u32); 2] = [(8, 0), (16, 30)];
+
+/// Now's Updates card never reaches back further than this, however long
+/// since you last looked.
+const UPDATES_CARD_MAX_DAYS: i64 = 2;
+
+/// Where Now's Updates card starts: the cut before the latest one, so the
+/// card holds the latest digest and what has arrived since, and never more
+/// than two days back.
+pub(super) fn updates_card_since<Tz: TimeZone>(now: DateTime<Utc>, tz: &Tz) -> DateTime<Utc> {
+    let today = now.with_timezone(tz).date_naive();
+    let mut cuts: Vec<DateTime<Utc>> = (0..3)
+        .filter_map(|back| today.checked_sub_days(chrono::Days::new(back)))
+        .flat_map(|day| {
+            DIGEST_CUTS.iter().filter_map(move |(hour, minute)| {
+                tz.from_local_datetime(&day.and_hms_opt(*hour, *minute, 0)?)
+                    .earliest()
+                    .map(|at| at.with_timezone(&Utc))
+            })
+        })
+        .filter(|cut| *cut <= now)
+        .collect();
+    cuts.sort_unstable_by(|a, b| b.cmp(a));
+    let floor = now - Duration::days(UPDATES_CARD_MAX_DAYS);
+    cuts.get(1).copied().unwrap_or(floor).max(floor)
+}
+
+/// How long a newsletter's issues stay in Reading before they fade: twice
+/// the source's median interval, clamped to 2 to 14 days (blueprint 22,
+/// Reading's rhythm). One issue alone fades at the longest.
+pub(super) fn reading_fade(mut dates: Vec<DateTime<Utc>>) -> Duration {
+    let (shortest, longest) = (Duration::days(2), Duration::days(14));
+    dates.sort_unstable();
+    let mut gaps: Vec<Duration> = dates.windows(2).map(|pair| pair[1] - pair[0]).collect();
+    if gaps.is_empty() {
+        return longest;
+    }
+    gaps.sort_unstable();
+    let median = gaps[gaps.len() / 2];
+    (median * 2).clamp(shortest, longest)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -408,12 +479,21 @@ mod tests {
 
     #[test]
     fn a_mark_holds_until_a_newer_message_of_the_mode() {
+        let at = |secs| DateTime::from_timestamp(secs, 0).unwrap();
+        let (older, newest, later) = (
+            mxr_core::id::MessageId::new(),
+            mxr_core::id::MessageId::new(),
+            mxr_core::id::MessageId::new(),
+        );
         let mark = DeskDismissal {
-            through_seq: 10,
+            through_date: 10,
+            through_id: *newest.as_uuid(),
             through_count: 3,
         };
-        assert!(mark_covers(&mark, [4, 10]));
-        assert!(!mark_covers(&mark, [4, 11]));
+        assert!(mark_covers(&mark, [(at(4), &older), (at(10), &newest)]));
+        assert!(!mark_covers(&mark, [(at(4), &older), (at(11), &later)]));
+        // Same second: the id breaks the tie, and ids made later sort later.
+        assert!(!mark_covers(&mark, [(at(10), &later)]));
         assert!(mark_covers(&mark, []));
     }
 
@@ -421,21 +501,22 @@ mod tests {
     fn merged_marks_keep_the_later_watermark() {
         let thread = mxr_core::id::ThreadId::new();
         let other = mxr_core::id::ThreadId::new();
-        let mark = |seq| DeskDismissal {
-            through_seq: seq,
+        let mark = |date| DeskDismissal {
+            through_date: date,
+            through_id: uuid::Uuid::nil(),
             through_count: 2,
         };
         let merged = merge_marks(
             HashMap::from([(thread.clone(), mark(5))]),
             HashMap::from([(thread.clone(), mark(9)), (other.clone(), mark(3))]),
         );
-        assert_eq!(merged[&thread].through_seq, 9);
-        assert_eq!(merged[&other].through_seq, 3);
+        assert_eq!(merged[&thread].through_date, 9);
+        assert_eq!(merged[&other].through_date, 3);
         let merged = merge_marks(
             HashMap::from([(thread.clone(), mark(9))]),
             HashMap::from([(thread.clone(), mark(5))]),
         );
-        assert_eq!(merged[&thread].through_seq, 9);
+        assert_eq!(merged[&thread].through_date, 9);
     }
 
     #[test]

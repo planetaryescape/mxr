@@ -11,16 +11,15 @@ use mxr_core::id::{AccountId, ThreadId};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
-use crate::decode_id;
+use crate::{decode_id, DeskDismissal};
 
-/// Dismiss a conversation through the messages stored so far: the highest
-/// storage rowid and the message count, as `DeskDismissal` reads them.
+/// Dismiss a conversation through the messages stored so far, at the
+/// watermark `DeskDismissal::through` read from them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeskDismissalMark {
     pub account_id: AccountId,
     pub thread_id: ThreadId,
-    pub through_seq: i64,
-    pub through_count: i64,
+    pub through: DeskDismissal,
 }
 
 /// A conversation's dismissal row before Done wrote it, so undo can put
@@ -33,11 +32,36 @@ pub struct DeskDismissalPrior {
     pub prior: Option<DeskDismissalRow>,
 }
 
+/// A stored watermark as undo keeps it. An entry saved before the
+/// (date, id) watermark has neither field and puts back a mark that covers
+/// nothing, which only means the thread shows again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeskDismissalRow {
-    pub through_seq: i64,
+    #[serde(default)]
+    pub through_date: i64,
+    #[serde(default)]
+    pub through_message_id: uuid::Uuid,
     pub through_count: i64,
     pub dismissed_at: i64,
+}
+
+impl DeskDismissalRow {
+    pub(crate) fn new(through: &DeskDismissal, dismissed_at: i64) -> Self {
+        Self {
+            through_date: through.through_date,
+            through_message_id: through.through_id,
+            through_count: i64::try_from(through.through_count).unwrap_or(i64::MAX),
+            dismissed_at,
+        }
+    }
+
+    pub(crate) fn from_row(
+        row: &sqlx::sqlite::SqliteRow,
+        dismissed_at_column: &str,
+    ) -> Result<Self, sqlx::Error> {
+        let through = crate::desk::dismissal_from_row(row)?;
+        Ok(Self::new(&through, row.try_get(dismissed_at_column)?))
+    }
 }
 
 fn pairs_json(pairs: &[(AccountId, ThreadId)]) -> Result<String, sqlx::Error> {
@@ -56,16 +80,19 @@ async fn upsert_dismissal(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO desk_dismissals
-             (account_id, thread_id, through_rowid, through_count, dismissed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+             (account_id, thread_id, through_rowid, through_date, through_message_id,
+              through_count, dismissed_at)
+         VALUES (?1, ?2, 0, ?3, ?4, ?5, ?6)
          ON CONFLICT(account_id, thread_id) DO UPDATE SET
-             through_rowid = excluded.through_rowid,
+             through_date = excluded.through_date,
+             through_message_id = excluded.through_message_id,
              through_count = excluded.through_count,
              dismissed_at = excluded.dismissed_at",
     )
     .bind(account_id.as_str())
     .bind(thread_id.as_str())
-    .bind(row.through_seq)
+    .bind(row.through_date)
+    .bind(row.through_message_id.to_string())
     .bind(row.through_count)
     .bind(row.dismissed_at)
     .execute(tx)
@@ -85,7 +112,8 @@ impl super::Store {
         }
         let wanted = pairs_json(pairs)?;
         let rows = sqlx::query(
-            r#"SELECT d.account_id, d.thread_id, d.through_rowid, d.through_count, d.dismissed_at
+            r#"SELECT d.account_id, d.thread_id, d.through_date, d.through_message_id,
+                      d.through_count, d.dismissed_at
                FROM json_each(?1) wanted
                JOIN desk_dismissals d
                  ON d.account_id = json_extract(wanted.value, '$[0]')
@@ -101,11 +129,7 @@ impl super::Store {
                     decode_id::<AccountId>(row.try_get::<&str, _>("account_id")?)?,
                     decode_id::<ThreadId>(row.try_get::<&str, _>("thread_id")?)?,
                 ),
-                DeskDismissalRow {
-                    through_seq: row.try_get("through_rowid")?,
-                    through_count: row.try_get("through_count")?,
-                    dismissed_at: row.try_get("dismissed_at")?,
-                },
+                DeskDismissalRow::from_row(&row, "dismissed_at")?,
             );
         }
         Ok(pairs
@@ -131,11 +155,7 @@ impl super::Store {
         let now = Utc::now().timestamp();
         let mut tx = self.writer().begin().await?;
         for mark in marks {
-            let row = DeskDismissalRow {
-                through_seq: mark.through_seq,
-                through_count: mark.through_count,
-                dismissed_at: now,
-            };
+            let row = DeskDismissalRow::new(&mark.through, now);
             upsert_dismissal(&mut tx, &mark.account_id, &mark.thread_id, row).await?;
         }
         tx.commit().await

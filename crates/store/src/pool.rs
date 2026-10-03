@@ -972,6 +972,33 @@ const MIGRATIONS: &[Migration] = &[
         name: "mode_done",
         kind: MigrationKind::Sql(include_str!("../migrations/061_mode_done.sql")),
     },
+    Migration {
+        version: 62,
+        name: "done_watermark_by_date",
+        kind: MigrationKind::Composite(&[
+            MigrationStep::AddColumn {
+                table: "desk_dismissals",
+                column: "through_date",
+                sql: "ALTER TABLE desk_dismissals ADD COLUMN through_date INTEGER NOT NULL DEFAULT 0",
+            },
+            MigrationStep::AddColumn {
+                table: "desk_dismissals",
+                column: "through_message_id",
+                sql: "ALTER TABLE desk_dismissals ADD COLUMN through_message_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'",
+            },
+            MigrationStep::AddColumn {
+                table: "mode_done",
+                column: "through_date",
+                sql: "ALTER TABLE mode_done ADD COLUMN through_date INTEGER NOT NULL DEFAULT 0",
+            },
+            MigrationStep::AddColumn {
+                table: "mode_done",
+                column: "through_message_id",
+                sql: "ALTER TABLE mode_done ADD COLUMN through_message_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'",
+            },
+            MigrationStep::Sql(include_str!("../migrations/062_done_watermark_by_date.sql")),
+        ]),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

@@ -21,7 +21,8 @@ use super::desk_lanes::{
 use super::desk_timers::DeskTimers;
 use super::mail_kind::{self, KindSignals};
 use super::mode_rules::{
-    mark_covers, membership, merge_marks, messages_membership, record_evidence, screener_question,
+    mark_covers, membership, merge_marks, messages_membership, quiet_membership, record_evidence,
+    screener_question,
 };
 use super::places::{placed_inbox, scoped_accounts, Placed};
 use super::todo_view::{now_order, to_data};
@@ -81,7 +82,7 @@ pub(super) struct Placement {
 
 /// The kind signals for one desk message, as the desk and places build
 /// them.
-fn signals<'a>(message: &'a DeskMessage, senders: &Senders) -> KindSignals<'a> {
+pub(super) fn signals<'a>(message: &'a DeskMessage, senders: &Senders) -> KindSignals<'a> {
     let key = message.from.email.to_ascii_lowercase();
     KindSignals {
         email: &message.from.email,
@@ -174,6 +175,7 @@ pub(super) async fn place_threads(
             account_id,
             thread,
             row: rows.get(&thread_id),
+            put_away: dismissed.get(&thread_id),
             todos: &thread_todos,
             marks: &marks,
             senders: &senders,
@@ -194,6 +196,8 @@ struct PlaceInputs<'a> {
     account_id: &'a AccountId,
     thread: &'a [DeskMessage],
     row: Option<&'a DeskRowData>,
+    /// Messages' own put-away mark: the desk's Done or done in Messages.
+    put_away: Option<&'a DeskDismissal>,
     todos: &'a [TodoRecord],
     marks: &'a HashMap<(ThreadId, String), DeskDismissal>,
     senders: &'a Senders,
@@ -213,6 +217,13 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
     // Messages: the lane rules already left out a thread put away.
     if let Some(row) = inputs.row {
         modes.push(messages_membership(row, is_early(ModeKindData::Messages)));
+    } else if let Some(message) = quiet(inputs) {
+        modes.push(quiet_membership(
+            &message.from,
+            message.date,
+            inputs.now,
+            is_early(ModeKindData::Messages),
+        ));
     }
     if mark(ModeKindData::Messages).is_some_and(|mark| mark.covers(thread)) {
         done_in.push(ModeKindData::Messages);
@@ -249,7 +260,7 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         let Some(held) = by_kind.get(&kind) else {
             continue;
         };
-        if mark(mode).is_some_and(|mark| mark_covers(mark, held.iter().map(|m| m.seq))) {
+        if mark(mode).is_some_and(|mark| mark_covers(mark, held.iter().map(|m| (m.date, &m.id)))) {
             done_in.push(mode);
             continue;
         }
@@ -311,7 +322,25 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
     }
 }
 
-/// A first-time sender wrote the thread's latest inbound message: no
+/// Person mail still in the inbox that no lane holds: nobody's turn, but
+/// nobody let it go either. Messages keeps it as Quiet until it is done
+/// there, so inbox mail never vanishes from every mode and a to-do ticked
+/// off on it never archives it by default.
+fn quiet<'a>(inputs: &PlaceInputs<'a>) -> Option<&'a DeskMessage> {
+    let thread = inputs.thread;
+    if inputs.put_away.is_some_and(|mark| mark.covers(thread)) {
+        return None;
+    }
+    thread
+        .iter()
+        .filter(|m| m.in_inbox && !m.trashed && !is_outbound(m, inputs.is_self))
+        .filter(|m| {
+            mail_kind::classify(&signals(m, inputs.senders)).kind == mail_kind::SenderKind::Person
+        })
+        .max_by_key(|m| (m.date, m.seq))
+}
+
+/// A first-time person wrote the thread's latest inbound message: no
 /// decision about them, first seen in the last two weeks, and you have
 /// never written to them (D104, D117).
 fn new_sender(inputs: &PlaceInputs<'_>) -> Option<mxr_protocol::ScreenerQuestionData> {
@@ -336,10 +365,13 @@ fn new_sender(inputs: &PlaceInputs<'_>) -> Option<mxr_protocol::ScreenerQuestion
     if wrote_to || contact.is_some_and(|c| c.first_seen_at < since) || latest.date < since {
         return None;
     }
-    let kind = mail_kind::classify(&signals(latest, inputs.senders))
-        .kind
-        .to_data();
-    screener_question(inputs.account_id, &key, kind)
+    // Only a person is asked about. A machine's mail goes to its mode
+    // silently, and its row's why line says which rule put it there.
+    let kind = mail_kind::classify(&signals(latest, inputs.senders)).kind;
+    if kind != mail_kind::SenderKind::Person {
+        return None;
+    }
+    screener_question(inputs.account_id, &key, kind.to_data())
 }
 
 /// Group threads by the account that owns them, in request order.
@@ -458,7 +490,14 @@ pub(super) async fn inbox_modes(
         let covered = marks
             .get(&(account, name))
             .and_then(|marks| marks.get(&thread))
-            .is_some_and(|mark| mark_covers(mark, items.iter().map(|item| item.message.seq)));
+            .is_some_and(|mark| {
+                mark_covers(
+                    mark,
+                    items
+                        .iter()
+                        .map(|item| (item.message.date, &item.message.id)),
+                )
+            });
         if !covered {
             bucket.extend(items);
         }

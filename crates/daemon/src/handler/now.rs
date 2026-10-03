@@ -7,8 +7,8 @@
 
 use super::desk::{compose_desk, desk_lane};
 use super::mode_rules::{
-    age_label, day_part, more_line, now_headline, overload_line, screener_question, updates_line,
-    EVENING_HOUR,
+    age_label, day_part, more_line, now_headline, overload_line, reading_fade, screener_question,
+    updates_card_since, updates_line, EVENING_HOUR,
 };
 use super::modes::{inbox_modes, InboxModes};
 use super::places::{scoped_accounts, Placed};
@@ -43,19 +43,24 @@ impl NowSnapshot {
         distinct_people([&self.owed, &self.people_new]) + count(self.due_now.len())
     }
 
-    /// Everyone in Messages: People counts persons, not conversations.
+    /// Everyone in Messages, waiting on them included: the rail's count.
+    /// People counts persons, not conversations.
     pub(super) fn people_total(&self) -> u32 {
         distinct_people([&self.owed, &self.people_new, &self.waiting])
     }
 
-    /// Person rows in People's order (You owe, New from people, Waiting
-    /// on), each person once, at their most pressing conversation.
+    /// People on Now: whose turn it is with you, never who you wait on.
+    fn your_turn_total(&self) -> u32 {
+        distinct_people([&self.owed, &self.people_new])
+    }
+
+    /// Person rows in People's order (You owe, then New from people), each
+    /// person once, at their most pressing conversation.
     fn person_rows(&self) -> impl Iterator<Item = &DeskRowData> {
         let mut seen = HashSet::new();
         self.owed
             .iter()
             .chain(&self.people_new)
-            .chain(&self.waiting)
             .filter(move |row| seen.insert(row.counterparty_email.to_ascii_lowercase()))
     }
 }
@@ -95,11 +100,24 @@ where
         .filter(|record| record.relevant_until.is_none_or(|until| until >= now))
         .collect();
     let bands = bands(records, now, tz);
+    // To do's own Now band keeps late rows after the ones still in time;
+    // Now puts them first, so its cap of three never hides one.
+    let mut due_now = bands.now;
+    due_now.sort_by(|a, b| {
+        b.overdue
+            .cmp(&a.overdue)
+            .then_with(|| match (a.act_by_at, b.act_by_at) {
+                (Some(x), Some(y)) => x.cmp(&y),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            })
+    });
     Ok(NowSnapshot {
         owed: lane(DeskLaneKind::Owed),
         people_new: lane(DeskLaneKind::PeopleNew),
         waiting: lane(DeskLaneKind::Waiting),
-        due_now: bands.now,
+        due_now,
         next_surface: bands.next_surface,
         inbox: inbox_modes(state, accounts).await?,
     })
@@ -128,10 +146,10 @@ where
 
     let people = people_section(&snapshot, &decisions, now);
     let due_soon = due_section(&snapshot);
-    let updates = updates_card(&snapshot.inbox.updates);
+    let updates = updates_card(&snapshot.inbox.updates, updates_card_since(now, tz));
     let evening = now.with_timezone(tz).hour() >= EVENING_HOUR;
     let reading = evening
-        .then(|| reading_pick(&snapshot.inbox.reading))
+        .then(|| reading_pick(&snapshot.inbox.reading, now))
         .flatten();
     let not_now = (!evening)
         .then(|| {
@@ -221,7 +239,7 @@ fn people_section(
     decisions: &HashMap<AccountId, HashMap<String, ScreenerDisposition>>,
     now: DateTime<Utc>,
 ) -> NowPeopleData {
-    let total = snapshot.people_total();
+    let total = snapshot.your_turn_total();
     let rows: Vec<NowPersonData> = snapshot
         .person_rows()
         .take(NOW_SECTION_CAP)
@@ -276,15 +294,20 @@ fn due_section(snapshot: &NowSnapshot) -> NowDueData {
     }
 }
 
-/// One card, whatever the count: how many updates, from how many sources,
-/// and the busiest three.
-fn updates_card(updates: &[Placed]) -> Option<NowUpdatesCardData> {
+/// One card, whatever the count: how many updates since `since`, from how
+/// many sources, and the busiest three. Older mail stays in Updates, off
+/// today's card.
+fn updates_card(updates: &[Placed], since: DateTime<Utc>) -> Option<NowUpdatesCardData> {
+    let updates: Vec<&Placed> = updates
+        .iter()
+        .filter(|item| item.message.date >= since)
+        .collect();
     if updates.is_empty() {
         return None;
     }
     // Keyed by sender; the newest message names the source.
     let mut sources: HashMap<String, NowUpdateSourceData> = HashMap::new();
-    for item in updates {
+    for item in &updates {
         let key = item.message.from_email.to_ascii_lowercase();
         let source = sources
             .entry(key.clone())
@@ -317,8 +340,16 @@ fn updates_card(updates: &[Placed]) -> Option<NowUpdatesCardData> {
         })
         .collect();
     let message_count = count(updates.len());
+    let mut seen = HashSet::new();
+    let thread_ids = updates
+        .iter()
+        .map(|item| item.message.thread_id.clone())
+        .filter(|thread| seen.insert(thread.clone()))
+        .collect();
     Some(NowUpdatesCardData {
         line: updates_line(message_count, source_count, &names),
+        since,
+        thread_ids,
         message_count,
         source_count,
         top_sources: ranked,
@@ -326,13 +357,15 @@ fn updates_card(updates: &[Placed]) -> Option<NowUpdatesCardData> {
     })
 }
 
-/// The evening's one thing to read: the newest unread issue from the
-/// source you read most of (read share, then how many you've read).
-fn reading_pick(reading: &[Placed]) -> Option<NowReadingPickData> {
+/// The evening's one thing to read: the newest unread issue still inside
+/// its source's fade, from the source you read most of (read share, then
+/// how many you've read).
+fn reading_pick(reading: &[Placed], now: DateTime<Utc>) -> Option<NowReadingPickData> {
     struct Source<'a> {
         read: usize,
         total: usize,
         newest_unread: Option<&'a Placed>,
+        dates: Vec<DateTime<Utc>>,
     }
     let mut sources: HashMap<String, Source<'_>> = HashMap::new();
     // Newest first already, so the first unread seen is the newest.
@@ -343,8 +376,10 @@ fn reading_pick(reading: &[Placed]) -> Option<NowReadingPickData> {
                 read: 0,
                 total: 0,
                 newest_unread: None,
+                dates: Vec::new(),
             });
         source.total += 1;
+        source.dates.push(item.message.date);
         if item.message.flags.contains(MessageFlags::READ) {
             source.read += 1;
         } else if source.newest_unread.is_none() {
@@ -353,7 +388,11 @@ fn reading_pick(reading: &[Placed]) -> Option<NowReadingPickData> {
     }
     let (source, item) = sources
         .into_values()
-        .filter_map(|source| source.newest_unread.map(|item| (source, item)))
+        .filter_map(|source| {
+            let item = source.newest_unread?;
+            let fade = reading_fade(source.dates.clone());
+            (item.message.date >= now - fade).then_some((source, item))
+        })
         .max_by(|(a, a_item), (b, b_item)| {
             // read/total compared without floats: a.read * b.total vs b.read * a.total.
             (a.read * b.total)

@@ -139,6 +139,62 @@ fn band(title: &str, theme: &crate::theme::Theme) -> Line<'static> {
     ))
 }
 
+/// Column widths for a row, chosen from the lens width alone so bars and
+/// dates line up down a band. The title and the whole date come first;
+/// the bar, the amount and then who give way as the lens narrows.
+struct RowColumns {
+    title: usize,
+    who: usize,
+    amount: usize,
+    bar: bool,
+    when: usize,
+}
+
+impl RowColumns {
+    /// Long enough for "shows up Mon 19 Oct · act by Mon 26 Oct".
+    const WHEN: usize = 40;
+    const TITLE_MIN: usize = 14;
+    /// The title grows to this before who and the amount get room.
+    const TITLE_PREFERRED: usize = 28;
+    const TITLE_MAX: usize = 48;
+    const WHO_MAX: usize = 22;
+    const AMOUNT: usize = 9;
+
+    fn for_width(width: usize) -> Self {
+        // The marker, and the gap after the title.
+        let avail = width.saturating_sub(2 + 2);
+        let when = Self::WHEN.min(avail.saturating_sub(Self::TITLE_MIN));
+        let mut left = avail.saturating_sub(when + Self::TITLE_MIN);
+        let bar = left > BAR_CELLS;
+        if bar {
+            left -= BAR_CELLS + 1;
+        }
+        let grown = left.min(Self::TITLE_PREFERRED - Self::TITLE_MIN);
+        left -= grown;
+        let amount = if left >= Self::AMOUNT + 2 {
+            left -= Self::AMOUNT + 2;
+            Self::AMOUNT
+        } else {
+            0
+        };
+        let who = if left >= 9 {
+            let who = Self::WHO_MAX.min(left - 1);
+            left -= who + 1;
+            who
+        } else {
+            0
+        };
+        let title = (Self::TITLE_MIN + grown + left).min(Self::TITLE_MAX);
+        Self {
+            title,
+            who,
+            amount,
+            bar,
+            when,
+        }
+    }
+}
+
 /// One row as a sentence: title, who, amount, bar and dates. `dim` for
 /// Coming up and Whenever, which aren't asking for anything yet.
 fn row_line(
@@ -157,19 +213,14 @@ fn row_line(
         .unwrap_or_default();
     let bar = runway_bar(todo);
     let when = one_line(&todo.when_label);
-    let who_width = 22usize;
-    let amount_width = 9usize;
-    // Fixed columns, so bars and dates line up down the band.
-    let when_width = 42usize;
-    let title_width = width
-        .saturating_sub(2 + 2 + who_width + 1 + amount_width + 2 + BAR_CELLS + 1 + when_width)
-        .clamp(12, 48);
-    let when = truncate(&when, when_width);
+    let cols = RowColumns::for_width(width);
+    let when = truncate(&when, cols.when);
     let text = if dim {
         theme.text_secondary
     } else {
         theme.text_primary
     };
+    let title_width = cols.title;
     let mut spans = vec![
         Span::raw(marker),
         Span::styled(
@@ -179,19 +230,27 @@ fn row_line(
             ),
             Style::default().fg(text),
         ),
-        Span::styled(
+    ];
+    if cols.who > 0 {
+        let who_width = cols.who;
+        spans.push(Span::styled(
             format!("{:<who_width$} ", truncate(&who, who_width)),
             Style::default().fg(theme.text_secondary),
-        ),
-        Span::styled(
+        ));
+    }
+    if cols.amount > 0 {
+        let amount_width = cols.amount;
+        spans.push(Span::styled(
             format!("{amount:>amount_width$}  "),
             Style::default().fg(text),
-        ),
-    ];
-    spans.push(Span::styled(
-        format!("{:<width$} ", bar.unwrap_or_default(), width = BAR_CELLS),
-        Style::default().fg(if dim { theme.accent_dim } else { theme.accent }),
-    ));
+        ));
+    }
+    if cols.bar {
+        spans.push(Span::styled(
+            format!("{:<width$} ", bar.unwrap_or_default(), width = BAR_CELLS),
+            Style::default().fg(if dim { theme.accent_dim } else { theme.accent }),
+        ));
+    }
     // Overdue is a fact in the row's own words, never red.
     spans.push(Span::styled(when, Style::default().fg(theme.text_muted)));
     if selected {
@@ -933,5 +992,48 @@ pub(crate) mod tests {
                 .any(|c| matches!(c as u32, 0x00..=0x09 | 0x0B..=0x1F | 0x7F..=0x9F)),
             "{rendered:?}"
         );
+    }
+
+    fn render_at(page: &TodoPageState, width: u16) -> String {
+        render_to_string(width, 30, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, width, 30),
+                &TodoView {
+                    page,
+                    selected_index: 0,
+                    active_pane: &ActivePane::MailList,
+                },
+                &crate::theme::Theme::default(),
+            );
+        })
+    }
+
+    #[test]
+    fn narrow_lenses_keep_the_title_and_the_whole_date() {
+        let mut coming = renewal();
+        coming.when_label = "shows up Mon 19 Oct \u{b7} act by Mon 26 Oct".into();
+        let page = page(runway(vec![council_tax()], vec![coming]), true);
+        for width in [60u16, 80] {
+            let rendered = render_at(&page, width);
+            for (title, when) in [
+                ("Pay council", "act by Wed 7 Oct \u{b7} due Fri 9 Oct"),
+                ("Renew car", "shows up Mon 19 Oct \u{b7} act by Mon 26 Oct"),
+            ] {
+                // The row, not the headline that also names it.
+                let line = rendered
+                    .lines()
+                    .find(|line| line.contains(title) && !line.contains("need you"))
+                    .unwrap_or_else(|| panic!("{width}: no row for {title}\n{rendered}"));
+                assert!(line.contains(when), "{width}: the date is cut: {line}");
+            }
+        }
+        // At 80 columns the bar still fits; at 60 it gives way to the date.
+        let wide = render_at(&page, 80);
+        let bill = wide
+            .lines()
+            .find(|line| line.contains("Pay council") && !line.contains("need you"))
+            .unwrap();
+        assert!(bill.contains('\u{2593}'), "{bill}");
     }
 }

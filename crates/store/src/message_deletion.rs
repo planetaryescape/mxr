@@ -48,6 +48,7 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
     ),
     ("deliveries", MessageDeletionRule::ClearedWithMessages),
     ("desk_dismissals", MessageDeletionRule::ClearedWithMessages),
+    ("mode_done", MessageDeletionRule::ClearedWithMessages),
     ("event_log", MessageDeletionRule::ClearedWithMessages),
     // Cleared for every person a delete touches, and with its contact.
     (
@@ -259,6 +260,10 @@ impl super::Store {
                AND thread_id IN (SELECT thread_id FROM temp.mxr_deleting)
                AND NOT EXISTS (
                    SELECT 1 FROM messages WHERE messages.thread_id = desk_dismissals.thread_id)",
+            "DELETE FROM mode_done WHERE account_id = ?1
+               AND thread_id IN (SELECT thread_id FROM temp.mxr_deleting)
+               AND NOT EXISTS (
+                   SELECT 1 FROM messages WHERE messages.thread_id = mode_done.thread_id)",
             "DROP TABLE temp.mxr_deleting",
             "DROP TABLE temp.mxr_deleting_people",
             "DROP TABLE temp.mxr_deleting_deliveries",
@@ -574,6 +579,14 @@ mod tests {
                 &[&acct, thread],
             )
             .await;
+            exec(
+                &store,
+                "INSERT INTO mode_done (account_id, thread_id, mode, through_rowid, through_count,
+                     done_at)
+                 VALUES (?, ?, 'updates', 1, 1, 0)",
+                &[&acct, thread],
+            )
+            .await;
         }
         for email in ["Alice@Example.com", "dave@example.com"] {
             exec(
@@ -660,6 +673,10 @@ mod tests {
         );
         assert_eq!(
             ids(&store, "SELECT thread_id FROM desk_dismissals").await,
+            set(&[&a])
+        );
+        assert_eq!(
+            ids(&store, "SELECT thread_id FROM mode_done").await,
             set(&[&a])
         );
         assert_eq!(

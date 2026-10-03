@@ -19,7 +19,11 @@ async fn mail(
     subject: &str,
     age: Duration,
 ) -> Envelope {
-    let to = if from == ME { "sam@lettings.example" } else { ME };
+    let to = if from == ME {
+        "sam@lettings.example"
+    } else {
+        ME
+    };
     let mut envelope = fx.message(thread, from, to, age, None).await;
     envelope.subject = subject.to_string();
     let direction = if from == ME {
@@ -143,10 +147,7 @@ async fn the_landlords_email_is_in_messages_and_to_do_each_saying_why() {
     let todo = add_todo(&fx, &ask.id, "tomorrow").await;
 
     let placed = membership(&fx, &thread).await;
-    assert_eq!(
-        modes(&placed),
-        [ModeKindData::Messages, ModeKindData::Todo]
-    );
+    assert_eq!(modes(&placed), [ModeKindData::Messages, ModeKindData::Todo]);
     assert_eq!(placed.held_by, modes(&placed));
     assert!(placed.in_inbox);
     let messages = &placed.modes[0];
@@ -475,7 +476,11 @@ async fn the_rail_lists_now_the_modes_and_inbox_with_keys_and_counts() {
     assert_eq!(entry("now").badge, Some(2));
     assert_eq!(entry("messages").count, Some(1));
     assert_eq!(entry("todo").count, Some(1));
-    assert_eq!(entry("todo").badge, None, "To do earns a badge later (D117)");
+    assert_eq!(
+        entry("todo").badge,
+        None,
+        "To do earns a badge later (D117)"
+    );
     assert_eq!(entry("updates").count, Some(1));
     assert_eq!(entry("reading").count, Some(0));
     assert_eq!(entry("archive").count, None);

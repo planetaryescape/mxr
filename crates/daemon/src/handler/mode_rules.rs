@@ -18,7 +18,13 @@ use std::collections::HashMap;
 /// Local parts of senders whose mail is a record: receipts, bills,
 /// orders, bookings and statements.
 const RECORD_LOCAL_PARTS: &[&str] = &[
-    "receipt", "billing", "invoice", "order", "booking", "reservation", "statement",
+    "receipt",
+    "billing",
+    "invoice",
+    "order",
+    "booking",
+    "reservation",
+    "statement",
 ];
 
 /// Subject phrases that make an automated message a record, matched in
@@ -282,11 +288,7 @@ pub(super) fn join_and(items: &[String]) -> String {
 
 /// "due Wed" within the week, "due Wed 21 Oct" further out, "was due Fri"
 /// once past.
-pub(super) fn due_detail<Tz: TimeZone>(
-    due: DateTime<Utc>,
-    now: DateTime<Utc>,
-    tz: &Tz,
-) -> String
+pub(super) fn due_detail<Tz: TimeZone>(due: DateTime<Utc>, now: DateTime<Utc>, tz: &Tz) -> String
 where
     Tz::Offset: std::fmt::Display,
 {
@@ -560,7 +562,9 @@ mod tests {
         assert!(overload_line(OVERLOAD_OWED, 3).is_none());
         assert_eq!(
             overload_line(11, 3).as_deref(),
-            Some("11 people are waiting on you. The three below are furthest past your usual pace.")
+            Some(
+                "11 people are waiting on you. The three below are furthest past your usual pace."
+            )
         );
         assert_eq!(
             updates_line(23, 9, &["GitHub".into(), "Vercel".into(), "Stripe".into()]),

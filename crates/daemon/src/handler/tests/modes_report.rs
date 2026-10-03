@@ -61,7 +61,10 @@ async fn modes_report() {
         ResponseData::Rail { rail } => rail,
         other => panic!("{other:?}"),
     };
-    println!("GetRail: {:.0} ms", started.elapsed().as_secs_f64() * 1000.0);
+    println!(
+        "GetRail: {:.0} ms",
+        started.elapsed().as_secs_f64() * 1000.0
+    );
     for entry in &rail.entries {
         println!(
             "  {:<9} count {:?} badge {:?}",
@@ -71,13 +74,12 @@ async fn modes_report() {
 
     // Membership over every thread with mail in the last 30 days.
     let since = (at - Duration::days(30)).timestamp();
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT DISTINCT account_id, thread_id FROM messages WHERE date >= ?1",
-    )
-    .bind(since)
-    .fetch_all(state.store.reader())
-    .await
-    .unwrap();
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT DISTINCT account_id, thread_id FROM messages WHERE date >= ?1")
+            .bind(since)
+            .fetch_all(state.store.reader())
+            .await
+            .unwrap();
     let mut by_account: BTreeMap<String, Vec<ThreadId>> = BTreeMap::new();
     for (account, thread) in rows {
         by_account

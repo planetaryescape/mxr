@@ -70,7 +70,7 @@ fn distinct_people<const N: usize>(lanes: [&Vec<DeskRowData>; N]) -> u32 {
     count(people.len())
 }
 
-fn count(n: usize) -> u32 {
+pub(super) fn count(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
 
@@ -124,9 +124,9 @@ where
     let started = std::time::Instant::now();
     let accounts = scoped_accounts(state, account_id).await?;
     let snapshot = snapshot(state, account_id, &accounts, now, tz).await?;
-    let undecided = undecided_senders(state, &accounts).await?;
+    let decisions = sender_decisions(state, &accounts).await?;
 
-    let people = people_section(&snapshot, &undecided, now);
+    let people = people_section(&snapshot, &decisions, now);
     let due_soon = due_section(&snapshot);
     let updates = updates_card(&snapshot.inbox.updates);
     let evening = now.with_timezone(tz).hour() >= EVENING_HOUR;
@@ -196,9 +196,9 @@ where
     })
 }
 
-/// Senders each account has decided nothing about, so a new one's row can
-/// ask (D117).
-async fn undecided_senders(
+/// Each account's decisions about senders, so a new sender's row can ask
+/// (D117).
+async fn sender_decisions(
     state: &AppState,
     accounts: &[AccountId],
 ) -> Result<HashMap<AccountId, HashMap<String, ScreenerDisposition>>, HandlerError> {

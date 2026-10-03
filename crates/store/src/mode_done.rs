@@ -254,10 +254,7 @@ mod tests {
 
         let key = (account.id.clone(), thread.clone(), "messages".to_string());
         let updates_key = (account.id.clone(), thread.clone(), "updates".to_string());
-        let priors = store
-            .mode_done_priors(&[key, updates_key])
-            .await
-            .unwrap();
+        let priors = store.mode_done_priors(&[key, updates_key]).await.unwrap();
         assert_eq!(priors[0].prior.map(|row| row.through_seq), Some(7));
         assert!(priors[1].prior.is_none());
 
@@ -271,6 +268,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(all.len(), 1);
-        assert_eq!(all[&(thread.clone(), "messages".to_string())].through_seq, 7);
+        assert_eq!(
+            all[&(thread.clone(), "messages".to_string())].through_seq,
+            7
+        );
     }
 }

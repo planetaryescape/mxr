@@ -48,7 +48,10 @@ fn modes_explain_prints_the_to_do_guide_and_card_state_holds() {
         .collect();
     assert_eq!(modes, ["now", "todo"], "every shipped mode, Now first");
     assert_eq!(again[1]["card_seen"], true, "a new command sees it closed");
-    assert_eq!(again[0]["card_seen"], false, "closing one card leaves the others");
+    assert_eq!(
+        again[0]["card_seen"], false,
+        "closing one card leaves the others"
+    );
 
     let shown = run_json(
         &instance,
@@ -65,7 +68,12 @@ fn now_and_the_rail_print_as_json_within_the_caps() {
     let temp = TempDir::new().expect("temp dir");
     let (_daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "modes-now");
 
-    let now = run_json(&instance, &data_dir, &config_dir, &["now", "--format", "json"]);
+    let now = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["now", "--format", "json"],
+    );
     assert_eq!(
         now["header"],
         "The few things that need you now, from every mode."

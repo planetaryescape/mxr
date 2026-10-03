@@ -12,7 +12,8 @@ use super::SenderKindData;
 /// The rail's words where a mode's guide doesn't cover them (#284 copy).
 pub mod rail_copy {
     /// Inbox is a lens, not a mode: it gets a header only.
-    pub const INBOX_HEADER: &str = "Everything, newest first. The modes hold the same mail, sorted.";
+    pub const INBOX_HEADER: &str =
+        "Everything, newest first. The modes hold the same mail, sorted.";
 }
 
 /// One of the five modes. Now is a view over them, and Inbox a lens.
@@ -259,6 +260,8 @@ pub struct RailData {
 
 #[cfg(test)]
 mod tests {
+    #![expect(clippy::unwrap_used, reason = "tests unwrap for direct fixture failures")]
+
     use super::*;
 
     #[test]

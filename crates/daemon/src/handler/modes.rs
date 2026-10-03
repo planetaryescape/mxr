@@ -21,8 +21,7 @@ use super::desk_lanes::{
 use super::desk_timers::DeskTimers;
 use super::mail_kind::{self, KindSignals};
 use super::mode_rules::{
-    mark_covers, membership, merge_marks, messages_membership, record_evidence,
-    screener_question,
+    mark_covers, membership, merge_marks, messages_membership, record_evidence, screener_question,
 };
 use super::places::{placed_inbox, scoped_accounts, Placed};
 use super::todo_view::{now_order, to_data};
@@ -475,108 +474,80 @@ pub(super) async fn inbox_modes(
     Ok(out)
 }
 
+/// What an early mode's view is built on, for the clients' "early version"
+/// note.
+const fn early_note(mode: ModeKindData) -> Option<&'static str> {
+    match mode {
+        ModeKindData::Messages => {
+            Some("Early version: the desk's You owe, New from people and Waiting on.")
+        }
+        ModeKindData::Updates => {
+            Some("Early version: Paper trail, automated mail in your inbox by sender.")
+        }
+        ModeKindData::Reading => {
+            Some("Early version: newsletters and lists in your inbox by sender.")
+        }
+        ModeKindData::Archive => Some("Early version: search, with receipts and records marked."),
+        ModeKindData::Todo => None,
+    }
+}
+
+fn mode_entry(mode: ModeKindData, count: Option<u32>) -> RailEntryData {
+    RailEntryData {
+        id: mode.id().to_string(),
+        name: mode.name().to_string(),
+        key: mode.key().to_string(),
+        group: "modes".to_string(),
+        count,
+        badge: None,
+        status: if is_early(mode) {
+            RailStatusData::Early
+        } else {
+            RailStatusData::Built
+        },
+        early_note: early_note(mode).map(str::to_string),
+        header: mode_guide(mode.id()).map(|guide| guide.header.to_string()),
+    }
+}
+
 pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
     let now = Utc::now();
     let accounts = scoped_accounts(state, account_id).await?;
     let snapshot = super::now::snapshot(state, account_id, &accounts, now, &Local).await?;
-    let entry = |id: &str,
-                 name: &str,
-                 key: &str,
-                 group: &str,
-                 count: Option<u32>,
-                 status: RailStatusData,
-                 early_note: Option<&str>,
-                 header: Option<&str>| RailEntryData {
-        id: id.to_string(),
-        name: name.to_string(),
-        key: key.to_string(),
-        group: group.to_string(),
-        count,
-        badge: None,
-        status,
-        early_note: early_note.map(str::to_string),
-        header: header.map(str::to_string),
-    };
-    let guide_header = |mode: &str| mode_guide(mode).map(|guide| guide.header);
-    let mut now_entry = entry(
-        "now",
-        "Now",
-        "g h",
-        "home",
-        Some(snapshot.badge()),
-        RailStatusData::Built,
-        None,
-        guide_header("now"),
-    );
+    let count = |n: usize| Some(super::now::count(n));
     // Badges count work only: Now's people and due soon. To do earns its
     // own badge only once `mxr modes eval` shows under one false to-do a
     // week (D117).
-    now_entry.badge = Some(snapshot.badge());
-    let early = RailStatusData::Early;
-    let count = |n: usize| Some(u32::try_from(n).unwrap_or(u32::MAX));
-    let entries = vec![
-        now_entry,
-        entry(
-            ModeKindData::Messages.id(),
-            ModeKindData::Messages.name(),
-            ModeKindData::Messages.key(),
-            "modes",
-            Some(snapshot.people_total()),
-            early,
-            Some("Early version: the desk's You owe, New from people and Waiting on."),
-            None,
-        ),
-        entry(
-            ModeKindData::Todo.id(),
-            ModeKindData::Todo.name(),
-            ModeKindData::Todo.key(),
-            "modes",
-            count(snapshot.due_now.len()),
-            RailStatusData::Built,
-            None,
-            guide_header("todo"),
-        ),
-        entry(
-            ModeKindData::Updates.id(),
-            ModeKindData::Updates.name(),
-            ModeKindData::Updates.key(),
-            "modes",
-            count(snapshot.inbox.updates.len()),
-            early,
-            Some("Early version: Paper trail, automated mail in your inbox by sender."),
-            None,
-        ),
-        entry(
-            ModeKindData::Reading.id(),
-            ModeKindData::Reading.name(),
-            ModeKindData::Reading.key(),
-            "modes",
-            count(snapshot.inbox.reading.len()),
-            early,
-            Some("Early version: newsletters and lists in your inbox by sender."),
-            None,
-        ),
-        entry(
-            ModeKindData::Archive.id(),
-            ModeKindData::Archive.name(),
-            ModeKindData::Archive.key(),
-            "modes",
-            None,
-            early,
-            Some("Early version: search, with receipts and records marked."),
-            None,
-        ),
-        entry(
-            "inbox",
-            "Inbox",
-            "g i",
-            "lens",
-            None,
-            RailStatusData::Built,
-            None,
-            Some(rail_copy::INBOX_HEADER),
-        ),
-    ];
+    let work = Some(snapshot.badge());
+    let mut entries = vec![RailEntryData {
+        id: "now".to_string(),
+        name: "Now".to_string(),
+        key: "g h".to_string(),
+        group: "home".to_string(),
+        count: work,
+        badge: work,
+        status: RailStatusData::Built,
+        early_note: None,
+        header: mode_guide("now").map(|guide| guide.header.to_string()),
+    }];
+    entries.extend([
+        mode_entry(ModeKindData::Messages, Some(snapshot.people_total())),
+        mode_entry(ModeKindData::Todo, count(snapshot.due_now.len())),
+        mode_entry(ModeKindData::Updates, count(snapshot.inbox.updates.len())),
+        mode_entry(ModeKindData::Reading, count(snapshot.inbox.reading.len())),
+        mode_entry(ModeKindData::Archive, None),
+    ]);
+    entries.push(RailEntryData {
+        id: "inbox".to_string(),
+        name: "Inbox".to_string(),
+        key: "g i".to_string(),
+        group: "lens".to_string(),
+        count: None,
+        badge: None,
+        status: RailStatusData::Built,
+        early_note: None,
+        header: Some(rail_copy::INBOX_HEADER.to_string()),
+    });
     let link = |id: &str, name: &str, key: Option<&str>, note: Option<&str>| RailLinkData {
         id: id.to_string(),
         name: name.to_string(),

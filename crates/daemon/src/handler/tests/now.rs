@@ -27,8 +27,18 @@ async fn now_at(fx: &Fixture, at: DateTime<Utc>) -> NowData {
     now::now_at(&fx.state, None, at, &utc()).await.unwrap()
 }
 
-async fn mail(fx: &Fixture, thread: &ThreadId, from: &str, subject: &str, age: Duration) -> Envelope {
-    let to = if from == ME { "someone@example.com" } else { ME };
+async fn mail(
+    fx: &Fixture,
+    thread: &ThreadId,
+    from: &str,
+    subject: &str,
+    age: Duration,
+) -> Envelope {
+    let to = if from == ME {
+        "someone@example.com"
+    } else {
+        ME
+    };
     let mut envelope = fx.message(thread, from, to, age, None).await;
     envelope.subject = subject.to_string();
     let direction = if from == ME {
@@ -103,10 +113,15 @@ async fn now_caps_each_section_at_three_and_says_how_many_more() {
         data.people.more_line.as_deref(),
         Some("and 2 more in Messages")
     );
-    assert!(data.people.rows[0].why.starts_with("From Messages: your turn with "));
+    assert!(data.people.rows[0]
+        .why
+        .starts_with("From Messages: your turn with "));
     assert_eq!(data.due_soon.todos.len(), 3);
     assert_eq!(data.due_soon.total, 4);
-    assert_eq!(data.due_soon.more_line.as_deref(), Some("and 1 more in To do"));
+    assert_eq!(
+        data.due_soon.more_line.as_deref(),
+        Some("and 1 more in To do")
+    );
     assert!(data.due_soon.todos[0].why.starts_with("From To do: "));
     let card = data.updates.as_ref().expect("one Updates card");
     assert_eq!(card.message_count, 4);
@@ -121,7 +136,11 @@ async fn now_caps_each_section_at_three_and_says_how_many_more() {
             + usize::from(data.updates.is_some())
             + usize::from(data.reading.is_some())
     );
-    assert!(data.headline.contains("5 people, 4 things to act on."), "{}", data.headline);
+    assert!(
+        data.headline.contains("5 people, 4 things to act on."),
+        "{}",
+        data.headline
+    );
     assert!(data.empty_state.is_none());
 }
 

@@ -4826,7 +4826,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "chrono-tz",
- "idna",
  "mxr-core",
  "mxr-reader",
  "mxr-store",

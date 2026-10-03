@@ -59,11 +59,6 @@ pub struct TodoConfig {
     /// The first run's catch-up window: undated to-dos from this many days
     /// back are shown once to keep or let go; older ones are let go.
     pub catchup_days: u32,
-    /// For IMAP accounts: the authserv-ids of the `Authentication-Results`
-    /// headers your mail provider adds, such as `mx.example.net` or
-    /// `*.messagingengine.com`. A pay link is one click only when one of
-    /// these reports DMARC passing. Gmail and Gmail-over-IMAP are known.
-    pub trusted_authserv_ids: Vec<String>,
 }
 
 impl Default for TodoConfig {
@@ -71,7 +66,6 @@ impl Default for TodoConfig {
         Self {
             enabled: true,
             catchup_days: 14,
-            trusted_authserv_ids: Vec::new(),
         }
     }
 }

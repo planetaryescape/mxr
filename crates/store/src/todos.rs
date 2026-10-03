@@ -102,8 +102,6 @@ pub struct TodoRecord {
     pub scheduled_for: Option<DateTime<Utc>>,
     pub action_url: Option<String>,
     pub action_domain: Option<String>,
-    pub action_trusted: bool,
-    pub action_gate: Option<String>,
     pub relevant_until: Option<DateTime<Utc>>,
     pub window_source: Option<String>,
     pub state: TodoState,
@@ -158,8 +156,7 @@ const REOPENS: &str = "todos.state = 'expired' AND excluded.state = 'open'
 pub(crate) const COLUMNS: &str =
     "id, account_id, thread_id, source_message_id, source_date, kind, verb,
     doc_type, title, counterparty, sender_domain, amount_minor, currency, due_at, due_words,
-    act_by_at, surface_at, scheduled_for, action_url, action_domain, action_trusted,
-    action_gate, relevant_until, window_source, state, expired_at, expired_at_birth, catchup,
+    act_by_at, surface_at, scheduled_for, action_url, action_domain, relevant_until, window_source, state, expired_at, expired_at_birth, catchup,
     looks_done_message_id, looks_done_reason, origin, reason, field_sources, user_edited,
     commitment_id, rules_version, dedup_key, surfaced_at, created_at, updated_at, done_at,
     dismissed_at";
@@ -209,8 +206,6 @@ pub(crate) fn row_to_todo(row: &SqliteRow) -> Result<TodoRecord, sqlx::Error> {
         scheduled_for: decode_optional_timestamp(row.try_get("scheduled_for")?)?,
         action_url: row.try_get("action_url")?,
         action_domain: row.try_get("action_domain")?,
-        action_trusted: row.try_get::<i64, _>("action_trusted")? != 0,
-        action_gate: row.try_get("action_gate")?,
         relevant_until: decode_optional_timestamp(row.try_get("relevant_until")?)?,
         window_source: row.try_get("window_source")?,
         state: TodoState::parse(&state)
@@ -256,7 +251,7 @@ impl super::Store {
         let sql = format!(
             "INSERT INTO todos ({COLUMNS})
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(account_id, dedup_key) DO UPDATE SET
                 thread_id = excluded.thread_id,
                 source_message_id = excluded.source_message_id,
@@ -275,8 +270,6 @@ impl super::Store {
                 surface_at = excluded.surface_at,
                 action_url = excluded.action_url,
                 action_domain = excluded.action_domain,
-                action_trusted = excluded.action_trusted,
-                action_gate = excluded.action_gate,
                 relevant_until = excluded.relevant_until,
                 window_source = excluded.window_source,
                 origin = excluded.origin,
@@ -322,7 +315,7 @@ impl super::Store {
         let sql = format!(
             "INSERT INTO todos ({COLUMNS})
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
         bind_record(sqlx::query(sqlx::AssertSqlSafe(sql)), record)
             .execute(self.writer())
@@ -834,8 +827,6 @@ fn bind_record<'q>(
         .bind(ts(record.scheduled_for))
         .bind(&record.action_url)
         .bind(&record.action_domain)
-        .bind(i64::from(record.action_trusted))
-        .bind(&record.action_gate)
         .bind(ts(record.relevant_until))
         .bind(&record.window_source)
         .bind(record.state.as_str())

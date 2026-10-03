@@ -20818,37 +20818,43 @@
               "string",
               "null"
             ],
-            "description": "The link's registrable domain, always shown before Enter."
+            "description": "The link's registrable domain, shown beside the label."
           },
-          "gate": {
+          "kind": {
+            "$ref": "#/components/schemas/TodoActionKindData",
+            "description": "Always `open_email` in this phase."
+          },
+          "label": {
+            "type": "string",
+            "description": "\"Open email to pay\", \"Open email to verify\"."
+          },
+          "message_id": {
             "oneOf": [
               {
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/TodoGateData"
+                "$ref": "#/components/schemas/MessageId",
+                "description": "The email to open."
               }
             ]
           },
-          "label": {
-            "type": "string",
-            "description": "\"Pay on camden.gov.uk\" when the gate passed, \"Open email to pay\"\nwhen it didn't."
-          },
           "trusted": {
-            "type": "boolean"
-          },
-          "untrusted_reason": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The first gate check that failed, in plain words."
+            "type": "boolean",
+            "description": "Always false: nothing on a to-do is trusted to open directly. Kept\nso earlier clients read the action as untrusted."
           },
           "url": {
             "type": "string",
-            "description": "Open this only when `trusted`; otherwise open the email."
+            "description": "The link in that email the action is about, to highlight there.\nNot an action: never open it from the row."
           }
         }
+      },
+      "TodoActionKindData": {
+        "type": "string",
+        "description": "What the row's primary action does.",
+        "enum": [
+          "open_email"
+        ]
       },
       "TodoAmountData": {
         "type": "object",
@@ -21436,26 +21442,6 @@
             "type": "integer",
             "format": "int64",
             "description": "Messages classified so far."
-          }
-        }
-      },
-      "TodoGateData": {
-        "type": "object",
-        "description": "Each check of the one-click gate.",
-        "required": [
-          "dmarc_pass",
-          "domain_match",
-          "prior_mail"
-        ],
-        "properties": {
-          "dmarc_pass": {
-            "type": "boolean"
-          },
-          "domain_match": {
-            "type": "boolean"
-          },
-          "prior_mail": {
-            "type": "boolean"
           }
         }
       },

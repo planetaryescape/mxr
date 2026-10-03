@@ -56,40 +56,39 @@ pub struct TodoAmountData {
     pub display: String,
 }
 
-/// Each check of the one-click gate.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+/// What the row's primary action does.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct TodoGateData {
-    /// DMARC passed, as reported by your own mail provider.
-    pub dmarc_pass: bool,
-    pub domain_match: bool,
-    /// An established relationship with the domain: mail from it at least
-    /// 30 days earlier, and either mail you sent to it or 3 messages from
-    /// it over 60 days.
-    pub prior_mail: bool,
-    /// The domain imitates one you already know.
-    #[serde(default)]
-    pub lookalike: bool,
+#[serde(rename_all = "snake_case")]
+pub enum TodoActionKindData {
+    /// Open the source email in mxr with `url` highlighted. mxr never opens
+    /// an external link straight from a to-do: a one-click pay link is
+    /// deferred until a design survives review (docs/issues/one-click-pay-link.md).
+    #[default]
+    OpenEmail,
 }
 
 /// The one thing Enter does.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TodoActionData {
-    /// "Pay on camden.gov.uk" when the gate passed, "Open email to pay"
-    /// when it didn't.
+    /// Always `open_email` in this phase.
+    #[serde(default)]
+    pub kind: TodoActionKindData,
+    /// "Open email to pay", "Open email to verify".
     pub label: String,
-    /// Open this only when `trusted`; otherwise open the email.
+    /// The email to open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<MessageId>,
+    /// The link in that email the action is about, to highlight there.
+    /// Not an action: never open it from the row.
     pub url: String,
-    /// The link's registrable domain, always shown before Enter.
+    /// The link's registrable domain, shown beside the label.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
+    /// Always false: nothing on a to-do is trusted to open directly. Kept
+    /// so earlier clients read the action as untrusted.
     pub trusted: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub gate: Option<TodoGateData>,
-    /// The first gate check that failed, in plain words.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub untrusted_reason: Option<String>,
 }
 
 /// Where one field came from.

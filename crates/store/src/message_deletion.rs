@@ -222,7 +222,7 @@ impl super::Store {
                    AND scheduled_for IS NULL AND ",
                 todo_untouched_sql!("")
             ),
-            "UPDATE todos SET due_words = NULL, action_url = NULL, action_gate = NULL,
+            "UPDATE todos SET due_words = NULL, action_url = NULL,
                     looks_done_reason = NULL, reason = 'Its email was deleted.',
                     field_sources = COALESCE(
                         (SELECT json_group_object(key, json_remove(value, '$.evidence'))

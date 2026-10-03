@@ -332,7 +332,6 @@ html2text = "0.17"
 htmlescape = "0.3"
 regex = "1"
 psl = "2"
-idna = "1"
 once_cell = "1"
 rodio = { version = "0.22.2", default-features = false, features = ["playback"] }
 

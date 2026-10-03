@@ -7659,20 +7659,29 @@ export interface components {
         };
         /** @description The one thing Enter does. */
         TodoActionData: {
-            /** @description The link's registrable domain, always shown before Enter. */
+            /** @description The link's registrable domain, shown beside the label. */
             domain?: string | null;
-            gate?: null | components["schemas"]["TodoGateData"];
-            /**
-             * @description "Pay on camden.gov.uk" when the gate passed, "Open email to pay"
-             *     when it didn't.
-             */
+            /** @description Always `open_email` in this phase. */
+            kind?: components["schemas"]["TodoActionKindData"];
+            /** @description "Open email to pay", "Open email to verify". */
             label: string;
+            message_id?: null | components["schemas"]["MessageId"];
+            /**
+             * @description Always false: nothing on a to-do is trusted to open directly. Kept
+             *     so earlier clients read the action as untrusted.
+             */
             trusted: boolean;
-            /** @description The first gate check that failed, in plain words. */
-            untrusted_reason?: string | null;
-            /** @description Open this only when `trusted`; otherwise open the email. */
+            /**
+             * @description The link in that email the action is about, to highlight there.
+             *     Not an action: never open it from the row.
+             */
             url: string;
         };
+        /**
+         * @description What the row's primary action does.
+         * @enum {string}
+         */
+        TodoActionKindData: "open_email";
         TodoAmountData: {
             /** @description ISO 4217. */
             currency: string;
@@ -7895,12 +7904,6 @@ export interface components {
              * @description Messages classified so far.
              */
             scanned: number;
-        };
-        /** @description Each check of the one-click gate. */
-        TodoGateData: {
-            dmarc_pass: boolean;
-            domain_match: boolean;
-            prior_mail: boolean;
         };
         /** @description A kind and how many, for "Already over, so not shown: 50 past invites". */
         TodoKindCountData: {

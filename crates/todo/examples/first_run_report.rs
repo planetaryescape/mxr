@@ -27,34 +27,12 @@ async fn main() -> anyhow::Result<()> {
     }
     let store = Store::new(&path).await?;
     let now = Utc::now();
-    // Gmail and the fake provider stamp `mx.google.com`; others get no
-    // trusted id, as in the daemon.
-    let trusted_authserv = store
-        .list_accounts()
-        .await?
-        .into_iter()
-        .map(|account| {
-            let google = account.sync_backend.is_some_and(|backend| {
-                matches!(
-                    backend.provider_kind,
-                    mxr_core::types::ProviderKind::Gmail | mxr_core::types::ProviderKind::Fake
-                )
-            });
-            let ids = if google {
-                vec!["mx.google.com".to_string()]
-            } else {
-                Vec::new()
-            };
-            (account.id, ids)
-        })
-        .collect();
     let cfg = PassConfig {
         now,
         tz: chrono::Local,
         morning_hour: 9,
         catchup_days: 14,
         catchup_max: 25,
-        trusted_authserv,
     };
 
     let started = Instant::now();
@@ -141,15 +119,16 @@ async fn main() -> anyhow::Result<()> {
             );
         }
     }
-    let gated: (i64, i64) = sqlx::query_as(
-        "SELECT COALESCE(SUM(action_url IS NOT NULL), 0), COALESCE(SUM(action_trusted), 0)
-         FROM todos WHERE state = 'open'",
+    let linked: (i64, i64) = sqlx::query_as(
+        "SELECT COALESCE(SUM(state = 'open'), 0), COUNT(*) FROM todos WHERE action_url IS NOT NULL",
     )
     .fetch_one(&pool)
     .await?;
+    // No column or path can make a link one click: every action opens the
+    // email with the link highlighted.
     println!(
-        "\nopen rows with a link: {}, of them one-click: {}",
-        gated.0, gated.1
+        "\nrows with a link to highlight: {} open, {} in all; one-click links: none possible",
+        linked.0, linked.1
     );
     let unchecked: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM todos WHERE state = 'open' AND field_sources LIKE '%\"checked\":false%'",
@@ -200,16 +179,6 @@ async fn main() -> anyhow::Result<()> {
         store
             .list_messages_for_todo_scan(&account.id, None, 500)
             .await?
-    );
-    timed!(
-        "sender_history",
-        store
-            .sender_history(&account.id, "example-not-a-sender.test", now)
-            .await?
-    );
-    timed!(
-        "established_sender_hosts",
-        store.established_sender_hosts(&account.id, 3, 60).await?
     );
     timed!(
         "list_promises_for_todos",

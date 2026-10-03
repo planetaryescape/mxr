@@ -4,11 +4,11 @@
 
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, TimeZone, Utc};
 use mxr_protocol::{
-    todo_copy, TodoActionData, TodoAmountData, TodoData, TodoFieldData, TodoGateData,
+    todo_copy, TodoActionData, TodoActionKindData, TodoAmountData, TodoData, TodoFieldData,
     TodoLooksDoneData, TodoNextData, TodoStateData, TodoWeekData,
 };
 use mxr_store::{TodoRecord, TodoState};
-use mxr_todo::action_link::{button_label, Gate};
+use mxr_todo::action_link::action_label;
 use mxr_todo::money::format_amount;
 use mxr_todo::provenance::FieldSources;
 use mxr_todo::TodoKind;
@@ -205,29 +205,16 @@ fn runway(record: &TodoRecord, now: DateTime<Utc>) -> Option<f64> {
     Some(fill.clamp(0.0, 1.0))
 }
 
+/// The row's action opens the source email with the link highlighted;
+/// nothing on a to-do opens a link directly.
 fn action(record: &TodoRecord, kind: TodoKind) -> Option<TodoActionData> {
-    let url = record.action_url.clone()?;
-    let gate = record
-        .action_gate
-        .as_deref()
-        .and_then(|gate| serde_json::from_str::<Gate>(gate).ok());
-    let trusted = record.action_trusted;
     Some(TodoActionData {
-        label: button_label(kind, record.action_domain.as_deref(), trusted),
-        url,
+        kind: TodoActionKindData::OpenEmail,
+        label: action_label(kind),
+        message_id: record.source_message_id.clone(),
+        url: record.action_url.clone()?,
         domain: record.action_domain.clone(),
-        trusted,
-        gate: gate.map(|gate| TodoGateData {
-            dmarc_pass: gate.dmarc_pass,
-            domain_match: gate.domain_match,
-            prior_mail: gate.prior_mail,
-            lookalike: gate.lookalike,
-        }),
-        untrusted_reason: (!trusted).then(|| {
-            gate.and_then(Gate::failure)
-                .unwrap_or("the sender couldn't be checked")
-                .to_string()
-        }),
+        trusted: false,
     })
 }
 
@@ -458,10 +445,6 @@ mod tests {
             scheduled_for: None,
             action_url: Some("https://www.camden.gov.uk/pay".to_string()),
             action_domain: Some("camden.gov.uk".to_string()),
-            action_trusted: true,
-            action_gate: Some(
-                r#"{"dmarc_pass":true,"domain_match":true,"prior_mail":true}"#.to_string(),
-            ),
             relevant_until: Some(at(10, 23, 23)),
             window_source: Some("rule".to_string()),
             state: TodoState::Open,
@@ -496,8 +479,9 @@ mod tests {
         );
         assert_eq!(data.why, "Here because: \"payment due 9 October\" (rule).");
         let action = data.action.expect("action");
-        assert_eq!(action.label, "Pay on camden.gov.uk");
-        assert!(action.untrusted_reason.is_none());
+        assert_eq!(action.label, "Open email to pay");
+        assert_eq!(action.kind, TodoActionKindData::OpenEmail);
+        assert!(!action.trusted);
         assert_eq!(data.fields[0].source_label, "a pattern in the email");
     }
 
@@ -517,21 +501,16 @@ mod tests {
     }
 
     #[test]
-    fn untrusted_link_says_open_email_and_why() {
+    fn the_action_opens_the_email_and_names_the_links_domain() {
         let mut lookalike = record("b", "bill");
-        lookalike.action_trusted = false;
         lookalike.action_domain = Some("camden-gov.uk".to_string());
-        lookalike.action_gate =
-            Some(r#"{"dmarc_pass":true,"domain_match":false,"prior_mail":false}"#.to_string());
+        lookalike.source_message_id = Some(mxr_core::id::MessageId::new());
         let action = to_data_in(&lookalike, at(10, 5, 10), &London)
             .action
             .expect("action");
         assert_eq!(action.label, "Open email to pay");
         assert_eq!(action.domain.as_deref(), Some("camden-gov.uk"));
-        assert_eq!(
-            action.untrusted_reason.as_deref(),
-            Some("the link goes to a different domain from the sender's")
-        );
+        assert_eq!(action.message_id, lookalike.source_message_id);
     }
 
     #[test]

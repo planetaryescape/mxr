@@ -34,60 +34,15 @@ pub(crate) const CATCHUP_MAX: u32 = 25;
 const FIRST_RUN_PAGES_PER_TICK: u32 = 20;
 const FIRST_RUN_PAGE_SIZE: u32 = 500;
 
-pub(crate) async fn pass_config(
-    state: &AppState,
-    now: DateTime<Utc>,
-) -> Result<PassConfig<Local>, HandlerError> {
+pub(crate) fn pass_config(state: &AppState, now: DateTime<Utc>) -> PassConfig<Local> {
     let cfg = state.config_snapshot();
-    Ok(PassConfig {
+    PassConfig {
         now,
         tz: Local,
         morning_hour: state.snooze_time_prefs().morning_hour,
         catchup_days: cfg.todo.catchup_days,
         catchup_max: CATCHUP_MAX,
-        trusted_authserv: trusted_authserv(state, &cfg).await?,
-    })
-}
-
-/// The authserv-ids each account's provider stamps on the
-/// `Authentication-Results` it adds. Gmail (over its API or IMAP) is
-/// `mx.google.com`; other IMAP providers come from
-/// `[todo] trusted_authserv_ids`; Outlook's results carry no authserv-id,
-/// so its accounts get none and their pay links are never one click.
-async fn trusted_authserv(
-    state: &AppState,
-    cfg: &mxr_config::MxrConfig,
-) -> Result<HashMap<AccountId, Vec<String>>, HandlerError> {
-    use mxr_config::SyncProviderConfig;
-    use mxr_core::types::ProviderKind;
-    const GOOGLE: &str = "mx.google.com";
-    let mut trusted = HashMap::new();
-    for account in state.store.list_accounts().await? {
-        let Some(backend) = account.sync_backend else {
-            continue;
-        };
-        let ids = match backend.provider_kind {
-            // The fake provider stands in for Gmail in the demo and tests.
-            ProviderKind::Gmail | ProviderKind::Fake => vec![GOOGLE.to_string()],
-            ProviderKind::Imap => {
-                let gmail_host = matches!(
-                    cfg.accounts.get(&backend.config_key).and_then(|account| account.sync.as_ref()),
-                    Some(SyncProviderConfig::Imap { host, .. })
-                        if host.ends_with("gmail.com") || host.ends_with("googlemail.com")
-                );
-                let mut ids = cfg.todo.trusted_authserv_ids.clone();
-                if gmail_host {
-                    ids.push(GOOGLE.to_string());
-                }
-                ids
-            }
-            ProviderKind::Smtp | ProviderKind::OutlookPersonal | ProviderKind::OutlookWork => {
-                Vec::new()
-            }
-        };
-        trusted.insert(account.id, ids);
     }
-    Ok(trusted)
 }
 
 // ---------------------------------------------------------------------------
@@ -100,13 +55,7 @@ pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
     if !state.config_snapshot().todo.enabled || message_ids.is_empty() {
         return;
     }
-    let cfg = match pass_config(state, Utc::now()).await {
-        Ok(cfg) => cfg,
-        Err(error) => {
-            tracing::warn!(%error, "to-do scan skipped: no account trust settings");
-            return;
-        }
-    };
+    let cfg = pass_config(state, Utc::now());
     match pass::scan_messages(&state.store, &cfg, message_ids).await {
         Ok(summary) if summary.created + summary.updated + summary.looks_done > 0 => {
             tracing::info!(
@@ -133,7 +82,7 @@ pub(crate) async fn tick(
     if !state.config_snapshot().todo.enabled {
         return Ok(false);
     }
-    let cfg = pass_config(state, now).await?;
+    let cfg = pass_config(state, now);
     let mut running = false;
     for account in state.store.list_accounts().await? {
         if !account.enabled {
@@ -753,8 +702,6 @@ pub(super) async fn create(
         scheduled_for: None,
         action_url: None,
         action_domain: None,
-        action_trusted: false,
-        action_gate: None,
         relevant_until: None,
         window_source: due_at.map(|_| "user".to_string()),
         state: TodoState::Open,

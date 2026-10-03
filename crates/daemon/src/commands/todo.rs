@@ -389,7 +389,6 @@ fn row(out: &mut String, todo: &TodoData, indent: &str) {
         let domain = action
             .domain
             .as_deref()
-            .filter(|_| !action.trusted)
             .map(|domain| format!(" (link goes to {domain})"))
             .unwrap_or_default();
         let _ = writeln!(out, "{indent}            [{}]{domain}", action.label);
@@ -573,22 +572,12 @@ fn why_text(todo: &TodoData) -> String {
         );
     }
     if let Some(action) = &todo.action {
-        let _ = writeln!(out, "\nButton: {}", action.label);
+        let _ = writeln!(out, "\nAction: {}", action.label);
         if let Some(domain) = &action.domain {
-            let _ = writeln!(out, "  Link goes to {domain}");
-        }
-        if let Some(gate) = &action.gate {
-            let mark = |ok: bool| if ok { "yes" } else { "no" };
             let _ = writeln!(
                 out,
-                "  DMARC passed: {} · same domain as the sender: {} · earlier mail from them: {}",
-                mark(gate.dmarc_pass),
-                mark(gate.domain_match),
-                mark(gate.prior_mail)
+                "  The email's link goes to {domain}. mxr opens the email, never the link."
             );
-        }
-        if let Some(reason) = &action.untrusted_reason {
-            let _ = writeln!(out, "  Not one click because {reason}.");
         }
     }
     if todo.user_touched {

@@ -67,8 +67,6 @@ impl Fx {
             scheduled_for: None,
             action_url: Some("https://www.camden.gov.uk/pay".to_string()),
             action_domain: Some("camden.gov.uk".to_string()),
-            action_trusted: true,
-            action_gate: None,
             relevant_until: Some(at(500)),
             window_source: Some("rule".to_string()),
             state: TodoState::Open,

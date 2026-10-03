@@ -3,8 +3,8 @@
 //!
 //! * Camden Council's council tax bill, due in five days, with schema.org
 //!   `Invoice` markup, a pay link on the council's own domain and a DMARC
-//!   pass, after three statements over 80 days: a trusted "Pay on
-//!   camden.gov.uk" row.
+//!   pass, after three statements over 80 days: an "Open email to pay"
+//!   row that points at the council's link.
 //! * Spotify's failed payment yesterday: a to-do at once.
 //! * Sam's leaving drinks, which ended yesterday: already over, so never
 //!   shown.
@@ -93,8 +93,7 @@ pub(super) fn todo_demo_messages(
         built.push((envelope, body));
     };
 
-    // Three statements over 80 days: the established relationship a
-    // one-click pay button needs.
+    // Three statements over 80 days: a biller you have a history with.
     for days in [120, 80, 40] {
         let mut statement = message(
             camden.clone(),

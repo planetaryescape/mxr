@@ -55,13 +55,9 @@ CREATE TABLE IF NOT EXISTS todos (
     surface_at            INTEGER,
     scheduled_for         INTEGER,
     action_url            TEXT,
-    -- Registrable domain of the action link, shown before Enter.
+    -- The link the to-do is about and its registrable domain. Never opened
+    -- from the row: the action opens the email with the link highlighted.
     action_domain         TEXT,
-    -- One-click only when DMARC passed, the link's domain matches the
-    -- sender's, and earlier mail came from that domain.
-    action_trusted        INTEGER NOT NULL DEFAULT 0,
-    -- JSON: each gate check and its result, for `mxr todo why`.
-    action_gate           TEXT,
     relevant_until        INTEGER,
     -- schema | ics | rule | table | user
     window_source         TEXT,

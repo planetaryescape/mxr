@@ -192,9 +192,11 @@ pub enum UndoAction {
         sender_email: String,
         previous: Option<mxr_protocol::SenderKindData>,
     },
-    /// To-dos ticked off, dismissed or let go: put them back on the
-    /// runway (`SetTodoState` undo).
+    /// To-dos ticked off or dismissed: put them back on the runway
+    /// (`SetTodoState` undo).
     Todos(Vec<String>),
+    /// Catch-up rows kept or let go: back in the batch, undecided.
+    Catchup(Vec<String>),
 }
 
 /// Captured handle for a recent undoable mutation. The TUI uses this to

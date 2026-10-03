@@ -279,3 +279,37 @@ fn help_leads_with_the_mode_on_to_do() {
     assert_eq!(guide.mode, "todo");
     assert!(App::new().help_mode_guide().is_none());
 }
+
+fn catchup_change(action: &str, ids: &[&str]) -> TodoChangeData {
+    TodoChangeData {
+        dry_run: false,
+        action: action.into(),
+        changed: ids.iter().map(|id| todo(id, "Pay water bill")).collect(),
+        unchanged: Vec::new(),
+        summary: String::new(),
+    }
+}
+
+#[test]
+fn undoing_a_catch_up_decision_puts_the_rows_back_undecided() {
+    for action in ["keep", "let_go"] {
+        let undo = crate::runner::todo_undo(&catchup_change(action, &["todo_a", "todo_b"]))
+            .unwrap_or_else(|| panic!("{action} offers undo"));
+        let mut app = todo_app(true);
+        app.set_pending_undo(undo);
+        app.pending_mutation_queue.clear();
+        press(&mut app, KeyCode::Char('u'));
+        assert!(
+            matches!(
+                queued(&app).as_slice(),
+                [Request::SetTodoCatchup {
+                    decision: TodoCatchupDecisionData::Undecide { todo_ids },
+                    dry_run: false,
+                    ..
+                }] if todo_ids == &["todo_a".to_string(), "todo_b".to_string()]
+            ),
+            "{action}: {:?}",
+            queued(&app)
+        );
+    }
+}

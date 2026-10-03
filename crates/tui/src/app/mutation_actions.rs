@@ -173,6 +173,19 @@ impl App {
                                 status,
                             );
                         }
+                        UndoAction::Catchup(todo_ids) => {
+                            self.queue_mutation(
+                                Request::SetTodoCatchup {
+                                    account_id: None,
+                                    decision: mxr_protocol::TodoCatchupDecisionData::Undecide {
+                                        todo_ids,
+                                    },
+                                    dry_run: false,
+                                },
+                                MutationEffect::Todo("Back in the catch-up".into()),
+                                status,
+                            );
+                        }
                         // Setting the previous kind again is the undo; its
                         // own answer offers no further undo.
                         UndoAction::SenderKind {

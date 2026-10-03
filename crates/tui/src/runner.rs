@@ -3791,19 +3791,22 @@ async fn fetch_todo_runway(
     Ok((runway, guide))
 }
 
-/// `u` for a to-do change that took rows off the runway: put them back.
-fn todo_undo(change: &mxr_protocol::TodoChangeData) -> Option<app::PendingUndo> {
+/// `u` for a to-do change: put the rows back. A catch-up decision goes
+/// back to undecided in the batch; anything else back on the runway.
+pub(crate) fn todo_undo(change: &mxr_protocol::TodoChangeData) -> Option<app::PendingUndo> {
     if change.dry_run || change.changed.is_empty() {
         return None;
     }
-    let verb_past = match change.action.as_str() {
-        "done" => "Ticked off",
-        "dismiss" => "Marked not a to-do",
-        "let_go" => "Let go of",
+    let ids: Vec<String> = change.changed.iter().map(|todo| todo.id.clone()).collect();
+    let (action, verb_past) = match change.action.as_str() {
+        "done" => (app::UndoAction::Todos(ids), "Ticked off"),
+        "dismiss" => (app::UndoAction::Todos(ids), "Marked not a to-do"),
+        "keep" => (app::UndoAction::Catchup(ids), "Kept"),
+        "let_go" => (app::UndoAction::Catchup(ids), "Let go of"),
         _ => return None,
     };
     Some(app::PendingUndo {
-        action: app::UndoAction::Todos(change.changed.iter().map(|todo| todo.id.clone()).collect()),
+        action,
         verb_past: verb_past.into(),
         count: u32::try_from(change.changed.len()).unwrap_or(u32::MAX),
         applied_at: std::time::Instant::now(),

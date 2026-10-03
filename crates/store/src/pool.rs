@@ -967,6 +967,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "mode_guide_seen",
         kind: MigrationKind::Sql(include_str!("../migrations/060_mode_guide_seen.sql")),
     },
+    Migration {
+        version: 61,
+        name: "mode_done",
+        kind: MigrationKind::Sql(include_str!("../migrations/061_mode_done.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

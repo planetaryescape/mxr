@@ -33,6 +33,7 @@ pub mod labels;
 pub mod llm;
 pub mod logs;
 pub mod modes;
+pub mod now;
 pub mod mutations;
 pub mod notify;
 pub mod owed;

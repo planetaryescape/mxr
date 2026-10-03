@@ -110,19 +110,36 @@ impl AccountKinds {
 }
 
 /// One message in a place, with its classification.
-struct Placed {
-    message: PlaceMessage,
-    kind: MailKindData,
+pub(super) struct Placed {
+    pub message: PlaceMessage,
+    pub kind: MailKindData,
 }
 
 /// The inbox mail of `accounts` (from `sender_email` only, when given)
-/// that belongs in `place`. Deliveries and invites have places of their own
-/// (and an invite may still need an answer), so they stay out, as they do
-/// from the desk's paper-trail count.
+/// that belongs in `place`.
 async fn place_messages(
     state: &AppState,
     accounts: &[AccountId],
     place: MailPlaceData,
+    sender_email: Option<&str>,
+) -> Result<Vec<Placed>, HandlerError> {
+    let kind = place_kind(place);
+    Ok(placed_inbox(state, accounts, sender_email)
+        .await?
+        .into_iter()
+        .filter(|placed| placed.kind.kind == kind)
+        .collect())
+}
+
+/// The inbox mail of `accounts` (from `sender_email` only, when given)
+/// that belongs in Reading or Paper trail, each with its kind, in one
+/// pass. Deliveries and invites have places of their own (and an invite
+/// may still need an answer), so they stay out, as they do from the
+/// desk's paper-trail count. The modes read Updates and Reading from here
+/// too, so a mode and its early view never disagree.
+pub(super) async fn placed_inbox(
+    state: &AppState,
+    accounts: &[AccountId],
     sender_email: Option<&str>,
 ) -> Result<Vec<Placed>, HandlerError> {
     let mut placed = Vec::new();
@@ -147,7 +164,10 @@ async fn place_messages(
             }
             // Classify first; only mail that stays gets its reason written.
             let signals = kinds.signals(&message);
-            if mail_kind::classify(&signals).kind.to_data() != place_kind(place) {
+            if !matches!(
+                mail_kind::classify(&signals).kind.to_data(),
+                SenderKindData::Reading | SenderKindData::PaperTrail
+            ) {
                 continue;
             }
             let kind = mail_kind::describe(&signals);
@@ -157,7 +177,7 @@ async fn place_messages(
     Ok(placed)
 }
 
-async fn scoped_accounts(
+pub(super) async fn scoped_accounts(
     state: &AppState,
     account_id: Option<&AccountId>,
 ) -> Result<Vec<AccountId>, HandlerError> {

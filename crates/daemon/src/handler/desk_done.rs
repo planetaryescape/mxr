@@ -489,7 +489,8 @@ async fn put_away(
     Ok(())
 }
 
-/// Undo's half for what Done changed beyond messages.
+/// Undo's half for what Done (the desk's, or a mode's) changed beyond
+/// messages.
 pub(super) async fn restore_desk_state(
     state: &AppState,
     desk: &DeskUndo,
@@ -498,6 +499,11 @@ pub(super) async fn restore_desk_state(
     state
         .store
         .put_back_desk_dismissals(&desk.dismissals)
+        .await?;
+    state.store.put_back_mode_done(&desk.mode_done).await?;
+    state
+        .store
+        .reopen_ticked_todos(&desk.todos_ticked, Utc::now())
         .await?;
     for commitment in &desk.commitments {
         state

@@ -241,7 +241,7 @@ async fn account_desk(
 
     let senders = Senders::load(state, account_id, &messages).await?;
     let is_self = self_matcher(state, account_id).await?;
-    let dismissed = store.desk_dismissals(account_id).await?;
+    let dismissed = super::modes::messages_dismissals(state, account_id).await?;
     let mut lanes = thread_lanes(&AccountInputs {
         account_id,
         messages: &messages,

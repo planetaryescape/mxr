@@ -32,6 +32,7 @@ pub struct MxrConfig {
     pub deliveries: DeliveriesConfig,
     pub notifications: NotificationConfig,
     pub todo: TodoConfig,
+    pub modes: ModesConfig,
 }
 
 /// Package/delivery tracking. Detection is local-first; the optional LLM
@@ -66,6 +67,24 @@ impl Default for TodoConfig {
         Self {
             enabled: true,
             catchup_days: 14,
+        }
+    }
+}
+
+/// The five modes (blueprint 22).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ModesConfig {
+    /// Done in the last mode holding a thread also archives it at the
+    /// provider. Off: done only leaves the mode, and archiving is its own
+    /// action.
+    pub archive_on_last_done: bool,
+}
+
+impl Default for ModesConfig {
+    fn default() -> Self {
+        Self {
+            archive_on_last_done: true,
         }
     }
 }

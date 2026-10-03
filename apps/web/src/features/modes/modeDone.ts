@@ -115,6 +115,9 @@ export async function markModeDone(
     const reverse = mutationId
       ? async () => {
           const undone = await performUndo(mutationId);
+          // The undo puts to-dos and done marks back too, which the mail
+          // refresh alone doesn't cover.
+          await refreshModes();
           if (undone) options.onUndone?.();
           return undone;
         }

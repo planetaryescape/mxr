@@ -212,21 +212,38 @@ async function starredIds(page: Page, threadId: string): Promise<string[]> {
 
 /**
  * An inbox row in the first rows that is starred by a message outside the
- * row's own list (the demo's "Launch checklist for
- * Project Aurora": an inbox message and a sent reply, both starred).
+ * row's own list (the demo's "Launch checklist for Project Aurora": an
+ * inbox message and a sent reply, both starred). Earlier specs can leave
+ * that thread changed, so when no row is in that state, this stars both
+ * messages of the first inbox row with a message outside its list.
  */
 async function starredOutsideTheList(page: Page): Promise<Row> {
-  const inbox = await bridge<{ mailbox: { groups: { rows: Row[] }[] } }>(
-    page,
-    "/api/v1/mail/mailbox?lens_kind=inbox&view=threads&limit=60&offset=0",
-  );
-  for (const row of inbox.mailbox.groups.flatMap((group) => group.rows)) {
+  const path = "/api/v1/mail/mailbox?lens_kind=inbox&view=threads&limit=60&offset=0";
+  const rows = async () =>
+    (await bridge<{ mailbox: { groups: { rows: Row[] }[] } }>(page, path)).mailbox.groups.flatMap(
+      (group) => group.rows,
+    );
+  for (const row of await rows()) {
     if (!row.starred) continue;
     const listed = new Set(row.message_ids ?? [row.id]);
     const starred = await starredIds(page, row.thread_id);
     if (starred.some((id) => !listed.has(id))) return row;
   }
-  throw new Error("the demo inbox has no conversation starred outside the list");
+  for (const row of await rows()) {
+    const listed = new Set(row.message_ids ?? [row.id]);
+    const thread = await bridge<{ messages: { id: string }[] }>(
+      page,
+      `/api/v1/mail/threads/${encodeURIComponent(row.thread_id)}`,
+    );
+    const outside = thread.messages.find((message) => !listed.has(message.id));
+    if (!outside) continue;
+    await bridge(page, "/api/v1/mail/mutations/star", {
+      message_ids: [...listed, outside.id],
+      starred: true,
+    });
+    return { ...row, starred: true };
+  }
+  throw new Error("the demo inbox has no conversation with a message outside its row");
 }
 
 /** To do's runway with `title` under the cursor, once the demo's first run has it. */

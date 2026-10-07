@@ -182,8 +182,9 @@ pub(crate) async fn begin_sync_pass(
             &account_id,
             &SyncRuntimeStatusUpdate {
                 last_attempt_at: Some(chrono::Utc::now()),
-                last_error: Some(None),
-                failure_class: Some(None),
+                // The last error stays until a pass succeeds: a retry that is
+                // running has not recovered, and a client polling mid-retry
+                // must not announce that it has.
                 sync_in_progress: Some(true),
                 current_cursor_summary: Some(Some(describe_sync_cursor(
                     provider.as_ref(),
@@ -2643,6 +2644,59 @@ mod tests {
             "condition not met within timeout; acquired={:?}",
             acquired.lock().expect("acquired lock")
         );
+    }
+
+    /// A retry that is still running has not recovered: the last error
+    /// stays until a sync succeeds, so a client polling mid-retry never
+    /// announces recovery early.
+    #[tokio::test]
+    async fn starting_a_retry_keeps_the_last_error_until_it_succeeds() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let provider = state.default_provider();
+        let account_id = provider.account_id().clone();
+        state
+            .store
+            .upsert_sync_runtime_status(
+                &account_id,
+                &SyncRuntimeStatusUpdate {
+                    last_error: Some(Some("Provider error: connection refused".into())),
+                    failure_class: Some(Some("network".into())),
+                    consecutive_failures: Some(2),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let pass = begin_sync_pass(&state, provider, None, SyncStarter::AccountLoop).await;
+        let status = state
+            .store
+            .get_sync_runtime_status(&account_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(status.sync_in_progress);
+        assert_eq!(
+            status.last_error.as_deref(),
+            Some("Provider error: connection refused")
+        );
+        assert_eq!(status.failure_class.as_deref(), Some("network"));
+
+        let outcome = mxr_sync::SyncOutcome {
+            synced_count: 0,
+            upserted_message_ids: Vec::new(),
+            deleted: Default::default(),
+            has_more: false,
+            threads_changed: Vec::new(),
+        };
+        let _ = finalize_sync_pass(pass, Ok(outcome)).await;
+        let status = state
+            .store
+            .get_sync_runtime_status(&account_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(status.last_error.is_none(), "a success clears it");
+        assert!(status.failure_class.is_none());
     }
 
     /// Stale `sync_in_progress=true` rows from a daemon that died

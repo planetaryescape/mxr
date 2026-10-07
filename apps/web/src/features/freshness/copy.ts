@@ -71,6 +71,16 @@ export function healthTone(health: SyncHealth): "ok" | "warn" | "bad" {
 }
 
 /**
+ * When a failing account tries again: "retrying now" while a retry runs or
+ * is due, "retrying 9:50 AM" when one is scheduled.
+ */
+function retrying(account: AccountFreshness, now: Date): string | null {
+  const retryAt = account.last_sync_error?.retry_at;
+  if (account.sync_in_progress || (retryAt && new Date(retryAt) <= now)) return "retrying now";
+  return retryAt ? `retrying ${formatTime(new Date(retryAt))}` : null;
+}
+
+/**
  * One account's sync line: "synced 2m ago", "Gmail paused: rate limited,
  * retrying 9:50 AM", "Last sync 2h ago".
  */
@@ -87,12 +97,8 @@ export function syncLine(account: AccountFreshness, staleAfterSecs: number, now:
     case "stale":
       return lastOk ? `Last sync ${lastOk}` : "not synced yet";
     case "paused": {
-      const retry = account.last_sync_error?.retry_at;
-      if (!retry) return `${label} paused: rate limited`;
-      const at = new Date(retry);
-      return at > now
-        ? `${label} paused: rate limited, retrying ${formatTime(at)}`
-        : `${label} paused: rate limited, retrying now`;
+      const retry = retrying(account, now);
+      return retry ? `${label} paused: rate limited, ${retry}` : `${label} paused: rate limited`;
     }
     case "failing": {
       const kind = account.last_sync_error?.kind ?? "unknown";
@@ -103,9 +109,8 @@ export function syncLine(account: AccountFreshness, staleAfterSecs: number, now:
           : kind === "offline"
             ? "unreachable"
             : "sync failing";
-      const retry = account.last_sync_error?.retry_at;
-      if (retry && new Date(retry) > now)
-        return `${label} ${what}, retrying ${formatTime(new Date(retry))}`;
+      const retry = retrying(account, now);
+      if (retry) return `${label} ${what}, ${retry}`;
       return lastOk ? `${label} ${what}, last sync ${lastOk}` : `${label} ${what}`;
     }
   }
@@ -129,9 +134,7 @@ export function senderName(arrival: Arrival): string {
  */
 export function shortHealth(account: AccountFreshness, staleAfterSecs: number, now: Date): string {
   const lastOk = account.last_sync_ok_at ? ago(account.last_sync_ok_at, now) : null;
-  const retry = account.last_sync_error?.retry_at;
-  const retrying =
-    retry && new Date(retry) > now ? `retrying ${formatTime(new Date(retry))}` : null;
+  const retry = retrying(account, now);
   switch (effectiveHealth(account, staleAfterSecs, now)) {
     case "ok":
       return lastOk ? `Synced ${lastOk}` : "Synced";
@@ -142,10 +145,10 @@ export function shortHealth(account: AccountFreshness, staleAfterSecs: number, n
     case "stale":
       return lastOk ? `Last sync ${lastOk}` : "Not synced yet";
     case "paused":
-      return retrying ? `Rate limited, ${retrying}` : "Rate limited";
+      return retry ? `Rate limited, ${retry}` : "Rate limited";
     case "failing":
       if (account.last_sync_error?.kind === "auth") return "Signed out";
-      return retrying ? `Can't sync, ${retrying}` : "Can't sync";
+      return retry ? `Can't sync, ${retry}` : "Can't sync";
   }
 }
 

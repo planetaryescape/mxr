@@ -90,6 +90,16 @@ describe("freshness words", () => {
     expect(syncLine(retrying, 900, now)).toMatch(/^Gmail unreachable, retrying 9:43/);
   });
 
+  test("a retry that is running says so and stays a warning", () => {
+    const running = account({
+      health: "failing",
+      sync_in_progress: true,
+      last_sync_error: { kind: "offline", message: "dns", consecutive_failures: 2 },
+    });
+    expect(syncLine(running, 900, now)).toBe("Gmail unreachable, retrying now");
+    expect(healthTone(effectiveHealth(running, 900, now))).toBe("bad");
+  });
+
   test("all accounts shows the worst sync state", () => {
     const failing = account({ account_id: "acct-2", health: "failing" });
     const data: Freshness = {

@@ -199,6 +199,26 @@ pub mod freshness_copy {
         )
     }
 
+    /// When a failing account tries again: "retrying now" while a retry
+    /// runs or is due, "retrying 09:50" when one is scheduled.
+    fn retrying<Tz: TimeZone>(
+        account: &AccountFreshnessData,
+        now: DateTime<Utc>,
+        tz: &Tz,
+    ) -> Option<String>
+    where
+        Tz::Offset: std::fmt::Display,
+    {
+        let retry_at = account
+            .last_sync_error
+            .as_ref()
+            .and_then(|error| error.retry_at);
+        if account.sync_in_progress || retry_at.is_some_and(|at| at <= now) {
+            return Some("retrying now".to_string());
+        }
+        retry_at.map(|at| format!("retrying {}", at.with_timezone(tz).format("%H:%M")))
+    }
+
     /// One account's sync line at `now`, with clock times in `tz`:
     /// "synced 2m ago", "Gmail paused: rate limited, retrying 09:50",
     /// "Last sync 2h ago".
@@ -224,20 +244,10 @@ pub mod freshness_copy {
                 Some(age) => format!("Last sync {age}"),
                 None => "not synced yet".to_string(),
             },
-            SyncHealthData::Paused => {
-                let retry = account
-                    .last_sync_error
-                    .as_ref()
-                    .and_then(|error| error.retry_at);
-                match retry {
-                    Some(at) if at > now => format!(
-                        "{label} paused: rate limited, retrying {}",
-                        at.with_timezone(tz).format("%H:%M")
-                    ),
-                    Some(_) => format!("{label} paused: rate limited, retrying now"),
-                    None => format!("{label} paused: rate limited"),
-                }
-            }
+            SyncHealthData::Paused => match retrying(account, now, tz) {
+                Some(retry) => format!("{label} paused: rate limited, {retry}"),
+                None => format!("{label} paused: rate limited"),
+            },
             SyncHealthData::Failing => {
                 let kind = account
                     .last_sync_error
@@ -253,16 +263,8 @@ pub mod freshness_copy {
                     | SyncErrorKindData::Store
                     | SyncErrorKindData::Unknown => "sync failing",
                 };
-                let retry = account
-                    .last_sync_error
-                    .as_ref()
-                    .and_then(|error| error.retry_at)
-                    .filter(|at| *at > now);
-                match (retry, last_ok) {
-                    (Some(at), _) => format!(
-                        "{label} {what}, retrying {}",
-                        at.with_timezone(tz).format("%H:%M")
-                    ),
+                match (retrying(account, now, tz), last_ok) {
+                    (Some(retry), _) => format!("{label} {what}, {retry}"),
                     (None, Some(age)) => format!("{label} {what}, last sync {age}"),
                     (None, None) => format!("{label} {what}"),
                 }
@@ -359,6 +361,24 @@ mod tests {
             sync_line(&offline, 900, now, &Utc),
             "Gmail unreachable, retrying 09:43"
         );
+    }
+
+    #[test]
+    fn a_retry_that_is_running_says_so_and_stays_a_warning() {
+        let now = Utc::now();
+        let mut retrying = account(SyncHealthData::Failing, Some(now - Duration::minutes(12)));
+        retrying.sync_in_progress = true;
+        retrying.last_sync_error = Some(SyncErrorData {
+            kind: SyncErrorKindData::Offline,
+            message: "dns".into(),
+            retry_at: Some(now - Duration::minutes(1)),
+            consecutive_failures: 2,
+        });
+        assert_eq!(
+            sync_line(&retrying, 900, now, &Utc),
+            "Gmail unreachable, retrying now"
+        );
+        assert!(!retrying.effective_health(now, 900).is_calm());
     }
 
     #[test]

@@ -117,6 +117,14 @@ describe("account sync health", () => {
     });
   });
 
+  test("a retry that is still running is not a recovery", () => {
+    query.data = reply(offline);
+    const { rerender } = renderHook(() => useSyncHealthToasts());
+    query.data = reply({ ...offline, sync_in_progress: true });
+    rerender();
+    expect(toastMock.success).not.toHaveBeenCalled();
+  });
+
   test("an account already failing when the app opens does not toast", () => {
     query.data = reply(offline);
     renderHook(() => useSyncHealthToasts());

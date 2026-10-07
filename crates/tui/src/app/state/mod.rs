@@ -55,12 +55,14 @@ pub use modals::{
     SnoozePanelState, SnoozePreset, StoredDraftOperation, ThreadSummaryModalState, UserError,
     UserErrorSeverity, WhoisModalState, SNOOZE_PRESETS, USER_ERROR_LOG_CAPACITY, WARN_STATUS_TTL,
 };
-pub use now::{NowPageState, NowRow};
+pub use now::{NowDigestPreview, NowPageState, NowRow};
 pub use reading::{
     ReadingConfirm, ReadingPageState, ReadingRow, ReadingUnsubscribeTarget, ReadingView,
     READING_LINKS_SHOWN,
 };
-pub use records::{PassMenu, RecordFixPrompt, RecordsPageState, RECORD_KIND_CHIPS};
+pub use records::{
+    PassMenu, RecordFixPrompt, RecordsPageState, RECORD_KIND_CHIPS, SUBSCRIPTIONS_CHIP,
+};
 pub use rules::{RuleFormState, RulesPageState, RulesPanel, RulesState};
 pub use search::{
     PendingSearchCountRequest, PendingSearchDebounce, PendingSearchRequest, SearchPageState,

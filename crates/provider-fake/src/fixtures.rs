@@ -7,6 +7,7 @@ mod messages_demo;
 mod modes_demo;
 mod reading_demo;
 mod records_demo;
+mod subscriptions_demo;
 mod todo_demo;
 mod updates_demo;
 
@@ -798,6 +799,7 @@ impl DemoFixtureStream {
                 + records_demo::RECORDS_DEMO_MESSAGE_COUNT
                 + reading_demo::READING_DEMO_MESSAGE_COUNT
                 + updates_demo::UPDATES_DEMO_MESSAGE_COUNT
+                + subscriptions_demo::SUBSCRIPTIONS_DEMO_MESSAGE_COUNT
         } else {
             0
         };
@@ -884,8 +886,8 @@ impl DemoFixtureStream {
 
     /// Shipping mail, then To do mail, then the modes' landlord and new
     /// sender, then Messages' people, then the mail Archive files as
-    /// records, then a day of notifications: the seeded messages at the
-    /// head of the personal account.
+    /// records, Reading, and Updates, then the receipts that recur as
+    /// subscriptions: the seeded messages at the head of the personal account.
     fn delivery_messages(&self) -> Vec<(Envelope, MessageBody)> {
         let mut messages = delivery_demo_messages(&self.account_id, &self.self_addr, self.now);
         messages.extend(todo_demo::todo_demo_messages(
@@ -919,6 +921,12 @@ impl DemoFixtureStream {
             messages.len() + 1,
         ));
         messages.extend(updates_demo::updates_demo_messages(
+            &self.account_id,
+            &self.self_addr,
+            self.now,
+            messages.len() + 1,
+        ));
+        messages.extend(subscriptions_demo::subscriptions_demo_messages(
             &self.account_id,
             &self.self_addr,
             self.now,

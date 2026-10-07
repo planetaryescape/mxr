@@ -28,4 +28,5 @@ tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
+chrono-tz = { workspace = true }
 tokio = { workspace = true }

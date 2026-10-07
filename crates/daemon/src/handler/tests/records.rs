@@ -12,7 +12,7 @@ use mxr_protocol::{
     RecordFilterData, RecordKindData, RecordLedgerData, TodoStateActionData,
 };
 
-async fn put(
+pub(super) async fn put(
     fx: &Fixture,
     from: (&str, &str),
     subject: &str,

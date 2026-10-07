@@ -62,6 +62,9 @@ async fn record_routes_forward_their_requests() {
         client
             .post(format!("http://{addr}/api/v1/mail/records/export"))
             .json(&serde_json::json!({ "filter": { "year": 2025 }, "dry_run": true })),
+        client.get(format!(
+            "http://{addr}/api/v1/mail/records/subscriptions?account={account}"
+        )),
     ] {
         let response = request.bearer_auth(TEST_AUTH_TOKEN).send().await.unwrap();
         assert_eq!(response.status(), reqwest::StatusCode::OK);
@@ -104,6 +107,10 @@ async fn record_routes_forward_their_requests() {
         &seen[7],
         Request::ExportRecords { filter, dry_run: true, attachments_dir: None, .. } if filter.year == Some(2025)
     ));
+    assert!(matches!(
+        &seen[8],
+        Request::ListRecordSubscriptions { account_id: Some(id) } if *id == account
+    ));
 }
 
 #[tokio::test]
@@ -113,6 +120,9 @@ async fn record_routes_reject_bad_input_before_the_daemon() {
     for request in [
         client.get(format!("http://{addr}/api/v1/mail/records?kind=parcel")),
         client.get(format!("http://{addr}/api/v1/mail/records/answer?q=%20")),
+        client.get(format!(
+            "http://{addr}/api/v1/mail/records/subscriptions?account=not-an-id"
+        )),
         client
             .post(format!("http://{addr}/api/v1/mail/records/dismiss"))
             .json(&serde_json::json!({ "record_ids": [] })),

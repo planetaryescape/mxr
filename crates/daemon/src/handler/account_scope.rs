@@ -168,6 +168,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ListMessages { account_id, .. }
         | Request::ListMergeSuggestions { account_id }
         | Request::ListRecords { account_id, .. }
+        | Request::ListRecordSubscriptions { account_id }
         | Request::AnswerFromRecords { account_id, .. }
         | Request::ExportRecords { account_id, .. }
         | Request::ListPlace { account_id, .. }

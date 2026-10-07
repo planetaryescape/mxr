@@ -75,6 +75,16 @@ pub async fn run(
                 }
             }
         }
+        RecordsAction::Subscriptions => {
+            let data = expect_data!(
+                client
+                    .request(Request::ListRecordSubscriptions { account_id })
+                    .await?,
+                RecordSubscriptions,
+                subscriptions
+            );
+            super::record_subscriptions::print(&data, format)
+        }
         RecordsAction::Show { record_id } => {
             let record = expect_data!(
                 client.request(Request::GetRecord { record_id }).await?,

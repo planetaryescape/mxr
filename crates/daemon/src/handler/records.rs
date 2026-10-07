@@ -104,7 +104,8 @@ async fn reindex_record_sources(state: &AppState, message_ids: &[MessageId]) {
 }
 
 /// One background tick: advance each account's first run, file delivered
-/// orders, then prefetch record PDFs within the budget. Returns whether a
+/// orders, add yearly subscriptions' renewal to-dos, then prefetch record
+/// PDFs within the budget. Returns whether a
 /// first run is still going, so the loop can come back sooner.
 pub(crate) async fn tick(state: &AppState, now: DateTime<Utc>) -> Result<bool, HandlerError> {
     if !enabled(state) {
@@ -131,6 +132,11 @@ pub(crate) async fn tick(state: &AppState, now: DateTime<Utc>) -> Result<bool, H
                 .await
                 .map_err(|error| HandlerError::Message(error.to_string()))?;
         }
+    }
+    match super::record_subscriptions::file_renewals(state, now).await {
+        Ok(0) => {}
+        Ok(written) => tracing::debug!(written, "subscription renewals filed in To do"),
+        Err(error) => tracing::warn!(%error, "filing subscription renewals failed"),
     }
     prefetch_pdfs(state).await;
     Ok(in_progress)
@@ -274,8 +280,8 @@ pub(crate) async fn unfile_todos(state: &AppState, todos: &[TodoRecord]) {
     }
 }
 
-/// Records with a moment soon, soonest first, at most `cap`: the strip on
-/// Archive and the line on Now.
+/// Subscription signals, then records with a moment soon, soonest first,
+/// at most `cap`: the strip on Archive and the line on Now.
 pub(super) async fn coming_up(
     state: &AppState,
     accounts: &[AccountId],
@@ -297,13 +303,21 @@ pub(super) async fn coming_up(
         .into_iter()
         .map(|g| (g.id.clone(), g))
         .collect();
-    Ok(
+    // A price change or a missed charge leads: it may want doing
+    // something about, where a moment only wants knowing. Signals leave
+    // one place for a moment, so a trip tomorrow is never crowded out.
+    let moments: Vec<RecordMomentData> =
         mxr_records::coming_up::moments(&records, &groups, now, &Local)
             .into_iter()
-            .take(cap)
             .map(moment_data)
-            .collect(),
-    )
+            .collect();
+    let mut out = super::record_subscriptions::signal_moments(state, accounts, now).await?;
+    if !moments.is_empty() {
+        out.truncate(cap.saturating_sub(1));
+    }
+    out.extend(moments);
+    out.truncate(cap);
+    Ok(out)
 }
 
 fn moment_data(moment: mxr_records::coming_up::Moment) -> RecordMomentData {
@@ -477,7 +491,7 @@ fn short_day(at: DateTime<Utc>) -> String {
     }
 }
 
-fn amount_data(minor: i64, currency: &str) -> RecordAmountData {
+pub(super) fn amount_data(minor: i64, currency: &str) -> RecordAmountData {
     RecordAmountData {
         minor,
         currency: currency.to_string(),
@@ -927,10 +941,12 @@ pub(super) async fn list_records(
         .min(matching.len());
     let page = &matching[start..end];
     let ctx = Context::load(state, page, Some(&accounts)).await?;
-    let coming_up = mxr_records::coming_up::moments(&all, &ctx.groups, now, &Local)
-        .into_iter()
-        .map(moment_data)
-        .collect();
+    let mut coming_up = super::record_subscriptions::signal_moments(state, &accounts, now).await?;
+    coming_up.extend(
+        mxr_records::coming_up::moments(&all, &ctx.groups, now, &Local)
+            .into_iter()
+            .map(moment_data),
+    );
     let issuer = filter.issuer.as_ref().and_then(|_| {
         let first = matching.first()?;
         Some(RecordIssuerData {

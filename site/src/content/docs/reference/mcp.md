@@ -64,6 +64,7 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_corrections`: every move, sender mode and Not-sure answer
 - `mxr_records`
 - `mxr_records_ask`
+- `mxr_records_subscriptions`
 - `mxr_records_export_preview`
 - `mxr_updates_digest`
 - `mxr_updates_let_go_preview`
@@ -102,7 +103,10 @@ is checked. `mxr_records_ask` answers a query such as "lisbon booking ref"
 with the field from record data, and falls back to a citation-checked answer
 over all mail only when no record matches (`fallback = false` turns that
 off). `mxr_records_export_preview` reports what a CSV export would hold: rows,
-total per currency, unchecked rows and missing PDFs. All three are
+total per currency, unchecked rows and missing PDFs.
+`mxr_records_subscriptions` lists the subscriptions found in the receipts and
+invoices (`account_id`): cadence, amount, next charge, yearly cost, status,
+price changes, each charge, signals and totals per currency. All four are
 read-only; corrections and the export itself happen in `mxr records` or the
 apps.
 `mxr_updates_digest` returns the [Updates](/guides/updates/) briefing at the

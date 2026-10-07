@@ -59,6 +59,7 @@ pub(crate) mod places;
 mod platform;
 mod promises;
 pub(crate) mod reading;
+pub(crate) mod record_subscriptions;
 pub(crate) mod records;
 mod relationship_profile;
 pub(crate) mod reply_later;
@@ -1359,6 +1360,9 @@ async fn dispatch(
             limit,
             offset,
         } => records::list_records(state, account_id.as_ref(), filter, *limit, *offset).await,
+        Request::ListRecordSubscriptions { account_id } => {
+            record_subscriptions::list(state, account_id.as_ref()).await
+        }
         Request::GetRecord { record_id } => records::get_record(state, record_id).await,
         Request::AnswerFromRecords {
             query,
@@ -1990,6 +1994,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetTodoCatchup { .. }
         | Request::GetModeGuide { .. }
         | Request::ListRecords { .. }
+        | Request::ListRecordSubscriptions { .. }
         | Request::GetRecord { .. }
         | Request::AnswerFromRecords { .. }
         | Request::ExportRecords { .. }
@@ -2441,6 +2446,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetModeGuide { .. } => "get_mode_guide",
         Request::SetHintSeen { .. } => "set_hint_seen",
         Request::ListRecords { .. } => "list_records",
+        Request::ListRecordSubscriptions { .. } => "list_record_subscriptions",
         Request::GetRecord { .. } => "get_record",
         Request::AnswerFromRecords { .. } => "answer_from_records",
         Request::SetRecordField { .. } => "set_record_field",
@@ -2521,6 +2527,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ScanDeliveries { account_id, .. }
         | Request::GetTodoRunway { account_id, .. }
         | Request::ListTodos { account_id, .. }
+        | Request::ListRecordSubscriptions { account_id }
         | Request::GetTodoCatchup { account_id }
         | Request::GetNow { account_id }
         | Request::GetArrivals { account_id, .. }

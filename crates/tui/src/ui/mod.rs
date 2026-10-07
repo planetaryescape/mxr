@@ -46,6 +46,7 @@ pub mod sidebar;
 pub mod snippets_modal;
 pub mod snooze_modal;
 pub mod status_bar;
+pub mod subscriptions_lens;
 pub mod subscriptions_page;
 pub mod summary_modal;
 pub mod thread_context_view;

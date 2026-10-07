@@ -807,6 +807,7 @@ pub fn map_request(
             );
         }
         Request::ListRecords { .. }
+        | Request::ListRecordSubscriptions { .. }
         | Request::GetRecord { .. }
         | Request::AnswerFromRecords { .. }
         | Request::SetRecordField { .. }

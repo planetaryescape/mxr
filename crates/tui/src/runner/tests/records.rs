@@ -3,6 +3,7 @@
 //! conversation previews filing it before anything is written.
 
 use super::*;
+use crate::app::RECORD_KIND_CHIPS;
 use crate::ui::records_lens::tests::{apple, dell, lisbon_answer, octopus_list, page};
 use mxr_protocol::{RecordChangeData, RecordEditData, RecordUndoData};
 
@@ -305,4 +306,56 @@ fn the_first_answer_carries_its_hint_and_help_leads_with_archive() {
     assert!(app.active_hint().is_none());
     let guide = app.help_mode_guide().expect("Archive's guide");
     assert_eq!(guide.mode, "archive");
+}
+
+#[test]
+fn g_f_reaches_subscriptions_and_their_keys_act_on_the_subscription() {
+    let mut app = archive_app();
+    for _ in 0..RECORD_KIND_CHIPS.len() - 1 {
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+        press(&mut app, KeyCode::Char('f'));
+    }
+    assert!(app.mailbox.records_page.showing_subscriptions());
+    assert!(
+        app.mailbox.records_page.pending_refresh,
+        "the subscriptions load with the ledger"
+    );
+    app.set_record_subscriptions(crate::ui::records_lens::tests::subscriptions());
+    assert_eq!(app.mailbox.records_page.row_count(), 2);
+    assert!(
+        app.focused_record().is_none(),
+        "record keys never act on a hidden ledger row"
+    );
+
+    press(&mut app, KeyCode::Enter);
+    assert!(app.mailbox.records_page.subscription_open);
+    press(&mut app, KeyCode::Char('o'));
+    assert!(app.mailbox.records_page.pending_open.is_some());
+    press_shifted(&mut app, 'Y');
+    assert_eq!(
+        app.mailbox.records_page.last_copied.as_deref(),
+        Some("12.99")
+    );
+    press(&mut app, KeyCode::Esc);
+    assert!(!app.mailbox.records_page.subscription_open);
+    press(&mut app, KeyCode::Char('j'));
+    assert_eq!(
+        app.selected_subscription().map(|s| s.id.as_str()),
+        Some("sub_disney")
+    );
+    press(&mut app, KeyCode::Char('p'));
+    assert!(!app.mailbox.records_page.showing_subscriptions());
+    assert_eq!(
+        app.mailbox.records_page.filter.issuer.as_deref(),
+        Some("Disney+")
+    );
+
+    // Esc from the list goes back to every record.
+    for _ in 0..RECORD_KIND_CHIPS.len() - 1 {
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+        press(&mut app, KeyCode::Char('f'));
+    }
+    assert!(app.mailbox.records_page.showing_subscriptions());
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.mailbox.records_page.kind_chip, 0);
 }

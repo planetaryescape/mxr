@@ -22,12 +22,15 @@ export type RecordKind = Schemas["RecordKindData"];
 export type RecordFilter = Schemas["RecordFilterData"];
 export type RecordEdit = Schemas["RecordEditData"];
 export type RecordMonth = Schemas["RecordMonthData"];
+export type RecordSubscriptions = Schemas["RecordSubscriptionsData"];
+export type RecordSubscription = Schemas["RecordSubscriptionData"];
 
 type Ledger = Extract<Schemas["ResponseData"], { kind: "RecordLedger" }>;
 type One = Extract<Schemas["ResponseData"], { kind: "Record" }>;
 type Answer = Extract<Schemas["ResponseData"], { kind: "RecordAnswer" }>;
 type Change = Extract<Schemas["ResponseData"], { kind: "RecordChange" }>;
 type Export = Extract<Schemas["ResponseData"], { kind: "RecordExport" }>;
+type Subscriptions = Extract<Schemas["ResponseData"], { kind: "RecordSubscriptions" }>;
 
 /** Every Archive query starts with this, so one invalidation refreshes them. */
 export const RECORDS_KEY = ["records"] as const;
@@ -92,6 +95,29 @@ export function useLedger(filter: RecordFilter, limit?: number, enabled = true) 
     placeholderData: keepWithinAccount<RecordLedger>(account ?? "all"),
     staleTime: 15_000,
     // Records file in the background after sync and on the first run.
+    refetchInterval: 30_000,
+  });
+}
+
+export async function fetchSubscriptions(account: string | null): Promise<RecordSubscriptions> {
+  const query = account ? `?${new URLSearchParams({ account }).toString()}` : "";
+  const answer = await apiFetch<Subscriptions>(`/api/v1/mail/records/subscriptions${query}`);
+  return answer.subscriptions;
+}
+
+/**
+ * Subscriptions: the daemon works them out from the records on each call,
+ * so they follow a correction to a record without anything to invalidate
+ * beyond `RECORDS_KEY`.
+ */
+export function useSubscriptions(enabled = true) {
+  const account = useUiPrefs((s) => s.accountScope);
+  return useQuery({
+    queryKey: [...RECORDS_KEY, "subscriptions", account ?? "all"],
+    queryFn: () => fetchSubscriptions(account),
+    enabled,
+    placeholderData: keepWithinAccount<RecordSubscriptions>(account ?? "all"),
+    staleTime: 15_000,
     refetchInterval: 30_000,
   });
 }

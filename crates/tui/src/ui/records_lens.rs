@@ -470,6 +470,17 @@ fn ledger_body(view: &RecordsView<'_>, width: usize, theme: &crate::theme::Theme
         body.lines.push(Line::from(""));
     }
     body.lines.push(chips_line(page, theme));
+    if page.showing_subscriptions() {
+        let (lines, selected) = crate::ui::subscriptions_lens::lines(
+            page.subscriptions.as_ref(),
+            view.selected_index,
+            width,
+            theme,
+        );
+        body.selected_line = body.lines.len() + selected;
+        body.lines.extend(lines);
+        return body;
+    }
     if let Some(issuer) = &ledger.issuer {
         let totals: Vec<String> = issuer
             .totals
@@ -574,6 +585,10 @@ fn keys_line(page: &RecordsPageState) -> String {
     if page.asking {
         return "Type what you remember  \u{21b5} ask  Esc stop typing".to_string();
     }
+    if page.showing_subscriptions() {
+        return "\u{21b5} card  o email  p issuer  Y copy amount  g f kind  Esc all records"
+            .to_string();
+    }
     let keys: Vec<String> = match &page.guide {
         Some(guide) => guide
             .keys
@@ -621,10 +636,18 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &RecordsView<'_>, theme: &crate
             ..inner
         },
     );
-    let selected = view.page.rows().get(view.selected_index);
-    let why = selected
-        .map(|record| one_line(&record.why))
-        .unwrap_or_default();
+    let why = if view.page.showing_subscriptions() {
+        view.page
+            .subscription_rows()
+            .get(view.selected_index)
+            .map(|subscription| one_line(&subscription.why))
+    } else {
+        view.page
+            .rows()
+            .get(view.selected_index)
+            .map(|record| one_line(&record.why))
+    }
+    .unwrap_or_default();
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(Span::styled(
@@ -648,6 +671,11 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &RecordsView<'_>, theme: &crate
 
     if let Some(record) = &view.page.card {
         draw_card(frame, area, record, theme);
+    }
+    if view.page.subscription_open && view.page.showing_subscriptions() {
+        if let Some(subscription) = view.page.subscription_rows().get(view.selected_index) {
+            crate::ui::subscriptions_lens::draw_card(frame, area, subscription, theme);
+        }
     }
     if let Some(export) = &view.page.export_preview {
         draw_export_preview(frame, area, export, theme);

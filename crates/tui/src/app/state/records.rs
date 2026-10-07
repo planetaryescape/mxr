@@ -1,6 +1,7 @@
 //! Archive in the TUI: the ledger the daemon serves (`ListRecords`), the
 //! answer box (`AnswerFromRecords`), a record's card (`GetRecord`), the
-//! export preview and the mode's teaching copy. The daemon owns every
+//! subscriptions (`ListRecordSubscriptions`), the export preview and the
+//! mode's teaching copy. The daemon owns every
 //! record, total and label; this state only holds what came back and what
 //! the user is doing with it.
 
@@ -8,10 +9,14 @@ use mxr_core::id::MessageId;
 use mxr_protocol::{
     ModeGuideData, RecordAnswerData, RecordAnswerListData, RecordChangeData, RecordData,
     RecordEditData, RecordExportData, RecordFilterData, RecordKindData, RecordLedgerData,
+    RecordSubscriptionData, RecordSubscriptionsData,
 };
 
+/// The chip that swaps the ledger for the subscriptions.
+pub const SUBSCRIPTIONS_CHIP: &str = "subscriptions";
+
 /// The kind chips under the answer box, in order. `g f` steps through
-/// them; the first shows every kind.
+/// them; the first shows every kind, the last the subscriptions.
 pub const RECORD_KIND_CHIPS: &[(&str, &[RecordKindData])] = &[
     ("all", &[]),
     ("receipts", &[RecordKindData::Receipt]),
@@ -29,6 +34,7 @@ pub const RECORD_KIND_CHIPS: &[(&str, &[RecordKindData])] = &[
             RecordKindData::Account,
         ],
     ),
+    (SUBSCRIPTIONS_CHIP, &[]),
 ];
 
 /// The `,` prompt: `field=value`, previewed by the daemon before it is
@@ -74,6 +80,10 @@ pub struct RecordsPageState {
     /// The export's dry run, waiting for Enter or Esc.
     pub export_preview: Option<RecordExportData>,
     pub pass_menu: Option<PassMenu>,
+    /// The subscriptions, while their chip is on.
+    pub subscriptions: Option<RecordSubscriptionsData>,
+    /// The selected subscription's card is open over the list.
+    pub subscription_open: bool,
     /// What `y` or `Y` last copied, said back in the status line.
     pub last_copied: Option<String>,
     // Work for the runtime.
@@ -92,6 +102,9 @@ impl RecordsPageState {
     /// The rows on screen, newest first: a list answer's matches while one
     /// is showing, else the ledger's.
     pub fn rows(&self) -> &[RecordData] {
+        if self.showing_subscriptions() {
+            return &[];
+        }
         if let Some(list) = self.listed_matches() {
             return list.records.as_slice();
         }
@@ -108,7 +121,23 @@ impl RecordsPageState {
     }
 
     pub fn row_count(&self) -> usize {
+        if self.showing_subscriptions() {
+            return self.subscription_rows().len();
+        }
         self.rows().len()
+    }
+
+    pub fn showing_subscriptions(&self) -> bool {
+        RECORD_KIND_CHIPS
+            .get(self.kind_chip)
+            .is_some_and(|chip| chip.0 == SUBSCRIPTIONS_CHIP)
+    }
+
+    /// Live subscriptions first, then ended, as the daemon ordered them.
+    pub fn subscription_rows(&self) -> &[RecordSubscriptionData] {
+        self.subscriptions
+            .as_ref()
+            .map_or(&[][..], |data| data.subscriptions.as_slice())
     }
 
     /// The record an answer card is about, while one is on screen. A list

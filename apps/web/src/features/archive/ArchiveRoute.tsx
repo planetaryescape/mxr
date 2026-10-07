@@ -28,10 +28,12 @@ import {
   useAnswer,
   useLedger,
   useRecord,
+  useSubscriptions,
   type RecordData,
   type RecordAnswer,
   type RecordFilter,
   type RecordLedger,
+  type RecordSubscription,
 } from "./api";
 import {
   copyAmount,
@@ -44,8 +46,15 @@ import {
 import { FacetsPanel } from "./FacetsPanel";
 import { activeChip, answerList, groupByMonth, KIND_CHIPS, stepYear } from "./ledger";
 import { AnswerCard, LedgerRow, MatchesHeader, RecordCard } from "./RecordParts";
+import { SubscriptionCard, SubscriptionsList } from "./Subscriptions";
+import { subscriptionAmountCopy } from "./subscriptionRows";
 
 const PAGE = 200;
+/** The ledger of records, or the subscriptions found in them. */
+type ArchiveSection = "ledger" | "subscriptions";
+
+/** Coming-up kinds that are about a subscription, not a dated record. */
+const SUBSCRIPTION_SIGNALS = new Set(["price_change", "missed_charge"]);
 /** The record card beside the ledger. */
 const CARD_PANE_SIZE = { defaultSize: "38%", minSize: "20rem", maxSize: "36rem" };
 
@@ -77,6 +86,7 @@ function useDebounced(value: string, ms: number): string {
 function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
   const account = useUiPrefs((s) => s.accountScope);
   const [filter, setFilter] = useState<RecordFilter>({});
+  const [section, setSection] = useState<ArchiveSection>("ledger");
   const [limit, setLimit] = useState(PAGE);
   const ledger = useLedger(filter, limit);
   const guide = useModeGuide("archive");
@@ -130,7 +140,10 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
           setFilter={(next) => {
             setFilter(next);
             setLimit(PAGE);
+            setSection("ledger");
           }}
+          section={section}
+          setSection={setSection}
           query={query}
           setQuery={(next) => {
             setQuery(next);
@@ -189,6 +202,8 @@ interface LedgerProps {
   account: string | null;
   filter: RecordFilter;
   setFilter: (filter: RecordFilter) => void;
+  section: ArchiveSection;
+  setSection: (section: ArchiveSection) => void;
   query: string;
   setQuery: (query: string) => void;
   answer?: RecordAnswer;
@@ -207,6 +222,8 @@ function Ledger({
   account,
   filter,
   setFilter,
+  section,
+  setSection,
   query,
   setQuery,
   answer,
@@ -240,10 +257,29 @@ function Ledger({
   const rowRecord: RecordData | undefined = records[index];
   const answerRecord = list ? undefined : answer?.answer?.record;
   const current = onAnswer && answerRecord ? answerRecord : rowRecord;
-  const full = useRecord(singlePane && !cardOpen ? null : (current?.id ?? null));
+  const showingSubscriptions = section === "subscriptions";
+  const full = useRecord(
+    showingSubscriptions || (singlePane && !cardOpen) ? null : (current?.id ?? null),
+  );
   const cardRecord = full.data && full.data.id === current?.id ? full.data : current;
+  const subscriptions = useSubscriptions(showingSubscriptions);
+  // The daemon sends live ones before ended ones, the order they are drawn.
+  const subscriptionRows = useMemo(
+    () => subscriptions.data?.subscriptions ?? [],
+    [subscriptions.data],
+  );
+  const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
+  const subscriptionIndex = Math.max(
+    0,
+    subscriptionRows.findIndex((row) => row.id === subscriptionId),
+  );
+  const subscription: RecordSubscription | undefined = subscriptionRows[subscriptionIndex];
   const showSideCard = !singlePane && !params.threadId && cardRecord;
-  const pane = useSplitPane("archive-card", CARD_PANE_SIZE, { active: Boolean(showSideCard) });
+  const showSideSubscription =
+    !singlePane && !params.threadId && showingSubscriptions && Boolean(subscription);
+  const pane = useSplitPane("archive-card", CARD_PANE_SIZE, {
+    active: Boolean(showSideCard) || showSideSubscription,
+  });
 
   // A card takes the keys; a list puts the cursor on its best match. Only a
   // new list moves the cursor: a refetch or "Show more" leaves it.
@@ -258,8 +294,10 @@ function Ledger({
     if (!bestId && answer?.answer) setOnAnswer(true);
   }, [answer, bestId]);
   useEffect(() => {
-    listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [index]);
+    listRef.current
+      ?.querySelector(`[data-index="${showingSubscriptions ? subscriptionIndex : index}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [index, subscriptionIndex, showingSubscriptions]);
   // The answer box is the default focus on arrival.
   // Only when nothing else holds the focus, so it never steals a field.
   useEffect(() => {
@@ -294,7 +332,35 @@ function Ledger({
     },
     [dismissRecordHint, nav],
   );
+  const selectSubscription = useCallback(
+    (row: RecordSubscription) => {
+      setSubscriptionId(row.id);
+      if (singlePane) setCardOpen(true);
+    },
+    [singlePane],
+  );
+  const openSubscriptionEmail = useCallback(
+    (row?: RecordSubscription) => {
+      if (row?.thread_id) nav?.open(row.thread_id);
+    },
+    [nav],
+  );
+  const subscriptionIssuer = (row?: RecordSubscription) => {
+    if (row) setFilter({ issuer: row.issuer });
+  };
+  const copySubscriptionAmount = (row?: RecordSubscription) => {
+    const text = row ? subscriptionAmountCopy(row) : null;
+    if (text) void copyText(text, "amount");
+  };
   const move = (delta: number) => {
+    if (showingSubscriptions) {
+      const next =
+        subscriptionRows[
+          Math.min(subscriptionRows.length - 1, Math.max(0, subscriptionIndex + delta))
+        ];
+      if (next) setSubscriptionId(next.id);
+      return;
+    }
     const base = onAnswer ? -1 + (delta > 0 ? 1 : 0) : index + delta;
     const next = records[Math.min(records.length - 1, Math.max(0, base))];
     if (next) select(next);
@@ -327,14 +393,24 @@ function Ledger({
       inputRef.current?.focus();
       inputRef.current?.select();
     },
-    copyReference: copyRef,
-    copyAmount: () => current && void copyAmount(current),
+    copyReference: () => {
+      if (!showingSubscriptions) copyRef();
+    },
+    copyAmount: () => {
+      if (showingSubscriptions) copySubscriptionAmount(subscription);
+      else if (current) void copyAmount(current);
+    },
     openDocument: () => {
+      if (showingSubscriptions) {
+        setCardOpen(true);
+        return;
+      }
       if (onAnswer) answerHint.dismiss();
       if (current) void openDocument(current);
     },
-    openEmail: () => openEmail(current),
-    issuer: () => issuerPage(current),
+    openEmail: () =>
+      showingSubscriptions ? openSubscriptionEmail(subscription) : openEmail(current),
+    issuer: () => (showingSubscriptions ? subscriptionIssuer(subscription) : issuerPage(current)),
     prevYear: () => stepTo(-1),
     nextYear: () => stepTo(1),
     edit: () => cardRecord && openMailDialog({ kind: "record-edit", record: cardRecord }),
@@ -357,6 +433,7 @@ function Ledger({
       if (cardOpen) setCardOpen(false);
       else if (closeHint) closeHint();
       else if (list) clearSearch();
+      else if (showingSubscriptions) setSection("ledger");
       else if (filter.issuer) setFilter({ ...filter, issuer: undefined });
     },
   });
@@ -380,7 +457,30 @@ function Ledger({
     );
   }
 
-  if (singlePane && cardOpen && cardRecord) {
+  if (singlePane && cardOpen && showingSubscriptions && subscription) {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto pb-6" data-testid="subscription-card-screen">
+        <button
+          type="button"
+          onClick={() => setCardOpen(false)}
+          className="mx-3 mt-3 inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent"
+        >
+          <ArrowLeft aria-hidden className="size-4" /> Subscriptions
+        </button>
+        <SubscriptionCard
+          subscription={subscription}
+          onCopyAmount={() => copySubscriptionAmount(subscription)}
+          onOpenEmail={() => openSubscriptionEmail(subscription)}
+          onIssuer={() => {
+            setCardOpen(false);
+            subscriptionIssuer(subscription);
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (singlePane && cardOpen && cardRecord && !showingSubscriptions) {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto pb-6" data-testid="record-card-screen">
         <button
@@ -488,6 +588,13 @@ function Ledger({
                             type="button"
                             className="min-h-8 text-left text-foreground hover:underline"
                             onClick={() => {
+                              // A subscription's price change or missed charge opens it.
+                              if (SUBSCRIPTION_SIGNALS.has(moment.kind) && moment.group_id) {
+                                setSection("subscriptions");
+                                setSubscriptionId(moment.group_id);
+                                if (singlePane) setCardOpen(true);
+                                return;
+                              }
                               const target = records.find(
                                 (record) => record.id === moment.record_id,
                               );
@@ -514,11 +621,11 @@ function Ledger({
                     <button
                       key={kindChip.id}
                       type="button"
-                      aria-pressed={chip === kindChip.id}
+                      aria-pressed={!showingSubscriptions && chip === kindChip.id}
                       onClick={() => setFilter({ ...filter, kinds: kindChip.kinds })}
                       className={cn(
                         "min-h-8 rounded-full border px-3 text-[12.5px]",
-                        chip === kindChip.id
+                        !showingSubscriptions && chip === kindChip.id
                           ? "border-primary bg-primary/10 text-foreground"
                           : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
                       )}
@@ -528,6 +635,23 @@ function Ledger({
                   ))}
                   <button
                     type="button"
+                    data-testid="subscriptions-chip"
+                    aria-pressed={showingSubscriptions}
+                    onClick={() => {
+                      setSection("subscriptions");
+                      setCardOpen(false);
+                    }}
+                    className={cn(
+                      "min-h-8 rounded-full border px-3 text-[12.5px]",
+                      showingSubscriptions
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
+                    )}
+                  >
+                    Subscriptions
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setFacetsOpen(true)}
                     className="ml-auto inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-muted-foreground hover:bg-accent hover:text-foreground"
                   >
@@ -535,9 +659,28 @@ function Ledger({
                     <KeyChip className="hidden h-4 px-1 md:inline-flex">g f</KeyChip>
                   </button>
                 </div>
-                <ActiveFilters filter={filter} setFilter={setFilter} ledger={ledger} />
+                {showingSubscriptions ? (
+                  subscriptions.data ? (
+                    <SubscriptionsList
+                      data={subscriptions.data}
+                      cursorId={subscription?.id ?? null}
+                      onSelect={selectSubscription}
+                    />
+                  ) : subscriptions.isError ? (
+                    <p className="mx-5 mt-4 text-[13px] text-muted-foreground">
+                      Couldn't load subscriptions: {subscriptions.error.message}
+                    </p>
+                  ) : (
+                    <p className="mx-5 mt-4 text-[13px] text-muted-foreground">
+                      Finding subscriptions…
+                    </p>
+                  )
+                ) : null}
+                {showingSubscriptions ? null : (
+                  <ActiveFilters filter={filter} setFilter={setFilter} ledger={ledger} />
+                )}
 
-                {ledger.issuer ? (
+                {!showingSubscriptions && ledger.issuer ? (
                   <section
                     aria-label={`${ledger.issuer.name}'s records`}
                     data-testid="issuer-page"
@@ -553,7 +696,7 @@ function Ledger({
                   </section>
                 ) : null}
 
-                {ledger.empty_state && ledger.matching === 0 ? (
+                {!showingSubscriptions && ledger.empty_state && ledger.matching === 0 ? (
                   <p
                     data-testid="records-empty"
                     className="mx-5 mt-4 text-[13px] text-muted-foreground"
@@ -564,7 +707,7 @@ function Ledger({
               </>
             )}
 
-            <div className="mt-2">
+            <div className="mt-2" hidden={showingSubscriptions}>
               {groups.map((group, at) => (
                 <section
                   key={group.month?.month ?? `undated-${at}`}
@@ -613,14 +756,14 @@ function Ledger({
                 </section>
               ))}
             </div>
-            {list && list.count > list.offset + records.length ? (
+            {!showingSubscriptions && list && list.count > list.offset + records.length ? (
               <div className="mx-5 mt-4">
                 <Button variant="outline" size="sm" onClick={onMoreMatches}>
                   Show more ({records.length} of {list.count})
                 </Button>
               </div>
             ) : null}
-            {!list && ledger.matching > records.length ? (
+            {!showingSubscriptions && !list && ledger.matching > records.length ? (
               <div className="mx-5 mt-4">
                 <Button variant="outline" size="sm" onClick={onMore}>
                   Show more ({records.length} of {ledger.matching})
@@ -630,7 +773,7 @@ function Ledger({
             {guide ? <KeyLine guide={guide} /> : null}
           </div>
         </ResizablePanel>
-        {showSideCard && cardRecord ? (
+        {(showSideCard && cardRecord) || showSideSubscription ? (
           <>
             <ResizableHandle aria-label="Resize record card" {...pane.handleProps} />
             <ResizablePanel
@@ -638,15 +781,26 @@ function Ledger({
               {...pane.sidePanelProps}
               className="flex min-h-0 flex-col"
             >
-              <aside aria-label="Record" className="min-h-0 flex-1 overflow-y-auto">
-                <RecordCard
-                  record={cardRecord}
-                  onCopy={(field) => void copyText(field.copy, field.label.toLowerCase())}
-                  onOpenDocument={() => void openDocument(cardRecord)}
-                  onOpenEmail={() => openEmail(cardRecord)}
-                  onIssuer={() => issuerPage(cardRecord)}
-                />
-              </aside>
+              {showingSubscriptions && subscription ? (
+                <aside aria-label="Subscription" className="min-h-0 flex-1 overflow-y-auto">
+                  <SubscriptionCard
+                    subscription={subscription}
+                    onCopyAmount={() => copySubscriptionAmount(subscription)}
+                    onOpenEmail={() => openSubscriptionEmail(subscription)}
+                    onIssuer={() => subscriptionIssuer(subscription)}
+                  />
+                </aside>
+              ) : cardRecord ? (
+                <aside aria-label="Record" className="min-h-0 flex-1 overflow-y-auto">
+                  <RecordCard
+                    record={cardRecord}
+                    onCopy={(field) => void copyText(field.copy, field.label.toLowerCase())}
+                    onOpenDocument={() => void openDocument(cardRecord)}
+                    onOpenEmail={() => openEmail(cardRecord)}
+                    onIssuer={() => issuerPage(cardRecord)}
+                  />
+                </aside>
+              ) : null}
             </ResizablePanel>
           </>
         ) : null}

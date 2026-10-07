@@ -3770,6 +3770,9 @@ pub async fn run() -> anyhow::Result<()> {
                             app.set_records_answer(*answer);
                         }
                         AsyncResult::RecordCard(Ok(record)) => app.set_record_card(*record),
+                        AsyncResult::RecordSubscriptions(Ok(data)) => {
+                            app.set_record_subscriptions(*data);
+                        }
                         AsyncResult::RecordsExport(Ok(export)) => app.show_export(*export),
                         AsyncResult::RecordFixPreview(Ok(preview)) => app.show_fix_preview(*preview),
                         AsyncResult::RecordFixPreview(Err(e)) => app.show_fix_error(e.to_string()),
@@ -3778,6 +3781,7 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::RecordsAnswer(Err(e))
                         | AsyncResult::RecordCard(Err(e))
+                        | AsyncResult::RecordSubscriptions(Err(e))
                         | AsyncResult::RecordsExport(Err(e))
                         | AsyncResult::RecordFilePreview(Err(e)) => {
                             app.status_message = Some(format!("Archive: {e}"));
@@ -4557,6 +4561,24 @@ fn spawn_records_fetches(
     queued: &mpsc::UnboundedSender<crate::runtime::AsyncResultTask>,
 ) {
     let page = &mut app.mailbox.records_page;
+    if page.pending_refresh && page.showing_subscriptions() {
+        let bg = bg.clone();
+        let _ = submit_task(queued, async move {
+            AsyncResult::RecordSubscriptions(
+                records_call(
+                    &bg,
+                    Request::ListRecordSubscriptions { account_id: None },
+                    |data| match data {
+                        ResponseData::RecordSubscriptions { subscriptions } => {
+                            Some(Box::new(subscriptions))
+                        }
+                        _ => None,
+                    },
+                )
+                .await,
+            )
+        });
+    }
     if std::mem::take(&mut page.pending_refresh) {
         let bg = bg.clone();
         let filter = page.filter.clone();

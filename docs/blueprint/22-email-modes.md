@@ -1882,6 +1882,21 @@ to BM25.
   - Smart-tier record fields and `mxr modes eval --extract` for records
     are not in this phase: rules and schema.org only, with every rule's
     amount and date unchecked until the user confirms it.
+  - Recurring receipts are subscriptions, found by cadence, not series.
+    The first series rule (three receipts, invoices or statements from an
+    issuer in three months) merged one-off orders and two plans from one
+    issuer. A subscription is one issuer and product (the title's words
+    left after the issuer, dates, numbers and receipt words, else the
+    amount) charged weekly, monthly, quarterly or yearly within a
+    tolerance, three times (twice for yearly, unconfirmed until the
+    third), with steady amounts or a stated plan, the way bank apps call a
+    payment recurring only after a few observations. Series keep
+    statements only. Subscriptions are worked out on every read, with no
+    table, so a correction to a record moves its subscription at once.
+  - A price change on the newest charge and a missed charge are lines in
+    Archive's Coming up and on Now until Updates' Needs a look exists to
+    take them. A yearly subscription two weeks from renewing leaves a
+    renewal to-do, from the charge dates alone, with no link.
 
 ### Phase 7: Fast-tier classification for what rules can't tell, measured
 

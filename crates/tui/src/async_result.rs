@@ -169,6 +169,8 @@ pub(crate) enum AsyncResult {
         >,
     ),
     RecordsAnswer(Result<Box<mxr_protocol::RecordAnswerData>, MxrError>),
+    /// Archive's subscriptions, while their chip is on.
+    RecordSubscriptions(Result<Box<mxr_protocol::RecordSubscriptionsData>, MxrError>),
     RecordCard(Result<Box<mxr_protocol::RecordData>, MxrError>),
     /// The export's dry run, or the CSV it wrote.
     RecordsExport(Result<Box<mxr_protocol::RecordExportData>, MxrError>),

@@ -100,6 +100,30 @@ async fn ledger(
 }
 
 #[derive(Debug, Deserialize)]
+struct AccountQuery {
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default, alias = "account_id")]
+    account: Option<String>,
+}
+
+async fn subscriptions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<AccountQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let account_id = parse_optional_account(query.account.as_deref())?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::ListRecordSubscriptions { account_id },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
 struct TokenQuery {
     #[serde(default)]
     token: Option<String>,
@@ -346,6 +370,7 @@ pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
     router
         .route("/records", get(ledger))
         .route("/records/answer", get(answer))
+        .route("/records/subscriptions", get(subscriptions))
         .route("/records/dismiss", post(dismiss))
         .route("/records/file", post(file))
         .route("/records/sender", post(sender))

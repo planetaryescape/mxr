@@ -55,6 +55,11 @@ fn plain_amount(minor: i64) -> String {
 
 impl App {
     pub(super) fn apply_records_action(&mut self, action: Action) {
+        if self.mailbox.records_page.showing_subscriptions()
+            && self.apply_subscriptions_action(&action)
+        {
+            return;
+        }
         match action {
             Action::RecordsAsk => {
                 let page = &mut self.mailbox.records_page;
@@ -181,6 +186,100 @@ impl App {
         page.answer_list = true;
         page.pending_answer = Some(answer.query.clone());
         self.status_message = Some(format!("Listing all {} matches…", answer.matching));
+    }
+
+    pub(crate) fn set_record_subscriptions(&mut self, data: mxr_protocol::RecordSubscriptionsData) {
+        self.mailbox.records_page.subscriptions = Some(data);
+        if self.mailbox.records_page.showing_subscriptions() {
+            self.mailbox.selected_index = self
+                .mailbox
+                .selected_index
+                .min(self.mailbox.records_page.row_count().saturating_sub(1));
+        }
+    }
+
+    /// The subscription under the cursor, while their chip is on.
+    pub(crate) fn selected_subscription(&self) -> Option<&mxr_protocol::RecordSubscriptionData> {
+        let page = &self.mailbox.records_page;
+        if !page.showing_subscriptions() {
+            return None;
+        }
+        page.subscription_rows().get(self.mailbox.selected_index)
+    }
+
+    /// Keys on the subscriptions: Enter or → opens the card with its
+    /// history, `o` the newest charge's email, `p` the issuer's records,
+    /// `Y` copies the amount, Esc closes the card and then goes back to
+    /// every record. Returns whether the key was handled here.
+    fn apply_subscriptions_action(&mut self, action: &Action) -> bool {
+        match action {
+            Action::RecordsOpenDocument | Action::RecordsOpenCard => {
+                if self.selected_subscription().is_some() {
+                    self.mailbox.records_page.subscription_open = true;
+                }
+            }
+            Action::RecordsOpenEmail => {
+                match self
+                    .selected_subscription()
+                    .and_then(|s| s.message_id.clone())
+                {
+                    Some(message_id) => {
+                        self.mailbox.records_page.pending_open = Some(message_id);
+                        self.status_message = Some("Opening the email…".into());
+                    }
+                    None => self.status_message = Some("No email left for this charge".into()),
+                }
+            }
+            Action::RecordsIssuerPage => {
+                let Some(issuer) = self.selected_subscription().map(|s| s.issuer.clone()) else {
+                    return true;
+                };
+                let page = &mut self.mailbox.records_page;
+                page.kind_chip = 0;
+                page.subscription_open = false;
+                page.filter.kinds = RECORD_KIND_CHIPS[0].1.to_vec();
+                page.filter.issuer = Some(issuer);
+                self.reload_records_ledger();
+            }
+            Action::RecordsCopyAmount => {
+                let Some(amount) = self.selected_subscription().and_then(|s| s.amount.clone())
+                else {
+                    self.status_message = Some("This subscription has no amount to copy".into());
+                    return true;
+                };
+                let text = plain_amount(amount.minor);
+                copy_to_clipboard(&text);
+                self.status_message = Some(format!(
+                    "{} copied",
+                    crate::ui::sanitize::one_line(&amount.display)
+                ));
+                self.mailbox.records_page.last_copied = Some(text);
+            }
+            Action::RecordsBack => {
+                let page = &mut self.mailbox.records_page;
+                if !std::mem::take(&mut page.subscription_open) {
+                    page.kind_chip = 0;
+                    page.filter.kinds = RECORD_KIND_CHIPS[0].1.to_vec();
+                    self.reload_records_ledger();
+                }
+            }
+            Action::RecordsNextKind | Action::RecordsAsk => return false,
+            // Fixing, checking and dismissing act on one record: open the
+            // charge's record from the ledger for those.
+            Action::RecordsCopyReference
+            | Action::RecordsFix
+            | Action::RecordsMarkChecked
+            | Action::RecordsDismiss
+            | Action::RecordsMakeTodo
+            | Action::RecordsPrevYear
+            | Action::RecordsNextYear => {
+                self.status_message = Some(
+                    "That works on a record: g f back to the ledger, or p for the issuer".into(),
+                );
+            }
+            _ => return false,
+        }
+        true
     }
 
     pub(crate) fn set_record_card(&mut self, record: RecordData) {
@@ -339,6 +438,7 @@ impl App {
         page.card = None;
         page.answer = None;
         page.answer_list = false;
+        page.subscription_open = false;
         self.mailbox.selected_index = 0;
         self.mailbox.scroll_offset = 0;
     }

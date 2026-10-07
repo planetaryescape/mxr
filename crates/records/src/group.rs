@@ -1,5 +1,7 @@
 //! Composite records: a trip is bookings whose dates overlap or touch, a
-//! series is a run of bills from one issuer. Orders are composite already:
+//! series is a run of statements from one issuer (a bank or card account).
+//! Receipts and invoices that recur are subscriptions, found by cadence in
+//! [`crate::subscriptions`]. Orders are composite already:
 //! their emails share one row by order number (see `pass`).
 //!
 //! Grouping is recomputed from the records each time, so splitting a trip
@@ -51,7 +53,7 @@ pub struct GroupPlan {
 /// Bookings closer than this are one trip: a flight that lands the
 /// evening before the hotel's check-in is still the same trip.
 const TRIP_GAP_HOURS: i64 = 24;
-/// A series needs this many bills, in this many different months.
+/// A series needs this many statements, in this many different months.
 const SERIES_MIN: usize = 3;
 
 pub fn plan(records: &[GroupInput]) -> Vec<GroupPlan> {
@@ -141,10 +143,10 @@ fn trip_place(members: &[&GroupInput]) -> Option<String> {
 fn series(records: &[GroupInput]) -> Vec<GroupPlan> {
     let mut by_issuer: BTreeMap<&str, Vec<&GroupInput>> = BTreeMap::new();
     for record in records {
-        if !matches!(
-            record.kind,
-            RecordKind::Invoice | RecordKind::Statement | RecordKind::Receipt
-        ) {
+        // Receipts and invoices recur as subscriptions, checked for cadence
+        // and amount; grouping them by issuer alone merged one-off orders
+        // and two plans from one issuer.
+        if record.kind != RecordKind::Statement {
             continue;
         }
         if let Some(issuer) = record.issuer_key.as_deref().filter(|key| !key.is_empty()) {
@@ -167,15 +169,10 @@ fn series(records: &[GroupInput]) -> Vec<GroupPlan> {
                 .rev()
                 .find_map(|m| m.issuer.clone())
                 .unwrap_or_else(|| issuer_key.to_string());
-            let noun = if members.iter().all(|m| m.kind == RecordKind::Receipt) {
-                "receipts"
-            } else {
-                "bills"
-            };
             Some(GroupPlan {
                 kind: GroupKind::Series,
                 key: format!("series|{issuer_key}"),
-                title: format!("{issuer} {noun}"),
+                title: format!("{issuer} bills"),
                 span_start: members.iter().filter_map(|m| m.date).min(),
                 span_end: members.iter().filter_map(|m| m.date).max(),
                 members: members.iter().map(|m| m.id.clone()).collect(),
@@ -314,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn three_months_of_bills_from_one_issuer_are_a_series() {
+    fn three_months_of_statements_from_one_issuer_are_a_series() {
         let plans = plan(&[
             bill("jan", "Octopus Energy", day(1, 11, 9)),
             bill("feb", "Octopus Energy", day(2, 11, 9)),
@@ -326,5 +323,20 @@ mod tests {
         assert_eq!(plans.len(), 1, "BT's three bills fall in two months");
         assert_eq!(plans[0].title, "Octopus Energy bills");
         assert_eq!(plans[0].members, vec!["jan", "feb", "mar"]);
+    }
+
+    #[test]
+    fn receipts_and_invoices_never_form_a_series() {
+        let receipt = |id: &str, kind, date| GroupInput {
+            kind,
+            ..bill(id, "Amazon", date)
+        };
+        let plans = plan(&[
+            receipt("a", RecordKind::Receipt, day(1, 3, 9)),
+            receipt("b", RecordKind::Receipt, day(2, 17, 9)),
+            receipt("c", RecordKind::Invoice, day(3, 29, 9)),
+            receipt("d", RecordKind::Receipt, day(4, 8, 9)),
+        ]);
+        assert!(plans.is_empty(), "subscriptions find these by cadence");
     }
 }

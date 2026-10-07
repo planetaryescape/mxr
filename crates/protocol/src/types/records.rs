@@ -23,7 +23,7 @@ pub mod archive_copy {
     pub const CLEAR_FOR_NOW: &str = "Records stay. Ask for one, or browse by month.";
     /// The full explanation `?` leads with. Nothing shows it unasked.
     pub const ABOUT: &str = "Archive keeps records built from your mail: one card per order, trip or bill, and it answers in the field you asked for, like a booking reference. Archiving an email in Gmail is a different thing, and the toast always says which one happened.";
-    pub const LANDS_HERE: &str = "Receipts, orders, bookings, bills, tickets, contracts and warranties, filed from your mail without you sorting anything.";
+    pub const LANDS_HERE: &str = "Receipts, orders, bookings, bills, tickets, contracts and warranties, filed from your mail without you sorting anything. Receipts that come every month or year show as subscriptions, with the next charge and what they cost a year.";
     pub const FIRST_RUN_LINE: &str = "Receipts, orders, bookings";
     /// The toast after a record is filed: never "Archived", which is the
     /// provider's word.
@@ -318,7 +318,9 @@ pub struct RecordFacetsData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RecordMomentData {
-    /// trip | booking | ticket | return_window | warranty
+    /// trip | booking | ticket | return_window | warranty, or a
+    /// subscription's price_change | missed_charge (then `group_id` is the
+    /// subscription's id and `record_id` its newest charge).
     pub kind: String,
     pub record_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -173,6 +173,8 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
         }
         DaemonEvent::ThreadGistReady { gist } => app.row_gists.put(&gist),
         DaemonEvent::NewMessages { envelopes, total } => {
+            // The status bar's "latest mail" moves with every arrival.
+            app.diagnostics.pending_status_refresh = true;
             // A capped event is only a sample: any conversation may have
             // changed.
             if total > envelopes.len() {

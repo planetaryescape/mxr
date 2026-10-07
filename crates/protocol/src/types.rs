@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 mod desk;
 mod draft_provenance;
+mod freshness;
 mod messages;
 mod mode_guide;
 mod modes;
@@ -16,6 +17,7 @@ mod thread_context;
 mod todos;
 pub use desk::*;
 pub use draft_provenance::*;
+pub use freshness::*;
 pub use messages::*;
 pub use mode_guide::*;
 pub use modes::*;
@@ -936,6 +938,19 @@ pub enum Request {
     },
     GetSyncStatus {
         account_id: AccountId,
+    },
+    /// Is the local copy current: the newest message received in any
+    /// mailbox, each account's sync health (last good sync, last error
+    /// with its kind and retry time) and the last `limit` arrivals with
+    /// the modes they went to. Omit `account_id` for every account: the
+    /// freshest mail and the worst sync state. Local reads only. Returns
+    /// `ResponseData::Freshness`.
+    GetFreshness {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        /// Arrivals to return: default 5, at most 50.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u32>,
     },
     SetFlags {
         message_id: MessageId,
@@ -2109,6 +2124,7 @@ impl Request {
             | Self::Search { .. }
             | Self::SyncNow { .. }
             | Self::GetSyncStatus { .. }
+            | Self::GetFreshness { .. }
             | Self::SetFlags { .. }
             | Self::Count { .. }
             | Self::SearchAggregation { .. }
@@ -2705,6 +2721,10 @@ pub enum ResponseData {
     },
     SyncStatus {
         sync: AccountSyncStatus,
+    },
+    /// Returned by `Request::GetFreshness`.
+    Freshness {
+        freshness: FreshnessData,
     },
     Count {
         count: u32,
@@ -3382,6 +3402,7 @@ impl ResponseData {
             | Self::Label { .. }
             | Self::SearchResults { .. }
             | Self::SyncStatus { .. }
+            | Self::Freshness { .. }
             | Self::Count { .. }
             | Self::SearchAggregation { .. }
             | Self::Headers { .. }

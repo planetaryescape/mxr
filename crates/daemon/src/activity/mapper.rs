@@ -835,6 +835,7 @@ pub fn map_request(
         }
         Request::GetNow { .. }
         | Request::GetRail { .. }
+        | Request::GetFreshness { .. }
         | Request::GetModeMembership { .. }
         | Request::SetModeDone { .. } => {
             skip_activity!(

@@ -29,6 +29,22 @@ mxr doctor --check --format json >/tmp/mxr-doctor.json \
   || jq '.findings[] | select(.severity == "error")' /tmp/mxr-doctor.json
 ```
 
+### Is my mail current?
+
+`mxr status --freshness` answers the quick "is new mail reaching me?" check: when the newest message arrived (any mailbox, any mode), each account's last good sync, the last sync error with its kind and retry time, and the last arrivals with the mode each one went to.
+
+```bash
+mxr status --freshness
+# Latest mail 5m ago (09:37)
+# Sync: Gmail paused: rate limited, retrying 09:50
+# Last arrivals:
+#   09:37  GitHub  Build passed  → Updates · automated
+
+mxr status --freshness --account work --limit 20 --format json
+```
+
+With several accounts, the default scope shows the freshest mail and the worst sync state. The web app shows the same two signals in its status bar on every page, and the TUI shows them in its status line. The bridge serves it at `GET /api/v1/mail/freshness`.
+
 ### When the daemon says `degraded`
 
 `mxr status` reads its account and message counts out of SQLite. A large sync can saturate the reader pool, and rather than block, the daemon answers with `degraded: true` and no snapshot. That is "the daemon did not say", not "there are no accounts":

@@ -16,6 +16,13 @@ mod mailbox_helpers;
 
 /// The one line a cleared desk or reply queue earns: calm, no animation.
 pub(crate) const LOW_TIDE: &str = "Low tide. Nobody's waiting on you.";
+
+/// The status bar's freshness read: every account, no arrival list (the
+/// bar shows only the newest arrival's age and the sync state).
+pub(crate) const FRESHNESS_REQUEST: Request = Request::GetFreshness {
+    account_id: None,
+    limit: Some(0),
+};
 mod message_actions;
 mod messages_actions;
 mod modal_actions;
@@ -273,6 +280,10 @@ pub struct App {
     pub should_quit: bool,
     pub command_palette: CommandPaletteState,
     pub last_sync_status: Option<String>,
+    /// The newest arrival and each account's sync health (`GetFreshness`),
+    /// refreshed with the status snapshot. Its words are worked out at draw
+    /// time so the ages tick.
+    pub freshness: Option<mxr_protocol::FreshnessData>,
     pub visible_height: usize,
     pub html_image_support: Option<TerminalImageSupport>,
     pub html_image_assets: HashMap<MessageId, HashMap<String, HtmlImageEntry>>,
@@ -462,6 +473,7 @@ impl App {
             should_quit: false,
             command_palette: CommandPaletteState::default(),
             last_sync_status: None,
+            freshness: None,
             visible_height: 20,
             html_image_support: None,
             html_image_assets: HashMap::new(),

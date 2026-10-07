@@ -24,6 +24,7 @@ macro_rules! todo_untouched_sql {
 
 mod account;
 mod analytics;
+mod arrivals;
 mod auto_reminders;
 mod body;
 mod calendar;
@@ -91,6 +92,7 @@ mod user_voice_profile;
 mod voice_samples;
 mod wrapped;
 
+pub use arrivals::Arrival;
 pub use auto_reminders::{DeskReminder, ReminderState, ReplyCandidate, TakenTimers};
 pub use calendar::CalendarInviteRecord;
 pub use contact_commitments::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};

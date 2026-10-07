@@ -573,6 +573,13 @@ mod tests {
                 IpcCategory::CoreMail,
             ),
             (
+                Request::GetFreshness {
+                    account_id: None,
+                    limit: Some(5),
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
                 Request::SetFlags {
                     message_id: MessageId::new(),
                     flags: mxr_core::types::MessageFlags::READ,
@@ -1093,6 +1100,19 @@ mod tests {
                         last_synced_count: 0,
                         healthy: true,
                         progress: None,
+                    },
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
+                ResponseData::Freshness {
+                    freshness: FreshnessData {
+                        generated_at: chrono::Utc::now(),
+                        newest_message_at: None,
+                        stale_after_secs: 900,
+                        worst_account_id: None,
+                        accounts: vec![],
+                        arrivals: vec![],
                     },
                 },
                 IpcCategory::CoreMail,

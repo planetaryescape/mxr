@@ -255,6 +255,21 @@ fn reason(signals: &KindSignals<'_>, classification: Classification) -> String {
     }
 }
 
+/// The rule in one word, for an arrival's line: "→ Updates · automated".
+pub(super) const fn rule_tag(rule: KindRuleData) -> &'static str {
+    match rule {
+        KindRuleData::Decision => "chosen",
+        KindRuleData::Delivery => "delivery",
+        KindRuleData::Invite => "invite",
+        KindRuleData::AutomatedAddress | KindRuleData::AutomatedDomain => "automated",
+        KindRuleData::NewsletterAddress | KindRuleData::NewsletterDomain => "newsletter",
+        KindRuleData::ListId | KindRuleData::ListUnsubscribe | KindRuleData::ListSender => "list",
+        KindRuleData::NoReplyAddress => "no-reply",
+        KindRuleData::Person => "person",
+        KindRuleData::Copied => "copied",
+    }
+}
+
 /// Why a person's mail is in Updates: the thread's shape, not the sender.
 pub(super) const COPIED_REASON: &str = "copied to you, or sent to a crowd, and not your turn";
 

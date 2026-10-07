@@ -1379,6 +1379,7 @@ fn a_degraded_first_status_snapshot_leaves_the_total_unknown() {
         total_messages: 0,
         sync_statuses: Vec::new(),
         degraded: true,
+        freshness: None,
     });
 
     assert!(
@@ -1395,6 +1396,7 @@ fn a_degraded_first_status_snapshot_leaves_the_total_unknown() {
         total_messages: 4_242,
         sync_statuses: Vec::new(),
         degraded: false,
+        freshness: None,
     });
     assert_eq!(app.status_bar_state().total_count, Some(4_242));
 
@@ -1405,6 +1407,7 @@ fn a_degraded_first_status_snapshot_leaves_the_total_unknown() {
         total_messages: 0,
         sync_statuses: Vec::new(),
         degraded: true,
+        freshness: None,
     });
     assert_eq!(
         app.status_bar_state().total_count,

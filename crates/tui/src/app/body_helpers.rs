@@ -58,7 +58,8 @@ impl App {
                 unread_count,
                 starred_count,
                 body_status: body_status.clone(),
-                sync_status: self.last_sync_status.clone(),
+                sync_status: self.sync_status_label(),
+                sync_warning: self.sync_warning(),
                 feature_health_status: feature_health_status.clone(),
                 status_message: self
                     .connection_state_label()
@@ -87,7 +88,8 @@ impl App {
                 unread_count,
                 starred_count,
                 body_status: body_status.clone(),
-                sync_status: self.last_sync_status.clone(),
+                sync_status: self.sync_status_label(),
+                sync_warning: self.sync_warning(),
                 feature_health_status: feature_health_status.clone(),
                 status_message: self
                     .connection_state_label()
@@ -107,7 +109,8 @@ impl App {
                 unread_count: label.unread_count as usize,
                 starred_count,
                 body_status: body_status.clone(),
-                sync_status: self.last_sync_status.clone(),
+                sync_status: self.sync_status_label(),
+                sync_warning: self.sync_warning(),
                 feature_health_status: feature_health_status.clone(),
                 status_message: self
                     .connection_state_label()
@@ -132,7 +135,8 @@ impl App {
             unread_count,
             starred_count,
             body_status,
-            sync_status: self.last_sync_status.clone(),
+            sync_status: self.sync_status_label(),
+            sync_warning: self.sync_warning(),
             feature_health_status,
             status_message: self.status_message.clone(),
             pending_mutation_count: self.pending_mutation_count,
@@ -140,6 +144,42 @@ impl App {
             mutation_batch_total: self.mutation_batch_total,
             busy: self.has_in_flight_work(),
         }
+    }
+
+    /// The status bar's sync words. With freshness: when the newest mail
+    /// arrived and the worst account's sync state ("Latest mail 5m ago ·
+    /// synced 1m ago", "Latest mail 2h ago · Gmail paused: rate limited,
+    /// retrying 09:50"); worked out now so the ages tick. Without it, the
+    /// older per-account summary.
+    pub(super) fn sync_status_label(&self) -> Option<String> {
+        let Some(data) = self.freshness.as_ref() else {
+            return self.last_sync_status.clone();
+        };
+        let now = chrono::Utc::now();
+        let mut label = mxr_protocol::freshness_copy::latest_mail(data.newest_message_at, now);
+        if let Some(worst) = data.worst_account(now) {
+            label.push_str(" · ");
+            label.push_str(&mxr_protocol::freshness_copy::sync_line(
+                worst,
+                data.stale_after_secs,
+                now,
+                &chrono::Local,
+            ));
+        }
+        Some(label)
+    }
+
+    /// Sync is failing, paused or stale somewhere: the bar shows its words
+    /// in the warning colour.
+    pub(super) fn sync_warning(&self) -> bool {
+        let now = chrono::Utc::now();
+        self.freshness.as_ref().is_some_and(|data| {
+            data.worst_account(now).is_some_and(|account| {
+                !account
+                    .effective_health(now, data.stale_after_secs)
+                    .is_calm()
+            })
+        })
     }
 
     fn feature_health_status_label(&self) -> Option<String> {

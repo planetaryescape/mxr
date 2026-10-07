@@ -22,6 +22,12 @@ impl App {
                 },
         }) = client.raw_request(Request::GetStatus).await
         {
+            let freshness = match client.raw_request(FRESHNESS_REQUEST).await {
+                Ok(Response::Ok {
+                    data: ResponseData::Freshness { freshness },
+                }) => Some(freshness),
+                _ => None,
+            };
             self.apply_status_snapshot(StatusSnapshot {
                 uptime_secs,
                 daemon_pid,
@@ -29,6 +35,7 @@ impl App {
                 total_messages,
                 sync_statuses,
                 degraded,
+                freshness,
             });
         }
         // Queue body prefetch for first visible window
@@ -100,6 +107,9 @@ impl App {
     /// the daemon is too busy to say, instead of overwriting a real reading
     /// with emptiness.
     pub(crate) fn apply_status_snapshot(&mut self, snapshot: StatusSnapshot) {
+        if let Some(freshness) = snapshot.freshness {
+            self.freshness = Some(freshness);
+        }
         self.diagnostics.page.uptime_secs = Some(snapshot.uptime_secs);
         self.diagnostics.page.daemon_pid = snapshot.daemon_pid;
         self.diagnostics.page.status_degraded = snapshot.degraded;

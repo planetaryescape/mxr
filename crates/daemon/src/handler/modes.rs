@@ -268,6 +268,7 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
                 "Here because: you were only copied, or it went to a crowd, and you never wrote in it (rule).".to_string(),
                 "Also in Updates: a thread you were copied on".to_string(),
                 is_early(ModeKindData::Updates),
+                mail_kind::rule_tag(mxr_protocol::KindRuleData::Copied),
             ));
         } else {
             done_in.push(ModeKindData::Updates);
@@ -293,6 +294,7 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
             shown.why.clone(),
             format!("Also in To do: {}, {}", shown.title, shown.when_label),
             is_early(ModeKindData::Todo),
+            "task",
         );
         entry.todo_ids = inputs.todos.iter().map(|todo| todo.id.clone()).collect();
         modes.push(entry);
@@ -344,6 +346,7 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
             format!("Here because: {} ({source}).", described.reason),
             format!("Also in {}: from {sender}", mode.name()),
             is_early(mode),
+            mail_kind::rule_tag(described.rule),
         ));
     }
 
@@ -375,6 +378,7 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
                 }
             ),
             is_early(ModeKindData::Archive),
+            "record",
         ));
     }
 

@@ -7,6 +7,7 @@
 
 pub mod conformance;
 pub mod fixtures;
+mod spool;
 
 use async_trait::async_trait;
 use mail_builder::MessageBuilder;
@@ -139,6 +140,9 @@ pub struct FakeProvider {
     /// fails part way: the messages before it change, the rest don't.
     failing_message: Mutex<Option<String>>,
     page_size: usize,
+    /// `MXR_FAKE_SPOOL_DIR`: messages and failures an end-to-end test
+    /// drops in from outside the daemon (`spool`).
+    spool: Option<spool::Spool>,
 }
 
 #[derive(Debug, Clone)]
@@ -230,6 +234,7 @@ impl FakeProvider {
             sends_fail_after_accepting: AtomicBool::new(false),
             failing_message: Mutex::new(None),
             page_size: SYNC_PAGE_SIZE,
+            spool: spool::Spool::from_env(),
         }
     }
 
@@ -361,16 +366,24 @@ impl MailSyncProvider for FakeProvider {
     }
 
     async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+        if let Some(error) = self.spool.as_ref().and_then(spool::Spool::failure) {
+            return Err(error);
+        }
         let offset = if cursor.is_empty() {
             0
         } else {
             match page_offset(cursor) {
                 Some(offset) => offset,
                 // Any other non-empty cursor means the initial sync
-                // already finished: steady state returns empty batches.
+                // already finished: steady state returns only what a test
+                // dropped in the spool since the last sync.
                 None => {
                     return Ok(SyncBatch {
-                        upserted: vec![],
+                        upserted: self
+                            .spool
+                            .as_ref()
+                            .map(|spool| spool.take_new(&self.account_id))
+                            .unwrap_or_default(),
                         deleted_provider_ids: vec![],
                         label_changes: vec![],
                         next_cursor: cursor.clone(),
@@ -411,7 +424,11 @@ impl MailSyncProvider for FakeProvider {
         &self,
         provider_message_id: &str,
     ) -> Result<Option<SyncedMessage>, MxrError> {
-        Ok(self.dataset.find(provider_message_id))
+        Ok(self.dataset.find(provider_message_id).or_else(|| {
+            self.spool
+                .as_ref()
+                .and_then(|spool| spool.find(provider_message_id))
+        }))
     }
 
     async fn fetch_attachment(

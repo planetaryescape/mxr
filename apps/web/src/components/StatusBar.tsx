@@ -2,6 +2,8 @@ import { RefreshCw } from "lucide-react";
 
 import { ConnectionPill } from "@/components/ConnectionPill";
 import { KeyChip } from "@/components/KeyChip";
+import { useFreshnessLive } from "@/features/freshness/api";
+import { FreshnessIndicator } from "@/features/freshness/FreshnessIndicator";
 import { syncNow } from "@/features/mailbox/actions";
 import { useActionContext, useActionPrimaryHints } from "@/lib/actions";
 import { plural } from "@/lib/format";
@@ -17,6 +19,9 @@ export function StatusBar() {
   const setHelpOpen = useModals((s) => s.setHelpOpen);
   const ctx = useActionContext();
   const hints = useActionPrimaryHints(ctx, 5);
+  // The status bar is mounted on every page, so it owns the one live
+  // subscription; the phone's topbar indicator reads the same query.
+  useFreshnessLive();
 
   return (
     <>
@@ -53,6 +58,10 @@ export function StatusBar() {
       {reindex ? (
         <span>semantic {Math.round((reindex.current / Math.max(1, reindex.total)) * 100)}%</span>
       ) : null}
+      <span aria-hidden className="text-faint">
+        │
+      </span>
+      <FreshnessIndicator />
       <span className="ml-auto flex min-w-0 items-center gap-3 overflow-hidden">
         {pendingPrefix ? (
           <span aria-live="polite" className="inline-flex items-center gap-1 text-foreground">

@@ -924,6 +924,7 @@ fn bars_snapshot() {
                 starred_count: 96,
                 body_status: None,
                 sync_status: Some("synced just now".into()),
+                sync_warning: false,
                 feature_health_status: None,
                 status_message: None,
                 pending_mutation_count: 0,

@@ -88,9 +88,13 @@ impl super::Store {
                 .or_default()
                 .subjects
                 .push(row.try_get("subject")?);
-            let newest = latest.entry(sender).or_insert((date, id.clone()));
-            if date > newest.0 {
-                *newest = (date, id);
+            // Two spellings of one address: the newest message of either.
+            match latest.get_mut(&sender) {
+                Some(newest) if date > newest.0 => *newest = (date, id),
+                Some(_) => {}
+                None => {
+                    latest.insert(sender, (date, id));
+                }
             }
         }
         if !latest.is_empty() {

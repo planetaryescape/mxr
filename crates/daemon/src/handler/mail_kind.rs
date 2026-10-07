@@ -109,6 +109,7 @@ const ROLE_LOCAL_PARTS: &[&str] = &[
     "rewards",
     "offers",
     "events",
+    "founders",
 ];
 
 /// A sender's latest subjects needed before their variety counts.
@@ -718,7 +719,7 @@ mod tests {
             "forex@bank.example",
             "hello@toys.example",
             "team-uk@app.example",
-            "support+billing@app.example",
+            "support+uk@app.example",
         ] {
             let described = describe(&KindSignals {
                 sender: SenderFacts::of(Some(&never)),

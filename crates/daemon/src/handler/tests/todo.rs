@@ -827,6 +827,69 @@ async fn marketing_the_model_called_yours_never_becomes_a_promise() {
 }
 
 #[tokio::test]
+async fn a_welcome_emails_call_to_action_is_not_a_to_do() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    let welcome = put(
+        &fx,
+        Mail::new(
+            ("Club Founders", "founders@club.example"),
+            "Welcome to the Club",
+            "Welcome aboard! Start the tutorial https://club.example/manual/first-steps, \
+             get started with your first project, and complete your profile.",
+            now - Duration::hours(3),
+        ),
+    )
+    .await;
+    // What the model made of it: a promise of yours.
+    commitment(
+        &fx,
+        "c-welcome",
+        "founders@club.example",
+        "Start the tutorial https://club.example/manual/first-steps",
+        &welcome,
+    )
+    .await;
+    scan(&fx, &[welcome], now).await;
+    finish_first_run(&fx, now).await;
+    let ResponseData::TodoCatchup { catchup } =
+        request(&fx, Request::GetTodoCatchup { account_id: None }).await
+    else {
+        panic!()
+    };
+    assert!(catchup.todos.is_empty(), "{:?}", titles(&catchup.todos));
+    assert!(promise_rows(&fx).await.is_empty());
+    let today = runway(&fx, now).await;
+    assert!(today.whenever.is_empty());
+}
+
+#[tokio::test]
+async fn a_promise_title_never_carries_a_link() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    let mut sent = Mail::new(
+        (super::desk::ME, super::desk::ME),
+        "Re: Setup",
+        "I'll go through the tutorial.",
+        now - Duration::days(1),
+    );
+    sent.outbound = true;
+    let id = put(&fx, sent).await;
+    commitment(
+        &fx,
+        "c-link",
+        "priya@work.com",
+        "go through the tutorial at https://club.example/manual",
+        &id,
+    )
+    .await;
+    finish_first_run(&fx, now).await;
+    let rows = promise_rows(&fx).await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].title, "Go through the tutorial");
+}
+
+#[tokio::test]
 async fn promise_rows_built_from_inbound_mail_are_dismissed_unless_touched() {
     let fx = Fixture::new().await;
     let now = Utc::now();

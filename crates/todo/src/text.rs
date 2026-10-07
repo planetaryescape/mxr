@@ -83,6 +83,35 @@ pub fn strip_glued_id(name: &str) -> &str {
     }
 }
 
+/// `value` without links: a title names the task, and a raw URL is
+/// neither readable nor safe to show as text. Words around the link stay;
+/// punctuation left dangling at the end goes.
+pub fn strip_urls(value: &str) -> String {
+    let mut kept: Vec<&str> = value
+        .split_whitespace()
+        .filter(|word| {
+            let lower = word
+                .trim_start_matches(['(', '<', '[', '"', '\''])
+                .to_ascii_lowercase();
+            !(lower.starts_with("http://")
+                || lower.starts_with("https://")
+                || lower.starts_with("www."))
+        })
+        .collect();
+    // "Read it at <link>": the word that pointed at the link goes with it.
+    while kept.last().is_some_and(|word| {
+        let word = word
+            .trim_end_matches([',', ':', ';', '-', '('])
+            .to_ascii_lowercase();
+        matches!(word.as_str(), "at" | "via" | "here" | "")
+    }) {
+        kept.pop();
+    }
+    kept.join(" ")
+        .trim_end_matches(|c: char| c.is_whitespace() || matches!(c, ',' | ':' | ';' | '-' | '('))
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,6 +125,24 @@ mod tests {
         assert_eq!(lower_first("Renew car insurance"), "renew car insurance");
         assert_eq!(lower_first("MOT due"), "MOT due");
         assert_eq!(capitalise("spotify"), "Spotify");
+    }
+
+    #[test]
+    fn links_never_stay_in_a_title() {
+        assert_eq!(
+            strip_urls("Start the tutorial https://club.example/manual/first-automation"),
+            "Start the tutorial"
+        );
+        assert_eq!(
+            strip_urls("Read the guide (https://x.example/a) and reply"),
+            "Read the guide and reply"
+        );
+        assert_eq!(strip_urls("See www.example.com:"), "See");
+        assert_eq!(strip_urls("Send the deck"), "Send the deck");
+        assert_eq!(
+            strip_urls("Go through the tutorial at https://x.example"),
+            "Go through the tutorial"
+        );
     }
 
     #[test]

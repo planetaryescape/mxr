@@ -428,7 +428,14 @@ where
         kind: detection.kind.as_str().to_string(),
         verb: detection.verb,
         doc_type: detection.doc_type,
-        title: detection.title,
+        title: {
+            let title = crate::text::strip_urls(&detection.title);
+            if title.is_empty() {
+                detection.title
+            } else {
+                title
+            }
+        },
         counterparty: detection.counterparty,
         sender_domain: detection.sender_domain,
         amount_minor: detection.amount.as_ref().map(|amount| amount.minor),
@@ -732,7 +739,12 @@ fn promise_record<Tz: TimeZone>(
         .map(crate::text::strip_glued_id)
         .filter(|name| !name.is_empty())
         .map_or_else(|| promise.email.clone(), str::to_string);
-    let what = clip(promise.what.trim(), 100);
+    let what = clip(&crate::text::strip_urls(promise.what.trim()), 100);
+    let what = if what.is_empty() {
+        "Do what you promised".to_string()
+    } else {
+        what
+    };
     let title = crate::text::capitalise(&what);
     let mut fields = FieldSources::default();
     fields.set(

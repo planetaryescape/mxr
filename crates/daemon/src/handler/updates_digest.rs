@@ -376,7 +376,8 @@ where
         .unwrap_or(Signal::Routine);
     // The fact to show: in Changed, the newest message that changed (one
     // with a delta first); otherwise the newest.
-    let lead = if section == UpdateSectionData::Changed {
+    // A tracked thing shows its latest state, whatever changed before it.
+    let lead = if section == UpdateSectionData::Changed && newest.item.fact.tracked.is_none() {
         members
             .iter()
             .filter(|m| m.signal == strongest || m.delta.is_some())
@@ -597,6 +598,50 @@ where
         }
     }
     (lines, muted, changes_only)
+}
+
+/// What arrived after the cut, one line per source: a glance at what the
+/// next digest holds, not a second briefing. Muted sources stay hidden.
+fn since_lines<Tz: TimeZone>(
+    scored: Vec<Scored<'_>>,
+    ctx: &LineContext<'_, Tz>,
+) -> Vec<UpdateLineData>
+where
+    Tz::Offset: std::fmt::Display,
+{
+    let mut by_source: BTreeMap<(String, String), Vec<Scored<'_>>> = BTreeMap::new();
+    for entry in scored {
+        by_source
+            .entry((
+                entry.item.message.account_id.to_string(),
+                entry.item.fact.source_key.clone(),
+            ))
+            .or_default()
+            .push(entry);
+    }
+    by_source
+        .into_iter()
+        .filter(|(_, members)| {
+            let first = &members[0].item;
+            setting_of(
+                ctx.inputs.sources,
+                &first.message.account_id,
+                &first.fact.source_key,
+            ) != UpdateSourceSettingData::Muted
+        })
+        .filter_map(|((account, key), members)| {
+            let strongest = members.iter().map(|m| m.signal).max()?;
+            let section = if strongest.needs_a_look() {
+                UpdateSectionData::NeedsALook
+            } else if matches!(strongest, Signal::Changed | Signal::NewSource) {
+                UpdateSectionData::Changed
+            } else {
+                UpdateSectionData::Routine
+            };
+            let refs: Vec<&Scored<'_>> = members.iter().collect();
+            source_line(section, format!("{account}|{key}|since"), &refs, ctx)
+        })
+        .collect()
 }
 
 pub(super) fn parcel_went_wrong(status: DeliveryStatus) -> bool {
@@ -951,7 +996,7 @@ where
         todo_by_thread: &todo_by_thread,
     };
     let since_count = since_scored.len();
-    let (mut since_lines, _, _) = build_lines(since_scored, &since_ctx);
+    let mut since_lines = since_lines(since_scored, &since_ctx);
     since_lines.sort_by_key(|line| std::cmp::Reverse(line.latest_at));
     let since_sources: HashSet<(&AccountId, &str)> = since_lines
         .iter()

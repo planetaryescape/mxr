@@ -6,6 +6,7 @@ import { useModeGuide, type ModeId } from "./api";
 /** The mode whose keys are live, from the scopes its views push. */
 export function modeOfScopes(scopes: readonly ActionScope[]): ModeId | null {
   if (scopes.includes("now")) return "now";
+  if (scopes.includes("messages")) return "messages";
   return scopes.some((scope) => scope === "todo" || scope === "catchup" || scope === "expired")
     ? "todo"
     : null;

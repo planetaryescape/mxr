@@ -1,12 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { ThreadPane } from "@/features/thread/ThreadPane";
-
+/**
+ * A conversation in Messages. The parent page reads the thread id and opens
+ * the person (or group) holding it, with that topic selected.
+ */
 export const Route = createFileRoute("/messages/$threadId")({
-  component: OpenThread,
+  component: () => null,
 });
-
-function OpenThread() {
-  const { threadId } = Route.useParams();
-  return <ThreadPane threadId={threadId} />;
-}

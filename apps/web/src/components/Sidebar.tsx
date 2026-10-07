@@ -55,8 +55,8 @@ type Icon = ComponentType<{ className?: string }>;
 export interface NavEntry {
   key: string;
   to: string;
-  /** Query the place is defined by (a Messages lane). */
-  search?: { lane: "waiting" } | { account?: string };
+  /** Query the place is defined by (Messages, waiting on them). */
+  search?: { turn: "theirs" } | { account?: string };
   /** Says what a count covers when the page it opens shows less of it. */
   hint?: string;
   label: string;
@@ -171,10 +171,10 @@ function isActive(path: string, lane: unknown, entry: NavEntry): boolean {
   const base = entry.to;
   if (base === "/settings/theme") return path.startsWith("/settings");
   const onPath = path === base || path.startsWith(`${base}/`);
-  // Messages and "Waiting on" share a path; the lane tells them apart.
+  // Messages and "Waiting on" share a path; the turn tells them apart.
   if (base === "/messages") {
-    const entryLane = entry.search && "lane" in entry.search ? entry.search.lane : null;
-    return onPath && entryLane === (lane === "waiting" ? "waiting" : null);
+    const entryTurn = entry.search && "turn" in entry.search ? entry.search.turn : null;
+    return onPath && entryTurn === (lane === "theirs" ? "theirs" : null);
   }
   return onPath;
 }
@@ -188,7 +188,12 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const lane = useRouterState({
-    select: (s) => ("lane" in s.location.search ? s.location.search.lane : undefined),
+    select: (s) =>
+      "turn" in s.location.search
+        ? s.location.search.turn
+        : "lane" in s.location.search
+          ? s.location.search.lane
+          : undefined,
   });
   const shell = useShellQuery();
   const activePane = useMailboxPane((s) => s.activePane);
@@ -239,7 +244,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       {
         key: "waiting",
         to: "/messages",
-        search: { lane: "waiting" },
+        search: { turn: "theirs" },
         label: "Waiting on",
         Icon: Timer,
         shortcut: "g w",

@@ -40,6 +40,7 @@ const SCOPE_TITLE: Record<Exclude<ActionScope, "global">, string> = {
   catchup: "To do: catch-up",
   expired: "To do: Expired list",
   now: "Now",
+  messages: "Messages",
 };
 
 const GLOBAL_GROUP_TITLE: Partial<Record<ActionGroup, string>> = {

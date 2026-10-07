@@ -64,10 +64,11 @@ export function waitLabel(since: string, now: Date = new Date()): string {
 }
 
 /** "14:02", "Yesterday", "Tue", "12 Mar": when a quiet or recent row last moved. */
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
 export function dayLabel(at: string, now: Date = new Date()): string {
   const date = new Date(at);
-  const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const days = Math.round((startOf(now) - startOf(date)) / 86_400_000);
+  const days = Math.round((startOfDay(now) - startOfDay(date)) / 86_400_000);
   if (days <= 0) {
     return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   }
@@ -130,10 +131,22 @@ export function stepTopic(
 
 /** A message's paragraphs, as the daemon's new text separates them. */
 export function paragraphs(text: string): string[] {
-  return text
-    .split(/\n\s*\n/)
-    .map((block) => block.trim())
-    .filter(Boolean);
+  return paragraphBlocks(text).map((block) => block.text);
+}
+
+/** Paragraphs with where each starts in the text, a stable key. */
+export function paragraphBlocks(text: string): { at: number; text: string }[] {
+  const blocks: { at: number; text: string }[] = [];
+  const separator = /\n\s*\n/g;
+  let start = 0;
+  for (const match of text.matchAll(separator)) {
+    const block = text.slice(start, match.index).trim();
+    if (block) blocks.push({ at: start, text: block });
+    start = match.index + match[0].length;
+  }
+  const last = text.slice(start).trim();
+  if (last) blocks.push({ at: start, text: last });
+  return blocks;
 }
 
 /**
@@ -151,19 +164,21 @@ export function letterLead(message: ConversationMessage): { lead: string; hidden
 }
 
 export interface TextPart {
+  /** Where the part starts in the text: a stable key. */
+  at: number;
   text: string;
   ask: boolean;
 }
 
 /** The text split around the ask, so the ask can be highlighted. */
 export function splitAsk(text: string, ask: string | null | undefined): TextPart[] {
-  if (!ask) return [{ text, ask: false }];
+  if (!ask) return [{ at: 0, text, ask: false }];
   const at = text.indexOf(ask);
-  if (at < 0) return [{ text, ask: false }];
+  if (at < 0) return [{ at: 0, text, ask: false }];
   return [
-    { text: text.slice(0, at), ask: false },
-    { text: ask, ask: true },
-    { text: text.slice(at + ask.length), ask: false },
+    { at: 0, text: text.slice(0, at), ask: false },
+    { at, text: ask, ask: true },
+    { at: at + ask.length, text: text.slice(at + ask.length), ask: false },
   ].filter((part) => part.text.length > 0);
 }
 

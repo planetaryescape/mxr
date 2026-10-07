@@ -7,6 +7,7 @@ import {
   cursorRows,
   initials,
   letterLead,
+  paragraphBlocks,
   rowForThread,
   splitAsk,
   stepTopic,
@@ -160,10 +161,20 @@ describe("length decides the shape", () => {
 
   test("the ask is cut out of the text to highlight it", () => {
     expect(splitAsk("Hi. Can you sign? Thanks.", "Can you sign?")).toEqual([
-      { text: "Hi. ", ask: false },
-      { text: "Can you sign?", ask: true },
-      { text: " Thanks.", ask: false },
+      { at: 0, text: "Hi. ", ask: false },
+      { at: 4, text: "Can you sign?", ask: true },
+      { at: 17, text: " Thanks.", ask: false },
     ]);
-    expect(splitAsk("No ask here.", "Missing")).toEqual([{ text: "No ask here.", ask: false }]);
+    expect(splitAsk("No ask here.", "Missing")).toEqual([
+      { at: 0, text: "No ask here.", ask: false },
+    ]);
+  });
+
+  test("paragraphs keep where they start", () => {
+    expect(paragraphBlocks("One.\n\nTwo.\n \nThree.")).toEqual([
+      { at: 0, text: "One." },
+      { at: 6, text: "Two." },
+      { at: 13, text: "Three." },
+    ]);
   });
 });

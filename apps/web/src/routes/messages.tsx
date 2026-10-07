@@ -1,23 +1,25 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useParams } from "@tanstack/react-router";
 
-import { DESK_LANES, type DeskLaneKind } from "@/features/desk/api";
-import { DeskRoute } from "@/features/desk/DeskRoute";
-import { optionalEnum } from "@/lib/searchParams";
+import { MessagesRoute, type MessagesSearch } from "@/features/messages/MessagesRoute";
+import { optionalEnum, optionalString } from "@/lib/searchParams";
 
-export interface MessagesRouteParams {
-  /** One lane in full, e.g. everyone you are waiting on. */
-  lane?: DeskLaneKind;
-}
+const TURNS = ["mine", "theirs"] as const;
 
-/** Messages, an early version built on the desk's lanes (blueprint 22). */
+/** Messages: people you talk with, one row each (blueprint 22, phase 3). */
 export const Route = createFileRoute("/messages")({
-  validateSearch: (search: Record<string, unknown>): MessagesRouteParams => ({
-    lane: optionalEnum(search.lane, DESK_LANES),
+  validateSearch: (search: Record<string, unknown>): MessagesSearch => ({
+    person: optionalString(search.person),
+    topic: optionalString(search.topic),
+    // `lane=waiting` was Waiting on in the early version: it is turn=theirs.
+    turn:
+      optionalEnum(search.turn, TURNS) ?? (search.lane === "waiting" ? "theirs" : undefined),
   }),
   component: Messages,
 });
 
 function Messages() {
-  const { lane } = Route.useSearch();
-  return <DeskRoute lane={lane} mode="messages" />;
+  const search = Route.useSearch();
+  // /messages/$threadId opens the row holding that conversation.
+  const { threadId } = useParams({ strict: false });
+  return <MessagesRoute search={search} threadId={threadId} />;
 }

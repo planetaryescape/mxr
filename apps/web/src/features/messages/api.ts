@@ -84,18 +84,31 @@ export function usePersonQuery(person: string | null, topic: string | null) {
   });
 }
 
-/** Got it: the exact text (`dryRun`), or send what was previewed. */
-export async function ack(
-  threadId: string,
-  dryRun: boolean,
-  expectText?: string,
-): Promise<AckPlan> {
+/**
+ * Got it's preview: the exact text and a token for sending it. `signal`
+ * lets a view that goes away drop the answer.
+ */
+export async function previewAck(threadId: string, signal?: AbortSignal): Promise<AckPlan> {
+  const answer = await apiFetch<AckResponse>("/api/v1/mail/people/ack", {
+    method: "POST",
+    body: { thread_id: threadId, dry_run: true },
+    signal,
+  });
+  return answer.ack;
+}
+
+/**
+ * Send exactly what `plan` previewed. The daemon refuses a send without
+ * the preview's token and text, or after the token's minute is up.
+ */
+export async function sendAck(plan: AckPlan): Promise<AckPlan> {
   const answer = await apiFetch<AckResponse>("/api/v1/mail/people/ack", {
     method: "POST",
     body: {
-      thread_id: threadId,
-      dry_run: dryRun,
-      ...(expectText !== undefined ? { expect_text: expectText } : {}),
+      thread_id: plan.thread_id,
+      dry_run: false,
+      expect_text: plan.text,
+      preview_token: plan.preview_token,
     },
   });
   return answer.ack;

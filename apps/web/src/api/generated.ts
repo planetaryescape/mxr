@@ -3407,10 +3407,15 @@ export interface components {
         };
         /** @description Body of `POST /api/v1/mail/people/ack`. */
         AckBody: {
-            /** @description Preview only: the exact text, nothing sent. */
+            /**
+             * @description True by default: a preview of the exact plan with its token. Only an
+             *     explicit `false`, with the preview's token and text, sends.
+             */
             dry_run?: boolean;
             /** @description The previewed text: the send refuses anything else. */
             expect_text?: string | null;
+            /** @description The preview's token, issued within the last minute. */
+            preview_token?: string | null;
             thread_id: string;
         };
         /**
@@ -3430,12 +3435,23 @@ export interface components {
              */
             countdown_seconds: number;
             dry_run: boolean;
+            /** @description The address it is sent from. */
+            from: string;
+            /** Format: date-time */
+            preview_expires_at?: string | null;
+            /**
+             * @description Set on a preview: send with it, and `text`, within a minute. It binds
+             *     the recipient, sender, target message and text.
+             */
+            preview_token?: string | null;
+            /** @description The message being acknowledged: their latest. */
             reply_to_message_id: components["schemas"]["MessageId"];
             sent_message_id?: null | components["schemas"]["MessageId"];
             subject: string;
             /** @description The exact text that is sent. */
             text: string;
             thread_id: components["schemas"]["ThreadId"];
+            /** @description Exactly one recipient: Got it never replies to all. */
             to: components["schemas"]["Address"][];
         };
         ActivityCursor: {
@@ -3829,6 +3845,11 @@ export interface components {
             from_me: boolean;
             layout: components["schemas"]["MessageLayoutData"];
             message_id: components["schemas"]["MessageId"];
+            /**
+             * @description Nothing but quoted text: `text` is the "(only quoted text)"
+             *     placeholder, and the message as sent is the way to read it.
+             */
+            only_quoted?: boolean;
             /** Format: int32 */
             paragraphs: number;
             /**
@@ -4782,7 +4803,7 @@ export interface components {
          *     means the user moved the sender; everything else is automatic.
          * @enum {string}
          */
-        KindRuleData: "decision" | "delivery" | "invite" | "automated_address" | "automated_domain" | "newsletter_address" | "newsletter_domain" | "list_id" | "list_unsubscribe" | "no_reply_address" | "list_sender" | "person";
+        KindRuleData: "decision" | "delivery" | "invite" | "automated_address" | "automated_domain" | "newsletter_address" | "newsletter_domain" | "list_id" | "list_unsubscribe" | "no_reply_address" | "list_sender" | "person" | "copied";
         Label: {
             account_id: components["schemas"]["AccountId"];
             color?: string | null;
@@ -6948,6 +6969,7 @@ export interface components {
             cmd: "AckMessage";
             dry_run?: boolean;
             expect_text?: string | null;
+            preview_token?: string | null;
             thread_id: components["schemas"]["ThreadId"];
         } | {
             account_id: components["schemas"]["AccountId"];
@@ -8993,6 +9015,8 @@ export interface components {
         TriageVerdictData: "ACTION" | "FYI" | "ROUTINE";
         /** @description What `new text` removed from a message. */
         TrimmedData: {
+            /** @description A legal disclaimer or a tracking/unsubscribe footer. */
+            footer?: boolean;
             quote: boolean;
             signature: boolean;
         };

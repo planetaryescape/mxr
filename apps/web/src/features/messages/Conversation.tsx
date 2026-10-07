@@ -90,6 +90,12 @@ function MessageItem({
       </p>
       {asSent ? (
         <AsSent threadId={threadId} messageId={message.message_id} />
+      ) : message.only_quoted ? (
+        // Nothing new in it: the placeholder says so, and the message as
+        // sent (the marker below, or v) is how to read it.
+        <p data-testid="only-quoted" className="text-[13.5px] italic text-muted-foreground">
+          {message.text}
+        </p>
       ) : (
         <div
           className={cn(
@@ -134,7 +140,7 @@ function MessageItem({
             {Math.max(1, Math.ceil(attachment.size_bytes / 1024))} KB
           </span>
         ))}
-        {message.trimmed_label || asSent ? (
+        {message.trimmed_label || message.only_quoted || asSent ? (
           <button
             type="button"
             data-testid="trimmed-marker"
@@ -142,7 +148,7 @@ function MessageItem({
             title="Show the message as sent (o or v)"
             className="inline-flex items-center gap-1 hover:text-foreground"
           >
-            {asSent ? "back to what they wrote" : message.trimmed_label}
+            {asSent ? "back to what they wrote" : (message.trimmed_label ?? "show it as sent")}
             <KeyChip className="h-4 px-1">v</KeyChip>
           </button>
         ) : null}

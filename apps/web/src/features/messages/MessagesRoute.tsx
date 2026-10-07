@@ -188,7 +188,7 @@ function MessagesBody({
     if (next) select(next.id);
   }, [data.your_turn, select, selectedId]);
 
-  const gotIt = useGotIt(() => {
+  const gotIt = useGotIt(`${selectedId ?? ""}|${conversation?.thread_id ?? ""}`, () => {
     retireCard();
     nextYourTurn();
   });

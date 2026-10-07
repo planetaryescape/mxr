@@ -109,7 +109,9 @@ test("a long reply is a letter, trimmed, and v shows it as sent", async ({ page 
     .filter({ has: page.getByTestId("trimmed-marker") })
     .last();
   await expect(letter).toHaveAttribute("data-layout", "letter");
-  await expect(letter.getByTestId("trimmed-marker")).toContainText("trimmed: quote, sig");
+  await expect(letter.getByTestId("trimmed-marker")).toContainText(
+    /trimmed: quote, sig(, footer)?/,
+  );
   await expect(letter).toContainText(/Read all \d+ paragraphs/);
   // The quote of your own message and Samir's signature are gone.
   await expect(letter).not.toContainText("Could you check it with legal");
@@ -143,6 +145,40 @@ test("Got it shows the exact text and counts down; undo sends nothing", async ({
   await expect(page.getByText("Got it cancelled. Nothing was sent.")).toBeVisible();
   // Past the countdown, nothing went out.
   await page.waitForTimeout(6_000);
+  expect(await sent()).toBe(before);
+});
+
+test("leaving mid-countdown sends nothing", async ({ page }) => {
+  await waitForPeople(page);
+  const contract = await topicOf(page, SAMIR, "Contract renewal");
+  const sent = async () =>
+    (
+      await bridge<{ page: { conversation: { messages: unknown[] } } }>(
+        page,
+        `/api/v1/mail/people/page?person=${encodeURIComponent(SAMIR)}&topic=${contract}`,
+      )
+    ).page.conversation.messages.length;
+  const before = await sent();
+
+  // Away to another mode.
+  await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}&topic=${contract}`);
+  await expect(page.getByTestId("conversation")).toBeVisible();
+  await page.keyboard.press(".");
+  await expect(page.getByTestId("got-it-preview")).toBeVisible();
+  await page.keyboard.press("g");
+  await page.keyboard.press("i");
+  await expect(page).toHaveURL(/\/m\/inbox$/);
+
+  // Away to another person.
+  await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}&topic=${contract}`);
+  await expect(page.getByTestId("conversation")).toBeVisible();
+  await page.keyboard.press(".");
+  await expect(page.getByTestId("got-it-preview")).toBeVisible();
+  await row(page, IRIS).click();
+  await expect(page.getByTestId("person-name")).toHaveText("Iris Chen");
+  await expect(page.getByTestId("got-it-preview")).toHaveCount(0);
+
+  await page.waitForTimeout(6_500);
   expect(await sent()).toBe(before);
 });
 

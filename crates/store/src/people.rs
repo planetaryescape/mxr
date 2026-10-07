@@ -260,7 +260,8 @@ impl super::Store {
     }
 
     /// The person's conversations, newest first: threads where they wrote,
-    /// or where you wrote to them, with mail dated at or after `since`.
+    /// or where you wrote to them (To, Cc or Bcc), with mail dated at or
+    /// after `since`.
     pub async fn person_thread_ids(
         &self,
         account_id: &AccountId,
@@ -286,7 +287,7 @@ impl super::Store {
                      LOWER(m.from_email) IN (SELECT value FROM json_each(?2))
                      OR (m.direction = 'outbound' AND EXISTS (
                          SELECT 1
-                         FROM json_each(json_array(json(m.to_addrs), json(m.cc_addrs))) lists,
+                         FROM json_each(json_array(json(m.to_addrs), json(m.cc_addrs), json(m.bcc_addrs))) lists,
                               json_each(lists.value) a
                          WHERE LOWER(json_extract(a.value, '$.email'))
                                IN (SELECT value FROM json_each(?2))

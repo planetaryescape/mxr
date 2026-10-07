@@ -201,3 +201,41 @@ async fn facts_read_the_contacts_row() {
     assert_eq!(facts[0].total_outbound, 48);
     assert_eq!(facts[0].cadence_days_p50, Some(9.5));
 }
+
+#[tokio::test]
+async fn person_threads_include_mail_you_sent_them_as_bcc() {
+    let (store, account) = fixture().await;
+    let now = Utc::now();
+    let mut envelope = TestEnvelopeBuilder::new()
+        .account_id(account.clone())
+        .build();
+    envelope.provider_id = "people-bcc".into();
+    envelope.thread_id = ThreadId::new();
+    envelope.date = now - Duration::hours(1);
+    envelope.from = Address {
+        name: None,
+        email: "me@example.com".into(),
+    };
+    envelope.to = vec![Address {
+        name: None,
+        email: "team@example.com".into(),
+    }];
+    envelope.bcc = vec![Address {
+        name: None,
+        email: "Ari@Fieldkit.example".into(),
+    }];
+    store
+        .upsert_envelope_with_direction(&envelope, MessageDirection::Outbound)
+        .await
+        .unwrap();
+    let threads = store
+        .person_thread_ids(
+            &account,
+            &["ari@fieldkit.example".to_string()],
+            now - Duration::days(30),
+            10,
+        )
+        .await
+        .unwrap();
+    assert_eq!(threads, vec![envelope.thread_id]);
+}

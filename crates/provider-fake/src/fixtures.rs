@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 mod messages_demo;
 mod modes_demo;
-mod records_demo;
 mod reading_demo;
+mod records_demo;
 mod todo_demo;
 
 pub use reading_demo::demo_article_html;

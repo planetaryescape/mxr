@@ -85,8 +85,8 @@ pub use pending_optimistic::PendingOptimisticState;
 pub use promises::PromisePrompt;
 #[cfg(test)]
 pub(crate) use promises::{PROMISE_ANSWER_GUARD, PROMISE_PROMPT_TTL};
-pub(crate) use records_actions::ARCHIVE_MODE;
 pub(crate) use reading_actions::READING_MODE;
+pub(crate) use records_actions::ARCHIVE_MODE;
 pub use row_gists::{RowGist, RowGistState, RowGists};
 use state::PendingPreviewRead;
 pub use state::*;

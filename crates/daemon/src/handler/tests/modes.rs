@@ -514,10 +514,8 @@ async fn the_rail_lists_now_the_modes_and_inbox_with_keys_and_counts() {
     assert_eq!(entry("updates").count, Some(1));
     assert_eq!(entry("reading").count, None, "nothing in Reading is owed");
     assert_eq!(entry("archive").count, None);
-    for id in ["updates"] {
-        assert_eq!(entry(id).status, RailStatusData::Early, "{id}");
-        assert!(entry(id).early_note.is_some(), "{id}");
-    }
+    assert_eq!(entry("updates").status, RailStatusData::Early);
+    assert!(entry("updates").early_note.is_some());
     for id in ["now", "messages", "todo", "reading", "archive", "inbox"] {
         assert_eq!(entry(id).status, RailStatusData::Built, "{id}");
         assert!(entry(id).header.is_some(), "{id}");

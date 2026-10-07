@@ -60,8 +60,8 @@ mod owed_replies;
 mod people;
 mod places;
 mod pool;
-mod records;
 mod reading;
+mod records;
 mod relationship_watchlist;
 mod reply_pairs;
 mod rules;
@@ -118,11 +118,11 @@ pub use mode_done::{ModeDoneMark, ModeDonePrior};
 pub use owed_replies::OwedReplyRow;
 pub use people::{NamedCorrespondent, PersonFacts, PersonLink, PersonMerge};
 pub use places::PlaceMessage;
+pub use pool::Store;
 pub use reading::{
     ReadingArticleRow, ReadingEngagementReport, ReadingHighlightRow, ReadingItemRow,
     ReadingSourcePrefs, ReadingStateRow, ReadingVisitRow, SourceIssue,
 };
-pub use pool::Store;
 pub use records::{
     todo_record_dedup_key, todo_record_source_key, ArchiveRecord, RecordDocument, RecordFieldEdit,
     RecordFieldValue, RecordFiled, RecordFiling, RecordGroup, RecordLink, RecordPdfToFetch,

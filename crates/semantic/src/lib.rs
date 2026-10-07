@@ -2861,11 +2861,12 @@ mod tests {
     fn a_record_adds_one_field_chunk_after_the_header() {
         let account = test_account();
         let envelope = test_envelope(&account.id);
-        let plain = build_chunk_records(&envelope, None, None, chrono::Utc::now());
+        let plain = build_chunk_records(&envelope, None, None, &[], chrono::Utc::now());
         let with_record = build_chunk_records(
             &envelope,
             None,
             Some("record booking TAP Air Portugal LHR -> LIS K7QX2M Lisbon"),
+            &[],
             chrono::Utc::now(),
         );
         assert_eq!(with_record.len(), plain.len() + 1);

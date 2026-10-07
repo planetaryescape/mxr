@@ -17,7 +17,7 @@ use super::ArchiveAnswerData;
 pub mod archive_copy {
     pub const HEADER: &str = "Receipts, orders, bookings and documents. Ask for what you need.";
     pub const NEVER_HAD_ANY: &str = "Receipts, orders, bookings, bills and documents are filed here as records, one card per thing, not per email. Type what you remember, like \"lisbon booking\", and it answers with the field.";
-    pub const ADD_ONE_KEYS: &str = "Press `F` on any email to file it yourself.";
+    pub const ADD_ONE_KEYS: &str = "Press `T` on any email and pick Archive to file it yourself.";
     pub const ADD_ONE_CLI: &str = "`mxr records file MESSAGE_ID` files one yourself.";
     /// Archive has no done: records stay.
     pub const CLEAR_FOR_NOW: &str = "Records stay. Ask for one, or browse by month.";

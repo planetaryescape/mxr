@@ -221,7 +221,6 @@ const ARCHIVE_KEYS: &[(&str, &str)] = &[
     ("v", "mark checked"),
     ("X", "not a record"),
     ("E", "export"),
-    ("F", "file an email"),
     ("t", "make a to-do"),
     ("?", "what is this"),
 ];

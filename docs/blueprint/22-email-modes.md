@@ -1959,7 +1959,8 @@ rules above; D117 records them.
   those it is, so nothing piles up out of sight in the inbox.
 - **Breakthrough is on, not a suggestion (phase 4).** A new sign-in, a
   failed payment and a delivery problem become a to-do on arrival, once per
-  message by its dedup key, only while inside their window and at most two
+  source, kind of message and day by its dedup key (ten alerts in an
+  afternoon are one thing to check), only while inside their window and at most two
   days old. "Auto-actions ship as suggestions" above still holds for model
   placements; these three are rules with a fixed window, and the to-do
   expires with it.

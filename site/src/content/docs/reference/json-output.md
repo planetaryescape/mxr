@@ -656,27 +656,28 @@ would write, from the same rows:
 
 ```json
 {
-  "cut": { "at": "2026-10-07T07:00:00Z", "label": "08:00", "title": "This morning's digest",
-           "previous_at": "2026-10-06T15:30:00Z", "next_at": "2026-10-07T15:30:00Z",
-           "next_label": "16:30", "cuts": ["08:00", "16:30"] },
-  "headline": "1 needs a look, 1 changed. 4 routine from 1 source.",
-  "message_count": 6,
-  "source_count": 3,
+  "cut": { "at": "2026-10-06T15:30:00Z", "label": "16:30", "title": "Yesterday afternoon's digest",
+           "previous_at": "2026-10-06T07:00:00Z", "next_at": "2026-10-07T07:00:00Z",
+           "next_label": "08:00", "cuts": ["08:00", "16:30"] },
+  "headline": "8 need a look, 6 changed. 149 routine from 5 sources.",
+  "message_count": 171,
+  "source_count": 12,
   "needs_a_look": [ { "source_name": "Google", "fact": "Security alert: New sign-in from Chrome on Windows",
-                      "signal": "needs_you", "count": 1, "time_label": "06:00",
-                      "todo_id": "todo_…", "in_todo": "already in To do" } ],
+                      "signal": "needs_you", "count": 1, "time_label": "14:30",
+                      "todo_id": "todo_63be0b7c784d4adcb86d4c5b9e7c79b7", "in_todo": "already in To do" } ],
   "changed": [ { "source_key": "strava.com", "fact": "Your week in running: 21.3 km over 3 runs",
-                 "numbers": [ { "raw": "21.3 km", "value": 21.3, "unit": "km" } ],
-                 "delta": { "raw": "21.3 km", "previous_raw": "19.0 km", "change": 12.1,
+                 "numbers": [ { "raw": "21.3 km", "value": 21.3, "unit": "km" },
+                              { "raw": "3 runs", "value": 3.0, "unit": "run" } ],
+                 "delta": { "raw": "21.3 km", "previous_raw": "19.0 km", "change": 12.105263157894742,
                             "text": "up 12% on last week" } } ],
   "routine": [ { "source_key": "vercel.com", "fact": "Deployment succeeded for acme-web", "count": 4 } ],
-  "since": { "label": "arriving for 16:30", "message_count": 1, "source_count": 1, "lines": [] },
-  "selection_token": "15271067644b76a1",
-  "let_go_line": "Let go of 6 updates from 3 sources; 1 also in To do stays there."
+  "since": { "label": "arriving for 08:00", "message_count": 17, "source_count": 3, "lines": [] },
+  "selection_token": "cb3d3cd1e8b7ff66",
+  "let_go_line": "Let go of 213 updates from 13 sources, 42 of them not shown (tuned or expired); 6 also in To do stay there."
 }
 ```
 
-Lines are trimmed here. Every line also carries `id`, `section`,
+From the 2,000-message demo; lines are trimmed here. Every line also carries `id`, `section`,
 `account_id`, `message_ids`, `thread_ids`, `latest_message_id`,
 `latest_at`, `why`, `setting`, `todo_title` and `provenance` (where each
 field came from: `rule`, `code` or `default`), and, where they apply,

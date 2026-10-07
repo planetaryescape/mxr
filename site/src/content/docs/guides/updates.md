@@ -114,8 +114,8 @@ The keys:
 A new sign-in alert, a failed payment and a parcel with a delivery problem
 don't wait for the cut. They become a to-do as soon as they sync ("Check
 new sign-in to Google", "Fix failed payment to Stripe") and still show in
-the next digest under Needs a look, marked "already in To do". Each one
-becomes a to-do once, however often it syncs. Mail older than two days and
+the next digest under Needs a look, marked "already in To do". One source's alerts
+of the same kind make one to-do a day, however often they sync. Mail older than two days and
 mail past its window never does.
 
 `t` on any line makes a to-do from it, with the title filled in.

@@ -51,10 +51,10 @@ PEOPLE  (and 11 more in Messages)
 DUE SOON
   Fix payment for Spotify  £11.99  act now
 
-UPDATES  08:00 digest  (+4 more, 5 routine)
-  3 need a look, 4 changed. 5 routine from 2 sources.
-  Google                Security alert: New sign-in from Chrome on Windows  (already in To do)
+UPDATES  16:30 digest  (+11 more, 149 routine)
+  8 need a look, 6 changed. 149 routine from 5 sources.
   GitHub acme/api       Run failed: CI - main (9f8e7d6)
+  Google                Security alert: New sign-in from Chrome on Windows  (already in To do)
   Stripe                Payout of R 4,210.00 failed: bank declined  (already in To do)
 
 Not now: Reading 5 this week

@@ -261,23 +261,36 @@ pub async fn fetch_page(raw: &str, policy: &FetchPolicy) -> Result<Fetched, Fetc
                 status: status.as_u16(),
             });
         }
-        let content_type = response
+        // Only HTML is read. A declared type must be exactly text/html or
+        // application/xhtml+xml; with none, the body itself must look like
+        // HTML.
+        let declared = response
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
-            .unwrap_or("text/html")
-            .to_ascii_lowercase();
-        if !content_type.contains("html") {
-            return Err(FetchError::NotHtml {
-                host,
-                content_type: content_type
+            .map(|value| {
+                value
                     .split(';')
                     .next()
                     .unwrap_or_default()
-                    .to_string(),
+                    .trim()
+                    .to_ascii_lowercase()
             });
+        if let Some(content_type) = &declared {
+            if !HTML_TYPES.contains(&content_type.as_str()) {
+                return Err(FetchError::NotHtml {
+                    host,
+                    content_type: content_type.clone(),
+                });
+            }
         }
         let html = read_capped(response, policy.max_bytes, &host).await?;
+        if declared.is_none() && !looks_like_html(&html) {
+            return Err(FetchError::NotHtml {
+                host,
+                content_type: "no declared type, and not HTML".to_string(),
+            });
+        }
         return Ok(Fetched {
             final_url: url,
             contacted,
@@ -287,6 +300,33 @@ pub async fn fetch_page(raw: &str, policy: &FetchPolicy) -> Result<Fetched, Fetc
     Err(FetchError::TooManyRedirects(
         contacted.first().cloned().unwrap_or_default(),
     ))
+}
+
+const HTML_TYPES: &[&str] = &["text/html", "application/xhtml+xml"];
+
+/// The start of a body with no declared type, as browsers sniff it: an
+/// HTML doctype or one of the tags a page opens with.
+fn looks_like_html(body: &str) -> bool {
+    let start = body
+        .trim_start_matches('\u{feff}')
+        .trim_start()
+        .chars()
+        .take(64)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    [
+        "<!doctype html",
+        "<html",
+        "<head",
+        "<body",
+        "<!--",
+        "<p",
+        "<div",
+        "<article",
+        "<title",
+    ]
+    .iter()
+    .any(|tag| start.starts_with(tag))
 }
 
 async fn read_capped(
@@ -497,6 +537,56 @@ mod tests {
             .await
             .expect_err("loops stop");
         assert!(matches!(err, FetchError::TooManyRedirects(_)));
+    }
+
+    #[tokio::test]
+    async fn only_html_types_pass_and_a_missing_type_is_sniffed() {
+        let server = MockServer::start().await;
+        let page = |route: &'static str, body: &'static str, content_type: Option<&'static str>| {
+            let mut response = ResponseTemplate::new(200).set_body_bytes(body.as_bytes());
+            if let Some(content_type) = content_type {
+                response = response.insert_header("content-type", content_type);
+            }
+            Mock::given(method("GET"))
+                .and(path(route))
+                .respond_with(response)
+        };
+        page(
+            "/xhtml",
+            "<html><body><p>x</p></body></html>",
+            Some("application/xhtml+xml; charset=utf-8"),
+        )
+        .mount(&server)
+        .await;
+        page(
+            "/sneaky",
+            "{\"html\": true}",
+            Some("application/vnd.html-ish+json"),
+        )
+        .mount(&server)
+        .await;
+        page(
+            "/untyped-html",
+            "  <!DOCTYPE html><html><p>hi</p></html>",
+            None,
+        )
+        .mount(&server)
+        .await;
+        page("/untyped-pdf", "%PDF-1.7 binary", None)
+            .mount(&server)
+            .await;
+        let policy = local_policy();
+        let url = |route: &str| format!("{}{route}", server.uri());
+        assert!(fetch_page(&url("/xhtml"), &policy).await.is_ok());
+        assert!(fetch_page(&url("/untyped-html"), &policy).await.is_ok());
+        assert!(matches!(
+            fetch_page(&url("/sneaky"), &policy).await,
+            Err(FetchError::NotHtml { .. })
+        ));
+        assert!(matches!(
+            fetch_page(&url("/untyped-pdf"), &policy).await,
+            Err(FetchError::NotHtml { .. })
+        ));
     }
 
     #[tokio::test]

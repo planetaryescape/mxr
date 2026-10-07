@@ -1005,6 +1005,35 @@ fn assert_only_own_part(thread: &mxr_core::types::Thread, s: &Scoped) {
     );
 }
 
+/// The thread list for the agent's own account hydrates every thread from
+/// all its messages; a scoped client sees only its own part of a shared one.
+#[tokio::test]
+async fn list_threads_shows_a_scoped_client_only_its_part_of_a_shared_thread() {
+    let s = scoped().await;
+    let shared = share_thread(&s).await;
+    let Response::Ok {
+        data: ResponseData::Threads { threads },
+    } = scoped_dispatch(
+        &s,
+        Request::ListThreads {
+            account_id: Some(s.own.account.clone()),
+            label_id: None,
+            limit: 50,
+            offset: 0,
+            sort: None,
+        },
+    )
+    .await
+    else {
+        panic!("expected threads")
+    };
+    let thread = threads
+        .iter()
+        .find(|thread| thread.id == shared)
+        .expect("the shared thread is listed for its own account");
+    assert_only_own_part(thread, &s);
+}
+
 /// The subject comes from the kept messages, not the aggregate that may
 /// have taken it from a hidden one.
 #[tokio::test]

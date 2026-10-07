@@ -769,8 +769,9 @@ pub(crate) fn profile_name(source: ClientKind) -> Option<&'static str> {
 
 /// Cut a response down to what a scoped profile may see. Request checks
 /// already keep a scoped client to its accounts; this covers responses that
-/// are allowed but carry other accounts' rows (status, signatures) and is a
-/// second safety net for thread loads.
+/// are allowed but carry other accounts' rows (status, signatures, threads
+/// whose id another account shares) and is a second safety net for thread
+/// loads.
 pub(super) async fn scope_response(
     state: &AppState,
     profile: &AgentProfileConfig,
@@ -833,6 +834,9 @@ pub(super) async fn scope_response(
             messages,
             summary,
         } => scope_thread(state, profile, thread, messages, summary).await,
+        ResponseData::Threads { threads } => Ok(ResponseData::Threads {
+            threads: scope_threads(state, profile, threads).await?,
+        }),
         ResponseData::Signatures { signatures } => {
             let mut hidden = Vec::new();
             for default in state
@@ -893,6 +897,51 @@ async fn scope_thread(
         messages: kept,
         summary: None,
     })
+}
+
+/// `Thread` and `Threads` are the responses that carry hydrated threads.
+/// A listed thread whose id another account also holds is rebuilt from the
+/// allowed accounts' messages, and one with none of them is dropped.
+async fn scope_threads(
+    state: &AppState,
+    profile: &AgentProfileConfig,
+    threads: Vec<Thread>,
+) -> Result<Vec<Thread>, String> {
+    let ids: Vec<_> = threads.iter().map(|thread| thread.id.clone()).collect();
+    let pairs = state
+        .store
+        .thread_account_pairs(&ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut excluded = Vec::new();
+    for (thread_id, account_id) in &pairs {
+        if !account_id_allowed(state, profile, account_id).await? {
+            excluded.push(thread_id);
+        }
+    }
+    let mut scoped = Vec::with_capacity(threads.len());
+    for mut thread in threads {
+        if !excluded.contains(&&thread.id) {
+            scoped.push(thread);
+            continue;
+        }
+        let mut kept = Vec::new();
+        for message in state
+            .store
+            .get_thread_envelopes(&thread.id)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            if account_id_allowed(state, profile, &message.account_id).await? {
+                kept.push(message);
+            }
+        }
+        if !kept.is_empty() {
+            rebuild_thread(&mut thread, &kept)?;
+            scoped.push(thread);
+        }
+    }
+    Ok(scoped)
 }
 
 /// Rebuild a thread's aggregate fields from the messages a scoped client

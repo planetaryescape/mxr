@@ -573,6 +573,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `i A` | Accept with comment |  |
 | `i M` | Maybe with comment |  |
 | `i D` | Decline with comment |  |
+| `X` | Move to… |  |
 
 ### Mail list
 
@@ -612,7 +613,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `J` | Next message |  |
 | `K` | Previous message |  |
 | `o` | Expand or collapse message | The TUI shows every message, and its o opens the original, like O |
-| `X` | Expand or collapse all | Web only |
+| `;` | Expand or collapse all | Web only |
 | `n` | Next conversation | The TUI steps results with n/N; the web steps conversations |
 | `N` | Previous conversation |  |
 | `]` | Archive, open next | Web only |

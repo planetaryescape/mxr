@@ -25,6 +25,7 @@ export type OtherVerb =
   | "digest-let-go"
   | "pin"
   | "move-sender"
+  | "mode-move"
   | "todo-done"
   | "todo-dismiss"
   | "todo-schedule"
@@ -425,6 +426,14 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     optimistic: "The sender's mail leaves this place at once.",
     pastTense: "Moved",
     tone: "info",
+    sound: null,
+    undo: "reverse-request",
+  },
+  "mode-move": {
+    actions: ["modes.move", "modes.move-sender"],
+    alsoFrom: "Now's Not-sure choices, the Move button on an arrivals list row",
+    optimistic: "Nothing moves until the daemon answers; then every client refetches.",
+    pastTense: "Moved",
     sound: null,
     undo: "reverse-request",
   },

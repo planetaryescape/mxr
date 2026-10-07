@@ -84,6 +84,8 @@ function LensView({ lens }: { lens: MailLens }) {
       // Triage lists get gist lines: the inbox and label queues, not Sent,
       // Trash or Spam, where the model would be spent on nothing to decide.
       rowGists={lens.key === "inbox" || lens.section === "labels"}
+      // Inbox is the everything view: each row names the mode it went to.
+      modeChips={lens.key === "inbox"}
       empty={<EmptyLens lens={lens} />}
       // One persistent control: which grouping is on. The list refreshes
       // itself from daemon events; Sync now lives in the status bar and the

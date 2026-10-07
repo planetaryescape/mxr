@@ -22,6 +22,7 @@ import { useModeGuide, type ModeGuide } from "@/features/modes/api";
 import { useThreadModesMap } from "@/features/modes/membership";
 import { doneToast, markModeDone, useModeDone } from "@/features/modes/modeDone";
 import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
+import { moveCommands } from "@/features/arrivals/moveSubjects";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useSplitPane } from "@/hooks/useSplitPane";
@@ -495,6 +496,17 @@ function MessagesBody({
       if (closeHint) closeHint();
       else setPageOpen(false);
     },
+    // X and K act on the newest email the other side sent.
+    ...moveCommands(() => {
+      const theirs = conversation?.messages.findLast((message) => !message.from_me);
+      return theirs && conversation
+        ? {
+            messageId: theirs.message_id,
+            label: conversation.subject || "(no subject)",
+            senderLabel: theirs.from.name || theirs.from.email,
+          }
+        : null;
+    }),
   });
 
   const empty = data.your_turn.length === 0;

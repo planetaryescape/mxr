@@ -277,7 +277,30 @@ function recordVerb(verb: Verb, act: (page: Page) => Promise<void>): Journey {
   };
 }
 
+/**
+ * X on an Inbox row: the picker, one key, the move's toast, the row's mode
+ * chip naming the new mode, and `u` putting it back where it was.
+ */
+const modeMove: Journey = async (page) => {
+  await openList(page, "/m/inbox");
+  await mailList(page).focus();
+  const rowId = await cursorTo(page, () => true);
+  const chip = rowById(page, rowId).getByTestId("mode-chip");
+  await expect(chip).toBeVisible();
+  const before = (await chip.textContent()) ?? "";
+  const target = before === "Reading" ? "u" : "r";
+  await page.keyboard.press("X");
+  await expect(page.getByTestId("move-to-mode-dialog")).toBeVisible();
+  await page.keyboard.press(target);
+  await expectToast(page, "mode-move");
+  await expect(chip).toHaveText(target === "r" ? "Reading" : "Updates");
+  await page.keyboard.press("u");
+  await expect(toast(page, /^Moved back to /)).toBeVisible();
+  await expect(chip).toHaveText(before);
+};
+
 const JOURNEYS: Partial<Record<Verb, Journey>> = {
+  "mode-move": modeMove,
   archive: rowVerb("archive", ["e"], { leaves: true }),
   "read-and-archive": rowVerb("read-and-archive", ["m"], { leaves: true }),
   trash: rowVerb("trash", ["#"], { leaves: true }),

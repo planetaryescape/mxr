@@ -1,3 +1,4 @@
+import { MoveToModeDialog } from "@/features/arrivals/MoveToModeDialog";
 import {
   ExportDialog,
   PassToModeDialog,
@@ -81,6 +82,8 @@ export function MailDialogs() {
           onClose={close}
         />
       );
+    case "move-to-mode":
+      return <MoveToModeDialog subject={dialog.subject} sender={dialog.sender} onClose={close} />;
     case "todo-schedule":
       return <TodoScheduleDialog todo={dialog.todo} onClose={close} />;
     case "todo-edit":

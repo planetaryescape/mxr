@@ -21,6 +21,7 @@ import { initials, parseAddress, plural } from "@/lib/format";
 import { avatarTone } from "@/components/avatarTone";
 import { cn } from "@/lib/utils";
 import { useWhen } from "@/components/When";
+import { ModeChip } from "@/features/arrivals/ModeChip";
 
 export type RowQuickAction = "archive" | "trash" | "toggleRead" | "toggleStar" | "snooze";
 
@@ -233,6 +234,8 @@ export const MailboxRow = memo(function MailboxRow({
               <Paperclip className="size-3.5 text-muted-foreground" aria-hidden />
             ) : null}
             {row.starred ? <Star className="size-3.5 fill-star text-star" aria-hidden /> : null}
+            {/* Where it went (Inbox only; elsewhere no chip scope is mounted). */}
+            <ModeChip messageId={row.id} />
             <time
               dateTime={row.date}
               title={row.date_full}

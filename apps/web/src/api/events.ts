@@ -26,6 +26,8 @@ export type DaemonEvent =
   | { type: "ReminderTriggered"; event?: "ReminderTriggered"; sent_message_id: string }
   | { type: "ReplyLaterReturned"; event?: "ReplyLaterReturned"; message_id: string }
   | { type: "LabelCountsUpdated"; event?: "LabelCountsUpdated"; counts: unknown[] }
+  /** An email or sender was moved (or a move undone), or new arrivals were placed. */
+  | { type: "ModesChanged"; event?: "ModesChanged"; account_id?: string | null }
   | {
       type: "OperationStarted";
       event?: "OperationStarted";

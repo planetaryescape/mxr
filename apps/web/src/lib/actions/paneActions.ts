@@ -148,7 +148,8 @@ export const readerActions: Action[] = [
       tuiNote: "The TUI shows every message, and its o opens the original, like O",
     },
   ),
-  key("reader", "reader.expand-all", "expandAll", "Expand or collapse all", "X", "Read", {
+  // ";" as in Gmail: X moves the email to another mode (blueprint 22).
+  key("reader", "reader.expand-all", "expandAll", "Expand or collapse all", ";", "Read", {
     shortLabel: "Expand all",
     tuiNote: "Web only",
   }),

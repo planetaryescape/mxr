@@ -102,6 +102,14 @@ describe("useDaemonEventInvalidation", () => {
     expect(keys).toContain(JSON.stringify(["mailbox"]));
   });
 
+  test("ModesChanged (a move in any client) refreshes every mode, Now's line and Inbox's chips", () => {
+    const { emit, invalidates } = setup();
+    emit({ type: "ModesChanged", account_id: "acct-1" });
+
+    const roots = ["arrivals", "arrival-modes", "now", "place", "mailbox", "mode-membership"];
+    expect(roots.filter((root) => !invalidates([root]))).toEqual([]);
+  });
+
   test("MutationReconciliationFailed rolls back the affected surfaces and warns", () => {
     const { emit, invalidatedKeys } = setup();
     emit({

@@ -14,6 +14,7 @@ import {
   type InviteAction,
 } from "@/features/invites/inviteResponse";
 import { openInviteComment } from "@/features/invites/useInviteResponse";
+import { answerPendingSenderAsk, openMovePicker } from "@/features/arrivals/moves";
 import { fetchSenderProfile, getThreadBriefing } from "@/features/mailbox/api";
 import { deskLaneOf } from "@/features/desk/deskLater";
 import { apiFetch } from "@/api/client";
@@ -103,6 +104,20 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
     } else {
       run();
     }
+  };
+
+  /** `X` / `K`: the newest message of one conversation. */
+  const moveToMode = (sender: boolean) => {
+    const primary = single(hooks.getTarget(), "Move")?.primary;
+    if (!primary) return;
+    openMovePicker(
+      {
+        messageId: primary.id,
+        label: primary.subject || "(no subject)",
+        senderLabel: primary.sender || undefined,
+      },
+      sender,
+    );
   };
 
   const openReply = (mode: "single" | "all" | "forward") => () => {
@@ -199,6 +214,10 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
         messageId: primary.id,
         subject: primary.subject || undefined,
       });
+    },
+    moveToMode: () => moveToMode(false),
+    moveSenderToMode: () => {
+      if (!answerPendingSenderAsk()) moveToMode(true);
     },
     reply: openReply("single"),
     replyAll: openReply("all"),

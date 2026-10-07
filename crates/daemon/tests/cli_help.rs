@@ -292,6 +292,9 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_messages_ack", &["messages", "ack", "--help"]),
         ("cli_help_messages_merge", &["messages", "merge", "--help"]),
         ("cli_help_messages_split", &["messages", "split", "--help"]),
+        ("cli_help_updates", &["updates", "--help"]),
+        ("cli_help_updates_let_go", &["updates", "let-go", "--help"]),
+        ("cli_help_updates_source", &["updates", "source", "--help"]),
         ("cli_help_deliveries", &["deliveries", "--help"]),
         (
             "cli_help_deliveries_list",
@@ -421,7 +424,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_briefing_gists", &["briefing", "gists", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 245);
+    assert_eq!(cases.len(), 248);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

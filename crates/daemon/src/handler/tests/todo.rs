@@ -1083,7 +1083,7 @@ async fn the_mode_guide_serves_to_do_copy_from_one_table() {
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetModeGuide {
-                mode: Some("updates".to_string()),
+                mode: Some("reading".to_string()),
             }),
         },
     )
@@ -1092,7 +1092,7 @@ async fn the_mode_guide_serves_to_do_copy_from_one_table() {
         panic!("an unshipped mode is refused")
     };
     assert!(
-        message.contains("Modes so far: now, messages, todo"),
+        message.contains("Modes so far: now, messages, todo, updates"),
         "{message}"
     );
 }

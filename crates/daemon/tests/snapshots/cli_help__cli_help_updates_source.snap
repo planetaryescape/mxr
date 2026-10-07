@@ -1,0 +1,18 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Tune a source: every-digest, changes-only, muted or breakthrough (every message to To do on arrival)
+
+Usage: mxr updates source [OPTIONS] <SOURCE> <SETTING>
+
+Arguments:
+  <SOURCE>   A source key as the digest prints it, or an address it sends from
+  <SETTING>  every-digest, changes-only, muted or breakthrough
+
+Options:
+      --dry-run
+      --cut <CUT>          A past cut, as its time ("08:00") or RFC3339; the latest cut when omitted
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

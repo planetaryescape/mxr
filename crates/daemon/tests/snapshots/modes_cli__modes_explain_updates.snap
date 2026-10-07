@@ -1,0 +1,71 @@
+---
+source: crates/daemon/tests/modes_cli.rs
+expression: "serde_json::to_string_pretty(&updates).unwrap()"
+---
+[
+  {
+    "add_one": "",
+    "card": "Updates gathers notifications into a digest at 08:00 and 16:30, one line per source, like your bank or GitHub, with what changed first. Anything that needs you goes to To do at once, so you can read this and let it go.",
+    "card_keys": [
+      {
+        "key": "A",
+        "verb": "let go of digest"
+      },
+      {
+        "key": "e",
+        "verb": "let go of this source"
+      },
+      {
+        "key": "t",
+        "verb": "this needs me"
+      },
+      {
+        "key": "K",
+        "verb": "tune a source"
+      }
+    ],
+    "card_seen": false,
+    "clear_for_now": "Nothing new since {cut}. Next digest at {next}.",
+    "first_run_line": "Notifications, twice a day",
+    "header": "Notifications gathered twice a day. Read the digest, then let go.",
+    "keys": [
+      {
+        "key": "A",
+        "verb": "let go of digest"
+      },
+      {
+        "key": "e",
+        "verb": "let go of this source"
+      },
+      {
+        "key": "t",
+        "verb": "this needs me"
+      },
+      {
+        "key": "K",
+        "verb": "tune a source"
+      },
+      {
+        "key": "L",
+        "verb": "open the link"
+      },
+      {
+        "key": "o",
+        "verb": "open the email"
+      },
+      {
+        "key": "u",
+        "verb": "undo"
+      },
+      {
+        "key": "?",
+        "verb": "what is this"
+      }
+    ],
+    "lands_here": "Notifications from services and apps: builds, parcels, sign-in alerts, statements, reports and receipts.",
+    "mode": "updates",
+    "name": "Updates",
+    "never_had_any": "Notifications from services and apps land here and are gathered into a digest at 08:00 and 16:30. Anything that needs you, like a failed payment, goes straight to To do.",
+    "why_template": "Here because: {evidence} ({source}). In the {cut} digest."
+  }
+]

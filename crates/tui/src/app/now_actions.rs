@@ -75,7 +75,7 @@ impl App {
     pub(super) fn apply_now_action(&mut self, action: Action) {
         match action {
             Action::OpenNow => self.open_now(),
-            Action::OpenMessages => self.apply(Action::OpenDesk),
+            Action::OpenMessages => self.open_messages(),
             Action::OpenArchiveMode => self.open_archive_mode(),
             Action::NowOpen => self.now_open(false),
             Action::NowOpenEmail => self.now_open(true),
@@ -87,7 +87,7 @@ impl App {
         }
     }
 
-    fn enter_mode_view(&mut self, view: MailboxView) {
+    pub(super) fn enter_mode_view(&mut self, view: MailboxView) {
         self.mailbox.mailbox_view = view;
         self.mailbox.active_label = None;
         self.mailbox.pending_active_label = None;

@@ -72,8 +72,31 @@ pub enum Action {
     /// Open Now (`g h`): the front page, at most ten things in four fixed
     /// sections (`Request::GetNow`).
     OpenNow,
-    /// Open Messages (`g m`): an early version on the desk lens.
+    /// Open Messages (`g m`): people you talk with, one row each, with the
+    /// selected person's page beside them (`Request::ListMessages`).
     OpenMessages,
+    /// Enter in Messages: open the person's page, or the Quiet band.
+    MessagesOpen,
+    /// `.` in Messages: Got it, previewed with a countdown, then sent.
+    MessagesAck,
+    /// `u` or Esc while Got it counts down: don't send it.
+    MessagesCancelAck,
+    /// `e` in Messages: done here for the selected topic (`SetModeDone`).
+    MessagesDone,
+    /// `s` in Messages: pin or unpin the person.
+    MessagesPin,
+    /// `c` in Messages: a new topic with the person.
+    MessagesNewTopic,
+    /// `[` in Messages: the previous topic with this person.
+    MessagesPrevTopic,
+    /// `]` in Messages: the next topic with this person.
+    MessagesNextTopic,
+    /// `p` in Messages: focus the person page.
+    MessagesPersonPage,
+    /// `o` or `v` in Messages: the selected topic's message as sent.
+    MessagesAsSent,
+    /// Esc on Messages' first-encounter card, or back to the list.
+    MessagesBack,
     /// Open Archive (`g e`): an early version that says what backs it.
     OpenArchiveMode,
     /// Enter on Now: open the row in its own mode.

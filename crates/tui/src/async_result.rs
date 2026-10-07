@@ -57,7 +57,13 @@ pub(crate) enum AsyncResult {
     Rail(Result<mxr_protocol::RailData, MxrError>),
     /// Messages' bands and, when the daemon served it, its guide.
     Messages(
-        Result<Box<(mxr_protocol::MessagesData, Option<mxr_protocol::ModeGuideData>)>, MxrError>,
+        Result<
+            Box<(
+                mxr_protocol::MessagesData,
+                Option<mxr_protocol::ModeGuideData>,
+            )>,
+            MxrError,
+        >,
     ),
     /// A person's page, for this row id.
     PersonPage(String, Result<Box<mxr_protocol::PersonPageData>, MxrError>),

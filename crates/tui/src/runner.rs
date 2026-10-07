@@ -3977,7 +3977,13 @@ pub(crate) fn mode_done_outcome(
 /// and the rows arrive at once. A guide error leaves the rows on screen.
 async fn fetch_messages(
     bg: &mpsc::UnboundedSender<IpcRequest>,
-) -> Result<(mxr_protocol::MessagesData, Option<mxr_protocol::ModeGuideData>), MxrError> {
+) -> Result<
+    (
+        mxr_protocol::MessagesData,
+        Option<mxr_protocol::ModeGuideData>,
+    ),
+    MxrError,
+> {
     let (messages, guide) = tokio::join!(
         ipc_call(
             bg,

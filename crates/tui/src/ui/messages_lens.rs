@@ -61,6 +61,19 @@ fn when(at: DateTime<Utc>, view: &MessagesView<'_>) -> String {
     }
 }
 
+/// The list's short day: "15:00", "Yesterday", "Tue", "12 Mar".
+fn list_day(at: DateTime<Utc>, view: &MessagesView<'_>) -> String {
+    let local = at.with_timezone(&view.offset);
+    let today = view.now.with_timezone(&view.offset).date_naive();
+    match (today - local.date_naive()).num_days() {
+        i64::MIN..=0 => local.format("%H:%M").to_string(),
+        1 => "Yesterday".to_string(),
+        2..=6 => local.format("%a").to_string(),
+        _ if local.year() == today.year() => local.format("%-d %b").to_string(),
+        _ => local.format("%-d %b %Y").to_string(),
+    }
+}
+
 fn band_title(title: &str, theme: &crate::theme::Theme) -> Line<'static> {
     Line::from(Span::styled(
         format!(" {title}"),
@@ -133,7 +146,7 @@ fn row_line(
         MessagesBandData::YourTurn => {
             age_label((view.now - row.turn_since.unwrap_or(row.last_at)).num_seconds())
         }
-        _ => when(row.last_at, view),
+        _ => list_day(row.last_at, view),
     };
     let dot = if row.your_turn { " *" } else { "  " };
     let right = format!("{age}{dot}");
@@ -158,7 +171,11 @@ fn row_line(
     ])
 }
 
-fn preview_line(row: &MessagesRowData, width: usize, theme: &crate::theme::Theme) -> Option<Line<'static>> {
+fn preview_line(
+    row: &MessagesRowData,
+    width: usize,
+    theme: &crate::theme::Theme,
+) -> Option<Line<'static>> {
     let preview = row.preview.as_ref()?;
     let text = match preview.kind {
         MessagesPreviewKindData::Ask => format!("\u{201c}{}\u{201d}", one_line(&preview.text)),
@@ -197,7 +214,11 @@ fn list_body(view: &MessagesView<'_>, width: usize, theme: &crate::theme::Theme)
     let mut body = Body::new();
     let page = view.page;
     let Some(messages) = &page.messages else {
-        body.text(1, "Loading Messages\u{2026}", Style::default().fg(theme.text_muted));
+        body.text(
+            1,
+            "Loading Messages\u{2026}",
+            Style::default().fg(theme.text_muted),
+        );
         return body;
     };
     let secondary = Style::default().fg(theme.text_secondary);
@@ -245,8 +266,7 @@ fn list_body(view: &MessagesView<'_>, width: usize, theme: &crate::theme::Theme)
                 }
                 band = Some(shown_band);
                 body.select(row_line(row, selected, width, view, theme), selected);
-                if shown_band != MessagesBandData::Pinned && shown_band != MessagesBandData::Quiet
-                {
+                if shown_band != MessagesBandData::Pinned && shown_band != MessagesBandData::Quiet {
                     if let Some(line) = preview_line(row, width, theme) {
                         body.lines.push(line);
                     }
@@ -284,7 +304,11 @@ fn list_body(view: &MessagesView<'_>, width: usize, theme: &crate::theme::Theme)
 
 /// The topic strip: "Topics: [Contract renewal *] Launch checklist ·
 /// with Ruth: Pricing copy", wrapped.
-fn topic_strip(page: &PersonPageData, width: usize, theme: &crate::theme::Theme) -> Vec<Line<'static>> {
+fn topic_strip(
+    page: &PersonPageData,
+    width: usize,
+    theme: &crate::theme::Theme,
+) -> Vec<Line<'static>> {
     let selected = page.conversation.as_ref().map(|c| &c.thread_id);
     let labels: Vec<String> = page
         .topics
@@ -293,7 +317,11 @@ fn topic_strip(page: &PersonPageData, width: usize, theme: &crate::theme::Theme)
             let mut label = if topic.with.is_empty() {
                 one_line(&topic.subject)
             } else {
-                format!("with {}: {}", topic.with.join(", "), one_line(&topic.subject))
+                format!(
+                    "with {}: {}",
+                    topic.with.join(", "),
+                    one_line(&topic.subject)
+                )
             };
             if topic.state == TopicStateData::YourTurn {
                 label.push_str(" *");
@@ -305,15 +333,18 @@ fn topic_strip(page: &PersonPageData, width: usize, theme: &crate::theme::Theme)
             }
         })
         .collect();
-    wrap(&format!("Topics: {}", labels.join(" \u{b7} ")), width.saturating_sub(2))
-        .into_iter()
-        .map(|line| {
-            Line::from(Span::styled(
-                format!(" {line}"),
-                Style::default().fg(theme.text_secondary),
-            ))
-        })
-        .collect()
+    wrap(
+        &format!("Topics: {}", labels.join(" \u{b7} ")),
+        width.saturating_sub(2),
+    )
+    .into_iter()
+    .map(|line| {
+        Line::from(Span::styled(
+            format!(" {line}"),
+            Style::default().fg(theme.text_secondary),
+        ))
+    })
+    .collect()
 }
 
 fn message_lines(
@@ -347,10 +378,17 @@ fn message_lines(
     } else {
         width.saturating_sub(2)
     };
+    // A closed letter shows its first paragraph, and the ask when it is
+    // further down, so the eye lands on what they asked.
     let shown: Vec<&str> = if compact || expanded {
         paragraphs.clone()
     } else {
-        paragraphs.iter().take(1).copied().collect()
+        paragraphs
+            .iter()
+            .enumerate()
+            .filter(|(index, p)| *index == 0 || p.contains('\u{bb}'))
+            .map(|(_, p)| *p)
+            .collect()
     };
     let place = |line: String| {
         if mine_right {
@@ -378,13 +416,15 @@ fn message_lines(
             } else {
                 Style::default().fg(theme.text_primary)
             };
-            body.lines.push(Line::from(Span::styled(place(line), style)));
+            body.lines
+                .push(Line::from(Span::styled(place(line), style)));
         }
     }
     let mut notes: Vec<String> = Vec::new();
     let more = paragraphs.len().saturating_sub(shown.len());
     if more > 0 {
-        notes.push(format!("[+{more} paragraphs]"));
+        let noun = if more == 1 { "paragraph" } else { "paragraphs" };
+        notes.push(format!("[+{more} {noun}]"));
     }
     for attachment in &message.attachments {
         notes.push(format!(
@@ -449,20 +489,22 @@ fn person_body(
             body.text(1, line, Style::default().fg(theme.accent));
         }
     }
-    body.lines
-        .push(Line::from(Span::styled(
-            "\u{2500}".repeat(width),
-            Style::default().fg(theme.text_muted),
-        )));
+    body.lines.push(Line::from(Span::styled(
+        "\u{2500}".repeat(width),
+        Style::default().fg(theme.text_muted),
+    )));
     body.lines.extend(topic_strip(page, width, theme));
-    body.lines
-        .push(Line::from(Span::styled(
-            "\u{2500}".repeat(width),
-            Style::default().fg(theme.text_muted),
-        )));
+    body.lines.push(Line::from(Span::styled(
+        "\u{2500}".repeat(width),
+        Style::default().fg(theme.text_muted),
+    )));
     match &page.conversation {
         Some(conversation) => conversation_lines(&mut body, conversation, width, view, theme),
-        None => body.text(1, "No conversation to show.", Style::default().fg(theme.text_muted)),
+        None => body.text(
+            1,
+            "No conversation to show.",
+            Style::default().fg(theme.text_muted),
+        ),
     }
     body
 }
@@ -502,7 +544,13 @@ fn render_scrolled(frame: &mut Frame, area: Rect, body: Body) {
     );
 }
 
-fn draw_list(frame: &mut Frame, area: Rect, view: &MessagesView<'_>, focused: bool, theme: &crate::theme::Theme) {
+fn draw_list(
+    frame: &mut Frame,
+    area: Rect,
+    view: &MessagesView<'_>,
+    focused: bool,
+    theme: &crate::theme::Theme,
+) {
     let header = view
         .page
         .guide
@@ -519,7 +567,13 @@ fn draw_list(frame: &mut Frame, area: Rect, view: &MessagesView<'_>, focused: bo
     render_scrolled(frame, inner, list_body(view, inner.width as usize, theme));
 }
 
-fn draw_person(frame: &mut Frame, area: Rect, view: &MessagesView<'_>, focused: bool, theme: &crate::theme::Theme) {
+fn draw_person(
+    frame: &mut Frame,
+    area: Rect,
+    view: &MessagesView<'_>,
+    focused: bool,
+    theme: &crate::theme::Theme,
+) {
     let row = view.page.row_at(view.selected_index);
     let page = row.and_then(|row| view.page.page_for_row(row));
     let title = match (row, page) {
@@ -595,11 +649,8 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &MessagesView<'_>, theme: &crat
     let person_focus = view.page.focus == MessagesFocus::Person;
     if area.width >= TWO_PANE_MIN_WIDTH {
         let list_width = (area.width * 2 / 5).clamp(34, 48);
-        let [left, right] = Layout::horizontal([
-            Constraint::Length(list_width),
-            Constraint::Min(20),
-        ])
-        .areas(main);
+        let [left, right] =
+            Layout::horizontal([Constraint::Length(list_width), Constraint::Min(20)]).areas(main);
         draw_list(frame, left, view, pane_focused && !person_focus, theme);
         draw_person(frame, right, view, pane_focused && person_focus, theme);
     } else if person_focus {
@@ -632,7 +683,10 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &MessagesView<'_>, theme: &crat
         Paragraph::new(vec![
             Line::from(Span::styled(truncate(&first, width), first_style)),
             Line::from(Span::styled(
-                format!(" {}", truncate(&keys_line(view.page), width.saturating_sub(2))),
+                format!(
+                    " {}",
+                    truncate(&keys_line(view.page), width.saturating_sub(2))
+                ),
                 Style::default().fg(theme.text_muted),
             )),
         ]),

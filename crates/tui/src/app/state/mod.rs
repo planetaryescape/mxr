@@ -35,6 +35,7 @@ pub use mailbox::{
     SenderKindMenu, SidebarItem, SidebarSection, SubscriptionEntry, SubscriptionsPageState,
     SweepTarget, ThreadSummaryPreview, PLACE_PAGE_MESSAGES, PLACE_PAGE_SENDERS,
 };
+pub use messages::{AckCountdown, MessagesFocus, MessagesItem, MessagesPageState};
 pub use modals::{
     ActivityModalState, AnalyticsFilterField, AnalyticsFilterModalState, BriefingModalState,
     BriefingModalSubject, DraftOptionsField, DraftOptionsModalState, DraftsModalState,
@@ -46,7 +47,6 @@ pub use modals::{
     ThreadSummaryModalState, UserError, UserErrorSeverity, WhoisModalState, SNOOZE_PRESETS,
     USER_ERROR_LOG_CAPACITY, WARN_STATUS_TTL,
 };
-pub use messages::{AckCountdown, MessagesFocus, MessagesItem, MessagesPageState};
 pub use now::{NowDigestPreview, NowPageState, NowRow};
 pub use rules::{RuleFormState, RulesPageState, RulesPanel, RulesState};
 pub use search::{

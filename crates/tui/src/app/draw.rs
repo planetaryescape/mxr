@@ -233,12 +233,7 @@ impl App {
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::People {
-                            ui::messages_lens::draw(
-                                frame,
-                                chunks[1],
-                                &self.messages_view(),
-                                theme,
-                            );
+                            ui::messages_lens::draw(frame, chunks[1], &self.messages_view(), theme);
                         } else if self.mailbox.mailbox_view == MailboxView::ArchiveMode {
                             ui::now_lens::draw_archive(
                                 frame,
@@ -368,12 +363,7 @@ impl App {
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::People {
-                            ui::messages_lens::draw(
-                                frame,
-                                chunks[1],
-                                &self.messages_view(),
-                                theme,
-                            );
+                            ui::messages_lens::draw(frame, chunks[1], &self.messages_view(), theme);
                         } else if self.mailbox.mailbox_view == MailboxView::ArchiveMode {
                             ui::now_lens::draw_archive(
                                 frame,

@@ -64,11 +64,11 @@ use tui_textarea::TextArea;
 pub(in crate::app) use crate::ui::label_picker::LabelPickerMode;
 pub use focus_run::FocusRun;
 pub(crate) use mailbox_helpers::auto_summary_eligible;
+pub(crate) use messages_actions::MESSAGES_MODE;
 pub use mutation_snapshot::{
     MutationId, MutationIdGenerator, MutationSnapshot, MutationSnapshotStore, QueuedMutation,
     TRANSIENT_MUTATION_MAX_RETRIES,
 };
-pub(crate) use messages_actions::MESSAGES_MODE;
 pub(crate) use now_actions::{mode_done_copy, NOW_MODE};
 pub use pending_optimistic::PendingOptimisticState;
 pub use promises::PromisePrompt;

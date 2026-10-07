@@ -10,7 +10,9 @@ use mxr_protocol::{
 use mxr_test_support::render_to_string;
 
 pub(crate) fn now() -> DateTime<Utc> {
-    Utc.with_ymd_and_hms(2026, 10, 2, 15, 0, 0).single().unwrap()
+    Utc.with_ymd_and_hms(2026, 10, 2, 15, 0, 0)
+        .single()
+        .unwrap()
 }
 
 fn topic(subject: &str, state: TopicStateData, hours: i64) -> MessagesTopicData {
@@ -42,7 +44,10 @@ pub(crate) fn row(
     preview: (MessagesPreviewKindData, &str),
     topics: Vec<MessagesTopicData>,
 ) -> MessagesRowData {
-    let email = format!("{}@example.com", name.split(' ').next().unwrap().to_lowercase());
+    let email = format!(
+        "{}@example.com",
+        name.split(' ').next().unwrap().to_lowercase()
+    );
     let your_turn = band == MessagesBandData::YourTurn;
     MessagesRowData {
         id: format!("person:{email}"),
@@ -54,7 +59,7 @@ pub(crate) fn row(
         members: vec![],
         closeness: ClosenessData::Close,
         your_turn,
-        last_at: topics.first().map_or(now(), |t| t.last_at),
+        last_at: topics.first().map_or_else(now, |t| t.last_at),
         turn_since: your_turn.then(|| topics[0].last_at),
         preview: Some(MessagesPreviewData {
             kind: preview.0,
@@ -76,7 +81,10 @@ pub(crate) fn populated() -> MessagesData {
     let samir = row(
         "Samir Patel",
         MessagesBandData::YourTurn,
-        (MessagesPreviewKindData::Ask, "Can you take a look and reply with the next concrete step?"),
+        (
+            MessagesPreviewKindData::Ask,
+            "Can you take a look and reply with the next concrete step?",
+        ),
         vec![
             topic("Contract renewal", TopicStateData::YourTurn, 16),
             topic("Launch checklist", TopicStateData::Waiting, 24),
@@ -85,8 +93,15 @@ pub(crate) fn populated() -> MessagesData {
     let jon = row(
         "Jon Bell",
         MessagesBandData::YourTurn,
-        (MessagesPreviewKindData::Latest, "Does the pricing copy read right to you?"),
-        vec![topic("Pricing copy for the docs", TopicStateData::YourTurn, 8)],
+        (
+            MessagesPreviewKindData::Latest,
+            "Does the pricing copy read right to you?",
+        ),
+        vec![topic(
+            "Pricing copy for the docs",
+            TopicStateData::YourTurn,
+            8,
+        )],
     );
     let mut maya = row(
         "Maya Ortiz",
@@ -136,12 +151,22 @@ pub(crate) fn clear() -> MessagesData {
     data
 }
 
-fn message(from_me: bool, text: &str, hours: i64, layout: MessageLayoutData) -> ConversationMessageData {
+fn message(
+    from_me: bool,
+    text: &str,
+    hours: i64,
+    layout: MessageLayoutData,
+) -> ConversationMessageData {
     ConversationMessageData {
         message_id: MessageId::from_provider_id("fake", &format!("{hours}-{from_me}")),
         from: Address {
             name: (!from_me).then(|| "Samir Patel".to_string()),
-            email: if from_me { "alex@example.com" } else { "samir@example.com" }.into(),
+            email: if from_me {
+                "alex@example.com"
+            } else {
+                "samir@example.com"
+            }
+            .into(),
         },
         from_me,
         date: now() - Duration::hours(hours),
@@ -154,7 +179,8 @@ fn message(from_me: bool, text: &str, hours: i64, layout: MessageLayoutData) -> 
         layout,
         paragraphs: u32::try_from(text.split("\n\n").count()).unwrap(),
         attachments: vec![],
-        ask_quote: (!from_me).then(|| "Can you take a look and reply with the next concrete step?".to_string()),
+        ask_quote: (!from_me)
+            .then(|| "Can you take a look and reply with the next concrete step?".to_string()),
     }
 }
 
@@ -242,9 +268,13 @@ fn people_are_rows_in_bands_beside_the_person_page() {
     }
     let wide = render_at(&page, 120, 0);
     assert!(wide.contains("Topics: [Contract renewal *]"), "{wide}");
-    assert!(wide.contains("with Ruth: Pricing copy"), "{wide}");
+    assert!(wide.contains("with Ruth: Pricing"), "{wide}");
     assert!(wide.contains("trimmed: quote, sig"), "{wide}");
-    assert!(wide.contains("[+2 paragraphs]"), "{wide}");
+    assert!(wide.contains("[+1 paragraph]"), "{wide}");
+    assert!(
+        wide.contains("\u{bb}Can you take a look"),
+        "the ask shows on a closed letter\n{wide}"
+    );
     assert!(wide.contains("> Reply to Samir"), "{wide}");
     assert!(wide.contains("close \u{b7} usually 47m"), "{wide}");
     assert!(wide.contains(". got it"), "{wide}");
@@ -253,13 +283,21 @@ fn people_are_rows_in_bands_beside_the_person_page() {
 #[test]
 fn an_expanded_letter_shows_every_paragraph_and_highlights_the_ask() {
     let mut state = page(populated(), true);
-    let letter = state.page.as_ref().unwrap().conversation.as_ref().unwrap().messages[1]
+    let letter = state
+        .page
+        .as_ref()
+        .unwrap()
+        .conversation
+        .as_ref()
+        .unwrap()
+        .messages[1]
         .message_id
         .clone();
     state.expanded.insert(letter);
     let rendered = render_at(&state, 120, 0);
     assert!(rendered.contains("\u{bb}Can you take a look"), "{rendered}");
-    assert!(!rendered.contains("[+2 paragraphs]"), "{rendered}");
+    assert!(!rendered.contains("paragraph]"), "{rendered}");
+    assert!(rendered.contains("Two things changed"), "{rendered}");
 }
 
 #[test]
@@ -277,8 +315,14 @@ fn a_clear_list_says_nobody_is_waiting_with_lapsed_people_as_facts() {
     let page = page(clear(), true);
     for width in [60u16, 80, 120] {
         let rendered = render_at(&page, width, 0);
-        assert!(rendered.contains("Nobody is waiting on you."), "{width}\n{rendered}");
-        assert!(rendered.contains("Ari usually writes every week"), "{width}");
+        assert!(
+            rendered.contains("Nobody is waiting on you."),
+            "{width}\n{rendered}"
+        );
+        assert!(
+            rendered.contains("Ari usually writes every week"),
+            "{width}"
+        );
         assert!(!rendered.contains("YOUR TURN"), "{width}");
         insta::assert_snapshot!(format!("messages_lens_clear_{width}"), rendered);
     }
@@ -290,7 +334,10 @@ fn the_first_card_shows_once_with_its_keys() {
     assert!(unseen.card_visible());
     for width in [60u16, 80, 120] {
         let rendered = render_at(&unseen, width, 0);
-        assert!(rendered.contains("Each row is a person"), "{width}\n{rendered}");
+        assert!(
+            rendered.contains("Each row is a person"),
+            "{width}\n{rendered}"
+        );
         assert!(rendered.contains("Esc close"), "{width}");
         insta::assert_snapshot!(format!("messages_lens_first_card_{width}"), rendered);
     }

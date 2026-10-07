@@ -105,7 +105,11 @@ impl App {
     }
 
     /// The runtime fetched the bands and the guide.
-    pub(crate) fn set_messages(&mut self, messages: MessagesData, guide: Option<mxr_protocol::ModeGuideData>) {
+    pub(crate) fn set_messages(
+        &mut self,
+        messages: MessagesData,
+        guide: Option<mxr_protocol::ModeGuideData>,
+    ) {
         let page = &mut self.mailbox.messages_page;
         page.messages = Some(messages);
         if guide.is_some() {
@@ -154,20 +158,17 @@ impl App {
         let who = row
             .person
             .as_ref()
-            .map_or_else(|| row.title.clone(), |person| person.first_name());
+            .map_or_else(|| row.title.clone(), mxr_protocol::PersonRefData::first_name);
         let page = self.mailbox.messages_page.page_for_row(row);
         if let Some(conversation) = page.and_then(|page| page.conversation.as_ref()) {
             return Some(MessagesTopic {
                 account_id: conversation.account_id.clone(),
                 thread_id: conversation.thread_id.clone(),
                 reply_to: conversation.composer.reply_to_message_id.clone(),
-                latest: conversation
-                    .messages
-                    .last()
-                    .map_or_else(
-                        || conversation.composer.reply_to_message_id.clone(),
-                        |m| m.message_id.clone(),
-                    ),
+                latest: conversation.messages.last().map_or_else(
+                    || conversation.composer.reply_to_message_id.clone(),
+                    |m| m.message_id.clone(),
+                ),
                 who,
             });
         }
@@ -233,9 +234,7 @@ impl App {
         let to = plan
             .to
             .first()
-            .map(|address| {
-                mxr_protocol::first_name(address.name.as_deref(), &address.email)
-            })
+            .map(|address| mxr_protocol::first_name(address.name.as_deref(), &address.email))
             .unwrap_or_default();
         let send_at = now + std::time::Duration::from_secs(u64::from(plan.countdown_seconds));
         self.mailbox.messages_page.ack = Some(AckCountdown { plan, to, send_at });

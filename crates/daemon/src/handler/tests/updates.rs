@@ -281,9 +281,22 @@ async fn a_new_sign_in_breaks_through_once_and_shows_already_in_to_do() {
         now - Duration::days(3),
     )
     .await;
-    let made = updates::scan(&fx.state, &[alert.id.clone(), stale.id.clone()], now)
-        .await
-        .unwrap();
+    // A second alert of the same kind that day is the same thing to check.
+    let repeat = update(
+        &fx,
+        &ThreadId::new(),
+        "no-reply@accounts.google.com",
+        "Security alert: New sign-in from Chrome on Windows",
+        cut - Duration::minutes(30),
+    )
+    .await;
+    let made = updates::scan(
+        &fx.state,
+        &[alert.id.clone(), stale.id.clone(), repeat.id.clone()],
+        now,
+    )
+    .await
+    .unwrap();
     assert_eq!(made, 1);
     let again = updates::scan(&fx.state, std::slice::from_ref(&alert.id), now)
         .await
@@ -292,9 +305,10 @@ async fn a_new_sign_in_breaks_through_once_and_shows_already_in_to_do() {
     let todo = fx
         .state
         .store
-        .get_todo_by_dedup(&fx.account, &format!("update|{}", alert.id))
+        .open_todos_for_threads(&fx.account, std::slice::from_ref(&alert.thread_id))
         .await
         .unwrap()
+        .pop()
         .expect("a to-do");
     assert_eq!(todo.title, "Check new sign-in to Google");
     assert_eq!(todo.origin, "rule");

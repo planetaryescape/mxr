@@ -755,7 +755,13 @@ where
     if let Some(carrier) = delivery
         .carrier
         .as_ref()
-        .filter(|c| Some(*c) != delivery.merchant.as_ref())
+        // "amazon" under "Amazon.com" says nothing new.
+        .filter(|c| {
+            delivery
+                .merchant
+                .as_ref()
+                .is_none_or(|merchant| !merchant.to_lowercase().starts_with(&c.to_lowercase()))
+        })
     {
         detail.push(carrier.clone());
     }

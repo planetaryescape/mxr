@@ -720,7 +720,9 @@ async fn break_through(
     {
         return Ok(false);
     }
-    let dedup_key = format!("update|{}", message.id);
+    // One to-do per kind of alert from a source per day: ten sign-in
+    // alerts in an afternoon are one thing to check, not ten.
+    let dedup_key = breakthrough_key(fact, message.date);
     if state
         .store
         .get_todo_by_dedup(&message.account_id, &dedup_key)
@@ -767,6 +769,16 @@ async fn break_through(
     });
     state.store.insert_todo(&record).await?;
     Ok(true)
+}
+
+/// The claim an update's breakthrough holds: source, template and day.
+pub(super) fn breakthrough_key(fact: &Fact, date: DateTime<Utc>) -> String {
+    format!(
+        "update|{}|{}|{}",
+        fact.source_key,
+        fact.template_key,
+        date.format("%Y-%m-%d")
+    )
 }
 
 struct BreakthroughRow<'a> {

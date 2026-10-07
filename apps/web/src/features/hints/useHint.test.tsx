@@ -9,14 +9,19 @@ import { setActiveQueryClient } from "@/lib/queryClient";
 
 import type { Hint } from "./api";
 
-const apiFetch = vi.fn<(path: string, init?: unknown) => Promise<unknown>>();
+type FetchOpts = Parameters<typeof import("@/api/client").apiFetch>[1];
+interface ModeGuidesAnswer {
+  kind: "ModeGuides";
+  guides: ModeGuide[];
+}
+const apiFetch = vi.fn<(path: string, opts?: FetchOpts) => Promise<ModeGuidesAnswer>>();
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
-  apiFetch: (path: string, init?: unknown) => apiFetch(path, init),
+  apiFetch: (path: string, opts?: FetchOpts) => apiFetch(path, opts),
 }));
 let pathname = "/todo";
 vi.mock("@tanstack/react-router", () => ({
-  useRouterState: ({ select }: { select: (s: { location: { pathname: string } }) => unknown }) =>
+  useRouterState: ({ select }: { select: (s: { location: { pathname: string } }) => string }) =>
     select({ location: { pathname } }),
 }));
 

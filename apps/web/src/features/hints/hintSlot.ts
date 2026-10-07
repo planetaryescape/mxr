@@ -47,7 +47,7 @@ let listening = false;
 
 /** Note the page of every key press and click, once per app. */
 export function listenForInteraction(): void {
-  if (listening || typeof window === "undefined") return;
+  if (listening) return;
   listening = true;
   const note = () => {
     const page = pageOf(window.location.pathname);

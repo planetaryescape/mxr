@@ -72,6 +72,8 @@ export function useGotIt(onSent?: (plan: AckPlan) => void) {
         const plan = await ack(threadId, true);
         const endsAt = Date.now() + plan.countdown_seconds * 1000;
         const stop = () => {
+          // Retire itself, so a later `u` reaches the next undo, not this.
+          useUndo.getState().clearPendingSendCancel(stop);
           clearTimer();
           cancelRef.current = null;
           setPending(null);

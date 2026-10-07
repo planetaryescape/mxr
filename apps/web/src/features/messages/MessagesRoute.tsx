@@ -305,7 +305,7 @@ function MessagesBody({
       setPageOpen(true);
       document.querySelector<HTMLElement>('[data-testid="person-page"] [data-testid="topic"][aria-current="true"]')?.focus();
     },
-    reply: () => openReply(replyAll && conversation?.shape === "group"),
+    reply: () => openReply(replyAll),
     replyAll: () => openReply(true),
     gotIt: () => conversation && void gotIt.start(conversation.thread_id),
     done: () => {

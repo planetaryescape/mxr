@@ -15,6 +15,7 @@ import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { ensureThread, targetFromThread } from "@/features/mail-actions/target";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useModeGuide, useRetireCard, type ModeGuide } from "@/features/modes/api";
+import { useThreadModesMap } from "@/features/modes/membership";
 import { ModeCard } from "@/features/modes/ModeCard";
 import { markModeDone } from "@/features/modes/modeDone";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
@@ -124,6 +125,15 @@ function MessagesBody({
   const [pageOpen, setPageOpen] = useState(Boolean(search.person || threadId));
   const [asSent, setAsSent] = useState<string | null>(null);
   const rows = useMemo(() => cursorRows(data, quietOpen), [data, quietOpen]);
+  // "Also in To do: …" and a new sender's question on each shown row.
+  const firstTopics = useMemo(
+    () =>
+      [...data.your_turn, ...data.recent]
+        .flatMap((row) => (row.topics[0] ? [row.topics[0].thread_id] : []))
+        .slice(0, 100),
+    [data],
+  );
+  const memberships = useThreadModesMap(firstTopics).data;
 
   // The selected row: the URL's, else the row holding a linked thread, else
   // the first.
@@ -348,6 +358,7 @@ function MessagesBody({
             quietOpen={quietOpen}
             onToggleQuiet={() => setQuietOpen((open) => !open)}
             onSelect={(id) => select(id, { open: true })}
+            memberships={memberships}
           />
           {guide ? <KeyLine guide={guide} /> : null}
         </div>

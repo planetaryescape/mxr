@@ -4,6 +4,8 @@ import { toast } from "sonner";
 
 import { KeyChip } from "@/components/KeyChip";
 import { useComposeUi } from "@/features/compose/composeUiStore";
+import { AlsoInLine } from "@/features/modes/AlsoInLine";
+import { useThreadModes } from "@/features/modes/membership";
 import { cn } from "@/lib/utils";
 
 import { mergePeople, refreshMessages, type MergeSuggestion, type PersonPage } from "./api";
@@ -41,6 +43,7 @@ export function PersonPane(props: PersonPaneProps) {
   const conversation = page.conversation ?? null;
   const selected = conversation?.thread_id ?? props.topic;
   const replying = useComposeUi((s) => s.intent !== null && s.surface === "inline");
+  const modes = useThreadModes(conversation?.thread_id).data;
   return (
     <section
       aria-label={row.title}
@@ -115,6 +118,7 @@ export function PersonPane(props: PersonPaneProps) {
             <h3 className="px-5 pt-4 text-[13px] font-medium text-muted-foreground">
               {conversation.subject}
             </h3>
+            <AlsoInLine modes={modes} here="messages" className="px-5 pt-1" />
             <ConversationView
               conversation={conversation}
               asSent={props.asSent}

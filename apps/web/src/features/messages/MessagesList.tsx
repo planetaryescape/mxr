@@ -1,5 +1,8 @@
 import { ChevronDown, ChevronRight, Users } from "lucide-react";
 
+import { AlsoInLine } from "@/features/modes/AlsoInLine";
+import type { ThreadModes } from "@/features/modes/membership";
+import { NewSenderQuestion } from "@/features/modes/NewSenderQuestion";
 import { cn } from "@/lib/utils";
 
 import type { MessagesData, MessagesRow } from "./api";
@@ -17,19 +20,32 @@ export function MessagesList({
   quietOpen,
   onToggleQuiet,
   onSelect,
+  memberships,
 }: {
   data: MessagesData;
   selectedId: string | null;
   quietOpen: boolean;
   onToggleQuiet: () => void;
   onSelect: (id: string) => void;
+  /** Which modes hold each row's first topic, for "Also in" and a new sender's question. */
+  memberships?: ReadonlyMap<string, ThreadModes>;
 }) {
+  const modesOf = (row: MessagesRow) => {
+    const thread = row.topics[0]?.thread_id;
+    return thread ? memberships?.get(thread) : undefined;
+  };
   return (
     <div data-testid="messages-list" className="pt-2">
       {data.your_turn.length > 0 ? (
         <Band id="band-your-turn" title="Your turn" testId="band-your_turn">
           {data.your_turn.map((row) => (
-            <PersonRow key={row.id} row={row} selected={row.id === selectedId} onSelect={onSelect} />
+            <PersonRow
+              key={row.id}
+              row={row}
+              modes={modesOf(row)}
+              selected={row.id === selectedId}
+              onSelect={onSelect}
+            />
           ))}
         </Band>
       ) : null}
@@ -66,7 +82,13 @@ export function MessagesList({
       {data.recent.length > 0 ? (
         <Band id="band-recent" title="Recent" testId="band-recent">
           {data.recent.map((row) => (
-            <PersonRow key={row.id} row={row} selected={row.id === selectedId} onSelect={onSelect} />
+            <PersonRow
+              key={row.id}
+              row={row}
+              modes={modesOf(row)}
+              selected={row.id === selectedId}
+              onSelect={onSelect}
+            />
           ))}
           {data.recent_total > data.recent.length ? (
             <li className="px-5 py-1 text-[12px] text-muted-foreground">
@@ -89,7 +111,13 @@ export function MessagesList({
           {quietOpen ? (
             <ul className="grid grid-cols-[minmax(0,1fr)]">
               {data.quiet.map((row) => (
-                <PersonRow key={row.id} row={row} selected={row.id === selectedId} onSelect={onSelect} />
+                <PersonRow
+              key={row.id}
+              row={row}
+              modes={modesOf(row)}
+              selected={row.id === selectedId}
+              onSelect={onSelect}
+            />
               ))}
             </ul>
           ) : null}
@@ -133,10 +161,12 @@ function Face({ title, group = false }: { title: string; group?: boolean }) {
 
 function PersonRow({
   row,
+  modes,
   selected,
   onSelect,
 }: {
   row: MessagesRow;
+  modes?: ThreadModes;
   selected: boolean;
   onSelect: (id: string) => void;
 }) {
@@ -179,8 +209,14 @@ function PersonRow({
               {preview.kind === "ask" ? `“${preview.text}”` : preview.text}
             </span>
           ) : null}
+          <AlsoInLine modes={modes} here="messages" keys={false} links={false} className="mt-0.5" />
         </span>
       </button>
+      {modes?.new_sender ? (
+        <div className="px-4 pb-2 pl-[3.75rem]">
+          <NewSenderQuestion question={modes.new_sender} label={row.title} />
+        </div>
+      ) : null}
     </li>
   );
 }

@@ -492,12 +492,18 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
   },
 
   "mode-done": async (page) => {
-    await openApp(page, "/messages");
-    await expect(mailRows(page).first()).toBeVisible();
-    await mailList(page).focus();
-    const rowId = await cursorRowId(page);
+    // Noor's one conversation: done here takes her out of Your turn.
+    const noor = "person:noor@tidewater.example";
+    await openApp(page, `/messages?person=${encodeURIComponent(noor)}`);
+    const row = page.getByTestId("band-your_turn").locator(`[data-row-id="${noor}"]`);
+    await expect(row).toBeVisible();
+    await expect(page.getByTestId("conversation")).toBeVisible();
     await page.keyboard.press("e");
-    await leavesThenUndoes(page, "mode-done", rowId);
+    await expectToast(page, "mode-done");
+    await expect(row).toHaveCount(0);
+    await page.keyboard.press("u");
+    await expectUndone(page);
+    await expect(row).toBeVisible();
   },
 
   "digest-let-go": async (page) => {

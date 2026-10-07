@@ -18,9 +18,9 @@ function sidebar(page: import("@playwright/test").Page) {
   return page.getByRole("complementary", { name: "Mailboxes" });
 }
 
-test("Messages shows the desk's lanes with reasons, and only Now has a badge", async ({ page }) => {
-  await openApp(page, "/messages");
-  await expect(page).toHaveURL(/\/messages$/);
+test("the desk shows its lanes with reasons, and only Now has a badge", async ({ page }) => {
+  await openApp(page, "/desk");
+  await expect(page).toHaveURL(/\/desk$/);
   const heading = page.getByRole("heading", { level: 1 });
   await expect(heading).toContainText(/(morning|afternoon|evening|night)\./);
   await expect(heading.getByRole("link", { name: /\d+ repl(y|ies)/ })).toBeVisible();
@@ -93,10 +93,10 @@ test("desk journey: j, Done optimistically, undo, open and come back to the same
   await expectCursorOn(page, cursor);
 });
 
-test("g i goes to arrival order and g h comes back; Waiting on is one lane in full", async ({
+test("g i goes to arrival order and g m comes back; Waiting on is Messages, their turn", async ({
   page,
 }) => {
-  await openApp(page, "/messages");
+  await openApp(page, "/desk");
   await expect(mailRows(page).first()).toBeVisible();
   await pressSequence(page, "g", "i");
   await expect(page).toHaveURL(/\/m\/inbox$/);
@@ -107,10 +107,10 @@ test("g i goes to arrival order and g h comes back; Waiting on is one lane in fu
   // Waiting on lives under More now.
   await page.getByRole("button", { name: "More" }).click();
   await sidebar(page).getByRole("link", { name: "Waiting on" }).click();
-  await expect(page).toHaveURL(/\/messages\?lane=waiting$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Waiting on" })).toBeVisible();
-  await expect(mailList(page).getByText("You owe", { exact: true })).toHaveCount(0);
-  await expect(mailRows(page).first()).toBeVisible();
+  await expect(page).toHaveURL(/\/messages\?turn=theirs$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Waiting on" }).first()).toBeVisible();
+  await expect(page.getByTestId("band-your_turn")).toHaveCount(0);
+  await expect(page.getByTestId("messages-row").first()).toBeVisible();
 });
 
 test("a person who prefers arrival order can make the inbox their home", async ({ page }) => {

@@ -99,11 +99,12 @@ test("moving a sender from Reading to People takes it to the desk, and u brings 
     await page.keyboard.press("g");
     await page.keyboard.press("m");
     await expect(page).toHaveURL(/\/messages$/);
-    const row = mailList(page).locator(`[title='${bundle!.sender_email}']`).first();
-    // Decide only once the desk has rendered: isVisible() does not wait.
-    await expect(mailList(page).locator("[data-lane]").first()).toBeVisible();
-    if (!(await row.isVisible()))
-      await page.locator(`a[href='/messages?lane=${lane}']`).first().click();
+    const row = page.locator(
+      `[data-testid="messages-row"][data-row-id="person:${bundle!.sender_email.toLowerCase()}"]`,
+    );
+    // Decide only once Messages has rendered: isVisible() does not wait.
+    await expect(page.getByTestId("messages-list")).toBeVisible();
+    if (!(await row.isVisible())) await page.getByRole("button", { name: /^Quiet/ }).click();
     await expect(row).toBeVisible();
 
     // Undo restores the automatic kind: back in Reading.

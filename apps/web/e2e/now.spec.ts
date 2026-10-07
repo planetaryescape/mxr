@@ -78,8 +78,11 @@ async function modesOf(page: Page, threadId: string) {
 
 test("a first-time person is asked one question on their row", async ({ page }) => {
   await waitForNow(page);
-  await openApp(page, "/messages?lane=people_new");
-  const noor = page.getByRole("option").filter({ hasText: "Noor Haddad" });
+  await openApp(page, "/messages");
+  const noor = page
+    .getByTestId("messages-row")
+    .filter({ hasText: "Noor Haddad" })
+    .locator("xpath=..");
   await expect(noor).toBeVisible();
   await expect(noor.getByTestId("new-sender-question")).toContainText(
     "New sender. Keep in Messages?",
@@ -95,15 +98,14 @@ test("e in Messages leaves the to-do open, says where it still is, and u undoes 
   const todoIds = before.modes.find((entry) => entry.mode === "todo")?.todo_ids ?? [];
   expect(todoIds.length, "Sam's email is also a to-do").toBeGreaterThan(0);
 
-  await openApp(page, "/messages?lane=owed");
-  const sam = page.getByRole("option").filter({ hasText: "Sam Okafor" });
-  await expect(sam).toBeVisible();
+  await openApp(page, `/messages/${thread}`);
+  const sam = page.getByTestId("person-page");
+  await expect(sam.getByTestId("person-name")).toHaveText("Sam Okafor");
   // Messages names the other mode holding the thread.
   await expect(sam.getByTestId("also-in")).toContainText("Also in To do:");
-  await sam.getByTestId("desk-done").click();
+  await page.keyboard.press("e");
   const toast = page.locator("[data-sonner-toast]").filter({ hasText: "Done in Messages." });
   await expect(toast).toContainText("Still in To do");
-  await expect(page.getByRole("option").filter({ hasText: "Sam Okafor" })).toHaveCount(0);
   // The to-do is still open, and the thread is out of Messages only.
   const after = await modesOf(page, thread);
   expect(after.modes.map((entry) => entry.mode)).toContain("todo");
@@ -111,15 +113,16 @@ test("e in Messages leaves the to-do open, says where it still is, and u undoes 
 
   await page.keyboard.press("u");
   await expect(page.locator("[data-sonner-toast]").filter({ hasText: /^Undone/ })).toBeVisible();
-  await expect(page.getByRole("option").filter({ hasText: "Sam Okafor" })).toBeVisible();
-  expect((await modesOf(page, thread)).modes.map((entry) => entry.mode)).toContain("messages");
+  await expect
+    .poll(async () => (await modesOf(page, thread)).modes.map((entry) => entry.mode))
+    .toContain("messages");
 });
 
-test("the reader names the other modes holding a conversation", async ({ page }) => {
+test("Messages names the other modes holding a conversation", async ({ page }) => {
   await waitForNow(page);
   const thread = await samThread(page);
   await openApp(page, `/messages/${thread}`);
-  const line = page.getByRole("article").getByTestId("also-in");
+  const line = page.getByTestId("person-page").getByTestId("also-in");
   await expect(line).toContainText("Also in To do:");
   await expect(line).not.toContainText("Also in Messages");
   await expect(line.getByRole("link")).toHaveAttribute("href", "/todo");

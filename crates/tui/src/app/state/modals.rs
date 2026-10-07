@@ -33,13 +33,6 @@ pub struct UserError {
 /// How long a warn remains visible in the status bar before clearing.
 pub const WARN_STATUS_TTL: Duration = Duration::from_secs(5);
 
-#[derive(Debug, Clone, Default)]
-pub struct FeatureOnboardingState {
-    pub visible: bool,
-    pub step: usize,
-    pub seen: bool,
-}
-
 pub use mxr_config::snooze::{SnoozeOption as SnoozePreset, SNOOZE_PRESETS};
 
 #[derive(Debug, Clone, Default)]
@@ -95,7 +88,6 @@ pub struct ModalsState {
     /// sections. `None` follows the focused view; Tab cycles through
     /// the other contexts without leaving the modal.
     pub help_context_filter: Option<crate::action::UiContext>,
-    pub onboarding: FeatureOnboardingState,
     pub label_picker: LabelPicker,
     pub snooze_panel: SnoozePanelState,
     pub reply_later_prompt: Option<ReplyLaterPromptState>,

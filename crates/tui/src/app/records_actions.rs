@@ -9,7 +9,7 @@ use super::*;
 use crate::app::state::{PassMenu, RecordFixPrompt, RECORD_KIND_CHIPS};
 use mxr_protocol::{RecordData, RecordEditData, RecordUndoData};
 
-/// The mode id the guide and its card are kept under.
+/// The mode id `GetModeGuide` takes for Archive.
 pub(crate) const ARCHIVE_MODE: &str = mxr_protocol::ARCHIVE_GUIDE.mode;
 
 /// Copies to the system clipboard. Tests never touch the real one: what
@@ -147,10 +147,6 @@ impl App {
         let asked = self.mailbox.records_page.query.trim();
         if !asked.is_empty() && answer.query != asked {
             return;
-        }
-        if answer.answer.is_some() {
-            // Asking is the mode's main verb: it retires the card.
-            self.retire_records_card();
         }
         let page = &mut self.mailbox.records_page;
         page.card = None;
@@ -347,8 +343,8 @@ impl App {
         self.mailbox.scroll_offset = 0;
     }
 
-    /// Esc: the card, then the answer, then the issuer page and year, then
-    /// the first-encounter card.
+    /// Esc: the card, then the answer, then the issuer page and year. A
+    /// hint on screen takes Esc first (`Action::DismissHint`).
     fn records_back(&mut self) {
         let page = &mut self.mailbox.records_page;
         if page.card.take().is_some() {
@@ -368,36 +364,6 @@ impl App {
             page.filter.issuer = None;
             page.filter.year = None;
             self.reload_records_ledger();
-            return;
-        }
-        if page.card_visible() {
-            self.retire_records_card();
-        }
-    }
-
-    /// Retire the first-encounter card here and in every other client.
-    fn retire_records_card(&mut self) {
-        let page = &mut self.mailbox.records_page;
-        if !page.card_visible() {
-            return;
-        }
-        page.card_closed = true;
-        let id = self.queue_best_effort_mutation(
-            Request::SetModeGuideSeen {
-                mode: ARCHIVE_MODE.into(),
-                seen: true,
-            },
-            MutationEffect::StatusOnly(String::new()),
-            String::new(),
-        );
-        self.mailbox.records_page.card_close_mutation = Some(id);
-    }
-
-    pub(crate) fn reopen_records_card_after_failure(&mut self, failed: crate::app::MutationId) {
-        let page = &mut self.mailbox.records_page;
-        if page.card_close_mutation == Some(failed) {
-            page.card_close_mutation = None;
-            page.card_closed = false;
         }
     }
 
@@ -741,6 +707,7 @@ impl App {
                 self.mailbox.active_pane = ActivePane::Sidebar;
                 return None;
             }
+            KeyCode::Esc if self.active_hint().is_some() => Some(Action::DismissHint),
             KeyCode::Esc => Some(Action::RecordsBack),
             KeyCode::Enter => Some(Action::RecordsOpenDocument),
             KeyCode::Right if plain => Some(Action::RecordsOpenCard),

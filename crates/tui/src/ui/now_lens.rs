@@ -4,8 +4,8 @@
 //!
 //! Renders `Request::GetNow` as served: the caps, counts, why lines, the
 //! overload line and the clear state all come from the daemon, and the
-//! header line and first-encounter card from Now's mode guide. Pure render;
-//! wiring lives in `app/now_actions.rs`.
+//! header line from Now's mode guide. Hints show in the status line
+//! (`app/hints.rs`). Pure render; wiring lives in `app/now_actions.rs`.
 
 use mxr_protocol::{ModeGuideData, NowData, NowPersonData, NowTodoData};
 use ratatui::prelude::*;
@@ -185,29 +185,6 @@ fn todo_line(
     Line::from(spans)
 }
 
-fn card_lines(body: &mut Body, guide: &ModeGuideData, width: usize, theme: &crate::theme::Theme) {
-    let accent = Style::default().fg(theme.accent);
-    body.blank();
-    for line in wrap(&guide.card, width.saturating_sub(6)) {
-        body.lines.push(Line::from(vec![
-            Span::styled("  \u{2502} ", accent),
-            Span::styled(line, Style::default().fg(theme.text_primary)),
-        ]));
-    }
-    let keys = guide
-        .card_keys
-        .iter()
-        .map(|key| format!("{} {}", key.key, key.verb))
-        .collect::<Vec<_>>()
-        .join(" \u{b7} ");
-    for line in wrap(&format!("{keys} \u{b7} Esc close"), width.saturating_sub(6)) {
-        body.lines.push(Line::from(vec![
-            Span::styled("  \u{2502} ", accent),
-            Span::styled(line, Style::default().fg(theme.text_secondary)),
-        ]));
-    }
-}
-
 fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::theme::Theme) -> Body {
     let mut body = Body {
         lines: Vec::new(),
@@ -225,11 +202,6 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
     }
     if !now.first_run.complete {
         body.text(SORTING_LINE, secondary);
-    }
-    if view.page.card_visible() {
-        if let Some(guide) = &view.page.guide {
-            card_lines(&mut body, guide, width, theme);
-        }
     }
     if now.item_count == 0 {
         if let Some(empty) = &now.empty_state {
@@ -355,10 +327,7 @@ fn keys_line(page: &NowPageState) -> String {
             .map(|(key, verb)| format!("{key} {verb}"))
             .collect(),
     };
-    format!(
-        "\u{21b5} open in its mode  {}  A let go of digest  ? keys",
-        rest.join("  ")
-    )
+    format!("\u{21b5} open in its mode  {}  ? keys", rest.join("  "))
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, view: &NowView<'_>, theme: &crate::theme::Theme) {
@@ -626,10 +595,10 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) fn page(now: NowData, card_seen: bool) -> NowPageState {
+    pub(crate) fn page(now: NowData, hints_seen: bool) -> NowPageState {
         NowPageState {
             now: Some(now),
-            guide: Some(NOW_GUIDE.to_data(card_seen.then(Utc::now))),
+            guide: Some(NOW_GUIDE.to_data(|_| hints_seen.then(Utc::now))),
             ..NowPageState::default()
         }
     }
@@ -699,25 +668,16 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_first_card_shows_once_with_its_keys() {
+    fn no_card_teaches_at_the_top_even_before_any_hint_is_seen() {
         let unseen = page(populated(), false);
-        assert!(unseen.card_visible());
         for width in [60u16, 80, 120] {
             let rendered = render_at(&unseen, width, 0);
             assert!(
-                rendered.contains("Now shows at most ten things"),
+                !rendered.contains("Now shows at most ten things"),
                 "{width}\n{rendered}"
             );
-            assert!(rendered.contains("Esc close"), "{width}");
-            insta::assert_snapshot!(format!("now_lens_first_card_{width}"), rendered);
+            assert!(!rendered.contains("Esc close"), "{width}");
         }
-        let seen = page(populated(), true);
-        assert!(!render_at(&seen, 120, 0).contains("Now shows at most ten things"));
-        let mut closed = page(populated(), false);
-        closed.card_closed = true;
-        assert!(!closed.card_visible());
-        // An empty Now has nothing to explain yet.
-        assert!(!page(clear(), false).card_visible());
     }
 
     #[test]

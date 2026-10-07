@@ -1044,12 +1044,6 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Navigation".into(),
         },
         PaletteCommand {
-            label: "Start Here".into(),
-            shortcut: String::new(),
-            action: Action::ShowOnboarding,
-            category: "System".into(),
-        },
-        PaletteCommand {
             label: "Find expert".into(),
             shortcut: String::new(),
             action: Action::FindExpertOnFocusedMessage,

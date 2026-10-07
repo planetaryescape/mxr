@@ -682,8 +682,6 @@ impl App {
             theme,
         );
 
-        ui::onboarding_modal::draw(frame, area, &self.modals.onboarding, theme);
-
         // Snippets browser modal — shown above mailbox/search and below
         // the connection error / global onboarding modal.
         ui::snippets_modal::draw(frame, area, &self.modals.snippets, theme);

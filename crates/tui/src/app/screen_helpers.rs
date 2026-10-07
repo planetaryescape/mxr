@@ -45,7 +45,6 @@ impl App {
     pub fn enter_account_setup_onboarding(&mut self) {
         self.accounts.page.onboarding_required = true;
         self.accounts.page.onboarding_modal_open = true;
-        self.modals.onboarding.visible = false;
         self.mailbox.active_label = None;
         self.mailbox.pending_active_label = None;
         self.mailbox.pending_label_fetch = None;
@@ -109,29 +108,5 @@ impl App {
     pub fn sync_rule_form_strings_from_editors(&mut self) {
         self.rules.page.form.condition = self.rules.condition_editor.lines().join("\n");
         self.rules.page.form.action = self.rules.action_editor.lines().join("\n");
-    }
-
-    pub fn maybe_show_feature_onboarding(&mut self) {
-        if self.modals.onboarding.seen || self.accounts.page.accounts.is_empty() {
-            return;
-        }
-        self.modals.onboarding.visible = true;
-        self.modals.onboarding.step = 0;
-    }
-
-    pub fn dismiss_feature_onboarding(&mut self) {
-        self.modals.onboarding.visible = false;
-        if !self.modals.onboarding.seen {
-            self.modals.onboarding.seen = true;
-            self.pending_local_state_save = true;
-        }
-    }
-
-    pub fn advance_feature_onboarding(&mut self) {
-        if self.modals.onboarding.step >= 5 {
-            self.dismiss_feature_onboarding();
-        } else {
-            self.modals.onboarding.step += 1;
-        }
     }
 }

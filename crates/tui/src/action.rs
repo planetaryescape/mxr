@@ -107,8 +107,6 @@ pub enum Action {
     NowOpenEmail,
     /// `A` on Now: preview letting go of the Updates card, or confirm it.
     NowLetGoDigest,
-    /// Esc on Now's first-encounter card: retire it in every client.
-    NowCloseCard,
     /// A digit on a new sender's row: answer its one question with that
     /// choice (`SetSenderKind`).
     NowAnswerSender(usize),
@@ -147,8 +145,9 @@ pub enum Action {
     TodoDismiss,
     /// `o`: open the email the to-do came from.
     TodoOpenEmail,
-    /// Esc on the first-encounter card: retire it in every client.
-    TodoCloseCard,
+    /// Esc while a hint shows in the status line: dismiss it in every
+    /// client (`SetHintSeen`).
+    DismissHint,
     /// The Expired list, one key from restore.
     TodoOpenExpired,
     /// The first run's one-time catch-up.
@@ -367,7 +366,6 @@ pub enum Action {
     GenerateBugReport,
     EditConfig,
     OpenLogs,
-    ShowOnboarding,
     OpenDiagnosticsPaneDetails,
 
     // --- Phase 2: Email actions (Gmail-native A005) ---
@@ -556,7 +554,6 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | SyncNow
                 | EditConfig
                 | OpenLogs
-                | ShowOnboarding
                 | OpenVoiceProfile
                 | RebuildUserVoice
                 | OpenCommitments
@@ -591,7 +588,6 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | SyncNow
                 | EditConfig
                 | OpenLogs
-                | ShowOnboarding
                 | Help
                 | QuitView
                 | EnableSemantic
@@ -652,7 +648,6 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | SyncNow
                 | EditConfig
                 | OpenLogs
-                | ShowOnboarding
                 | Help
                 | QuitView
                 | EnableSemantic
@@ -696,7 +691,6 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | SyncNow
                 | EditConfig
                 | OpenLogs
-                | ShowOnboarding
                 | Help
                 | QuitView
         ),
@@ -735,7 +729,6 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | SyncNow
                 | EditConfig
                 | OpenLogs
-                | ShowOnboarding
                 | Help
                 | QuitView
         ),

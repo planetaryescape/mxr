@@ -244,14 +244,13 @@ fn help_modal_typing_enters_search_mode_and_backspace_clears_it() {
 }
 
 #[test]
-fn help_modal_o_types_instead_of_reopening_onboarding() {
+fn help_modal_o_types_into_the_filter() {
     let mut app = App::new();
     app.apply(Action::Help);
 
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
     assert!(action.is_none());
     assert_eq!(app.modals.help_query, "o");
-    assert!(!app.modals.onboarding.visible);
 }
 
 #[test]

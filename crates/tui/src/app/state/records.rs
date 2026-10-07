@@ -76,9 +76,6 @@ pub struct RecordsPageState {
     pub pass_menu: Option<PassMenu>,
     /// What `y` or `Y` last copied, said back in the status line.
     pub last_copied: Option<String>,
-    /// Closed here before the daemon answered, so it never flickers back.
-    pub card_closed: bool,
-    pub card_close_mutation: Option<crate::app::MutationId>,
     // Work for the runtime.
     pub pending_refresh: bool,
     pub pending_answer: Option<String>,
@@ -112,14 +109,6 @@ impl RecordsPageState {
 
     pub fn row_count(&self) -> usize {
         self.rows().len()
-    }
-
-    /// The first-encounter card shows above the ledger once there are
-    /// records, until it is closed here or retired anywhere.
-    pub fn card_visible(&self) -> bool {
-        !self.card_closed
-            && self.guide.as_ref().is_some_and(|guide| !guide.card_seen)
-            && !self.rows().is_empty()
     }
 
     /// The record an answer card is about, while one is on screen. A list

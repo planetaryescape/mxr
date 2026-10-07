@@ -224,10 +224,10 @@ pub(crate) fn samir_page() -> PersonPageData {
     }
 }
 
-pub(crate) fn page(data: MessagesData, card_seen: bool) -> MessagesPageState {
+pub(crate) fn page(data: MessagesData, hints_seen: bool) -> MessagesPageState {
     let mut state = MessagesPageState {
         messages: Some(data),
-        guide: Some(MESSAGES_GUIDE.to_data(card_seen.then(Utc::now))),
+        guide: Some(MESSAGES_GUIDE.to_data(|_| hints_seen.then(Utc::now))),
         ..MessagesPageState::default()
     };
     let samir = samir_page();
@@ -331,19 +331,16 @@ fn a_clear_list_says_nobody_is_waiting_with_lapsed_people_as_facts() {
 }
 
 #[test]
-fn the_first_card_shows_once_with_its_keys() {
+fn no_card_teaches_at_the_top_even_before_any_hint_is_seen() {
     let unseen = page(populated(), false);
-    assert!(unseen.card_visible());
     for width in [60u16, 80, 120] {
         let rendered = render_at(&unseen, width, 0);
         assert!(
-            rendered.contains("Each row is a person"),
+            !rendered.contains("Each row is a person"),
             "{width}\n{rendered}"
         );
-        assert!(rendered.contains("Esc close"), "{width}");
-        insta::assert_snapshot!(format!("messages_lens_first_card_{width}"), rendered);
+        assert!(!rendered.contains("Esc close"), "{width}");
     }
-    assert!(!page(populated(), true).card_visible());
 }
 
 #[test]

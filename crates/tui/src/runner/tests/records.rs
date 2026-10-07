@@ -287,17 +287,22 @@ fn capital_t_on_a_conversation_previews_filing_then_files_it() {
 }
 
 #[test]
-fn the_first_answer_retires_the_card_and_help_leads_with_archive() {
+fn the_first_answer_carries_its_hint_and_help_leads_with_archive() {
     let mut app = archive_app();
     let unseen = page(vec![dell()], false);
     app.set_records_ledger(unseen.ledger.unwrap(), unseen.guide);
-    assert!(app.mailbox.records_page.card_visible());
+    app.note_key_for_hints();
     app.set_records_answer(lisbon_answer());
-    assert!(!app.mailbox.records_page.card_visible());
+    assert_eq!(
+        app.active_hint().map(|h| h.id.as_str()),
+        Some("archive.answer")
+    );
+    press(&mut app, KeyCode::Char('y'));
     assert!(queued(&app).iter().any(|request| matches!(
         request,
-        Request::SetModeGuideSeen { mode, seen: true } if mode == "archive"
+        Request::SetHintSeen { hint, seen: true } if hint == "archive.answer"
     )));
+    assert!(app.active_hint().is_none());
     let guide = app.help_mode_guide().expect("Archive's guide");
     assert_eq!(guide.mode, "archive");
 }

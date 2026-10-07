@@ -214,10 +214,10 @@ pub(crate) fn ledger(records: Vec<RecordData>) -> RecordLedgerData {
     }
 }
 
-pub(crate) fn page(records: Vec<RecordData>, card_seen: bool) -> RecordsPageState {
+pub(crate) fn page(records: Vec<RecordData>, hints_seen: bool) -> RecordsPageState {
     RecordsPageState {
         ledger: Some(ledger(records)),
-        guide: Some(ARCHIVE_GUIDE.to_data(card_seen.then(Utc::now))),
+        guide: Some(ARCHIVE_GUIDE.to_data(|_| hints_seen.then(Utc::now))),
         ..RecordsPageState::default()
     }
 }
@@ -445,7 +445,7 @@ fn the_record_card_shows_every_field_with_its_source_and_an_open_dot_when_unchec
 }
 
 #[test]
-fn never_had_any_teaches_the_job_and_the_card_shows_until_seen() {
+fn never_had_any_teaches_the_job_and_no_card_teaches_above_the_ledger() {
     let mut empty = page(Vec::new(), false);
     if let Some(ledger) = empty.ledger.as_mut() {
         ledger.empty_state = Some(format!(
@@ -459,16 +459,11 @@ fn never_had_any_teaches_the_job_and_the_card_shows_until_seen() {
         insta::assert_snapshot!(format!("records_lens_empty_{width}"), rendered);
         assert!(rendered.contains("filed here as"), "{width}\n{rendered}");
     }
-    // No records yet: the card waits for the first one.
-    assert!(!render_at(&empty, 120).contains("Archive keeps records built"));
+    // Hints not yet seen still never draw a block at the top: they show
+    // in the status line at their element.
     let unseen = render_at(&page(vec![dell()], false), 120);
-    assert!(
-        unseen.contains("Archive keeps records built from your mail"),
-        "{unseen}"
-    );
-    assert!(unseen.contains("/ ask \u{b7} y copy reference \u{b7} Enter open document \u{b7} o the email \u{b7} Esc close"));
-    let seen = render_at(&page(vec![dell()], true), 120);
-    assert!(!seen.contains("Archive keeps records built"));
+    assert!(!unseen.contains("Archive keeps records built"), "{unseen}");
+    assert!(!unseen.contains("Esc close"), "{unseen}");
 }
 
 #[test]

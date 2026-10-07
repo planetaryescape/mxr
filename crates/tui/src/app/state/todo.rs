@@ -73,16 +73,11 @@ pub struct TodoPageState {
     /// "Let go of all" previewed by the daemon, waiting for Enter or Esc.
     /// Enter lets go of exactly these ids.
     pub catchup_preview: Option<TodoChangeData>,
-    /// Closed here before the daemon answered, so it never flickers back.
-    pub card_closed: bool,
     pub prompt: Option<TodoPromptState>,
     /// Ask the runtime for the runway and the guide.
     pub pending_refresh: bool,
     /// Ask the runtime for the source message of the row under the cursor.
     pub pending_open: Option<TodoOpen>,
-    /// The `SetModeGuideSeen` sent when the card closed here, so a failed
-    /// write can show the card again.
-    pub card_close_mutation: Option<crate::app::MutationId>,
     /// The next refresh records that To do was opened. Only opening the
     /// lens does: a refresh after a change must not reset the count.
     pub pending_mark_seen: bool,
@@ -124,14 +119,5 @@ impl TodoPageState {
 
     pub fn row_count(&self) -> usize {
         self.rows().len()
-    }
-
-    /// The first-encounter card shows at the top once the mode has rows,
-    /// until it is closed here or retired anywhere.
-    pub fn card_visible(&self) -> bool {
-        self.panel == TodoPanel::Runway
-            && !self.card_closed
-            && self.guide.as_ref().is_some_and(|guide| !guide.card_seen)
-            && !self.runway_rows().is_empty()
     }
 }

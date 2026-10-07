@@ -9,7 +9,7 @@ use crate::app::state::{NowDigestPreview, NowRow};
 use mxr_core::id::ThreadId;
 use mxr_protocol::{ModeDoneOutcomeData, ModeKindData, NowData};
 
-/// The mode id Now's guide and its card are kept under.
+/// The mode id `GetModeGuide` takes for Now.
 pub(crate) const NOW_MODE: &str = mxr_protocol::NOW_GUIDE.mode;
 
 /// What a row on Now refers to, copied out so the page can be changed.
@@ -81,7 +81,6 @@ impl App {
             Action::NowOpenEmail => self.now_open(true),
             Action::NowDone => self.now_done(),
             Action::NowLetGoDigest => self.now_let_go_digest(),
-            Action::NowCloseCard => self.close_now_card(),
             Action::NowAnswerSender(choice) => self.answer_new_sender(choice),
             _ => {}
         }
@@ -194,10 +193,9 @@ impl App {
         let Some(target) = self.selected_now_row().map(NowTarget::from) else {
             return;
         };
-        // The main verb retires Now's card.
-        self.retire_now_card();
         match target {
             NowTarget::Person { thread_id, .. } => {
+                self.explain_done_here_once();
                 self.queue_mode_done(ModeKindData::Messages, thread_id);
             }
             NowTarget::Reading { thread_id, .. } => {
@@ -331,39 +329,6 @@ impl App {
         self.mailbox.now_page.digest_preview = Some(NowDigestPreview { thread_ids, items });
     }
 
-    fn close_now_card(&mut self) {
-        if self.mailbox.now_page.card_visible() {
-            self.retire_now_card();
-        }
-    }
-
-    /// Retire Now's first-encounter card here and in every other client.
-    fn retire_now_card(&mut self) {
-        let page = &mut self.mailbox.now_page;
-        if !page.card_visible() {
-            return;
-        }
-        page.card_closed = true;
-        let id = self.queue_best_effort_mutation(
-            Request::SetModeGuideSeen {
-                mode: NOW_MODE.into(),
-                seen: true,
-            },
-            MutationEffect::StatusOnly(String::new()),
-            String::new(),
-        );
-        self.mailbox.now_page.card_close_mutation = Some(id);
-    }
-
-    /// The daemon didn't store the closed card: show it again.
-    pub(crate) fn reopen_now_card_after_failure(&mut self, failed: crate::app::MutationId) {
-        let page = &mut self.mailbox.now_page;
-        if page.card_close_mutation == Some(failed) {
-            page.card_close_mutation = None;
-            page.card_closed = false;
-        }
-    }
-
     /// A digit on a new sender's row answers its question with that choice.
     fn answer_new_sender(&mut self, choice: usize) {
         let Some(NowRow::Person(person)) = self.selected_now_row() else {
@@ -418,8 +383,8 @@ impl App {
                 self.mailbox.active_pane = ActivePane::Sidebar;
                 return None;
             }
-            // Closes the card when it shows; nothing to go back from here.
-            KeyCode::Esc => Some(Action::NowCloseCard),
+            // Dismisses a hint when one shows; nothing to go back from here.
+            KeyCode::Esc => Some(Action::DismissHint),
             KeyCode::Enter => Some(Action::NowOpen),
             KeyCode::Char('e') if plain => Some(Action::NowDone),
             KeyCode::Char('o') if plain => Some(Action::NowOpenEmail),

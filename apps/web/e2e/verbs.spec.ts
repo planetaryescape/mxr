@@ -636,6 +636,7 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
       .filter({ hasNot: page.getByText("On Later") })
       .first();
     const key = await item.getAttribute("data-key");
+    if (!key) throw new Error("the demo edition has no item off Later");
     const saved = page.locator(`[data-testid='reading-item'][data-key='${key}']`).first();
     await saved.click({ position: { x: 5, y: 5 } });
     await page.keyboard.press("b");

@@ -323,7 +323,7 @@ export interface UnsubscribePurgeResponse {
   result?: {
     address: string;
     status: string;
-    method?: unknown;
+    method?: components["schemas"]["UnsubscribeMethod"];
     query?: string;
     message_ids?: string[];
     message_count: number;

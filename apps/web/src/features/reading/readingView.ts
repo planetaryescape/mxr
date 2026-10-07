@@ -5,6 +5,7 @@
  * so the rules are tested on their own.
  */
 
+import type { components } from "@/api/generated";
 import type { UnsubscribePurgeResponse } from "@/features/mailbox/api";
 import type {
   ReadingBand,
@@ -19,6 +20,8 @@ export const LINKS_SHOWN = 4;
 /** The longest passage a highlight keeps (the daemon's limit). */
 export const MAX_QUOTE_CHARS = 4000;
 
+type UnsubscribeMethod = components["schemas"]["UnsubscribeMethod"];
+
 export type EditionEntry =
   | { kind: "item"; key: string; item: ReadingItem; band: ReadingBand["band"] }
   | {
@@ -30,10 +33,7 @@ export type EditionEntry =
     };
 
 /** The links a digest shows, and how many more it has. */
-export function shownLinks(
-  links: readonly ReadingLink[],
-  expanded: boolean,
-): { shown: readonly ReadingLink[]; more: number } {
+export function shownLinks(links: readonly ReadingLink[], expanded: boolean) {
   if (expanded || links.length <= LINKS_SHOWN) return { shown: links, more: 0 };
   return { shown: links.slice(0, LINKS_SHOWN), more: links.length - LINKS_SHOWN };
 }
@@ -112,13 +112,11 @@ export interface UnsubscribePreview {
 }
 
 /** The daemon's `UnsubscribeMethod` as Reading names it. */
-function purgeMethod(method: unknown): ReadingUnsubscribe {
-  if (method && typeof method === "object") {
-    if ("OneClick" in method) return "one_click";
-    if ("HttpLink" in method || "BodyLink" in method) return "link";
-    if ("Mailto" in method) return "mailto";
-  }
-  return "none";
+function purgeMethod(method: UnsubscribeMethod | undefined): ReadingUnsubscribe {
+  if (!method || method === "None") return "none";
+  if ("OneClick" in method) return "one_click";
+  if ("Mailto" in method) return "mailto";
+  return "link";
 }
 
 /**
@@ -154,10 +152,7 @@ export function highlightPayload(
 }
 
 /** What "let go of all" covers: every conversation the edition shows, once. */
-export function letGoAllPlan(bands: readonly ReadingBand[]): {
-  threadIds: string[];
-  titles: string[];
-} {
+export function letGoAllPlan(bands: readonly ReadingBand[]) {
   const threadIds: string[] = [];
   const titles: string[] = [];
   for (const band of bands) {

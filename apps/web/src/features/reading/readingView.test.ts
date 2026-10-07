@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
+import type { components } from "@/api/generated";
+
 import type { ReadingBand, ReadingEdition, ReadingItem, ReadingLink } from "./api";
+
+type UnsubscribeMethod = components["schemas"]["UnsubscribeMethod"];
 import {
   domainLabel,
   editionEntries,
@@ -141,7 +145,7 @@ describe("h", () => {
 });
 
 /** A daemon unsubscribe preview with this method and token. */
-const purgePreview = (method: unknown, token: string | null = "tok") => ({
+const purgePreview = (method: UnsubscribeMethod, token: string | null = "tok") => ({
   ok: true,
   result: {
     address: "digest@growth.example",

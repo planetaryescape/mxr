@@ -174,7 +174,9 @@ fn message(
         trimmed: TrimmedData {
             quote: !from_me,
             signature: !from_me,
+            footer: false,
         },
+        only_quoted: false,
         trimmed_label: (!from_me).then(|| "trimmed: quote, sig".to_string()),
         layout,
         paragraphs: u32::try_from(text.split("\n\n").count()).unwrap(),

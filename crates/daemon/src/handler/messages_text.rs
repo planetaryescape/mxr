@@ -28,6 +28,7 @@ pub(super) struct TextRequest<'a> {
 pub(super) struct MessageText {
     pub text: String,
     pub trimmed: TrimmedData,
+    pub only_quoted: bool,
     pub attachments: Vec<AttachmentMeta>,
 }
 
@@ -111,7 +112,9 @@ pub(super) async fn new_texts(
                 trimmed: TrimmedData {
                     quote: result.trimmed.quote,
                     signature: result.trimmed.signature,
+                    footer: result.trimmed.footer,
                 },
+                only_quoted: result.only_quoted,
                 attachments: body.attachments.clone(),
             },
         );
@@ -130,6 +133,7 @@ async fn snippet_text(state: &AppState, id: &MessageId) -> Result<MessageText, H
     Ok(MessageText {
         text: snippet,
         trimmed: TrimmedData::default(),
+        only_quoted: false,
         attachments: Vec::new(),
     })
 }

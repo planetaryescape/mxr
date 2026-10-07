@@ -58,16 +58,23 @@ pub struct EarlierMessage<'a> {
     pub same_author: bool,
 }
 
-/// What `new_text` removed.
+/// Shown in place of a message that is nothing but quoted text, so the
+/// quote never passes as the sender's own words.
+pub const ONLY_QUOTED_TEXT: &str = "(only quoted text)";
+
+/// What `new_text` removed. Every removal is reported: content is never
+/// altered silently.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Trimmed {
     pub quote: bool,
     pub signature: bool,
+    /// A legal disclaimer or a tracking/unsubscribe footer.
+    pub footer: bool,
 }
 
 impl Trimmed {
     pub fn any(self) -> bool {
-        self.quote || self.signature
+        self.quote || self.signature || self.footer
     }
 }
 
@@ -75,6 +82,9 @@ impl Trimmed {
 pub struct NewText {
     pub text: String,
     pub trimmed: Trimmed,
+    /// Everything was quoted: `text` is `ONLY_QUOTED_TEXT`, and the message
+    /// as sent is the only way to read it.
+    pub only_quoted: bool,
 }
 
 /// A body as plain text, everything kept: what earlier messages are
@@ -125,20 +135,31 @@ pub fn new_text(
         body = repeated;
         trimmed.signature = true;
     }
-    let body = tracking::strip(&boilerplate::strip(&body));
-    let body = normalize_whitespace(&body);
+    let before_footer = normalize_whitespace(&body);
+    let body = normalize_whitespace(&tracking::strip(&boilerplate::strip(&body)));
+    trimmed.footer |= body != before_footer;
 
     if body.is_empty() {
-        // All quote (a bare forward) or nothing at all: the message as it
-        // came is better than an empty one.
+        if normalize_whitespace(&raw).is_empty() {
+            return NewText {
+                text: String::new(),
+                trimmed: Trimmed::default(),
+                only_quoted: false,
+            };
+        }
+        // Nothing of the sender's own is left: say so rather than show
+        // someone else's quoted words as theirs.
+        trimmed.quote = true;
         return NewText {
-            text: normalize_whitespace(&raw),
-            trimmed: Trimmed::default(),
+            text: ONLY_QUOTED_TEXT.to_string(),
+            trimmed,
+            only_quoted: true,
         };
     }
     NewText {
         text: body,
         trimmed,
+        only_quoted: false,
     }
 }
 

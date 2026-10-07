@@ -899,6 +899,7 @@ async fn conversation(
                 paragraphs: u32::try_from(paragraphs(&body)).unwrap_or(u32::MAX),
                 trimmed_label: trimmed.label(),
                 trimmed,
+                only_quoted: text.is_some_and(|t| t.only_quoted),
                 attachments: text
                     .map(|t| {
                         t.attachments

@@ -634,3 +634,50 @@ async fn messages_is_built_on_the_rail() {
         other => panic!("expected the rail, got {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn a_quote_only_reply_shows_a_placeholder_not_the_quoted_words() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let asked = mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Rollout",
+        Duration::days(1),
+    )
+    .await;
+    body(
+        &fx,
+        &asked.id,
+        Some("Should we keep the canary at 5% until the dashboard is quiet?"),
+        None,
+    )
+    .await;
+    let forward = mail(
+        &fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Re: Rollout",
+        Duration::hours(3),
+    )
+    .await;
+    body(
+        &fx,
+        &forward.id,
+        Some(
+            "On Mon, Alex wrote:\n> Should we keep the canary at 5% until the dashboard is quiet?",
+        ),
+        None,
+    )
+    .await;
+    let page = person(&fx, SAMIR, None).await;
+    let last = page.conversation.unwrap().messages.pop().unwrap();
+    assert_eq!(last.text, mxr_reader::ONLY_QUOTED_TEXT);
+    assert!(last.only_quoted);
+    assert_eq!(last.trimmed_label.as_deref(), Some("trimmed: quote"));
+}

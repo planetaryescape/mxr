@@ -302,19 +302,26 @@ pub enum MessageLayoutData {
 pub struct TrimmedData {
     pub quote: bool,
     pub signature: bool,
+    /// A legal disclaimer or a tracking/unsubscribe footer.
+    #[serde(default)]
+    pub footer: bool,
 }
 
 impl TrimmedData {
     pub const fn any(self) -> bool {
-        self.quote || self.signature
+        self.quote || self.signature || self.footer
     }
 
-    /// "trimmed: quote, sig", or `None` when nothing was removed.
+    /// "trimmed: quote, sig, footer", or `None` when nothing was removed.
     pub fn label(self) -> Option<String> {
-        let parts: Vec<&str> = [(self.quote, "quote"), (self.signature, "sig")]
-            .into_iter()
-            .filter_map(|(on, word)| on.then_some(word))
-            .collect();
+        let parts: Vec<&str> = [
+            (self.quote, "quote"),
+            (self.signature, "sig"),
+            (self.footer, "footer"),
+        ]
+        .into_iter()
+        .filter_map(|(on, word)| on.then_some(word))
+        .collect();
         (!parts.is_empty()).then(|| format!("trimmed: {}", parts.join(", ")))
     }
 }
@@ -339,6 +346,10 @@ pub struct ConversationMessageData {
     /// signature removed, the same text in every client.
     pub text: String,
     pub trimmed: TrimmedData,
+    /// Nothing but quoted text: `text` is the "(only quoted text)"
+    /// placeholder, and the message as sent is the way to read it.
+    #[serde(default)]
+    pub only_quoted: bool,
     /// "trimmed: quote, sig", when something was removed. `o` (or `v`)
     /// shows the message as sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]

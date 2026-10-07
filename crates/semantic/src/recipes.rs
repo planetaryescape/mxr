@@ -68,7 +68,13 @@ pub fn messages_chunks(input: &MessagesRecipeInput<'_>) -> Vec<String> {
     let recipe = recipe(RecipeMode::Messages);
     let prefix = format!("{} · {}: ", input.person.trim(), input.topic.trim());
     let new = new_text(input.text_plain, input.text_html, input.earlier);
-    let mut chunks: Vec<String> = windows(&new.text, recipe.window_words, recipe.overlap_words)
+    // A quote-only message adds nothing the earlier messages don't hold.
+    let new_words = if new.only_quoted {
+        ""
+    } else {
+        new.text.as_str()
+    };
+    let mut chunks: Vec<String> = windows(new_words, recipe.window_words, recipe.overlap_words)
         .into_iter()
         .map(|window| format!("{prefix}{window}"))
         .collect();

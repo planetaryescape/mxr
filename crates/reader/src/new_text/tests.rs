@@ -27,7 +27,8 @@ fn gmail_html_reply_loses_its_quote_and_signature() {
         out.trimmed,
         Trimmed {
             quote: true,
-            signature: true
+            signature: true,
+            footer: false,
         }
     );
 }
@@ -104,11 +105,43 @@ fn an_inline_reply_keeps_its_answers() {
 }
 
 #[test]
-fn a_bare_forward_keeps_its_content() {
+fn a_quote_only_message_says_so_instead_of_passing_the_quote_off_as_new() {
+    // Alice's words must never show as the current sender's.
+    let text = "On Tue, Alice wrote:\n> Can we move the launch to Friday?\n> Thanks, Alice";
+    let out = new_text(Some(text), None, &[]);
+    assert_eq!(out.text, ONLY_QUOTED_TEXT);
+    assert!(out.only_quoted);
+    assert!(out.trimmed.quote);
+    assert!(!out.text.contains("Friday"));
+}
+
+#[test]
+fn a_bare_forward_is_only_quoted_text_too() {
     let text = "---------- Forwarded message ---------\nFrom: Bank\nDate: Mon\nSubject: Statement\nTo: Alex\n\nYour statement is ready.";
     let out = new_text(Some(text), None, &[]);
-    assert!(out.text.contains("Your statement is ready."));
+    assert_eq!(out.text, ONLY_QUOTED_TEXT);
+    assert!(out.only_quoted && out.trimmed.quote);
+}
+
+#[test]
+fn an_empty_body_is_not_called_quoted() {
+    let out = new_text(Some("   "), None, &[]);
+    assert_eq!(out.text, "");
+    assert!(!out.only_quoted);
     assert!(!out.trimmed.any());
+}
+
+#[test]
+fn removing_a_footer_or_disclaimer_marks_it_trimmed() {
+    let text = "Invoice approved.\n\nYou are receiving this email because you signed up.\nClick here to unsubscribe";
+    let out = new_text(Some(text), None, &[]);
+    assert_eq!(out.text, "Invoice approved.");
+    assert!(out.trimmed.footer);
+    assert!(out.trimmed.any());
+    let legal = "Approved.\n\nThis email is confidential and intended only for the recipient.";
+    let out = new_text(Some(legal), None, &[]);
+    assert_eq!(out.text, "Approved.");
+    assert!(out.trimmed.footer);
 }
 
 #[test]

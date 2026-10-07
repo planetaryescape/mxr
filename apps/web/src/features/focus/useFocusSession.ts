@@ -140,8 +140,15 @@ export function useFocusSession(lane?: "owed") {
   }, []);
 
   // The reply for the conversation on screen, inline in focus mode's slot.
+  // With nobody on screen (the finish), the reply it opened closes, as on
+  // leaving (the draft is saved): its slot is gone, and ComposeHost would
+  // float it over the finish instead.
   useEffect(() => {
-    if (!current) return;
+    if (!current) {
+      const open = useComposeUi.getState().intent;
+      if (open && intentThreads.current.has(open.key)) useComposeUi.getState().closeCompose();
+      return;
+    }
     const intent = focusReplyIntent(current);
     intentThreads.current.set(intent.key, current.threadId);
     if (useComposeUi.getState().intent?.key === intent.key) return;

@@ -15,6 +15,19 @@ import { cn } from "@/lib/utils";
 
 import { useLedger, type RecordFilter, type RecordKind, type RecordLedger } from "./api";
 
+/** The kinds the bridge accepts; a facet value outside them is skipped. */
+const KNOWN_KINDS: readonly RecordKind[] = [
+  "receipt",
+  "order",
+  "booking",
+  "invoice",
+  "statement",
+  "ticket",
+  "contract",
+  "warranty",
+  "account",
+];
+
 /** "99.50" to minor units; empty or unreadable is no bound. */
 export function toMinor(text: string): number | undefined {
   const cleaned = text.replace(/[^0-9.]/g, "");
@@ -104,15 +117,20 @@ export function FacetsPanel({
         <fieldset className="grid gap-1.5">
           <legend className="mb-1 text-[13px] font-medium">Kind</legend>
           <div className="flex flex-wrap gap-1.5">
-            {facets.kinds.map((kind) => (
-              <Choice
-                key={kind.value}
-                pressed={draft.kinds?.includes(kind.value as RecordKind) ?? false}
-                onClick={() => toggleKind(kind.value as RecordKind)}
-              >
-                {kind.label} {kind.count}
-              </Choice>
-            ))}
+            {facets.kinds.flatMap((kind) => {
+              const value = KNOWN_KINDS.find((known) => known === kind.value);
+              return value
+                ? [
+                    <Choice
+                      key={value}
+                      pressed={draft.kinds?.includes(value) ?? false}
+                      onClick={() => toggleKind(value)}
+                    >
+                      {kind.label} {kind.count}
+                    </Choice>,
+                  ]
+                : [];
+            })}
           </div>
         </fieldset>
         <fieldset className="grid gap-1.5">

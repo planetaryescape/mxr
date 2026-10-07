@@ -116,7 +116,8 @@ export function RecordEditDialog({ record, onClose }: { record: RecordData; onCl
             <select
               value={field}
               onChange={(event) => {
-                const next = event.target.value as (typeof FIXABLE)[number];
+                const next = FIXABLE.find((name) => name === event.target.value);
+                if (!next) return;
                 setField(next);
                 setValue(current(next));
               }}

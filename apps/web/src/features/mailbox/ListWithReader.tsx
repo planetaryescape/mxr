@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { LIST_PANE_SIZE } from "./listPane";
 import { MailboxList, type MailboxListProps } from "./MailboxList";
 import { Centered, ListSkeleton } from "./MailViewParts";
+import { useAdvanceOnRemoval, useRouteStillShows } from "@/hooks/useAdvanceOnRemoval";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { ReaderNavContext, type ReaderNav } from "./readerNav";
 import type { MessageGroupView, MessageRowView } from "./types";
@@ -156,6 +157,27 @@ export function ListWithReader({
     }),
     [close, visibleGroups, listProps.queueLabel, listProps.interceptVerb, open],
   );
+
+  // The open conversation left the list from somewhere other than the
+  // reader (the list's own archive, sync): open its neighbour. The list
+  // as loaded, not as filtered, so typing a filter never moves the reader.
+  const loadedIds = useMemo(
+    () => [...new Set(groups.flatMap((group) => group.rows.map((row) => row.thread_id)))],
+    [groups],
+  );
+  const stillShows = useRouteStillShows();
+  useAdvanceOnRemoval({
+    ids: loadedIds,
+    ready: !status.isLoading,
+    selectedId: threadId ?? null,
+    onAdvance: (next, from) => {
+      if (from !== null && !stillShows(from)) return;
+      open(next, { focusReader: useMailboxPane.getState().activePane === "reader" });
+    },
+    onEmpty: (removed) => {
+      if (stillShows(removed)) close();
+    },
+  });
 
   return (
     <ReaderNavContext.Provider value={nav}>

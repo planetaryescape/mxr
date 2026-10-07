@@ -410,3 +410,129 @@ fn a_preview_nobody_asked_for_registers_nothing() {
     app.show_messages_ack(plan(&app), std::time::Instant::now());
     assert!(app.mailbox.messages_page.ack.is_none());
 }
+
+fn selected_row_id(app: &App) -> Option<String> {
+    app.selected_messages_row().map(|row| row.id.clone())
+}
+
+fn subject_thread(app: &App, subject: &str) -> mxr_core::id::ThreadId {
+    app.mailbox
+        .messages_page
+        .page
+        .as_ref()
+        .unwrap()
+        .topics
+        .iter()
+        .find(|topic| topic.subject == subject)
+        .unwrap()
+        .thread_id
+        .clone()
+}
+
+#[test]
+fn done_with_topics_left_stays_on_the_person_and_opens_the_next_topic() {
+    let mut app = messages_app(true);
+    let samir = selected_row_id(&app).unwrap();
+    let launch = subject_thread(&app, "Launch checklist");
+    press(&mut app, KeyCode::Char('e'));
+    assert_eq!(selected_row_id(&app), Some(samir.clone()), "the row stays");
+    assert_eq!(
+        app.mailbox.messages_page.pending_person,
+        Some((samir, Some(launch))),
+        "the page asks for the next topic still in Messages, never the one done"
+    );
+    let note = app.mailbox.messages_page.done_note.clone().unwrap();
+    assert_eq!(
+        note.line("Done. Archived in Gmail. u to undo"),
+        "Done: Contract renewal. Next: Launch checklist. Archived in Gmail. u to undo"
+    );
+}
+
+#[test]
+fn done_on_a_persons_last_topic_moves_to_the_next_person() {
+    let mut app = messages_app(true);
+    press(&mut app, KeyCode::Char('j'));
+    assert_eq!(
+        selected_row_id(&app).as_deref(),
+        Some("person:jon@example.com")
+    );
+    press(&mut app, KeyCode::Char('e'));
+    assert_eq!(
+        selected_row_id(&app).as_deref(),
+        Some("person:maya@example.com"),
+        "Jon has nothing left: the row after him opens"
+    );
+    let note = app.mailbox.messages_page.done_note.clone().unwrap();
+    assert_eq!(note.line("Done."), "Done with Jon Bell. Next: Maya Ortiz.");
+}
+
+#[test]
+fn done_on_the_last_row_moves_to_the_previous_person() {
+    let mut app = messages_app(true);
+    app.mailbox.selected_index = app
+        .mailbox
+        .messages_page
+        .index_of("person:iris@example.com")
+        .unwrap();
+    press(&mut app, KeyCode::Char('e'));
+    assert_eq!(
+        selected_row_id(&app).as_deref(),
+        Some("person:maya@example.com")
+    );
+}
+
+#[test]
+fn a_second_e_before_the_next_page_arrives_sends_nothing_again() {
+    let mut app = messages_app(true);
+    press(&mut app, KeyCode::Char('e'));
+    press(&mut app, KeyCode::Char('e'));
+    let dones = queued(&app)
+        .into_iter()
+        .filter(|request| matches!(request, Request::SetModeDone { .. }))
+        .count();
+    assert_eq!(dones, 1, "the page on screen is the one just done");
+}
+
+#[test]
+fn a_refetch_keeps_the_selection_on_the_person_not_the_position() {
+    let mut app = messages_app(true);
+    let iris = "person:iris@example.com";
+    app.mailbox.selected_index = app.mailbox.messages_page.index_of(iris).unwrap();
+    let mut data = populated();
+    let row = data.recent.remove(0);
+    data.your_turn.insert(0, row);
+    app.set_messages(data, None);
+    assert_eq!(selected_row_id(&app).as_deref(), Some(iris));
+}
+
+#[test]
+fn a_person_removed_by_sync_hands_the_selection_to_their_neighbour() {
+    let mut app = messages_app(true);
+    app.mailbox.selected_index = app
+        .mailbox
+        .messages_page
+        .index_of("person:iris@example.com")
+        .unwrap();
+    let mut data = populated();
+    data.recent.clear();
+    data.your_turn.remove(0);
+    app.set_messages(data, None);
+    assert_eq!(
+        selected_row_id(&app).as_deref(),
+        Some("person:maya@example.com"),
+        "the previous person, not the Quiet line that now sits at that position"
+    );
+}
+
+#[test]
+fn a_person_moved_into_quiet_with_topics_left_stays_in_view() {
+    let mut app = messages_app(true);
+    let iris = "person:iris@example.com";
+    app.mailbox.selected_index = app.mailbox.messages_page.index_of(iris).unwrap();
+    let mut data = populated();
+    let row = data.recent.remove(0);
+    data.quiet.insert(0, row);
+    app.set_messages(data, None);
+    assert!(app.mailbox.messages_page.quiet_open);
+    assert_eq!(selected_row_id(&app).as_deref(), Some(iris));
+}

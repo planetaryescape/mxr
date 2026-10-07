@@ -60,6 +60,35 @@ pub struct MessagesPageState {
     /// countdown, and only while the lens is still on it.
     pub ack_requested: Option<ThreadId>,
     pub ack: Option<AckCountdown>,
+    /// What the last done here moved to, for its toast: "Done: Invoice."
+    /// and "Next: Pricing.", joined around the daemon's handoff copy.
+    pub done_note: Option<DoneNote>,
+}
+
+/// Done here's toast, decided when `e` moved on: what was done and what
+/// opened next. The daemon's copy goes between when it answers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DoneNote {
+    pub head: String,
+    pub next: Option<String>,
+}
+
+impl DoneNote {
+    /// "Done: Invoice. Next: Pricing. Archived in Gmail. u to undo": the
+    /// daemon's copy after its first sentence says where the thread went.
+    pub fn line(&self, daemon_copy: &str) -> String {
+        let handoff = daemon_copy
+            .split_once(". ")
+            .map_or("", |(_, rest)| rest)
+            .trim();
+        let next = self.next.as_ref().map(|next| format!("Next: {next}."));
+        [Some(self.head.clone()), next, Some(handoff.to_string())]
+            .into_iter()
+            .flatten()
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 }
 
 impl MessagesPageState {
@@ -80,6 +109,45 @@ impl MessagesPageState {
             }
         }
         items
+    }
+
+    /// Row ids in display order, for keeping the selection on a row.
+    pub fn row_ids(&self) -> Vec<String> {
+        self.items()
+            .into_iter()
+            .filter_map(|item| match item {
+                MessagesItem::Row(row) => Some(row.id.clone()),
+                MessagesItem::QuietToggle(_) => None,
+            })
+            .collect()
+    }
+
+    /// Where a row sits among the items, if it is shown.
+    pub fn index_of(&self, row_id: &str) -> Option<usize> {
+        self.items()
+            .iter()
+            .position(|item| matches!(item, MessagesItem::Row(row) if row.id == row_id))
+    }
+
+    /// Whether done here already took this thread (a second `e` before
+    /// the next topic's page arrives must not send it again).
+    pub fn is_done_here(&self, thread_id: &ThreadId) -> bool {
+        self.messages.as_ref().is_some_and(|m| {
+            m.your_turn
+                .iter()
+                .chain(&m.pinned)
+                .chain(&m.recent)
+                .chain(&m.quiet)
+                .flat_map(|row| &row.topics)
+                .any(|t| &t.thread_id == thread_id && t.state == TopicStateData::Done)
+        })
+    }
+
+    /// Whether a row sits in the folded Quiet band.
+    pub fn in_quiet(&self, row_id: &str) -> bool {
+        self.messages
+            .as_ref()
+            .is_some_and(|m| m.quiet.iter().any(|row| row.id == row_id))
     }
 
     pub fn item_count(&self) -> usize {
@@ -106,6 +174,31 @@ impl MessagesPageState {
         !self.card_closed
             && self.guide.as_ref().is_some_and(|guide| !guide.card_seen)
             && self.messages.as_ref().is_some_and(|m| m.row_count > 0)
+    }
+
+    /// Done here before the daemon answers: the topic is done, and a row
+    /// leaves Your turn only once nothing of it is left, so a person with
+    /// topics still open keeps their place.
+    pub fn mark_done_here(&mut self, thread_id: &ThreadId) {
+        let Some(messages) = self.messages.as_mut() else {
+            return;
+        };
+        for row in messages
+            .your_turn
+            .iter_mut()
+            .chain(messages.pinned.iter_mut())
+            .chain(messages.recent.iter_mut())
+            .chain(messages.quiet.iter_mut())
+        {
+            for topic in row.topics.iter_mut().filter(|t| &t.thread_id == thread_id) {
+                topic.state = TopicStateData::Done;
+            }
+        }
+        messages.your_turn.retain(|row| {
+            row.topics
+                .iter()
+                .any(|topic| topic.state != TopicStateData::Done)
+        });
     }
 
     /// Take a thread's topic out of Your turn before the daemon answers.

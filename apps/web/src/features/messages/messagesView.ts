@@ -6,6 +6,8 @@
  * words; nothing here reorders or rewrites them.
  */
 
+import { nextAfterRemoval } from "@/lib/listAdvance";
+
 import type { ConversationMessage, MessagesData, MessagesRow, MessagesTopic } from "./api";
 
 /** Bands in the order they show. Pinned is a strip of faces, not rows. */
@@ -201,4 +203,97 @@ export function countdownLabel(endsAt: number, now: number): string {
 /** Who a new topic goes to: the person's primary address. */
 export function newTopicAddress(row: MessagesRow): string | null {
   return row.person?.id ?? null;
+}
+
+/**
+ * A row's topics still in Messages: those not done here, less those whose
+ * done is on its way to the daemon. What "left with them" counts, and
+ * what keeps the row in view.
+ */
+export function openThreads(
+  row: MessagesRow | undefined,
+  hidden: ReadonlySet<string>,
+): Set<string> {
+  return new Set(
+    (row?.topics ?? [])
+      .filter((topic) => topic.state !== "done" && !hidden.has(topic.thread_id))
+      .map((topic) => topic.thread_id),
+  );
+}
+
+/** The topics on a person's page that are still in Messages. */
+export function topicsLeft(
+  topics: readonly MessagesTopic[],
+  open: ReadonlySet<string>,
+): MessagesTopic[] {
+  return topics.filter((topic) => open.has(topic.thread_id));
+}
+
+/** A row or topic a verb just moved to: it glows once (`ArrivalGlow`). */
+export interface Arrival {
+  key: number;
+  person: string;
+  /** The topic it opened, or null when it opened a person. */
+  thread: string | null;
+}
+
+/** What done here opens next. */
+export type DoneNext =
+  | { kind: "topic"; topic: MessagesTopic }
+  | { kind: "person"; row: MessagesRow }
+  | { kind: "none" };
+
+/**
+ * After done here on `thread`: the person's next topic still in Messages,
+ * else the next person in the list (the previous one at the end), else
+ * nothing. `rows` is the list as the cursor walks it.
+ */
+export function afterDone({
+  topics,
+  thread,
+  open,
+  rows,
+  person,
+}: {
+  topics: readonly MessagesTopic[];
+  thread: string;
+  open: ReadonlySet<string>;
+  rows: readonly MessagesRow[];
+  person: string;
+}): DoneNext {
+  const ids = topics.map((topic) => topic.thread_id);
+  const nextThread =
+    nextAfterRemoval(ids, thread, (id) => open.has(id)) ??
+    ids.find((id) => id !== thread && open.has(id));
+  const topic = topics.find((candidate) => candidate.thread_id === nextThread);
+  if (topic) return { kind: "topic", topic };
+  const rowIds = rows.map((row) => row.id);
+  const nextRow =
+    nextAfterRemoval(rowIds, person, () => true) ?? rowIds.find((id) => id !== person);
+  const row = rows.find((candidate) => candidate.id === nextRow);
+  return row ? { kind: "person", row } : { kind: "none" };
+}
+
+/**
+ * Done here's toast: what was done, what opened next, then where the
+ * daemon put it (its copy after the first sentence: "Archived in Gmail.",
+ * "Still in To do."). "Done: Invoice. Next: Pricing. Archived in Gmail."
+ */
+export function doneLine(
+  done: { subject: string } | { person: string },
+  daemonCopy: string,
+  next: DoneNext,
+): string {
+  const head = "subject" in done ? `Done: ${done.subject}.` : `Done with ${done.person}.`;
+  const handoff = daemonCopy
+    .split(/(?<=\.)\s+/)
+    .slice(1)
+    .join(" ");
+  const tail =
+    next.kind === "topic"
+      ? `Next: ${topicLabel(next.topic)}.`
+      : next.kind === "person"
+        ? `Next: ${next.row.title}.`
+        : "";
+  return [head, tail, handoff].filter(Boolean).join(" ");
 }

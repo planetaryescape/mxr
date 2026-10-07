@@ -849,9 +849,17 @@ fn pick_topic<'a>(
             return Some(found);
         }
     }
+    // With no topic named, never open one just done here: that reads as
+    // the done not having happened.
     topics
         .iter()
         .find(|t| t.state == TopicStateData::YourTurn)
+        .or_else(|| {
+            topics
+                .iter()
+                .filter(|t| t.state != TopicStateData::Done)
+                .max_by_key(|t| t.last_at)
+        })
         .or_else(|| topics.iter().max_by_key(|t| t.last_at))
 }
 
@@ -1208,4 +1216,69 @@ async fn suggestions_for(
             })
         })
         .collect())
+}
+
+#[cfg(test)]
+mod pick_topic_tests {
+    use super::pick_topic;
+    use chrono::{Duration, Utc};
+    use mxr_core::id::{AccountId, MessageId, ThreadId};
+    use mxr_protocol::{MessagesTopicData, ThreadShapeData, TopicStateData};
+
+    fn topic(state: TopicStateData, hours_ago: i64) -> MessagesTopicData {
+        MessagesTopicData {
+            account_id: AccountId::new(),
+            thread_id: ThreadId::new(),
+            subject: format!("{state:?}"),
+            shape: ThreadShapeData::OneToOne,
+            state,
+            last_at: Utc::now() - Duration::hours(hours_ago),
+            message_count: 1,
+            with: Vec::new(),
+            message_ids: Vec::new(),
+            reply_to_message_id: MessageId::new(),
+        }
+    }
+
+    #[test]
+    fn with_no_topic_named_a_topic_just_done_is_not_opened() {
+        // The done one is the newest: it was the one on screen.
+        let topics = vec![
+            topic(TopicStateData::Done, 1),
+            topic(TopicStateData::Quiet, 48),
+        ];
+        let picked = pick_topic(&topics, None).expect("a topic");
+        assert_eq!(picked.state, TopicStateData::Quiet);
+    }
+
+    #[test]
+    fn your_turn_comes_first_and_a_named_topic_wins() {
+        let topics = vec![
+            topic(TopicStateData::Waiting, 1),
+            topic(TopicStateData::YourTurn, 30),
+            topic(TopicStateData::Done, 2),
+        ];
+        assert_eq!(
+            pick_topic(&topics, None).map(|t| t.state),
+            Some(TopicStateData::YourTurn)
+        );
+        // Named explicitly (a link, a click), even a done topic opens.
+        let done = topics[2].thread_id.clone();
+        assert_eq!(
+            pick_topic(&topics, Some(&done)).map(|t| t.thread_id.clone()),
+            Some(done)
+        );
+    }
+
+    #[test]
+    fn only_done_topics_still_open_one() {
+        let topics = vec![
+            topic(TopicStateData::Done, 3),
+            topic(TopicStateData::Done, 1),
+        ];
+        assert_eq!(
+            pick_topic(&topics, None).map(|t| t.last_at),
+            topics.iter().map(|t| t.last_at).max()
+        );
+    }
 }

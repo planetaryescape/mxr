@@ -298,6 +298,11 @@ impl App {
                 if self.mailbox.mailbox_view == MailboxView::Todo {
                     self.refresh_todo();
                 }
+                // Messages' done names what it did and where it went next.
+                let msg = match self.mailbox.messages_page.done_note.take() {
+                    Some(note) if !msg.is_empty() => note.line(&msg),
+                    _ => msg,
+                };
                 if show_completion_status && !msg.is_empty() {
                     self.push_toast(Toast::success(msg));
                 }
@@ -605,6 +610,8 @@ impl App {
     }
 
     pub fn show_mutation_failure(&mut self, error: &MxrError) {
+        // A failed done here must not lend its words to the next one.
+        self.mailbox.messages_page.done_note = None;
         self.show_error_modal(
             "Mutation Failed",
             format!(

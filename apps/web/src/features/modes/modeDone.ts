@@ -146,6 +146,12 @@ export async function markModeDone(
   if ((unique.length === 0 && !options.sender) || refuseWhileDaemonDown("mark it done")) {
     return false;
   }
+  // A second press while the first is on its way: one request, one toast.
+  // Named to-dos are their own rows, so another one on the thread still goes.
+  const inFlight = useModeDone.getState().hidden[mode];
+  if (!options.todoIds?.length && unique.length > 0 && unique.every((id) => inFlight.has(id))) {
+    return false;
+  }
   useModeDone.getState().hide(mode, unique);
   // The row is gone at once, so `u` may come before the daemon answers.
   const claim = claimUndo();

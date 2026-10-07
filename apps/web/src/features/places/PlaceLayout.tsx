@@ -5,6 +5,7 @@ import { ModeHeader, type FrameWidth } from "@/components/ModeFrame";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { LIST_PANE_SIZE } from "@/features/mailbox/listPane";
 import { ReaderNavContext, type ReaderNav } from "@/features/mailbox/readerNav";
+import { useAdvanceOnRemoval, useRouteStillShows } from "@/hooks/useAdvanceOnRemoval";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { useSplitPane } from "@/hooks/useSplitPane";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
@@ -58,6 +59,22 @@ export function PlaceLayout({
     void navigate({ to: basePath });
   }, [basePath, navigate, setActivePane]);
   const nav = useMemo<ReaderNav>(() => ({ threadIds, open, close }), [close, open, threadIds]);
+
+  // The open conversation left the place (done from the list, sync): open
+  // its neighbour, keeping the keys where they were.
+  const ids = useMemo(() => threadIds(), [threadIds]);
+  const stillShows = useRouteStillShows();
+  useAdvanceOnRemoval({
+    ids,
+    selectedId: params.threadId ?? null,
+    onAdvance: (next, from) => {
+      if (from !== null && !stillShows(from)) return;
+      open(next, { focusReader: useMailboxPane.getState().activePane === "reader" });
+    },
+    onEmpty: (removed) => {
+      if (stillShows(removed)) close();
+    },
+  });
 
   return (
     <ReaderNavContext.Provider value={nav}>

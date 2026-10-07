@@ -373,3 +373,39 @@ fn e_in_updates_is_done_in_updates() {
     ));
     assert_eq!(app.mailbox.place_page.row_count(), 0);
 }
+
+#[test]
+fn done_moves_the_cursor_to_the_next_row_and_at_the_end_to_the_previous() {
+    let mut app = now_app(true);
+    let why = |app: &App| -> Vec<String> {
+        app.mailbox
+            .now_page
+            .rows()
+            .iter()
+            .map(|row| row.why().to_string())
+            .collect()
+    };
+    let before = why(&app);
+    app.mailbox.selected_index = 1;
+    press(&mut app, KeyCode::Char('e'));
+    assert_eq!(
+        why(&app)[app.mailbox.selected_index],
+        before[2],
+        "the next row"
+    );
+
+    // The last row done: only rows with a done of their own, so no card.
+    if let Some(now) = app.mailbox.now_page.now.as_mut() {
+        now.updates = None;
+        now.reading = None;
+    }
+    let last = app.mailbox.now_page.row_count() - 1;
+    let previous = why(&app)[last - 1].clone();
+    app.mailbox.selected_index = last;
+    press(&mut app, KeyCode::Char('e'));
+    assert_eq!(
+        why(&app)[app.mailbox.selected_index],
+        previous,
+        "the previous row"
+    );
+}

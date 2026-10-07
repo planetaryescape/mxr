@@ -211,6 +211,12 @@ impl App {
             } => self.queue_done(ModeKindData::Todo, thread_id, vec![todo_id]),
             // A to-do you made with no email behind it: tick it off.
             NowTarget::Todo { todo_id, .. } => {
+                // It leaves at once, so the next row takes the cursor.
+                self.mailbox.now_page.remove_todo(&todo_id);
+                self.mailbox.selected_index = self
+                    .mailbox
+                    .selected_index
+                    .min(self.mailbox.now_page.row_count().saturating_sub(1));
                 self.queue_mutation(
                     Request::SetTodoState {
                         todo_ids: vec![todo_id],

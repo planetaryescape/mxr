@@ -374,3 +374,15 @@ fn a_failed_card_close_shows_the_card_again() {
         "the daemon never stored it, so the card is still unseen"
     );
 }
+
+#[test]
+fn ticking_off_the_last_row_puts_the_cursor_on_the_one_before() {
+    let mut app = todo_app(true);
+    app.mailbox.selected_index = 1;
+    press(&mut app, KeyCode::Char('e'));
+    assert_eq!(app.mailbox.selected_index, 0);
+    assert_eq!(
+        app.selected_todo().map(|todo| todo.id.as_str()),
+        Some("todo_1")
+    );
+}

@@ -84,6 +84,23 @@
   }
 }
 
+/*
+ * "Now showing": after a done moves on, the row and header it opened glow
+ * once and fade. Only opacity moves, so reduced motion keeps it.
+ */
+@utility arrival-glow {
+  animation: arrival-glow var(--motion-duration-scene) var(--motion-ease) forwards;
+}
+
+@keyframes arrival-glow {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 @keyframes row-exit {
   to {
     opacity: 0;

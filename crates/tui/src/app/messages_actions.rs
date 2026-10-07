@@ -5,7 +5,9 @@
 
 use super::input::plain_or_shift;
 use super::*;
-use crate::app::state::{AckCountdown, MessagesFocus, MessagesItem};
+use crate::app::list_advance::next_after_removal;
+use crate::app::state::{AckCountdown, DoneNote, MessagesFocus, MessagesItem};
+use crate::ui::messages_lens::topic_label;
 use chrono::Offset as _;
 use mxr_core::id::ThreadId;
 use mxr_protocol::{AckPlanData, MessagesData, MessagesRowData, ModeKindData, PersonPageData};
@@ -111,18 +113,46 @@ impl App {
         guide: Option<mxr_protocol::ModeGuideData>,
     ) {
         let page = &mut self.mailbox.messages_page;
+        // The selection is a person, not a position: a refetch that reorders
+        // the bands keeps it on them, and one that drops them moves it to
+        // their neighbour.
+        let before = page.row_ids();
+        let selected = page
+            .row_at(self.mailbox.selected_index)
+            .map(|row| row.id.clone());
         page.messages = Some(messages);
         if guide.is_some() {
             page.guide = guide;
         }
         if self.mailbox.mailbox_view == MailboxView::People {
-            self.mailbox.selected_index = self
-                .mailbox
-                .selected_index
-                .min(self.mailbox.messages_page.item_count().saturating_sub(1));
+            self.reselect_messages_row(&before, selected.as_deref());
         }
         self.sync_messages_page();
         self.guard_messages_ack();
+    }
+
+    /// Put the selection back on `selected` after the bands changed, or on
+    /// its neighbour in `before` when it left. A person whose row moved
+    /// into the folded Quiet band still has topics, so Quiet opens.
+    fn reselect_messages_row(&mut self, before: &[String], selected: Option<&str>) {
+        let page = &mut self.mailbox.messages_page;
+        if let Some(id) = selected {
+            if page.in_quiet(id) && !page.quiet_open && page.index_of(id).is_none() {
+                page.quiet_open = true;
+            }
+        }
+        let shown = page.row_ids();
+        let target = selected.and_then(|id| {
+            page.index_of(id).or_else(|| {
+                next_after_removal(before, &id.to_string(), |other| shown.contains(other))
+                    .and_then(|next| page.index_of(next))
+            })
+        });
+        self.mailbox.selected_index = target.unwrap_or_else(|| {
+            self.mailbox
+                .selected_index
+                .min(page.item_count().saturating_sub(1))
+        });
     }
 
     /// The runtime fetched a person's page.
@@ -335,18 +365,86 @@ impl App {
         }
     }
 
-    /// `e`: done here for the selected topic. The topic leaves Your turn at
-    /// once; the toast is the daemon's handoff copy and `u` undoes it.
+    /// `e`: done here for the open topic, then on at once, as the web does:
+    /// to the person's next topic still in Messages, else the next person
+    /// (the previous one at the end). The toast names both, around the
+    /// daemon's handoff copy, and `u` undoes it.
     fn messages_done(&mut self) {
         let Some(topic) = self.selected_messages_topic() else {
             return;
         };
+        if self.mailbox.messages_page.is_done_here(&topic.thread_id) {
+            return;
+        }
+        let Some(row) = self.selected_messages_row() else {
+            return;
+        };
+        let row_id = row.id.clone();
+        let title = row.title.clone();
+        let page = &self.mailbox.messages_page;
+        let shown = page.page_for_row(row);
+        // The page's topics in its order, else the row's own.
+        let topics = shown.map_or(row.topics.as_slice(), |p| p.topics.as_slice());
+        let subject = shown
+            .and_then(|p| p.conversation.as_ref())
+            .map(|c| c.subject.clone())
+            .or_else(|| {
+                topics
+                    .iter()
+                    .find(|t| t.thread_id == topic.thread_id)
+                    .map(|t| t.subject.clone())
+            })
+            .unwrap_or_default();
+        // Left with them: the row's own topics not done here, as the web
+        // counts them; history and group rows on the page don't count.
+        let open: std::collections::HashSet<&ThreadId> = row
+            .topics
+            .iter()
+            .filter(|t| t.state != mxr_protocol::TopicStateData::Done)
+            .map(|t| &t.thread_id)
+            .collect();
+        let still_open = |id: &ThreadId| *id != topic.thread_id && open.contains(&id);
+        let ids: Vec<ThreadId> = topics.iter().map(|t| t.thread_id.clone()).collect();
+        let next_topic = next_after_removal(&ids, &topic.thread_id, still_open)
+            .or_else(|| ids.iter().find(|id| still_open(id)))
+            .and_then(|id| topics.iter().find(|t| &t.thread_id == id))
+            .map(|t| (t.thread_id.clone(), topic_label(t)));
+        let before_rows = page.row_ids();
+
         self.retire_messages_card();
-        self.mailbox.messages_page.mark_done(&topic.thread_id);
-        self.mailbox.selected_index = self
-            .mailbox
-            .selected_index
-            .min(self.mailbox.messages_page.item_count().saturating_sub(1));
+        self.mailbox.messages_page.mark_done_here(&topic.thread_id);
+        let note = if let Some((thread, label)) = next_topic {
+            // They still have topics here: stay on them, on the next one.
+            let page = &mut self.mailbox.messages_page;
+            if let Some(index) = page.index_of(&row_id) {
+                self.mailbox.selected_index = index;
+            }
+            page.pending_person = Some((row_id, Some(thread)));
+            page.expanded.clear();
+            DoneNote {
+                head: format!("Done: {subject}."),
+                next: Some(label),
+            }
+        } else {
+            let page = &self.mailbox.messages_page;
+            let shown_now = page.row_ids();
+            let next =
+                next_after_removal(&before_rows, &row_id, |id| shown_now.contains(id)).cloned();
+            let next_title = next
+                .as_deref()
+                .and_then(|id| page.row_at(page.index_of(id)?))
+                .map(|r| r.title.clone());
+            let index = next.as_deref().and_then(|id| page.index_of(id));
+            let count = page.item_count();
+            self.mailbox.selected_index =
+                index.unwrap_or_else(|| self.mailbox.selected_index.min(count.saturating_sub(1)));
+            self.sync_messages_page();
+            DoneNote {
+                head: format!("Done with {title}."),
+                next: next_title,
+            }
+        };
+        self.mailbox.messages_page.done_note = Some(note);
         self.queue_mode_done(ModeKindData::Messages, topic.thread_id);
     }
 

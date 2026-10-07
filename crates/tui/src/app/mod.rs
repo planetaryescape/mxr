@@ -10,6 +10,7 @@ mod diagnostics_actions;
 mod draw;
 mod focus_run;
 mod input;
+mod list_advance;
 mod mailbox_actions;
 mod mailbox_helpers;
 

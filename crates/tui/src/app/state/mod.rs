@@ -36,7 +36,7 @@ pub use mailbox::{
     SenderKindMenu, SidebarItem, SidebarSection, SubscriptionEntry, SubscriptionsPageState,
     SweepTarget, ThreadSummaryPreview, PLACE_PAGE_MESSAGES, PLACE_PAGE_SENDERS,
 };
-pub use messages::{AckCountdown, MessagesFocus, MessagesItem, MessagesPageState};
+pub use messages::{AckCountdown, DoneNote, MessagesFocus, MessagesItem, MessagesPageState};
 pub use modals::{
     ActivityModalState, AnalyticsFilterField, AnalyticsFilterModalState, BriefingModalState,
     BriefingModalSubject, DraftOptionsField, DraftOptionsModalState, DraftsModalState,

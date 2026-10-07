@@ -322,6 +322,8 @@ encoding_rs = "0.8"
 icalendar = { version = "0.17.10", default-features = true }
 url = "2"
 scraper = "0.27"
+# scraper's tree type, for removing quote markers before HTML becomes text.
+ego-tree = "0.11"
 data-url = "0.3"
 mime_guess = "2"
 mail-builder = "0.4.4"

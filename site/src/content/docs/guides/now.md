@@ -151,35 +151,30 @@ On a phone the web app shows five tabs instead: Now, Messages, To do,
 Reading and Find. Find holds search, Archive and Inbox. Updates opens from
 the card on Now.
 
-## Messages, built on the desk
+## The desk's lanes, and Messages
 
-Until Messages ships as people with their topics inside, it is the desk: four
-lanes of what needs you.
+Messages is now its own mode: people as rows with their topics inside. See
+[Messages](/guides/messages/). The desk still exists (`mxr desk`, `/desk`)
+and shares Messages' rule for whose turn it is:
 
 - **You owe**: someone you have written to wrote last.
 - **Due**: a promise you made is coming due.
 - **Waiting on**: you wrote last and they have not answered.
 - **New from people**: a person you have not written to before.
 
-Every row says why it is there and how long it has been. Newsletters,
-receipts and notifications are not here; they are in Updates and Reading.
-The exact lane rules are in the [reference](/reference/desk-and-places/#lanes).
+A thread you were only copied on, or one sent to more than 10 people, that
+you never wrote in is nobody's turn: it is in Updates. A turn nobody took
+goes quiet after three times your usual interval with that person, at least
+a week. The exact lane rules are in the
+[reference](/reference/desk-and-places/#lanes).
 
-Person mail still in your inbox that no lane holds, such as a note from
-weeks ago you never answered, stays in Messages as quiet: it is nobody's
-turn, but nobody let it go either. It keeps the email from vanishing from
-every mode, and ticking off a to-do on it never archives it. The reader
-names it ("Also in Messages: quiet, from Iris Chen"). Quiet conversations are
-not in the count beside Messages, which counts people; the line under
-Messages' name, and `mxr modes rail`, say how many there are.
-
-In Messages, `e` is done in Messages, except on a promise under Due, where
-it is the desk's Done below. `/desk` still opens the desk itself.
+Person mail still in your inbox that no lane holds stays in Messages as
+quiet, so it never vanishes from every mode, and ticking off a to-do on it
+never archives it.
 
 ## Open the desk
 
-In the web app, Messages (`g m`) shows the desk's lanes. In the TUI,
-**Messages** in the sidebar opens the desk lens. From the command line:
+In the web app, `/desk` shows the desk's lanes. From the command line:
 
 ```bash
 mxr desk

@@ -54,6 +54,9 @@ pub struct DeskContact {
     pub total_inbound: u32,
     pub total_outbound: u32,
     pub is_list_sender: bool,
+    /// Their usual interval between messages, in seconds, once the
+    /// contacts refresher has seen enough mail.
+    pub cadence_seconds: Option<i64>,
 }
 
 /// How far a thread had arrived when it was marked done: the ids of the
@@ -277,7 +280,7 @@ impl super::Store {
         let wanted = serde_json::to_string(emails).map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
         let rows = sqlx::query(
             r#"SELECT email, display_name, first_seen_at, total_inbound, total_outbound,
-                      is_list_sender
+                      is_list_sender, cadence_days_p50
                FROM contacts
                WHERE account_id = ?1
                  AND email IN (SELECT LOWER(value) FROM json_each(?2))"#,
@@ -296,6 +299,9 @@ impl super::Store {
                     total_inbound: row.try_get::<i64, _>("total_inbound")?.max(0) as u32,
                     total_outbound: row.try_get::<i64, _>("total_outbound")?.max(0) as u32,
                     is_list_sender: row.try_get::<i64, _>("is_list_sender")? != 0,
+                    cadence_seconds: row
+                        .try_get::<Option<f64>, _>("cadence_days_p50")?
+                        .map(|days| (days * 86_400.0).round() as i64),
                 })
             })
             .collect::<Result<Vec<_>, sqlx::Error>>()?;

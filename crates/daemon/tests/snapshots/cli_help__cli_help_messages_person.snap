@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+One person's page: how you know them, every topic, and the selected topic as a conversation of what each message newly says
+
+Usage: mxr messages person [OPTIONS] <PERSON>
+
+Arguments:
+  <PERSON>  An address, or a row id from `mxr messages --format ids`
+
+Options:
+      --topic <THREAD_ID>  The conversation to show, by thread id. Defaults to the one whose turn it is, else the latest
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

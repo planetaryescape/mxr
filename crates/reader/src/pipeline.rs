@@ -1,3 +1,4 @@
+use crate::html_quote::split_html_quote;
 use crate::{boilerplate, html, quotes, signatures, tracking};
 
 /// Configuration for the reader pipeline.
@@ -46,11 +47,26 @@ pub struct ReaderOutput {
 ///
 /// Accepts either plain text or HTML. If HTML, converts to plain text first.
 pub fn clean(text: Option<&str>, html: Option<&str>, config: &ReaderConfig) -> ReaderOutput {
-    // 1. Resolve to plain text
+    // 1. Resolve to plain text. The clients' HTML quote and signature
+    // markers vanish in conversion, so they are removed first.
+    let mut html_quote = false;
+    let mut html_signature = false;
+    let mut from_html = |source: &str| {
+        let parts = split_html_quote(source);
+        let quote = parts.has_quote && config.collapse_quotes;
+        let signature = parts.has_signature && config.strip_signatures;
+        if quote == parts.has_quote && signature == parts.has_signature && (quote || signature) {
+            html_quote = quote;
+            html_signature = signature;
+            html::to_plain_text(&parts.main, config)
+        } else {
+            html::to_plain_text(source, config)
+        }
+    };
     let raw = match (text, html) {
-        (Some(t), _) if html::looks_like_html_document(t) => html::to_plain_text(t, config),
+        (Some(t), _) if html::looks_like_html_document(t) => from_html(t),
         (Some(t), _) => t.to_string(),
-        (None, Some(h)) => html::to_plain_text(h, config),
+        (None, Some(h)) => from_html(h),
         (None, None) => String::new(),
     };
 
@@ -58,6 +74,19 @@ pub fn clean(text: Option<&str>, html: Option<&str>, config: &ReaderConfig) -> R
     let mut content = raw;
     let mut quoted_messages = Vec::new();
     let mut signature = None;
+    if html_quote {
+        // The quote's text left with its markup; the label keeps the
+        // reader honest that something was there.
+        content.push_str("\n\n[previous message]");
+        quoted_messages.push(quotes::QuotedBlock {
+            from: None,
+            date: None,
+            content: String::new(),
+        });
+    }
+    if html_signature {
+        signature = Some(String::new());
+    }
 
     // 2. Extract and collapse quoted replies
     if config.collapse_quotes {
@@ -70,7 +99,7 @@ pub fn clean(text: Option<&str>, html: Option<&str>, config: &ReaderConfig) -> R
     if config.strip_signatures {
         let (cleaned, sig) = signatures::strip(&content);
         content = cleaned;
-        signature = sig;
+        signature = sig.or(signature);
     }
 
     // 4. Strip boilerplate

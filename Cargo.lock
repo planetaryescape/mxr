@@ -4666,6 +4666,7 @@ name = "mxr-reader"
 version = "0.6.53"
 dependencies = [
  "data-url",
+ "ego-tree",
  "html2text",
  "insta",
  "mail-parser",

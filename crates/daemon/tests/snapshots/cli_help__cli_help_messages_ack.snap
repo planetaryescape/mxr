@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Got it: reply with a short acknowledgement in your usual greeting and sign-off for that person. --dry-run prints the exact text
+
+Usage: mxr messages ack [OPTIONS] <THREAD_ID>
+
+Arguments:
+  <THREAD_ID>  The conversation's thread id
+
+Options:
+      --dry-run            Print the exact text without sending it
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

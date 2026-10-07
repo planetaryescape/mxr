@@ -91,13 +91,32 @@ in a release yet; the rest exist today.
 
 **Mode**: one of the five jobs email does, each with its own view, unit and
 verbs: Messages, To do, Updates, Reading and Archive. One email can be in
-several modes at once; `mxr modes why` says which and why. To do is built;
-Messages, Updates and Reading are early versions on the desk, Paper trail and
-the Reading place; Archive's records are coming.
+several modes at once; `mxr modes why` says which and why. Messages and To
+do are built; Updates and Reading are early versions on Paper trail and the
+Reading place; Archive's records are coming.
 
-**Messages** (early version): the mode for people you are in conversation
-with (`g m`). Today it is the desk's lanes; one row per person with their
-conversations as topics inside is planned.
+**Messages**: the mode for people you are in conversation with (`mxr
+messages`, `g m`). One row per person, merged across their addresses, with
+your conversations inside as **topics**; a group thread is its own row. See
+[Messages](/guides/messages/).
+
+**Your turn**: their latest message to you is unanswered. The same rule
+feeds Now's People. A turn nobody took goes quiet after three times your
+usual interval with them, at least a week.
+
+**Copied thread**: a thread you were only copied on, or one sent to more
+than 10 people, that you never wrote in. It goes to Updates, not Messages.
+
+**New text**: what a message says that its thread didn't already, with
+quoted history and signature removed. Marked "trimmed" when anything was
+removed; `o` shows the message as sent.
+
+**Got it**: a short acknowledgement reply in your own greeting and
+sign-off, sent after a visible countdown you can undo (`.`, `mxr messages
+ack`).
+
+**Merge (people)**: making several addresses one person, always by hand.
+mxr suggests a merge when two addresses you've written to share a name.
 
 **To do**: the mode for things you must act on, each titled as an
 instruction ("Pay council tax") with a due date and an act-by date
@@ -119,9 +138,9 @@ sections (`mxr now`, `g h`). See [Start from Now](/guides/now/).
 **Rail**: the sidebar's list of Now, the five modes and Inbox, with their `g`
 keys (`mxr modes rail`).
 
-**Quiet**: person mail still in your inbox that no Messages lane holds.
-Messages keeps it until you mark it done there, so it never vanishes from
-every mode.
+**Quiet**: Messages' last band: people you marked done here, or whose turn
+went quiet. Person mail still in your inbox stays in Messages until you mark
+it done there, so it never vanishes from every mode.
 
 **Inbox**: everything, in arrival order. Under the modes plan it stays as
 a lens over all mail, not a mode.

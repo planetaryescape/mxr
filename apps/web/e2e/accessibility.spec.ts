@@ -26,6 +26,8 @@ async function blockingViolations(page: Page): Promise<string[]> {
 const ROUTES = [
   "/now",
   "/messages",
+  "/messages?turn=theirs",
+  "/messages?person=person%3Asamir%40launchpad.example",
   "/updates",
   "/reading",
   "/archive",

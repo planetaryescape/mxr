@@ -48,11 +48,10 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
   // Load Messages, open its first conversation, and load the inbox.
   await openApp(page, "/messages");
   await expect(page).toHaveURL(/\/messages$/);
-  await expect(mailRows(page).first()).toBeVisible();
+  await expect(page.getByTestId("messages-row").first()).toBeVisible();
   await page.keyboard.press("Enter");
-  await expect(threadMessages(page).first()).toBeVisible();
-  const openedSubject = await reader(page).getAttribute("aria-label");
-  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("conversation-message").first()).toBeVisible();
+  const openedPerson = await page.getByTestId("person-name").textContent();
   await pressSequence(page, "g", "i");
   await expect(page).toHaveURL(/\/m\/inbox$/);
   // Messages' rows can linger for a frame after the route changes.
@@ -85,12 +84,10 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
     // A g-jump back to Messages shows it from cache, and the conversation
     // opened earlier opens again with its messages.
     await pressSequence(page, "g", "m");
-    await expect(page).toHaveURL(/\/messages$/);
-    await expect(mailRows(page).first()).toBeVisible();
-    await page.keyboard.press("Enter");
-    await expect(reader(page)).toHaveAttribute("aria-label", openedSubject!);
-    await expect(threadMessages(page).first()).toBeVisible();
-    await page.keyboard.press("Escape");
+    await expect(page).toHaveURL(/\/messages/);
+    await expect(page.getByTestId("messages-row").first()).toBeVisible();
+    await expect(page.getByTestId("person-name")).toHaveText(openedPerson!);
+    await expect(page.getByTestId("conversation-message").first()).toBeVisible();
     await pressSequence(page, "g", "i");
     await expect(rowById(page, first!)).toBeVisible();
 

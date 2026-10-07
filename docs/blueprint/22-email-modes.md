@@ -301,7 +301,11 @@ them. A group thread (two or more other humans who took part) is its own
 row keyed by `thread_id`, never by participant set, because CC lists
 change on almost every reply and Slack and iMessage split a group whenever
 someone is added. A CC-only thread you never wrote in, or one with more
-than about 10 recipients, goes to Updates (messages.md §4). Importance
+than about 10 recipients, goes to Updates (messages.md §4). One exception
+keeps the Your turn signal: a crowd thread stays in Messages while a person
+has replied to you in it, with you in To, after your last message; once
+you answer, it goes to Updates. Updates' early view lists these copied
+threads by sender, with the reason "copied" (phase 3). Importance
 attaches to people: reciprocity, recency and longevity predicted contact
 importance (Whittaker, Jones and Terveen, CSCW 2002), and SNARF's
 per-correspondent sorting improved triage in the field (Fisher et al.).
@@ -802,7 +806,8 @@ use the demo mailbox. Dates and counts are filled in by code.
   days ago."
 - Card: "Each row is a person, not an email, with your conversations
   inside as topics. The quoted line is what they asked; the row leaves
-  Your turn when you reply or press `.` for got it."
+  Your turn when you reply or press got it (.)." (Reworded so the key is
+  plain text: clients show card text as typed.)
   Keys: `r` reply · `.` got it · `e` done here · `t` make it a to-do
 - Why line: "Here because: Samir asked you a question, and you write to
   him often (rule)."

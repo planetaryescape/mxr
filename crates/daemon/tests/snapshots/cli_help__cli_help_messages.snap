@@ -1,0 +1,27 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+People you talk with, one row each. Reply or mark done.
+
+Four bands: Your turn (their latest message to you is unanswered; closest people first, then whoever has waited longest past your usual pace), Pinned, Recent and Quiet. Each row is a person, merged across their addresses, with your conversations inside as topics; a group thread is its own row. A thread you were only copied on goes to Updates. The preview is what they asked, from the conversation's gist when one is cached, else what they wrote last.
+
+Usage: mxr messages [OPTIONS] [COMMAND]
+
+Commands:
+  list    The bands (the default)
+  person  One person's page: how you know them, every topic, and the selected topic as a conversation of what each message newly says [alias: show]
+  ack     Got it: reply with a short acknowledgement in your usual greeting and sign-off for that person. --dry-run prints the exact text
+  merge   Make several addresses one person, by hand. mxr only ever suggests a merge (same name, you've written to both); --suggestions lists them
+  split   Take an address back out of the person it was merged into
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --account <ACCOUNT>
+          Limit to one account; the default covers every account
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

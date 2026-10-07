@@ -1,0 +1,99 @@
+---
+source: crates/daemon/tests/modes_cli.rs
+expression: "serde_json::to_string_pretty(&guide).unwrap()"
+---
+[
+  {
+    "add_one": "",
+    "card": "Each row is a person, not an email, with your conversations inside as topics. The quoted line is what they asked; the row leaves Your turn when you reply or press got it (.).",
+    "card_keys": [
+      {
+        "key": "r",
+        "verb": "reply"
+      },
+      {
+        "key": ".",
+        "verb": "got it"
+      },
+      {
+        "key": "e",
+        "verb": "done here"
+      },
+      {
+        "key": "t",
+        "verb": "make it a to-do"
+      }
+    ],
+    "card_seen": false,
+    "clear_for_now": "Nobody is waiting on you.",
+    "first_run_line": "People you talk with",
+    "header": "People you talk with, one row each. Reply or mark done.",
+    "keys": [
+      {
+        "key": "Enter",
+        "verb": "open the person"
+      },
+      {
+        "key": "r",
+        "verb": "reply"
+      },
+      {
+        "key": "a",
+        "verb": "reply all"
+      },
+      {
+        "key": ".",
+        "verb": "got it"
+      },
+      {
+        "key": "e",
+        "verb": "done here"
+      },
+      {
+        "key": "t",
+        "verb": "make it a to-do"
+      },
+      {
+        "key": "b",
+        "verb": "reply later"
+      },
+      {
+        "key": "s",
+        "verb": "pin"
+      },
+      {
+        "key": "c",
+        "verb": "new topic"
+      },
+      {
+        "key": "[",
+        "verb": "previous topic"
+      },
+      {
+        "key": "]",
+        "verb": "next topic"
+      },
+      {
+        "key": "p",
+        "verb": "person page"
+      },
+      {
+        "key": "o",
+        "verb": "show as sent"
+      },
+      {
+        "key": "u",
+        "verb": "undo"
+      },
+      {
+        "key": "?",
+        "verb": "what is this"
+      }
+    ],
+    "lands_here": "People you write to and who write to you, one row each; a group thread is its own row, and a thread you were only copied on goes to Updates.",
+    "mode": "messages",
+    "name": "Messages",
+    "never_had_any": "When someone writes to you and you've written to them, they show up here, one row per person, with what they asked you.",
+    "why_template": "Here because: {evidence} ({source})."
+  }
+]

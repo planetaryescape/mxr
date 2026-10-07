@@ -5,6 +5,7 @@ mod compose;
 mod deliveries;
 mod diagnostics;
 mod mailbox;
+mod messages;
 mod modals;
 mod now;
 mod rules;
@@ -34,6 +35,7 @@ pub use mailbox::{
     SenderKindMenu, SidebarItem, SidebarSection, SubscriptionEntry, SubscriptionsPageState,
     SweepTarget, ThreadSummaryPreview, PLACE_PAGE_MESSAGES, PLACE_PAGE_SENDERS,
 };
+pub use messages::{AckCountdown, MessagesFocus, MessagesItem, MessagesPageState};
 pub use modals::{
     ActivityModalState, AnalyticsFilterField, AnalyticsFilterModalState, BriefingModalState,
     BriefingModalSubject, DraftOptionsField, DraftOptionsModalState, DraftsModalState,

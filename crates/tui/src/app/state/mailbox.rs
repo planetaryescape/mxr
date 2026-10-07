@@ -52,6 +52,10 @@ pub enum MailboxView {
     /// Archive, the mode: an early version with nothing to list yet, so it
     /// says so and points at search.
     ArchiveMode,
+    /// Messages, the mode (`Request::ListMessages`): people you talk with,
+    /// one row each, with the selected person's page beside them.
+    /// (`Messages` above is the plain mail list.)
+    People,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -605,6 +609,9 @@ pub struct MailboxState {
     pub todo_page: super::TodoPageState,
     /// Now (`GetNow`): the front page and its guide.
     pub now_page: super::NowPageState,
+    /// Messages (`ListMessages`, `GetPerson`): the bands, the person page,
+    /// the guide and a Got it counting down.
+    pub messages_page: super::MessagesPageState,
     /// The rail (`GetRail`): badges, counts and which modes are early.
     pub rail: Option<mxr_protocol::RailData>,
     pub pending_rail_refresh: bool,
@@ -715,6 +722,7 @@ impl MailboxState {
             desk_page: DeskPageState::default(),
             todo_page: super::TodoPageState::default(),
             now_page: super::NowPageState::default(),
+            messages_page: super::MessagesPageState::default(),
             rail: None,
             pending_rail_refresh: false,
             place_page: PlacePageState::default(),

@@ -121,7 +121,7 @@ test("g chords jump to the TUI's views", async ({ page }) => {
     // Retired web chords keep working for one release.
     ["R", /\/reading$/],
     ["P", /\/updates$/],
-    ["w", /\/messages\?lane=waiting$/],
+    ["w", /\/messages\?turn=theirs$/],
     ["n", /\/snoozed$/],
     ["q", /\/reply-queue$/],
     ["o", /\/owed$/],

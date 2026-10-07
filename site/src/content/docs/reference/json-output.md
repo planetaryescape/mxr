@@ -441,6 +441,46 @@ Successful sends return:
 }
 ```
 
+## Messages
+
+`mxr messages --format json` returns the bands:
+
+```json
+{
+  "header": "People you talk with, one row each. Reply or mark done.",
+  "your_turn": [
+    {
+      "id": "person:samir@launchpad.example",
+      "kind": "person",
+      "band": "your_turn",
+      "title": "Samir Patel",
+      "closeness": "close",
+      "your_turn": true,
+      "preview": { "kind": "latest", "text": "Can you take a look and reply with the next concrete step?" },
+      "pace_label": "usually 47m",
+      "topics": [
+        { "subject": "Contract renewal", "shape": "one_to_one", "state": "your_turn" }
+      ],
+      "why": "Here because: Samir replied to your message, and you write to each other often (rule)."
+    }
+  ],
+  "pinned": [], "recent": [], "quiet": [],
+  "recent_total": 12, "quiet_total": 30, "row_count": 43, "thread_count": 61,
+  "merge_suggestion_count": 1
+}
+```
+
+`preview.kind` is `ask` (the verbatim ask from a cached gist, with `model`),
+`latest` or `you`. `mxr messages person ID --format json` adds
+`relationship_line`, every topic, and `conversation.messages[]`, each with
+`text` (the new text), `trimmed: {quote, signature}`, `trimmed_label` and
+`layout` (`compact` or `letter`). `trimmed` also has `footer` (a disclaimer
+or unsubscribe footer), and `only_quoted` is true when a message was nothing
+but quoted text. `mxr messages ack THREAD --dry-run --format json` returns
+the exact `text` and `html` parts, `from`, `to`, `subject`, `built_from`,
+`countdown_seconds`, `preview_token` and `preview_expires_at`;
+`sent_message_id` is set only after a real send.
+
 ## Common `jq` patterns
 
 ```bash

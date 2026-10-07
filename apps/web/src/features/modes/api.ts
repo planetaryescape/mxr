@@ -16,7 +16,7 @@ export type ModeKey = Schemas["ModeKeyData"];
 type ModeGuides = Extract<Schemas["ResponseData"], { kind: "ModeGuides" }>;
 
 /** Mode ids with a guide: Now and the modes that have shipped. */
-export type ModeId = "now" | "todo";
+export type ModeId = "now" | "messages" | "todo";
 
 export const modeGuideKey = (mode: ModeId) => ["mode-guide", mode] as const;
 

@@ -60,7 +60,7 @@ fn each_rail_key_opens_its_mode() {
     let mut app = App::new();
     for (key, view) in [
         ('h', MailboxView::Now),
-        ('m', MailboxView::Desk),
+        ('m', MailboxView::People),
         ('x', MailboxView::Todo),
         (
             'u',

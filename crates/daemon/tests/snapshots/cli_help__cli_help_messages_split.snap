@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Take an address back out of the person it was merged into
+
+Usage: mxr messages split [OPTIONS] <ADDRESS>
+
+Arguments:
+  <ADDRESS>
+
+Options:
+      --dry-run
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

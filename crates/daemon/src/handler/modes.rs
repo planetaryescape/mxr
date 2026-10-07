@@ -13,6 +13,9 @@
 //!
 //! minus each mode's done mark (`mode_done`, the desk's watermark).
 
+use super::conversation_shape::{
+    conversation_shape, human_address, Shape, ShapeConfig, ShapeInputs,
+};
 use super::desk::{self_matcher, Senders};
 use super::desk_lanes::{
     clean_subject, is_outbound, thread_lanes, AccountInputs, DESK_WINDOW_DAYS,
@@ -51,10 +54,10 @@ pub(super) const fn mark_name(mode: ModeKindData) -> Option<&'static str> {
     }
 }
 
-/// Built in its researched shape (To do) or an early version on an
-/// existing view (the rest, for now).
+/// Built in its researched shape (To do, Messages) or an early version on
+/// an existing view (the rest, for now).
 const fn is_early(mode: ModeKindData) -> bool {
-    !matches!(mode, ModeKindData::Todo)
+    !matches!(mode, ModeKindData::Todo | ModeKindData::Messages)
 }
 
 /// The threads the desk's Done or done-in-Messages put away, as one map
@@ -147,6 +150,7 @@ pub(super) async fn place_threads(
         dismissed: &dismissed,
         timers: &timers,
         is_self: &is_self,
+        shape: super::conversation_shape::shape_config(state),
         now,
     });
     let rows: HashMap<ThreadId, DeskRowData> = lanes
@@ -201,6 +205,7 @@ pub(super) async fn place_threads(
             senders: &senders,
             written_to: &written_to,
             is_self: &is_self,
+            shape: super::conversation_shape::shape_config(state),
             now,
         });
         let quiet = !rows.contains_key(&thread_id)
@@ -231,6 +236,7 @@ struct PlaceInputs<'a> {
     /// Senders you have ever written to, anywhere in the account.
     written_to: &'a HashSet<String>,
     is_self: &'a dyn Fn(&str) -> bool,
+    shape: ShapeConfig,
     now: DateTime<Utc>,
 }
 
@@ -243,8 +249,21 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
     let mut modes = Vec::new();
     let mut done_in = Vec::new();
 
-    // Messages: the lane rules already left out a thread put away.
-    if let Some(row) = inputs.row {
+    let shape = shape_of(inputs);
+    // Messages: the lane rules already left out a thread put away. A thread
+    // you were only copied on is in Updates instead.
+    if shape == Shape::Copied {
+        if !mark(ModeKindData::Updates).is_some_and(|mark| mark.covers(thread)) {
+            modes.push(membership(
+                ModeKindData::Updates,
+                "Here because: you were only copied, or it went to a crowd, and you never wrote in it (rule).".to_string(),
+                "Also in Updates: a thread you were copied on".to_string(),
+                is_early(ModeKindData::Updates),
+            ));
+        } else {
+            done_in.push(ModeKindData::Updates);
+        }
+    } else if let Some(row) = inputs.row {
         modes.push(messages_membership(row, is_early(ModeKindData::Messages)));
     } else if let Some(message) = quiet(inputs) {
         modes.push(quiet_membership(
@@ -289,6 +308,13 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         let Some(held) = by_kind.get(&kind) else {
             continue;
         };
+        if modes
+            .iter()
+            .any(|entry: &mxr_protocol::ModeMembershipData| entry.mode == mode)
+            || done_in.contains(&mode)
+        {
+            continue;
+        }
         if mark(mode).is_some_and(|mark| mark_covers(mark, held.iter().map(|m| (m.date, &m.id)))) {
             done_in.push(mode);
             continue;
@@ -349,6 +375,24 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         in_inbox: thread.iter().any(|m| m.in_inbox && !m.trashed),
         new_sender: new_sender(inputs),
     }
+}
+
+/// The thread's shape, by the rule the lanes and Messages use.
+fn shape_of(inputs: &PlaceInputs<'_>) -> Shape {
+    let person_sender = |m: &DeskMessage| {
+        mail_kind::classify(&signals(m, inputs.senders)).kind == mail_kind::SenderKind::Person
+    };
+    let human =
+        |email: &str| human_address(email, &inputs.senders.contacts, &inputs.senders.screener);
+    conversation_shape(
+        inputs.thread,
+        &ShapeInputs {
+            is_self: inputs.is_self,
+            person_sender: &person_sender,
+            human_address: &human,
+            config: inputs.shape,
+        },
+    )
 }
 
 /// Person mail still in the inbox that no lane holds: nobody's turn, but
@@ -575,9 +619,6 @@ pub(super) async fn without_done(
 /// note.
 const fn early_note(mode: ModeKindData) -> Option<&'static str> {
     match mode {
-        ModeKindData::Messages => {
-            Some("Early version: the desk's You owe, New from people and Waiting on.")
-        }
         ModeKindData::Updates => {
             Some("Early version: Paper trail, automated mail in your inbox by sender.")
         }
@@ -585,7 +626,7 @@ const fn early_note(mode: ModeKindData) -> Option<&'static str> {
             Some("Early version: newsletters and lists in your inbox by sender.")
         }
         ModeKindData::Archive => Some("Early version: search, with receipts and records marked."),
-        ModeKindData::Todo => None,
+        ModeKindData::Todo | ModeKindData::Messages => None,
     }
 }
 

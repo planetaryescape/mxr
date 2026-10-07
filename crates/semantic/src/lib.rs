@@ -1,4 +1,5 @@
 mod cpu;
+pub mod recipes;
 mod service;
 
 #[cfg(feature = "local")]

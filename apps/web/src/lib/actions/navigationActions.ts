@@ -174,7 +174,7 @@ export const navigationActions: Action[] = [
     icon: Timer,
     shortcut: "g w",
     tuiNote: "A lane of the desk lens in the TUI",
-    run: go("/messages?lane=waiting"),
+    run: go("/messages?turn=theirs"),
   },
   {
     id: "nav.inbox",

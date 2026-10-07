@@ -85,7 +85,9 @@ use utoipa::{
         mail_sender_kind, mail_todos_runway, mail_todos_create, mail_todos_in_state,
         mail_todo_get, mail_todos_state, mail_todo_schedule, mail_todo_edit,
         mail_todos_catchup_get, mail_todos_catchup_set, mail_mode_guide, mail_mode_card,
-        mail_now, mail_rail, mail_mode_membership_get, mail_mode_membership_post, mail_mode_done
+        mail_now, mail_rail, mail_mode_membership_get, mail_mode_membership_post, mail_mode_done,
+        mail_people, mail_people_page, mail_people_ack, mail_people_merge, mail_people_split,
+        mail_people_merge_suggestions
     ),
     components(schemas(
         Request,
@@ -107,6 +109,9 @@ use utoipa::{
         crate::mode_routes::ModeCardBody,
         crate::mode_routes::ModeMembershipBody,
         crate::mode_routes::ModeDoneBody,
+        crate::messages_routes::AckBody,
+        crate::messages_routes::MergeBody,
+        crate::messages_routes::SplitBody,
     )),
     modifiers(&BearerSecurity),
     security(("bearer" = []))
@@ -592,6 +597,92 @@ fn mail_mode_membership_post() {}
 )]
 #[allow(dead_code)]
 fn mail_mode_done() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/people",
+    summary = "Messages: people you talk with in four bands (Your turn, Pinned, Recent, Quiet), each row with its topics and what they asked",
+    params(
+        ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
+        ("turn" = Option<String>, Query, description = "`mine` or `theirs`: only rows where it is that side's turn"),
+        ("limit" = Option<u32>, Query, description = "Rows in Recent and Quiet (default 50); totals count all"),
+    ),
+    responses(
+        (status = 200, description = "The `Messages` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_people() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/people/page",
+    summary = "A person's page: relationship line, every topic, and the selected topic as new text with trimmed markers",
+    params(
+        ("person" = String, Query, description = "A row id (`person:<email>`, `group:<thread>`) or an address"),
+        ("topic" = Option<String>, Query, description = "Thread id of the conversation to show"),
+        ("account" = Option<String>, Query, description = "Account id; omitted searches every account"),
+    ),
+    responses(
+        (status = 200, description = "The `PersonPage` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_people_page() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/people/ack",
+    summary = "Got it: a short acknowledgement in your usual greeting and sign-off (dry_run previews the exact text)",
+    request_body = crate::messages_routes::AckBody,
+    responses(
+        (status = 200, description = "The `MessagesAck` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_people_ack() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/people/merge",
+    summary = "Merge addresses into one person, by hand (dry_run previews)",
+    request_body = crate::messages_routes::MergeBody,
+    responses(
+        (status = 200, description = "The `PersonMerge` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_people_merge() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/people/split",
+    summary = "Take an address back out of its person (dry_run previews)",
+    request_body = crate::messages_routes::SplitBody,
+    responses(
+        (status = 200, description = "The `PersonMerge` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_people_split() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/people/merge-suggestions",
+    summary = "Merges mxr suggests: the same name on addresses you have written to. Never applied on its own",
+    params(("account" = Option<String>, Query, description = "Account id; omitted covers every account")),
+    responses(
+        (status = 200, description = "The `MergeSuggestions` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_people_merge_suggestions() {}
 
 #[utoipa::path(
     post,

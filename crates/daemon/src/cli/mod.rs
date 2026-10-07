@@ -573,6 +573,16 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    #[command(about = mxr_protocol::messages_copy::HEADER, long_about = MESSAGES_LONG_ABOUT)]
+    Messages {
+        #[command(subcommand)]
+        action: Option<MessagesAction>,
+        /// Limit to one account; the default covers every account.
+        #[arg(long, global = true)]
+        account: Option<String>,
+        #[arg(long, global = true)]
+        format: Option<OutputFormat>,
+    },
     #[command(about = mxr_protocol::now_copy::HEADER, long_about = NOW_LONG_ABOUT)]
     Now {
         /// Limit to one account; the default covers every account.
@@ -2154,6 +2164,72 @@ pub enum TodoAction {
 const NOW_LONG_ABOUT: &str = "The few things that need you now, from every mode.
 
 Four sections in a fixed order, at most three items each: People (whose turn it is, from Messages), Due soon (To do's Now band, by act-by), one Updates card, and one thing to read after 17:00. Each section says how many more are in its mode. `mxr desk` still lists every lane in full.";
+
+const MESSAGES_LONG_ABOUT: &str = "People you talk with, one row each. Reply or mark done.
+
+Four bands: Your turn (their latest message to you is unanswered; closest people first, then whoever has waited longest past your usual pace), Pinned, Recent and Quiet. Each row is a person, merged across their addresses, with your conversations inside as topics; a group thread is its own row. A thread you were only copied on goes to Updates. The preview is what they asked, from the conversation's gist when one is cached, else what they wrote last.";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum MessagesTurnArg {
+    /// Your turn.
+    Mine,
+    /// Waiting on them.
+    Theirs,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum MessagesAction {
+    /// The bands (the default).
+    List {
+        /// Only rows where it is this side's turn.
+        #[arg(long, value_enum)]
+        turn: Option<MessagesTurnArg>,
+        /// Rows to list in Recent and Quiet; totals count them all.
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+    },
+    /// One person's page: how you know them, every topic, and the selected
+    /// topic as a conversation of what each message newly says.
+    #[command(visible_alias = "show")]
+    Person {
+        /// An address, or a row id from `mxr messages --format ids`.
+        person: String,
+        /// The conversation to show, by thread id. Defaults to the one whose
+        /// turn it is, else the latest.
+        #[arg(long, value_name = "THREAD_ID")]
+        topic: Option<String>,
+    },
+    /// Got it: reply with a short acknowledgement in your usual greeting
+    /// and sign-off for that person. --dry-run prints the exact text.
+    Ack {
+        /// The conversation's thread id.
+        thread_id: String,
+        /// Print the exact text without sending it.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Make several addresses one person, by hand. mxr only ever suggests a
+    /// merge (same name, you've written to both); --suggestions lists them.
+    Merge {
+        /// The person's main address.
+        #[arg(required_unless_present = "suggestions")]
+        into: Option<String>,
+        /// Addresses to merge in.
+        addresses: Vec<String>,
+        /// List the merges mxr suggests instead.
+        #[arg(long, conflicts_with = "dry_run")]
+        suggestions: bool,
+        /// Show the person it would make without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Take an address back out of the person it was merged into.
+    Split {
+        address: String,
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ModesAction {

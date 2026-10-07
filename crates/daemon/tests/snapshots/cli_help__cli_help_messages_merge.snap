@@ -1,0 +1,18 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Make several addresses one person, by hand. mxr only ever suggests a merge (same name, you've written to both); --suggestions lists them
+
+Usage: mxr messages merge [OPTIONS] [INTO] [ADDRESSES]...
+
+Arguments:
+  [INTO]          The person's main address
+  [ADDRESSES]...  Addresses to merge in
+
+Options:
+      --suggestions        List the merges mxr suggests instead
+      --dry-run            Show the person it would make without changing anything
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

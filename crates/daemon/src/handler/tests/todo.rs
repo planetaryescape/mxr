@@ -844,7 +844,7 @@ async fn the_mode_guide_serves_to_do_copy_from_one_table() {
     };
     assert_eq!(
         guides.iter().map(|g| g.mode.as_str()).collect::<Vec<_>>(),
-        vec!["now", "todo"]
+        vec!["now", "messages", "todo"]
     );
     let refused = handle_request(
         &fx.state,
@@ -860,7 +860,10 @@ async fn the_mode_guide_serves_to_do_copy_from_one_table() {
     let IpcPayload::Response(Response::Error { message, .. }) = refused.payload else {
         panic!("an unshipped mode is refused")
     };
-    assert!(message.contains("Modes so far: now, todo"), "{message}");
+    assert!(
+        message.contains("Modes so far: now, messages, todo"),
+        "{message}"
+    );
 }
 
 #[tokio::test]

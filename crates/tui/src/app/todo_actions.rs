@@ -73,6 +73,7 @@ impl App {
         match self.mailbox.mailbox_view {
             MailboxView::Todo => self.mailbox.todo_page.guide.as_ref(),
             MailboxView::Now => self.mailbox.now_page.guide.as_ref(),
+            MailboxView::People => self.mailbox.messages_page.guide.as_ref(),
             _ => None,
         }
     }
@@ -323,8 +324,15 @@ impl App {
                 _ => None,
             })
             .flatten();
+        let messages_topic = self
+            .messages_list_focused()
+            .then(|| self.selected_messages_topic())
+            .flatten()
+            .map(|topic| (topic.reply_to, topic.who));
         let target = if now_person.is_some() {
             now_person
+        } else if messages_topic.is_some() {
+            messages_topic
         } else if self.place_list_focused() {
             self.selected_place_row().map(|(bundle, message)| {
                 (

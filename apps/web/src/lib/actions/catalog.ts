@@ -14,6 +14,7 @@ import { focusActions } from "@/features/focus/actions";
 import { mailVerbActions } from "@/features/mail-actions/verbActions";
 import { mailboxActions } from "@/features/mailbox/actions";
 import { lensesFromShell, savedSearchLenses } from "@/features/mailbox/lenses";
+import { messagesActions } from "@/features/messages/actions";
 import { nowActions } from "@/features/now/actions";
 import type { ShellResponse } from "@/features/mailbox/types";
 import { placeActions } from "@/features/places/actions";
@@ -62,6 +63,7 @@ const featureActions: Action[] = [
   ...placeActions,
   ...todoActions,
   ...nowActions,
+  ...messagesActions,
   ...diagnosticsActions,
   ...rulesActions,
   ...accountsActions,

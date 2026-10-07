@@ -17,6 +17,10 @@ impl App {
             && self.mailbox.mailbox_view == MailboxView::Desk)
             .then(|| self.selected_desk_row())
             .flatten();
+        if self.messages_list_focused() {
+            let topic = self.selected_messages_topic()?;
+            return Some((topic.thread_id, topic.reply_to, false));
+        }
         if self.desk_list_focused() {
             let row = desk_row?;
             return Some((

@@ -121,6 +121,9 @@ impl App {
                         MailboxView::Now => {
                             self.apply(Action::NowOpen);
                         }
+                        MailboxView::People => {
+                            self.apply(Action::MessagesOpen);
+                        }
                         MailboxView::ArchiveMode => {}
                     }
                 }

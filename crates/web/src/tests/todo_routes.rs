@@ -242,3 +242,42 @@ async fn mode_routes_reject_bad_input_before_the_daemon() {
     }
     assert!(seen.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn got_it_with_only_a_thread_id_is_a_preview_and_a_send_carries_its_token() {
+    let (_temp, addr, seen) = serve_recording().await;
+    let client = reqwest::Client::new();
+    let thread = ThreadId::new();
+    for body in [
+        serde_json::json!({ "thread_id": thread.to_string() }),
+        serde_json::json!({
+            "thread_id": thread.to_string(),
+            "dry_run": false,
+            "expect_text": "Thanks Samir, got it.",
+            "preview_token": "1.abc"
+        }),
+    ] {
+        let response = client
+            .post(format!("http://{addr}/api/v1/mail/people/ack"))
+            .json(&body)
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+    }
+    let seen = seen.lock().unwrap();
+    assert!(matches!(
+        &seen[0],
+        Request::AckMessage {
+            dry_run: true,
+            expect_text: None,
+            preview_token: None,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &seen[1],
+        Request::AckMessage { dry_run: false, preview_token: Some(token), .. } if token == "1.abc"
+    ));
+}

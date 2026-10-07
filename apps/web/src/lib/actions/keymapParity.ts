@@ -9,7 +9,15 @@
 import { getRegistry } from "./registry";
 import type { ActionScope } from "./types";
 
-export type ParityContext = "list" | "reader" | "sidebar" | "place" | "screener" | "todo" | "now";
+export type ParityContext =
+  | "list"
+  | "reader"
+  | "sidebar"
+  | "place"
+  | "screener"
+  | "todo"
+  | "now"
+  | "messages";
 
 /** The web scopes live in each context, innermost first. */
 const CONTEXT_SCOPES: Record<ParityContext, ActionScope[]> = {
@@ -19,6 +27,7 @@ const CONTEXT_SCOPES: Record<ParityContext, ActionScope[]> = {
   place: ["place", "global"],
   todo: ["todo", "global"],
   now: ["now", "global"],
+  messages: ["messages", "global"],
   // The TUI's screener is a modal that swallows every other key.
   screener: ["screener"],
 };
@@ -164,6 +173,22 @@ export const SAME_ACTION: Record<string, string[]> = {
   "now.open-email": ["NowOpenEmail"],
   "now.let-go-digest": ["NowLetGoDigest"],
   "now.close-card": ["NowCloseCard"],
+  "messages.down": ["MoveDown"],
+  "messages.up": ["MoveUp"],
+  "messages.open": ["MessagesOpen"],
+  "messages.reply": ["Reply"],
+  "messages.reply-all": ["ReplyAll"],
+  "messages.got-it": ["MessagesAck"],
+  "messages.done": ["MessagesDone"],
+  "messages.to-do": ["CreateTodoFromMessage"],
+  "messages.reply-later": ["FlagReplyLater"],
+  "messages.pin": ["MessagesPin"],
+  "messages.new-topic": ["MessagesNewTopic"],
+  "messages.prev-topic": ["MessagesPrevTopic"],
+  "messages.next-topic": ["MessagesNextTopic"],
+  "messages.person-page": ["MessagesPersonPage"],
+  "messages.as-sent": ["MessagesAsSent"],
+  "messages.escape": ["MessagesBack"],
 };
 
 export interface KeymapDifference {
@@ -399,6 +424,26 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     keys: ["c"],
     bound: "web",
     why: "Compose works everywhere on the web; the TUI lens keeps c free",
+  },
+  // Messages.
+  {
+    context: "messages",
+    // prettier-ignore
+    keys: ["G", "g g", "H", "L", "M", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft", "z z", "q"],
+    bound: "tui",
+    why: "The TUI lens shares the list's motions and pane keys; the web Messages moves with j and k",
+  },
+  {
+    context: "messages",
+    keys: ["i a", "i m", "i d", "i A", "i M", "i D"],
+    bound: "tui",
+    why: "The TUI lens passes invite answers through; the web answers an invite from the reader",
+  },
+  {
+    context: "messages",
+    keys: ["Mod+Enter"],
+    bound: "web",
+    why: "The web's reply box sends and moves to the next person; the TUI composes in $EDITOR",
   },
   // Screener.
   {

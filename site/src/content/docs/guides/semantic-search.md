@@ -31,6 +31,16 @@ mxr prepares semantic chunks from:
 - spreadsheets
 - PDFs with extractable text
 
+The cleaned body now also drops quoted history marked by Gmail, Apple Mail
+and Outlook in HTML mail, so a reply's chunks hold what it said rather than
+the message it quoted.
+
+Per-mode index recipes are on the way. The Messages recipe (each message's
+new text prefixed with the person and topic, "Samir Patel · Contract
+renewal", plus the conversation's gist) is defined in code as version 1;
+search keeps today's chunks until a retrieval eval on real mail shows the
+recipe finds more.
+
 mxr does **not** use OCR for:
 
 - image attachments

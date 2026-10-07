@@ -58,6 +58,9 @@ pub enum KindRuleData {
     ListSender,
     /// None of the above: a person.
     Person,
+    /// A person wrote, but you were only copied (or it went to a crowd)
+    /// and it isn't your turn: the thread is in Updates, not Messages.
+    Copied,
 }
 
 /// A message's kind with the reason it was given.

@@ -1434,6 +1434,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Messages: people you talk with in four bands (Your turn, Pinned, Recent, Quiet), each row with its topics and what they asked */
+        get: operations["mail_people"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/people/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Got it: a short acknowledgement in your usual greeting and sign-off (dry_run previews the exact text) */
+        post: operations["mail_people_ack"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/people/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Merge addresses into one person, by hand (dry_run previews) */
+        post: operations["mail_people_merge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/people/merge-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Merges mxr suggests: the same name on addresses you have written to. Never applied on its own */
+        get: operations["mail_people_merge_suggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/people/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A person's page: relationship line, every topic, and the selected topic as new text with trimmed markers */
+        get: operations["mail_people_page"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/people/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take an address back out of its person (dry_run previews) */
+        post: operations["mail_people_split"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/places/{place}": {
         parameters: {
             query?: never;
@@ -3303,6 +3405,61 @@ export interface components {
             progress?: null | components["schemas"]["SyncProgressData"];
             sync_in_progress: boolean;
         };
+        /** @description Body of `POST /api/v1/mail/people/ack`. */
+        AckBody: {
+            /**
+             * @description True by default: a preview of the exact plan with its token. Only an
+             *     explicit `false`, with the preview's token and text, sends.
+             */
+            dry_run?: boolean;
+            /** @description The previewed text: the send refuses anything else. */
+            expect_text?: string | null;
+            /** @description The preview's token, issued within the last minute. */
+            preview_token?: string | null;
+            thread_id: string;
+        };
+        /**
+         * @description Returned by `Request::AckMessage`: the exact acknowledgement Got it
+         *     sends, built from how you write to them (no model).
+         */
+        AckPlanData: {
+            account_id: components["schemas"]["AccountId"];
+            /**
+             * @description "Your usual greeting and sign-off with Samir." or "No greeting or
+             *     sign-off of yours to go on, so a plain thanks."
+             */
+            built_from: string;
+            /**
+             * Format: int32
+             * @description Clients show the text this long before sending, with undo.
+             */
+            countdown_seconds: number;
+            dry_run: boolean;
+            /** @description The address it is sent from. */
+            from: string;
+            /**
+             * @description The exact HTML part that is sent, built from `text` by the same
+             *     builder: every value is escaped, so nothing in a name or greeting
+             *     becomes a link or markup.
+             */
+            html: string;
+            /** Format: date-time */
+            preview_expires_at?: string | null;
+            /**
+             * @description Set on a preview: send with it, and `text`, within a minute. It binds
+             *     the recipient, sender, target message and text.
+             */
+            preview_token?: string | null;
+            /** @description The message being acknowledged: their latest. */
+            reply_to_message_id: components["schemas"]["MessageId"];
+            sent_message_id?: null | components["schemas"]["MessageId"];
+            subject: string;
+            /** @description The exact text that is sent, as its plain-text part. */
+            text: string;
+            thread_id: components["schemas"]["ThreadId"];
+            /** @description Exactly one recipient: Got it never replies to all. */
+            to: components["schemas"]["Address"][];
+        };
         ActivityCursor: {
             /** Format: int64 */
             id: number;
@@ -3575,6 +3732,12 @@ export interface components {
          * @enum {string}
          */
         ClientKind: "human" | "tui" | "cli" | "script" | "web" | "daemon" | "agent" | "mcp";
+        /**
+         * @description How close you are, from your history with them: reciprocity, recency
+         *     and longevity (Whittaker, Jones and Terveen, CSCW 2002).
+         * @enum {string}
+         */
+        ClosenessData: "close" | "regular" | "occasional" | "new";
         CommitmentData: {
             account_id: components["schemas"]["AccountId"];
             /** Format: date-time */
@@ -3594,6 +3757,14 @@ export interface components {
         CommitmentDirectionData: "yours" | "theirs";
         /** @enum {string} */
         CommitmentStatusData: "open" | "resolved" | "expired";
+        /** @description The box at the bottom, already addressed. */
+        ComposerData: {
+            /** @description "Reply to Samir · Contract renewal". */
+            label: string;
+            /** @description Reply all is on by default in a group, off on a one-to-one topic. */
+            reply_all: boolean;
+            reply_to_message_id: components["schemas"]["MessageId"];
+        };
         ContactAsymmetryRow: {
             /**
              * Format: double
@@ -3646,6 +3817,58 @@ export interface components {
             /** Format: int32 */
             msg_count_used_theirs: number;
             source_hash: string;
+        };
+        ConversationAttachmentData: {
+            attachment_id: components["schemas"]["AttachmentId"];
+            filename: string;
+            /** Format: int64 */
+            size_bytes: number;
+        };
+        /** @description The selected topic, as a conversation. */
+        ConversationData: {
+            account_id: components["schemas"]["AccountId"];
+            composer: components["schemas"]["ComposerData"];
+            /**
+             * Format: int32
+             * @description Earlier messages left out of a long thread.
+             */
+            earlier_count: number;
+            /** @description Oldest first. */
+            messages: components["schemas"]["ConversationMessageData"][];
+            shape: components["schemas"]["ThreadShapeData"];
+            state: components["schemas"]["TopicStateData"];
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
+        };
+        /** @description One message in a conversation, as its new text. */
+        ConversationMessageData: {
+            /** @description The ask, verbatim, when this message makes it: clients highlight it. */
+            ask_quote?: string | null;
+            attachments?: components["schemas"]["ConversationAttachmentData"][];
+            /** Format: date-time */
+            date: string;
+            from: components["schemas"]["Address"];
+            from_me: boolean;
+            layout: components["schemas"]["MessageLayoutData"];
+            message_id: components["schemas"]["MessageId"];
+            /**
+             * @description Nothing but quoted text: `text` is the "(only quoted text)"
+             *     placeholder, and the message as sent is the way to read it.
+             */
+            only_quoted?: boolean;
+            /** Format: int32 */
+            paragraphs: number;
+            /**
+             * @description What this message says that the thread didn't already: quotes and
+             *     signature removed, the same text in every client.
+             */
+            text: string;
+            trimmed: components["schemas"]["TrimmedData"];
+            /**
+             * @description "trimmed: quote, sig", when something was removed. `o` (or `v`)
+             *     shows the message as sent.
+             */
+            trimmed_label?: string | null;
         };
         DaemonEvent: {
             account_id: components["schemas"]["AccountId"];
@@ -4586,7 +4809,7 @@ export interface components {
          *     means the user moved the sender; everything else is automatic.
          * @enum {string}
          */
-        KindRuleData: "decision" | "delivery" | "invite" | "automated_address" | "automated_domain" | "newsletter_address" | "newsletter_domain" | "list_id" | "list_unsubscribe" | "no_reply_address" | "list_sender" | "person";
+        KindRuleData: "decision" | "delivery" | "invite" | "automated_address" | "automated_domain" | "newsletter_address" | "newsletter_domain" | "list_id" | "list_unsubscribe" | "no_reply_address" | "list_sender" | "person" | "copied";
         Label: {
             account_id: components["schemas"]["AccountId"];
             color?: string | null;
@@ -4721,6 +4944,26 @@ export interface components {
          * @enum {string}
          */
         MailPlaceData: "reading" | "paper_trail";
+        /** @description Body of `POST /api/v1/mail/people/merge`. */
+        MergeBody: {
+            account_id: string;
+            addresses: string[];
+            dry_run?: boolean;
+            /** @description The person's main address. */
+            into: string;
+        };
+        /** @description A merge mxr may suggest: the same name on addresses you've written to. */
+        MergeSuggestionData: {
+            account_id: components["schemas"]["AccountId"];
+            /**
+             * @description Every address with the name, the one you write to most first: the
+             *     merge would make it the person's primary address.
+             */
+            addresses: string[];
+            name: string;
+            /** @description "Same name, and you've written to both." */
+            reason: string;
+        };
         MessageBody: {
             attachments: components["schemas"]["AttachmentMeta"][];
             /** Format: date-time */
@@ -4732,6 +4975,11 @@ export interface components {
         };
         /** Format: uuid */
         MessageId: string;
+        /**
+         * @description Short notes read like chat; longer ones are letters.
+         * @enum {string}
+         */
+        MessageLayoutData: "compact" | "letter";
         MessageMetadata: {
             auth_results?: string[];
             calendar?: null | components["schemas"]["CalendarMetadata"];
@@ -4748,6 +4996,145 @@ export interface components {
             text_plain_format?: null | components["schemas"]["TextPlainFormat"];
             text_plain_source?: null | components["schemas"]["BodyPartSource"];
         };
+        /**
+         * @description The bands, top to bottom.
+         * @enum {string}
+         */
+        MessagesBandData: "your_turn" | "pinned" | "recent" | "quiet";
+        /** @description Returned by `Request::ListMessages`. */
+        MessagesData: {
+            /**
+             * @description Set when Your turn is empty: the clear line or the never-had-any
+             *     line.
+             */
+            empty_state?: string | null;
+            /** Format: date-time */
+            generated_at: string;
+            /** @description `messages_copy::HEADER`. */
+            header: string;
+            /** @description Up to three people whose usual pace lapsed, under the clear line. */
+            lapsed?: components["schemas"]["MessagesLapsedData"][];
+            /**
+             * Format: int32
+             * @description Merges mxr could suggest, for the hint on a person page.
+             */
+            merge_suggestion_count: number;
+            pinned: components["schemas"]["MessagesRowData"][];
+            quiet: components["schemas"]["MessagesRowData"][];
+            /** Format: int32 */
+            quiet_total: number;
+            recent: components["schemas"]["MessagesRowData"][];
+            /**
+             * Format: int32
+             * @description Rows in each band before the list limit.
+             */
+            recent_total: number;
+            /**
+             * Format: int32
+             * @description People and groups in Messages, every band.
+             */
+            row_count: number;
+            /**
+             * Format: int32
+             * @description Conversations behind them.
+             */
+            thread_count: number;
+            your_turn: components["schemas"]["MessagesRowData"][];
+        };
+        /**
+         * @description Someone whose usual pace lapsed, for the clear state: a fact, never a
+         *     nudge.
+         */
+        MessagesLapsedData: {
+            account_id: components["schemas"]["AccountId"];
+            /** @description "Ari usually writes every week. Last: 19 days ago." */
+            line: string;
+            person: components["schemas"]["PersonRefData"];
+        };
+        /** @description The line under a row's name. */
+        MessagesPreviewData: {
+            kind: components["schemas"]["MessagesPreviewKindData"];
+            message_id?: null | components["schemas"]["MessageId"];
+            /** @description The model whose gist found the ask, for an `ask`. */
+            model?: string | null;
+            text: string;
+        };
+        /** @enum {string} */
+        MessagesPreviewKindData: "ask" | "latest" | "you";
+        /** @description One row in a band. */
+        MessagesRowData: {
+            account_id: components["schemas"]["AccountId"];
+            band: components["schemas"]["MessagesBandData"];
+            closeness: components["schemas"]["ClosenessData"];
+            /** @description `person:<email>` or `group:<thread_id>`: what `GetPerson` takes. */
+            id: string;
+            kind: components["schemas"]["MessagesRowKindData"];
+            /**
+             * Format: date-time
+             * @description The latest activity on any topic.
+             */
+            last_at: string;
+            /** @description The other people, for a group row. */
+            members?: components["schemas"]["PersonRefData"][];
+            /** @description Your turn has run past your usual pace with them. */
+            overdue: boolean;
+            /** @description "usually 47m", when there is enough history. */
+            pace_label?: string | null;
+            person?: null | components["schemas"]["PersonRefData"];
+            pinned: boolean;
+            preview?: null | components["schemas"]["MessagesPreviewData"];
+            /** @description "Samir Patel", or a group's first names: "Samir, Ruth". */
+            title: string;
+            /** @description Most pressing first: your turn, then waiting, then by recency. */
+            topics: components["schemas"]["MessagesTopicData"][];
+            /**
+             * Format: date-time
+             * @description When your turn started, for a Your turn row.
+             */
+            turn_since?: string | null;
+            unread: boolean;
+            /**
+             * Format: int64
+             * @description How fast you usually reply to them, in seconds, from past replies.
+             */
+            usual_reply_seconds?: number | null;
+            /**
+             * @description "Here because: Samir asked you a question, and you write to him
+             *     often (rule)."
+             */
+            why: string;
+            /** @description Their latest message to you is unanswered on some topic. */
+            your_turn: boolean;
+        };
+        /** @enum {string} */
+        MessagesRowKindData: "person" | "group";
+        /** @description One conversation inside a row. */
+        MessagesTopicData: {
+            account_id: components["schemas"]["AccountId"];
+            /** Format: date-time */
+            last_at: string;
+            /** Format: int32 */
+            message_count: number;
+            /** @description Every message id in the thread: what done here covers. */
+            message_ids: components["schemas"]["MessageId"][];
+            /** @description The message a reply answers: their latest, else the latest. */
+            reply_to_message_id: components["schemas"]["MessageId"];
+            shape: components["schemas"]["ThreadShapeData"];
+            state: components["schemas"]["TopicStateData"];
+            /** @description The subject without "Re:" and "Fwd:". */
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
+            /**
+             * @description For a group topic on a person page: the other people in it, by first
+             *     name ("with Ruth").
+             */
+            with?: string[];
+        };
+        /**
+         * @description Only rows where it is this side's turn.
+         * @enum {string}
+         */
+        MessagesTurnData: "mine" | "theirs";
         /** @description Body of `POST /api/v1/mail/modes/{mode}/card`. */
         ModeCardBody: {
             /** @description True retires the card in every client; false shows it again. */
@@ -5147,6 +5534,43 @@ export interface components {
             usual_seconds?: number | null;
             /** Format: double */
             waiting_days: number;
+        };
+        /** @description Returned by `Request::MergePeople` and `Request::SplitPerson`. */
+        PersonMergeData: {
+            account_id: components["schemas"]["AccountId"];
+            /** @description Addresses the change moves. */
+            changed: string[];
+            dry_run: boolean;
+            /** @description The person after the change. */
+            person: components["schemas"]["PersonRefData"];
+            /** @description "Samir Patel is now one person with 2 addresses." */
+            summary: string;
+            /**
+             * Format: int32
+             * @description Conversations that now show under this person.
+             */
+            thread_count: number;
+        };
+        /** @description Returned by `Request::GetPerson`. */
+        PersonPageData: {
+            conversation?: null | components["schemas"]["ConversationData"];
+            /** @description "close · usually 47m". */
+            header_line: string;
+            /** @description Merges suggested for this person. */
+            merge_suggestions?: components["schemas"]["MergeSuggestionData"][];
+            /** @description "You've written 48 times since 2023. Last: Tuesday." */
+            relationship_line: string;
+            row: components["schemas"]["MessagesRowData"];
+            /** @description Every topic with them: one-to-one, then groups ("with Ruth"). */
+            topics: components["schemas"]["MessagesTopicData"][];
+        };
+        /** @description Someone on a row or a message. */
+        PersonRefData: {
+            /** @description Every address that is this person, primary first. */
+            addresses: string[];
+            /** @description The person's id: their primary address, lowercased. */
+            id: string;
+            name?: string | null;
         };
         /** @description Body of `POST /api/v1/mail/messages/pin`. */
         PinMessagesBody: {
@@ -6536,6 +6960,43 @@ export interface components {
         } | {
             account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
+            cmd: "ListMessages";
+            /** Format: int32 */
+            limit?: number;
+            turn?: null | components["schemas"]["MessagesTurnData"];
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "GetPerson";
+            person: string;
+            topic?: null | components["schemas"]["ThreadId"];
+        } | {
+            /** @enum {string} */
+            cmd: "AckMessage";
+            dry_run?: boolean;
+            expect_text?: string | null;
+            preview_token?: string | null;
+            thread_id: components["schemas"]["ThreadId"];
+        } | {
+            account_id: components["schemas"]["AccountId"];
+            addresses: string[];
+            /** @enum {string} */
+            cmd: "MergePeople";
+            dry_run?: boolean;
+            into: string;
+        } | {
+            account_id: components["schemas"]["AccountId"];
+            address: string;
+            /** @enum {string} */
+            cmd: "SplitPerson";
+            dry_run?: boolean;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "ListMergeSuggestions";
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
             cmd: "ListPlace";
             /**
              * Format: int32
@@ -7292,6 +7753,26 @@ export interface components {
             /** @description Something changed but its undo could not be saved. */
             undo_unavailable?: boolean;
         } | {
+            /** @enum {string} */
+            kind: "Messages";
+            messages: components["schemas"]["MessagesData"];
+        } | {
+            /** @enum {string} */
+            kind: "PersonPage";
+            page: components["schemas"]["PersonPageData"];
+        } | {
+            ack: components["schemas"]["AckPlanData"];
+            /** @enum {string} */
+            kind: "MessagesAck";
+        } | {
+            /** @enum {string} */
+            kind: "PersonMerge";
+            merge: components["schemas"]["PersonMergeData"];
+        } | {
+            /** @enum {string} */
+            kind: "MergeSuggestions";
+            suggestions: components["schemas"]["MergeSuggestionData"][];
+        } | {
             account_id?: null | components["schemas"]["AccountId"];
             bundles: components["schemas"]["PlaceBundleData"][];
             /** Format: date-time */
@@ -7779,6 +8260,12 @@ export interface components {
         };
         /** @enum {string} */
         SortOrder: "DateDesc" | "DateAsc" | "Relevance";
+        /** @description Body of `POST /api/v1/mail/people/split`. */
+        SplitBody: {
+            account_id: string;
+            address: string;
+            dry_run?: boolean;
+        };
         /** @enum {string} */
         StaleBallInCourt: "mine" | "theirs";
         /**
@@ -8102,6 +8589,11 @@ export interface components {
              */
             owner: string;
         };
+        /**
+         * @description A thread's shape, judged in the daemon.
+         * @enum {string}
+         */
+        ThreadShapeData: "one_to_one" | "group" | "copied";
         ThreadSummaryData: {
             /** Format: date-time */
             generated_at: string;
@@ -8505,6 +8997,11 @@ export interface components {
              */
             week_start: string;
         };
+        /**
+         * @description Whose turn it is on one topic.
+         * @enum {string}
+         */
+        TopicStateData: "your_turn" | "waiting" | "quiet" | "done";
         TriageMessageData: {
             account_id: components["schemas"]["AccountId"];
             cached: boolean;
@@ -8522,6 +9019,13 @@ export interface components {
         };
         /** @enum {string} */
         TriageVerdictData: "ACTION" | "FYI" | "ROUTINE";
+        /** @description What `new text` removed from a message. */
+        TrimmedData: {
+            /** @description A legal disclaimer or a tracking/unsubscribe footer. */
+            footer?: boolean;
+            quote: boolean;
+            signature: boolean;
+        };
         UnsubscribeMethod: {
             OneClick: {
                 url: string;
@@ -11009,6 +11513,197 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_people: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description `mine` or `theirs`: only rows where it is that side's turn */
+                turn?: string;
+                /** @description Rows in Recent and Quiet (default 50); totals count all */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `Messages` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_people_ack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AckBody"];
+            };
+        };
+        responses: {
+            /** @description The `MessagesAck` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_people_merge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeBody"];
+            };
+        };
+        responses: {
+            /** @description The `PersonMerge` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_people_merge_suggestions: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `MergeSuggestions` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_people_page: {
+        parameters: {
+            query: {
+                /** @description A row id (`person:<email>`, `group:<thread>`) or an address */
+                person: string;
+                /** @description Thread id of the conversation to show */
+                topic?: string;
+                /** @description Account id; omitted searches every account */
+                account?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `PersonPage` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_people_split: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SplitBody"];
+            };
+        };
+        responses: {
+            /** @description The `PersonMerge` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

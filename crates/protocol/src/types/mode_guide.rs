@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{now_copy, todo_copy};
+use super::{messages_copy, now_copy, todo_copy};
 
 /// One key and the verb it does in this mode: "e tick off".
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -166,9 +166,48 @@ pub const NOW_GUIDE: ModeGuideCopy = ModeGuideCopy {
     first_run_line: "",
 };
 
+/// Messages' keys, in the order help lists them.
+const MESSAGES_KEYS: &[(&str, &str)] = &[
+    ("Enter", "open the person"),
+    ("r", "reply"),
+    ("a", "reply all"),
+    (".", "got it"),
+    ("e", "done here"),
+    ("t", "make it a to-do"),
+    ("b", "reply later"),
+    ("s", "pin"),
+    ("c", "new topic"),
+    ("[", "previous topic"),
+    ("]", "next topic"),
+    ("p", "person page"),
+    ("o", "show as sent"),
+    ("u", "undo"),
+    ("?", "what is this"),
+];
+
+pub const MESSAGES_GUIDE: ModeGuideCopy = ModeGuideCopy {
+    mode: "messages",
+    name: "Messages",
+    header: messages_copy::HEADER,
+    never_had_any: messages_copy::NEVER_HAD_ANY,
+    add_one: "",
+    clear_for_now: messages_copy::CLEAR,
+    lands_here: messages_copy::LANDS_HERE,
+    card: messages_copy::CARD,
+    card_keys: &[
+        ("r", "reply"),
+        (".", "got it"),
+        ("e", "done here"),
+        ("t", "make it a to-do"),
+    ],
+    why_template: "Here because: {evidence} ({source}).",
+    keys: MESSAGES_KEYS,
+    first_run_line: messages_copy::FIRST_RUN_LINE,
+};
+
 /// Every mode that has shipped, in rail order. Now leads: it is the front
 /// page over the modes.
-pub const MODE_GUIDES: &[ModeGuideCopy] = &[NOW_GUIDE, TODO_GUIDE];
+pub const MODE_GUIDES: &[ModeGuideCopy] = &[NOW_GUIDE, MESSAGES_GUIDE, TODO_GUIDE];
 
 /// The guide for a mode id. Accepts "todo", "to-do" and "to do".
 pub fn mode_guide(mode: &str) -> Option<&'static ModeGuideCopy> {
@@ -245,6 +284,7 @@ mod tests {
             assert_eq!(mode_guide(id).map(|g| g.mode), Some("todo"), "{id}");
         }
         assert_eq!(mode_guide("Now").map(|g| g.mode), Some("now"));
+        assert_eq!(mode_guide("messages").map(|g| g.mode), Some("messages"));
         assert!(mode_guide("updates").is_none());
     }
 

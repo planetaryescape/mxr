@@ -48,7 +48,8 @@ export type ActionScope =
   | "todo"
   | "catchup"
   | "expired"
-  | "now";
+  | "now"
+  | "messages";
 
 export interface ActionContext {
   path: string;

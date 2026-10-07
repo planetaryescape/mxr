@@ -826,6 +826,17 @@ pub fn map_request(
                 "Now, the rail and per-mode done are not in the activity catalog yet"
             );
         }
+        Request::ListMessages { .. }
+        | Request::GetPerson { .. }
+        | Request::AckMessage { .. }
+        | Request::MergePeople { .. }
+        | Request::SplitPerson { .. }
+        | Request::ListMergeSuggestions { .. } => {
+            skip_activity!(
+                "messages",
+                "Messages requests are not in the activity catalog yet"
+            );
+        }
         Request::GetModeGuide { .. } | Request::SetModeGuideSeen { .. } => {
             skip_activity!(
                 "mode_guide",

@@ -134,6 +134,17 @@ impl App {
             | Action::NowLetGoDigest
             | Action::NowCloseCard
             | Action::NowAnswerSender(_) => self.apply_now_action(action),
+            Action::MessagesOpen
+            | Action::MessagesAck
+            | Action::MessagesCancelAck
+            | Action::MessagesDone
+            | Action::MessagesPin
+            | Action::MessagesNewTopic
+            | Action::MessagesPrevTopic
+            | Action::MessagesNextTopic
+            | Action::MessagesPersonPage
+            | Action::MessagesAsSent
+            | Action::MessagesBack => self.apply_messages_action(action),
             Action::OpenMailboxScreen
             | Action::OpenSearchScreen
             | Action::OpenGlobalSearch
@@ -326,6 +337,10 @@ impl App {
                 self.apply_modal_action(action);
             }
         }
+        // The person page follows the cursor in Messages, and a Got it
+        // never outlives the conversation it answers.
+        self.sync_messages_page();
+        self.guard_messages_ack();
     }
 
     #[cfg(debug_assertions)]

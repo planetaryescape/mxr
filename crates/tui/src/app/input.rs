@@ -1368,6 +1368,9 @@ impl App {
             ActivePane::MailList if self.mailbox.mailbox_view == MailboxView::Now => {
                 self.now_lens_key(key)
             }
+            ActivePane::MailList if self.mailbox.mailbox_view == MailboxView::People => {
+                self.messages_lens_key(key)
+            }
             ActivePane::MailList => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
                 (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),

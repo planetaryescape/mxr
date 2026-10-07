@@ -132,6 +132,9 @@ pub struct FakeProvider {
     /// When set, label changes (`ModifyLabels`) fail and nothing else does,
     /// so a two-step mutation (mark read, then archive) fails half way.
     label_changes_fail: AtomicBool,
+    /// When set, `send` takes the mail (it lands in `sent_drafts`) and then
+    /// fails, as a timeout after the provider accepted it does.
+    sends_fail_after_accepting: AtomicBool,
     /// When set, every mutation of this one message fails, so a batch
     /// fails part way: the messages before it change, the rest don't.
     failing_message: Mutex<Option<String>>,
@@ -224,6 +227,7 @@ impl FakeProvider {
             idle_trigger: None,
             server_drafts_fail: AtomicBool::new(false),
             label_changes_fail: AtomicBool::new(false),
+            sends_fail_after_accepting: AtomicBool::new(false),
             failing_message: Mutex::new(None),
             page_size: SYNC_PAGE_SIZE,
         }
@@ -242,6 +246,12 @@ impl FakeProvider {
             .lock()
             .expect("fake provider failing_message mutex should not be poisoned") =
             provider_message_id.map(str::to_string);
+    }
+
+    /// Make every subsequent send accept the mail and then fail, or stop.
+    pub fn fail_sends_after_accepting(&self, fail: bool) {
+        self.sends_fail_after_accepting
+            .store(fail, Ordering::SeqCst);
     }
 
     /// Make every subsequent server-draft write fail.
@@ -565,6 +575,11 @@ impl MailSendProvider for FakeProvider {
             .lock()
             .expect("fake provider sent_from mutex should not be poisoned")
             .push(from.clone());
+        if self.sends_fail_after_accepting.load(Ordering::SeqCst) {
+            return Err(MxrError::Provider(
+                "timed out waiting for the provider (fake)".to_string(),
+            ));
+        }
         Ok(SendReceipt {
             provider_message_id: Some(format!("fake-sent-{}", uuid::Uuid::now_v7())),
             sent_at: chrono::Utc::now(),

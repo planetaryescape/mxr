@@ -50,6 +50,9 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_thread_gists`
 - `mxr_list_place`
 - `mxr_sweep_preview`
+- `mxr_messages`: people as rows in four bands, with topics and what they asked
+- `mxr_person`: one person's page, each message as its new text with `trimmed` flags
+- `mxr_got_it`: previews the acknowledgement and returns a `preview_token`; sends only with `confirm=true`, the previewed text as `expect_text` and that token, within a minute
 - `mxr_draft_assist`
 - `mxr_save_draft`
 - `mxr_get_draft`

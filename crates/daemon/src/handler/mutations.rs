@@ -3188,6 +3188,20 @@ pub(super) async fn send_draft(
     send_stored_draft(state, &draft.id, override_safety_token).await
 }
 
+/// Everything `send_stored_draft` checks before it reaches the provider:
+/// content, safety and the From address. A caller that must record its
+/// intent before the provider call (Got it) runs these first, so a failure
+/// here never leaves that record behind.
+pub(super) async fn check_before_send(state: &AppState, draft: &Draft) -> Result<(), HandlerError> {
+    validate_draft_content(draft)?;
+    let draft = materialize_text_alternative(draft);
+    enforce_draft_safety_with_override(state, &draft, None)
+        .await
+        .map_err(HandlerError::Message)?;
+    resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
+    Ok(())
+}
+
 pub(super) async fn schedule_send(
     state: &AppState,
     draft_id: &mxr_core::DraftId,

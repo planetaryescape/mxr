@@ -105,6 +105,7 @@ impl App {
                 | MutationEffect::SenderMoved(_)
                 | MutationEffect::Todo(_)
                 | MutationEffect::ModeDone(_)
+                | MutationEffect::Messages(_)
                 | MutationEffect::SentSuccess { .. } => Vec::new(),
             })
             .collect()
@@ -119,6 +120,7 @@ impl App {
                 | MailboxView::Place(_)
                 | MailboxView::Todo
                 | MailboxView::Now
+                | MailboxView::People
                 | MailboxView::ArchiveMode
         ) {
             return None;

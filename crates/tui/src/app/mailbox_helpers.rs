@@ -38,6 +38,9 @@ impl App {
         if self.mailbox.mailbox_view == MailboxView::Now {
             return self.mailbox.now_page.row_count();
         }
+        if self.mailbox.mailbox_view == MailboxView::People {
+            return self.mailbox.messages_page.item_count();
+        }
         if self.mailbox.mailbox_view == MailboxView::ArchiveMode {
             return 0;
         }
@@ -152,6 +155,7 @@ impl App {
             || self.place_list_focused()
             || self.todo_list_focused()
             || self.now_list_focused()
+            || self.messages_list_focused()
         {
             return None;
         }

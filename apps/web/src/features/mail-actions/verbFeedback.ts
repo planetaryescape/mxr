@@ -256,8 +256,8 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
   "mode-done": {
     // Done here, per mode (features/modes/modeDone): other modes keep the
     // thread, and the provider archive happens only when none does.
-    actions: ["now.done", "place.done"],
-    alsoFrom: `e on a Messages row, the check on a Now row, ${SWIPE} (short right) in Messages`,
+    actions: ["now.done", "place.done", "messages.done"],
+    alsoFrom: "the check on a Now row, Done here on a Messages person page",
     optimistic: "The row leaves this mode at once; the toast says where it still is.",
     pastTense: "Done",
     sound: "archived",

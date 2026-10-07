@@ -883,6 +883,7 @@ pub fn counterparty(from_name: Option<&str>, sender_domain: Option<&str>) -> Opt
     let cleaned = from_name
         .map(|name| name.trim().trim_matches(['"', '\'']).trim())
         .map(|name| name.split(" via ").next().unwrap_or(name).trim())
+        .map(crate::text::strip_glued_id)
         .filter(|name| !name.is_empty() && !name.contains('@'))
         .map(|name| {
             let mut kept = name.to_string();

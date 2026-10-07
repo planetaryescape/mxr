@@ -9,7 +9,10 @@
 //! placement can say exactly why.
 
 use mxr_protocol::{KindRuleData, MailKindData, SenderKindData};
-use mxr_store::ScreenerDisposition;
+use mxr_store::{DeskContact, ScreenerDisposition};
+use once_cell::sync::Lazy;
+use regex::Regex;
+use std::collections::HashSet;
 
 /// Local parts of machines that notify: receipts, alerts, notifications.
 /// Their mail is paper trail even when it carries list headers (GitHub's
@@ -33,6 +36,11 @@ const NOTIFYING_LOCAL_PARTS: &[&str] = &[
     "verify",
     "verification",
     "security",
+    // Banks' card and account alerts (`inContact@`, `transactions@`,
+    // `statements@`).
+    "incontact",
+    "transaction",
+    "statement",
 ];
 
 /// Local parts of newsletters.
@@ -49,6 +57,63 @@ const NO_REPLY_LOCAL_PARTS: &[&str] = &[
     "do-not-reply",
     "do_not_reply",
 ];
+
+/// Local parts of a role, not a person: a team, a desk or a function
+/// (`forex@`, `hello@`, `support@`). Matched against the whole local part
+/// (before any `+tag`) or its first word (`team-uk@`). Only decisive for a
+/// sender you have never written to: a support desk you correspond with is
+/// someone you talk to.
+const ROLE_LOCAL_PARTS: &[&str] = &[
+    "forex",
+    "fx",
+    "team",
+    "hello",
+    "hi",
+    "hey",
+    "info",
+    "support",
+    "help",
+    "helpdesk",
+    "contact",
+    "contactus",
+    "service",
+    "services",
+    "customerservice",
+    "customercare",
+    "care",
+    "admin",
+    "account",
+    "accounts",
+    "marketing",
+    "sales",
+    "order",
+    "orders",
+    "payment",
+    "payments",
+    "members",
+    "membership",
+    "community",
+    "welcome",
+    "updates",
+    "news",
+    "office",
+    "enquiries",
+    "inquiries",
+    "feedback",
+    "developer",
+    "store",
+    "shop",
+    "bookings",
+    "booking",
+    "reservations",
+    "rewards",
+    "offers",
+    "events",
+    "founders",
+];
+
+/// A sender's latest subjects needed before their variety counts.
+const TEMPLATED_MIN_SUBJECTS: usize = 5;
 
 /// Subdomain labels of notifying hosts (`alerts.example.com`).
 const NOTIFYING_DOMAIN_LABELS: &[&str] = &[
@@ -141,6 +206,121 @@ fn address_hint(email: &str) -> Option<AddressHint> {
     }
 }
 
+/// A money amount with two decimals and its currency: "R437.77",
+/// "£1,204.50", "USD 12.00".
+static AMOUNT: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?:\b(?:R|ZAR|USD|GBP|EUR|KES|NGN|ZWL|US\$)\s?|[$£€¥₹])\d{1,3}(?:[,\s]?\d{3})*\.\d{2}\b",
+    )
+    .expect("valid regex")
+});
+
+/// What a bank or card says happened to the money.
+static TRANSACTION_WORDS: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)\b(?:reserved|purchases?|purchased|paid|payments?|debit(?:ed)?|credit(?:ed)?|withdrawal|withdrawn|transactions?|transfer(?:red)?|deposit(?:ed)?|spent|charged|refund(?:ed)?|declined|authori[sz]ed)\b",
+    )
+    .expect("valid regex")
+});
+
+/// A masked card or account number: "card..6131", "a/c ..748989",
+/// "**** 1234", "ending in 1234".
+static MASKED_NUMBER: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)(?:\.\.\s?|\*{2,}\s?|\bx{2,}|\bending(?:\s+in)?\s+)\d{3,}")
+        .expect("valid regex")
+});
+
+/// A bank or card alert's subject: an amount with what happened to it, or
+/// with a masked card or account number. A person's reply ("Re: paid
+/// £40.00?") is never one: alerts are not replies.
+fn transaction_alert(subject: &str) -> bool {
+    let subject = subject.trim_start();
+    let lower = subject.to_ascii_lowercase();
+    if ["re:", "fw:", "fwd:"]
+        .iter()
+        .any(|prefix| lower.starts_with(prefix))
+    {
+        return false;
+    }
+    AMOUNT.is_match(subject)
+        && (TRANSACTION_WORDS.is_match(subject) || MASKED_NUMBER.is_match(subject))
+}
+
+fn role_address(email: &str) -> bool {
+    let email = email.trim().to_ascii_lowercase();
+    let local = email
+        .split_once('@')
+        .map_or(email.as_str(), |(local, _)| local);
+    let local = local.split('+').next().unwrap_or(local);
+    let first_word = local.split(['.', '-', '_']).next().unwrap_or(local);
+    ROLE_LOCAL_PARTS.contains(&local) || ROLE_LOCAL_PARTS.contains(&first_word)
+}
+
+/// A subject with what changes between a template's sends taken out: reply
+/// prefixes, numbers, amounts and dates.
+fn subject_template(subject: &str) -> String {
+    let mut rest = subject.trim();
+    loop {
+        let lower = rest.to_ascii_lowercase();
+        let Some(prefix) = ["re:", "fwd:", "fw:", "aw:"]
+            .iter()
+            .find(|prefix| lower.starts_with(*prefix))
+        else {
+            break;
+        };
+        rest = rest[prefix.len()..].trim_start();
+    }
+    let mut template = String::with_capacity(rest.len());
+    let mut in_number = false;
+    for c in rest.chars() {
+        if c.is_ascii_digit() {
+            if !in_number {
+                template.push('#');
+            }
+            in_number = true;
+        } else if in_number && matches!(c, '.' | ',') {
+            // "1,204.50" is one number.
+        } else {
+            in_number = false;
+            template.extend(c.to_lowercase());
+        }
+    }
+    template.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// What a sender's history says about them, beyond any one message.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) struct SenderFacts {
+    /// You have written to them.
+    pub wrote_to: bool,
+    /// Their latest message came through bulk-mail infrastructure.
+    pub bulk_headers: bool,
+    /// Their latest subjects are a few templates repeated ("Payment
+    /// Confirmation", "Foreign Payment", over and over).
+    pub templated: bool,
+}
+
+impl SenderFacts {
+    /// From the contact row and the history its loader read. No contact
+    /// row: nothing is known, so nothing here decides.
+    pub(super) fn of(contact: Option<&DeskContact>) -> Self {
+        let Some(contact) = contact else {
+            return Self::default();
+        };
+        let subjects = &contact.history.subjects;
+        let templates: HashSet<String> = subjects
+            .iter()
+            .map(|subject| subject_template(subject))
+            .collect();
+        Self {
+            wrote_to: contact.total_outbound > 0,
+            bulk_headers: contact.history.bulk_headers,
+            templated: subjects.len() >= TEMPLATED_MIN_SUBJECTS
+                && templates.len() * 2 <= subjects.len(),
+        }
+    }
+}
+
 /// A machine's address, not a person's: newsletters, notifications and
 /// no-reply senders alike.
 pub(super) fn looks_automated(email: &str) -> bool {
@@ -151,12 +331,15 @@ pub(super) fn looks_automated(email: &str) -> bool {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct KindSignals<'a> {
     pub email: &'a str,
+    pub subject: &'a str,
     pub has_list_id: bool,
     pub has_unsubscribe: bool,
     pub is_delivery: bool,
     pub is_invite: bool,
     /// The contacts table knows this sender writes to lists.
     pub list_sender: bool,
+    /// What the sender's history says.
+    pub sender: SenderFacts,
     /// The user's choice for this sender, if any.
     pub decision: Option<ScreenerDisposition>,
 }
@@ -206,11 +389,28 @@ pub(super) fn classify(signals: &KindSignals<'_>) -> Classification {
     if signals.has_unsubscribe {
         return list(KindRuleData::ListUnsubscribe);
     }
+    if transaction_alert(signals.subject) {
+        return automated(KindRuleData::TransactionAlert);
+    }
     if hint == Some(AddressHint::NoReply) {
         return automated(KindRuleData::NoReplyAddress);
     }
     if signals.list_sender {
         return list(KindRuleData::ListSender);
+    }
+    // Person mail is mail from someone you write to, or from someone who
+    // writes like a person: their own address, no bulk-mail service, and
+    // subjects that vary. A sender you never answered fails on any one.
+    if !signals.sender.wrote_to {
+        if role_address(signals.email) {
+            return automated(KindRuleData::RoleAddress);
+        }
+        if signals.sender.bulk_headers {
+            return automated(KindRuleData::BulkSender);
+        }
+        if signals.sender.templated {
+            return automated(KindRuleData::TemplatedSender);
+        }
     }
     Classification {
         kind: SenderKind::Person,
@@ -244,6 +444,14 @@ fn reason(signals: &KindSignals<'_>, classification: Classification) -> String {
         KindRuleData::NewsletterAddress => format!("newsletter address{list_headers}"),
         KindRuleData::NewsletterDomain => format!("newsletter sending domain{list_headers}"),
         KindRuleData::NoReplyAddress => "no-reply sender, no list headers".to_string(),
+        KindRuleData::TransactionAlert => "bank or card transaction alert".to_string(),
+        KindRuleData::RoleAddress => "a role address you have never written to".to_string(),
+        KindRuleData::BulkSender => {
+            "sent through a bulk-mail service, and you have never written to them".to_string()
+        }
+        KindRuleData::TemplatedSender => {
+            "the same few subjects every time, and you have never written to them".to_string()
+        }
         KindRuleData::ListId if signals.has_unsubscribe => {
             "mailing list, has List-Unsubscribe".to_string()
         }
@@ -265,6 +473,10 @@ pub(super) const fn rule_tag(rule: KindRuleData) -> &'static str {
         KindRuleData::NewsletterAddress | KindRuleData::NewsletterDomain => "newsletter",
         KindRuleData::ListId | KindRuleData::ListUnsubscribe | KindRuleData::ListSender => "list",
         KindRuleData::NoReplyAddress => "no-reply",
+        KindRuleData::TransactionAlert => "bank alert",
+        KindRuleData::RoleAddress => "role address",
+        KindRuleData::BulkSender => "bulk sender",
+        KindRuleData::TemplatedSender => "templated",
         KindRuleData::Person => "person",
         KindRuleData::Copied => "copied",
     }
@@ -291,6 +503,8 @@ mod tests {
     fn signals(email: &str) -> KindSignals<'_> {
         KindSignals {
             email,
+            subject: "",
+            sender: SenderFacts::default(),
             has_list_id: false,
             has_unsubscribe: false,
             is_delivery: false,
@@ -440,6 +654,182 @@ mod tests {
         });
         assert_eq!(unknown.rule, KindRuleData::Delivery);
         assert_eq!(kind_for(ScreenerDisposition::Unknown), None);
+    }
+
+    #[test]
+    fn bank_and_card_alerts_are_paper_trail() {
+        // The local part alone: alert senders that say nothing about money.
+        for email in [
+            "inContact@bank.example",
+            "transactions@card.example",
+            "statements@bank.example",
+        ] {
+            let described = describe(&signals(email));
+            assert_eq!(described.kind, SenderKindData::PaperTrail, "{email}");
+            assert_eq!(described.rule, KindRuleData::AutomatedAddress, "{email}");
+        }
+        // The subject: an amount with what happened to it, from an address
+        // that looks like anyone's.
+        for subject in [
+            "Bank:-) R437.77 reserved for purchase @ Example Store from a/c..123456 using card..6131",
+            "You spent £12.50 at Corner Shop",
+            "$1,204.00 debited from your account",
+            "Card ending in 4321: USD 9.99",
+        ] {
+            let described = describe(&KindSignals {
+                subject,
+                ..signals("care@bank.example")
+            });
+            assert_eq!(described.kind, SenderKindData::PaperTrail, "{subject}");
+            assert_eq!(described.rule, KindRuleData::TransactionAlert, "{subject}");
+            assert_eq!(described.reason, "bank or card transaction alert");
+        }
+        // A person writing about money is still a person.
+        for subject in [
+            "Re: paid £40.00 for the tickets",
+            "Dinner on Friday?",
+            "Invoice 2026-114",
+            "Can you send £40 for the tickets",
+        ] {
+            let described = describe(&KindSignals {
+                subject,
+                ..signals("maya@orbit.example")
+            });
+            assert_eq!(described.kind, SenderKindData::People, "{subject}");
+        }
+    }
+
+    fn contact(outbound: u32, subjects: &[&str], bulk_headers: bool) -> DeskContact {
+        DeskContact {
+            email: "x@example.com".into(),
+            display_name: None,
+            first_seen_at: chrono::Utc::now(),
+            total_inbound: subjects.len() as u32,
+            total_outbound: outbound,
+            is_list_sender: false,
+            cadence_seconds: None,
+            history: mxr_store::SenderHistory {
+                subjects: subjects.iter().map(ToString::to_string).collect(),
+                bulk_headers,
+            },
+        }
+    }
+
+    #[test]
+    fn a_sender_you_never_wrote_to_must_write_like_a_person() {
+        let never = contact(0, &["Hello"], false);
+        // A role address: a desk, not a person.
+        for email in [
+            "forex@bank.example",
+            "hello@toys.example",
+            "team-uk@app.example",
+            "support+uk@app.example",
+        ] {
+            let described = describe(&KindSignals {
+                sender: SenderFacts::of(Some(&never)),
+                ..signals(email)
+            });
+            assert_eq!(described.kind, SenderKindData::PaperTrail, "{email}");
+            assert_eq!(described.rule, KindRuleData::RoleAddress, "{email}");
+        }
+        // Bulk-mail infrastructure on their latest message.
+        let bulk = contact(0, &["Your monthly statement"], true);
+        let described = describe(&KindSignals {
+            sender: SenderFacts::of(Some(&bulk)),
+            ..signals("statements-desk@broker.example")
+        });
+        assert_eq!(described.rule, KindRuleData::AutomatedAddress);
+        let described = describe(&KindSignals {
+            sender: SenderFacts::of(Some(&bulk)),
+            ..signals("dan@broker.example")
+        });
+        assert_eq!(described.kind, SenderKindData::PaperTrail);
+        assert_eq!(described.rule, KindRuleData::BulkSender);
+        // Forty of the same two templates, numbers aside.
+        let templated: Vec<String> = (0..40)
+            .map(|n| {
+                if n % 2 == 0 {
+                    format!("Payment Confirmation {n}")
+                } else {
+                    format!("Re: Foreign Payment ref {}", 1000 + n)
+                }
+            })
+            .collect();
+        let templated: Vec<&str> = templated.iter().map(String::as_str).collect();
+        let robot = contact(0, &templated, false);
+        let described = describe(&KindSignals {
+            sender: SenderFacts::of(Some(&robot)),
+            ..signals("desk.officer@bank.example")
+        });
+        assert_eq!(described.kind, SenderKindData::PaperTrail);
+        assert_eq!(described.rule, KindRuleData::TemplatedSender);
+        assert_eq!(
+            described.reason,
+            "the same few subjects every time, and you have never written to them"
+        );
+    }
+
+    #[test]
+    fn someone_you_write_to_or_who_writes_like_a_person_stays_a_person() {
+        // Varied subjects from their own address.
+        let varied = contact(
+            0,
+            &[
+                "Dinner on Friday?",
+                "Photos from the trip",
+                "Re: the flat",
+                "Book recommendation",
+                "Lunch next week",
+                "Happy birthday!",
+            ],
+            false,
+        );
+        let described = describe(&KindSignals {
+            sender: SenderFacts::of(Some(&varied)),
+            ..signals("maya@orbit.example")
+        });
+        assert_eq!(described.kind, SenderKindData::People);
+        // Too few messages to judge the subjects.
+        let new = contact(0, &["Invoice 1", "Invoice 2"], false);
+        assert_eq!(
+            describe(&KindSignals {
+                sender: SenderFacts::of(Some(&new)),
+                ..signals("sam@studio.example")
+            })
+            .kind,
+            SenderKindData::People
+        );
+        // You wrote to the support desk and the bulk sender: both people.
+        let answered = contact(2, &["Payment Confirmation"; 10], true);
+        for email in ["support@app.example", "dan@broker.example"] {
+            assert_eq!(
+                describe(&KindSignals {
+                    sender: SenderFacts::of(Some(&answered)),
+                    ..signals(email)
+                })
+                .kind,
+                SenderKindData::People,
+                "{email}"
+            );
+        }
+        // Your choice beats every history rule.
+        let robot = contact(0, &["Payment Confirmation"; 10], true);
+        let described = describe(&KindSignals {
+            sender: SenderFacts::of(Some(&robot)),
+            decision: Some(ScreenerDisposition::Allow),
+            ..signals("forex@bank.example")
+        });
+        assert_eq!(described.kind, SenderKindData::People);
+        assert!(described.corrected);
+    }
+
+    #[test]
+    fn subject_templates_set_numbers_and_reply_prefixes_aside() {
+        assert_eq!(
+            subject_template("RE: Fwd: Payment of R1,204.50 on 2026-10-01"),
+            "payment of r# on #-#-#"
+        );
+        assert_eq!(subject_template("  Your   statement "), "your statement");
     }
 
     #[test]

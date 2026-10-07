@@ -18,7 +18,7 @@ use mxr_protocol::{
     KindRuleData, MailKindData, MailPlaceData, ModeKindData, MutationCommand, PlaceBundleData,
     PlaceMessageData, ResponseData, SenderKindData, SweepPreviewData, SweepSenderData,
 };
-use mxr_store::{PlaceMessage, ScreenerDecision, ScreenerDisposition};
+use mxr_store::{DeskContact, PlaceMessage, ScreenerDecision, ScreenerDisposition};
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -42,13 +42,14 @@ const fn place_kind(place: MailPlaceData) -> SenderKindData {
 /// Everything deciding kinds needs about one account, read once.
 pub(super) struct AccountKinds {
     decisions: HashMap<String, ScreenerDisposition>,
-    list_senders: HashSet<String>,
+    contacts: HashMap<String, DeskContact>,
     addresses: Arc<mxr_core::types::InMemoryAccountAddressLookup>,
     account_id: AccountId,
     account_email: Option<String>,
 }
 
 impl AccountKinds {
+    /// `senders` spelled as their messages spell them.
     pub(super) async fn load(
         state: &AppState,
         account_id: &AccountId,
@@ -61,20 +62,33 @@ impl AccountKinds {
             .into_iter()
             .map(|d| (d.sender_email.to_ascii_lowercase(), d.disposition))
             .collect();
-        let list_senders = store
-            .desk_contacts(account_id, senders)
+        let mut lowered: Vec<String> = senders
+            .iter()
+            .map(|email| email.to_ascii_lowercase())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        lowered.sort_unstable();
+        let mut contacts = store
+            .desk_contacts(account_id, &lowered)
             .await?
             .into_iter()
-            .filter(|contact| contact.is_list_sender)
-            .map(|contact| contact.email.to_ascii_lowercase())
+            .map(|contact| (contact.email.to_ascii_lowercase(), contact))
             .collect();
+        super::desk::attach_histories(
+            state,
+            account_id,
+            &mut contacts,
+            senders.iter().map(String::as_str),
+        )
+        .await?;
         let account_email = store
             .get_account(account_id)
             .await?
             .map(|account| account.email.to_ascii_lowercase());
         Ok(Self {
             decisions,
-            list_senders,
+            contacts,
             addresses: state.account_addresses.clone(),
             account_id: account_id.clone(),
             account_email,
@@ -93,11 +107,16 @@ impl AccountKinds {
         let key = message.from_email.to_ascii_lowercase();
         KindSignals {
             email: &message.from_email,
+            subject: &message.subject,
             has_list_id: message.list_id.is_some(),
             has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
             is_delivery: message.is_delivery,
             is_invite: message.is_invite,
-            list_sender: self.list_senders.contains(&key),
+            list_sender: self
+                .contacts
+                .get(&key)
+                .is_some_and(|contact| contact.is_list_sender),
+            sender: mail_kind::SenderFacts::of(self.contacts.get(&key)),
             decision: self.decisions.get(&key).copied(),
         }
     }
@@ -154,7 +173,7 @@ pub(super) async fn placed_inbox(
         let candidates = state.store.place_candidates(account_id).await?;
         let mut senders: Vec<String> = candidates
             .iter()
-            .map(|m| m.from_email.to_ascii_lowercase())
+            .map(|m| m.from_email.clone())
             .collect::<HashSet<_>>()
             .into_iter()
             .collect();
@@ -408,13 +427,16 @@ pub(super) async fn get_message_kind(state: &AppState, message_id: &MessageId) -
         .place_message(message_id)
         .await?
         .ok_or_else(|| HandlerError::from(format!("Message not found: {message_id}")))?;
-    let sender = message.from_email.to_ascii_lowercase();
-    let kinds =
-        AccountKinds::load(state, &message.account_id, std::slice::from_ref(&sender)).await?;
+    let kinds = AccountKinds::load(
+        state,
+        &message.account_id,
+        std::slice::from_ref(&message.from_email),
+    )
+    .await?;
     Ok(ResponseData::MessageKind {
         account_id: message.account_id.clone(),
         message_id: message.id.clone(),
-        sender_email: sender,
+        sender_email: message.from_email.to_ascii_lowercase(),
         mail_kind: mail_kind::describe(&kinds.signals(&message)),
     })
 }

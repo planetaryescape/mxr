@@ -226,11 +226,13 @@ pub(super) fn sender_kind(
 ) -> SenderKind {
     mail_kind::classify(&KindSignals {
         email: &message.from.email,
+        subject: &message.subject,
         has_list_id: message.list_id.is_some(),
         has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
         is_delivery: message.is_delivery,
         is_invite: message.is_invite,
         list_sender: contact.is_some_and(|c| c.is_list_sender),
+        sender: mail_kind::SenderFacts::of(contact),
         decision,
     })
     .kind
@@ -856,6 +858,7 @@ mod tests {
             total_outbound: 4,
             is_list_sender: false,
             cadence_seconds: None,
+            history: mxr_store::SenderHistory::default(),
         };
         let lanes = lanes(&messages, &[contact]);
         let row = &lanes.rows[0].row;
@@ -951,6 +954,7 @@ mod tests {
             total_outbound: 1,
             is_list_sender: false,
             cadence_seconds: None,
+            history: mxr_store::SenderHistory::default(),
         };
         assert_eq!(
             lanes(&messages, &[priya]).elsewhere.screener,

@@ -146,6 +146,41 @@ pub(super) async fn self_matcher(
     })
 }
 
+/// Reads the recent history of every sender in `from` you have never
+/// written to into their contact row, so the classifier can tell a person
+/// from a machine that writes like one. `from` spells addresses as their
+/// messages do: the history lookup is case-sensitive.
+pub(super) async fn attach_histories<'a>(
+    state: &AppState,
+    account_id: &AccountId,
+    contacts: &mut HashMap<String, DeskContact>,
+    from: impl Iterator<Item = &'a str>,
+) -> Result<(), super::HandlerError> {
+    let mut senders: Vec<String> = from
+        .filter(|email| {
+            contacts
+                .get(&email.to_ascii_lowercase())
+                .is_some_and(|contact| contact.total_outbound == 0)
+        })
+        .map(str::to_string)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    if senders.is_empty() {
+        return Ok(());
+    }
+    senders.sort_unstable();
+    for (email, history) in state.store.sender_histories(account_id, &senders).await? {
+        if let Some(contact) = contacts.get_mut(&email) {
+            // Two spellings of one address: keep the longer history.
+            if history.subjects.len() >= contact.history.subjects.len() {
+                contact.history = history;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// What the store knows about the senders of some desk messages, for the
 /// shared classifier: contacts and screener decisions, keyed by lowercased
 /// email.
@@ -170,13 +205,23 @@ impl Senders {
             .into_iter()
             .collect();
         emails.sort_unstable();
-        let contacts = state
+        let mut contacts = state
             .store
             .desk_contacts(account_id, &emails)
             .await?
             .into_iter()
             .map(|contact| (contact.email.to_ascii_lowercase(), contact))
             .collect();
+        attach_histories(
+            state,
+            account_id,
+            &mut contacts,
+            messages
+                .iter()
+                .filter(|m| m.direction != "outbound")
+                .map(|m| m.from.email.as_str()),
+        )
+        .await?;
         let screener = state
             .store
             .list_screener_decisions(account_id)

@@ -119,7 +119,14 @@ pub(crate) async fn tick(
         let fingerprint = state.store.promise_fingerprint(&account.id).await?;
         if promise_fingerprints.get(&account.id) != Some(&fingerprint) {
             match pass::sync_promises(&state.store, &cfg, &account.id, !progress.complete).await {
-                Ok(_) => {
+                Ok(summary) => {
+                    if summary.not_promises > 0 {
+                        tracing::info!(
+                            account = %account.id,
+                            dismissed = summary.not_promises,
+                            "to-do dismissed promise rows not from mail you sent"
+                        );
+                    }
                     promise_fingerprints.insert(account.id.clone(), fingerprint);
                 }
                 Err(error) => {

@@ -29,7 +29,7 @@ use mxr_store::{
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Serialize;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// What a pass needs besides the store.
 #[derive(Debug, Clone)]
@@ -59,6 +59,9 @@ pub struct PassSummary {
     /// Found already over, by kind.
     pub expired_at_birth: BTreeMap<String, u64>,
     pub looks_done: u64,
+    /// Open promise rows dismissed because their commitment is not a
+    /// promise you made in mail you sent.
+    pub not_promises: u64,
 }
 
 impl PassSummary {
@@ -71,6 +74,7 @@ impl PassSummary {
         self.catchup += other.catchup;
         self.catchup_overflow += other.catchup_overflow;
         self.looks_done += other.looks_done;
+        self.not_promises += other.not_promises;
         for (kind, count) in &other.expired_at_birth {
             *self.expired_at_birth.entry(kind.clone()).or_default() += count;
         }
@@ -424,7 +428,14 @@ where
         kind: detection.kind.as_str().to_string(),
         verb: detection.verb,
         doc_type: detection.doc_type,
-        title: detection.title,
+        title: {
+            let title = crate::text::strip_urls(&detection.title);
+            if title.is_empty() {
+                detection.title
+            } else {
+                title
+            }
+        },
         counterparty: detection.counterparty,
         sender_domain: detection.sender_domain,
         amount_minor: detection.amount.as_ref().map(|amount| amount.minor),
@@ -612,7 +623,10 @@ async fn offer_promises_kept<Tz>(
 
 /// Mirrors the promises you made into To do: new ones become rows (placed
 /// by the same window and catch-up rules), resolved ones tick their row
-/// off, and expired ones let their row go unless you touched it.
+/// off, and expired ones let their row go unless you touched it. An open
+/// row whose commitment is no longer a promise you made (its evidence is
+/// mail you received, or the commitment is gone) is dismissed unless you
+/// touched it: that repairs rows earlier versions built from inbound mail.
 pub async fn sync_promises<Tz>(
     store: &Store,
     cfg: &PassConfig<Tz>,
@@ -631,7 +645,21 @@ where
         .collect();
     let mut resolved = Vec::new();
     let mut lapsed = Vec::new();
-    for promise in store.list_promises_for_todos(account_id).await? {
+    let promises = store.list_promises_for_todos(account_id).await?;
+    let current: HashSet<&str> = promises
+        .iter()
+        .map(|promise| promise.commitment_id.as_str())
+        .collect();
+    let not_promises: Vec<String> = existing
+        .iter()
+        .filter(|(commitment_id, todo)| {
+            todo.state == TodoState::Open
+                && !todo.user_touched()
+                && !current.contains(commitment_id.as_str())
+        })
+        .map(|(_, todo)| todo.id.clone())
+        .collect();
+    for promise in &promises {
         match (
             promise.status.as_str(),
             existing.get(&promise.commitment_id),
@@ -648,7 +676,7 @@ where
                     continue;
                 };
                 let (record, placement) =
-                    promise_record(cfg, &promise, evidence_date, run_in_progress);
+                    promise_record(cfg, promise, evidence_date, run_in_progress);
                 let upsert = store.upsert_detected_todo(&record).await?;
                 record_outcome(&mut summary, &record, placement, upsert);
             }
@@ -664,6 +692,17 @@ where
         store
             .set_todos_state(&lapsed, &[TodoState::Open], TodoState::Expired, cfg.now)
             .await?;
+    }
+    if !not_promises.is_empty() {
+        summary.not_promises += store
+            .set_todos_state(
+                &not_promises,
+                &[TodoState::Open],
+                TodoState::Dismissed,
+                cfg.now,
+            )
+            .await?
+            .len() as u64;
     }
     if summary.catchup > 0 {
         summary.catchup_overflow += store.trim_todo_catchup(cfg.catchup_max, cfg.now).await?;
@@ -696,10 +735,16 @@ fn promise_record<Tz: TimeZone>(
     );
     let person = promise
         .contact_name
-        .clone()
-        .filter(|name| !name.trim().is_empty())
-        .unwrap_or_else(|| promise.email.clone());
-    let what = clip(promise.what.trim(), 100);
+        .as_deref()
+        .map(crate::text::strip_glued_id)
+        .filter(|name| !name.is_empty())
+        .map_or_else(|| promise.email.clone(), str::to_string);
+    let what = clip(&crate::text::strip_urls(promise.what.trim()), 100);
+    let what = if what.is_empty() {
+        "Do what you promised".to_string()
+    } else {
+        what
+    };
     let title = crate::text::capitalise(&what);
     let mut fields = FieldSources::default();
     fields.set(

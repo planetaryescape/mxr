@@ -24,6 +24,7 @@ import {
   SECTION_TITLE,
   canLetGoSource,
   canTune,
+  type SuggestedSetting,
 } from "./digestView";
 import { LetGoAllDialog, TuneDialog } from "./UpdatesDialogs";
 import { UpdateLineRow } from "./UpdateLineRow";
@@ -138,7 +139,7 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
     if (canTune(line)) setTuning(line);
   }, []);
   const tuneTo = useCallback(
-    (line: UpdateLine, setting: "muted" | "changes_only") => void tuneSource(line, setting),
+    (line: UpdateLine, setting: SuggestedSetting) => void tuneSource(line, setting),
     [],
   );
   const commitLetGoAll = (selectionToken: string) => {

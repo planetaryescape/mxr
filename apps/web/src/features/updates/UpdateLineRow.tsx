@@ -5,7 +5,14 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import type { UpdateLine } from "./api";
-import { canLetGoSource, canTune, openableLink, trackStep } from "./digestView";
+import {
+  canLetGoSource,
+  canTune,
+  openableLink,
+  trackerStatus,
+  trackStep,
+  type SuggestedSetting,
+} from "./digestView";
 import { useUpdatesHidden } from "./updatesVerbs";
 
 /** A parcel's steps as dots on a line, the current one filled. */
@@ -72,12 +79,13 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   onNeedsMe: (line: UpdateLine) => void;
   onTune: (line: UpdateLine) => void;
   onOpenEmail: (line: UpdateLine) => void;
-  onTuneTo: (line: UpdateLine, setting: "muted" | "changes_only") => void;
+  onTuneTo: (line: UpdateLine, setting: SuggestedSetting) => void;
 }) {
   const leaving = useUpdatesHidden((s) => s.leaving.has(line.id));
   const hide = useUpdatesHidden((s) => s.hide);
   const link = openableLink(line);
   const detail = line.tracker?.detail;
+  const status = trackerStatus(line);
   return (
     <li
       data-index={index}
@@ -130,12 +138,10 @@ export const UpdateLineRow = memo(function UpdateLineRow({
             ) : null}
           </p>
           {line.tracker?.kind === "parcel" ? <Track line={line} /> : null}
-          {detail || (line.tracker && line.tracker.kind !== "parcel") ? (
+          {detail || status ? (
             <p className="mt-0.5 text-[12px] text-muted-foreground">
-              {line.tracker && line.tracker.kind !== "parcel"
-                ? `${line.tracker.kind === "build" ? "Build" : "Incident"} ${line.tracker.state_label}`
-                : null}
-              {line.tracker && line.tracker.kind !== "parcel" && detail ? " · " : null}
+              {status}
+              {status && detail ? " · " : null}
               {detail}
             </p>
           ) : null}

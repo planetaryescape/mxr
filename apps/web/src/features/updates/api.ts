@@ -15,6 +15,7 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 type Schemas = components["schemas"];
 export type UpdatesDigest = Schemas["UpdatesDigestData"];
 export type UpdateLine = Schemas["UpdateLineData"];
+export type UpdateLink = Schemas["UpdateLinkData"];
 export type UpdateSection = Schemas["UpdateSectionData"];
 export type UpdateSetting = Schemas["UpdateSourceSettingData"];
 export type UpdatesLetGo = Schemas["UpdatesLetGoData"];
@@ -23,6 +24,17 @@ export type UpdateSourceChange = Schemas["UpdateSourceChangeData"];
 type Digest = Extract<Schemas["ResponseData"], { kind: "UpdatesDigest" }>;
 type LetGo = Extract<Schemas["ResponseData"], { kind: "UpdatesLetGo" }>;
 type Source = Extract<Schemas["ResponseData"], { kind: "UpdateSource" }>;
+
+/**
+ * The bridge passes any daemon response through with a 200, so a reply of
+ * another kind would otherwise surface later as a missing field in render.
+ */
+function expectKind<T extends { kind: string }>(answer: { kind?: unknown }, kind: T["kind"]): T {
+  if (answer?.kind !== kind) {
+    throw new Error(`The daemon answered ${String(answer?.kind)} where ${kind} was expected`);
+  }
+  return answer as T;
+}
 
 /** Every Updates query starts with this, so one invalidation refreshes them. */
 export const UPDATES_KEY = ["updates"] as const;
@@ -35,8 +47,10 @@ export async function fetchDigest(
   if (account) query.set("account", account);
   if (markSeen) query.set("mark_seen", "true");
   const text = query.toString();
-  const answer = await apiFetch<Digest>(`/api/v1/mail/updates${text ? `?${text}` : ""}`);
-  return answer.digest;
+  const answer = await apiFetch<{ kind?: unknown }>(
+    `/api/v1/mail/updates${text ? `?${text}` : ""}`,
+  );
+  return expectKind<Digest>(answer, "UpdatesDigest").digest;
 }
 
 /**
@@ -72,7 +86,7 @@ export interface LetGoInput {
 }
 
 export async function letGoRequest(input: LetGoInput): Promise<UpdatesLetGo> {
-  const answer = await apiFetch<LetGo>("/api/v1/mail/updates/let-go", {
+  const answer = await apiFetch<{ kind?: unknown }>("/api/v1/mail/updates/let-go", {
     method: "POST",
     body: {
       account_id: input.account ?? undefined,
@@ -82,7 +96,7 @@ export async function letGoRequest(input: LetGoInput): Promise<UpdatesLetGo> {
       dry_run: input.dryRun,
     },
   });
-  return answer.result;
+  return expectKind<LetGo>(answer, "UpdatesLetGo").result;
 }
 
 export async function setSourceRequest(input: {
@@ -91,7 +105,7 @@ export async function setSourceRequest(input: {
   setting: UpdateSetting;
   dryRun?: boolean;
 }): Promise<UpdateSourceChange> {
-  const answer = await apiFetch<Source>("/api/v1/mail/updates/sources", {
+  const answer = await apiFetch<{ kind?: unknown }>("/api/v1/mail/updates/sources", {
     method: "POST",
     body: {
       account_id: input.accountId,
@@ -100,5 +114,5 @@ export async function setSourceRequest(input: {
       dry_run: input.dryRun ?? false,
     },
   });
-  return answer.change;
+  return expectKind<Source>(answer, "UpdateSource").change;
 }

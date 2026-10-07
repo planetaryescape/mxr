@@ -6,7 +6,7 @@
 
 import { plural } from "@/lib/format";
 
-import type { UpdateLine, UpdateSection, UpdateSetting, UpdatesDigest } from "./api";
+import type { UpdateLine, UpdateLink, UpdateSection, UpdateSetting, UpdatesDigest } from "./api";
 
 /** Routine sources shown before "+ N quieter sources". */
 export const ROUTINE_SHOWN = 4;
@@ -94,9 +94,32 @@ export function canTune(line: UpdateLine): boolean {
  * that needs you (a sign-in, a failed payment); checked again here so a
  * money or security link is never one key away.
  */
-export function openableLink(line: UpdateLine): UpdateLine["link"] {
+export function openableLink(line: UpdateLine): UpdateLink | undefined {
   if (line.signal === "needs_you" || line.section === "needs_a_look") return undefined;
   return line.link ?? undefined;
+}
+
+/** The two settings a source's "mute it?" suggestion offers. */
+export type SuggestedSetting = Extract<UpdateSetting, "muted" | "changes_only">;
+
+/**
+ * "Build failed" for a build or incident tracker. The schema types `kind`
+ * as a string, so a kind this client doesn't know shows its state alone
+ * rather than borrowing another kind's noun.
+ */
+export function trackerStatus(line: UpdateLine): string | null {
+  const tracker = line.tracker;
+  if (!tracker) return null;
+  switch (tracker.kind) {
+    case "parcel":
+      return null;
+    case "build":
+      return `Build ${tracker.state_label}`;
+    case "incident":
+      return `Incident ${tracker.state_label}`;
+    default:
+      return tracker.state_label;
+  }
 }
 
 export const SETTING_LABEL: Record<UpdateSetting, string> = {

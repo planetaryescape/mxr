@@ -13,7 +13,7 @@ interface Row {
   title: string;
   band: string;
   kind: string;
-  topics: { thread_id: string; subject: string }[];
+  topics: { thread_id: string; subject: string; state: string }[];
 }
 
 interface MessagesAnswer {
@@ -42,6 +42,21 @@ async function topicOf(page: Page, person: string, subject: string): Promise<str
   const topic = row?.topics.find((candidate) => candidate.subject === subject);
   expect(topic, `${person} has a topic "${subject}"`).toBeTruthy();
   return topic!.thread_id;
+}
+
+/**
+ * A conversation that is still your turn, for Got it: other specs may have
+ * answered Samir already, and the daemon refuses Got it on an answered one.
+ */
+async function unanswered(page: Page): Promise<{ person: string; thread: string }> {
+  const turn = (await messages(page)).your_turn.filter(
+    (candidate) => candidate.kind === "person" && candidate.id !== JON,
+  );
+  for (const candidate of turn) {
+    const topic = candidate.topics.find((entry) => entry.state === "your_turn");
+    if (topic) return { person: candidate.id, thread: topic.thread_id };
+  }
+  throw new Error("no conversation is your turn");
 }
 
 function row(page: Page, id: string) {
@@ -124,14 +139,14 @@ test("a long reply is a letter, trimmed, and v shows it as sent", async ({ page 
 
 test("Got it shows the exact text and counts down; undo sends nothing", async ({ page }) => {
   await waitForPeople(page);
-  const contract = await topicOf(page, SAMIR, "Contract renewal");
-  await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}&topic=${contract}`);
+  const { person, thread: contract } = await unanswered(page);
+  await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${contract}`);
   await expect(page.getByTestId("conversation")).toBeVisible();
   const sent = async () =>
     (
       await bridge<{ page: { conversation: { messages: unknown[] } } }>(
         page,
-        `/api/v1/mail/people/page?person=${encodeURIComponent(SAMIR)}&topic=${contract}`,
+        `/api/v1/mail/people/page?person=${encodeURIComponent(person)}&topic=${contract}`,
       )
     ).page.conversation.messages.length;
   const before = await sent();
@@ -150,18 +165,18 @@ test("Got it shows the exact text and counts down; undo sends nothing", async ({
 
 test("leaving mid-countdown sends nothing", async ({ page }) => {
   await waitForPeople(page);
-  const contract = await topicOf(page, SAMIR, "Contract renewal");
+  const { person, thread: contract } = await unanswered(page);
   const sent = async () =>
     (
       await bridge<{ page: { conversation: { messages: unknown[] } } }>(
         page,
-        `/api/v1/mail/people/page?person=${encodeURIComponent(SAMIR)}&topic=${contract}`,
+        `/api/v1/mail/people/page?person=${encodeURIComponent(person)}&topic=${contract}`,
       )
     ).page.conversation.messages.length;
   const before = await sent();
 
   // Away to another mode.
-  await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}&topic=${contract}`);
+  await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${contract}`);
   await expect(page.getByTestId("conversation")).toBeVisible();
   await page.keyboard.press(".");
   await expect(page.getByTestId("got-it-preview")).toBeVisible();
@@ -170,12 +185,14 @@ test("leaving mid-countdown sends nothing", async ({ page }) => {
   await expect(page).toHaveURL(/\/m\/inbox$/);
 
   // Away to another person.
-  await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}&topic=${contract}`);
+  await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${contract}`);
   await expect(page.getByTestId("conversation")).toBeVisible();
   await page.keyboard.press(".");
   await expect(page.getByTestId("got-it-preview")).toBeVisible();
-  await row(page, IRIS).click();
-  await expect(page.getByTestId("person-name")).toHaveText("Iris Chen");
+  const other = page.locator(`[data-testid="messages-row"]:not([data-row-id="${person}"])`).first();
+  const otherName = (await other.getByTestId("row-title").textContent()) ?? "";
+  await other.click();
+  await expect(page.getByTestId("person-name")).toHaveText(otherName);
   await expect(page.getByTestId("got-it-preview")).toHaveCount(0);
 
   await page.waitForTimeout(6_500);

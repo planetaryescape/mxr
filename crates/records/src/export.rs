@@ -69,7 +69,20 @@ pub const CSV_HEADER: [&str; 12] = [
     "source_message_id",
 ];
 
-/// The CSV text, header first, dates as the day in `tz`.
+/// A cell a spreadsheet would read as a formula (`=`, `+`, `-`, `@`, tab or
+/// carriage return first) gets a leading quote, so mail text never runs as
+/// one (CWE-1236).
+fn neutralise(cell: String) -> String {
+    if cell.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+        format!("'{cell}")
+    } else {
+        cell
+    }
+}
+
+/// The CSV text, header first, dates as the day in `tz`. Every text column
+/// can hold words from mail, so each is neutralised; the date and amount
+/// are written by mxr and stay as they are.
 pub fn to_csv<Tz>(rows: &[ExportRow], tz: &Tz) -> anyhow::Result<String>
 where
     Tz: TimeZone,
@@ -82,19 +95,19 @@ where
             row.date
                 .map(|at| at.with_timezone(tz).format("%Y-%m-%d").to_string())
                 .unwrap_or_default(),
-            row.kind.clone(),
-            row.issuer.clone().unwrap_or_default(),
-            row.title.clone().unwrap_or_default(),
+            neutralise(row.kind.clone()),
+            neutralise(row.issuer.clone().unwrap_or_default()),
+            neutralise(row.title.clone().unwrap_or_default()),
             row.amount_minor
                 .map(mxr_todo::money::plain_amount)
                 .unwrap_or_default(),
-            row.currency.clone().unwrap_or_default(),
-            row.reference.clone().unwrap_or_default(),
+            neutralise(row.currency.clone().unwrap_or_default()),
+            neutralise(row.reference.clone().unwrap_or_default()),
             if row.checked { "yes" } else { "no" }.to_string(),
-            row.unchecked_fields.join(" "),
-            row.pdf.clone().unwrap_or_default(),
-            row.record_id.clone(),
-            row.source_message_id.clone().unwrap_or_default(),
+            neutralise(row.unchecked_fields.join(" ")),
+            neutralise(row.pdf.clone().unwrap_or_default()),
+            neutralise(row.record_id.clone()),
+            neutralise(row.source_message_id.clone().unwrap_or_default()),
         ])?;
     }
     Ok(String::from_utf8(writer.into_inner()?)?)
@@ -127,6 +140,37 @@ mod tests {
             pdf: pdf.map(str::to_string),
             source_message_id: None,
         }
+    }
+
+    #[test]
+    fn mail_text_that_looks_like_a_formula_is_quoted_so_a_spreadsheet_shows_it() {
+        let mut evil = row("=HYPERLINK(\"http://x\")", Some(-500), true, Some("@pdf"));
+        evil.issuer = Some("+cmd|' /C calc'!A0".to_string());
+        evil.title = Some("-2+3".to_string());
+        evil.reference = Some("\tREF".to_string());
+        evil.kind = "receipt".to_string();
+        evil.unchecked_fields = vec!["\rx".to_string()];
+        evil.source_message_id = Some("@msg".to_string());
+        let csv = to_csv(&[evil], &Utc).expect("csv");
+        let mut reader = csv::Reader::from_reader(csv.as_bytes());
+        let cells: Vec<String> = reader
+            .records()
+            .next()
+            .expect("a row")
+            .expect("readable")
+            .iter()
+            .map(str::to_string)
+            .collect();
+        // date kind issuer what amount currency reference checked unchecked pdf record source
+        assert_eq!(cells[2], "'+cmd|' /C calc'!A0");
+        assert_eq!(cells[3], "'-2+3");
+        assert_eq!(cells[6], "'\tREF");
+        assert_eq!(cells[8], "'\rx");
+        assert_eq!(cells[9], "'@pdf");
+        assert_eq!(cells[10], "'=HYPERLINK(\"http://x\")");
+        assert_eq!(cells[11], "'@msg");
+        // A negative amount is a number mxr wrote, not mail text: it stays.
+        assert_eq!(cells[4], "-5.00");
     }
 
     #[test]

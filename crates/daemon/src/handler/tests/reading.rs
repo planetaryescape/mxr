@@ -5,7 +5,6 @@
 //! fetch's refusal of private links.
 
 use super::desk::{request, Fixture};
-use super::*;
 use crate::handler::reading;
 use chrono::{DateTime, Duration, Utc};
 use mxr_core::id::{MessageId, ThreadId};

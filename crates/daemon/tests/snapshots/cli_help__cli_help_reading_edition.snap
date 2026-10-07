@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+The edition (the default): since your last visit, earlier this week and fading, with the Later shelf's count
+
+Usage: mxr reading edition [OPTIONS]
+
+Options:
+      --peek               Look without counting it as a visit, so "since you were last here" doesn't move on
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

@@ -48,7 +48,7 @@ fn modes_explain_prints_the_to_do_guide_and_hint_state_holds() {
         .collect();
     assert_eq!(
         modes,
-        ["now", "messages", "todo", "archive"],
+        ["now", "messages", "todo", "reading", "archive"],
         "every shipped mode, Now first"
     );
     assert_eq!(
@@ -166,4 +166,50 @@ fn messages_print_as_json_and_got_it_previews_without_sending() {
     assert_eq!(ack["dry_run"], true, "{ack}");
     assert!(ack["sent_message_id"].is_null(), "a dry run sends nothing");
     assert!(!ack["text"].as_str().unwrap().is_empty());
+}
+
+#[test]
+fn reading_prints_its_guide_its_edition_and_its_highlights_as_json() {
+    let _guard = daemon_lock();
+    let temp = TempDir::new().expect("temp dir");
+    let (_daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "modes-reading");
+
+    let guides = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["modes", "explain", "reading", "--format", "json"],
+    );
+    insta::assert_snapshot!(
+        "modes_explain_reading",
+        serde_json::to_string_pretty(&guides).unwrap()
+    );
+
+    let edition = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["reading", "edition", "--peek", "--format", "json"],
+    );
+    assert_eq!(
+        edition["header"],
+        "Newsletters you chose, as an edition. Read when you like."
+    );
+    assert!(edition["later_count"].is_u64(), "{edition}");
+    assert!(edition["bands"].is_array());
+    for band in edition["bands"].as_array().unwrap() {
+        for item in band["items"].as_array().unwrap() {
+            assert!(item["shape"].is_string(), "{item}");
+            assert!(item["minutes"].as_u64().unwrap() >= 1, "{item}");
+            assert!(item.get("unread").is_none(), "no unread counts in Reading");
+        }
+    }
+
+    let highlights = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["reading", "export", "--format", "json"],
+    );
+    assert!(highlights.as_array().unwrap().is_empty());
 }

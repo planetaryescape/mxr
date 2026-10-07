@@ -29,6 +29,10 @@ pub(super) const READING_DEMO_MESSAGE_COUNT: usize = LONG_READS + LINKS + PLATFO
 /// position among `reading_demo_messages`: every one but the newest two.
 pub(super) const READING_DEMO_FINISHED: std::ops::Range<usize> = 2..LONG_READS;
 
+/// The newest Local-first Links digest, whose WAL link the demo command
+/// puts on Later.
+pub(super) const READING_DEMO_LATER_DIGEST: usize = LONG_READS;
+
 pub const DEMO_ARTICLE_SYNC: &str = "https://platform.demo.mxr.local/2026/10/shipping-a-sync-engine";
 pub const DEMO_ARTICLE_LOCAL_FIRST: &str = "https://links.demo.mxr.local/articles/local-first-mail";
 pub const DEMO_ARTICLE_WAL: &str = "https://links.demo.mxr.local/articles/wal-checkpoints";

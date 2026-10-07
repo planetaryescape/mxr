@@ -612,11 +612,17 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
-    /// Reading: newsletters and lists in your inbox, grouped by sender, each
-    /// with the reason it is here. Nothing here counts as unread.
+    /// Reading: newsletters you chose, as an edition. Read when you like.
+    /// Newest since your last visit first, the sources you read most on
+    /// top, and nothing owed: items fade unless you keep them on Later.
     Reading {
-        #[command(flatten)]
-        args: PlaceArgs,
+        #[command(subcommand)]
+        action: Option<ReadingAction>,
+        /// Limit to one account; the default covers every account.
+        #[arg(long, global = true)]
+        account: Option<String>,
+        #[arg(long, global = true)]
+        format: Option<OutputFormat>,
     },
     /// Paper trail: receipts, notifications and other automated mail in your
     /// inbox, grouped by sender, each with the reason it is here.
@@ -2670,6 +2676,85 @@ pub enum HumanizeAction {
         text: String,
         #[arg(long = "max-iterations")]
         max_iterations: Option<u8>,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ReadingAction {
+    /// The edition (the default): since your last visit, earlier this week
+    /// and fading, with the Later shelf's count.
+    Edition {
+        /// Look without counting it as a visit, so "since you were last
+        /// here" doesn't move on.
+        #[arg(long)]
+        peek: bool,
+    },
+    /// The Later shelf, or put items on it and take them off. Later never
+    /// fades.
+    Later {
+        /// Items to put on Later.
+        #[arg(long = "add", value_name = "ITEM")]
+        add: Vec<String>,
+        /// Items to take off Later.
+        #[arg(long = "remove", value_name = "ITEM", conflicts_with = "add")]
+        remove: Vec<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Read one item: the issue as reader text, or with --article the
+    /// article it links to. --article contacts the article's site (named
+    /// first) unless a copy is saved.
+    Open {
+        item: String,
+        #[arg(long)]
+        article: bool,
+        /// Fetch the article again even when a copy is saved.
+        #[arg(long, requires = "article")]
+        refresh: bool,
+    },
+    /// Let go of items in Reading, or of everything in the edition with
+    /// --all. Preview with --dry-run; `mxr undo` reverses it.
+    LetGo {
+        #[arg(value_name = "ITEM")]
+        items: Vec<String>,
+        #[arg(long, conflicts_with = "items")]
+        all: bool,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Save a passage from an item as a highlight.
+    Highlight {
+        item: String,
+        quote: String,
+        #[arg(long)]
+        note: Option<String>,
+        /// Taken from the fetched article rather than the issue.
+        #[arg(long)]
+        article: bool,
+    },
+    /// Every highlight as Markdown (the default) or JSON.
+    Export {
+        /// Markdown, ready for a notes app (the default).
+        #[arg(long)]
+        markdown: bool,
+    },
+    /// Every source in Reading, best read first, with its fade window and
+    /// the evidence for unsubscribing.
+    Sources,
+    /// Reading's inbox mail grouped by sender, as before the edition.
+    Senders {
+        /// Only this sender's bundle.
+        #[arg(long)]
+        sender: Option<String>,
+        /// Bundles to show.
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+        /// Bundles to skip, for paging.
+        #[arg(long, default_value_t = 0)]
+        offset: u32,
+        /// Messages listed per bundle; counts always cover the whole bundle.
+        #[arg(long, default_value_t = 3)]
+        messages: u32,
     },
 }
 

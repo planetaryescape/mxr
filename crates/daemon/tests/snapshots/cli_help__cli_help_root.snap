@@ -41,7 +41,7 @@ Commands:
   messages            People you talk with, one row each. Reply or mark done.
   now                 The few things that need you now, from every mode.
   desk                What needs you, not what arrived: replies you owe, promises coming due, threads waiting on someone, and new mail from people, each with the reason it is there. Everything else is summarised as counts
-  reading             Reading: newsletters and lists in your inbox, grouped by sender, each with the reason it is here. Nothing here counts as unread
+  reading             Reading: newsletters you chose, as an edition. Read when you like. Newest since your last visit first, the sources you read most on top, and nothing owed: items fade unless you keep them on Later
   paper-trail         Paper trail: receipts, notifications and other automated mail in your inbox, grouped by sender, each with the reason it is here
   sweep               Archive everything unpinned in Reading or Paper trail, or in one sender's bundle there. Preview with --dry-run, then archive with --yes; `mxr undo` reverses it
   pin                 Pin messages so a sweep leaves them where they are. Pins are local to this machine

@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Reading's inbox mail grouped by sender, as before the edition
+
+Usage: mxr reading senders [OPTIONS]
+
+Options:
+      --sender <SENDER>      Only this sender's bundle
+      --limit <LIMIT>        Bundles to show [default: 50]
+      --offset <OFFSET>      Bundles to skip, for paging [default: 0]
+      --messages <MESSAGES>  Messages listed per bundle; counts always cover the whole bundle [default: 3]
+      --account <ACCOUNT>    Limit to one account; the default covers every account
+      --format <FORMAT>      [possible values: table, json, jsonl, csv, ids]
+  -h, --help                 Print help

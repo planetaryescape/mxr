@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Read one item: the issue as reader text, or with --article the article it links to. --article contacts the article's site (named first) unless a copy is saved
+
+Usage: mxr reading open [OPTIONS] <ITEM>
+
+Arguments:
+  <ITEM>
+
+Options:
+      --article
+      --refresh            Fetch the article again even when a copy is saved
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

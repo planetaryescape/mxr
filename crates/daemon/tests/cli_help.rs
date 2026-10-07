@@ -361,6 +361,14 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_desk_done", &["desk", "done", "--help"]),
         ("cli_help_desk_later", &["desk", "later", "--help"]),
         ("cli_help_reading", &["reading", "--help"]),
+        ("cli_help_reading_edition", &["reading", "edition", "--help"]),
+        ("cli_help_reading_later", &["reading", "later", "--help"]),
+        ("cli_help_reading_open", &["reading", "open", "--help"]),
+        ("cli_help_reading_let_go", &["reading", "let-go", "--help"]),
+        ("cli_help_reading_highlight", &["reading", "highlight", "--help"]),
+        ("cli_help_reading_export", &["reading", "export", "--help"]),
+        ("cli_help_reading_sources", &["reading", "sources", "--help"]),
+        ("cli_help_reading_senders", &["reading", "senders", "--help"]),
         ("cli_help_paper_trail", &["paper-trail", "--help"]),
         ("cli_help_sweep", &["sweep", "--help"]),
         ("cli_help_pin", &["pin", "--help"]),
@@ -401,7 +409,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_briefing_gists", &["briefing", "gists", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 237);
+    assert_eq!(cases.len(), 245);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

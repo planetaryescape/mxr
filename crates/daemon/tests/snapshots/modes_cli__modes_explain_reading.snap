@@ -1,0 +1,83 @@
+---
+source: crates/daemon/tests/modes_cli.rs
+expression: "serde_json::to_string_pretty(&guides).unwrap()"
+---
+[
+  {
+    "add_one": "",
+    "card": "Reading is an edition of the newsletters you chose, with the sources you read most first. Nothing here is owed: items fade after a while unless you press b to keep them for later.",
+    "card_keys": [
+      {
+        "key": "Enter",
+        "verb": "read"
+      },
+      {
+        "key": "b",
+        "verb": "later"
+      },
+      {
+        "key": "e",
+        "verb": "let go"
+      },
+      {
+        "key": "D",
+        "verb": "unsubscribe"
+      }
+    ],
+    "card_seen": false,
+    "clear_for_now": "Nothing new.",
+    "first_run_line": "Newsletters, when you like",
+    "header": "Newsletters you chose, as an edition. Read when you like.",
+    "keys": [
+      {
+        "key": "Enter",
+        "verb": "read"
+      },
+      {
+        "key": "b",
+        "verb": "later"
+      },
+      {
+        "key": "e",
+        "verb": "let go"
+      },
+      {
+        "key": "L",
+        "verb": "fetch the linked article"
+      },
+      {
+        "key": "D",
+        "verb": "unsubscribe"
+      },
+      {
+        "key": "R",
+        "verb": "original layout"
+      },
+      {
+        "key": "A",
+        "verb": "let go of everything shown"
+      },
+      {
+        "key": "h",
+        "verb": "highlight"
+      },
+      {
+        "key": "o",
+        "verb": "open the email"
+      },
+      {
+        "key": "u",
+        "verb": "undo"
+      },
+      {
+        "key": "?",
+        "verb": "what is this"
+      }
+    ],
+    "lands_here": "Newsletters, digests and posts from writers: mail with an unsubscribe link that isn't a person or a notification.",
+    "mode": "reading",
+    "name": "Reading",
+    "never_had_any": "Newsletters and posts you subscribed to land here, with the ones you read most first. Nothing here is owed: there's no unread count, and items fade unless you keep them.",
+    "why_template": "Here because: {evidence} ({source}). {fades}"
+  }
+]

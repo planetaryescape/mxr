@@ -623,7 +623,18 @@ pub(super) async fn get_edition(
     let started = std::time::Instant::now();
     let now = Utc::now();
     let accounts = scoped_accounts(state, account_id).await?;
-    let stored = state.store.reading_visit().await?;
+    let mut stored = state.store.reading_visit().await?;
+    if stored == ReadingVisitRow::default() && mxr_config::is_demo_instance() {
+        // The demo mailbox comes with a history: Reading was last opened
+        // yesterday and has been watching for months, so every band and
+        // the unsubscribe evidence show on the first look.
+        stored = ReadingVisitRow {
+            first_seen: Some(now - Duration::days(120)),
+            boundary: Some(now - Duration::days(1)),
+            last_seen: Some(now - Duration::days(1)),
+        };
+        state.store.set_reading_visit(&stored).await?;
+    }
     let visit = if mark_visit {
         let opened = Visit {
             boundary: stored.boundary,

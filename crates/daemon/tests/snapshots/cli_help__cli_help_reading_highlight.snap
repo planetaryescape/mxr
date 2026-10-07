@@ -1,0 +1,18 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Save a passage from an item as a highlight
+
+Usage: mxr reading highlight [OPTIONS] <ITEM> <QUOTE>
+
+Arguments:
+  <ITEM>
+  <QUOTE>
+
+Options:
+      --note <NOTE>
+      --article            Taken from the fetched article rather than the issue
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

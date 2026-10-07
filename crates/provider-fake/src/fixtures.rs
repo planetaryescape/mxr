@@ -23,14 +23,24 @@ pub fn todo_demo_promise_provider_id() -> String {
     )
 }
 
-/// The Reading demo's issues the demo command marks as read to the end.
-pub fn reading_demo_finished_provider_ids() -> Vec<String> {
+fn reading_demo_provider_id(position: usize) -> String {
     let first = DELIVERY_DEMO_MESSAGE_COUNT
         + todo_demo::TODO_DEMO_MESSAGE_COUNT
         + modes_demo::MODES_DEMO_MESSAGE_COUNT;
+    format!("demo-msg-{}", first + position + 1)
+}
+
+/// The Reading demo's issues the demo command marks as read to the end.
+pub fn reading_demo_finished_provider_ids() -> Vec<String> {
     reading_demo::READING_DEMO_FINISHED
-        .map(|position| format!("demo-msg-{}", first + position + 1))
+        .map(reading_demo_provider_id)
         .collect()
+}
+
+/// The digest whose second link (an article the demo serves) the demo
+/// command puts on Later.
+pub fn reading_demo_later_provider_id() -> String {
+    reading_demo_provider_id(reading_demo::READING_DEMO_LATER_DIGEST)
 }
 
 pub const CURATED_DEMO_MESSAGE_COUNT: usize = 50;

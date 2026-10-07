@@ -40,6 +40,7 @@ pub mod notify;
 pub mod now;
 pub mod owed;
 pub mod places;
+pub mod reading;
 pub mod profile;
 pub mod progress;
 pub(crate) mod promises;

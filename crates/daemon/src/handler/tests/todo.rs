@@ -759,6 +759,166 @@ async fn promises_you_made_join_through_the_catch_up_and_tick_off_with_their_com
     assert_eq!(commitment.status, CommitmentStatus::Resolved);
 }
 
+/// A commitment marked yours, with `evidence` as its evidence message.
+async fn commitment(fx: &Fixture, id: &str, email: &str, what: &str, evidence: &MessageId) {
+    let thread = fx
+        .state
+        .store
+        .get_envelope(evidence)
+        .await
+        .unwrap()
+        .unwrap()
+        .thread_id;
+    fx.state
+        .store
+        .upsert_contact_commitment(&ContactCommitmentRecord {
+            id: id.into(),
+            account_id: fx.account.clone(),
+            email: email.into(),
+            thread_id: thread,
+            direction: CommitmentDirection::Yours,
+            status: CommitmentStatus::Open,
+            who_owes: "you".into(),
+            what: what.into(),
+            by_when: None,
+            evidence_msg_id: evidence.clone(),
+            extracted_at: Utc::now(),
+            resolved_at: None,
+        })
+        .await
+        .unwrap();
+}
+
+async fn promise_rows(fx: &Fixture) -> Vec<mxr_store::TodoRecord> {
+    let mut rows = fx
+        .state
+        .store
+        .list_promise_todos(&fx.account)
+        .await
+        .unwrap();
+    rows.sort_by(|a, b| a.title.cmp(&b.title));
+    rows
+}
+
+#[tokio::test]
+async fn marketing_the_model_called_yours_never_becomes_a_promise() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    let offer = put(
+        &fx,
+        Mail::new(
+            ("Example Gym", "offers@gym.example"),
+            "Come back for 50% off",
+            "Rejoin before 5th October and grab 50% off.",
+            now - Duration::days(2),
+        ),
+    )
+    .await;
+    commitment(
+        &fx,
+        "c-gym",
+        "offers@gym.example",
+        "rejoin the gym before 5th October",
+        &offer,
+    )
+    .await;
+    finish_first_run(&fx, now).await;
+    assert!(promise_rows(&fx).await.is_empty());
+}
+
+#[tokio::test]
+async fn promise_rows_built_from_inbound_mail_are_dismissed_unless_touched() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    let mut evidence = Vec::new();
+    for (what, days) in [("send the deck", 2), ("send the contract", 3)] {
+        let mut sent = Mail::new(
+            (super::desk::ME, super::desk::ME),
+            "Re: Plans",
+            format!("I'll {what}."),
+            now - Duration::days(days),
+        );
+        sent.outbound = true;
+        let id = put(&fx, sent).await;
+        commitment(&fx, &format!("c-{days}"), "priya@work.com", what, &id).await;
+        evidence.push(id);
+    }
+    finish_first_run(&fx, now).await;
+    let rows = promise_rows(&fx).await;
+    assert_eq!(rows.len(), 2);
+    assert!(rows
+        .iter()
+        .all(|row| row.state == mxr_store::TodoState::Open));
+    // What an earlier version left behind: the same rows, but their
+    // evidence is mail someone else sent. The user moved one of them.
+    for id in &evidence {
+        sqlx::query("UPDATE messages SET direction = 'inbound' WHERE id = ?")
+            .bind(id.as_str())
+            .execute(fx.state.store.writer())
+            .await
+            .unwrap();
+    }
+    let touched = rows
+        .iter()
+        .find(|row| row.title == "Send the contract")
+        .unwrap();
+    sqlx::query("UPDATE todos SET user_edited = 1 WHERE id = ?")
+        .bind(&touched.id)
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+
+    // A restart mirrors promises afresh.
+    finish_first_run(&fx, now + Duration::minutes(5)).await;
+
+    let states: Vec<(String, mxr_store::TodoState)> = promise_rows(&fx)
+        .await
+        .into_iter()
+        .map(|row| (row.title, row.state))
+        .collect();
+    assert_eq!(
+        states,
+        vec![
+            ("Send the contract".to_string(), mxr_store::TodoState::Open),
+            ("Send the deck".to_string(), mxr_store::TodoState::Dismissed),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_promise_names_the_person_without_a_glued_on_id() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    let mut sent = Mail::new(
+        (super::desk::ME, super::desk::ME),
+        "Re: Licence",
+        "I'll update the payment details.",
+        now - Duration::days(1),
+    );
+    sent.outbound = true;
+    let id = put(&fx, sent).await;
+    sqlx::query(
+        "INSERT INTO contacts (account_id, email, display_name, first_seen_at, last_seen_at, refreshed_at)
+         VALUES (?, 'licensing@acme.example', 'Acme Licensing2026-09-27887d708f6e134fe8bd5c9e0584954c5b', 0, 0, 0)",
+    )
+    .bind(fx.account.as_str())
+    .execute(fx.state.store.writer())
+    .await
+    .unwrap();
+    commitment(
+        &fx,
+        "c-licence",
+        "licensing@acme.example",
+        "update the payment details",
+        &id,
+    )
+    .await;
+    finish_first_run(&fx, now).await;
+    let rows = promise_rows(&fx).await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].counterparty.as_deref(), Some("Acme Licensing"));
+}
+
 #[tokio::test]
 async fn an_empty_to_do_explains_what_lands_here() {
     let fx = Fixture::new().await;

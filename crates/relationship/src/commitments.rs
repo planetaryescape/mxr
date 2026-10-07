@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId};
+use mxr_core::types::MessageDirection;
 use mxr_llm::{
     wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError, LlmFeature, LlmRuntime,
     UNTRUSTED_MAIL_BEGIN, UNTRUSTED_MAIL_END, UNTRUSTED_MAIL_GUARD,
@@ -147,6 +148,14 @@ pub async fn extract_commitments(
         else {
             continue;
         };
+        // A promise of yours needs you as the speaker. The model reads
+        // "rejoin before Friday" in a gym's marketing as something you owe;
+        // only mail you sent can hold your promise.
+        if commitment.direction == CommitmentDirection::Yours
+            && sample.direction != MessageDirection::Outbound
+        {
+            continue;
+        }
         let normalized_what = normalize_what(&commitment.what);
         if store
             .contact_commitment_exists(
@@ -340,6 +349,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_promise_of_yours_only_comes_from_mail_you_sent() {
+        let store = Store::in_memory().await.expect("store");
+        let account = test_account();
+        store.insert_account(&account).await.expect("account");
+        let thread_id = ThreadId::new();
+        // Marketing the model misreads as your promise ("rejoin before the
+        // 5th"), next to a promise you did make in a reply you sent.
+        let marketing = insert_message(&store, &account, &thread_id, "offer", 0).await;
+        let sent = insert_message_in(
+            &store,
+            &account,
+            &thread_id,
+            "reply",
+            1,
+            MessageDirection::Outbound,
+        )
+        .await;
+        let llm = sequence_llm(&[&format!(
+            r#"{{"commitments":[
+                {{"who_owes":"me","what":"Rejoin the gym before the 5th","by_when":null,"evidence_msg_id":"{marketing}","direction":"yours"}},
+                {{"who_owes":"me","what":"Send the signed form","by_when":null,"evidence_msg_id":"{sent}","direction":"yours"}},
+                {{"who_owes":"Alice","what":"Send the launch date","by_when":null,"evidence_msg_id":"{marketing}","direction":"theirs"}}
+            ]}}"#
+        )]);
+
+        let inserted = extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
+            .await
+            .expect("extract");
+
+        assert_eq!(inserted, 2);
+        let mut kept = store
+            .list_contact_commitments(&account.id, Some("alice@example.com"), None)
+            .await
+            .expect("commitments")
+            .into_iter()
+            .map(|c| (c.direction, c.what))
+            .collect::<Vec<_>>();
+        kept.sort_by(|a, b| a.1.cmp(&b.1));
+        assert_eq!(
+            kept,
+            vec![
+                (
+                    CommitmentDirection::Theirs,
+                    "Send the launch date".to_string()
+                ),
+                (
+                    CommitmentDirection::Yours,
+                    "Send the signed form".to_string()
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn commitments_prompt_guards_and_wraps_excerpts() {
         #[derive(Default)]
         struct Capture {
@@ -496,6 +559,31 @@ mod tests {
         provider_id: &str,
         offset_minutes: i64,
     ) -> MessageId {
+        insert_message_in(
+            store,
+            account,
+            thread_id,
+            provider_id,
+            offset_minutes,
+            MessageDirection::Inbound,
+        )
+        .await
+    }
+
+    async fn insert_message_in(
+        store: &Store,
+        account: &Account,
+        thread_id: &ThreadId,
+        provider_id: &str,
+        offset_minutes: i64,
+        direction: MessageDirection,
+    ) -> MessageId {
+        let outbound = direction == MessageDirection::Outbound;
+        let (from, to) = if outbound {
+            (account.email.as_str(), "alice@example.com")
+        } else {
+            ("alice@example.com", account.email.as_str())
+        };
         let message_id = MessageId::new();
         let date = Utc::now() + chrono::Duration::minutes(offset_minutes);
         let envelope = mxr_core::types::Envelope {
@@ -508,11 +596,11 @@ mod tests {
             references: Vec::new(),
             from: Address {
                 name: Some("Alice".to_string()),
-                email: "alice@example.com".to_string(),
+                email: from.to_string(),
             },
             to: vec![Address {
                 name: None,
-                email: account.email.clone(),
+                email: to.to_string(),
             }],
             cc: Vec::new(),
             bcc: Vec::new(),
@@ -529,7 +617,7 @@ mod tests {
             keywords: std::collections::BTreeSet::new(),
         };
         store
-            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+            .upsert_envelope_with_direction(&envelope, direction)
             .await
             .expect("envelope");
         store

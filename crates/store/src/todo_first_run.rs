@@ -212,6 +212,9 @@ impl super::Store {
     }
 
     /// Promises you made, with their evidence date and the person's name.
+    /// Only commitments whose evidence is mail you sent: the extractor's
+    /// model labels inbound marketing ("rejoin before Friday") as yours, and
+    /// a promise is only yours when you were the one writing.
     pub async fn list_promises_for_todos(
         &self,
         account_id: &AccountId,
@@ -222,8 +225,9 @@ impl super::Store {
                     (SELECT ct.display_name FROM contacts ct
                      WHERE ct.account_id = c.account_id AND ct.email = c.email) AS contact_name
              FROM contact_commitments c
-             LEFT JOIN messages m ON m.id = c.evidence_msg_id
-             WHERE c.account_id = ? AND c.direction = 'yours'",
+             JOIN messages m ON m.id = c.evidence_msg_id
+             WHERE c.account_id = ? AND c.direction = 'yours'
+               AND m.direction = 'outbound'",
         )
         .bind(account_id.as_str())
         .fetch_all(self.reader())

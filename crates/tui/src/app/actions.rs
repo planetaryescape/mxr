@@ -89,8 +89,11 @@ impl App {
         self.recorder.record(&action, &self.screen);
         // Clear status message on any action
         self.status_message = None;
+        // Before the action moves the cursor or the page.
+        self.dismiss_hint_acted_on(&action);
 
         match action {
+            Action::DismissHint => self.dismiss_active_hint(),
             #[cfg(debug_assertions)]
             Action::DumpActionTrace => self.dump_action_trace(),
             Action::RefreshAccounts
@@ -116,7 +119,6 @@ impl App {
             | Action::TodoEdit
             | Action::TodoDismiss
             | Action::TodoOpenEmail
-            | Action::TodoCloseCard
             | Action::TodoOpenExpired
             | Action::TodoOpenCatchup
             | Action::TodoShowRunway
@@ -149,7 +151,6 @@ impl App {
             | Action::NowDone
             | Action::NowOpenEmail
             | Action::NowLetGoDigest
-            | Action::NowCloseCard
             | Action::NowAnswerSender(_) => self.apply_now_action(action),
             Action::MessagesOpen
             | Action::MessagesAck
@@ -315,7 +316,6 @@ impl App {
             | Action::GenerateBugReport
             | Action::EditConfig
             | Action::OpenLogs
-            | Action::ShowOnboarding
             | Action::OpenDiagnosticsPaneDetails => self.apply_diagnostics_action(action),
             Action::Compose | Action::Reply | Action::ReplyAll | Action::Forward => {
                 self.apply_compose_action(action);
@@ -358,6 +358,7 @@ impl App {
         // never outlives the conversation it answers.
         self.sync_messages_page();
         self.guard_messages_ack();
+        self.settle_hint_quiet();
     }
 
     #[cfg(debug_assertions)]

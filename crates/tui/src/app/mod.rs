@@ -9,6 +9,7 @@ mod compose_helpers;
 mod diagnostics_actions;
 mod draw;
 mod focus_run;
+mod hints;
 mod input;
 mod list_advance;
 mod mailbox_actions;
@@ -275,6 +276,8 @@ pub struct App {
     pub analytics: AnalyticsState,
     pub deliveries: DeliveriesState,
     pub modals: ModalsState,
+    /// Which hints are dismissed here and where the keys were last used.
+    pub(crate) hints: hints::HintState,
     pub compose: ComposeState,
     pub screen: Screen,
     pub should_quit: bool,
@@ -471,6 +474,7 @@ impl App {
                 snooze_config: snooze_config.clone(),
                 ..ModalsState::default()
             },
+            hints: hints::HintState::default(),
             compose: ComposeState::default(),
             screen: Screen::Mailbox,
             should_quit: false,

@@ -4,15 +4,15 @@
 //!
 //! Renders `ListMessages` and `GetPerson` as served: the bands, order,
 //! previews, new text and "trimmed" markers come from the daemon, and the
-//! header, empty states and first-encounter card from Messages' guide. A
+//! header and empty states from Messages' guide; hints show in the status
+//! line (`app/hints.rs`). A
 //! narrow terminal shows one pane at a time, the focused one. Pure render;
 //! wiring lives in `app/messages_actions.rs`.
 
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use mxr_protocol::{
     ConversationData, ConversationMessageData, MessageLayoutData, MessagesBandData,
-    MessagesPreviewKindData, MessagesRowData, MessagesTopicData, ModeGuideData, PersonPageData,
-    TopicStateData,
+    MessagesPreviewKindData, MessagesRowData, MessagesTopicData, PersonPageData, TopicStateData,
 };
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -188,29 +188,6 @@ fn preview_line(
     )))
 }
 
-fn card_lines(body: &mut Body, guide: &ModeGuideData, width: usize, theme: &crate::theme::Theme) {
-    let accent = Style::default().fg(theme.accent);
-    for line in wrap(&guide.card, width.saturating_sub(5)) {
-        body.lines.push(Line::from(vec![
-            Span::styled(" \u{2502} ", accent),
-            Span::styled(line, Style::default().fg(theme.text_primary)),
-        ]));
-    }
-    let keys = guide
-        .card_keys
-        .iter()
-        .map(|key| format!("{} {}", key.key, key.verb))
-        .collect::<Vec<_>>()
-        .join(" \u{b7} ");
-    for line in wrap(&format!("{keys} \u{b7} Esc close"), width.saturating_sub(5)) {
-        body.lines.push(Line::from(vec![
-            Span::styled(" \u{2502} ", accent),
-            Span::styled(line, Style::default().fg(theme.text_secondary)),
-        ]));
-    }
-    body.blank();
-}
-
 fn list_body(view: &MessagesView<'_>, width: usize, theme: &crate::theme::Theme) -> Body {
     let mut body = Body::new();
     let page = view.page;
@@ -223,11 +200,6 @@ fn list_body(view: &MessagesView<'_>, width: usize, theme: &crate::theme::Theme)
         return body;
     };
     let secondary = Style::default().fg(theme.text_secondary);
-    if page.card_visible() {
-        if let Some(guide) = &page.guide {
-            card_lines(&mut body, guide, width, theme);
-        }
-    }
     if messages.your_turn.is_empty() {
         if let Some(empty) = &messages.empty_state {
             for line in wrap(&one_line(empty), width.saturating_sub(2)) {

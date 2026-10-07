@@ -17,7 +17,8 @@ pub mod now_copy {
     pub const NEVER_HAD_ANY: &str = "Now fills in as mxr sorts your mail, newest first. People waiting on you, things due soon and the latest updates show here.";
     /// Followed by when the next to-do surfaces, where one is due to.
     pub const CLEAR: &str = "Clear.";
-    pub const CARD: &str = "Now shows at most ten things: people waiting on you, things due soon, the latest updates and, after 17:00, one thing to read. Acting on a row here does it in that row's own mode.";
+    /// The full explanation `?` leads with. Nothing shows it unasked.
+    pub const ABOUT: &str = "Now shows at most ten things: people waiting on you, things due soon, the latest updates and, after 17:00, one thing to read. Acting on a row here does it in that row's own mode.";
 }
 
 /// A person row: a desk row from You owe, New from people or Waiting on.

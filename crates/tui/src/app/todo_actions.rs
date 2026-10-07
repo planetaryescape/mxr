@@ -10,8 +10,7 @@ use mxr_protocol::{
     TodoCatchupDecisionData, TodoChangeData, TodoData, TodoEditData, TodoStateActionData,
 };
 
-/// The mode id `GetModeGuide` and `SetModeGuideSeen` take.
-/// The mode id the guide and its card are kept under.
+/// The mode id `GetModeGuide` takes for To do.
 pub(crate) const TODO_MODE: &str = mxr_protocol::TODO_GUIDE.mode;
 
 impl App {
@@ -25,7 +24,6 @@ impl App {
             Action::TodoSchedule => self.open_todo_prompt(false),
             Action::TodoEdit => self.open_todo_prompt(true),
             Action::TodoOpenEmail => self.open_selected_todo_email(),
-            Action::TodoCloseCard => self.close_todo_card(),
             Action::TodoOpenExpired => self.show_todo_panel(TodoPanel::Expired),
             Action::TodoOpenCatchup => self.show_todo_panel(TodoPanel::Catchup),
             Action::TodoShowRunway => self.show_todo_panel(TodoPanel::Runway),
@@ -147,7 +145,6 @@ impl App {
         let Some(todo) = self.selected_todo().cloned() else {
             return;
         };
-        self.retire_todo_card();
         // Never the link itself: the email opens, and the footer has
         // already said where its link goes.
         self.open_todo_email(&todo);
@@ -203,10 +200,6 @@ impl App {
                 "Restoring...",
             ),
         };
-        if action == TodoStateActionData::Done {
-            // The mode's main verb retires its card; the daemon records it.
-            self.mailbox.todo_page.card_closed = true;
-        }
         self.remove_todo_rows(std::slice::from_ref(&todo.id));
         self.queue_mutation(
             Request::SetTodoState {
@@ -238,40 +231,6 @@ impl App {
             catchup.todos.retain(keep);
         }
         self.clamp_todo_cursor();
-    }
-
-    fn close_todo_card(&mut self) {
-        if self.mailbox.todo_page.card_visible() {
-            self.retire_todo_card();
-        }
-    }
-
-    /// Retire the first-encounter card here and in every other client.
-    fn retire_todo_card(&mut self) {
-        let page = &mut self.mailbox.todo_page;
-        if !page.card_visible() {
-            return;
-        }
-        page.card_closed = true;
-        let id = self.queue_best_effort_mutation(
-            Request::SetModeGuideSeen {
-                mode: TODO_MODE.into(),
-                seen: true,
-            },
-            MutationEffect::StatusOnly(String::new()),
-            String::new(),
-        );
-        self.mailbox.todo_page.card_close_mutation = Some(id);
-    }
-
-    /// The daemon didn't store the closed card: show it again, so it isn't
-    /// gone here while every other client still shows it.
-    pub(crate) fn reopen_todo_card_after_failure(&mut self, failed: crate::app::MutationId) {
-        let page = &mut self.mailbox.todo_page;
-        if page.card_close_mutation == Some(failed) {
-            page.card_close_mutation = None;
-            page.card_closed = false;
-        }
     }
 
     /// Called once `GetEnvelope` answers for a row's email: show that
@@ -548,7 +507,7 @@ impl App {
             };
         }
         let panel = page.panel;
-        let card = page.card_visible();
+        let hint = self.active_hint().is_some();
         let plain = key.modifiers == KeyModifiers::NONE;
         let shifted = plain_or_shift(key.modifiers);
         let action = match (panel, key.code) {
@@ -557,7 +516,7 @@ impl App {
                 self.mailbox.active_pane = ActivePane::Sidebar;
                 return None;
             }
-            (_, KeyCode::Esc) if card => Some(Action::TodoCloseCard),
+            (_, KeyCode::Esc) if hint => Some(Action::DismissHint),
             (TodoPanel::Expired | TodoPanel::Catchup, KeyCode::Esc) => Some(Action::TodoShowRunway),
             (_, KeyCode::Char('o')) if plain => Some(Action::TodoOpenEmail),
             (TodoPanel::Runway, KeyCode::Enter) => Some(Action::TodoPrimary),

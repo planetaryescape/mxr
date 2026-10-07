@@ -1041,6 +1041,21 @@ const MIGRATIONS: &[Migration] = &[
             sql: "ALTER TABLE messages ADD COLUMN stored_at INTEGER",
         },
     },
+    // Hints replace the page-top first-encounter cards (D118, amended
+    // 2026-10-07): seen state is per hint, not per mode. The old per-mode
+    // rows retired cards that no longer exist, so they are dropped, not
+    // carried over.
+    Migration {
+        version: 69,
+        name: "hint_seen",
+        kind: MigrationKind::Sql(
+            "CREATE TABLE IF NOT EXISTS hint_seen (
+                 hint_id TEXT PRIMARY KEY,
+                 seen_at INTEGER NOT NULL
+             );
+             DROP TABLE IF EXISTS mode_guide_seen;",
+        ),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

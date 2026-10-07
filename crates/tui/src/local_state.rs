@@ -3,9 +3,9 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TuiLocalState {
-    // TUI-owned view state belongs here, not in daemon IPC.
-    #[serde(default)]
-    pub onboarding_seen: bool,
+    // TUI-owned view state belongs here, not in daemon IPC. Teaching
+    // state (which hints are dismissed) lives in the daemon instead, so
+    // every client shares it.
     /// Most-recent-first labels of palette commands the user has
     /// confirmed. Persisted by label rather than by `Action` enum because
     /// the enum's variants change shape across versions; labels are
@@ -62,7 +62,6 @@ mod tests {
         let path = dir.join("tui-state.json");
 
         let state = TuiLocalState {
-            onboarding_seen: true,
             recent_action_labels: vec![
                 "Archive".to_string(),
                 "Reply All".to_string(),
@@ -74,7 +73,6 @@ mod tests {
         let raw = std::fs::read_to_string(&path).expect("read saved state");
         let loaded: TuiLocalState = serde_json::from_str(&raw).expect("parse state");
 
-        assert!(loaded.onboarding_seen);
         assert_eq!(
             loaded.recent_action_labels,
             vec![
@@ -90,11 +88,11 @@ mod tests {
 
     #[test]
     fn missing_recent_action_labels_field_defaults_to_empty() {
-        // Backwards-compat: an older state file written before this field
-        // existed must still load cleanly with an empty recents list.
+        // Backwards-compat: an older state file, written before this field
+        // existed and with the retired tour's flag, must still load cleanly
+        // with an empty recents list.
         let raw = r#"{ "onboarding_seen": true }"#;
         let loaded: TuiLocalState = serde_json::from_str(raw).expect("parse legacy state");
-        assert!(loaded.onboarding_seen);
         assert!(loaded.recent_action_labels.is_empty());
     }
 }

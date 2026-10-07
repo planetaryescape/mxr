@@ -166,7 +166,6 @@ Snoozing is local-first but also updates provider state where supported. For Gma
 
 - `?`: help modal with all keybindings
 - `Ctrl-p`: command palette
-- `o` from Help: reopen the onboarding walkthrough
 
 The help modal is context-aware. The command palette exposes mailbox, search, rules, diagnostics, account actions, config edit, and logs.
 

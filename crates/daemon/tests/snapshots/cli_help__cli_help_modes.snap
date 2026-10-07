@@ -2,13 +2,13 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-How each mode explains itself: its job, empty states, card and keys
+How each mode explains itself: its job, empty states, keys and hints
 
 Usage: mxr modes [OPTIONS] <COMMAND>
 
 Commands:
-  explain  What a mode is for, what lands there, its first-encounter card and its keys. Every mode that has shipped when none is named
-  card     Retire a mode's first-encounter card in every client, as closing it does, or bring it back with --show
+  explain  What a mode is for, what lands there, how it works, its keys and its hints. Every mode that has shipped when none is named
+  hint     Dismiss a hint in every client, as Esc or acting on its element does, or bring it back with --show. `mxr modes explain` lists the ids
   rail     The rail: Now, the five modes and Inbox, with each one's key and count, which are early versions, and the pages under More
   why      Which modes hold a conversation, and why
   done     Done here: the conversations leave one mode until someone writes again (in To do, their open to-dos are ticked off, or only those named with --todo). When no other mode holds a conversation it is archived at your provider too, unless `modes.archive_on_last_done` is off. Prints what happened and an undo id for `mxr undo`

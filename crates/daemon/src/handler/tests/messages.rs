@@ -612,10 +612,23 @@ async fn got_it_sends_exactly_the_previewed_plan_once() {
         preview.countdown_seconds,
         mxr_protocol::messages_copy::ACK_COUNTDOWN_SECONDS
     );
+    let got_it_hint_seen = || async {
+        fx.state
+            .store
+            .hints_seen()
+            .await
+            .unwrap()
+            .contains_key("messages.got_it")
+    };
+    assert!(!got_it_hint_seen().await, "a preview is not a use");
 
     let sent = ack_at(&fx, &thread, false, Some((&token, &preview.text)), now)
         .await
         .unwrap();
+    assert!(
+        got_it_hint_seen().await,
+        "sending Got it dismisses its hint in every client"
+    );
     let sent_id = sent.sent_message_id.expect("sent");
     let stored = fx.state.store.get_body(&sent_id).await.unwrap().unwrap();
     assert_eq!(

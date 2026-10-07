@@ -1409,7 +1409,7 @@ async fn dispatch(
             .await
         }
         Request::GetModeGuide { mode } => mode_guide::get(state, mode.as_deref()).await,
-        Request::SetModeGuideSeen { mode, seen } => mode_guide::set_seen(state, mode, *seen).await,
+        Request::SetHintSeen { hint, seen } => mode_guide::set_seen(state, hint, *seen).await,
         Request::GetNow { account_id } => now::get_now(state, account_id.as_ref()).await,
         Request::GetRail { account_id } => modes::get_rail(state, account_id.as_ref()).await,
         Request::GetFreshness { account_id, limit } => {
@@ -2090,7 +2090,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::UpdateTodo { .. }
         | Request::CreateTodo { .. }
         | Request::SetTodoCatchup { .. }
-        | Request::SetModeGuideSeen { .. }
+        | Request::SetHintSeen { .. }
         | Request::SetRecordField { .. }
         | Request::DismissRecord { .. }
         | Request::FileRecord { .. }
@@ -2328,7 +2328,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetTodoCatchup { .. } => "get_todo_catchup",
         Request::SetTodoCatchup { .. } => "set_todo_catchup",
         Request::GetModeGuide { .. } => "get_mode_guide",
-        Request::SetModeGuideSeen { .. } => "set_mode_guide_seen",
+        Request::SetHintSeen { .. } => "set_hint_seen",
         Request::ListRecords { .. } => "list_records",
         Request::GetRecord { .. } => "get_record",
         Request::AnswerFromRecords { .. } => "answer_from_records",

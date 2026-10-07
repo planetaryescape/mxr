@@ -139,10 +139,10 @@ async fn mode_guide_routes_forward_their_requests() {
         client.get(format!("http://{addr}/api/v1/mail/modes/guide?mode=todo")),
         client.get(format!("http://{addr}/api/v1/mail/modes/guide")),
         client
-            .post(format!("http://{addr}/api/v1/mail/modes/todo/card"))
+            .post(format!("http://{addr}/api/v1/mail/hints/todo.runway"))
             .json(&serde_json::json!({})),
         client
-            .post(format!("http://{addr}/api/v1/mail/modes/todo/card"))
+            .post(format!("http://{addr}/api/v1/mail/hints/todo.runway"))
             .json(&serde_json::json!({ "seen": false })),
     ] {
         let response = request.bearer_auth(TEST_AUTH_TOKEN).send().await.unwrap();
@@ -153,12 +153,9 @@ async fn mode_guide_routes_forward_their_requests() {
     assert!(matches!(&seen[1], Request::GetModeGuide { mode: None }));
     assert!(matches!(
         &seen[2],
-        Request::SetModeGuideSeen { mode, seen: true } if mode == "todo"
+        Request::SetHintSeen { hint, seen: true } if hint == "todo.runway"
     ));
-    assert!(matches!(
-        &seen[3],
-        Request::SetModeGuideSeen { seen: false, .. }
-    ));
+    assert!(matches!(&seen[3], Request::SetHintSeen { seen: false, .. }));
 }
 
 #[tokio::test]

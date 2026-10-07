@@ -23,7 +23,6 @@ pub mod mail_list;
 pub mod message_view;
 pub mod messages_lens;
 pub mod now_lens;
-pub mod onboarding_modal;
 pub mod owed_lens;
 pub mod place_lens;
 pub mod platform_modal;

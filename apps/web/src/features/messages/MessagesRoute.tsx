@@ -15,9 +15,11 @@ import { onSendEvent } from "@/features/compose/session/sendEvents";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { ensureThread, targetFromThread } from "@/features/mail-actions/target";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
-import { useModeGuide, useRetireCard, type ModeGuide } from "@/features/modes/api";
+import { AnchoredHint } from "@/features/hints/AnchoredHint";
+import { withDoneHereHint } from "@/features/hints/doneHereHint";
+import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
+import { useModeGuide, type ModeGuide } from "@/features/modes/api";
 import { useThreadModesMap } from "@/features/modes/membership";
-import { ModeCard } from "@/features/modes/ModeCard";
 import { doneToast, markModeDone, useModeDone } from "@/features/modes/modeDone";
 import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
@@ -253,13 +255,17 @@ function MessagesBody({
       ?.scrollIntoView({ block: "nearest" });
   }, [selectedId, selectedBand, quietOpen]);
 
-  const retire = useRetireCard("messages");
-  const { mutate: retireMutate } = retire;
-  const cardSeen = guide?.card_seen ?? true;
-  const cardShown = Boolean(guide && !cardSeen && allRows.length > 0);
-  const retireCard = useCallback(() => {
-    if (!cardSeen) retireMutate();
-  }, [cardSeen, retireMutate]);
+  // The person pane shows beside the list from md up, or alone once opened.
+  const paneVisible = useMediaQuery("(min-width: 768px)") || pageOpen;
+  const topicsHint = useHint("messages", "messages.topics", {
+    ready: paneVisible && (page?.topics.length ?? 0) > 1,
+  });
+  const [gotItNeeded, setGotItNeeded] = useState(false);
+  const gotItHint = useHint("messages", "messages.got_it", {
+    ready: paneVisible && gotItNeeded && conversation !== null,
+  });
+  const { dismiss: dismissGotItHint } = gotItHint;
+  const closeHint = useActiveHintDismiss();
 
   // After a reply or Got it, the next person whose turn it is.
   const nextYourTurn = useCallback(() => {
@@ -267,10 +273,13 @@ function MessagesBody({
     if (next) advanceTo(next.id);
   }, [advanceTo, data.your_turn, selectedId]);
 
-  const gotIt = useGotIt(`${selectedId ?? ""}|${conversation?.thread_id ?? ""}`, () => {
-    retireCard();
-    nextYourTurn();
-  });
+  const gotIt = useGotIt(`${selectedId ?? ""}|${conversation?.thread_id ?? ""}`, nextYourTurn);
+  const startGotIt = () => {
+    if (!conversation) return;
+    // The daemon dismisses it too once the note is sent, from any client.
+    dismissGotItHint();
+    void gotIt.start(conversation.thread_id);
+  };
 
   // A reply sent from this page's composer (its own ⌘Enter or Send) moves
   // on to the next person whose turn it is, as Focus & reply does.
@@ -279,13 +288,10 @@ function MessagesBody({
     () =>
       onSendEvent((event) => {
         if (!replyKeys.current.has(event.intentKey)) return;
-        if (event.kind === "queued") {
-          retireCard();
-          nextYourTurn();
-        }
+        if (event.kind === "queued") nextYourTurn();
         if (event.kind === "sent") void refreshMessages();
       }),
-    [nextYourTurn, retireCard],
+    [nextYourTurn],
   );
 
   const openReply = useCallback(
@@ -343,7 +349,7 @@ function MessagesBody({
     const account = useUiPrefs.getState().accountScope;
     const label = "subject" in what ? what.subject : what.person;
     void markModeDone("messages", [thread], {
-      message: (outcomes) => doneLine(what, doneToast(outcomes), next),
+      message: withDoneHereHint((outcomes) => doneLine(what, doneToast(outcomes), next)),
       onUndone: () => {
         const now = here.current;
         const stayed =
@@ -437,6 +443,7 @@ function MessagesBody({
 
   const stepTopicBy = (delta: 1 | -1) => {
     if (!page || !selectedId) return;
+    topicsHint.dismiss();
     const next = stepTopic(page.topics, conversation?.thread_id ?? null, delta);
     if (next) select(selectedId, { topic: next.thread_id });
   };
@@ -468,11 +475,8 @@ function MessagesBody({
     },
     reply: () => openReply(replyAll),
     replyAll: () => openReply(true),
-    gotIt: () => conversation && void gotIt.start(conversation.thread_id),
-    done: () => {
-      retireCard();
-      done();
-    },
+    gotIt: startGotIt,
+    done,
     makeTodo: () => void makeTodo(),
     replyLater: () => void replyLater(),
     pin: () => void pin(),
@@ -488,7 +492,7 @@ function MessagesBody({
       if (commands && replyKeys.current.has(commands.intentKey)) commands.send();
     },
     escape: () => {
-      if (cardShown) retireCard();
+      if (closeHint) closeHint();
       else setPageOpen(false);
     },
   });
@@ -505,7 +509,6 @@ function MessagesBody({
       >
         <MessagesHeader guide={guide} turn={search.turn} />
         <div className="min-h-0 flex-1 overflow-y-auto pb-6">
-          {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
           {empty && data.empty_state ? (
             <div data-testid="messages-empty" className="mx-5 mt-4">
               <p className="text-[14px] text-foreground">{data.empty_state}</p>
@@ -553,11 +556,25 @@ function MessagesBody({
               pending={gotIt.pending}
               ackLoading={gotIt.loading}
               onBack={() => setPageOpen(false)}
-              onTopic={(thread) => selectedId && select(selectedId, { topic: thread })}
+              onTopic={(thread) => {
+                topicsHint.dismiss();
+                if (selectedId) select(selectedId, { topic: thread });
+              }}
               onToggleAsSent={(id) => setAsSent((open) => (open === id ? null : id))}
               onReplyAllChange={setReplyAllOverride}
               onReply={() => openReply(replyAll)}
-              onGotIt={() => conversation && void gotIt.start(conversation.thread_id)}
+              onGotIt={startGotIt}
+              onGotItFocus={() => setGotItNeeded(true)}
+              topicsHint={
+                topicsHint.hint ? (
+                  <AnchoredHint hint={topicsHint.hint} onDismiss={topicsHint.dismiss} />
+                ) : undefined
+              }
+              gotItHint={
+                gotItHint.hint ? (
+                  <AnchoredHint hint={gotItHint.hint} onDismiss={gotItHint.dismiss} />
+                ) : undefined
+              }
               onUndoGotIt={gotIt.undo}
               onDone={done}
               onTodo={() => void makeTodo()}

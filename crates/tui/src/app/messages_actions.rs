@@ -14,7 +14,7 @@ use chrono::Offset as _;
 use mxr_core::id::ThreadId;
 use mxr_protocol::{AckPlanData, MessagesData, MessagesRowData, ModeKindData, PersonPageData};
 
-/// The mode id Messages' guide and its card are kept under.
+/// The mode id `GetModeGuide` takes for Messages.
 pub(crate) const MESSAGES_MODE: &str = mxr_protocol::MESSAGES_GUIDE.mode;
 
 /// The conversation an action on the selected row acts on.
@@ -276,7 +276,6 @@ impl App {
             self.status_message = Some("No conversation selected".into());
             return;
         };
-        self.retire_messages_card();
         let page = &mut self.mailbox.messages_page;
         page.ack = None;
         page.ack_requested = Some(topic.thread_id.clone());
@@ -436,7 +435,6 @@ impl App {
             .map(|t| (t.thread_id.clone(), topic_label(t)));
         let before_rows = page.row_keys();
 
-        self.retire_messages_card();
         self.mailbox.messages_page.mark_done_here(&topic.thread_id);
         let note = if let Some((thread, label)) = next_topic {
             // They still have topics here: stay on them, on the next one.
@@ -469,6 +467,8 @@ impl App {
         };
         let mutation = self.queue_mode_done(ModeKindData::Messages, topic.thread_id);
         self.mailbox.messages_page.done_notes.insert(mutation, note);
+        // After queueing, which sets its own progress line.
+        self.explain_done_here_once();
     }
 
     /// `s`: pin or unpin the person (the cadence watchlist).
@@ -564,37 +564,8 @@ impl App {
     }
 
     fn messages_back(&mut self) {
-        if self.mailbox.messages_page.card_visible() {
-            self.retire_messages_card();
-        } else if self.mailbox.messages_page.focus == MessagesFocus::Person {
+        if self.mailbox.messages_page.focus == MessagesFocus::Person {
             self.mailbox.messages_page.focus = MessagesFocus::List;
-        }
-    }
-
-    /// Retire Messages' first-encounter card here and in every client.
-    fn retire_messages_card(&mut self) {
-        let page = &mut self.mailbox.messages_page;
-        if !page.card_visible() {
-            return;
-        }
-        page.card_closed = true;
-        let id = self.queue_best_effort_mutation(
-            Request::SetModeGuideSeen {
-                mode: MESSAGES_MODE.into(),
-                seen: true,
-            },
-            MutationEffect::StatusOnly(String::new()),
-            String::new(),
-        );
-        self.mailbox.messages_page.card_close_mutation = Some(id);
-    }
-
-    /// The daemon didn't store the closed card: show it again.
-    pub(crate) fn reopen_messages_card_after_failure(&mut self, failed: crate::app::MutationId) {
-        let page = &mut self.mailbox.messages_page;
-        if page.card_close_mutation == Some(failed) {
-            page.card_close_mutation = None;
-            page.card_closed = false;
         }
     }
 
@@ -621,6 +592,7 @@ impl App {
                 }
                 return None;
             }
+            KeyCode::Esc if self.active_hint().is_some() => Some(Action::DismissHint),
             KeyCode::Esc => Some(Action::MessagesBack),
             KeyCode::Enter => Some(Action::MessagesOpen),
             KeyCode::Char('.') if plain => Some(Action::MessagesAck),

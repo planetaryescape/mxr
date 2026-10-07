@@ -728,7 +728,7 @@ pub enum Command {
         #[arg(long, global = true)]
         format: Option<OutputFormat>,
     },
-    /// How each mode explains itself: its job, empty states, card and keys
+    /// How each mode explains itself: its job, empty states, keys and hints
     Modes {
         #[command(subcommand)]
         action: ModesAction,
@@ -2258,18 +2258,18 @@ pub enum MessagesAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ModesAction {
-    /// What a mode is for, what lands there, its first-encounter card and
-    /// its keys. Every mode that has shipped when none is named.
+    /// What a mode is for, what lands there, how it works, its keys and
+    /// its hints. Every mode that has shipped when none is named.
     Explain {
         /// The mode, such as todo.
         mode: Option<String>,
     },
-    /// Retire a mode's first-encounter card in every client, as closing it
-    /// does, or bring it back with --show.
-    Card {
-        /// The mode, such as todo.
-        mode: String,
-        /// Show the card again the next time the mode has items.
+    /// Dismiss a hint in every client, as Esc or acting on its element
+    /// does, or bring it back with --show. `mxr modes explain` lists the ids.
+    Hint {
+        /// The hint id, such as todo.runway.
+        id: String,
+        /// Show the hint again the next time its element is needed.
         #[arg(long)]
         show: bool,
     },

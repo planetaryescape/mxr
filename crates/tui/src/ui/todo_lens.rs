@@ -5,10 +5,11 @@
 //! Whenever, Done this week) with each row as an instruction: verb and
 //! object, who, how much, a runway bar and "act by Wed 7 · due Fri 9".
 //! The footer prints where Enter goes before it is pressed. The header
-//! line, the first-encounter card and the empty states come from the
-//! daemon's mode guide. Pure render; wiring lives in `app/todo_actions.rs`.
+//! line and the empty states come from the daemon's mode guide; hints show
+//! in the status line (`app/hints.rs`). Pure render; wiring lives in
+//! `app/todo_actions.rs`.
 
-use mxr_protocol::{ModeGuideData, TodoChangeData, TodoData};
+use mxr_protocol::{TodoChangeData, TodoData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -306,30 +307,6 @@ impl Body {
     }
 }
 
-fn card_lines(body: &mut Body, guide: &ModeGuideData, width: usize, theme: &crate::theme::Theme) {
-    let accent = Style::default().fg(theme.accent);
-    body.push(Line::from(""));
-    for line in wrap(&guide.card, width.saturating_sub(6)) {
-        body.push(Line::from(vec![
-            Span::styled("  \u{2502} ", accent),
-            Span::styled(line, Style::default().fg(theme.text_primary)),
-        ]));
-    }
-    let keys = guide
-        .card_keys
-        .iter()
-        .map(|key| format!("{} {}", key.key, key.verb))
-        .collect::<Vec<_>>()
-        .join(" \u{b7} ");
-    body.push(Line::from(vec![
-        Span::styled("  \u{2502} ", accent),
-        Span::styled(
-            format!("{keys} \u{b7} Esc close"),
-            Style::default().fg(theme.text_secondary),
-        ),
-    ]));
-}
-
 fn runway_body(view: &TodoView<'_>, width: usize, theme: &crate::theme::Theme) -> Body {
     let mut body = Body::new();
     let page = view.page;
@@ -346,11 +323,6 @@ fn runway_body(view: &TodoView<'_>, width: usize, theme: &crate::theme::Theme) -
                 .fg(theme.text_primary)
                 .add_modifier(Modifier::BOLD),
         )));
-    }
-    if page.card_visible() {
-        if let Some(guide) = &page.guide {
-            card_lines(&mut body, guide, width, theme);
-        }
     }
     if runway.catchup_count > 0 {
         body.push(Line::from(""));
@@ -787,10 +759,10 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) fn page(runway: TodoRunwayData, card_seen: bool) -> TodoPageState {
+    pub(crate) fn page(runway: TodoRunwayData, hints_seen: bool) -> TodoPageState {
         TodoPageState {
             runway: Some(runway),
-            guide: Some(TODO_GUIDE.to_data(card_seen.then(Utc::now))),
+            guide: Some(TODO_GUIDE.to_data(|_| hints_seen.then(Utc::now))),
             ..TodoPageState::default()
         }
     }
@@ -899,21 +871,10 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_card_shows_until_seen_with_its_keys() {
+    fn no_card_teaches_at_the_top_even_before_any_hint_is_seen() {
         let unseen = render(&page(runway(vec![council_tax()], vec![]), false), 0);
-        insta::assert_snapshot!("todo_lens_first_card", unseen);
-        assert!(unseen.contains("Each row is one thing to do"), "{unseen}");
-        assert!(unseen.contains(
-            "Enter do it \u{b7} e tick off \u{b7} Z schedule \u{b7} X not a to-do \u{b7} Esc close"
-        ));
-        let seen = render(&page(runway(vec![council_tax()], vec![]), true), 0);
-        assert!(!seen.contains("Each row is one thing to do"));
-        let mut closed = page(runway(vec![council_tax()], vec![]), false);
-        closed.card_closed = true;
-        assert!(!render(&closed, 0).contains("Each row is one thing to do"));
-        // No rows yet: the card waits for the first one.
-        let empty = page(runway(vec![], vec![]), false);
-        assert!(!render(&empty, 0).contains("Each row is one thing to do"));
+        assert!(!unseen.contains("Each row is one thing to do"), "{unseen}");
+        assert!(!unseen.contains("Esc close"), "{unseen}");
     }
 
     #[test]

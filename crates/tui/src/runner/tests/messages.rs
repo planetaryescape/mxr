@@ -22,7 +22,7 @@ fn queued(app: &App) -> Vec<Request> {
 }
 
 /// Messages open on the fixture people, with Samir's page loaded.
-fn messages_app(card_seen: bool) -> App {
+fn messages_app(hints_seen: bool) -> App {
     let mut app = App::new();
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
     press(&mut app, KeyCode::Char('m'));
@@ -31,7 +31,7 @@ fn messages_app(card_seen: bool) -> App {
         app.mailbox.messages_page.pending_refresh && app.mailbox.pending_rail_refresh,
         "opening Messages fetches it, its guide and the rail"
     );
-    let loaded = page(populated(), card_seen);
+    let loaded = page(populated(), hints_seen);
     app.set_messages(loaded.messages.unwrap(), loaded.guide);
     let (row_id, topic) = app
         .mailbox
@@ -211,18 +211,31 @@ fn s_pins_the_person() {
 }
 
 #[test]
-fn the_card_retires_on_esc_and_on_got_it() {
+fn got_it_explains_itself_in_the_status_line_and_pressing_it_dismisses_the_hint() {
     let mut app = messages_app(false);
-    assert!(app.mailbox.messages_page.card_visible());
-    press(&mut app, KeyCode::Esc);
-    assert!(!app.mailbox.messages_page.card_visible());
-    assert!(matches!(
-        queued(&app).as_slice(),
-        [Request::SetModeGuideSeen { mode, seen: true }] if mode == "messages"
-    ));
-    let mut app = messages_app(false);
+    assert!(app.active_hint().is_none(), "not on arrival");
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('k'));
+    assert_eq!(
+        app.active_hint().map(|h| h.id.as_str()),
+        Some("messages.got_it")
+    );
     press(&mut app, KeyCode::Char('.'));
-    assert!(!app.mailbox.messages_page.card_visible());
+    assert!(queued(&app).iter().any(|request| matches!(
+        request,
+        Request::SetHintSeen { hint, seen: true } if hint == "messages.got_it"
+    )));
+}
+
+#[test]
+fn esc_takes_the_hint_first_then_goes_back() {
+    let mut app = messages_app(false);
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('k'));
+    assert!(app.active_hint().is_some());
+    press(&mut app, KeyCode::Esc);
+    assert!(app.active_hint().is_none());
+    assert_eq!(queued(&app).len(), 1);
 }
 
 #[test]

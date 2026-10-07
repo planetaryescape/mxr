@@ -11,8 +11,8 @@ use mxr_test_support::render_to_string;
 use mxr_tui::action::UiContext;
 use mxr_tui::app::{
     AccountFormState, AccountsPageState, ActivePane, AttachmentPanelState, BodySource,
-    BodyViewState, DiagnosticsPageState, DiagnosticsPaneKind, FeatureOnboardingState, MailListMode,
-    MailListRow, MutationEffect, PendingBulkConfirm, PendingSend, PendingSendMode, RulesPageState,
+    BodyViewState, DiagnosticsPageState, DiagnosticsPaneKind, MailListMode, MailListRow,
+    MutationEffect, PendingBulkConfirm, PendingSend, PendingSendMode, RulesPageState,
     SearchPageState, SearchUiStatus,
 };
 use mxr_tui::ui::attachment_modal::draw as draw_attachment_modal;
@@ -22,7 +22,6 @@ use mxr_tui::ui::compose_picker::{draw as draw_compose_picker, ComposePicker, Co
 use mxr_tui::ui::help_modal::{draw as draw_help_modal, HelpModalState};
 use mxr_tui::ui::label_picker::{draw as draw_label_picker, LabelPicker, LabelPickerMode};
 use mxr_tui::ui::message_view::{draw as draw_message_view, DrawOptions, ThreadMessageBlock};
-use mxr_tui::ui::onboarding_modal::draw as draw_onboarding_modal;
 use mxr_tui::ui::search_bar::{draw as draw_search_bar, SearchBar};
 use mxr_tui::ui::search_page::{draw as draw_search_page, SearchPageView};
 use mxr_tui::ui::send_confirm_modal::draw as draw_send_confirm;
@@ -547,23 +546,6 @@ fn search_page_searching_snapshot() {
         );
     });
     insta::assert_snapshot!("search_page_searching_snapshot", snapshot);
-}
-
-#[test]
-fn onboarding_modal_snapshot() {
-    let snapshot = render_to_string(90, 24, |frame| {
-        draw_onboarding_modal(
-            frame,
-            Rect::new(0, 0, 90, 24),
-            &FeatureOnboardingState {
-                visible: true,
-                step: 2,
-                seen: false,
-            },
-            &mxr_tui::theme::Theme::default(),
-        );
-    });
-    insta::assert_snapshot!("onboarding_modal_snapshot", snapshot);
 }
 
 #[test]

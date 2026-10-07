@@ -302,7 +302,6 @@ pub async fn run() -> anyhow::Result<()> {
     let local_state = local_state::load();
 
     let mut app = App::from_config(&config);
-    app.modals.onboarding.seen = local_state.onboarding_seen;
     app.command_palette
         .palette
         .restore_recents_from_labels(&local_state.recent_action_labels);
@@ -311,8 +310,9 @@ pub async fn run() -> anyhow::Result<()> {
     } else {
         app.load(&mut client).await?;
         // Now is the front page; the inbox stays loaded one key away.
+        // No tour: each mode teaches itself with hints at the element they
+        // explain, the first time it is needed (blueprint 22, D118).
         app.apply(crate::action::Action::OpenNow);
-        app.maybe_show_feature_onboarding();
         // Load accounts for sidebar account section
         app.accounts.page.refresh_pending = true;
     }
@@ -3125,7 +3125,6 @@ pub async fn run() -> anyhow::Result<()> {
                             } else {
                                 app.accounts.page.onboarding_required = false;
                                 app.accounts.page.onboarding_modal_open = false;
-                                app.maybe_show_feature_onboarding();
                             }
                         }
                         AsyncResult::Accounts(Err(e)) => {

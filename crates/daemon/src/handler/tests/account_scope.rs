@@ -723,8 +723,8 @@ async fn requests_spanning_every_account_are_denied_and_unscoped_ones_allowed() 
         Request::Ping,
         Request::GetStatus,
         Request::GetModeGuide { mode: None },
-        Request::SetModeGuideSeen {
-            mode: "todo".into(),
+        Request::SetHintSeen {
+            hint: "todo.runway".into(),
             seen: true,
         },
         Request::ResolveTime {

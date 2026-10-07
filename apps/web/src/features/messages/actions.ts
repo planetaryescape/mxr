@@ -69,7 +69,7 @@ export const messagesActions: Action[] = [
       shortLabel: "Send, next",
     },
   ),
-  key("messages.escape", "escape", "Close the note, or back to the people", "Escape", {
+  key("messages.escape", "escape", "Dismiss the hint, or back to the people", "Escape", {
     hideInPalette: true,
   }),
 ];

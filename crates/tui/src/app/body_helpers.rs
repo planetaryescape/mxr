@@ -39,7 +39,27 @@ impl App {
         Some(primary_body_label(metadata, source).to_string())
     }
 
+    /// The status bar, with a hint in place of the ambient message while
+    /// the cursor is on a hint's element. Warnings and the connection
+    /// state still win.
     pub fn status_bar_state(&self) -> ui::status_bar::StatusBarState {
+        let mut state = self.base_status_bar_state();
+        let urgent = [
+            self.connection_state_label(),
+            self.current_user_warn(std::time::Instant::now()),
+        ];
+        let warned = state.status_message.as_deref().is_some_and(|message| {
+            message.starts_with("Error:") || urgent.iter().flatten().any(|u| u == message)
+        });
+        if !warned {
+            if let Some(hint) = self.hint_status_line() {
+                state.status_message = Some(hint);
+            }
+        }
+        state
+    }
+
+    fn base_status_bar_state(&self) -> ui::status_bar::StatusBarState {
         let starred_count = self.global_starred_count();
         let body_status = self.active_body_status();
         let feature_health_status = self.feature_health_status_label();

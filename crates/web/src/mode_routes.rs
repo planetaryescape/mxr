@@ -1,6 +1,6 @@
 //! The modes over the bridge: Now, the rail, which modes hold a thread,
-//! done here per mode, how each mode explains itself and its
-//! first-encounter card's seen state. Thin passthroughs to the daemon,
+//! done here per mode, how each mode explains itself and which of its
+//! hints are dismissed. Thin passthroughs to the daemon,
 //! which owns the caps, the copy and every preview's selection.
 
 use super::place_routes::parse_optional_account;
@@ -194,10 +194,10 @@ async fn get_guide(
     passthrough(response)
 }
 
-/// Body of `POST /api/v1/mail/modes/{mode}/card`.
+/// Body of `POST /api/v1/mail/hints/{hint}`.
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
-pub(crate) struct ModeCardBody {
-    /// True retires the card in every client; false shows it again.
+pub(crate) struct HintSeenBody {
+    /// True dismisses the hint in every client; false shows it again.
     #[serde(default = "seen_default")]
     seen: bool,
 }
@@ -206,18 +206,18 @@ fn seen_default() -> bool {
     true
 }
 
-async fn set_card(
+async fn set_hint_seen(
     State(state): State<AppState>,
     headers: HeaderMap,
-    AxumPath(mode): AxumPath<String>,
-    Json(body): Json<ModeCardBody>,
+    AxumPath(hint): AxumPath<String>,
+    Json(body): Json<HintSeenBody>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     let response = dispatch(
         &state,
         &headers,
         None,
-        Request::SetModeGuideSeen {
-            mode,
+        Request::SetHintSeen {
+            hint,
             seen: body.seen,
         },
     )
@@ -234,6 +234,6 @@ pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
             "/modes/membership",
             get(get_membership).post(post_membership),
         )
-        .route("/modes/{mode}/card", post(set_card))
+        .route("/hints/{hint}", post(set_hint_seen))
         .route("/modes/{mode}/done", post(set_done))
 }

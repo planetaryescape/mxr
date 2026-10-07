@@ -1755,19 +1755,19 @@ pub enum Request {
         dry_run: bool,
     },
     // ----- Teaching in place -----
-    /// How a mode explains itself: header, empty states, first-encounter
-    /// card, why template and keys, with whether the card was retired.
-    /// `mode: None` returns every shipped mode. Returns
+    /// How a mode explains itself: header, empty states, why template,
+    /// keys, the `?` explanation and its hints with whether each was
+    /// dismissed. `mode: None` returns every shipped mode. Returns
     /// `ResponseData::ModeGuides`.
     GetModeGuide {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         mode: Option<String>,
     },
-    /// Retire a mode's first-encounter card on this profile, so it stays
-    /// closed in every client; `seen: false` brings it back. Returns
-    /// `ResponseData::ModeGuides` with the one mode.
-    SetModeGuideSeen {
-        mode: String,
+    /// Dismiss a hint on this profile, so it never shows again in any
+    /// client; `seen: false` brings it back. Returns
+    /// `ResponseData::ModeGuides` with every mode the hint attaches in.
+    SetHintSeen {
+        hint: String,
         #[serde(default = "default_true")]
         seen: bool,
     },
@@ -2236,7 +2236,7 @@ impl Request {
             | Self::GetTodoCatchup { .. }
             | Self::SetTodoCatchup { .. }
             | Self::GetModeGuide { .. }
-            | Self::SetModeGuideSeen { .. }
+            | Self::SetHintSeen { .. }
             | Self::GetNow { .. }
             | Self::GetRail { .. }
             | Self::GetModeMembership { .. }
@@ -3235,7 +3235,7 @@ pub enum ResponseData {
     TodoCatchup {
         catchup: TodoCatchupData,
     },
-    /// Returned by `Request::GetModeGuide` and `Request::SetModeGuideSeen`.
+    /// Returned by `Request::GetModeGuide` and `Request::SetHintSeen`.
     ModeGuides {
         guides: Vec<ModeGuideData>,
     },

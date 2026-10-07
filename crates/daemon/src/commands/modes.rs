@@ -1,5 +1,5 @@
 //! `mxr modes`: how each mode explains itself, from the daemon's one copy
-//! table, and the first-encounter card's seen state.
+//! table, and each hint's seen state.
 
 use crate::cli::{ModesAction, OutputFormat};
 use crate::commands::desk::parse_thread_ids;
@@ -17,7 +17,10 @@ pub async fn run(action: ModesAction, format: Option<OutputFormat>) -> anyhow::R
     let format = resolve_format(format);
     let request = match action {
         ModesAction::Explain { mode } => Request::GetModeGuide { mode },
-        ModesAction::Card { mode, show } => Request::SetModeGuideSeen { mode, seen: !show },
+        ModesAction::Hint { id, show } => Request::SetHintSeen {
+            hint: id,
+            seen: !show,
+        },
         ModesAction::Rail { account } => {
             let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
             return rail(&mut client, account_id, format).await;
@@ -296,18 +299,26 @@ fn guide_text(guide: &ModeGuideData) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "{}: {}", guide.name, guide.header);
     let _ = writeln!(out, "{}", guide.lands_here);
-    let _ = writeln!(out, "\n{}", guide.card);
-    let _ = writeln!(out, "{}", keys_line(&guide.card_keys));
+    let _ = writeln!(out, "\n{}", guide.about);
     let _ = writeln!(out, "\nKeys: {}", keys_line(&guide.keys));
     let _ = writeln!(
         out,
-        "First-encounter card: {}",
-        if guide.card_seen {
-            "retired (mxr modes card MODE --show brings it back)"
-        } else {
-            "shows the first time the mode has items"
-        }
+        "\nHints, each at its element the first time it's needed:"
     );
+    for hint in &guide.hints {
+        let _ = writeln!(
+            out,
+            "  {} ({}): {}{}",
+            hint.id,
+            hint.anchor,
+            hint.text,
+            if hint.seen {
+                " [dismissed; mxr modes hint ID --show brings it back]"
+            } else {
+                ""
+            }
+        );
+    }
     out
 }
 
@@ -317,9 +328,10 @@ mod tests {
 
     #[test]
     fn text_leads_with_the_job_and_prints_keys_with_their_verbs() {
-        let text = guide_text(&mxr_protocol::TODO_GUIDE.to_data(None));
+        let text = guide_text(&mxr_protocol::TODO_GUIDE.to_data(|_| None));
         assert!(text.starts_with("To do: Things email asked you to do, ordered by when to act."));
-        assert!(text.contains("Enter do it · e tick off · Z schedule · X not a to-do"));
-        assert!(text.contains("shows the first time"));
+        assert!(text.contains("Enter do it · e tick off · Z schedule"));
+        assert!(text.contains("todo.runway (The first runway bar): The bar fills"));
+        assert!(!text.contains("dismissed"));
     }
 }

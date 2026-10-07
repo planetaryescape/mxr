@@ -255,6 +255,24 @@ async function seedMailbox() {
     60_000,
     "fake mailbox seed",
   );
+  await dismissEveryHint();
+}
+
+/**
+ * Hints show once per profile, and every spec shares this daemon. Starting
+ * with all of them dismissed keeps a hint from landing in some other
+ * spec's layout or taking its Esc; teaching.spec.ts brings back the ones
+ * it tests.
+ */
+async function dismissEveryHint() {
+  const { guides } = await fetchJson("/api/v1/mail/modes/guide");
+  const ids = new Set(guides.flatMap((guide) => guide.hints.map((hint) => hint.id)));
+  for (const id of ids) {
+    await fetchJson(`/api/v1/mail/hints/${encodeURIComponent(id)}`, {
+      method: "POST",
+      body: JSON.stringify({ seen: true }),
+    });
+  }
 }
 
 async function fetchJson(path, init = {}) {

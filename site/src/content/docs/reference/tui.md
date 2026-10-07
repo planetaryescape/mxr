@@ -83,8 +83,9 @@ the field, where it came from and whether it is checked. Below it are the
 "Coming up" lines and the ledger by month, each month with its count and
 totals; `·?` marks an amount nobody has confirmed. `Enter` on a row opens
 the record's document, and the record card shows every field with its
-source. Its first-encounter card and `?` explain the mode; the card closes
-with `Esc` and retires the first time you ask. `T` on a conversation files
+source. `?` explains the mode; the first time the cursor reaches the first
+record, or an answer appears, a one-line hint in the status line names its
+key, and `Esc` dismisses it for good. `T` on a conversation files
 it as a record after showing the card. The keys are in the
 [keybindings reference](/reference/keybindings/#archive).
 
@@ -241,7 +242,11 @@ Two cross-view interactions:
 
 ## Discovery model
 
-- First-run onboarding walkthrough
+- Hints: the first time the cursor reaches an element a mode explains
+  (Now's first why line, To do's first runway bar, Messages' Got it, an
+  Archive answer), one sentence naming its key shows in the status line.
+  `Esc` or using that key dismisses it in every client; `mxr modes hint ID
+  --show` brings one back. There is no tour.
 - Command palette: broad action surface
 - Help modal: context-aware keybinding reference
 - Hint bar: context-sensitive shortcuts, including selection-aware actions

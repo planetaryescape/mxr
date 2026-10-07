@@ -635,10 +635,7 @@ impl App {
     ) {
         self.handle_mutation_reconciliation_failed(id);
         self.pending_optimistic.clear(id);
-        self.reopen_todo_card_after_failure(id);
-        self.reopen_records_card_after_failure(id);
-        self.reopen_now_card_after_failure(id);
-        self.reopen_messages_card_after_failure(id);
+        self.reopen_hint_after_failure(id);
         self.refresh_mailbox_after_mutation_failure();
         if best_effort {
             self.push_toast(Toast::warn("Mailbox refreshing to reconcile state"));

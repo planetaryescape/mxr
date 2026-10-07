@@ -1,5 +1,5 @@
 //! When each mode was last opened, for "N expired since you last looked",
-//! and which modes' first-encounter cards are retired.
+//! and which hints were dismissed.
 
 use crate::{decode_optional_timestamp, decode_timestamp};
 use chrono::{DateTime, Utc};
@@ -26,36 +26,36 @@ impl super::Store {
         Ok(())
     }
 
-    /// When each mode's first-encounter card was retired, by mode.
-    pub async fn mode_guides_seen(
+    /// When each dismissed hint was dismissed, by hint id.
+    pub async fn hints_seen(
         &self,
     ) -> Result<std::collections::HashMap<String, DateTime<Utc>>, sqlx::Error> {
-        let rows: Vec<(String, i64)> = sqlx::query_as("SELECT mode, seen_at FROM mode_guide_seen")
+        let rows: Vec<(String, i64)> = sqlx::query_as("SELECT hint_id, seen_at FROM hint_seen")
             .fetch_all(self.reader())
             .await?;
         rows.into_iter()
-            .map(|(mode, at)| Ok((mode, decode_timestamp(at)?)))
+            .map(|(id, at)| Ok((id, decode_timestamp(at)?)))
             .collect()
     }
 
-    /// Retire a mode's card, keeping the first time; `None` brings it back.
-    pub async fn set_mode_guide_seen(
+    /// Dismiss a hint, keeping the first time; `None` brings it back.
+    pub async fn set_hint_seen(
         &self,
-        mode: &str,
+        hint_id: &str,
         at: Option<DateTime<Utc>>,
     ) -> Result<(), sqlx::Error> {
         match at {
             Some(at) => sqlx::query(
-                "INSERT INTO mode_guide_seen (mode, seen_at) VALUES (?1, ?2)
-                 ON CONFLICT(mode) DO NOTHING",
+                "INSERT INTO hint_seen (hint_id, seen_at) VALUES (?1, ?2)
+                 ON CONFLICT(hint_id) DO NOTHING",
             )
-            .bind(mode)
+            .bind(hint_id)
             .bind(at.timestamp())
             .execute(self.writer())
             .await
             .map(|_| ()),
-            None => sqlx::query("DELETE FROM mode_guide_seen WHERE mode = ?")
-                .bind(mode)
+            None => sqlx::query("DELETE FROM hint_seen WHERE hint_id = ?")
+                .bind(hint_id)
                 .execute(self.writer())
                 .await
                 .map(|_| ()),

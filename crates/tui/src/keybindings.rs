@@ -209,7 +209,6 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "open_tab_5" => Some(Action::OpenTab5),
         "open_tab_6" => Some(Action::OpenTab6),
         "toggle_signature" => Some(Action::ToggleSignature),
-        "show_onboarding" => Some(Action::ShowOnboarding),
         #[cfg(debug_assertions)]
         "dump_action_trace" => Some(Action::DumpActionTrace),
         _ => None,
@@ -380,7 +379,6 @@ fn action_display_name(action: &str) -> String {
         "open_tab_3" => "Rules Page".into(),
         "open_tab_4" => "Accounts Page".into(),
         "open_tab_5" => "Diagnostics Page".into(),
-        "show_onboarding" => "Start Here".into(),
         "quit_view" => "Quit".into(),
         "clear_selection" => "Clear Sel".into(),
         "back" => "Back".into(),

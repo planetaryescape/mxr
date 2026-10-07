@@ -66,13 +66,13 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HelpModalState<'_>, theme: &cr
 }
 
 /// `?` in a mode starts with the mode: what it is for, what lands there,
-/// its card, then its keys with their verbs. A closed card is found again
-/// here.
+/// how it works, then its keys with their verbs. This is the full
+/// explanation on demand; the page itself only teaches with hints.
 fn mode_section(guide: &mxr_protocol::ModeGuideData) -> HelpSection {
     let mut entries = vec![
         ("What it's for".to_string(), guide.header.clone()),
         ("What lands here".to_string(), guide.lands_here.clone()),
-        ("How it works".to_string(), guide.card.clone()),
+        ("How it works".to_string(), guide.about.clone()),
     ];
     entries.extend(
         guide
@@ -93,10 +93,6 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
             title: "Start Here".into(),
             entries: vec![
                 ("Ctrl-p".into(), "Open command palette".into()),
-                (
-                    "palette: Start Here".into(),
-                    "Reopen onboarding walkthrough".into(),
-                ),
                 ("gc".into(), "Edit config in $EDITOR".into()),
                 ("?".into(), "Toggle Help".into()),
                 ("Esc".into(), "Back / Close".into()),

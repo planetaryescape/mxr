@@ -26,7 +26,7 @@ fn queued(app: &App) -> Vec<Request> {
 }
 
 /// Now open on the demo's front page.
-fn now_app(card_seen: bool) -> App {
+fn now_app(hints_seen: bool) -> App {
     let mut app = App::new();
     chord(&mut app, 'h');
     assert_eq!(app.mailbox.mailbox_view, MailboxView::Now);
@@ -34,7 +34,7 @@ fn now_app(card_seen: bool) -> App {
         app.mailbox.now_page.pending_refresh && app.mailbox.pending_rail_refresh,
         "opening Now fetches it, its guide and the rail"
     );
-    let loaded = page(populated(), card_seen);
+    let loaded = page(populated(), hints_seen);
     app.set_now(loaded.now.unwrap(), loaded.guide);
     app
 }
@@ -283,23 +283,95 @@ fn a_new_senders_question_is_answered_on_its_row() {
     );
 }
 
-#[test]
-fn the_card_shows_once_and_retires_on_esc_or_the_main_verb() {
-    let mut app = now_app(false);
-    assert!(app.mailbox.now_page.card_visible());
-    press(&mut app, KeyCode::Esc);
-    assert!(!app.mailbox.now_page.card_visible());
-    assert!(matches!(
-        queued(&app).as_slice(),
-        [Request::SetModeGuideSeen { mode, seen: true }] if mode == "now"
-    ));
+fn status_line(app: &App) -> String {
+    app.status_bar_state().status_message.unwrap_or_default()
+}
 
+fn hint_requests(app: &App) -> Vec<String> {
+    queued(app)
+        .into_iter()
+        .filter_map(|request| match request {
+            Request::SetHintSeen { hint, seen: true } => Some(hint),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn first_launch_opens_now_with_no_tour_and_no_card() {
     let mut app = now_app(false);
+    let rendered = render_to_string(100, 30, |frame| app.draw(frame));
+    assert!(!rendered.contains("Start Here"), "{rendered}");
+    assert!(
+        !rendered.contains("Now shows at most ten things"),
+        "{rendered}"
+    );
+    // Arriving is not a need: no hint until a key is pressed on Now.
+    assert!(app.active_hint().is_none());
+    assert!(!status_line(&app).starts_with("Hint:"));
+}
+
+#[test]
+fn the_why_line_hint_shows_in_the_status_line_when_the_cursor_reaches_it() {
+    let mut app = now_app(false);
+    press(&mut app, KeyCode::Char('j'));
+    assert!(app.active_hint().is_none(), "the second row has no hint");
+    press(&mut app, KeyCode::Char('k'));
+    assert_eq!(
+        app.active_hint().map(|h| h.id.as_str()),
+        Some("now.from_mode")
+    );
+    assert_eq!(
+        status_line(&app),
+        "Hint: Each row comes from a mode; Enter opens it there. (Esc dismisses)"
+    );
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(hint_requests(&app), ["now.from_mode"]);
+    assert!(app.active_hint().is_none());
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('k'));
+    assert!(app.active_hint().is_none(), "dismissed means never again");
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(
+        hint_requests(&app).len(),
+        1,
+        "a dismissed hint isn't sent twice"
+    );
+}
+
+#[test]
+fn acting_on_the_row_dismisses_its_hint_and_seen_hints_never_show() {
+    let mut app = now_app(false);
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('k'));
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(hint_requests(&app), ["now.from_mode"]);
+
+    let mut app = now_app(true);
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('k'));
+    assert!(app.active_hint().is_none());
+}
+
+#[test]
+fn the_first_done_here_says_what_it_clears_once() {
+    let mut app = now_app(false);
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('k'));
     press(&mut app, KeyCode::Char('e'));
-    assert!(!app.mailbox.now_page.card_visible(), "e retires the card");
-    assert!(queued(&app)
-        .iter()
-        .any(|request| matches!(request, Request::SetModeGuideSeen { mode, .. } if mode == "now")));
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Done here (e) only clears this mode; it stays in To do until done there.")
+    );
+    assert!(hint_requests(&app).contains(&"done_here".to_string()));
+    press(&mut app, KeyCode::Char('e'));
+    assert_eq!(
+        hint_requests(&app)
+            .iter()
+            .filter(|id| *id == "done_here")
+            .count(),
+        1
+    );
 }
 
 #[test]

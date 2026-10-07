@@ -47,9 +47,6 @@ pub struct MessagesPageState {
     pub quiet_open: bool,
     /// Letters opened past their first paragraph.
     pub expanded: HashSet<MessageId>,
-    /// Closed here before the daemon answered, so it never flickers back.
-    pub card_closed: bool,
-    pub card_close_mutation: Option<crate::app::MutationId>,
     /// Ask the runtime for the bands and the guide.
     pub pending_refresh: bool,
     /// Ask the runtime for this row's page, on this topic.
@@ -197,14 +194,6 @@ impl MessagesPageState {
         self.page
             .as_ref()
             .filter(|_| self.page_for.as_deref() == Some(row.id.as_str()))
-    }
-
-    /// The first-encounter card shows once Messages has people, until it
-    /// is closed here or retired anywhere.
-    pub fn card_visible(&self) -> bool {
-        !self.card_closed
-            && self.guide.as_ref().is_some_and(|guide| !guide.card_seen)
-            && self.messages.as_ref().is_some_and(|m| m.row_count > 0)
     }
 
     /// Done here before the daemon answers: the topic is done, and a row

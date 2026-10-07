@@ -1,6 +1,6 @@
 //! To do in the TUI: `g x` opens the runway and its guide, the row's verbs
-//! become the daemon requests they name, the card retires everywhere, and
-//! `t` makes a to-do from a conversation.
+//! become the daemon requests they name, hints show in the status line at
+//! their row, and `t` makes a to-do from a conversation.
 
 use super::*;
 use crate::app::{TodoPanel, TodoPromptKind};
@@ -27,7 +27,7 @@ fn queued(app: &App) -> Vec<Request> {
 }
 
 /// To do open on a runway of the bill and one undated row.
-fn todo_app(card_seen: bool) -> App {
+fn todo_app(hints_seen: bool) -> App {
     let mut app = App::new();
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
     press(&mut app, KeyCode::Char('x'));
@@ -38,7 +38,7 @@ fn todo_app(card_seen: bool) -> App {
     );
     let loaded = page(
         runway(vec![council_tax(), todo("todo_9", "Send the form")], vec![]),
-        card_seen,
+        hints_seen,
     );
     app.set_todo_runway(loaded.runway.unwrap(), loaded.guide);
     app
@@ -113,17 +113,47 @@ fn x_marks_it_not_a_to_do() {
 }
 
 #[test]
-fn esc_closes_the_card_here_and_tells_the_daemon_once() {
+fn the_runway_hint_shows_at_the_first_bar_after_a_key_and_esc_dismisses_it_once() {
     let mut app = todo_app(false);
-    assert!(app.mailbox.todo_page.card_visible());
+    assert!(app.active_hint().is_none(), "not on arrival");
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('k'));
+    assert_eq!(
+        app.active_hint().map(|h| h.id.as_str()),
+        Some("todo.runway")
+    );
+    assert!(app
+        .status_bar_state()
+        .status_message
+        .is_some_and(|line| line.contains("The bar fills from when this showed up")));
     press(&mut app, KeyCode::Esc);
-    assert!(!app.mailbox.todo_page.card_visible());
     assert!(matches!(
         queued(&app).as_slice(),
-        [Request::SetModeGuideSeen { mode, seen: true }] if mode == "todo"
+        [Request::SetHintSeen { hint, seen: true }] if hint == "todo.runway"
     ));
+    assert!(app.active_hint().is_none());
     press(&mut app, KeyCode::Esc);
-    assert_eq!(queued(&app).len(), 1, "a closed card isn't closed twice");
+    assert_eq!(
+        queued(&app).len(),
+        1,
+        "a dismissed hint isn't dismissed twice"
+    );
+}
+
+#[test]
+fn a_failed_dismissal_brings_the_hint_back() {
+    let mut app = todo_app(false);
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('k'));
+    press(&mut app, KeyCode::Esc);
+    let failed = app.pending_mutation_queue[0].id;
+    app.handle_mutation_failure_result(failed, true, &mxr_core::MxrError::Ipc("down".into()));
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('k'));
+    assert_eq!(
+        app.active_hint().map(|h| h.id.as_str()),
+        Some("todo.runway")
+    );
 }
 
 #[test]
@@ -359,19 +389,6 @@ fn enter_opens_the_source_message_with_its_link_to_mark() {
     assert_eq!(
         app.mailbox.todo_link,
         Some((source.id, "https://www.camden.gov.uk/pay".to_string()))
-    );
-}
-
-#[test]
-fn a_failed_card_close_shows_the_card_again() {
-    let mut app = todo_app(false);
-    press(&mut app, KeyCode::Esc);
-    assert!(!app.mailbox.todo_page.card_visible());
-    let id = app.pending_mutation_queue[0].id;
-    app.handle_mutation_failure_result(id, true, &mxr_core::MxrError::Ipc("down".into()));
-    assert!(
-        app.mailbox.todo_page.card_visible(),
-        "the daemon never stored it, so the card is still unseen"
     );
 }
 

@@ -854,7 +854,7 @@ pub fn map_request(
                 "Messages requests are not in the activity catalog yet"
             );
         }
-        Request::GetModeGuide { .. } | Request::SetModeGuideSeen { .. } => {
+        Request::GetModeGuide { .. } | Request::SetHintSeen { .. } => {
             skip_activity!(
                 "mode_guide",
                 "teaching copy and its seen state are not activity"

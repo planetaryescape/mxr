@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { LowTide } from "@/features/low-tide/LowTide";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
-import { useModeGuide, useRetireCard, type ModeGuide } from "@/features/modes/api";
+import { AnchoredHint } from "@/features/hints/AnchoredHint";
+import { withDoneHereHint } from "@/features/hints/doneHereHint";
+import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
+import { useModeGuide, type ModeGuide } from "@/features/modes/api";
 import { useThreadModesMap } from "@/features/modes/membership";
-import { ModeCard } from "@/features/modes/ModeCard";
-import { markModeDone, NONE_HIDDEN, useModeDone } from "@/features/modes/modeDone";
+import { doneToast, markModeDone, NONE_HIDDEN, useModeDone } from "@/features/modes/modeDone";
 import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
 import { tickOff } from "@/features/todo/todoVerbs";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
@@ -122,28 +124,32 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
   );
   const memberships = useThreadModesMap(threadIds).data;
 
-  const retire = useRetireCard("now");
-  const { mutate: retireMutate } = retire;
-  const cardSeen = guide?.card_seen ?? true;
-  const cardShown = Boolean(guide && !cardSeen && now.item_count > 0);
-  const retireCard = useCallback(() => {
-    if (!cardSeen) retireMutate();
-  }, [cardSeen, retireMutate]);
+  // "Each row comes from a mode" sits under the first why line; letting go
+  // of the digest is explained when the cursor reaches its card.
+  const firstWhy = items.find((item) => item.kind !== "updates");
+  const fromMode = useHint("now", "now.from_mode", {
+    ready: firstWhy !== undefined,
+    alone: items.length === 1,
+  });
+  const letGoHint = useHint("now", "updates.let_go", { ready: current?.kind === "updates" });
+  const { dismiss: dismissFromMode } = fromMode;
+  const { dismiss: dismissLetGo } = letGoHint;
+  const closeHint = useActiveHintDismiss();
 
   const open = useCallback(
     (item: NowItem) => {
+      dismissFromMode();
       setCursorKey(item.key);
       void navigate({ to: itemPath(item) });
     },
-    [navigate],
+    [dismissFromMode, navigate],
   );
   const done = useCallback(
     (item: NowItem) => {
-      // Done here is Now's main verb: using it retires the card about Now.
-      retireCard();
+      dismissFromMode();
       switch (item.kind) {
         case "person":
-          void markModeDone("messages", [item.threadId]);
+          void markModeDone("messages", [item.threadId], { message: withDoneHereHint(doneToast) });
           return;
         case "todo":
           void tickOff(item.todo.todo);
@@ -152,10 +158,11 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
           void markModeDone("reading", [item.threadId]);
           return;
         case "updates":
+          dismissLetGo();
           setLetGo(true);
       }
     },
-    [retireCard],
+    [dismissFromMode, dismissLetGo],
   );
   const reply = useCallback((item: NowItem) => {
     if (item.kind !== "person") return;
@@ -164,6 +171,10 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
       .openCompose(replyIntent(item.person.row.message_id, "single"), "overlay");
   }, []);
   const select = useCallback((item: NowItem) => setCursorKey(item.key), []);
+  const letGoDigest = () => {
+    dismissLetGo();
+    setLetGo(true);
+  };
 
   const move = (delta: number) => {
     const next = items[Math.min(items.length - 1, Math.max(0, index + delta))];
@@ -177,8 +188,8 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
     openEmail: () => current && current.kind !== "updates" && open(current),
     done: () => current && done(current),
     reply: () => current && reply(current),
-    letGoDigest: now.updates ? () => setLetGo(true) : undefined,
-    closeCard: cardShown ? retireCard : undefined,
+    letGoDigest: now.updates ? letGoDigest : undefined,
+    closeHint,
   });
 
   if (items.length === 0) {
@@ -186,11 +197,21 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
   }
 
   const position = new Map(items.map((item, at) => [item.key, at]));
+  const hintFor = (item: NowItem) => {
+    const shown =
+      item === firstWhy && fromMode.hint
+        ? fromMode
+        : item.kind === "updates" && letGoHint.hint
+          ? letGoHint
+          : null;
+    return shown?.hint ? <AnchoredHint hint={shown.hint} onDismiss={shown.dismiss} /> : undefined;
+  };
   const rowState = (item: NowItem) => ({
     index: position.get(item.key) ?? 0,
     focused: (position.get(item.key) ?? -1) === index,
     onSelect: select,
     onDone: done,
+    hint: hintFor(item),
   });
   const people = items.filter((item): item is PersonItem => item.kind === "person");
   const due = items.filter((item): item is TodoItem => item.kind === "todo");
@@ -200,7 +221,6 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
   return (
     <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
       <ModeFrame width="wide">
-        {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
         {!now.first_run.complete ? (
           <p data-testid="now-first-run" className="mx-5 mt-3 text-[13px] text-muted-foreground">
             Sorting your mail, newest first. Now fills in within a few minutes.
@@ -253,9 +273,7 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
             ) : null}
           </div>
           <div className="min-w-0">
-            {card ? (
-              <UpdatesCard item={card} onLetGo={() => setLetGo(true)} {...rowState(card)} />
-            ) : null}
+            {card ? <UpdatesCard item={card} onLetGo={letGoDigest} {...rowState(card)} /> : null}
             {pick ? (
               <section aria-labelledby="now-reading" data-testid="now-section-reading">
                 <SectionHeading id="now-reading" to="/reading">
@@ -324,9 +342,6 @@ function KeyLine({ guide }: { guide: ModeGuide }) {
           <KeyChip>{key.key === "Enter" ? "↵" : key.key}</KeyChip> {key.verb}
         </span>
       ))}
-      <span className="inline-flex items-center gap-1">
-        <KeyChip>A</KeyChip> let go of the digest
-      </span>
     </p>
   );
 }

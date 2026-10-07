@@ -906,6 +906,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/hints/{hint}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss a hint in every client, or show it again */
+        post: operations["mail_hint_seen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/humanizer/rewrite": {
         parameters: {
             query?: never;
@@ -1168,7 +1185,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** How a mode explains itself: header, empty states, first-encounter card, why template and keys */
+        /** How a mode explains itself: header, empty states, why template, keys and hints */
         get: operations["mail_mode_guide"];
         put?: never;
         post?: never;
@@ -1190,23 +1207,6 @@ export interface paths {
         put?: never;
         /** Which modes hold each of up to 100 threads, in request order */
         post: operations["mail_mode_membership_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/modes/{mode}/card": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Retire a mode's first-encounter card in every client, or show it again */
-        post: operations["mail_mode_card"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4945,6 +4945,35 @@ export interface components {
         GistModelData: "available" | "disabled" | "blocked";
         /** @enum {string} */
         GmailCredentialSourceData: "bundled" | "custom";
+        /**
+         * @description One hint as a client shows it: the copy, the key it names, and whether
+         *     it was dismissed on this profile.
+         */
+        HintData: {
+            /**
+             * @description The element it attaches to, for agents and the docs: "the first
+             *     row's why line".
+             */
+            anchor: string;
+            /**
+             * @description Stable across releases, since the seen state is keyed on it:
+             *     "now.from_mode".
+             */
+            id: string;
+            /** @description The key the hint names, with its verb in this mode. */
+            key: components["schemas"]["ModeKeyData"];
+            /** @description Dismissed by Esc or by acting on the element, in any client. */
+            seen: boolean;
+            /** Format: date-time */
+            seen_at?: string | null;
+            /** @description One sentence that names its key. */
+            text: string;
+        };
+        /** @description Body of `POST /api/v1/mail/hints/{hint}`. */
+        HintSeenBody: {
+            /** @description True dismisses the hint in every client; false shows it again. */
+            seen?: boolean;
+        };
         HtmlImageAsset: {
             detail?: string | null;
             kind: components["schemas"]["HtmlImageSourceKind"];
@@ -5352,11 +5381,6 @@ export interface components {
          * @enum {string}
          */
         MessagesTurnData: "mine" | "theirs";
-        /** @description Body of `POST /api/v1/mail/modes/{mode}/card`. */
-        ModeCardBody: {
-            /** @description True retires the card in every client; false shows it again. */
-            seen?: boolean;
-        };
         /** @description Body of `POST /api/v1/mail/modes/{mode}/done`. */
         ModeDoneBody: {
             /** @description Preview only: the same plan, nothing changed. */
@@ -5404,22 +5428,19 @@ export interface components {
         };
         /**
          * @description Returned in `ResponseData::ModeGuides`: one mode's teaching copy and
-         *     whether its first-encounter card has been retired on this profile.
+         *     its hints with their seen state on this profile.
          */
         ModeGuideData: {
+            /**
+             * @description How the mode works in one or two sentences. Only `?` and `mxr modes
+             *     explain` show it: nothing teaches at the top of the page.
+             */
+            about: string;
             /**
              * @description How to add one by hand from a conversation, for the never-had-any
              *     state.
              */
             add_one: string;
-            /** @description The first-encounter card: one or two sentences. */
-            card: string;
-            /** @description The card's line of keys. */
-            card_keys: components["schemas"]["ModeKeyData"][];
-            /** @description The card was closed, or retired by using the mode's main verb. */
-            card_seen: boolean;
-            /** Format: date-time */
-            card_seen_at?: string | null;
             /**
              * @description The empty state once everything is handled. The runway appends when
              *     the next thing shows up.
@@ -5429,6 +5450,8 @@ export interface components {
             first_run_line: string;
             /** @description Under the mode's name, always visible: the job and its verb. */
             header: string;
+            /** @description Each attached to one element in this mode. */
+            hints: components["schemas"]["HintData"][];
             /** @description Every key the mode answers to, with its verb, for `?` and the footer. */
             keys: components["schemas"]["ModeKeyData"][];
             /** @description One line on what lands here, for `?`. */
@@ -7628,8 +7651,8 @@ export interface components {
             mode?: string | null;
         } | {
             /** @enum {string} */
-            cmd: "SetModeGuideSeen";
-            mode: string;
+            cmd: "SetHintSeen";
+            hint: string;
             seen?: boolean;
         } | {
             account_id?: null | components["schemas"]["AccountId"];
@@ -11468,6 +11491,40 @@ export interface operations {
             };
         };
     };
+    mail_hint_seen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description `todo.runway` */
+                hint: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HintSeenBody"];
+            };
+        };
+        responses: {
+            /** @description The `ModeGuides` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     mail_humanizer_rewrite: {
         parameters: {
             query?: never;
@@ -11951,40 +12008,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mail_mode_card: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description `todo` */
-                mode: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ModeCardBody"];
-            };
-        };
-        responses: {
-            /** @description The `ModeGuides` variant */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ResponseData"];
-                };
             };
             /** @description Missing or invalid bridge token */
             401: {

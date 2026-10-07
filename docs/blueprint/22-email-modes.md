@@ -959,29 +959,43 @@ the moment to teach is when a Gmail habit meets a mode rule.
 
 ### Every mode ships six teaching surfaces
 
+Nothing teaches at the top of a page, and there is no tour. A block of
+explanation above the content has the same problem as a tour: it front-loads
+information before the user needs it, or has the context to know where it
+applies. Teaching sits next to the element it explains and shows at the
+moment that element is first needed (D118, amended 2026-10-07).
+
 1. **A header line** under the mode's name, always visible: what the mode
    is for in under 12 words, including its verb.
 2. **Two empty states.** "Never had any" teaches the job, what lands here
    and how something gets here (including `t`). "Clear for now" states the
    fact and when the next thing arrives, as the end states in the first
    table say.
-3. **One first-encounter card**, shown at the top of the mode the first
-   time it has items: one or two sentences and one line of keys with their
-   verbs. It closes on `Esc` or its close button, and retires on its own
-   the first time the user performs the mode's main verb, because a tip
-   about something already used is noise (Apple HIG). It never returns.
-   The daemon stores the seen state per profile, so closing it in the web
-   app also retires it in the TUI.
+3. **Hints at their element.** A hint is one sentence that names its key,
+   attached to one element: under the first row's why line, under the
+   first runway bar, under a person's topic list. It shows the first time
+   that element is needed, which means after the user has pressed a key or
+   clicked on the page (never on arrival, unless the element is the only
+   thing there), and never again once it is dismissed by `Esc`, its close
+   button, or acting on the element, because a tip about something already
+   used is noise (Apple HIG). At most one hint shows at a time. When one
+   leaves, the next waits for its own element's next need, so dismissing a
+   hint never reveals another: no chains. The web app shows a hint as an
+   inline note under its element (`features/hints`); the TUI shows it in
+   the status line while the cursor is on the element (`app/hints.rs`).
+   The daemon stores the seen state per hint id and profile, so a hint
+   dismissed in the web app never shows in the TUI.
 4. **A why line on every item**, as "Every item says why" requires, plus a
    what-next fragment where the mode has a rhythm ("In the 16:30 digest",
    "Fades Sunday unless you keep it"). It names its evidence and its
    source (rule, you, or the model by name) and is never vague, because a
    low-soundness explanation costs trust (Kulesza et al., VL/HCC 2013).
 5. **`?` leads with the mode.** The help that `?` opens today (web
-   `HelpDialog.tsx`, TUI `Help`) starts with the mode's header, its card
-   text, one line on what lands here, and links to the glossary and the
-   mode's guide page, then the keys. This is how a closed card is found
-   again; there is no separate tips page.
+   `HelpDialog.tsx`, TUI `Help`) starts with the mode's header, how it
+   works (the guide's `about`), one line on what lands here, and links to
+   the glossary and the mode's guide page, then the keys. `?` is the full
+   explanation on demand, and how a dismissed hint is found again; there
+   is no separate tips page.
 6. **Keys with their verbs at the point of use**: the footer, tooltips and
    the palette show "e done here", never a bare key. Tooltips start with a
    verb and stay under 75 characters (Apple HIG). Superhuman and Raycast
@@ -995,14 +1009,46 @@ the user's own provider named.
 
 The copy lives in one typed table in the daemon, served by `GetModeGuide`
 and printed by `mxr modes explain [MODE] --format json`, so web, TUI, CLI
-and agents use the same words and one test checks them. Empty `mxr todo`,
-`mxr updates` and the other mode commands print the empty-state line.
-`SetModeGuideSeen { mode }` records a retired card.
+and agents use the same words and one test checks them. Each mode's guide
+carries its hints with their seen state. Empty `mxr todo`, `mxr updates`
+and the other mode commands print the empty-state line. `SetHintSeen
+{ hint }` (`mxr modes hint ID`, `POST /api/v1/mail/hints/{hint}`) records a
+dismissed hint; `--show` or `seen: false` brings it back. Acting through
+the daemon dismisses too: sending Got it dismisses its hint from any
+client.
+
+### The hints
+
+Each names its key, and that key does that verb in that mode (the table
+test checks it). A hint shared by two modes has one id and one seen state.
+
+| Id | Mode | Anchored to | Hint |
+|---|---|---|---|
+| `now.from_mode` | Now | The first row's why line ("From To do: …") | "Each row comes from a mode; Enter opens it there." |
+| `done_here` | Now, Messages | The toast after the first `e` on a conversation (TUI: the status line) | "Done here (e) only clears this mode; it stays in To do until done there." |
+| `updates.let_go` | Now (Updates once it ships) | The first "Let go of this digest" button; in the TUI, the Updates card row | "A lets go of this digest only; new mail arrives in the next one." |
+| `todo.runway` | To do | The first runway bar | "The bar fills from when this showed up to when it's due; Enter does what the button says." |
+| `todo.catchup` | To do | The catch-up line (TUI: the first row, under it) | "These came in before mxr sorted your mail. C goes through them: keep or let go of each." |
+| `messages.topics` | Messages | A person's topic list, when it has more than one topic | "Every conversation with this person, yours to answer first; ] and [ step through them." |
+| `messages.got_it` | Messages | Got it, the first time it has focus or the pointer (TUI: a row whose turn is yours) | "Got it (.) sends a short note that you've seen it and takes them off Your turn." |
+| `archive.record` | Archive | The first record row | "Each row is one order, trip or bill, not an email; o opens the email it came from." |
+| `archive.answer` | Archive | The first answer to a question | "y copies what this answer found; Enter opens the document." |
+
+Updates and Reading add their own hints in the phases that ship them, at
+the analogous first-use points (a digest's let go, a pick's keep for
+later).
+
+The topics hint says "yours to answer first" because the daemon orders a
+person's topics by state, your turn first, then by recency
+(`messages_view::sort_topics`), not newest first.
 
 ### Copy for each mode
 
 Drafts in BK's voice: plain, specific, no hype, and no "AI". The examples
-use the demo mailbox. Dates and counts are filled in by code.
+use the demo mailbox. Dates and counts are filled in by code. Each "Card"
+below was first drafted as a page-top card; since the 2026-10-07 amendment
+it is the mode's `about` text, shown only by `?` and `mxr modes explain`,
+and its key line is no longer shown on its own.
 
 **Now**
 
@@ -1127,7 +1173,7 @@ This builds on "The first run classifies newest first" and adds no step.
    Enter open a mode   e close   ? what is this
    ```
 
-   Enter on a row opens that mode, where its own card appears. The
+   Enter on a row opens that mode, where its hints wait for first need. The
    catch-up card follows ("Catch up: 12 things from the last two weeks
    might still need you"), and keeping or letting go of each row teaches
    the two verbs every mode shares. The one question the first run asks,
@@ -1141,22 +1187,28 @@ This builds on "The first run classifies newest first" and adds no step.
 
 ### Teaching surfaces are part of each phase's definition of done
 
-A phase is not done until its mode's header line, both empty states, the
-first-encounter card, why and what-next lines, `?` content, toasts and key
-hints ship in web, TUI and CLI with the copy above, or with revised copy
-recorded here. Phase 1 builds the mechanism with To do (`GetModeGuide`,
-`SetModeGuideSeen`, `mxr modes explain`, the copy test). Phase 2 adds Now,
-the first-run card and `?` leading with the mode on every screen. Each
-later phase fills in its own mode's copy.
+A phase is not done until its mode's header line, both empty states, its
+hints, why and what-next lines, `?` content, toasts and key hints ship in
+web, TUI and CLI with the copy above, or with revised copy recorded here.
+Phase 1 built the mechanism with To do (`GetModeGuide`, `mxr modes
+explain`, the copy test). Phase 2 added Now, the first-run card and `?`
+leading with the mode on every screen. Each later phase fills in its own
+mode's copy and hints. (Phases 1 to 6 shipped a page-top card per mode;
+the 2026-10-07 amendment replaced those cards with hints.)
 
 - **Tests:** a `mode_guide` table test (every mode has a header under 12
-  words, a card of at most two sentences, no "AI", "smart", "magic" or
-  exclamation marks, and every key in a card's key line bound to that
-  verb in that mode's keymap scope); a CLI JSON snapshot of `mxr modes
-  explain`; `e2e/teaching.spec.ts` (the card shows once, not after reload,
-  not in the other client once closed, and retires on the mode's verb;
-  both empty states render; `?` starts with the mode; no multi-step
-  overlay exists).
+  words, an `about` of at most two sentences, no "AI", "smart", "magic" or
+  exclamation marks, and every hint names its key as a word, with that
+  key bound to that verb in the mode's keys); daemon tests for hint seen
+  state (kept per id, first time kept, a shared hint is one hint, unknown
+  ids refused); a CLI JSON snapshot of `mxr modes explain`; TUI tests (no
+  tour on first launch, a hint in the status line only after a key on the
+  page and at its element, Esc and acting dismiss it once);
+  `e2e/teaching.spec.ts` (no card on first visit, no hint on arrival, a
+  hint at its element on first need, never again after Esc or acting,
+  across a reload and in the daemon's state, never more than one, no
+  chain after a dismissal, axe in both schemes; both empty states render;
+  `?` starts with the mode).
 - **Check:** the five-second check below, recorded in
   `docs/dogfooding-log.md`.
 
@@ -1166,13 +1218,14 @@ X13 in `docs/web-app-experience-rubric.md`: a new user can say what each
 mode is for after one visit, and no tour exists. The check, in the
 style of a five-second test (Lyssna's guide: brief exposure, then recall):
 at least three people who have not used mxr each open every mode once in
-`mxr demo`, with the card showing and no explanation from anyone, for up
+`mxr demo`, with hints not yet dismissed and no explanation from anyone, for up
 to 30 seconds. With the screen hidden, they answer "What is this screen
 for?" and "What would you do with a row here?". A mode passes when at
 least two of three name its job in their own words and its main verb. A
 five-second test measures first impressions, not use, so it is a floor;
 the dogfooding log covers use. A multi-step tour, chained coach marks, a
-tips feed or a notification advertising a feature fails X13 outright.
+teaching block at the top of a page, a tips feed or a notification
+advertising a feature fails X13 outright.
 
 ## Conflicts the research left, and what this plan chose
 
@@ -1875,7 +1928,7 @@ rules above; D117 records them.
 - **Gmail mail deleted while offline.** Deferred until after phase 1. The
   design is in `docs/issues/deletion-clears-derived-data.md`.
 - **`mxr demo` on first run.** Offered only when no account is set up yet. A real mailbox goes straight to its own first run.
-- **Dismissed teaching cards.** The daemon stores dismissals, so a card dismissed in the web app stays dismissed in the TUI.
+- **Dismissed hints.** The daemon stores dismissals per hint id, so a hint dismissed in the web app stays dismissed in the TUI. (Until 2026-10-07 this was one card per mode.)
 - **Who takes the five-second check.** BK and two people new to mxr, during dogfooding. Until they have, the independent grader runs it on the demo mailbox.
 - **Sign in with ChatGPT SDK.** Not built. See
   `docs/extractable-crates/14-chatgpt-sign-in-sdk.md`.

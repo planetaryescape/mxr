@@ -4,9 +4,9 @@
 //! Renders `Request::ListRecords` as a ledger by month with each month's
 //! count and totals, one row per record (date, issuer, what, amount,
 //! reference, PDF), and `Request::AnswerFromRecords` as one answer line
-//! with the field asked for and where it came from. The header line, the
-//! first-encounter card and the empty state come from the daemon's mode
-//! guide and ledger. Pure render; wiring lives in
+//! with the field asked for and where it came from. The header line and
+//! the empty state come from the daemon's mode guide and ledger; hints show
+//! in the status line (`app/hints.rs`). Pure render; wiring lives in
 //! `app/records_actions.rs`.
 
 use mxr_protocol::{RecordData, RecordExportData, RecordMonthData};
@@ -396,31 +396,6 @@ fn answer_lines(
     )));
 }
 
-fn card_lines(body: &mut Body, page: &RecordsPageState, width: usize, theme: &crate::theme::Theme) {
-    let Some(guide) = &page.guide else { return };
-    let accent = Style::default().fg(theme.accent);
-    for line in wrap(&guide.card, width.saturating_sub(6)) {
-        body.lines.push(Line::from(vec![
-            Span::styled("  \u{2502} ", accent),
-            Span::styled(line, Style::default().fg(theme.text_primary)),
-        ]));
-    }
-    let keys = guide
-        .card_keys
-        .iter()
-        .map(|key| format!("{} {}", key.key, key.verb))
-        .collect::<Vec<_>>()
-        .join(" \u{b7} ");
-    body.lines.push(Line::from(vec![
-        Span::styled("  \u{2502} ", accent),
-        Span::styled(
-            format!("{keys} \u{b7} Esc close"),
-            Style::default().fg(theme.text_secondary),
-        ),
-    ]));
-    body.lines.push(Line::from(""));
-}
-
 fn ledger_body(view: &RecordsView<'_>, width: usize, theme: &crate::theme::Theme) -> Body {
     let page = view.page;
     let mut body = Body {
@@ -464,9 +439,6 @@ fn ledger_body(view: &RecordsView<'_>, width: usize, theme: &crate::theme::Theme
         body.text(one_line(&first_run.line), muted);
     }
     body.lines.push(Line::from(""));
-    if page.card_visible() {
-        card_lines(&mut body, page, width, theme);
-    }
     answer_lines(&mut body, page, width, theme);
     // A list answer stands in for the ledger: the kind chips and the
     // issuer filter don't narrow it.

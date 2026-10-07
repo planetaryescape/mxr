@@ -23,6 +23,8 @@ interface RowState {
   focused: boolean;
   onSelect: (item: NowItem) => void;
   onDone: (item: NowItem) => void;
+  /** The hint anchored to this row, while it shows. */
+  hint?: ReactNode;
 }
 
 /** "PEOPLE                      and 8 more in Messages". */
@@ -117,6 +119,7 @@ function RowFrame({
         <span className="flex w-[3.75rem] shrink-0 items-start justify-end gap-1">{actions}</span>
       </span>
       {extra ? <div className="min-w-0">{extra}</div> : null}
+      {state.hint ? <div className="col-span-2 min-w-0">{state.hint}</div> : null}
     </li>
   );
 }
@@ -328,6 +331,7 @@ export function UpdatesCard({
                 Let go of this digest <KeyChip className="h-4 px-1">A</KeyChip>
               </Button>
             </p>
+            {state.hint}
           </div>
         </li>
       </ul>

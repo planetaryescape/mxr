@@ -42,11 +42,6 @@ pub struct NowDigestPreview {
 pub struct NowPageState {
     pub now: Option<NowData>,
     pub guide: Option<ModeGuideData>,
-    /// Closed here before the daemon answered, so it never flickers back.
-    pub card_closed: bool,
-    /// The `SetModeGuideSeen` sent when the card closed here, so a failed
-    /// write can show the card again.
-    pub card_close_mutation: Option<crate::app::MutationId>,
     /// Ask the runtime for Now and its guide.
     pub pending_refresh: bool,
     /// Ask the daemon what letting go of these threads in Updates would do.
@@ -70,14 +65,6 @@ impl NowPageState {
 
     pub fn row_count(&self) -> usize {
         self.rows().len()
-    }
-
-    /// The first-encounter card shows at the top once Now has items,
-    /// until it is closed here or retired anywhere.
-    pub fn card_visible(&self) -> bool {
-        !self.card_closed
-            && self.guide.as_ref().is_some_and(|guide| !guide.card_seen)
-            && self.now.as_ref().is_some_and(|now| now.item_count > 0)
     }
 
     /// Take a to-do with no email off Now before the daemon answers.

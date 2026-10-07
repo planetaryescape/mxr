@@ -223,6 +223,7 @@ impl App {
         if key.kind == crossterm::event::KeyEventKind::Release {
             return None;
         }
+        self.note_key_for_hints();
         self.handle_key_press(key)
     }
 
@@ -480,24 +481,6 @@ impl App {
                 (KeyCode::Char('d'), _) => Some(Action::ScreenerDisposeDeny),
                 (KeyCode::Char('f'), _) => Some(Action::ScreenerDisposeFeed),
                 (KeyCode::Char('p'), _) => Some(Action::ScreenerDisposePaperTrail),
-                _ => None,
-            };
-        }
-
-        if self.modals.onboarding.visible {
-            return match (key.code, key.modifiers) {
-                (KeyCode::Enter | KeyCode::Char(' ' | 'l') | KeyCode::Right, _) => {
-                    self.advance_feature_onboarding();
-                    None
-                }
-                (KeyCode::Left | KeyCode::Char('h'), _) => {
-                    self.modals.onboarding.step = self.modals.onboarding.step.saturating_sub(1);
-                    None
-                }
-                (KeyCode::Esc | KeyCode::Char('q'), _) => {
-                    self.dismiss_feature_onboarding();
-                    None
-                }
                 _ => None,
             };
         }

@@ -148,6 +148,20 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
     retireCard();
     if (letGoLineOf) {
       void letGoSource(letGoLineOf, digest.cut.at, selectionToken);
+      // With an email open, done moves on: the next source's email opens.
+      if (params.threadId) {
+        const at = rows.findIndex((row) => row.line.id === letGoLineOf.id);
+        const next = rows
+          .slice(at + 1)
+          .concat(rows.slice(0, Math.max(at, 0)))
+          .find(
+            (row) => row.line.source_key !== letGoLineOf.source_key && row.line.latest_thread_id,
+          );
+        if (next?.line.latest_thread_id) {
+          setCursorId(next.line.id);
+          nav?.open(next.line.latest_thread_id);
+        }
+      }
       return;
     }
     void letGo(

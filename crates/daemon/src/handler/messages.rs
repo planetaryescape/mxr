@@ -146,6 +146,7 @@ async fn gather(
             dismissed: &dismissed,
             timers: &timers,
             is_self: &is_self,
+            moves: &senders.moves,
             shape,
             now,
         };

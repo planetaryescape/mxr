@@ -591,6 +591,53 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    #[command(
+        about = "Where every email that arrived went, counted once each",
+        long_about = ARRIVALS_LONG_ABOUT
+    )]
+    Arrivals {
+        #[command(subcommand)]
+        action: Option<ArrivalsAction>,
+        /// Limit to one account; the default covers every account.
+        #[arg(long, global = true)]
+        account: Option<String>,
+        #[arg(long, global = true)]
+        format: Option<OutputFormat>,
+    },
+    /// Move one email to a mode (X), or with --sender all of its sender's
+    /// mail (K). To do and Archive add the email there. Undo with `mxr
+    /// corrections undo <id>`.
+    Move {
+        /// The email's message id.
+        message_id: String,
+        /// messages, todo, updates, reading or archive.
+        mode: String,
+        /// Set the sender's mode for this and all their mail (Messages,
+        /// Updates or Reading).
+        #[arg(long)]
+        sender: bool,
+        /// Say what would move, and change nothing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Answer a "Not sure" question from Now; keeping the email where
+        /// it is counts as an answer.
+        #[arg(long)]
+        not_sure: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Every move, sender mode and Not-sure answer, newest first
+    Corrections {
+        #[command(subcommand)]
+        action: Option<CorrectionsAction>,
+        /// Limit to one account; the default covers every account.
+        #[arg(long, global = true)]
+        account: Option<String>,
+        #[arg(long, global = true, default_value_t = 50)]
+        limit: u32,
+        #[arg(long, global = true)]
+        format: Option<OutputFormat>,
+    },
     /// What needs you, not what arrived: replies you owe, promises
     /// coming due, threads waiting on someone, and new mail from people,
     /// each with the reason it is there. Everything else is summarised
@@ -2246,6 +2293,12 @@ pub enum UpdatesAction {
     },
 }
 
+const ARRIVALS_LONG_ABOUT: &str = "Where every email that arrived went, counted once each.
+
+The same line as Now: every inbound email first seen since Now was last opened (at most 24 hours back), counted by the mode it is in. The counts sum to the total; To do and Archive are \"also\" and never added. `mxr arrivals list --mode reading` lists the emails behind a count. Reading the line here never starts a visit to Now.
+
+People you've written to always reach Messages when the mail is addressed to you, whatever list it came through.";
+
 const NOW_LONG_ABOUT: &str = "The few things that need you now, from every mode.
 
 Four sections in a fixed order, at most three items each: People (whose turn it is, from Messages), Due soon (To do's Now band, by act-by), one Updates card, and one thing to read after 17:00. Each section says how many more are in its mode. `mxr desk` still lists every lane in full.";
@@ -2416,6 +2469,31 @@ pub struct RecordFilterArgs {
     /// Only one trip or series, by its id.
     #[arg(long)]
     pub group: Option<String>,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ArrivalsAction {
+    /// The emails behind one count, newest first: exactly as many as the
+    /// count. Defaults to the line's window.
+    List {
+        /// messages, todo, updates, reading, archive, screened_out, spam or
+        /// sorting. Omitted: every arrival.
+        #[arg(long)]
+        mode: Option<String>,
+        /// RFC 3339; the default is the line's window.
+        #[arg(long)]
+        since: Option<String>,
+        #[arg(long)]
+        until: Option<String>,
+        #[arg(long, default_value_t = 100)]
+        limit: u32,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum CorrectionsAction {
+    /// Put a move back exactly as it was. Undoing twice changes nothing.
+    Undo { id: i64 },
 }
 
 #[derive(Debug, Clone, Subcommand)]

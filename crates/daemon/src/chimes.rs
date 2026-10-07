@@ -104,7 +104,9 @@ pub(crate) fn event_for_daemon_event(event: &DaemonEvent) -> Option<ChimeEvent> 
         // Internal resync signal, not a user-facing notification.
         | DaemonEvent::EventsLagged { .. }
         // A list line filling in is quiet by design.
-        | DaemonEvent::ThreadGistReady { .. } => None,
+        | DaemonEvent::ThreadGistReady { .. }
+        // A move or newly sorted mail refreshes views; it is not news.
+        | DaemonEvent::ModesChanged { .. } => None,
     }
 }
 

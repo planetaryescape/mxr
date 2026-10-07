@@ -11,6 +11,7 @@ mod account_config;
 pub(crate) mod account_scope;
 mod accounts;
 pub(crate) mod activity;
+pub(crate) mod arrivals;
 mod admin;
 mod archive_ask;
 mod auth_sessions;
@@ -1422,6 +1423,15 @@ async fn dispatch(
         Request::GetRail { account_id } => {
             Box::pin(modes::get_rail(state, account_id.as_ref())).await
         }
+        // One boxed call for all of D119's requests, as for Reading below:
+        // inline, their futures grow `dispatch`'s poll frame for every
+        // request, down to a plain mutation.
+        Request::GetArrivals { .. }
+        | Request::ListArrivals { .. }
+        | Request::GetArrivalModes { .. }
+        | Request::MoveMessage { .. }
+        | Request::UndoMove { .. }
+        | Request::ListCorrections { .. } => Box::pin(arrivals::handle(state, req)).await,
         Request::GetFreshness { account_id, limit } => {
             freshness::get_freshness(state, account_id.as_ref(), *limit).await
         }
@@ -1984,6 +1994,10 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::AnswerFromRecords { .. }
         | Request::ExportRecords { .. }
         | Request::GetNow { .. }
+        | Request::GetArrivals { .. }
+        | Request::ListArrivals { .. }
+        | Request::GetArrivalModes { .. }
+        | Request::ListCorrections { .. }
         | Request::GetRail { .. }
         | Request::GetFreshness { .. }
         | Request::GetModeMembership { .. }
@@ -2137,6 +2151,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::SetModeDone { .. }
         | Request::LetGoDigest { .. }
         | Request::SetUpdateSource { .. }
+        | Request::MoveMessage { .. }
+        | Request::UndoMove { .. }
         | Request::DeferThreads { .. }
         | Request::SetSenderKind { .. }
         | Request::PinMessages { .. }
@@ -2390,6 +2406,12 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetTodo { .. } => "get_todo",
         Request::SetTodoState { .. } => "set_todo_state",
         Request::GetNow { .. } => "get_now",
+        Request::GetArrivals { .. } => "get_arrivals",
+        Request::ListArrivals { .. } => "list_arrivals",
+        Request::GetArrivalModes { .. } => "get_arrival_modes",
+        Request::MoveMessage { .. } => "move_message",
+        Request::UndoMove { .. } => "undo_move",
+        Request::ListCorrections { .. } => "list_corrections",
         Request::GetRail { .. } => "get_rail",
         Request::GetFreshness { .. } => "get_freshness",
         Request::GetModeMembership { .. } => "get_mode_membership",
@@ -2501,6 +2523,9 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListTodos { account_id, .. }
         | Request::GetTodoCatchup { account_id }
         | Request::GetNow { account_id }
+        | Request::GetArrivals { account_id, .. }
+        | Request::ListArrivals { account_id, .. }
+        | Request::ListCorrections { account_id, .. }
         | Request::GetRail { account_id }
         | Request::GetFreshness { account_id, .. }
         | Request::ListMessages { account_id, .. }

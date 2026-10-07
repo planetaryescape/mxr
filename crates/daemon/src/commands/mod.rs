@@ -1,5 +1,6 @@
 pub mod accounts;
 pub mod activity;
+pub mod arrivals;
 pub mod ask;
 pub mod briefing;
 pub mod bug_report;

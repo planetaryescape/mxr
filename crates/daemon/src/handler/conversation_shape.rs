@@ -92,6 +92,9 @@ pub(crate) struct ShapeInputs<'a> {
     /// An address you wrote to could be a person: not automated, not a
     /// list, not screened out.
     pub human_address: &'a dyn Fn(&str) -> bool,
+    /// The user moved this email to Messages (`X`): its thread is a
+    /// conversation whatever the copied and crowd rules say.
+    pub kept_in_messages: &'a dyn Fn(&DeskMessage) -> bool,
     pub config: ShapeConfig,
 }
 
@@ -134,8 +137,11 @@ pub(crate) fn conversation_shape(thread: &[DeskMessage], inputs: &ShapeInputs<'_
     if people.is_empty() {
         return Shape::NotConversation;
     }
+    let kept = thread
+        .iter()
+        .any(|m| !m.trashed && !is_outbound(m, is_self) && (inputs.kept_in_messages)(m));
     let crowd = most_recipients > inputs.config.large_thread_recipients;
-    if (!wrote_in && copied && !addressed) || (crowd && !answered_you(thread, inputs)) {
+    if !kept && ((!wrote_in && copied && !addressed) || (crowd && !answered_you(thread, inputs))) {
         return Shape::Copied;
     }
     match people.len() {
@@ -206,6 +212,10 @@ mod tests {
     }
 
     fn shape(thread: &[DeskMessage]) -> Shape {
+        shape_keeping(thread, &|_| false)
+    }
+
+    fn shape_keeping(thread: &[DeskMessage], kept: &dyn Fn(&DeskMessage) -> bool) -> Shape {
         let is_self = |email: &str| email.eq_ignore_ascii_case(ME);
         let person_sender = |m: &DeskMessage| !m.from.email.contains("noreply");
         let human = |email: &str| !email.contains("noreply");
@@ -215,6 +225,7 @@ mod tests {
                 is_self: &is_self,
                 person_sender: &person_sender,
                 human_address: &human,
+                kept_in_messages: kept,
                 config: ShapeConfig::default(),
             },
         )
@@ -301,6 +312,31 @@ mod tests {
             1,
         )];
         assert_eq!(shape(&thread), Shape::Copied);
+    }
+
+    #[test]
+    fn an_email_moved_to_messages_keeps_a_copied_or_crowd_thread_there() {
+        let t = ThreadId::new();
+        let copied = [message(
+            &t,
+            "iris@meridian.example",
+            &["ruth@keystone.example"],
+            &[ME],
+            1,
+        )];
+        let moved = copied[0].id.clone();
+        let kept = move |m: &DeskMessage| m.id == moved;
+        assert_eq!(
+            shape_keeping(&copied, &kept),
+            Shape::OneToOne("iris@meridian.example".into())
+        );
+        let crowd: Vec<String> = (0..12).map(|i| format!("p{i}@team.example")).collect();
+        let mut to: Vec<&str> = crowd.iter().map(String::as_str).collect();
+        to.push(ME);
+        let crowded = [message(&t, "lead@team.example", &to, &[], 1)];
+        let moved = crowded[0].id.clone();
+        let kept = move |m: &DeskMessage| m.id == moved;
+        assert!(shape_keeping(&crowded, &kept).in_messages());
     }
 
     #[test]

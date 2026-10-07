@@ -73,6 +73,11 @@ pub enum KindRuleData {
     /// A person wrote, but you were only copied (or it went to a crowd)
     /// and it isn't your turn: the thread is in Updates, not Messages.
     Copied,
+    /// Never sorted away (D119, N1): addressed to you by someone you've
+    /// written to, over any list or no-reply rule.
+    WrittenTo,
+    /// You moved this one email (`X`).
+    Moved,
 }
 
 /// A message's kind with the reason it was given.

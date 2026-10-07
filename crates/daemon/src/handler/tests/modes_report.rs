@@ -216,7 +216,7 @@ fn no_mode_reason(
     let in_inbox: Vec<&&mxr_store::DeskMessage> = inbound.iter().filter(|m| m.in_inbox).collect();
     let Some(latest) = in_inbox.iter().max_by_key(|m| (m.date, m.seq)) else {
         let latest = inbound.iter().max_by_key(|m| (m.date, m.seq)).unwrap();
-        return match classify(&modes::signals(latest, senders)).kind {
+        return match classify(&modes::signals(latest, senders, is_self)).kind {
             SenderKind::Person => "archived: person",
             SenderKind::List => "archived: list or newsletter",
             SenderKind::Automated => "archived: automated",
@@ -233,7 +233,7 @@ fn no_mode_reason(
         return "in inbox: invite";
     }
     let old = latest.date < at - Duration::days(7);
-    match classify(&modes::signals(latest, senders)).kind {
+    match classify(&modes::signals(latest, senders, is_self)).kind {
         SenderKind::Person if old => "in inbox: person, newest inbound over 7 days old",
         SenderKind::Person => "in inbox: person, newest inbound within 7 days",
         SenderKind::List => "in inbox: list or newsletter (done mark)",

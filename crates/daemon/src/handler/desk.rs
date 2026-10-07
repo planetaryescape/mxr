@@ -6,12 +6,12 @@
 //! The lane rules live in `desk_lanes.rs`.
 
 use super::desk_lanes::{
-    apply_pace, clean_subject, dedupe_by_precedence, is_outbound, sender_kind, sort_lane,
+    apply_pace, clean_subject, dedupe_by_precedence, is_outbound, sort_lane,
     thread_lanes, thread_starred, waiting_set_aside, AccountInputs, PaceDirection, WaitingAside,
     DESK_WINDOW_DAYS, DUE_AHEAD_DAYS,
 };
 use super::desk_timers::DeskTimers;
-use super::mail_kind::SenderKind;
+use super::mail_kind::{self, SenderKind};
 use super::HandlerResult;
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
@@ -187,6 +187,9 @@ pub(super) async fn attach_histories<'a>(
 pub(super) struct Senders {
     pub contacts: HashMap<String, DeskContact>,
     pub screener: HashMap<String, ScreenerDisposition>,
+    /// Emails the user moved (`X`) whose move is in force, with the kind
+    /// each gives.
+    pub moves: HashMap<MessageId, SenderKind>,
 }
 
 impl Senders {
@@ -234,19 +237,41 @@ impl Senders {
                 )
             })
             .collect();
-        Ok(Self { contacts, screener })
+        let moves = state
+            .store
+            .arrival_moves_in_force(account_id)
+            .await?
+            .into_iter()
+            .filter_map(|(id, mode)| Some((id, mail_kind::kind_for_stored_mode(&mode)?)))
+            .collect();
+        Ok(Self {
+            contacts,
+            screener,
+            moves,
+        })
+    }
+
+    /// The kind signals for one of these messages.
+    pub(super) fn signals<'a>(
+        &self,
+        message: &'a DeskMessage,
+        is_self: &dyn Fn(&str) -> bool,
+    ) -> mail_kind::KindSignals<'a> {
+        let email = message.from.email.to_ascii_lowercase();
+        super::desk_lanes::desk_signals(
+            message,
+            self.contacts.get(&email),
+            self.screener.get(&email).copied(),
+            self.moves.get(&message.id).copied(),
+            is_self,
+        )
     }
 
     /// A person other than you wrote it (not an auto-responder, list or
     /// notification): it answers you.
     pub(super) fn answers(&self, message: &DeskMessage, is_self: &dyn Fn(&str) -> bool) -> bool {
-        let email = message.from.email.to_ascii_lowercase();
         !is_outbound(message, is_self)
-            && sender_kind(
-                message,
-                self.contacts.get(&email),
-                self.screener.get(&email).copied(),
-            ) == SenderKind::Person
+            && mail_kind::classify(&self.signals(message, is_self)).kind == SenderKind::Person
     }
 }
 
@@ -295,6 +320,7 @@ async fn account_desk(
         dismissed: &dismissed,
         timers: &timers,
         is_self: &is_self,
+        moves: &senders.moves,
         shape: super::conversation_shape::shape_config(state),
         now,
     });

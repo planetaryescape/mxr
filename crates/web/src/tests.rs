@@ -20,6 +20,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_util::codec::Framed;
 
 mod compose_and_scheduling;
+mod arrival_routes;
 mod place_routes;
 mod record_routes;
 mod thread_context_routes;

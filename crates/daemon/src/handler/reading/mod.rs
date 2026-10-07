@@ -336,8 +336,13 @@ pub(super) fn item_data(
     let reason = issue.kind.as_ref().map_or_else(
         || "Here because: you put it on Later. Later never fades.".to_string(),
         |kind| {
-            let by = if kind.corrected { "you" } else { "rule" };
-            format!("Here because: {} ({by}).", kind.reason)
+            if kind.corrected {
+                format!("Here because: {} (you).", kind.reason)
+            } else if matches!(issue.unsubscribe, UnsubscribeMethod::None) {
+                format!("Here because: {} (rule).", kind.reason)
+            } else {
+                "Here because: you subscribed, and it has an unsubscribe link (rule).".to_string()
+            }
         },
     );
     let why = match &fades {

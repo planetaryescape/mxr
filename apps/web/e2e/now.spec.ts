@@ -157,6 +157,11 @@ test("the rail lists Now, the modes, then Inbox, and their keys open them", asyn
     await page.keyboard.press("g");
     await page.keyboard.press(key);
     await expect(page, `g ${key}`).toHaveURL(url);
+    // Archive's answer box takes the focus on arrival; Esc hands the keys back.
+    if (key === "e") {
+      await expect(page.getByTestId("archive-ask")).toBeFocused();
+      await page.keyboard.press("Escape");
+    }
   }
   // The pages the modes replaced are under More.
   const more = page.getByRole("navigation", { name: "More" });

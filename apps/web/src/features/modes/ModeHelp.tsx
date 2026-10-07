@@ -7,6 +7,7 @@ import { useModeGuide, type ModeId } from "./api";
 export function modeOfScopes(scopes: readonly ActionScope[]): ModeId | null {
   if (scopes.includes("now")) return "now";
   if (scopes.includes("messages")) return "messages";
+  if (scopes.includes("archive")) return "archive";
   return scopes.some((scope) => scope === "todo" || scope === "catchup" || scope === "expired")
     ? "todo"
     : null;

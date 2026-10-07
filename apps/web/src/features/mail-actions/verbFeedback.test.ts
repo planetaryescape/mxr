@@ -41,6 +41,10 @@ const STATE_CHANGING = [
   "todo.catchup-let-go",
   "todo.catchup-let-go-all",
   "mail.make-todo",
+  "mail.pass-to-mode",
+  "archive.dismiss",
+  "archive.edit",
+  "archive.check",
 ];
 
 describe("verb feedback table", () => {

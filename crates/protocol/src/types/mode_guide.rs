@@ -469,10 +469,18 @@ mod tests {
         assert!(unseen.hints.iter().all(|hint| !hint.seen));
         let at = chrono::DateTime::UNIX_EPOCH + chrono::Duration::days(20_000);
         let seen = TODO_GUIDE.to_data(|id| (id == "todo.runway").then_some(at));
-        let runway = seen.hints.iter().find(|h| h.id == "todo.runway").unwrap();
+        let runway = seen
+            .hints
+            .iter()
+            .find(|h| h.id == "todo.runway")
+            .expect("runway hint");
         assert!(runway.seen);
         assert_eq!(runway.seen_at, Some(at));
-        let catchup = seen.hints.iter().find(|h| h.id == "todo.catchup").unwrap();
+        let catchup = seen
+            .hints
+            .iter()
+            .find(|h| h.id == "todo.catchup")
+            .expect("catch-up hint");
         assert!(!catchup.seen);
     }
 }

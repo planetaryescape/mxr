@@ -74,6 +74,20 @@ extra step. Undo reverses every chunk of the last sweep. Mail keys (archive,
 star, trash) act on the message under the cursor. The keys are in the
 [keybindings reference](/reference/keybindings/#reading-and-paper-trail).
 
+## Archive
+
+Archive (`ge`) is a records lens: receipts, orders, bookings, bills and
+documents, one row per record ([Archive](/guides/archive/)). The answer box
+sits at the top; `/` focuses it and `Enter` asks, and the answer card shows
+the field, where it came from and whether it is checked. Below it are the
+"Coming up" lines and the ledger by month, each month with its count and
+totals; `·?` marks an amount nobody has confirmed. `Enter` on a row opens
+the record's document, and the record card shows every field with its
+source. Its first-encounter card and `?` explain the mode; the card closes
+with `Esc` and retires the first time you ask. `T` on a conversation files
+it as a record after showing the card. The keys are in the
+[keybindings reference](/reference/keybindings/#archive).
+
 ## Thread context
 
 When a thread opens, the message pane leads with its context: the gist and

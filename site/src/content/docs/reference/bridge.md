@@ -218,6 +218,29 @@ curl -X POST -H "Authorization: Bearer $MXR_TOKEN" \
   "$MXR_BASE/api/v1/mail/modes/messages/done"
 ```
 
+### Archive
+
+Records: receipts, orders, bookings, bills and documents built from mail.
+Each route is a passthrough to the daemon request it names. Mutations take
+`dry_run: true`, which runs the same write in a transaction that is rolled
+back, so the preview is what the real call does.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/mail/records` | The ledger: a page of records newest first, with month counts and totals, facets and what is coming up (`?account=&kind=order,booking&issuer=&year=&min_amount_minor=&max_amount_minor=&has_pdf=&checked=&group=&limit=200&offset=`) |
+| `GET` | `/mail/records/answer` | The answer box (`?q=lisbon booking ref&fallback=true&limit=4`): the field from record data, else `mxr ask`'s answer as `fallback` |
+| `GET` | `/mail/records/{record_id}` | One record's card: every field with its provenance, documents and source emails (a full id or a unique prefix) |
+| `POST` | `/mail/records/{record_id}/field` | Fix, confirm or clear a field, or confirm the whole card (`{edit: {op: "set", field, value} \| {op: "confirm", field} \| {op: "confirm_all"} \| {op: "clear", field}, apply_to_sender?, dry_run?}`) |
+| `POST` | `/mail/records/dismiss` | Not a record, or back with `restore` (`{record_ids, restore?, dry_run?}`); the email is never touched |
+| `POST` | `/mail/records/file` | File an email as a record yourself (`{message_id, kind?, dry_run?}`) |
+| `POST` | `/mail/records/sender` | Always or never file a sender's mail (`{message_id, verdict: "always" \| "never" \| null, kind?, dry_run?}`) |
+| `POST` | `/mail/records/export` | CSV export, and PDFs to an absolute folder (`{account_id?, filter, attachments_dir?, dry_run?}`); the dry run returns the row count, totals, unchecked rows and missing PDFs |
+
+```bash
+curl -H "Authorization: Bearer $MXR_TOKEN" \
+  "$MXR_BASE/api/v1/mail/records/answer?q=lisbon%20booking%20ref"
+```
+
 ### Reply-later queue
 
 | Method | Path | Purpose |

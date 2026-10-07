@@ -53,6 +53,9 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_messages`: people as rows in four bands, with topics and what they asked
 - `mxr_person`: one person's page, each message as its new text with `trimmed` flags
 - `mxr_got_it`: previews the acknowledgement and returns a `preview_token`; sends only with `confirm=true`, the previewed text as `expect_text` and that token, within a minute
+- `mxr_records`
+- `mxr_records_ask`
+- `mxr_records_export_preview`
 - `mxr_draft_assist`
 - `mxr_save_draft`
 - `mxr_get_draft`
@@ -77,6 +80,16 @@ calling a model; `generate = true` queues the missing ones from people.
 each bundle. `mxr_sweep_preview` shows what sweeping a place, or one sender's
 bundle, would archive. It is read-only: the sweep itself happens in
 `mxr sweep` or the apps.
+`mxr_records` lists [Archive](/guides/archive/)'s records with month totals,
+facets and what is coming up (`kinds`, `issuer`, `year`, `has_pdf`,
+`checked`, `limit`, `offset`); every field carries its source and whether it
+is checked. `mxr_records_ask` answers a query such as "lisbon booking ref"
+with the field from record data, and falls back to a citation-checked answer
+over all mail only when no record matches (`fallback = false` turns that
+off). `mxr_records_export_preview` reports what a CSV export would hold: rows,
+total per currency, unchecked rows and missing PDFs. All three are
+read-only; corrections and the export itself happen in `mxr records` or the
+apps.
 `mxr_mutate` requires `confirm = true` and should be called only after
 `mxr_mutation_preview`. `mxr_send_draft` requires `confirm = true`; the daemon
 can still reject the request if the `mcp` profile disallows sends or the draft

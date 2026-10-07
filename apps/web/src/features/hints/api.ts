@@ -9,7 +9,7 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";
 import type { components } from "@/api/generated";
-import { MODE_GUIDE_ROOT, modeGuideKey, type ModeGuide, type ModeId } from "@/features/modes/api";
+import { MODE_GUIDE_ROOT, type ModeGuide } from "@/features/modes/api";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
 type Schemas = components["schemas"];
@@ -59,8 +59,11 @@ export async function postHintSeen(id: string): Promise<void> {
       body: { seen: true },
     });
     if (!qc) return;
-    for (const guide of answer.guides) {
-      qc.setQueryData(modeGuideKey(guide.mode as ModeId), guide);
+    // Only guides this client holds: the daemon may answer for a mode the
+    // web app has no page for yet.
+    for (const [key, cached] of cachedGuides(qc)) {
+      const fresh = answer.guides.find((guide) => guide.mode === cached.mode);
+      if (fresh) qc.setQueryData(key, fresh);
     }
   } catch {
     if (qc) writeSeen(qc, id, false);

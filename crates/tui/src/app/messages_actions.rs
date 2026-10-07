@@ -6,6 +6,7 @@
 use super::input::plain_or_shift;
 use super::*;
 use crate::app::state::{AckCountdown, MessagesFocus, MessagesItem};
+use chrono::Offset as _;
 use mxr_core::id::ThreadId;
 use mxr_protocol::{AckPlanData, MessagesData, MessagesRowData, ModeKindData, PersonPageData};
 
@@ -51,6 +52,25 @@ impl App {
         page.focus = MessagesFocus::List;
         page.pending_refresh = true;
         self.mailbox.pending_rail_refresh = true;
+    }
+
+    /// What the Messages lens draws, at this moment in local time.
+    pub(crate) fn messages_view(&self) -> crate::ui::messages_lens::MessagesView<'_> {
+        let now = chrono::Utc::now();
+        let ack_seconds_left = self.mailbox.messages_page.ack.as_ref().map(|ack| {
+            ack.send_at
+                .saturating_duration_since(std::time::Instant::now())
+                .as_secs()
+                + 1
+        });
+        crate::ui::messages_lens::MessagesView {
+            page: &self.mailbox.messages_page,
+            selected_index: self.mailbox.selected_index,
+            active_pane: &self.mailbox.active_pane,
+            now,
+            offset: now.with_timezone(&chrono::Local).offset().fix(),
+            ack_seconds_left,
+        }
     }
 
     /// The Messages lens owns the keyboard.

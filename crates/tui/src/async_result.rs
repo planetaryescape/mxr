@@ -55,6 +55,14 @@ pub(crate) enum AsyncResult {
     /// Boxed: Now is large next to the other variants.
     Now(Result<Box<(mxr_protocol::NowData, Option<mxr_protocol::ModeGuideData>)>, MxrError>),
     Rail(Result<mxr_protocol::RailData, MxrError>),
+    /// Messages' bands and, when the daemon served it, its guide.
+    Messages(
+        Result<Box<(mxr_protocol::MessagesData, Option<mxr_protocol::ModeGuideData>)>, MxrError>,
+    ),
+    /// A person's page, for this row id.
+    PersonPage(String, Result<Box<mxr_protocol::PersonPageData>, MxrError>),
+    /// Got it's dry run: the exact text and its countdown.
+    MessagesAck(Result<Box<mxr_protocol::AckPlanData>, MxrError>),
     /// The dry run of letting go of Now's Updates card, for those threads.
     NowDigestPreview(
         Vec<mxr_core::id::ThreadId>,

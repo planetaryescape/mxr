@@ -18,6 +18,16 @@ impl App {
                 contacts.sort_by_key(|contact| contact.email.to_lowercase());
                 self.compose.compose_picker.open_to(contacts);
             }
+            Action::Reply | Action::ReplyAll if self.messages_list_focused() => {
+                // In Messages, the open topic is the conversation to answer.
+                if let Some(topic) = self.selected_messages_topic() {
+                    self.dispatch_or_defer_reply(
+                        topic.reply_to,
+                        topic.account_id,
+                        action == Action::ReplyAll,
+                    );
+                }
+            }
             Action::Reply => {
                 // On Now, a person row is the conversation to answer.
                 if let Some(NowRow::Person(person)) = self

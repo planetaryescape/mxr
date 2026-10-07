@@ -194,6 +194,7 @@ impl App {
             | MutationEffect::SenderMoved(_)
             | MutationEffect::Todo(_)
             | MutationEffect::ModeDone(_)
+            | MutationEffect::Messages(_)
             | MutationEffect::SentSuccess { .. } => {}
         }
     }
@@ -243,6 +244,7 @@ impl App {
                 // An undo of done here puts a thread back in its modes.
                 match self.mailbox.mailbox_view {
                     MailboxView::Now => self.refresh_now(),
+                    MailboxView::People => self.refresh_messages(),
                     MailboxView::Desk | MailboxView::Place(_) => self.refresh_places(),
                     _ => {}
                 }
@@ -281,8 +283,16 @@ impl App {
                     self.push_toast(Toast::success(msg));
                 }
             }
+            MutationEffect::Messages(msg) => {
+                self.refresh_messages();
+                self.refresh_now();
+                if show_completion_status && !msg.is_empty() {
+                    self.push_toast(Toast::success(msg));
+                }
+            }
             MutationEffect::ModeDone(msg) => {
                 self.refresh_now();
+                self.refresh_messages();
                 self.refresh_places();
                 if self.mailbox.mailbox_view == MailboxView::Todo {
                     self.refresh_todo();
@@ -491,6 +501,7 @@ impl App {
             | MutationEffect::SenderMoved(_)
             | MutationEffect::Todo(_)
             | MutationEffect::ModeDone(_)
+            | MutationEffect::Messages(_)
             | MutationEffect::SentSuccess { .. } => MutationSnapshot::None,
         }
     }
@@ -605,6 +616,7 @@ impl App {
         self.pending_optimistic.clear(id);
         self.reopen_todo_card_after_failure(id);
         self.reopen_now_card_after_failure(id);
+        self.reopen_messages_card_after_failure(id);
         self.refresh_mailbox_after_mutation_failure();
         if best_effort {
             self.push_toast(Toast::warn("Mailbox refreshing to reconcile state"));

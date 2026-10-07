@@ -16,6 +16,7 @@ mod mailbox_helpers;
 /// The one line a cleared desk or reply queue earns: calm, no animation.
 pub(crate) const LOW_TIDE: &str = "Low tide. Nobody's waiting on you.";
 mod message_actions;
+mod messages_actions;
 mod modal_actions;
 mod mutation_actions;
 mod mutation_helpers;
@@ -67,6 +68,7 @@ pub use mutation_snapshot::{
     MutationId, MutationIdGenerator, MutationSnapshot, MutationSnapshotStore, QueuedMutation,
     TRANSIENT_MUTATION_MAX_RETRIES,
 };
+pub(crate) use messages_actions::MESSAGES_MODE;
 pub(crate) use now_actions::{mode_done_copy, NOW_MODE};
 pub use pending_optimistic::PendingOptimisticState;
 pub use promises::PromisePrompt;
@@ -129,6 +131,9 @@ pub enum MutationEffect {
     /// Now, the rail, the desk, places and To do, and say what happened in
     /// the daemon's handoff words.
     ModeDone(String),
+    /// Something in Messages changed (Got it sent, a pin): refetch the
+    /// bands, the page, Now and the rail, and say what happened.
+    Messages(String),
     /// Successful SendDraft. Refreshes the active label so a Sent-view user
     /// sees the just-sent message immediately (no manual sync), and shows
     /// `status` in the status bar.

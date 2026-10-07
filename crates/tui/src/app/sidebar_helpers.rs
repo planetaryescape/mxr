@@ -131,7 +131,7 @@ impl App {
             subscription_count: self.mailbox.subscriptions_page.entries.len(),
             now_active: self.mailbox.mailbox_view == MailboxView::Now,
             now_badge: self.rail_entry("now").and_then(|entry| entry.badge),
-            messages_active: self.mailbox.mailbox_view == MailboxView::Desk,
+            messages_active: self.mailbox.mailbox_view == MailboxView::People,
             todo_active: self.mailbox.mailbox_view == MailboxView::Todo,
             updates_active: self.mailbox.mailbox_view
                 == MailboxView::Place(mxr_protocol::MailPlaceData::PaperTrail),

@@ -1648,6 +1648,62 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if std::mem::take(&mut app.mailbox.messages_page.pending_refresh) {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                AsyncResult::Messages(fetch_messages(&bg).await.map(Box::new))
+            });
+        }
+
+        if let Some((row_id, topic)) = app.mailbox.messages_page.pending_person.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::GetPerson {
+                        account_id: None,
+                        person: row_id.clone(),
+                        topic,
+                    },
+                )
+                .await;
+                AsyncResult::PersonPage(
+                    row_id,
+                    match resp {
+                        Ok(Response::Ok {
+                            data: ResponseData::PersonPage { page },
+                        }) => Ok(Box::new(page)),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Err(e) => Err(e),
+                        _ => Err(MxrError::Ipc("unexpected response to GetPerson".into())),
+                    },
+                )
+            });
+        }
+
+        if let Some(thread_id) = app.mailbox.messages_page.pending_ack_preview.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::AckMessage {
+                        thread_id,
+                        dry_run: true,
+                        expect_text: None,
+                    },
+                )
+                .await;
+                AsyncResult::MessagesAck(match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::MessagesAck { ack },
+                    }) => Ok(Box::new(ack)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response to AckMessage".into())),
+                })
+            });
+        }
+
         if std::mem::take(&mut app.mailbox.pending_rail_refresh) {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
@@ -2235,6 +2291,9 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(effect),
                     Ok(Response::Ok {
                         data: ResponseData::ModeGuides { .. },
+                    }) => Ok(effect),
+                    Ok(Response::Ok {
+                        data: ResponseData::MessagesAck { .. },
                     }) => Ok(effect),
                     Ok(Response::Ok {
                         data: ResponseData::TodoChange { change },
@@ -3438,6 +3497,25 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Now(Err(e)) => {
                             app.status_message = Some(format!("Couldn't load Now: {e}"));
                         }
+                        AsyncResult::Messages(Ok(loaded)) => {
+                            let (messages, guide) = *loaded;
+                            app.set_messages(messages, guide);
+                        }
+                        AsyncResult::Messages(Err(e)) => {
+                            app.status_message = Some(format!("Couldn't load Messages: {e}"));
+                        }
+                        AsyncResult::PersonPage(row_id, Ok(page)) => {
+                            app.set_person_page(row_id, *page);
+                        }
+                        AsyncResult::PersonPage(_, Err(e)) => {
+                            app.status_message = Some(format!("Couldn't load the person: {e}"));
+                        }
+                        AsyncResult::MessagesAck(Ok(plan)) => {
+                            app.show_messages_ack(*plan, std::time::Instant::now());
+                        }
+                        AsyncResult::MessagesAck(Err(e)) => {
+                            app.status_message = Some(format!("Got it isn't possible here: {e}"));
+                        }
                         AsyncResult::Rail(Ok(rail)) => app.mailbox.rail = Some(rail),
                         AsyncResult::Rail(Err(e)) => {
                             tracing::debug!(error = %e, "rail fetch failed");
@@ -3709,6 +3787,7 @@ pub async fn run() -> anyhow::Result<()> {
                 app.tick_connection_state(now);
                 app.tick_pending_undo(now);
                 app.tick_pending_invite_send(now);
+                app.tick_messages_ack(now);
                 app.tick_promise_prompts(now);
             }
         }
@@ -3892,6 +3971,44 @@ pub(crate) fn mode_done_outcome(
         _ => Ok(app::MutationEffect::ModeDone(copy)),
     };
     (effect, undo)
+}
+
+/// Messages' bands and its guide, fetched together so the header, the card
+/// and the rows arrive at once. A guide error leaves the rows on screen.
+async fn fetch_messages(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+) -> Result<(mxr_protocol::MessagesData, Option<mxr_protocol::ModeGuideData>), MxrError> {
+    let (messages, guide) = tokio::join!(
+        ipc_call(
+            bg,
+            Request::ListMessages {
+                account_id: None,
+                turn: None,
+                limit: 50,
+            },
+        ),
+        ipc_call(
+            bg,
+            Request::GetModeGuide {
+                mode: Some(crate::app::MESSAGES_MODE.into()),
+            },
+        ),
+    );
+    let messages = match messages {
+        Ok(Response::Ok {
+            data: ResponseData::Messages { messages },
+        }) => messages,
+        Ok(Response::Error { message, .. }) => return Err(MxrError::Ipc(message)),
+        Err(e) => return Err(e),
+        _ => return Err(MxrError::Ipc("unexpected response to ListMessages".into())),
+    };
+    let guide = match guide {
+        Ok(Response::Ok {
+            data: ResponseData::ModeGuides { mut guides },
+        }) if !guides.is_empty() => Some(guides.remove(0)),
+        _ => None,
+    };
+    Ok((messages, guide))
 }
 
 /// Now and its guide, fetched together so the header, the card and the

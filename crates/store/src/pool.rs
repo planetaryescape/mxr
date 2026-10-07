@@ -1030,6 +1030,17 @@ const MIGRATIONS: &[Migration] = &[
         name: "records",
         kind: MigrationKind::Sql(include_str!("../migrations/067_records.sql")),
     },
+    // When mxr stored each message: freshness reads arrival time from it
+    // instead of a Date header that may run ahead.
+    Migration {
+        version: 68,
+        name: "message_stored_at",
+        kind: MigrationKind::AddColumn {
+            table: "messages",
+            column: "stored_at",
+            sql: "ALTER TABLE messages ADD COLUMN stored_at INTEGER",
+        },
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

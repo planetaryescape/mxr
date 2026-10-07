@@ -205,8 +205,9 @@ pub(crate) async fn upsert_envelope_tx(
          (id, account_id, provider_id, thread_id, message_id_header, in_reply_to,
           reference_headers, from_name, from_email, to_addrs, cc_addrs, bcc_addrs,
           subject, date, flags, snippet, has_attachments, size_bytes,
-          unsubscribe_method, link_count, body_word_count, direction)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          unsubscribe_method, link_count, body_word_count, direction, stored_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                 CAST(strftime('%s', 'now') AS INTEGER))",
     )
     .bind(id)
     .bind(account_id)

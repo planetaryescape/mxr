@@ -17,10 +17,17 @@ pub struct Arrival {
     pub thread_id: ThreadId,
     /// `inbound` or `unknown`: outbound mail never arrives.
     pub direction: String,
+    /// When it arrived: the earlier of its Date header and when mxr
+    /// stored it.
     pub date: DateTime<Utc>,
     pub from: Address,
     pub subject: String,
 }
+
+/// Rows read past `limit` by Date header, so an arrival whose header ran
+/// ahead (and so sorts early) can still be put in its place by the time
+/// mxr stored it.
+const REORDER_SLACK: u32 = 20;
 
 impl super::Store {
     /// The newest messages of `account_id` that arrived rather than were
@@ -29,8 +36,12 @@ impl super::Store {
     /// Any mailbox counts, archived included, except Trash and Spam: mail
     /// there says nothing about whether new mail is reaching you, and the
     /// popover that lists these opens each one. Drafts are yours, not an
-    /// arrival. A Date header more than a day ahead is a bad clock, not
-    /// the newest mail, so it is skipped as the desk skips it.
+    /// arrival.
+    ///
+    /// An arrival's time is the earlier of its Date header and when mxr
+    /// stored it: a sender's clock running ahead cannot make it the newest
+    /// mail for hours. A header more than a day ahead is skipped outright,
+    /// as the desk skips it.
     pub async fn latest_arrivals(
         &self,
         account_id: &AccountId,
@@ -41,9 +52,9 @@ impl super::Store {
             i64::from((MessageFlags::TRASH | MessageFlags::SPAM | MessageFlags::DRAFT).bits());
         let future_cutoff = Utc::now().timestamp() + 86_400;
         // `idx_messages_account_date` walks the account newest first, so the
-        // filters only see rows until `limit` of them pass.
+        // filters only see rows until enough of them pass.
         let rows = sqlx::query(
-            "SELECT m.id, m.account_id, m.thread_id, m.direction, m.date,
+            "SELECT m.id, m.account_id, m.thread_id, m.direction, m.date, m.stored_at,
                     m.from_name, m.from_email, m.subject
              FROM messages m
              WHERE m.account_id = ?1
@@ -60,18 +71,23 @@ impl super::Store {
         .bind(account_id.as_str())
         .bind(future_cutoff)
         .bind(hidden_flags)
-        .bind(i64::from(limit))
+        .bind(i64::from(limit.saturating_add(REORDER_SLACK)))
         .fetch_all(self.reader())
         .await?;
-        let arrivals = rows
+        let mut arrivals = rows
             .into_iter()
             .map(|row| {
+                let date = decode_timestamp(row.try_get("date")?)?;
+                let stored_at = row
+                    .try_get::<Option<i64>, _>("stored_at")?
+                    .map(decode_timestamp)
+                    .transpose()?;
                 Ok(Arrival {
                     id: decode_id(row.try_get::<&str, _>("id")?)?,
                     account_id: decode_id(row.try_get::<&str, _>("account_id")?)?,
                     thread_id: decode_id(row.try_get::<&str, _>("thread_id")?)?,
                     direction: row.try_get("direction")?,
-                    date: decode_timestamp(row.try_get("date")?)?,
+                    date: stored_at.map_or(date, |stored| date.min(stored)),
                     from: Address {
                         name: row.try_get("from_name")?,
                         email: row.try_get("from_email")?,
@@ -80,6 +96,9 @@ impl super::Store {
                 })
             })
             .collect::<Result<Vec<_>, sqlx::Error>>()?;
+        // Stable, so equal times keep storage order.
+        arrivals.sort_by_key(|arrival| std::cmp::Reverse(arrival.date));
+        arrivals.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
         trace_query("arrivals.latest", started_at, arrivals.len());
         Ok(arrivals)
     }
@@ -182,5 +201,30 @@ mod tests {
         let ids: Vec<_> = arrivals.iter().map(|a| a.id.clone()).collect();
         assert_eq!(ids, vec![newest, old]);
         assert_eq!(store.latest_arrivals(id, 1).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_date_header_ahead_of_the_clock_arrives_when_mxr_stored_it() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let id = &account.id;
+        // The sender's clock is three hours fast; mxr stored it just now.
+        let ahead = put(
+            &store,
+            id,
+            "fast@x.com",
+            -180,
+            MessageDirection::Inbound,
+            MessageFlags::empty(),
+        )
+        .await;
+        let arrivals = store.latest_arrivals(id, 5).await.unwrap();
+        assert_eq!(arrivals[0].id, ahead);
+        let skew = (arrivals[0].date - Utc::now()).num_seconds();
+        assert!(
+            skew <= 5,
+            "arrival time follows the store, not the header: {skew}s ahead"
+        );
     }
 }

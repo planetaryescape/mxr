@@ -480,13 +480,18 @@ fn all_semantic_source_kinds() -> Vec<SemanticChunkSourceKind> {
         SemanticChunkSourceKind::Body,
         SemanticChunkSourceKind::AttachmentSummary,
         SemanticChunkSourceKind::AttachmentText,
+        SemanticChunkSourceKind::Highlight,
     ]
 }
 
 fn source_kinds_for_field(field: &QueryField) -> &'static [SemanticChunkSourceKind] {
     match field {
         QueryField::Subject => &[SemanticChunkSourceKind::Header],
-        QueryField::Body => &[SemanticChunkSourceKind::Body],
+        // A highlight is a passage of the body the user kept.
+        QueryField::Body => &[
+            SemanticChunkSourceKind::Body,
+            SemanticChunkSourceKind::Highlight,
+        ],
         QueryField::Filename => &[
             SemanticChunkSourceKind::AttachmentSummary,
             SemanticChunkSourceKind::AttachmentText,

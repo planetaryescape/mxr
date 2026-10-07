@@ -122,7 +122,8 @@ const fn source_kind_count() -> usize {
         SemanticChunkSourceKind::Header
         | SemanticChunkSourceKind::Body
         | SemanticChunkSourceKind::AttachmentSummary
-        | SemanticChunkSourceKind::AttachmentText => 4,
+        | SemanticChunkSourceKind::AttachmentText
+        | SemanticChunkSourceKind::Highlight => 5,
     }
 }
 
@@ -265,6 +266,8 @@ struct ChunkPreparationInput {
     /// Archive's recipe: the fields of the record this message is a source
     /// of, as one line. Exact identifiers in it stay on BM25 too.
     record_fields: Option<String>,
+    /// Passages highlighted in Reading, each with its note.
+    highlights: Vec<String>,
 }
 
 #[cfg(feature = "local")]
@@ -1265,10 +1268,21 @@ impl SemanticEngine {
             .record_field_text_for_messages(std::slice::from_ref(message_id))
             .await?
             .remove(message_id);
+        let highlights = self
+            .store
+            .reading_highlights_for_message(message_id)
+            .await?
+            .into_iter()
+            .map(|highlight| match highlight.note {
+                Some(note) => format!("{} {note}", highlight.quote),
+                None => highlight.quote,
+            })
+            .collect();
         Ok(Some(ChunkPreparationInput {
             envelope,
             body,
             record_fields,
+            highlights,
         }))
     }
 
@@ -1547,9 +1561,10 @@ fn build_chunk_records(
     envelope: &Envelope,
     body: Option<&MessageBody>,
     record_fields: Option<&str>,
+    highlights: &[String],
     now: chrono::DateTime<chrono::Utc>,
 ) -> Vec<SemanticChunkRecord> {
-    let mut chunks = build_chunks(envelope, body);
+    let mut chunks = build_chunks(envelope, body, highlights);
     // Archive's recipe adds one field chunk beside the header; the PDF text
     // already comes in as attachment text once the PDF is on disk.
     if let Some(line) = record_fields
@@ -1593,6 +1608,7 @@ fn build_message_chunk_batch(
         &input.envelope,
         input.body.as_ref(),
         input.record_fields.as_deref(),
+        &input.highlights,
         now,
     );
     tracing::trace!(
@@ -1739,6 +1755,7 @@ fn chunks_match(stored: &[(SemanticChunkId, String)], built: &[SemanticChunkReco
 fn build_chunks(
     envelope: &Envelope,
     body: Option<&MessageBody>,
+    highlights: &[String],
 ) -> Vec<(SemanticChunkSourceKind, String)> {
     let mut chunks = Vec::new();
 
@@ -1781,6 +1798,15 @@ fn build_chunks(
                     chunks.push((SemanticChunkSourceKind::AttachmentText, chunk));
                 }
             }
+        }
+    }
+
+    // Each highlight is its own chunk, so search finds the passage the user
+    // kept, not a window it happens to fall in.
+    for highlight in highlights {
+        let text = normalize_text(highlight);
+        if !text.is_empty() {
+            chunks.push((SemanticChunkSourceKind::Highlight, text));
         }
     }
 
@@ -2869,7 +2895,7 @@ mod tests {
             ],
         );
 
-        let chunks = build_chunks(&envelope, Some(&body));
+        let chunks = build_chunks(&envelope, Some(&body), &[]);
 
         assert!(chunks.iter().any(|(kind, text)| *kind
             == SemanticChunkSourceKind::AttachmentSummary
@@ -2880,6 +2906,27 @@ mod tests {
         assert!(!chunks.iter().any(|(kind, text)| *kind
             == SemanticChunkSourceKind::AttachmentText
             && (text.contains("photo") || text.contains("scan"))));
+    }
+
+    #[test]
+    fn each_reading_highlight_is_its_own_chunk() {
+        let account = test_account();
+        let envelope = test_envelope(&account.id);
+        let chunks = build_chunks(
+            &envelope,
+            None,
+            &[
+                "A delete is the absence of a row. for the sync talk".to_string(),
+                "   ".to_string(),
+            ],
+        );
+        let highlights: Vec<&String> = chunks
+            .iter()
+            .filter(|(kind, _)| *kind == SemanticChunkSourceKind::Highlight)
+            .map(|(_, text)| text)
+            .collect();
+        assert_eq!(highlights.len(), 1, "a blank highlight adds nothing");
+        assert!(highlights[0].contains("absence of a row"));
     }
 
     #[test]

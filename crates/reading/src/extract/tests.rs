@@ -247,3 +247,25 @@ fn clip_cuts_at_a_word_with_an_ellipsis() {
     assert_eq!(clip("short", 10), "short");
     assert_eq!(clip("one two three four five", 12), "one two…");
 }
+
+#[test]
+fn buttons_are_not_digest_items() {
+    for text in [
+        "GET THE DISCOUNT →",
+        "View this role ↗",
+        "Watch the keynote",
+        "Read the announcement →",
+        "SAVE $100 BEFORE IT'S GONE",
+        "Shop the sale",
+    ] {
+        assert!(call_to_action(text), "{text}");
+    }
+    for text in [
+        "Local-first mail is having a moment",
+        "Why sync engines need tombstones",
+        "Reading slowly in a fast feed, and why it works",
+        "SQLite 3.51 release notes",
+    ] {
+        assert!(!call_to_action(text), "{text}");
+    }
+}

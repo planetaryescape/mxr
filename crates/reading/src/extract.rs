@@ -177,6 +177,12 @@ static BOILERPLATE_HREF: Lazy<Regex> = Lazy::new(|| {
 });
 /// "1. ", "2) ", "- " before a list item's title.
 static LIST_MARKER: Lazy<Regex> = Lazy::new(|| regex(r"^\s*(?:\d{1,3}[.)]|[-*•·])\s+"));
+/// The verbs buttons start with.
+static CTA_VERB: Lazy<Regex> = Lazy::new(|| {
+    regex(
+        r"(?i)^(?:view|watch|read|get|save|shop|buy|book|claim|learn|discover|explore|try|start|join|register|download|see|check|order|reserve|apply|listen|unlock|grab|redeem|continue|go to|visit|open|reply|rsvp|vote|donate)\b",
+    )
+});
 static URL_IN_TEXT: Lazy<Regex> = Lazy::new(|| regex(r#"https?://[^\s<>()"']+[^\s<>()"'.,;:!?\]]"#));
 
 fn collapse(text: &str) -> String {
@@ -490,8 +496,20 @@ fn walk_text(text: &str) -> Walked {
     }
 }
 
+/// A button, not a story: "GET THE DISCOUNT →", "View this role ↗",
+/// "Watch the keynote".
+fn call_to_action(text: &str) -> bool {
+    let trimmed = text.trim();
+    let letters: Vec<char> = trimmed.chars().filter(|c| c.is_alphabetic()).collect();
+    let shouting = letters.len() >= 6 && letters.iter().all(|c| c.is_uppercase());
+    trimmed.ends_with(['→', '↗', '›', '»', '>', '➔', '➜'])
+        || shouting
+        || (word_count(trimmed) <= 4 && CTA_VERB.is_match(trimmed))
+}
+
 fn boilerplate_link(anchor: &Anchor) -> bool {
     anchor.text.is_empty()
+        || call_to_action(&anchor.text)
         || BOILERPLATE_LINK.is_match(&anchor.text)
         || MASTHEAD.is_match(&anchor.text)
         || BOILERPLATE_HREF.is_match(&anchor.href)

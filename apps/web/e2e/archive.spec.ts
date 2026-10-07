@@ -233,7 +233,8 @@ test("the first answer carries its hint; dismissed, it never returns", async ({ 
   await openApp(page, "/archive");
   await expect(page.getByTestId("mode-card")).toHaveCount(0);
   await expect(page.getByTestId("hint")).toHaveCount(0);
-  await ask(page).fill("lisbon booking ref");
+  // Typing is a use of the page; fill() alone sends no key events.
+  await ask(page).pressSequentially("lisbon booking ref");
   await expect(page.getByTestId("answer-value")).toHaveText("K7QX2M");
   const hint = page.getByTestId("hint");
   await expect(hint).toHaveText(/y copies what this answer found; Enter opens the document\./);
@@ -241,7 +242,7 @@ test("the first answer carries its hint; dismissed, it never returns", async ({ 
   await hint.getByRole("button", { name: "Dismiss hint (Esc)" }).click();
   await expect(page.getByTestId("hint")).toHaveCount(0);
   await page.reload();
-  await ask(page).fill("lisbon booking ref");
+  await ask(page).pressSequentially("lisbon booking ref");
   await expect(page.getByTestId("answer-value")).toHaveText("K7QX2M");
   await expect(page.getByTestId("hint")).toHaveCount(0);
 });

@@ -252,7 +252,11 @@ const SAMIR = "person:samir@launchpad.example";
 interface PeopleAnswer {
   messages: Record<
     "your_turn" | "recent" | "quiet",
-    { id: string; kind: string; topics: { thread_id: string; subject: string }[] }[]
+    {
+      id: string;
+      kind: string;
+      topics: { thread_id: string; subject: string; state: string }[];
+    }[]
   >;
 }
 
@@ -288,12 +292,16 @@ test("Got it's hint shows when Got it is about to be used", async ({ page }) => 
 test("the first done here carries its hint in the toast, and only the first", async ({ page }) => {
   await showHint(page, "done_here");
   const people = (await bridge<PeopleAnswer>(page, "/api/v1/mail/people")).messages;
-  const candidates = [...people.recent, ...people.quiet].filter(
-    (row) => row.kind === "person" && row.topics.length > 0 && row.id !== SAMIR,
+  // Demo people with a conversation still open in Messages: other specs
+  // leave their own sends and dones behind.
+  const open = (row: (typeof people.recent)[number]) =>
+    row.topics.find((topic) => topic.state !== "done" && !topic.subject.startsWith("e2e-"));
+  const candidates = people.recent.filter(
+    (row) => row.kind === "person" && row.id !== SAMIR && open(row) !== undefined,
   );
   expect(candidates.length).toBeGreaterThan(1);
   const doneOn = async (row: (typeof candidates)[number]) => {
-    const topic = row.topics[0]!.thread_id;
+    const topic = open(row)!.thread_id;
     await openApp(page, `/messages?person=${encodeURIComponent(row.id)}&topic=${topic}`);
     await expect(page.getByTestId("conversation")).toBeVisible();
     await page.keyboard.press("e");

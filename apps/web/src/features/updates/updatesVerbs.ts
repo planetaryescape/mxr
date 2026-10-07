@@ -112,6 +112,7 @@ export async function letGo(
     }
     claim.settle(
       offerUndo(
+        "digest-let-go",
         result.message_count > 0 ? result.line : "Nothing to let go of.",
         `updates-let-go-${mutationId ?? lineIds.join(",")}`,
         reverse,
@@ -189,7 +190,10 @@ export async function tuneSource(line: UpdateLine, setting: UpdateSetting): Prom
             }
           };
     claim.settle(
+      // Tuning moves a source's mail between digest and hidden, as moving a
+      // sender moves it between places: the same toast tone and undo.
       offerUndo(
+        "move-sender",
         tuneToast(line.source_name, setting),
         `updates-tune-${line.source_key}`,
         reverse,

@@ -307,7 +307,13 @@ fn sources_text(edition: &ReadingEditionData) -> String {
     for source in &edition.sources {
         let gap = source
             .median_gap_days
-            .map_or_else(|| "one issue so far".to_string(), |d| format!("every {d:.0} days"));
+            .map_or_else(
+                || "one issue so far".to_string(),
+                |d| match d.round() as i64 {
+                    ..=1 => "about daily".to_string(),
+                    n => format!("every {n} days"),
+                },
+            );
         let _ = writeln!(out, "{}  <{}>", source.name, source.sender_email);
         let _ = writeln!(
             out,
@@ -482,21 +488,30 @@ fn reader_text(
     let item = &detail.item;
     let mut out = String::new();
     let _ = writeln!(out, "{}", item.title);
+    // The article's own length once it is the text on screen.
+    let left = match (&detail.article, article) {
+        (Some(saved), true) => saved.minutes,
+        _ => detail.minutes_left,
+    };
     let _ = writeln!(
         out,
         "{} · {} · {} left\n",
         item.source,
         item.arrived_at.format("%-d %b"),
-        minutes(detail.minutes_left)
+        minutes(left)
     );
     match (article, &detail.article, fetch.and_then(|f| f.error.as_deref())) {
         (true, Some(saved), _) => {
-            let _ = writeln!(
-                out,
-                "Article from {} (fetched from {}).\n",
-                saved.final_url,
-                saved.contacted.join(", ")
-            );
+            if saved.contacted.is_empty() {
+                let _ = writeln!(out, "Article from {} (a saved copy).\n", saved.final_url);
+            } else {
+                let _ = writeln!(
+                    out,
+                    "Article from {} (fetched from {}).\n",
+                    saved.final_url,
+                    saved.contacted.join(", ")
+                );
+            }
             paragraphs_text(&mut out, &saved.paragraphs);
         }
         (true, None, error) => {

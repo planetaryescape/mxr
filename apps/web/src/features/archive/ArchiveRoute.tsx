@@ -78,7 +78,12 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
   const phase = useDelayedPending(ledger.isLoading);
   const [query, setQuery] = useState("");
   const asked = useDebounced(query, 250);
-  const answer = useAnswer(asked);
+  const typed = useAnswer(asked);
+  // Enter on a query no record matches searches all mail, once.
+  const [searched, setSearched] = useState("");
+  const searchingAll = searched !== "" && searched === asked.trim() && !typed.data?.answer;
+  const all = useAnswer(searchingAll ? searched : "", true);
+  const answer = searchingAll ? all : typed;
   const qc = useQueryClient();
   const answered = Boolean(answer.data?.answer);
   // The first answer retires the card in the daemon; pick that up.
@@ -119,8 +124,9 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
           }}
           query={query}
           setQuery={setQuery}
-          answer={asked.trim() ? answer.data : undefined}
+          answer={asked.trim() ? (answer.data ?? typed.data) : undefined}
           answerPending={answer.isFetching && Boolean(asked.trim())}
+          onSearchAll={() => setSearched(query.trim())}
           onMore={() => setLimit((current) => current + PAGE)}
         />
       ) : null}
@@ -167,6 +173,8 @@ interface LedgerProps {
   setQuery: (query: string) => void;
   answer?: RecordAnswer;
   answerPending: boolean;
+  /** Enter on a query no record matches: search all mail. */
+  onSearchAll: () => void;
   onMore: () => void;
 }
 
@@ -180,6 +188,7 @@ function Ledger({
   setQuery,
   answer,
   answerPending,
+  onSearchAll,
   onMore,
 }: LedgerProps) {
   const nav = useReaderNav();
@@ -351,6 +360,10 @@ function Ledger({
           className="mx-5 mt-3"
           onSubmit={(event) => {
             event.preventDefault();
+            if (answer && !answer.answer && !answer.fallback?.answer) {
+              onSearchAll();
+              return;
+            }
             inputRef.current?.blur();
             setOnAnswer(true);
           }}

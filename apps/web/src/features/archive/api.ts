@@ -94,19 +94,28 @@ export function useRecord(id: string | null) {
   });
 }
 
-export async function fetchAnswer(account: string | null, query: string): Promise<RecordAnswer> {
-  const params = new URLSearchParams({ q: query });
+export async function fetchAnswer(
+  account: string | null,
+  query: string,
+  fallback: boolean,
+): Promise<RecordAnswer> {
+  const params = new URLSearchParams({ q: query, fallback: String(fallback) });
   if (account) params.set("account", account);
   const answer = await apiFetch<Answer>(`/api/v1/mail/records/answer?${params.toString()}`);
   return answer.answer;
 }
 
-export function useAnswer(query: string) {
+/**
+ * The answer box. While typing it matches record fields only; `fallback`
+ * (on Enter) also asks `mxr ask` over all mail, which may call the model,
+ * so it never runs per keystroke.
+ */
+export function useAnswer(query: string, fallback = false) {
   const account = useUiPrefs((s) => s.accountScope);
   const text = query.trim();
   return useQuery({
-    queryKey: [...RECORDS_KEY, "answer", account ?? "all", text],
-    queryFn: () => fetchAnswer(account, text),
+    queryKey: [...RECORDS_KEY, "answer", account ?? "all", text, fallback],
+    queryFn: () => fetchAnswer(account, text, fallback),
     enabled: text.length > 0,
     placeholderData: keepPreviousData,
     staleTime: 30_000,

@@ -281,6 +281,11 @@ export function AnswerCard({
     return (
       <section aria-label="Answer" data-testid="answer-fallback" className="mx-5 mt-3 grid gap-2">
         <p className="text-[13px] text-foreground/90">{fallback.note}</p>
+        {!fallback.answer && !fallback.error ? (
+          <p className="text-[12.5px] text-muted-foreground">
+            Press <KeyChip>Enter</KeyChip> to search all mail.
+          </p>
+        ) : null}
         {fallback.answer ? (
           <div className="border-l-2 border-border pl-3">
             <p className="text-pretty text-[13px] italic text-foreground/90">

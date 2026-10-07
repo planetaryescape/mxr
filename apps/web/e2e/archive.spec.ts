@@ -37,7 +37,9 @@ async function blockingViolations(page: Page): Promise<string[]> {
   return results.violations
     .filter((violation) => violation.impact === "serious" || violation.impact === "critical")
     .flatMap((violation) =>
-      violation.nodes.map((node) => `${violation.id} (${violation.impact}): ${node.target.join(" ")}`),
+      violation.nodes.map(
+        (node) => `${violation.id} (${violation.impact}): ${node.target.join(" ")}`,
+      ),
     );
 }
 
@@ -94,6 +96,14 @@ test("a query no record matches says so before searching all mail", async ({ pag
   await waitForRecords(page);
   await openApp(page, "/archive");
   await ask(page).fill("boiler warranty");
+  // Typing matches record fields only; the model is never asked per key.
+  await expect(page.getByTestId("answer-fallback")).toContainText(
+    'No record matches "boiler warranty".',
+  );
+  await expect(page.getByTestId("answer-fallback")).toContainText(
+    "Press Enter to search all mail.",
+  );
+  await ask(page).press("Enter");
   await expect(page.getByTestId("answer-fallback")).toContainText(
     'No record matches "boiler warranty". Searching all mail instead.',
   );
@@ -155,7 +165,9 @@ test("X takes a record out of Archive without touching the email, and u brings i
   await expect(page.getByTestId("record-row").filter({ hasText: "Apple" })).toHaveCount(1);
 });
 
-test("T on a conversation previews its record card before filing it in Archive", async ({ page }) => {
+test("T on a conversation previews its record card before filing it in Archive", async ({
+  page,
+}) => {
   await openList(page, "/m/inbox");
   await mailList(page).focus();
   await page.keyboard.press("T");

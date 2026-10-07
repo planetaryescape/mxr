@@ -34,7 +34,8 @@ export type OtherVerb =
   | "todo-let-go"
   | "record-file"
   | "record-dismiss"
-  | "record-fix";
+  | "record-fix"
+  | "record-check";
 
 export type Verb = MailAction | OtherVerb;
 
@@ -352,8 +353,15 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     sound: null,
     undo: "reverse-request",
   },
+  "record-check": {
+    actions: ["archive.check"],
+    optimistic: "Every unchecked amount and date becomes yours, and the card says checked.",
+    pastTense: "Marked checked",
+    sound: null,
+    undo: "reverse-request",
+  },
   "record-fix": {
-    actions: ["archive.edit", "archive.check"],
+    actions: ["archive.edit"],
     optimistic: "Nothing moves until the fix is saved; then the field is yours and checked.",
     pastTense: "Fixed",
     sound: null,

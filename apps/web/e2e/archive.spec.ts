@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-import { openList, reader } from "./helpers/mail";
+import { mailList, openList } from "./helpers/mail";
 import { bridge, openApp } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -157,8 +157,7 @@ test("X takes a record out of Archive without touching the email, and u brings i
 
 test("T on a conversation previews its record card before filing it in Archive", async ({ page }) => {
   await openList(page, "/m/inbox");
-  await page.keyboard.press("Enter");
-  await expect(reader(page)).toBeVisible();
+  await mailList(page).focus();
   await page.keyboard.press("T");
   const dialog = page.getByTestId("pass-to-mode-dialog");
   await expect(dialog).toContainText("Archive: file it as a record.");

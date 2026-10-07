@@ -467,6 +467,44 @@ everything": the 31 Reading emails were sorted, not read.
 | Track record | "Last week mxr sorted 435. You moved 2, both to Messages." |
 | Track record, in `?` | "Counts the emails you moved. Mail you never opened isn't checked." |
 
+### As built (the trust rung)
+
+Choices made while building D119, where the plan above left room:
+
+- **Window.** From the visit to Now before this one (a visit starts when a
+  client opens Now; a return within a minute is the same visit), at most 24
+  hours back, and the start of today when Now was never opened. `mxr
+  arrivals`, MCP and list requests read the window without starting a visit.
+- **First seen.** A trigger on `messages` writes the arrivals row on insert,
+  so every sync path records it. Mail older than two days at first sight
+  keeps its date as first seen, so a new account's first sync never reads
+  as "arrived just now"; mail older than 30 days gets no row. Migration 70
+  backfills 30 days at their dates.
+- **Primary mode at arrival.** Invites count in Updates; an RSVP to-do shows
+  as "also in To do". The per-email `X` to To do or Archive adds a to-do or
+  files a record, since both are aspects; it never changes the primary
+  count.
+- **N1** overrides List-Id, List-Unsubscribe, list-sender and no-reply
+  rules for mail addressed to you (To, or neither To nor Cc) from someone
+  you've written to, and is named as the rule only where it overrode one.
+  It does not override the copied or crowd rules; only-copied mail from
+  someone you've written to is the "Not sure" case (U1).
+- **Not sure** asks about the first three conflicts first seen each local
+  day; an answer never pulls a fourth in, and keeping the email where it is
+  counts as an answer.
+- **Precedence.** A sender's mode set after an email move wins for that
+  email too (exact within a second, by stamping the moves it overrode); an
+  email move made after it wins for that email. Undoing the sender's mode
+  lets the earlier email moves stand again.
+- **Track record.** Rolling seven days: arrivals placed, and corrections
+  standing that changed a mode. Shown only once one exists.
+- **Keys.** `X` opens the picker (`m` `x` `u` `r` `e`; capital `M` `U` `R`
+  move the sender) on Now, Messages, Updates, Reading, Inbox and the reader;
+  `K` opens the sender picker where it is free (Now, Messages, Inbox).
+  Updates and Reading keep their `K` sender menu, the reader keeps `K` as
+  previous message, and To do and Archive keep `X` as their dismissal. The
+  web reader's expand-all moved from `X` to `;`.
+
 ### Rubric v3 X14
 
 **Sorting shows its work.** Now's arrivals line sums to every inbound

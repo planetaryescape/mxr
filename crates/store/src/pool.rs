@@ -1066,6 +1066,13 @@ const MIGRATIONS: &[Migration] = &[
              DROP TABLE IF EXISTS mode_guide_seen;",
         ),
     },
+    // Where each email went when it arrived, and the user's corrections
+    // (D119). 68 belongs to message stored_at, 69 to contextual hints.
+    Migration {
+        version: 70,
+        name: "arrivals",
+        kind: MigrationKind::Sql(include_str!("../migrations/070_arrivals.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

@@ -18,6 +18,13 @@
 //! - Once anything of yours follows their message, it is answered: a
 //!   second Got it for it is refused, and the next preview has nothing to
 //!   acknowledge.
+//! - One acknowledgement per message, ever: a claim is stored before the
+//!   provider call and kept whatever happens after it, so a timeout or a
+//!   failed local ingest can never send a second copy.
+//! - Only a conversation in Messages can be acknowledged; one routed to
+//!   Updates (copied, or a crowd) can't.
+//! - The plain text and the HTML part come from one builder, with every
+//!   value escaped, and the preview shows both.
 
 use super::desk::{self_matcher, Senders};
 use super::desk_lanes::{current_messages, last_stored};
@@ -27,14 +34,13 @@ use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
 use mxr_compose::{prefix_subject, SubjectMarker};
-use mxr_core::id::{AccountId, DraftId, MessageId, ThreadId};
+use mxr_core::id::{AccountId, DraftId, ThreadId};
 use mxr_core::types::{Address, Draft, DraftContent, DraftIntent, ReplyHeaders};
 use mxr_protocol::{first_name, messages_copy, AckPlanData, ResponseData};
 use mxr_relationship::{analyse_habits, clean_for_voice, WritingHabits};
 use mxr_store::ScreenerDisposition;
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 
 /// Your own mail to them the habits are measured on.
 const HABIT_SAMPLES: u32 = 25;
@@ -143,6 +149,27 @@ async fn plan(
         .ok_or_else(|| {
             refuse("Nobody in this conversation has written to you, so there's nothing to acknowledge.")
         })?;
+    // Got it is a Messages verb: a thread routed to Updates (copied, or a
+    // crowd) isn't someone waiting on you.
+    let in_messages =
+        super::modes::place_threads(state, &account_id, std::slice::from_ref(thread_id), now)
+            .await?
+            .iter()
+            .any(|placement| {
+                placement
+                    .data
+                    .modes
+                    .iter()
+                    .any(|entry| entry.mode == mxr_protocol::ModeKindData::Messages)
+            });
+    if !in_messages {
+        return Err(refuse(
+            "This conversation isn't in Messages (you were only copied, it went to a crowd, or it's done here), so Got it doesn't apply. Reply by hand if you mean to.",
+        ));
+    }
+    if let Some(claim) = state.store.got_it_for(&target.id).await? {
+        return Err(refuse(already(&claim)));
+    }
     // Anything of yours after their message answers it: a repeat Got it,
     // or a reply you already sent.
     if current
@@ -186,6 +213,7 @@ async fn plan(
         target.list_id.is_some(),
     )
     .await?;
+    let html = ack_html(&text);
     let to_name = (recipient == email).then(|| name.clone()).flatten();
     let mut plan = AckPlanData {
         account_id: account_id.clone(),
@@ -198,6 +226,7 @@ async fn plan(
         }],
         subject: prefix_subject(SubjectMarker::Reply, &context.subject),
         text,
+        html,
         built_from,
         countdown_seconds: messages_copy::ACK_COUNTDOWN_SECONDS,
         dry_run,
@@ -251,15 +280,26 @@ async fn check_recipient(
             "it looks like an automated or no-reply address",
         ));
     }
-    if senders
-        .contacts
-        .get(recipient)
-        .is_some_and(|c| c.is_list_sender)
-    {
+    // The recipient's own record, whichever header named it: the thread's
+    // senders don't include a Reply-To address.
+    let contact = state
+        .store
+        .desk_contacts(account_id, &[recipient.to_string()])
+        .await?
+        .into_iter()
+        .next();
+    if contact.is_some_and(|c| c.is_list_sender) {
         return Err(not_a_person("it sends to mailing lists"));
     }
-    if senders.screener.get(recipient) == Some(&ScreenerDisposition::Deny) {
-        return Err(not_a_person("you screened it out"));
+    match senders.screener.get(recipient) {
+        Some(ScreenerDisposition::Deny) => return Err(not_a_person("you screened it out")),
+        Some(ScreenerDisposition::Feed) => {
+            return Err(not_a_person("you put it in Reading, as a mailing list"))
+        }
+        Some(ScreenerDisposition::PaperTrail) => {
+            return Err(not_a_person("you put it in Updates, as automated mail"))
+        }
+        _ => {}
     }
     if recipient != from {
         let domain = |address: &str| {
@@ -311,6 +351,7 @@ fn token(plan: &AckPlanData, in_reply_to: &str, issued: i64) -> String {
         plan.from.as_str(),
         plan.subject.as_str(),
         plan.text.as_str(),
+        plan.html.as_str(),
     ] {
         hasher.update(part.len().to_le_bytes());
         hasher.update(part.as_bytes());
@@ -327,11 +368,41 @@ fn token(plan: &AckPlanData, in_reply_to: &str, issued: i64) -> String {
     format!("{issued}.{mac}")
 }
 
-/// Messages a Got it is sending or has sent in this process: a second
-/// request racing the first is refused before the store sees the reply.
-fn acked() -> &'static Mutex<HashSet<MessageId>> {
-    static ACKED: OnceLock<Mutex<HashSet<MessageId>>> = OnceLock::new();
-    ACKED.get_or_init(|| Mutex::new(HashSet::new()))
+/// Why a message can't be acknowledged again.
+fn already(claim: &mxr_store::GotItRecord) -> String {
+    if claim.sent_message_id.is_some() {
+        "Already acknowledged: Got it went to that message.".to_string()
+    } else {
+        format!(
+            "A Got it to that message may already have gone out (draft {}), so it won't be sent again. Check Sent, and reply by hand if it didn't arrive.",
+            claim.draft_id
+        )
+    }
+}
+
+/// The HTML part of the acknowledgement: `text`'s paragraphs and lines,
+/// every character escaped. The plain-text part is `text` itself.
+pub(super) fn ack_html(text: &str) -> String {
+    let escape = |line: &str| {
+        line.chars()
+            .map(|c| match c {
+                '&' => "&amp;".to_string(),
+                '<' => "&lt;".to_string(),
+                '>' => "&gt;".to_string(),
+                '"' => "&quot;".to_string(),
+                '\'' => "&#39;".to_string(),
+                c => c.to_string(),
+            })
+            .collect::<String>()
+    };
+    text.split("\n\n")
+        .filter(|paragraph| !paragraph.trim().is_empty())
+        .map(|paragraph| {
+            let lines: Vec<String> = paragraph.lines().map(escape).collect();
+            format!("<p>{}</p>", lines.join("<br>"))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub(super) async fn ack(
@@ -390,14 +461,6 @@ pub(super) async fn ack_at(
         return Err(refuse(CHANGED));
     }
     let target = prepared.plan.reply_to_message_id.clone();
-    {
-        let mut acked = acked()
-            .lock()
-            .map_err(|_| HandlerError::Message("Got it state is unavailable".to_string()))?;
-        if !acked.insert(target.clone()) {
-            return Err(refuse("Already acknowledged: Got it went to that message."));
-        }
-    }
     let draft = Draft {
         id: DraftId::new(),
         account_id: prepared.plan.account_id.clone(),
@@ -408,8 +471,9 @@ pub(super) async fn ack_at(
         cc: Vec::new(),
         bcc: Vec::new(),
         subject: prepared.plan.subject.clone(),
-        content: DraftContent::Markdown {
-            source: prepared.plan.text.clone(),
+        content: DraftContent::Html {
+            html: prepared.plan.html.clone(),
+            text: Some(prepared.plan.text.clone()),
         },
         attachments: Vec::new(),
         inline_assets: Vec::new(),
@@ -417,20 +481,31 @@ pub(super) async fn ack_at(
         updated_at: now,
         inline_calendar_reply: None,
     };
+    // Checks that can fail before the provider is involved run first, so
+    // their failure leaves no claim and a later Got it can still go.
+    super::mutations::check_before_send(state, &draft).await?;
+    // The claim is stored before the provider call and never removed
+    // after it: one acknowledgement per message, whatever goes wrong.
+    match state
+        .store
+        .claim_got_it(&draft.account_id, thread_id, &target, &draft.id, now)
+        .await?
+    {
+        mxr_store::GotItClaim::Claimed => {}
+        mxr_store::GotItClaim::Existing(claim) => return Err(refuse(already(&claim))),
+    }
     let sent = match super::mutations::send_draft(state, &draft, None).await {
         Ok(ResponseData::SendReceipt {
             local_message_id, ..
         }) => local_message_id,
         Ok(_) | Err(_) => {
-            // Nothing went out: let a later, previewed Got it try again.
-            if let Ok(mut acked) = acked().lock() {
-                acked.remove(&target);
-            }
-            return Err(HandlerError::Message(
-                "The acknowledgement was not sent.".to_string(),
-            ));
+            return Err(HandlerError::Message(format!(
+                "Got it may not have gone out (draft {}). It won't be sent again; check Sent, and reply by hand if it didn't arrive.",
+                draft.id
+            )));
         }
     };
+    state.store.finish_got_it(&target, &sent).await?;
     // Got it is Messages' main verb: its first-encounter card retires.
     super::mode_guide::retire(state, "messages").await?;
     let mut plan = prepared.plan;

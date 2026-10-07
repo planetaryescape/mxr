@@ -357,6 +357,7 @@ fn got_it_shows_its_exact_text_and_countdown() {
             to: vec![],
             subject: "Re: Contract renewal".into(),
             text: "Hi Samir,\n\nGot it, thanks.\n\nAlex".into(),
+            html: "<p>Hi Samir,</p>\n<p>Got it, thanks.</p>\n<p>Alex</p>".into(),
             built_from: String::new(),
             countdown_seconds: 5,
             dry_run: true,

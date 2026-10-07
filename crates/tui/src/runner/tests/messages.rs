@@ -65,6 +65,7 @@ fn plan(app: &App) -> AckPlanData {
         }],
         subject: "Re: Contract renewal".into(),
         text: "Hi Samir,\n\nGot it, thanks.\n\nAlex".into(),
+        html: "<p>Hi Samir,</p>\n<p>Got it, thanks.</p>\n<p>Alex</p>".into(),
         built_from: "Your usual greeting and sign-off with Samir.".into(),
         countdown_seconds: 5,
         dry_run: true,

@@ -437,8 +437,12 @@ pub struct AckPlanData {
     /// Exactly one recipient: Got it never replies to all.
     pub to: Vec<Address>,
     pub subject: String,
-    /// The exact text that is sent.
+    /// The exact text that is sent, as its plain-text part.
     pub text: String,
+    /// The exact HTML part that is sent, built from `text` by the same
+    /// builder: every value is escaped, so nothing in a name or greeting
+    /// becomes a link or markup.
+    pub html: String,
     /// "Your usual greeting and sign-off with Samir." or "No greeting or
     /// sign-off of yours to go on, so a plain thanks."
     pub built_from: String,

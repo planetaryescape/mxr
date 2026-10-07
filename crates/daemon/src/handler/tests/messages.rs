@@ -936,3 +936,146 @@ async fn a_copied_thread_is_listed_in_updates_and_leaves_when_done_there() {
         .iter()
         .all(|b| b.sender_email != "iris@meridian.example"));
 }
+
+#[tokio::test]
+async fn a_send_the_provider_took_but_we_lost_is_never_sent_again() {
+    let fx = Fixture::new().await;
+    let (thread, _) = deck_thread(&fx).await;
+    let now = Utc::now();
+    let preview = ack_at(&fx, &thread, true, None, now).await.unwrap();
+    let token = preview.preview_token.clone().unwrap();
+    // The provider accepts the mail, then the call fails (a timeout).
+    fx.fake.fail_sends_after_accepting(true);
+    let first = ack_at(&fx, &thread, false, Some((&token, &preview.text)), now).await;
+    assert!(first.is_err());
+    assert_eq!(fx.fake.sent_drafts().len(), 1);
+    fx.fake.fail_sends_after_accepting(false);
+    // A retry, with a fresh preview, must not send a second copy.
+    let retry_preview = ack_at(&fx, &thread, true, None, now).await;
+    let retry = match retry_preview {
+        Ok(plan) => {
+            let token = plan.preview_token.clone().unwrap();
+            ack_at(&fx, &thread, false, Some((&token, &plan.text)), now).await
+        }
+        Err(e) => Err(e),
+    };
+    assert!(
+        retry.unwrap_err().contains("may already have gone"),
+        "says why"
+    );
+    assert_eq!(fx.fake.sent_drafts().len(), 1, "never a duplicate");
+}
+
+#[tokio::test]
+async fn a_list_reply_to_on_the_senders_own_domain_is_refused() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Deck",
+        Duration::days(2),
+    )
+    .await;
+    let theirs = mail(
+        &fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Re: Deck",
+        Duration::hours(2),
+    )
+    .await;
+    reply_to_body(&fx, &theirs.id, "partners@launchpad.example").await;
+    sqlx::query(
+        "INSERT INTO contacts (account_id, email, display_name, first_seen_at, last_seen_at,
+           last_inbound_at, last_outbound_at, total_inbound, total_outbound, replied_count,
+           cadence_days_p50, is_list_sender, list_id, refreshed_at)
+         VALUES (?, 'partners@launchpad.example', NULL, 0, 0, NULL, NULL, 9, 0, 0, NULL, 1,
+           'partners.launchpad.example', 0)",
+    )
+    .bind(fx.account.as_str())
+    .execute(fx.state.store.writer())
+    .await
+    .unwrap();
+    let refused = ack_at(&fx, &thread, true, None, Utc::now()).await;
+    assert!(refused.unwrap_err().contains("mailing list"));
+}
+
+#[tokio::test]
+async fn got_it_only_works_on_a_conversation_in_messages() {
+    let fx = Fixture::new().await;
+    let copied = ThreadId::new();
+    let theirs = mail(
+        &fx,
+        &copied,
+        ("Iris Chen", "iris@meridian.example"),
+        &[RUTH],
+        &[ME],
+        "Offsite",
+        Duration::hours(3),
+    )
+    .await;
+    body(
+        &fx,
+        &theirs.id,
+        Some("The offsite is booked for the 20th."),
+        None,
+    )
+    .await;
+    let refused = ack_at(&fx, &copied, true, None, Utc::now()).await;
+    assert!(refused.unwrap_err().contains("isn't in Messages"));
+}
+
+#[tokio::test]
+async fn a_name_that_looks_like_markup_stays_text_in_both_parts() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let tricky = "[Alex](https://phish.example) <b>Bold</b> & *Co*";
+    mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Deck",
+        Duration::days(2),
+    )
+    .await;
+    let theirs = mail(
+        &fx,
+        &thread,
+        (tricky, SAMIR),
+        &[ME],
+        &[],
+        "Re: Deck",
+        Duration::hours(2),
+    )
+    .await;
+    body(&fx, &theirs.id, Some("Thanks, reading it tonight."), None).await;
+    let now = Utc::now();
+    let preview = ack_at(&fx, &thread, true, None, now).await.unwrap();
+    assert!(
+        preview.text.contains("[Alex](https://phish.example)"),
+        "{}",
+        preview.text
+    );
+    assert!(!preview.html.contains("<a"), "{}", preview.html);
+    assert!(preview.html.contains("[Alex](https://phish.example)"));
+    let token = preview.preview_token.clone().unwrap();
+    ack_at(&fx, &thread, false, Some((&token, &preview.text)), now)
+        .await
+        .unwrap();
+    let sent = fx.fake.sent_drafts().pop().unwrap();
+    match sent.content {
+        mxr_core::types::DraftContent::Html { html, text } => {
+            assert_eq!(html, preview.html, "the send is the previewed HTML");
+            assert_eq!(text.as_deref(), Some(preview.text.as_str()));
+        }
+        other => panic!("expected the previewed HTML and text, got {other:?}"),
+    }
+}

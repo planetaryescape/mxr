@@ -1416,8 +1416,12 @@ async fn dispatch(
         }
         Request::GetModeGuide { mode } => mode_guide::get(state, mode.as_deref()).await,
         Request::SetHintSeen { hint, seen } => mode_guide::set_seen(state, hint, *seen).await,
-        Request::GetNow { account_id } => now::get_now(state, account_id.as_ref()).await,
-        Request::GetRail { account_id } => modes::get_rail(state, account_id.as_ref()).await,
+        // Boxed with the other mode requests below: their futures build the
+        // Updates digest, and inline they overflowed a debug worker's stack.
+        Request::GetNow { account_id } => Box::pin(now::get_now(state, account_id.as_ref())).await,
+        Request::GetRail { account_id } => {
+            Box::pin(modes::get_rail(state, account_id.as_ref())).await
+        }
         Request::GetFreshness { account_id, limit } => {
             freshness::get_freshness(state, account_id.as_ref(), *limit).await
         }
@@ -1487,7 +1491,7 @@ async fn dispatch(
             todo_ids,
             sender,
         } => {
-            mode_done::set_mode_done(
+            Box::pin(mode_done::set_mode_done(
                 state,
                 mode_done::DoneRequest {
                     thread_ids,
@@ -1496,7 +1500,7 @@ async fn dispatch(
                     todo_ids,
                     sender: sender.as_ref(),
                 },
-            )
+            ))
             .await
         }
         Request::GetUpdatesDigest {
@@ -1504,7 +1508,16 @@ async fn dispatch(
             cut,
             mark_seen,
             expired,
-        } => updates::get_digest(state, account_id.as_ref(), *cut, *mark_seen, *expired).await,
+        } => {
+            Box::pin(updates::get_digest(
+                state,
+                account_id.as_ref(),
+                *cut,
+                *mark_seen,
+                *expired,
+            ))
+            .await
+        }
         Request::LetGoDigest {
             account_id,
             cut,
@@ -1512,14 +1525,14 @@ async fn dispatch(
             selection_token,
             dry_run,
         } => {
-            updates::let_go(
+            Box::pin(updates::let_go(
                 state,
                 account_id.as_ref(),
                 *cut,
                 source_key.as_deref(),
                 selection_token.as_deref(),
                 *dry_run,
-            )
+            ))
             .await
         }
         Request::SetUpdateSource {

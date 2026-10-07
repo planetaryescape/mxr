@@ -207,7 +207,7 @@ async fn finish(state: &AppState, plans: Vec<Plan>, dry_run: bool) -> HandlerRes
             undo_unavailable: false,
         });
     }
-    run(state, plans).await
+    Box::pin(run(state, plans)).await
 }
 
 /// Every thread of one sender's that `mode` holds now, newest first: the
@@ -254,7 +254,7 @@ async fn plan(
     let archive_on_last_done = state.config_snapshot().modes.archive_on_last_done;
     let mut placed: HashMap<ThreadId, Placement> = HashMap::new();
     for (account, threads) in threads_by_account(state, thread_ids).await? {
-        for placement in place_threads(state, &account, &threads, now).await? {
+        for placement in Box::pin(place_threads(state, &account, &threads, now)).await? {
             placed.insert(placement.data.thread_id.clone(), placement);
         }
     }
@@ -431,7 +431,9 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
         let cmd = MutationCommand::ReadAndArchive {
             message_ids: archive_ids,
         };
-        match apply_mutation_batch(state, &cmd, &mutation_id, None).await {
+        // Boxed, as each deep step below is: done's future is large, and
+        // inline it overflowed a debug build's worker stack.
+        match Box::pin(apply_mutation_batch(state, &cmd, &mutation_id, None)).await {
             Ok(batch) => {
                 changed.extend(batch.changed.iter().map(|s| s.message_id.clone()));
                 snapshots.extend(batch.changed);
@@ -470,7 +472,7 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
     }
 
     let mut desk = DeskUndo::default();
-    if let Err(error) = put_away(state, &mut plans, &mut desk).await {
+    if let Err(error) = Box::pin(put_away(state, &mut plans, &mut desk)).await {
         tracing::warn!(%error, "mode done could not record its marks or to-dos");
         for plan in plans.iter_mut().filter(|plan| plan.error.is_none()) {
             plan.error = Some(format!("couldn't mark it done ({error}); run done again"));

@@ -1,11 +1,12 @@
-import { Copy, FileText, Mail } from "lucide-react";
+import { Copy, FileText, Mail, X } from "lucide-react";
 import { memo, type ReactNode } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import type { RecordAnswer, RecordData, RecordField } from "./api";
-import { amountUnchecked, longDate, provenanceLine, shortDate } from "./ledger";
+import type { RecordAnswer, RecordAnswerList, RecordData, RecordField } from "./api";
+import { amountUnchecked, longDate, matchSpan, provenanceLine, shortDate } from "./ledger";
 
 /** An unchecked money or date field: an open dot, never red. */
 export function OpenDot({ label = "unchecked" }: { label?: string }) {
@@ -40,12 +41,15 @@ export const LedgerRow = memo(function LedgerRow({
   record,
   index,
   focused,
+  best = false,
   onSelect,
   onOpen,
 }: {
   record: RecordData;
   index: number;
   focused: boolean;
+  /** The best match of a listed query. */
+  best?: boolean;
   onSelect: (record: RecordData) => void;
   onOpen: (record: RecordData) => void;
 }) {
@@ -55,9 +59,11 @@ export const LedgerRow = memo(function LedgerRow({
       data-index={index}
       data-testid="record-row"
       data-id={record.id}
+      data-best={best ? "true" : undefined}
       aria-current={focused ? "true" : undefined}
       className={cn(
-        "group mx-2 cursor-default rounded-md px-3 py-2 text-[13px]",
+        "group mx-2 cursor-default rounded-md border-l-2 px-3 py-2 text-[13px]",
+        best ? "border-primary" : "border-transparent",
         focused ? "bg-accent" : "hover:bg-accent/60",
       )}
       onClick={() => onSelect(record)}
@@ -68,6 +74,7 @@ export const LedgerRow = memo(function LedgerRow({
           {shortDate(record.date)}
         </span>
         <span className="min-w-0 truncate font-medium text-foreground @2xl:order-none">
+          {best ? <span className="sr-only">Best match: </span> : null}
           {record.issuer ?? record.kind_label}
           <span className="font-normal text-muted-foreground @2xl:hidden"> · {what}</span>
         </span>
@@ -266,13 +273,14 @@ export function AnswerCard({
   onCopy,
   onOpenDocument,
   onOpenEmail,
-  onSelect,
+  onShowAll,
 }: {
   answer: RecordAnswer;
   onCopy: (text: string) => void;
   onOpenDocument: (record: RecordData) => void;
   onOpenEmail: (record: RecordData) => void;
-  onSelect: (record: RecordData) => void;
+  /** List every match in place of the ledger. */
+  onShowAll: () => void;
 }) {
   const card = answer.answer;
   if (!card) {
@@ -365,24 +373,58 @@ export function AnswerCard({
           <KeyChip className="h-4 px-1">o</KeyChip> email
         </button>
       </div>
-      {answer.also && answer.also.length > 0 ? (
-        <p data-testid="answer-also" className="mt-2 text-[12.5px] text-muted-foreground">
-          Also matching:{" "}
-          {answer.also.map((other, at) => (
-            <span key={other.id}>
-              {at > 0 ? ", " : ""}
-              <button
-                type="button"
-                onClick={() => onSelect(other)}
-                className="text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-primary"
-              >
-                {other.title ?? other.issuer ?? other.kind_label}
-                {other.reference ? ` (ref ${other.reference})` : ""}
-              </button>
-            </span>
-          ))}
-        </p>
+      {(answer.matching ?? 0) > 1 ? (
+        <button
+          type="button"
+          data-testid="answer-show-all"
+          onClick={onShowAll}
+          className="mt-2 min-h-8 text-[12.5px] text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-primary"
+        >
+          Show all {answer.matching} matches
+        </button>
       ) : null}
+    </section>
+  );
+}
+
+/**
+ * Over a listed query's matches: what they are, how many, what they add
+ * up to and when, the issuer's page when they share one, and the way back
+ * to the whole ledger.
+ */
+export function MatchesHeader({
+  list,
+  onClear,
+  onIssuer,
+}: {
+  list: RecordAnswerList;
+  onClear: () => void;
+  onIssuer: (issuer: string) => void;
+}) {
+  const span = matchSpan(list);
+  const issuer = list.issuer;
+  return (
+    <section aria-label="Matches" data-testid="answer-list" className="mx-5 mt-3">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h2 data-testid="answer-list-header" className="text-[15px] font-semibold">
+          {list.header}
+        </h2>
+        <Button variant="outline" size="sm" className="ml-auto" onClick={onClear}>
+          <X aria-hidden className="size-3.5" /> Clear search
+        </Button>
+      </div>
+      <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-[12.5px] text-muted-foreground">
+        {span ? <span data-testid="answer-list-span">{span}</span> : null}
+        {issuer ? (
+          <button
+            type="button"
+            onClick={() => onIssuer(issuer)}
+            className="min-h-8 text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-primary"
+          >
+            {issuer}'s page
+          </button>
+        ) : null}
+      </p>
     </section>
   );
 }

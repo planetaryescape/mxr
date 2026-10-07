@@ -42,8 +42,8 @@ import {
   openDocument,
 } from "./archiveVerbs";
 import { FacetsPanel } from "./FacetsPanel";
-import { activeChip, groupByMonth, KIND_CHIPS, stepYear } from "./ledger";
-import { AnswerCard, LedgerRow, RecordCard } from "./RecordParts";
+import { activeChip, answerList, groupByMonth, KIND_CHIPS, stepYear } from "./ledger";
+import { AnswerCard, LedgerRow, MatchesHeader, RecordCard } from "./RecordParts";
 
 const PAGE = 200;
 /** The record card beside the ledger. */
@@ -83,10 +83,18 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
   const phase = useDelayedPending(ledger.isLoading);
   const [query, setQuery] = useState("");
   const asked = useDebounced(query, 250);
-  const typed = useAnswer(asked);
+  const askedText = asked.trim();
+  // "Show all" and "Show more" belong to the query they were pressed on: a
+  // new query decides for itself between an answer and a list.
+  const [showAllFor, setShowAllFor] = useState<string | null>(null);
+  const [listPage, setListPage] = useState({ query: "", limit: PAGE });
+  const typed = useAnswer(asked, false, {
+    list: showAllFor === askedText,
+    limit: listPage.query === askedText ? listPage.limit : PAGE,
+  });
   // Enter on a query no record matches searches all mail, once.
   const [searched, setSearched] = useState("");
-  const searchingAll = searched !== "" && searched === asked.trim() && !typed.data?.answer;
+  const searchingAll = searched !== "" && searched === askedText && !typed.data?.answer;
   const all = useAnswer(searchingAll ? searched : "", true);
   const answer = searchingAll ? all : typed;
   const qc = useQueryClient();
@@ -96,7 +104,10 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
     if (answered) void qc.invalidateQueries({ queryKey: modeGuideKey("archive") });
   }, [answered, qc]);
 
-  const records = useMemo(() => ledger.data?.records ?? [], [ledger.data]);
+  // Cleared in the box: the answer goes at once, not after the debounce.
+  const shownAnswer = query.trim() && askedText ? (answer.data ?? typed.data) : undefined;
+  const list = answerList(shownAnswer);
+  const records = useMemo(() => list?.records ?? ledger.data?.records ?? [], [list, ledger.data]);
   useEffect(() => {
     onThreads(records.map((record) => record.thread_id).filter((id): id is string => Boolean(id)));
   }, [onThreads, records]);
@@ -128,11 +139,22 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
             setLimit(PAGE);
           }}
           query={query}
-          setQuery={setQuery}
-          answer={asked.trim() ? (answer.data ?? typed.data) : undefined}
-          answerPending={answer.isFetching && Boolean(asked.trim())}
+          setQuery={(next) => {
+            setQuery(next);
+            // Leaving the query behind drops its "Show all".
+            if (next.trim() !== showAllFor) setShowAllFor(null);
+          }}
+          answer={shownAnswer}
+          answerPending={answer.isFetching && Boolean(askedText)}
           onSearchAll={() => setSearched(query.trim())}
+          onShowAll={() => setShowAllFor(askedText)}
           onMore={() => setLimit((current) => current + PAGE)}
+          onMoreMatches={() =>
+            setListPage((current) => ({
+              query: askedText,
+              limit: (current.query === askedText ? current.limit : PAGE) + PAGE,
+            }))
+          }
         />
       ) : null}
     </>
@@ -180,7 +202,10 @@ interface LedgerProps {
   answerPending: boolean;
   /** Enter on a query no record matches: search all mail. */
   onSearchAll: () => void;
+  /** List every match of the query on screen. */
+  onShowAll: () => void;
   onMore: () => void;
+  onMoreMatches: () => void;
 }
 
 function Ledger({
@@ -194,7 +219,9 @@ function Ledger({
   answer,
   answerPending,
   onSearchAll,
+  onShowAll,
   onMore,
+  onMoreMatches,
 }: LedgerProps) {
   const nav = useReaderNav();
   const params = useParams({ strict: false }) as { threadId?: string };
@@ -204,7 +231,10 @@ function Ledger({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputId = useId();
-  const records = ledger.records;
+  // A listed query's matches stand in for the ledger's rows.
+  const list = answerList(answer);
+  const records = list?.records ?? ledger.records;
+  const months = list?.months ?? ledger.months;
   const [cursorId, setCursorId] = useState<string | null>(null);
   // While an answer is on screen and the cursor hasn't moved, y, Enter and
   // o act on the answer's record.
@@ -216,16 +246,25 @@ function Ledger({
     records.findIndex((record) => record.id === cursorId),
   );
   const rowRecord: RecordData | undefined = records[index];
-  const answerRecord = answer?.answer?.record;
+  const answerRecord = list ? undefined : answer?.answer?.record;
   const current = onAnswer && answerRecord ? answerRecord : rowRecord;
   const full = useRecord(singlePane && !cardOpen ? null : (current?.id ?? null));
   const cardRecord = full.data && full.data.id === current?.id ? full.data : current;
   const showSideCard = !singlePane && !params.threadId && cardRecord;
   const pane = useSplitPane("archive-card", CARD_PANE_SIZE, { active: Boolean(showSideCard) });
 
+  // A card takes the keys; a list puts the cursor on its best match. Only a
+  // new list moves the cursor: a refetch or "Show more" leaves it.
+  const bestId = list?.top_record_id ?? null;
+  const listQuery = list ? answer?.query : undefined;
   useEffect(() => {
-    if (answer?.answer) setOnAnswer(true);
-  }, [answer]);
+    if (!bestId) return;
+    setCursorId(bestId);
+    setOnAnswer(false);
+  }, [bestId, listQuery]);
+  useEffect(() => {
+    if (!bestId && answer?.answer) setOnAnswer(true);
+  }, [answer, bestId]);
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
   }, [index]);
@@ -268,8 +307,16 @@ function Ledger({
   const years = ledger.facets.years.map((year) => Number(year.value)).filter(Number.isFinite);
   const stepTo = (delta: -1 | 1) =>
     setFilter({ ...filter, year: stepYear(years, filter.year, delta) });
+  const clearSearch = () => {
+    setQuery("");
+    inputRef.current?.focus();
+  };
   const issuerPage = (record?: RecordData) => {
     if (record?.issuer) setFilter({ issuer: record.issuer });
+  };
+  const listIssuerPage = (issuer: string) => {
+    setQuery("");
+    setFilter({ issuer });
   };
   const copyRef = () => {
     if (onAnswer && answer?.answer) void copyText(answer.answer.copy, "answer");
@@ -309,12 +356,13 @@ function Ledger({
     filter: () => setFacetsOpen(true),
     close: () => {
       if (cardOpen) setCardOpen(false);
+      else if (list) clearSearch();
       else if (filter.issuer) setFilter({ ...filter, issuer: undefined });
       else if (cardShown) retireCard();
     },
   });
 
-  const groups = useMemo(() => groupByMonth(records, ledger.months), [records, ledger.months]);
+  const groups = useMemo(() => groupByMonth(records, months), [records, months]);
   const position = useMemo(() => new Map(records.map((record, at) => [record.id, at])), [records]);
   const chip = activeChip(filter);
 
@@ -377,7 +425,8 @@ function Ledger({
                   return;
                 }
                 inputRef.current?.blur();
-                setOnAnswer(true);
+                // A list's cursor is already on its best match.
+                if (!list) setOnAnswer(true);
               }}
             >
               <label htmlFor={inputId} className="sr-only">
@@ -405,104 +454,110 @@ function Ledger({
                 />
               </div>
             </form>
-            {answer ? (
+            {list ? (
+              <MatchesHeader list={list} onClear={clearSearch} onIssuer={listIssuerPage} />
+            ) : answer ? (
               <AnswerCard
                 answer={answer}
                 onCopy={(text) => void copyText(text, "answer")}
                 onOpenDocument={(record) => void openDocument(record)}
                 onOpenEmail={(record) => openEmail(record)}
-                onSelect={(record) => {
-                  select(record);
-                  if (singlePane) setCardOpen(true);
-                }}
+                onShowAll={onShowAll}
               />
             ) : answerPending ? (
               <p className="mx-5 mt-3 text-[12.5px] text-muted-foreground">Looking…</p>
             ) : null}
 
-            {ledger.coming_up.length > 0 ? (
-              <section aria-label="Coming up" data-testid="coming-up" className="mx-5 mt-4">
-                <h2 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-                  Coming up
-                </h2>
-                <ul className="mt-1 grid gap-0.5 text-[13px]">
-                  {ledger.coming_up.map((moment) => (
-                    <li key={`${moment.kind}-${moment.record_id}`}>
-                      <button
-                        type="button"
-                        className="min-h-8 text-left text-foreground hover:underline"
-                        onClick={() => {
-                          const target = records.find((record) => record.id === moment.record_id);
-                          if (target) {
-                            select(target);
-                            if (singlePane) setCardOpen(true);
-                          }
-                        }}
-                      >
-                        {moment.label}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
+            {/* A listed query is not narrowed by the ledger's chips and filters. */}
+            {list ? null : (
+              <>
+                {ledger.coming_up.length > 0 ? (
+                  <section aria-label="Coming up" data-testid="coming-up" className="mx-5 mt-4">
+                    <h2 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+                      Coming up
+                    </h2>
+                    <ul className="mt-1 grid gap-0.5 text-[13px]">
+                      {ledger.coming_up.map((moment) => (
+                        <li key={`${moment.kind}-${moment.record_id}`}>
+                          <button
+                            type="button"
+                            className="min-h-8 text-left text-foreground hover:underline"
+                            onClick={() => {
+                              const target = records.find(
+                                (record) => record.id === moment.record_id,
+                              );
+                              if (target) {
+                                select(target);
+                                if (singlePane) setCardOpen(true);
+                              }
+                            }}
+                          >
+                            {moment.label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
 
-            <div
-              className="mx-5 mt-4 flex flex-wrap items-center gap-1.5"
-              role="group"
-              aria-label="Kind"
-            >
-              {KIND_CHIPS.map((kindChip) => (
-                <button
-                  key={kindChip.id}
-                  type="button"
-                  aria-pressed={chip === kindChip.id}
-                  onClick={() => setFilter({ ...filter, kinds: kindChip.kinds })}
-                  className={cn(
-                    "min-h-8 rounded-full border px-3 text-[12.5px]",
-                    chip === kindChip.id
-                      ? "border-primary bg-primary/10 text-foreground"
-                      : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
-                  )}
+                <div
+                  className="mx-5 mt-4 flex flex-wrap items-center gap-1.5"
+                  role="group"
+                  aria-label="Kind"
                 >
-                  {kindChip.label}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setFacetsOpen(true)}
-                className="ml-auto inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-muted-foreground hover:bg-accent hover:text-foreground"
-              >
-                <SlidersHorizontal aria-hidden className="size-3.5" /> Filters
-                <KeyChip className="hidden h-4 px-1 md:inline-flex">g f</KeyChip>
-              </button>
-            </div>
-            <ActiveFilters filter={filter} setFilter={setFilter} ledger={ledger} />
+                  {KIND_CHIPS.map((kindChip) => (
+                    <button
+                      key={kindChip.id}
+                      type="button"
+                      aria-pressed={chip === kindChip.id}
+                      onClick={() => setFilter({ ...filter, kinds: kindChip.kinds })}
+                      className={cn(
+                        "min-h-8 rounded-full border px-3 text-[12.5px]",
+                        chip === kindChip.id
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
+                      )}
+                    >
+                      {kindChip.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setFacetsOpen(true)}
+                    className="ml-auto inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    <SlidersHorizontal aria-hidden className="size-3.5" /> Filters
+                    <KeyChip className="hidden h-4 px-1 md:inline-flex">g f</KeyChip>
+                  </button>
+                </div>
+                <ActiveFilters filter={filter} setFilter={setFilter} ledger={ledger} />
 
-            {ledger.issuer ? (
-              <section
-                aria-label={`${ledger.issuer.name}'s records`}
-                data-testid="issuer-page"
-                className="mx-5 mt-3"
-              >
-                <h2 className="text-[15px] font-semibold">{ledger.issuer.name}</h2>
-                <p className="text-[12.5px] text-muted-foreground">
-                  {plural(ledger.issuer.count, "record")}
-                  {ledger.issuer.totals.length > 0
-                    ? ` · ${ledger.issuer.totals.map((total) => total.display).join(" + ")}`
-                    : ""}
-                </p>
-              </section>
-            ) : null}
+                {ledger.issuer ? (
+                  <section
+                    aria-label={`${ledger.issuer.name}'s records`}
+                    data-testid="issuer-page"
+                    className="mx-5 mt-3"
+                  >
+                    <h2 className="text-[15px] font-semibold">{ledger.issuer.name}</h2>
+                    <p className="text-[12.5px] text-muted-foreground">
+                      {plural(ledger.issuer.count, "record")}
+                      {ledger.issuer.totals.length > 0
+                        ? ` · ${ledger.issuer.totals.map((total) => total.display).join(" + ")}`
+                        : ""}
+                    </p>
+                  </section>
+                ) : null}
 
-            {ledger.empty_state && ledger.matching === 0 ? (
-              <p
-                data-testid="records-empty"
-                className="mx-5 mt-4 text-[13px] text-muted-foreground"
-              >
-                {ledger.empty_state}
-              </p>
-            ) : null}
+                {ledger.empty_state && ledger.matching === 0 ? (
+                  <p
+                    data-testid="records-empty"
+                    className="mx-5 mt-4 text-[13px] text-muted-foreground"
+                  >
+                    {ledger.empty_state}
+                  </p>
+                ) : null}
+              </>
+            )}
 
             <div className="mt-2">
               {groups.map((group, at) => (
@@ -534,6 +589,7 @@ function Ledger({
                           record={record}
                           index={rowIndex}
                           focused={!onAnswer && rowIndex === index}
+                          best={record.id === bestId}
                           onSelect={singlePane ? openCard : select}
                           onOpen={(target) => openEmail(target)}
                         />
@@ -543,7 +599,14 @@ function Ledger({
                 </section>
               ))}
             </div>
-            {ledger.matching > records.length ? (
+            {list && list.count > list.offset + records.length ? (
+              <div className="mx-5 mt-4">
+                <Button variant="outline" size="sm" onClick={onMoreMatches}>
+                  Show more ({records.length} of {list.count})
+                </Button>
+              </div>
+            ) : null}
+            {!list && ledger.matching > records.length ? (
               <div className="mx-5 mt-4">
                 <Button variant="outline" size="sm" onClick={onMore}>
                   Show more ({records.length} of {ledger.matching})

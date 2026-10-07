@@ -2371,14 +2371,24 @@ pub enum RecordsAction {
     },
     /// One record with every field and where it came from.
     Show { record_id: String },
-    /// Ask for a field: "lisbon booking ref", "dell receipt 2025". Falls
-    /// back to `mxr ask` over all mail only when no record matches.
+    /// Ask for a field: "lisbon booking ref", "dell receipt 2025". A query
+    /// that only names something ("anthropic") lists every match. Falls back
+    /// to `mxr ask` over all mail only when no record matches.
     #[command(visible_alias = "find")]
     Ask {
         query: String,
         /// Don't fall back to `mxr ask` when no record matches.
         #[arg(long)]
         no_fallback: bool,
+        /// List every match, even when one answers the query.
+        #[arg(long)]
+        all: bool,
+        /// Records in a list's page.
+        #[arg(long, default_value_t = 200)]
+        limit: u32,
+        /// Where a list's page starts.
+        #[arg(long, default_value_t = 0)]
+        offset: u32,
     },
     /// Fix a field (field=value), confirm one (--confirm), confirm the
     /// whole card (--confirm-all) or go back to the extracted value

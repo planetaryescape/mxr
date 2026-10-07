@@ -142,13 +142,49 @@ impl App {
     }
 
     pub(crate) fn set_records_answer(&mut self, answer: mxr_protocol::RecordAnswerData) {
+        // A slow answer to a query the box has moved on from would show
+        // one query's records under another's words.
+        let asked = self.mailbox.records_page.query.trim();
+        if !asked.is_empty() && answer.query != asked {
+            return;
+        }
         if answer.answer.is_some() {
             // Asking is the mode's main verb: it retires the card.
             self.retire_records_card();
         }
         let page = &mut self.mailbox.records_page;
         page.card = None;
+        // A list starts on its best match; leaving one puts the cursor back
+        // in the ledger's range.
+        let top = answer.list.as_ref().map(|list| {
+            list.records
+                .iter()
+                .position(|record| record.id == list.top_record_id)
+                .unwrap_or(0)
+        });
+        let was_list = page.listed_matches().is_some();
         page.answer = Some(answer);
+        if let Some(top) = top {
+            self.mailbox.selected_index = top;
+            self.mailbox.scroll_offset = 0;
+        } else if was_list {
+            self.mailbox.selected_index = 0;
+            self.mailbox.scroll_offset = 0;
+        }
+    }
+
+    /// `a` on an answer: every match as a list, so none is out of sight.
+    fn show_all_matches(&mut self) {
+        let page = &mut self.mailbox.records_page;
+        let Some(answer) = &page.answer else {
+            return;
+        };
+        if answer.list.is_some() || answer.matching < 2 {
+            return;
+        }
+        page.answer_list = true;
+        page.pending_answer = Some(answer.query.clone());
+        self.status_message = Some(format!("Listing all {} matches…", answer.matching));
     }
 
     pub(crate) fn set_record_card(&mut self, record: RecordData) {
@@ -306,6 +342,7 @@ impl App {
         page.pending_refresh = true;
         page.card = None;
         page.answer = None;
+        page.answer_list = false;
         self.mailbox.selected_index = 0;
         self.mailbox.scroll_offset = 0;
     }
@@ -317,8 +354,14 @@ impl App {
         if page.card.take().is_some() {
             return;
         }
-        if page.answer.take().is_some() {
+        if let Some(answer) = page.answer.take() {
             page.query.clear();
+            page.answer_list = false;
+            // The cursor was on the list's rows; the ledger starts again.
+            if answer.list.is_some() {
+                self.mailbox.selected_index = 0;
+                self.mailbox.scroll_offset = 0;
+            }
             return;
         }
         if page.filter.issuer.is_some() || page.filter.year.is_some() {
@@ -641,6 +684,8 @@ impl App {
             KeyCode::Enter => {
                 page.asking = false;
                 let query = page.query.trim().to_string();
+                // A new query decides for itself between answer and list.
+                page.answer_list = false;
                 if query.is_empty() {
                     page.answer = None;
                 } else {
@@ -688,6 +733,10 @@ impl App {
         let shifted = plain_or_shift(key.modifiers);
         let action = match key.code {
             KeyCode::Char('/') if plain => Some(Action::RecordsAsk),
+            KeyCode::Char('a') if plain && self.mailbox.records_page.answer.is_some() => {
+                self.show_all_matches();
+                return None;
+            }
             KeyCode::Char('h') | KeyCode::Left if plain => {
                 self.mailbox.active_pane = ActivePane::Sidebar;
                 return None;

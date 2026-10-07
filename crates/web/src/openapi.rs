@@ -742,6 +742,9 @@ fn mail_records_ledger() {}
         ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
         ("fallback" = Option<bool>, Query, description = "Fall back to mxr ask over all mail (default true)"),
         ("limit" = Option<u32>, Query, description = "Records in \"also matching\" (default 4)"),
+        ("list" = Option<bool>, Query, description = "Every match as a list, whatever the query asks for (default false)"),
+        ("offset" = Option<u32>, Query, description = "Where a list's page starts (default 0)"),
+        ("list_limit" = Option<u32>, Query, description = "Records in a list's page (default 200)"),
     ),
     responses(
         (status = 200, description = "The `RecordAnswer` variant", body = ResponseData),

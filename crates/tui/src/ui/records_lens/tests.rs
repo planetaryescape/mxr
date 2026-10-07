@@ -4,7 +4,8 @@ use mxr_core::id::{AccountId, MessageId};
 use mxr_protocol::{
     RecordAmountData, RecordAnswerCardData, RecordAnswerData, RecordDocumentData,
     RecordFacetCountData, RecordFacetsData, RecordFieldData, RecordFilterData, RecordGroupData,
-    RecordKindData, RecordMomentData, RecordMonthData, RecordSourceData, ARCHIVE_GUIDE,
+    RecordKindData, RecordLedgerData, RecordMomentData, RecordMonthData, RecordSourceData,
+    ARCHIVE_GUIDE,
 };
 use mxr_test_support::render_to_string;
 
@@ -261,6 +262,54 @@ pub(crate) fn lisbon_answer() -> RecordAnswerData {
             Some("88213"),
             at(2025, 1, 21),
         )],
+        mode: mxr_protocol::RecordAnswerModeData::Answer,
+        matching: 2,
+        list: None,
+        fallback: None,
+    }
+}
+
+/// "octopus": two bills from one issuer, listed, the February one best.
+pub(crate) fn octopus_list() -> RecordAnswerData {
+    let march = record(
+        "rec_octopus_mar",
+        RecordKindData::Statement,
+        "Octopus Energy",
+        "Bill, Mar",
+        Some((11_020, "\u{a3}110.20")),
+        None,
+        at(2025, 3, 11),
+    );
+    let card = RecordAnswerCardData {
+        provenance: None,
+        record: octopus(),
+        field: "amount".into(),
+        label: "Amount".into(),
+        value: "\u{a3}128.40".into(),
+        copy: "128.40".into(),
+    };
+    RecordAnswerData {
+        query: "octopus".into(),
+        asked: "any".into(),
+        mode: mxr_protocol::RecordAnswerModeData::List,
+        answer: Some(card),
+        also: Vec::new(),
+        matching: 2,
+        list: Some(Box::new(mxr_protocol::RecordAnswerListData {
+            header: "Octopus Energy \u{b7} 2 records \u{b7} \u{a3}238.60".into(),
+            count: 2,
+            offset: 0,
+            records: vec![march, octopus()],
+            months: vec![
+                month("2025-03", "2025 \u{b7} March", 1, "\u{a3}110.20"),
+                month("2025-02", "2025 \u{b7} February", 1, "\u{a3}128.40"),
+            ],
+            totals: Vec::new(),
+            first: Some(at(2025, 2, 11)),
+            last: Some(at(2025, 3, 11)),
+            top_record_id: "rec_octopus".into(),
+            issuer: Some("Octopus Energy".into()),
+        })),
         fallback: None,
     }
 }
@@ -329,6 +378,33 @@ fn an_answer_leads_with_the_field_and_where_it_came_from() {
     let wide = render_at(&page, 120);
     assert!(wide.contains("\u{2713}schema"));
     assert!(wide.contains("Also matching: Lisbon, 3 nights (88213)"));
+    assert!(wide.contains("a show all 2 matches"));
+}
+
+#[test]
+fn a_broad_query_lists_every_match_by_month_in_place_of_the_ledger() {
+    let mut page = page(vec![apple(), dell()], true);
+    page.query = "octopus".into();
+    page.answer = Some(octopus_list());
+    for width in [60u16, 120] {
+        let rendered = render_at(&page, width);
+        insta::assert_snapshot!(format!("records_lens_list_{width}"), rendered);
+        assert!(
+            rendered.contains("Octopus Energy \u{b7} 2 records \u{b7} \u{a3}238.60"),
+            "{width}\n{rendered}"
+        );
+        assert!(rendered.contains("Esc clear search"), "{width}");
+        assert!(rendered.contains("Bill, Mar"), "{width}");
+        assert!(rendered.contains("Bill, Feb"), "{width}");
+        // The ledger's own rows give way to the matches.
+        assert!(!rendered.contains("XPS 14"), "{width}");
+        assert!(
+            !rendered.contains('\u{25b6}'),
+            "{width}: no answer card in a list"
+        );
+    }
+    assert_eq!(page.rows().len(), 2);
+    assert!(page.answer_record().is_none(), "keys act on the rows");
 }
 
 #[test]

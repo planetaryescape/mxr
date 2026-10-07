@@ -109,6 +109,54 @@ test("a query no record matches says so before searching all mail", async ({ pag
   );
 });
 
+test("a broad issuer query lists every match in place of the ledger, and Clear brings it back", async ({
+  page,
+}) => {
+  const total = await waitForRecords(page);
+  await openApp(page, "/archive");
+  await ask(page).fill("octopus");
+  const matches = page.getByTestId("answer-list");
+  await expect(matches.getByTestId("answer-list-header")).toHaveText(
+    /^Octopus Energy · 3 records · £/,
+  );
+  await expect(matches.getByTestId("answer-list-span")).toBeVisible();
+  // Every bill, not just the newest: no answer card hides the rest.
+  await expect(page.getByTestId("answer-card")).toHaveCount(0);
+  const rows = page.getByTestId("record-row");
+  await expect(rows).toHaveCount(3);
+  for (const row of await rows.all()) await expect(row).toContainText("Octopus Energy");
+  await expect(page.locator('[data-testid="record-row"][data-best="true"]')).toHaveCount(1);
+  // The ledger's own chips don't narrow a list.
+  await expect(page.getByRole("group", { name: "Kind" })).toHaveCount(0);
+  await matches.getByRole("button", { name: "Clear search" }).click();
+  await expect(matches).toHaveCount(0);
+  await expect(ask(page)).toHaveValue("");
+  await expect(ask(page)).toBeFocused();
+  await expect(rows).toHaveCount(total);
+});
+
+test("Show all turns an answer into the list of its matches, best one marked", async ({ page }) => {
+  await waitForRecords(page);
+  await openApp(page, "/archive");
+  await ask(page).fill("lisbon booking ref");
+  const card = page.getByTestId("answer-card");
+  await expect(card.getByTestId("answer-value")).toHaveText("K7QX2M");
+  const showAll = card.getByTestId("answer-show-all");
+  await expect(showAll).toHaveText(/^Show all \d+ matches$/);
+  const count = Number((await showAll.textContent())?.match(/\d+/)?.[0]);
+  expect(count).toBeGreaterThan(1);
+  await showAll.click();
+  await expect(page.getByTestId("answer-list-header")).toContainText(`${count} records`);
+  await expect(page.getByTestId("record-row")).toHaveCount(count);
+  await expect(page.locator('[data-testid="record-row"][data-best="true"]')).toContainText(
+    "LHR -> LIS TP1357",
+  );
+  // A new query decides for itself again.
+  await ask(page).fill("dell");
+  await expect(page.getByTestId("answer-card")).toContainText("Dell");
+  await expect(page.getByTestId("answer-list")).toHaveCount(0);
+});
+
 test("E previews the export's rows, unchecked rows and missing PDFs, then downloads that CSV", async ({
   page,
 }) => {
@@ -237,6 +285,16 @@ for (const colorScheme of ["dark", "light"] as const) {
       await ask(page).fill("lisbon booking ref");
       await expect(page.getByTestId("answer-value")).toHaveText("K7QX2M");
       await expect(page.getByTestId("record-card")).toBeVisible();
+      await page.waitForLoadState("networkidle");
+      expect(await blockingViolations(page)).toEqual([]);
+    });
+
+    test("axe: a listed query", async ({ page }) => {
+      await waitForRecords(page);
+      await openApp(page, "/archive");
+      await ask(page).fill("octopus");
+      await expect(page.getByTestId("answer-list")).toBeVisible();
+      await expect(page.getByTestId("record-row")).toHaveCount(3);
       await page.waitForLoadState("networkidle");
       expect(await blockingViolations(page)).toEqual([]);
     });

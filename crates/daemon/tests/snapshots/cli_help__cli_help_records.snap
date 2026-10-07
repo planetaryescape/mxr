@@ -1,5 +1,6 @@
 ---
 source: crates/daemon/tests/cli_help.rs
+assertion_line: 14
 expression: stdout
 ---
 Receipts, orders, bookings and documents. Ask for what you need.
@@ -13,7 +14,7 @@ Usage: mxr records [OPTIONS] [COMMAND]
 Commands:
   list     The ledger (the default): records by month, newest first
   show     One record with every field and where it came from
-  ask      Ask for a field: "lisbon booking ref", "dell receipt 2025". Falls back to `mxr ask` over all mail only when no record matches [alias: find]
+  ask      Ask for a field: "lisbon booking ref", "dell receipt 2025". A query that only names something ("anthropic") lists every match. Falls back to `mxr ask` over all mail only when no record matches [alias: find]
   fix      Fix a field (field=value), confirm one (--confirm), confirm the whole card (--confirm-all) or go back to the extracted value (--clear). Your value wins on every re-run
   dismiss  Not a record: take records out of Archive. The emails are untouched and they are never filed again
   file     File an email as a record yourself

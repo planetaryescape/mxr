@@ -3,7 +3,7 @@
 //! conversation previews filing it before anything is written.
 
 use super::*;
-use crate::ui::records_lens::tests::{apple, dell, lisbon_answer, page};
+use crate::ui::records_lens::tests::{apple, dell, lisbon_answer, octopus_list, page};
 use mxr_protocol::{RecordChangeData, RecordEditData, RecordUndoData};
 
 fn press(app: &mut App, code: KeyCode) {
@@ -74,6 +74,48 @@ fn slash_and_a_query_ask_the_answer_box_and_y_copies_the_answer() {
         app.mailbox.records_page.last_copied.as_deref(),
         Some("1249.00")
     );
+}
+
+#[test]
+fn a_shows_every_match_and_esc_puts_the_ledger_back() {
+    let mut app = archive_app();
+    press(&mut app, KeyCode::Char('/'));
+    typed(&mut app, "lisbon booking ref");
+    press(&mut app, KeyCode::Enter);
+    app.mailbox.records_page.pending_answer = None;
+    app.set_records_answer(lisbon_answer());
+    press(&mut app, KeyCode::Char('a'));
+    let page = &app.mailbox.records_page;
+    assert_eq!(page.pending_answer.as_deref(), Some("lisbon booking ref"));
+    assert!(page.answer_list, "the runtime asks for the list");
+
+    // A slow answer to another query never lands under this one.
+    app.set_records_answer(octopus_list());
+    assert!(app.mailbox.records_page.listed_matches().is_none());
+
+    // A list opens on its best match, and the keys act on the rows.
+    let mut listed = octopus_list();
+    listed.query = "lisbon booking ref".into();
+    app.set_records_answer(listed);
+    let page = &app.mailbox.records_page;
+    assert_eq!(page.rows().len(), 2);
+    assert_eq!(app.mailbox.selected_index, 1, "the February bill is best");
+    assert_eq!(
+        app.selected_record().map(|r| r.id.as_str()),
+        Some("rec_octopus")
+    );
+    press(&mut app, KeyCode::Esc);
+    let page = &app.mailbox.records_page;
+    assert!(page.answer.is_none());
+    assert!(!page.answer_list);
+    assert_eq!(page.rows().len(), 2, "the ledger's Dell and Apple rows");
+    assert_eq!(app.mailbox.selected_index, 0);
+
+    // A new query decides for itself again.
+    press(&mut app, KeyCode::Char('/'));
+    typed(&mut app, "dell");
+    press(&mut app, KeyCode::Enter);
+    assert!(!app.mailbox.records_page.answer_list);
 }
 
 #[test]

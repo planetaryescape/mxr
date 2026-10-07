@@ -9,7 +9,7 @@
 //! guide and ledger. Pure render; wiring lives in
 //! `app/records_actions.rs`.
 
-use mxr_protocol::{RecordData, RecordExportData, RecordLedgerData};
+use mxr_protocol::{RecordData, RecordExportData, RecordMonthData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -257,7 +257,31 @@ fn answer_lines(
     };
     let secondary = Style::default().fg(theme.text_secondary);
     let muted = Style::default().fg(theme.text_muted);
-    if let Some(card) = &answer.answer {
+    if let Some(list) = &answer.list {
+        body.lines.push(Line::from(Span::styled(
+            format!(
+                " {}",
+                truncate(&one_line(&list.header), width.saturating_sub(4))
+            ),
+            Style::default()
+                .fg(theme.text_primary)
+                .add_modifier(Modifier::BOLD),
+        )));
+        if let (Some(first), Some(last)) = (list.first, list.last) {
+            body.text(
+                format!("{} to {}", date_long(first), date_long(last)),
+                secondary,
+            );
+        }
+        body.text(
+            if list.issuer.is_some() {
+                "p issuer page  Esc clear search"
+            } else {
+                "Esc clear search"
+            },
+            muted,
+        );
+    } else if let Some(card) = &answer.answer {
         let record = &card.record;
         let provenance = card.provenance.as_ref().map_or_else(String::new, |field| {
             if field.checked {
@@ -334,6 +358,9 @@ fn answer_lines(
                 ),
                 muted,
             );
+        }
+        if answer.matching > 1 {
+            body.text(format!("a show all {} matches", answer.matching), muted);
         }
     } else if let Some(fallback) = &answer.fallback {
         for line in wrap(&one_line(&fallback.note), width.saturating_sub(4)) {
@@ -441,6 +468,22 @@ fn ledger_body(view: &RecordsView<'_>, width: usize, theme: &crate::theme::Theme
         card_lines(&mut body, page, width, theme);
     }
     answer_lines(&mut body, page, width, theme);
+    // A list answer stands in for the ledger: the kind chips and the
+    // issuer filter don't narrow it.
+    if let Some(list) = page.listed_matches() {
+        month_rows(&mut body, &list.records, &list.months, view, width, theme);
+        if (list.count as usize) > list.records.len() {
+            body.text(
+                format!(
+                    "{} of {} shown. Narrow the query to see the rest.",
+                    list.records.len(),
+                    list.count
+                ),
+                muted,
+            );
+        }
+        return body;
+    }
     if !ledger.coming_up.is_empty() {
         body.text("Coming up", secondary.add_modifier(Modifier::BOLD));
         for moment in &ledger.coming_up {
@@ -478,7 +521,14 @@ fn ledger_body(view: &RecordsView<'_>, width: usize, theme: &crate::theme::Theme
         }
         return body;
     }
-    month_rows(&mut body, ledger, view, width, theme);
+    month_rows(
+        &mut body,
+        &ledger.records,
+        &ledger.months,
+        view,
+        width,
+        theme,
+    );
     if (ledger.matching as usize) > ledger.records.len() {
         body.text(
             format!(
@@ -494,17 +544,17 @@ fn ledger_body(view: &RecordsView<'_>, width: usize, theme: &crate::theme::Theme
 
 fn month_rows(
     body: &mut Body,
-    ledger: &RecordLedgerData,
+    records: &[RecordData],
+    months: &[RecordMonthData],
     view: &RecordsView<'_>,
     width: usize,
     theme: &crate::theme::Theme,
 ) {
     let mut current: Option<String> = None;
-    for (index, record) in ledger.records.iter().enumerate() {
+    for (index, record) in records.iter().enumerate() {
         let month = record.date.map(|at| at.format("%Y-%m").to_string());
         if month != current {
-            if let Some(header) = ledger
-                .months
+            if let Some(header) = months
                 .iter()
                 .find(|header| Some(&header.month) == month.as_ref())
             {

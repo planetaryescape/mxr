@@ -1,5 +1,6 @@
 ---
 source: crates/tui/src/ui/records_lens/tests.rs
+assertion_line: 370
 expression: rendered
 ---
 "╭ Archive ─ Receipts, orders, bookings and documents. Ask for what you need. ──╮"
@@ -10,6 +11,7 @@ expression: rendered
 "│  Part of trip "Lisbon, June 2025" (3)                                        │"
 "│  y copy  ↵ pdf  o email  Esc clear                                           │"
 "│  Also matching: Lisbon, 3 nights (88213)                                     │"
+"│  a show all 2 matches                                                        │"
 "│──────────────────────────────────────────────────────────────────────────────│"
 "│  Coming up                                                                   │"
 "│    Lisbon, June 2025 · in 3 days                                             │"
@@ -19,7 +21,6 @@ expression: rendered
 "│▌ 03 Mar  Dell             XPS 14 laptop          £1,249.00   402-118      pdf│"
 "│          ordered · shipped · delivered 7 Mar                                 │"
 "│          Return by 2 Apr (passed) · Warranty to 3 Mar 2027                   │"
-"│                                                                              │"
 "│                                                                              │"
 "│                                                                              │"
 "│                                                                              │"

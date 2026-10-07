@@ -201,3 +201,86 @@ fn the_card_leads_with_what_was_asked_or_the_reference() {
     no_ref.reference = None;
     assert_eq!(answer_field(Asked::Reference, &no_ref), AnswerField::Amount);
 }
+
+fn mode_of(query: &str, records: &[ArchiveRecord]) -> Mode {
+    let candidates: Vec<Candidate<'_>> = records
+        .iter()
+        .map(|record| Candidate {
+            record,
+            group_title: None,
+        })
+        .collect();
+    let parsed = parse(query);
+    mode(&parsed, &rank(&parsed, &candidates))
+}
+
+fn anthropic(id: &str, title: &str, year: i32) -> ArchiveRecord {
+    record(id, "invoice", "Anthropic", title, None, None, year)
+}
+
+#[test]
+fn a_query_that_only_names_an_issuer_is_a_list_of_its_records() {
+    let records = [
+        anthropic("a1", "Claude Pro, March", 2025),
+        anthropic("a2", "Claude Pro, April", 2025),
+        anthropic("a3", "API credits", 2024),
+        record("dell", "order", "Dell", "XPS", Some("402-118"), None, 2025),
+    ];
+    assert_eq!(mode_of("anthropic", &records), Mode::List);
+    assert_eq!(mode_of("anthropic 2025", &records), Mode::List);
+    assert_eq!(mode_of("anthropic invoices", &records), Mode::List);
+}
+
+#[test]
+fn a_query_that_asks_for_a_field_is_an_answer_however_many_match() {
+    let records = [
+        anthropic("a1", "Claude Pro, March", 2025),
+        anthropic("a2", "Claude Pro, April", 2025),
+    ];
+    assert_eq!(mode_of("how much was anthropic", &records), Mode::Answer);
+    assert_eq!(mode_of("anthropic invoice pdf", &records), Mode::Answer);
+    assert_eq!(mode_of("anthropic reference", &records), Mode::Answer);
+}
+
+#[test]
+fn a_clear_winner_or_a_single_match_is_an_answer() {
+    let records = [
+        record(
+            "dell",
+            "order",
+            "Dell",
+            "XPS 14",
+            Some("402-118"),
+            None,
+            2025,
+        ),
+        record(
+            "case",
+            "order",
+            "Amazon",
+            "Sleeve for 402",
+            None,
+            None,
+            2025,
+        ),
+    ];
+    // The reference (5) leads the title (2) by more than CLEAR_LEAD.
+    assert_eq!(mode_of("402", &records), Mode::Answer);
+    // One match is an answer.
+    assert_eq!(mode_of("xps", &records), Mode::Answer);
+    // Nothing matched: the caller falls back, it is not a list.
+    assert_eq!(mode_of("boiler", &records), Mode::Answer);
+}
+
+#[test]
+fn ties_rank_the_same_whatever_order_the_records_arrive_in() {
+    let records = [
+        anthropic("a1", "Claude Pro", 2025),
+        anthropic("a2", "Claude Pro", 2025),
+        anthropic("a3", "Claude Pro", 2025),
+    ];
+    let reversed: Vec<ArchiveRecord> = records.iter().rev().cloned().collect();
+    let forward = ids("anthropic", &records, &[None, None, None]);
+    assert_eq!(forward, vec!["a3", "a2", "a1"]);
+    assert_eq!(ids("anthropic", &reversed, &[None, None, None]), forward);
+}

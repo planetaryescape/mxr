@@ -1358,7 +1358,19 @@ async fn dispatch(
             account_id,
             fallback,
             limit,
-        } => records::answer_query(state, query, account_id.as_ref(), *fallback, *limit).await,
+            list,
+            offset,
+            list_limit,
+        } => {
+            let ask = records::AnswerAsk {
+                fallback: *fallback,
+                limit: *limit,
+                list: *list,
+                offset: *offset,
+                list_limit: *list_limit,
+            };
+            records::answer_query(state, query, account_id.as_ref(), ask).await
+        }
         Request::SetRecordField {
             record_id,
             edit,

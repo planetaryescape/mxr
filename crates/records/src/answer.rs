@@ -7,6 +7,11 @@
 //! field of the record (issuer, title, place, reference, its trip or
 //! series), so an answer is never a loose guess; when no record matches
 //! every word, the caller falls back to `mxr ask` and says so.
+//!
+//! A query that asks for a field, or that one record wins clearly, is an
+//! answer: one card. A query that only names something ("anthropic",
+//! "lisbon", "octopus bills 2025") that several records match about as
+//! well is a list: every match, so a broad query never hides the rest.
 
 use crate::RecordKind;
 use chrono::{DateTime, Datelike, Utc};
@@ -258,6 +263,10 @@ pub fn rank(query: &Query, candidates: &[Candidate<'_>]) -> Vec<Ranked> {
     // Ties go to what starts first (a trip's flight before its hotel: what
     // the desk asks for first), then to the newest record.
     ranked.sort_by(|a, b| {
+        let (a_id, b_id) = (
+            &candidates[a.0.index].record.id,
+            &candidates[b.0.index].record.id,
+        );
         b.0.score
             .partial_cmp(&a.0.score)
             .unwrap_or(std::cmp::Ordering::Equal)
@@ -268,8 +277,38 @@ pub fn rank(query: &Query, candidates: &[Candidate<'_>]) -> Vec<Ranked> {
                 (None, None) => std::cmp::Ordering::Equal,
             })
             .then_with(|| b.1 .1.cmp(&a.1 .1))
+            // Last, the id: the same answer whatever order the store
+            // returned the records in.
+            .then_with(|| b_id.cmp(a_id))
     });
     ranked.into_iter().map(|(ranked, _)| ranked).collect()
+}
+
+/// How the answer box shows what matched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// One record on an answer card.
+    Answer,
+    /// Every match, as the ledger lists them.
+    List,
+}
+
+/// How far the best match must lead the next to be the answer to a query
+/// that only names something: one stronger field, such as a reference
+/// over an issuer (5 against 3).
+pub const CLEAR_LEAD: f32 = 2.0;
+
+/// A query that asks for a field is an answer, and so is one where the
+/// best match leads the next by `CLEAR_LEAD`. Otherwise several records
+/// match about as well, and the query is a list.
+pub fn mode(query: &Query, ranked: &[Ranked]) -> Mode {
+    if query.asked != Asked::Any {
+        return Mode::Answer;
+    }
+    match ranked {
+        [first, second, ..] if first.score - second.score < CLEAR_LEAD => Mode::List,
+        _ => Mode::Answer,
+    }
 }
 
 /// Which field the answer card leads with.

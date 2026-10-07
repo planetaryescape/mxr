@@ -12,6 +12,8 @@ use mxr_protocol::{RecordEditData, RecordFilterData, RecordKindData};
 // same over HTTP as over IPC.
 const DEFAULT_RECORD_LIMIT: u32 = 200;
 const DEFAULT_ANSWER_LIMIT: u32 = 4;
+/// A list's page: the ledger's page size.
+const DEFAULT_ANSWER_LIST_LIMIT: u32 = 200;
 
 fn parse_kinds(raw: Option<&str>) -> Result<Vec<RecordKindData>, BridgeError> {
     raw.unwrap_or_default()
@@ -131,6 +133,13 @@ struct AnswerQuery {
     fallback: Option<bool>,
     #[serde(default)]
     limit: Option<u32>,
+    /// Every match as a list: "Show all".
+    #[serde(default)]
+    list: Option<bool>,
+    #[serde(default)]
+    offset: Option<u32>,
+    #[serde(default)]
+    list_limit: Option<u32>,
 }
 
 async fn answer(
@@ -151,6 +160,9 @@ async fn answer(
             account_id,
             fallback: query.fallback.unwrap_or(true),
             limit: query.limit.unwrap_or(DEFAULT_ANSWER_LIMIT),
+            list: query.list.unwrap_or(false),
+            offset: query.offset.unwrap_or(0),
+            list_limit: query.list_limit.unwrap_or(DEFAULT_ANSWER_LIST_LIMIT),
         },
     )
     .await?;

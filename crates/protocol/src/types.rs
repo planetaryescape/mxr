@@ -111,6 +111,10 @@ fn default_answer_limit() -> u32 {
     4
 }
 
+fn default_answer_list_limit() -> u32 {
+    200
+}
+
 fn default_place_messages_per_bundle() -> u32 {
     20
 }
@@ -1919,6 +1923,14 @@ pub enum Request {
         /// Records in "also matching" after the answer.
         #[serde(default = "default_answer_limit")]
         limit: u32,
+        /// Every match as a list, whatever the query asks for: "Show all".
+        #[serde(default)]
+        list: bool,
+        /// The page of a list: where it starts and how many records.
+        #[serde(default)]
+        offset: u32,
+        #[serde(default = "default_answer_list_limit")]
+        list_limit: u32,
     },
     /// Correct a record's field, confirm it, or confirm the whole card. A
     /// correction is yours from then on and wins over every re-run.

@@ -113,28 +113,16 @@ pub(in crate::handler) async fn get_item(state: &AppState, key: &str) -> Handler
         .ok_or_else(|| HandlerError::Message(format!("No Reading item {key}")))?;
 
     let body = state.store.get_body(&issue.id).await?;
-    let snippet = state
-        .store
-        .get_envelope(&issue.id)
-        .await?
-        .map(|envelope| envelope.snippet)
-        .unwrap_or_default();
-    let (subject, source_name) = (issue.subject.clone(), issue.source_name.clone());
+    let reader_issue = issue.clone();
     let issue_words = rows
         .iter()
         .find(|row| row.idx == 0)
         .map_or(0, |row| row.words);
     let (paragraphs, html) = tokio::task::spawn_blocking(move || {
-        let html = body.as_ref().and_then(|b| b.text_html.clone());
-        let extraction = mxr_reading::extract(&mxr_reading::IssueInput {
-            subject: &subject,
-            source: Some(&source_name),
-            html: html.as_deref(),
-            text: body.as_ref().and_then(|b| b.text_plain.as_deref()),
-            snippet: &snippet,
-        });
-        let reader_html = html
-            .as_deref()
+        let extraction = mxr_reading::extract(&reader_issue.input(body.as_ref()));
+        let reader_html = body
+            .as_ref()
+            .and_then(|b| b.text_html.as_deref())
             .and_then(|html| mxr_reading::article::issue_reader_html(html, issue_words));
         (extraction.paragraphs, reader_html)
     })

@@ -13,7 +13,7 @@ use crate::state::AppState;
 use chrono::Utc;
 use mxr_protocol::{ReadingFetchData, ResponseData};
 use mxr_reading::article::extract_article;
-use mxr_reading::fetch::{checked_url, fetch_page, FetchPolicy};
+use mxr_reading::fetch::{fetch_page, FetchPolicy};
 use mxr_store::ReadingArticleRow;
 
 pub(in crate::handler) async fn fetch_article(
@@ -50,21 +50,16 @@ pub(in crate::handler) async fn fetch_article(
         }
     }
 
-    // The demo mailbox, in `mxr demo` or the web app's end-to-end daemon.
-    let demo = mxr_config::is_demo_instance() || mxr_provider_fake::fixtures::demo_dataset_active();
-    let fetched = if demo {
+    let fetched = if super::demo_mailbox() {
         mxr_provider_fake::fixtures::demo_article_html(&url)
             .map(|html| (url.clone(), Vec::new(), html.to_string()))
             .ok_or_else(|| format!("the demo has no copy of {domain}; nothing was fetched"))
     } else {
-        // Refuse before anything is sent when the link itself is off limits.
-        match checked_url(&url) {
-            Ok(_) => fetch_page(&url, &FetchPolicy::default())
-                .await
-                .map(|page| (page.final_url.to_string(), page.contacted, page.html))
-                .map_err(|error| error.to_string()),
-            Err(error) => Err(error.to_string()),
-        }
+        // fetch_page refuses an off-limits link before anything is sent.
+        fetch_page(&url, &FetchPolicy::default())
+            .await
+            .map(|page| (page.final_url.to_string(), page.contacted, page.html))
+            .map_err(|error| error.to_string())
     };
     let now = Utc::now();
     let mut saved = ReadingArticleRow {

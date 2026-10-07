@@ -76,6 +76,8 @@ pub(super) struct Issue {
     pub raw_sender: String,
     pub source_name: String,
     pub subject: String,
+    /// Shown when no body is stored.
+    pub snippet: String,
     pub date: DateTime<Utc>,
     pub unsubscribe: UnsubscribeMethod,
     /// Why the classifier put it in Reading, when it is in the inbox.
@@ -93,6 +95,7 @@ impl Issue {
             raw_sender: message.from_email.clone(),
             source_name: source_name(message.from_name.as_deref(), &message.from_email),
             subject: message.subject.clone(),
+            snippet: message.snippet.clone(),
             date: message.date,
             unsubscribe: message.unsubscribe.clone(),
             kind: Some(placed.kind.clone()),
@@ -108,11 +111,33 @@ impl Issue {
             raw_sender: envelope.from.email.clone(),
             source_name: source_name(envelope.from.name.as_deref(), &envelope.from.email),
             subject: envelope.subject.clone(),
+            snippet: envelope.snippet.clone(),
             date: envelope.date,
             unsubscribe: envelope.unsubscribe.clone(),
             kind: None,
         }
     }
+}
+
+impl Issue {
+    /// What extraction reads from this issue and its stored body.
+    pub(super) fn input<'a>(
+        &'a self,
+        body: Option<&'a mxr_core::types::MessageBody>,
+    ) -> mxr_reading::IssueInput<'a> {
+        mxr_reading::IssueInput {
+            subject: &self.subject,
+            source: Some(&self.source_name),
+            html: body.and_then(|b| b.text_html.as_deref()),
+            text: body.and_then(|b| b.text_plain.as_deref()),
+            snippet: &self.snippet,
+        }
+    }
+}
+
+/// The demo mailbox, in `mxr demo` or the web app's end-to-end daemon.
+pub(super) fn demo_mailbox() -> bool {
+    mxr_config::is_demo_instance() || mxr_provider_fake::fixtures::demo_dataset_active()
 }
 
 fn source_name(name: Option<&str>, email: &str) -> String {
@@ -151,25 +176,13 @@ pub(super) async fn ensure_items(
     let mut inputs = Vec::with_capacity(stale.len());
     for issue in &stale {
         let body = state.store.get_body(&issue.id).await?;
-        let snippet = state
-            .store
-            .get_envelope(&issue.id)
-            .await?
-            .map(|envelope| envelope.snippet)
-            .unwrap_or_default();
-        inputs.push(((*issue).clone(), body, snippet));
+        inputs.push(((*issue).clone(), body));
     }
     let extracted = tokio::task::spawn_blocking(move || {
         inputs
             .into_iter()
-            .map(|(issue, body, snippet)| {
-                let extraction = mxr_reading::extract(&mxr_reading::IssueInput {
-                    subject: &issue.subject,
-                    source: Some(&issue.source_name),
-                    html: body.as_ref().and_then(|b| b.text_html.as_deref()),
-                    text: body.as_ref().and_then(|b| b.text_plain.as_deref()),
-                    snippet: &snippet,
-                });
+            .map(|(issue, body)| {
+                let extraction = mxr_reading::extract(&issue.input(body.as_ref()));
                 let rows = item_rows(&issue, &extraction);
                 (issue.id, rows)
             })
@@ -629,8 +642,7 @@ pub(super) async fn get_edition(
     let now = Utc::now();
     let accounts = scoped_accounts(state, account_id).await?;
     let mut stored = state.store.reading_visit().await?;
-    let demo = mxr_config::is_demo_instance() || mxr_provider_fake::fixtures::demo_dataset_active();
-    if stored == ReadingVisitRow::default() && demo {
+    if stored == ReadingVisitRow::default() && demo_mailbox() {
         // The demo mailbox comes with a history: Reading was last opened
         // yesterday and has been watching for months, so every band and
         // the unsubscribe evidence show on the first look.

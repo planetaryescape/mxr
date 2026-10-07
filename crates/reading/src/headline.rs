@@ -1,5 +1,5 @@
 //! The headline an issue is shown under: its subject with the newsletter's
-//! own boilerplate removed ("[AINews]", "Issue #42 |", the source's name,
+//! own boilerplate removed ("\[AINews\]", "Issue #42 |", the source's name,
 //! emoji). A cleaned headline that comes out too short falls back to the
 //! subject, because a bad headline is worse than the subject.
 

@@ -3,7 +3,7 @@
 //!
 //! Plain data in, plain data out; the daemon reads the store and calls in.
 //!
-//! - [`extract`]: one issue as readable items (shape, headline, standfirst,
+//! - [`extract`](mod@extract): one issue as readable items (shape, headline, standfirst,
 //!   digest links, words), by rules and no model.
 //! - [`fade`]: each source's window, from its usual gap between issues.
 //! - [`pace`]: minutes from words, at the reader's own pace once measured.

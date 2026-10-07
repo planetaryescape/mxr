@@ -36,10 +36,16 @@ static NUMBER: Lazy<Regex> = Lazy::new(|| {
 fn glued(text: &str, start: usize, end: usize) -> bool {
     let before = text[..start].chars().next_back();
     let after = text[end..].chars().next();
-    let glue = |c: Option<char>, extra: &[char]| c.is_some_and(|c| c.is_alphanumeric() || extra.contains(&c));
+    let glue = |c: Option<char>, extra: &[char]| {
+        c.is_some_and(|c| c.is_alphanumeric() || extra.contains(&c))
+    };
     glue(before, &['#', ':', '-', '/', '.', '_']) || glue(after, &[':', '/', '_']) || {
         // "2026-10" or "10-07": a dash between digits is a date.
-        after == Some('-') && text[end..].chars().nth(1).is_some_and(|c| c.is_ascii_digit())
+        after == Some('-')
+            && text[end..]
+                .chars()
+                .nth(1)
+                .is_some_and(|c| c.is_ascii_digit())
     }
 }
 
@@ -142,7 +148,10 @@ pub fn delta(
     previous_at: DateTime<Utc>,
 ) -> Option<Delta> {
     for (index, now) in current.iter().enumerate() {
-        let ordinal = current[..index].iter().filter(|q| q.unit == now.unit).count();
+        let ordinal = current[..index]
+            .iter()
+            .filter(|q| q.unit == now.unit)
+            .count();
         let same_unit_now = current.iter().filter(|q| q.unit == now.unit).count();
         let earlier: Vec<&Quoted> = previous.iter().filter(|q| q.unit == now.unit).collect();
         if earlier.len() != same_unit_now {
@@ -215,17 +224,23 @@ mod tests {
     fn quotes_quantities_and_skips_ids_times_and_dates() {
         assert_eq!(
             units("Your week: 3 runs, 21.3 km"),
-            vec![("3 runs".into(), "run".into()), ("21.3 km".into(), "km".into())]
+            vec![
+                ("3 runs".into(), "run".into()),
+                ("21.3 km".into(), "km".into())
+            ]
         );
         assert_eq!(
             units("Payout of R 4,210.00 failed"),
             vec![("R 4,210.00".into(), "ZAR".into())]
         );
         assert_eq!(units("£142.00 due"), vec![("£142.00".into(), "GBP".into())]);
-        assert_eq!(units("Weekly report: 1,204 visitors ▼3%"), vec![
-            ("1,204 visitors".into(), "visitor".into()),
-            ("3%".into(), "%".into()),
-        ]);
+        assert_eq!(
+            units("Weekly report: 1,204 visitors ▼3%"),
+            vec![
+                ("1,204 visitors".into(), "visitor".into()),
+                ("3%".into(), "%".into()),
+            ]
+        );
         assert!(units("Order #1234 at 06:12 on 2026-10-07, build v2 of 3").is_empty());
         assert!(units("Your code is 482913").is_empty());
     }
@@ -269,6 +284,12 @@ mod tests {
         )
         .expect("same");
         assert_eq!(same.text, "same as the day before");
-        assert!(delta(&extract_numbers("5 runs", 8), &extract_numbers("0 runs", 8), at, week_ago).is_none());
+        assert!(delta(
+            &extract_numbers("5 runs", 8),
+            &extract_numbers("0 runs", 8),
+            at,
+            week_ago
+        )
+        .is_none());
     }
 }

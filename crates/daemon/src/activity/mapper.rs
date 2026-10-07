@@ -837,7 +837,10 @@ pub fn map_request(
         | Request::GetRail { .. }
         | Request::GetFreshness { .. }
         | Request::GetModeMembership { .. }
-        | Request::SetModeDone { .. } => {
+        | Request::SetModeDone { .. }
+        | Request::GetUpdatesDigest { .. }
+        | Request::LetGoDigest { .. }
+        | Request::SetUpdateSource { .. } => {
             skip_activity!(
                 "modes",
                 "Now, the rail and per-mode done are not in the activity catalog yet"

@@ -75,6 +75,7 @@ pub mod threads;
 pub mod time;
 pub mod todo;
 pub mod triage;
+pub mod updates;
 pub mod version;
 pub mod voice;
 pub mod web;

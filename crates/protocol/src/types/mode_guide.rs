@@ -11,7 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{archive_copy, messages_copy, now_copy, reading_copy, todo_copy};
+use super::{archive_copy, messages_copy, now_copy, reading_copy, todo_copy, updates_copy};
 
 /// One key and the verb it does in this mode: "e tick off".
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -347,6 +347,38 @@ pub const ARCHIVE_GUIDE: ModeGuideCopy = ModeGuideCopy {
     ],
 };
 
+/// Updates' keys: the digest is let go in one key, a source in another.
+const UPDATES_KEYS: &[(&str, &str)] = &[
+    ("A", "let go of digest"),
+    ("e", "let go of this source"),
+    ("t", "this needs me"),
+    ("K", "tune a source"),
+    ("L", "open the link"),
+    ("o", "open the email"),
+    ("u", "undo"),
+    ("?", "what is this"),
+];
+
+pub const UPDATES_GUIDE: ModeGuideCopy = ModeGuideCopy {
+    mode: "updates",
+    name: "Updates",
+    header: updates_copy::HEADER,
+    never_had_any: updates_copy::NEVER_HAD_ANY,
+    add_one: "",
+    clear_for_now: updates_copy::CLEAR_FOR_NOW,
+    lands_here: updates_copy::LANDS_HERE,
+    card: updates_copy::CARD,
+    card_keys: &[
+        ("A", "let go of digest"),
+        ("e", "let go of this source"),
+        ("t", "this needs me"),
+        ("K", "tune a source"),
+    ],
+    why_template: updates_copy::WHY,
+    keys: UPDATES_KEYS,
+    first_run_line: updates_copy::FIRST_RUN_LINE,
+};
+
 /// Reading's keys, per the blueprint's one key map.
 const READING_KEYS: &[(&str, &str)] = &[
     ("Enter", "read"),
@@ -400,6 +432,7 @@ pub const MODE_GUIDES: &[ModeGuideCopy] = &[
     NOW_GUIDE,
     MESSAGES_GUIDE,
     TODO_GUIDE,
+    UPDATES_GUIDE,
     READING_GUIDE,
     ARCHIVE_GUIDE,
 ];
@@ -513,7 +546,8 @@ mod tests {
         assert_eq!(mode_guide("Now").map(|g| g.mode), Some("now"));
         assert_eq!(mode_guide("messages").map(|g| g.mode), Some("messages"));
         assert_eq!(mode_guide("Archive").map(|g| g.mode), Some("archive"));
-        assert!(mode_guide("updates").is_none());
+        assert_eq!(mode_guide("Updates").map(|g| g.mode), Some("updates"));
+        assert!(mode_guide("reading").is_none());
     }
 
     #[test]

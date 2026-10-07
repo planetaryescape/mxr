@@ -1202,6 +1202,9 @@ async fn post_sync_fanout(
     if !initial_backfill_in_progress {
         Box::pin(crate::handler::reading::after_sync(&state, &account_id)).await;
     }
+
+    // Facts for new Updates mail, so the next digest reads them cached.
+    crate::handler::updates::scan_messages(&state, &upserted_message_ids).await;
 }
 
 /// Clears what the store delete cannot reach for mail the provider deleted,

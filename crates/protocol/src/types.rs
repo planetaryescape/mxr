@@ -16,6 +16,7 @@ mod reading;
 mod records;
 mod thread_context;
 mod todos;
+mod updates;
 pub use desk::*;
 pub use draft_provenance::*;
 pub use freshness::*;
@@ -30,6 +31,7 @@ pub use reading::*;
 pub use records::*;
 pub use thread_context::*;
 pub use todos::*;
+pub use updates::*;
 
 /// IPC items are grouped conceptually, even though the wire format stays flat.
 ///
@@ -2082,6 +2084,56 @@ pub enum Request {
         #[serde(default)]
         dismiss_unsubscribe_offer: bool,
     },
+    // ----- Updates -----
+    /// The Updates briefing (blueprint 22, phase 4): everything that
+    /// arrived by the cut (`cut`, else the latest one) and wasn't let go,
+    /// one line per source in Needs a look, Changed and Routine, plus what
+    /// arrived since. Rules only; deltas are computed, never written by a
+    /// model. `mark_seen` records that Updates was opened, so the expired
+    /// count starts again and the mute question counts as asked;
+    /// `expired` lists every update past its window. Returns
+    /// `ResponseData::UpdatesDigest`.
+    GetUpdatesDigest {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cut: Option<chrono::DateTime<chrono::Utc>>,
+        #[serde(default)]
+        mark_seen: bool,
+        #[serde(default)]
+        expired: bool,
+    },
+    /// Let go of a digest: every update in the cut leaves Updates, shown or
+    /// hidden by tuning or expiry, and nothing that arrived after it. A
+    /// thread no other mode holds is archived at the provider when
+    /// `modes.archive_on_last_done` is on. `source_key` lets go of one
+    /// source only. `dry_run` returns the same selection; pass its
+    /// `selection_token` back and the run refuses if the cut changed in
+    /// between. Returns `ResponseData::UpdatesLetGo`.
+    LetGoDigest {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cut: Option<chrono::DateTime<chrono::Utc>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_key: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selection_token: Option<String>,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Tune a source: every digest, changes only, muted, or breakthrough
+    /// (every message to To do on arrival). `source` is a source key
+    /// ("github.com/acme/api") or a sender address. Returns
+    /// `ResponseData::UpdateSource`.
+    SetUpdateSource {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        source: String,
+        setting: UpdateSourceSettingData,
+        #[serde(default)]
+        dry_run: bool,
+    },
     /// A place (Reading or Paper trail): inbox mail of that kind grouped by
     /// sender, newest bundle first, each with the reason it is there.
     /// `account_id: None` covers every enabled account.
@@ -2354,6 +2406,9 @@ impl Request {
             | Self::SaveHighlight { .. }
             | Self::ExportReadingHighlights { .. }
             | Self::SetReadingSource { .. }
+            | Self::GetUpdatesDigest { .. }
+            | Self::LetGoDigest { .. }
+            | Self::SetUpdateSource { .. }
             | Self::GetRecipientBriefing { .. }
             | Self::SuggestCollaborators { .. }
             | Self::FindExpert { .. }
@@ -3345,6 +3400,18 @@ pub enum ResponseData {
     Now {
         now: NowData,
     },
+    /// Returned by `Request::GetUpdatesDigest`.
+    UpdatesDigest {
+        digest: UpdatesDigestData,
+    },
+    /// Returned by `Request::LetGoDigest`.
+    UpdatesLetGo {
+        result: UpdatesLetGoData,
+    },
+    /// Returned by `Request::SetUpdateSource`.
+    UpdateSource {
+        change: UpdateSourceChangeData,
+    },
     /// Returned by `Request::GetRail`.
     Rail {
         rail: RailData,
@@ -3653,6 +3720,9 @@ impl ResponseData {
             | Self::ReadingHighlight { .. }
             | Self::ReadingHighlights { .. }
             | Self::ReadingSource { .. }
+            | Self::UpdatesDigest { .. }
+            | Self::UpdatesLetGo { .. }
+            | Self::UpdateSource { .. }
             | Self::RecipientBriefing { .. }
             | Self::SuggestedCollaborators { .. }
             | Self::ExpertSuggestions { .. }

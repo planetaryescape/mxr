@@ -30,6 +30,7 @@ mod spa;
 mod thread_context_routes;
 mod time_routes;
 mod todo_routes;
+mod updates_routes;
 
 pub use openapi::ApiDoc;
 

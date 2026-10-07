@@ -142,7 +142,42 @@ pub(super) async fn set_mode_done(state: &AppState, request: DoneRequest<'_>) ->
     } else if thread_ids.is_empty() {
         return Err(HandlerError::InvalidRequest("no threads given".into()));
     }
-    let plans = plan(state, &thread_ids, mode, todo_ids, Utc::now()).await?;
+    let plans = plan(
+        state,
+        &thread_ids,
+        mode,
+        todo_ids,
+        &HashSet::new(),
+        Utc::now(),
+    )
+    .await?;
+    finish(state, plans, dry_run).await
+}
+
+/// Let go of exactly these Updates messages: each thread's mark covers its
+/// messages except those in `keep` (Updates mail that arrived after the
+/// cut), so a digest acts on what it showed and a later message stays.
+/// A thread that keeps Updates mail is still held by Updates, so it is
+/// never archived at the provider.
+pub(super) async fn let_go_updates(
+    state: &AppState,
+    thread_ids: &[ThreadId],
+    keep: &HashSet<MessageId>,
+    dry_run: bool,
+) -> HandlerResult {
+    let plans = plan(
+        state,
+        thread_ids,
+        ModeKindData::Updates,
+        &[],
+        keep,
+        Utc::now(),
+    )
+    .await?;
+    finish(state, plans, dry_run).await
+}
+
+async fn finish(state: &AppState, plans: Vec<Plan>, dry_run: bool) -> HandlerResult {
     if dry_run {
         return Ok(ResponseData::ModeDone {
             items: plans.iter().map(Plan::outcome).collect(),
@@ -192,6 +227,7 @@ async fn plan(
     thread_ids: &[ThreadId],
     mode: ModeKindData,
     todo_ids: &[String],
+    keep: &HashSet<MessageId>,
     now: DateTime<Utc>,
 ) -> Result<Vec<Plan>, HandlerError> {
     let archive_on_last_done = state.config_snapshot().modes.archive_on_last_done;
@@ -211,7 +247,9 @@ async fn plan(
                 return Plan::failed(thread_id, mode, "this thread is already in the request");
             }
             match placed.get(thread_id) {
-                Some(placement) => plan_one(placement, mode, todo_ids, archive_on_last_done, now),
+                Some(placement) => {
+                    plan_one(placement, mode, todo_ids, keep, archive_on_last_done, now)
+                }
                 None => Plan::failed(thread_id, mode, "conversation not found"),
             }
         })
@@ -222,6 +260,7 @@ fn plan_one(
     placement: &Placement,
     mode: ModeKindData,
     todo_ids: &[String],
+    keep: &HashSet<MessageId>,
     archive_on_last_done: bool,
     now: DateTime<Utc>,
 ) -> Plan {
@@ -257,7 +296,9 @@ fn plan_one(
     // The watermark of the messages this plan read: anything stored after
     // it brings the thread back to this mode.
     let mark = mark_name(mode)
-        .zip(DeskDismissal::through(&placement.messages))
+        .zip(DeskDismissal::through(
+            placement.messages.iter().filter(|m| !keep.contains(&m.id)),
+        ))
         .map(|(name, through)| ModeDoneMark {
             account_id: data.account_id.clone(),
             thread_id: data.thread_id.clone(),
@@ -271,7 +312,11 @@ fn plan_one(
         .iter()
         .map(|entry| entry.mode)
         .filter(|held| held.holds_inbox())
-        .filter(|held| *held != mode || (mode == ModeKindData::Todo && !still_open.is_empty()))
+        .filter(|held| {
+            *held != mode
+                || (mode == ModeKindData::Todo && !still_open.is_empty())
+                || placement.messages.iter().any(|m| keep.contains(&m.id))
+        })
         .map(|held| StillIn {
             mode: held,
             detail: (held == ModeKindData::Todo)

@@ -107,13 +107,20 @@ mod tests {
 
     #[test]
     fn keys_by_registrable_domain_narrowed_by_repo_or_list() {
-        assert_eq!(source_key("noreply@strava.com", None, "Your week"), "strava.com");
+        assert_eq!(
+            source_key("noreply@strava.com", None, "Your week"),
+            "strava.com"
+        );
         assert_eq!(
             source_key("alerts@mail.camden.gov.uk", None, "Council tax"),
             "camden.gov.uk"
         );
         assert_eq!(
-            source_key("notifications@github.com", Some("acme/api <api.acme.github.com>"), "[acme/api] Run failed: CI"),
+            source_key(
+                "notifications@github.com",
+                Some("acme/api <api.acme.github.com>"),
+                "[acme/api] Run failed: CI"
+            ),
             "github.com/acme/api"
         );
         assert_eq!(
@@ -121,7 +128,11 @@ mod tests {
             "x.io/acme/web"
         );
         assert_eq!(
-            source_key("news@sender.example", Some("<weekly.lists.other.example>"), "Hello"),
+            source_key(
+                "news@sender.example",
+                Some("<weekly.lists.other.example>"),
+                "Hello"
+            ),
             "sender.example#weekly.lists.other.example"
         );
         assert_eq!(
@@ -133,14 +144,28 @@ mod tests {
     #[test]
     fn names_by_display_name_or_domain_with_the_repo() {
         assert_eq!(
-            source_name(Some("GitHub Notifications"), "notifications@github.com", "github.com/acme/api"),
+            source_name(
+                Some("GitHub Notifications"),
+                "notifications@github.com",
+                "github.com/acme/api"
+            ),
             "GitHub acme/api"
         );
-        assert_eq!(source_name(None, "noreply@strava.com", "strava.com"), "Strava");
         assert_eq!(
-            source_name(Some("\"x@y.com\""), "noreply@uptimerobot.com", "uptimerobot.com"),
+            source_name(None, "noreply@strava.com", "strava.com"),
+            "Strava"
+        );
+        assert_eq!(
+            source_name(
+                Some("\"x@y.com\""),
+                "noreply@uptimerobot.com",
+                "uptimerobot.com"
+            ),
             "Uptimerobot"
         );
-        assert_eq!(source_name(Some("Vercel"), "a@vercel.com", "vercel.com"), "Vercel");
+        assert_eq!(
+            source_name(Some("Vercel"), "a@vercel.com", "vercel.com"),
+            "Vercel"
+        );
     }
 }

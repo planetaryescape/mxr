@@ -379,35 +379,6 @@ pub(super) fn updates_line(messages: u32, sources: u32, top: &[String]) -> Strin
 /// The hour the Reading pick appears (Things' This Evening).
 pub(super) const EVENING_HOUR: u32 = 17;
 
-/// Updates' two digest cuts a day, local time (blueprint 22, Updates'
-/// rhythm).
-const DIGEST_CUTS: [(u32, u32); 2] = [(8, 0), (16, 30)];
-
-/// Now's Updates card never reaches back further than this, however long
-/// since you last looked.
-const UPDATES_CARD_MAX_DAYS: i64 = 2;
-
-/// Where Now's Updates card starts: the cut before the latest one, so the
-/// card holds the latest digest and what has arrived since, and never more
-/// than two days back.
-pub(super) fn updates_card_since<Tz: TimeZone>(now: DateTime<Utc>, tz: &Tz) -> DateTime<Utc> {
-    let today = now.with_timezone(tz).date_naive();
-    let mut cuts: Vec<DateTime<Utc>> = (0..3)
-        .filter_map(|back| today.checked_sub_days(chrono::Days::new(back)))
-        .flat_map(|day| {
-            DIGEST_CUTS.iter().filter_map(move |(hour, minute)| {
-                tz.from_local_datetime(&day.and_hms_opt(*hour, *minute, 0)?)
-                    .earliest()
-                    .map(|at| at.with_timezone(&Utc))
-            })
-        })
-        .filter(|cut| *cut <= now)
-        .collect();
-    cuts.sort_unstable_by(|a, b| b.cmp(a));
-    let floor = now - Duration::days(UPDATES_CARD_MAX_DAYS);
-    cuts.get(1).copied().unwrap_or(floor).max(floor)
-}
-
 /// How long a newsletter's issues stay in Reading before they fade: twice
 /// the source's median interval, clamped to 2 to 14 days (blueprint 22,
 /// Reading's rhythm). A source with one issue so far fades after a week.

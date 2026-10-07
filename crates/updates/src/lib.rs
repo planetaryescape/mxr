@@ -16,7 +16,9 @@ pub mod text;
 pub mod window;
 
 pub use cuts::{digest_title, time_label, CutError, CutWindow, Cuts};
-pub use fact::{derive, Fact, FactInput, FactSource, NeedsYou, Tracked, TrackedKind, TrackedOutcome};
+pub use fact::{
+    derive, Fact, FactInput, FactSource, NeedsYou, Tracked, TrackedKind, TrackedOutcome,
+};
 pub use numbers::{delta, extract_numbers, Delta, Quoted};
 pub use source::{email_domain, source_key, source_name};
 pub use template::{clean_subject, template_key};
@@ -109,15 +111,30 @@ mod tests {
             template_seen: true,
             number_moved: false,
         };
-        assert_eq!(signal(Some(Signal::NeedsYou), History::default()), Signal::NeedsYou);
+        assert_eq!(
+            signal(Some(Signal::NeedsYou), History::default()),
+            Signal::NeedsYou
+        );
         assert_eq!(signal(None, History::default()), Signal::NewSource);
         assert_eq!(signal(None, seen), Signal::Routine);
         assert_eq!(
-            signal(None, History { template_seen: false, ..seen }),
+            signal(
+                None,
+                History {
+                    template_seen: false,
+                    ..seen
+                }
+            ),
             Signal::Changed
         );
         assert_eq!(
-            signal(None, History { number_moved: true, ..seen }),
+            signal(
+                None,
+                History {
+                    number_moved: true,
+                    ..seen
+                }
+            ),
             Signal::Changed
         );
         for value in ["routine", "changed", "new_source", "anomaly", "needs_you"] {

@@ -220,7 +220,8 @@ static STATE: Lazy<Regex> = Lazy::new(|| {
 
 /// Money in a link: never opened from a row.
 static MONEY_LINK: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)(pay|billing|checkout|invoice|payment|wallet|bank)").expect("valid money link regex")
+    Regex::new(r"(?i)(pay|billing|checkout|invoice|payment|wallet|bank)")
+        .expect("valid money link regex")
 });
 
 fn outcome(state: &str) -> TrackedOutcome {
@@ -305,7 +306,10 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
     let window = window(&rule_text, input.date, tz);
     let needs_you = if PAYMENT_FAILED.is_match(&rule_text) {
         Some(NeedsYou::PaymentFailed)
-    } else if window.as_ref().is_some_and(|w| w.kind == WindowKind::SignIn) {
+    } else if window
+        .as_ref()
+        .is_some_and(|w| w.kind == WindowKind::SignIn)
+    {
         Some(NeedsYou::SignIn)
     } else {
         None
@@ -354,7 +358,12 @@ mod tests {
     use super::*;
     use chrono::{Duration, FixedOffset};
 
-    fn input<'a>(from: &'a str, name: Option<&'a str>, subject: &'a str, body: Option<&'a str>) -> FactInput<'a> {
+    fn input<'a>(
+        from: &'a str,
+        name: Option<&'a str>,
+        subject: &'a str,
+        body: Option<&'a str>,
+    ) -> FactInput<'a> {
         FactInput {
             subject,
             body,
@@ -381,7 +390,10 @@ mod tests {
         assert_eq!(fact.fact_source, FactSource::Body);
         assert_eq!(fact.text, "You ran 3 times this week: 3 runs, 21.3 km.");
         assert_eq!(
-            fact.numbers.iter().map(|n| n.raw.as_str()).collect::<Vec<_>>(),
+            fact.numbers
+                .iter()
+                .map(|n| n.raw.as_str())
+                .collect::<Vec<_>>(),
             vec!["3 runs", "21.3 km"]
         );
         assert_eq!(fact.source_key, "strava.com");

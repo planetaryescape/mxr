@@ -173,6 +173,51 @@ impl super::Store {
         tx.commit().await
     }
 
+    /// The stored plain text and HTML of these messages' bodies, for the
+    /// rules that read the first line. Messages without a stored body are
+    /// absent.
+    pub async fn update_body_texts(
+        &self,
+        message_ids: &[MessageId],
+    ) -> Result<HashMap<MessageId, (Option<String>, Option<String>)>, sqlx::Error> {
+        let mut out = HashMap::with_capacity(message_ids.len());
+        for chunk in message_ids.chunks(crate::SQLITE_BIND_CHUNK) {
+            let wanted = encode_json(&chunk.iter().map(MessageId::as_str).collect::<Vec<_>>())?;
+            let rows = sqlx::query(
+                "SELECT message_id, text_plain, text_html FROM bodies
+                 WHERE message_id IN (SELECT value FROM json_each(?1))",
+            )
+            .bind(wanted)
+            .fetch_all(self.reader())
+            .await?;
+            for row in &rows {
+                out.insert(
+                    decode_id(row.try_get::<&str, _>("message_id")?)?,
+                    (row.try_get("text_plain")?, row.try_get("text_html")?),
+                );
+            }
+        }
+        Ok(out)
+    }
+
+    /// Whether any of these accounts ever had an update read into a fact:
+    /// the difference between "never had any" and "clear for now".
+    pub async fn any_update_facts(&self, account_ids: &[AccountId]) -> Result<bool, sqlx::Error> {
+        let wanted = encode_json(
+            &account_ids
+                .iter()
+                .map(AccountId::as_str)
+                .collect::<Vec<_>>(),
+        )?;
+        sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (SELECT 1 FROM update_facts
+                            WHERE account_id IN (SELECT value FROM json_each(?1)))",
+        )
+        .bind(wanted)
+        .fetch_one(self.reader())
+        .await
+    }
+
     /// Every tuned or tracked source of one account.
     pub async fn update_sources(
         &self,
@@ -227,10 +272,13 @@ impl super::Store {
 
     /// Count a let go per source: a source let go unopened adds one to its
     /// streak, an opened one starts again. Returns each source's streak.
+    /// A source counts once per cut: letting go of the same cut again
+    /// (after an undo) leaves its streak alone.
     pub async fn record_update_let_go(
         &self,
         account_id: &AccountId,
         sources: &[SourceLetGo],
+        cut_at: DateTime<Utc>,
         now: DateTime<Utc>,
     ) -> Result<HashMap<String, i64>, sqlx::Error> {
         let mut out = HashMap::with_capacity(sources.len());
@@ -243,7 +291,10 @@ impl super::Store {
                 "INSERT INTO update_sources (account_id, source_key, let_go_streak, last_let_go_at)
                  VALUES (?1, ?2, ?3, ?4)
                  ON CONFLICT(account_id, source_key) DO UPDATE SET
-                     let_go_streak = CASE WHEN ?5 THEN 0 ELSE let_go_streak + 1 END,
+                     let_go_streak = CASE
+                         WHEN ?5 THEN 0
+                         WHEN last_let_go_at IS NOT NULL AND last_let_go_at >= ?6 THEN let_go_streak
+                         ELSE let_go_streak + 1 END,
                      last_let_go_at = excluded.last_let_go_at
                  RETURNING let_go_streak",
             )
@@ -252,33 +303,13 @@ impl super::Store {
             .bind(i64::from(!source.opened))
             .bind(now.timestamp())
             .bind(source.opened)
+            .bind(cut_at.timestamp())
             .fetch_one(&mut *tx)
             .await?;
             out.insert(source.source_key.clone(), streak);
         }
         tx.commit().await?;
         Ok(out)
-    }
-
-    /// Put streaks back as they were before a let go, for undo.
-    pub async fn restore_update_streaks(
-        &self,
-        account_id: &AccountId,
-        streaks: &[(String, i64)],
-    ) -> Result<(), sqlx::Error> {
-        let mut tx = self.writer().begin().await?;
-        for (source_key, streak) in streaks {
-            sqlx::query(
-                "UPDATE update_sources SET let_go_streak = ?3
-                 WHERE account_id = ?1 AND source_key = ?2",
-            )
-            .bind(account_id.as_str())
-            .bind(source_key)
-            .bind(streak)
-            .execute(&mut *tx)
-            .await?;
-        }
-        tx.commit().await
     }
 
     /// The mute question was shown for this source: ask again no sooner
@@ -317,7 +348,9 @@ mod tests {
         let store = Store::in_memory().await.unwrap();
         let account = crate::test_fixtures::test_account();
         store.insert_account(&account).await.unwrap();
-        let envelope = TestEnvelopeBuilder::new().account_id(account.id.clone()).build();
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
         store.upsert_envelope(&envelope).await.unwrap();
         let now = Utc::now();
         let row = UpdateFactRow {
@@ -330,11 +363,24 @@ mod tests {
             fact_json: "{}".into(),
             rules_version: 1,
         };
-        store.upsert_update_facts(&[row.clone()], now).await.unwrap();
-        let got = store.update_facts_for(&[envelope.id.clone()]).await.unwrap();
-        assert_eq!(got.get(&envelope.id).map(|r| r.source_key.as_str()), Some("strava.com"));
+        store
+            .upsert_update_facts(&[row.clone()], now)
+            .await
+            .unwrap();
+        let got = store
+            .update_facts_for(&[envelope.id.clone()])
+            .await
+            .unwrap();
+        assert_eq!(
+            got.get(&envelope.id).map(|r| r.source_key.as_str()),
+            Some("strava.com")
+        );
         let history = store
-            .update_fact_history(&account.id, &["strava.com".into()], now - Duration::days(400))
+            .update_fact_history(
+                &account.id,
+                &["strava.com".into()],
+                now - Duration::days(400),
+            )
             .await
             .unwrap();
         assert_eq!(history.len(), 1);
@@ -343,7 +389,11 @@ mod tests {
             .delete_messages_and_derived(&account.id, &[envelope.provider_id.clone()])
             .await
             .unwrap();
-        assert!(store.update_facts_for(&[envelope.id]).await.unwrap().is_empty());
+        assert!(store
+            .update_facts_for(&[envelope.id])
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]
@@ -358,23 +408,50 @@ mod tests {
             opened: false,
         }];
         for expected in 1..=3 {
-            let streaks = store.record_update_let_go(&id, &unopened, now).await.unwrap();
+            let cut = now + Duration::hours(expected);
+            let streaks = store
+                .record_update_let_go(&id, &unopened, cut, cut)
+                .await
+                .unwrap();
             assert_eq!(streaks["strava.com"], expected);
         }
+        // The same cut again counts once.
+        let again = now + Duration::hours(3);
+        let streaks = store
+            .record_update_let_go(&id, &unopened, again, again)
+            .await
+            .unwrap();
+        assert_eq!(streaks["strava.com"], 3);
         let opened = [SourceLetGo {
             source_key: "strava.com".into(),
             opened: true,
         }];
-        assert_eq!(store.record_update_let_go(&id, &opened, now).await.unwrap()["strava.com"], 0);
+        let later = now + Duration::hours(9);
         assert_eq!(
-            store.set_update_source(&id, "strava.com", "muted", now).await.unwrap(),
+            store
+                .record_update_let_go(&id, &opened, later, later)
+                .await
+                .unwrap()["strava.com"],
+            0
+        );
+        assert_eq!(
+            store
+                .set_update_source(&id, "strava.com", "muted", now)
+                .await
+                .unwrap(),
             "every_digest"
         );
         assert_eq!(
-            store.set_update_source(&id, "strava.com", "changes_only", now).await.unwrap(),
+            store
+                .set_update_source(&id, "strava.com", "changes_only", now)
+                .await
+                .unwrap(),
             "muted"
         );
-        store.mark_update_source_suggested(&id, "strava.com", now).await.unwrap();
+        store
+            .mark_update_source_suggested(&id, "strava.com", now)
+            .await
+            .unwrap();
         let sources = store.update_sources(&id).await.unwrap();
         assert_eq!(sources["strava.com"].setting, "changes_only");
         assert!(sources["strava.com"].suggested_at.is_some());

@@ -184,8 +184,22 @@ fn table(now: &NowData) -> String {
         }
     }
     if let Some(card) = &now.updates {
-        section_title(&mut out, "UPDATES", Some("early version"));
-        let _ = writeln!(out, "  {}", terminal_text(&card.line));
+        let title = format!("UPDATES  {} digest", card.cut_label);
+        section_title(&mut out, &title, card.more_line.as_deref());
+        let _ = writeln!(out, "  {}", terminal_text(&card.headline));
+        for line in &card.lines {
+            let todo = line
+                .in_todo
+                .as_deref()
+                .map(|label| format!("  ({label})"))
+                .unwrap_or_default();
+            let _ = writeln!(
+                out,
+                "  {:<20}  {}{todo}",
+                terminal_text(&super::owed::truncate(&line.source_name, 20)),
+                terminal_text(&line.fact)
+            );
+        }
     }
     if let Some(pick) = &now.reading {
         section_title(&mut out, "READING", Some("for tonight"));

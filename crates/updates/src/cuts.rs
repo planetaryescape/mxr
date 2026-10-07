@@ -54,7 +54,9 @@ impl Cuts {
         let mut times = Vec::with_capacity(values.len());
         for value in values {
             let time = NaiveTime::parse_from_str(value.trim(), "%H:%M").map_err(|_| {
-                CutError(format!("updates.cuts: \"{value}\" is not a time like 08:00"))
+                CutError(format!(
+                    "updates.cuts: \"{value}\" is not a time like 08:00"
+                ))
             })?;
             if times.contains(&time) {
                 return Err(CutError(format!("updates.cuts: {value} is listed twice")));
@@ -71,11 +73,19 @@ impl Cuts {
 
     /// "08:00" and "16:30".
     pub fn labels(&self) -> Vec<String> {
-        self.0.iter().map(|t| t.format("%H:%M").to_string()).collect()
+        self.0
+            .iter()
+            .map(|t| t.format("%H:%M").to_string())
+            .collect()
     }
 
     /// Every cut instant from `days_back` days ago through tomorrow.
-    fn instants<Tz: TimeZone>(&self, now: DateTime<Utc>, tz: &Tz, days_back: i64) -> Vec<DateTime<Utc>> {
+    fn instants<Tz: TimeZone>(
+        &self,
+        now: DateTime<Utc>,
+        tz: &Tz,
+        days_back: i64,
+    ) -> Vec<DateTime<Utc>> {
         let today = now.with_timezone(tz).date_naive();
         let mut out = Vec::new();
         for offset in -days_back..=1 {
@@ -85,10 +95,10 @@ impl Cuts {
             for time in &self.0 {
                 // A cut inside a DST gap moves to the next valid instant.
                 let local = day.and_time(*time);
-                let at = tz
-                    .from_local_datetime(&local)
-                    .earliest()
-                    .or_else(|| tz.from_local_datetime(&(local + Duration::hours(1))).earliest());
+                let at = tz.from_local_datetime(&local).earliest().or_else(|| {
+                    tz.from_local_datetime(&(local + Duration::hours(1)))
+                        .earliest()
+                });
                 if let Some(at) = at {
                     out.push(at.with_timezone(&Utc));
                 }
@@ -179,7 +189,8 @@ mod tests {
     }
 
     fn at(day: u32, hour: u32, minute: u32) -> DateTime<Utc> {
-        Utc.with_ymd_and_hms(2026, 10, day, hour, minute, 0).unwrap()
+        Utc.with_ymd_and_hms(2026, 10, day, hour, minute, 0)
+            .unwrap()
     }
 
     #[test]
@@ -188,7 +199,9 @@ mod tests {
         let three = Cuts::parse(&["18:00".into(), "07:30".into(), "12:00".into()]).unwrap();
         assert_eq!(three.labels(), vec!["07:30", "12:00", "18:00"]);
         assert!(Cuts::parse(&[]).is_err());
-        assert!(Cuts::parse(&["1".into(), "2".into(), "3".into(), "4".into(), "5".into()]).is_err());
+        assert!(
+            Cuts::parse(&["1".into(), "2".into(), "3".into(), "4".into(), "5".into()]).is_err()
+        );
         assert!(Cuts::parse(&["8am".into()]).is_err());
         assert!(Cuts::parse(&["08:00".into(), "08:00".into()]).is_err());
     }
@@ -205,14 +218,25 @@ mod tests {
         assert_eq!(early.next, at(7, 8, 0));
         // Exactly on a cut belongs to that cut.
         assert_eq!(cuts.window(at(7, 16, 30), &utc()).at, at(7, 16, 30));
-        let one = Cuts::parse(&["09:00".into()]).unwrap().window(at(7, 12, 0), &utc());
-        assert_eq!((one.previous, one.at, one.next), (at(6, 9, 0), at(7, 9, 0), at(8, 9, 0)));
+        let one = Cuts::parse(&["09:00".into()])
+            .unwrap()
+            .window(at(7, 12, 0), &utc());
+        assert_eq!(
+            (one.previous, one.at, one.next),
+            (at(6, 9, 0), at(7, 9, 0), at(8, 9, 0))
+        );
     }
 
     #[test]
     fn titles_name_the_part_of_day() {
-        assert_eq!(digest_title(at(7, 8, 0), at(7, 12, 0), &utc()), "This morning's digest");
-        assert_eq!(digest_title(at(6, 16, 30), at(7, 6, 0), &utc()), "Yesterday afternoon's digest");
+        assert_eq!(
+            digest_title(at(7, 8, 0), at(7, 12, 0), &utc()),
+            "This morning's digest"
+        );
+        assert_eq!(
+            digest_title(at(6, 16, 30), at(7, 6, 0), &utc()),
+            "Yesterday afternoon's digest"
+        );
         assert_eq!(time_label(at(7, 16, 30), &utc()), "16:30");
     }
 }

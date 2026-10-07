@@ -66,13 +66,18 @@ static MASKS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
         (r#"https?://\S+"#.into(), "<url>"),
         (r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+".into(), "<email>"),
         (r#""[^"]{1,80}"|“[^”]{1,80}”|‘[^’]{1,80}’"#.into(), "<q>"),
-        (r"\b\d{4}-\d{2}-\d{2}(?:[t ]\d{2}:\d{2}(?::\d{2})?z?)?\b".into(), "<date>"),
+        (
+            r"\b\d{4}-\d{2}-\d{2}(?:[t ]\d{2}:\d{2}(?::\d{2})?z?)?\b".into(),
+            "<date>",
+        ),
         (
             r"\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b|\b\d{1,2}\.\d{1,2}\.\d{2,4}\b".into(),
             "<date>",
         ),
         (
-            format!(r"\b(?:\d{{1,2}}(?:st|nd|rd|th)?\s+(?:of\s+)?{month}|{month}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?)(?:,?\s+\d{{4}})?\b"),
+            format!(
+                r"\b(?:\d{{1,2}}(?:st|nd|rd|th)?\s+(?:of\s+)?{month}|{month}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?)(?:,?\s+\d{{4}})?\b"
+            ),
             "<date>",
         ),
         (format!(r"\b{month}\b(?:\s+\d{{4}})?"), "<date>"),
@@ -80,7 +85,10 @@ static MASKS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
             r"\b(?:mon|tue|wed|thu|fri|sat|sun)(?:day|sday|nesday|rsday|urday)?\b".into(),
             "<day>",
         ),
-        (r"\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:[ap]\.?m\.?)?\b".into(), "<time>"),
+        (
+            r"\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:[ap]\.?m\.?)?\b".into(),
+            "<time>",
+        ),
         (r"\b\d{1,2}\s*[ap]\.?m\.?\b".into(), "<time>"),
         // Ids: hashes, long numbers and tokens mixing letters and digits.
         (r"#\s?[\w-]*\d[\w-]*".into(), "<id>"),
@@ -130,12 +138,18 @@ mod tests {
             clean_subject("Re: [acme/api] Run failed: CI - main", "GitHub acme/api"),
             "Run failed: CI - main"
         );
-        assert_eq!(clean_subject("Strava: Your week in review", "Strava"), "Your week in review");
+        assert_eq!(
+            clean_subject("Strava: Your week in review", "Strava"),
+            "Your week in review"
+        );
         assert_eq!(
             clean_subject("Deployment succeeded | Vercel", "Vercel"),
             "Deployment succeeded"
         );
-        assert_eq!(clean_subject("Notification: New sign-in", "Google"), "New sign-in");
+        assert_eq!(
+            clean_subject("Notification: New sign-in", "Google"),
+            "New sign-in"
+        );
     }
 
     // Fixtures shaped on the automated senders the research names: the
@@ -157,7 +171,10 @@ mod tests {
                 "Payout of R 4,210.00 scheduled for 12 Oct",
                 "Payout of R 980.50 scheduled for October 3, 2026",
             ),
-            ("Weekly report: 1,204 visitors", "Weekly report: 998 visitors"),
+            (
+                "Weekly report: 1,204 visitors",
+                "Weekly report: 998 visitors",
+            ),
             (
                 "Your verification code is 482913",
                 "Your verification code is 100293",
@@ -184,13 +201,19 @@ mod tests {
     fn different_kinds_split() {
         let split = [
             ("Your week: 3 runs, 21.3 km", "New follower on Strava"),
-            ("[acme/api] Run failed: CI - main", "[acme/api] Run succeeded: CI - main"),
+            (
+                "[acme/api] Run failed: CI - main",
+                "[acme/api] Run succeeded: CI - main",
+            ),
             ("Your order has shipped", "Your order was delivered"),
             ("Deployment succeeded", "Deployment failed"),
         ];
         for (a, b) in split {
             assert_ne!(template_key(a), template_key(b), "{a} vs {b}");
         }
-        assert_eq!(template_key("Your week: 3 runs, 21.3 km"), "your week: <n> runs, <n> km");
+        assert_eq!(
+            template_key("Your week: 3 runs, 21.3 km"),
+            "your week: <n> runs, <n> km"
+        );
     }
 }

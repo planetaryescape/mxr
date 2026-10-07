@@ -6,7 +6,9 @@
 use mxr_core::id::*;
 use serde::{Deserialize, Serialize};
 
-use super::{DeskRowData, RecordMomentData, ScreenerQuestionData, TodoData, TodoFirstRunData};
+use super::{
+    DeskRowData, RecordMomentData, ScreenerQuestionData, TodoData, TodoFirstRunData, UpdateLineData,
+};
 
 /// Items each section shows before "and N more".
 pub const NOW_SECTION_CAP: usize = 3;
@@ -80,10 +82,10 @@ pub struct NowUpdateSourceData {
     pub count: u32,
 }
 
-/// The Updates card: one item, whatever the count. An early version: a
-/// count and the busiest sources from automated mail in the inbox, until
-/// the twice-daily digest ships.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// The Updates card: the latest digest as one item, whatever the count:
+/// its headline, up to three lines that need a look or changed, and how
+/// much routine waits behind them.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NowUpdatesCardData {
     pub message_count: u32,
@@ -92,13 +94,33 @@ pub struct NowUpdatesCardData {
     pub top_sources: Vec<NowUpdateSourceData>,
     /// "23 updates from 9 sources. Most from GitHub, Vercel and Stripe."
     pub line: String,
-    /// The card counts updates from here: the digest cut before the latest
-    /// one, never more than two days back.
+    /// The digest's cut: the card holds what arrived by then.
     pub since: chrono::DateTime<chrono::Utc>,
-    /// The card's threads, newest first: what letting go of the digest
-    /// (`SetModeDone` in Updates) acts on.
+    /// The card's threads, newest first. Letting go of the digest is
+    /// `LetGoDigest` with `selection_token`.
     pub thread_ids: Vec<ThreadId>,
     pub early: bool,
+    /// "This morning's digest".
+    #[serde(default)]
+    pub title: String,
+    /// "08:00".
+    #[serde(default)]
+    pub cut_label: String,
+    /// "1 needs a look, 2 changed. 23 routine from 9 sources."
+    #[serde(default)]
+    pub headline: String,
+    /// Up to three lines: Needs a look first, then Changed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lines: Vec<UpdateLineData>,
+    /// "+23 routine", when routine or further lines wait in Updates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub more_line: Option<String>,
+    /// Pass to `LetGoDigest` so the card lets go of what it showed.
+    #[serde(default)]
+    pub selection_token: String,
+    /// "Let go of 31 updates from 12 sources; 2 also in To do stay there."
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub let_go_line: Option<String>,
 }
 
 /// The evening's one thing to read.

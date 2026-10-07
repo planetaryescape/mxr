@@ -121,7 +121,10 @@ mod tests {
             first_informative_line(body, 140).as_deref(),
             Some("You ran 3 times this week, 21.3 km in total.")
         );
-        assert_eq!(first_informative_line("Hi there,\n\nThanks,\nThe Acme team", 80), None);
+        assert_eq!(
+            first_informative_line("Hi there,\n\nThanks,\nThe Acme team", 80),
+            None
+        );
         assert_eq!(clip("a  b   c", 10), "a b c");
         assert_eq!(clip("abcdef", 4), "abc…");
     }

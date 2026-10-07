@@ -96,6 +96,58 @@ impl super::Store {
         row.as_ref().map(decode_place_message).transpose()
     }
 
+    /// Recent mail from these senders anywhere but Trash and Spam, at most
+    /// `per_sender` each, newest first: the history Updates compares a
+    /// source's new mail with, inbox or not.
+    pub async fn recent_from_senders(
+        &self,
+        account_id: &AccountId,
+        from_emails: &[String],
+        since: DateTime<Utc>,
+        per_sender: u32,
+    ) -> Result<Vec<PlaceMessage>, sqlx::Error> {
+        if from_emails.is_empty() {
+            return Ok(Vec::new());
+        }
+        let started_at = Instant::now();
+        let wanted = encode_json(
+            &from_emails
+                .iter()
+                .map(|email| email.to_ascii_lowercase())
+                .collect::<Vec<_>>(),
+        )?;
+        let sql = format!(
+            r#"SELECT * FROM (
+                SELECT {PLACE_COLUMNS},
+                    EXISTS (
+                        SELECT 1 FROM message_labels iml JOIN labels il ON il.id = iml.label_id
+                        WHERE iml.message_id = m.id AND il.provider_id = 'INBOX'
+                    ) AS in_inbox,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY lower(m.from_email) ORDER BY m.date DESC, m.id DESC
+                    ) AS sender_rank
+                FROM messages m
+                WHERE m.account_id = ?1 AND m.date >= ?3
+                  AND lower(m.from_email) IN (SELECT value FROM json_each(?4))
+                  AND {NOT_TRASHED}
+            ) WHERE sender_rank <= ?5"#
+        );
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(account_id.as_str())
+            .bind(hidden_flags())
+            .bind(since.timestamp())
+            .bind(wanted)
+            .bind(i64::from(per_sender))
+            .fetch_all(self.reader())
+            .await?;
+        let messages = rows
+            .iter()
+            .map(decode_place_message)
+            .collect::<Result<Vec<_>, _>>()?;
+        trace_query("places.recent_from_senders", started_at, messages.len());
+        Ok(messages)
+    }
+
     /// Pin or unpin messages. Returns how many changed; unknown ids and
     /// messages already in the wanted state are skipped.
     pub async fn set_message_pins(

@@ -158,7 +158,11 @@ fn lifetime(text: &str, arrived: DateTime<Utc>) -> Option<(DateTime<Utc>, String
     Some((arrived + length, caps.get(0)?.as_str().to_string()))
 }
 
-fn ends<Tz: TimeZone>(text: &str, arrived: DateTime<Utc>, tz: &Tz) -> Option<(DateTime<Utc>, String)> {
+fn ends<Tz: TimeZone>(
+    text: &str,
+    arrived: DateTime<Utc>,
+    tz: &Tz,
+) -> Option<(DateTime<Utc>, String)> {
     let caps = ENDS.captures(text)?;
     let word = caps.get(1)?.as_str().to_ascii_lowercase();
     let evidence = caps.get(0)?.as_str().to_string();
@@ -182,7 +186,8 @@ fn ends<Tz: TimeZone>(text: &str, arrived: DateTime<Utc>, tz: &Tz) -> Option<(Da
         }
         day => {
             let wanted: Weekday = day.parse().ok()?;
-            let ahead = (7 + wanted.num_days_from_monday() - today.weekday().num_days_from_monday()) % 7;
+            let ahead =
+                (7 + wanted.num_days_from_monday() - today.weekday().num_days_from_monday()) % 7;
             end_of(today + Duration::days(i64::from(ahead)))?
         }
     };
@@ -209,7 +214,12 @@ mod tests {
         assert_eq!(code.kind, WindowKind::Code);
         assert_eq!(code.until, at() + Duration::minutes(10));
         assert_eq!(code.source, "default");
-        let stated = window("Your login code: 1234. It expires in 15 minutes.", at(), &utc()).unwrap();
+        let stated = window(
+            "Your login code: 1234. It expires in 15 minutes.",
+            at(),
+            &utc(),
+        )
+        .unwrap();
         assert_eq!(stated.until, at() + Duration::minutes(15));
         assert_eq!(stated.source, "rule");
         // A sign-in code is a code, not a sign-in alert.
@@ -223,15 +233,26 @@ mod tests {
         assert_eq!(alert.until, at() + Duration::days(2));
         let sale = window("Our autumn sale ends Sunday", at(), &utc()).unwrap();
         assert_eq!(sale.kind, WindowKind::Offer);
-        assert_eq!(sale.until, Utc.with_ymd_and_hms(2026, 10, 11, 23, 59, 59).unwrap());
+        assert_eq!(
+            sale.until,
+            Utc.with_ymd_and_hms(2026, 10, 11, 23, 59, 59).unwrap()
+        );
         let tonight = window("20% off ends tonight", at(), &utc()).unwrap();
-        assert_eq!(tonight.until, Utc.with_ymd_and_hms(2026, 10, 7, 23, 59, 59).unwrap());
+        assert_eq!(
+            tonight.until,
+            Utc.with_ymd_and_hms(2026, 10, 7, 23, 59, 59).unwrap()
+        );
         let plain = window("Flash sale on now", at(), &utc()).unwrap();
         assert_eq!(plain.until, at() + Duration::days(7));
         let verify = window("Please confirm your email address", at(), &utc()).unwrap();
         assert_eq!(verify.until, at() + Duration::days(3));
         assert!(window("Your week: 3 runs", at(), &utc()).is_none());
-        for kind in [WindowKind::Code, WindowKind::VerifyLink, WindowKind::SignIn, WindowKind::Offer] {
+        for kind in [
+            WindowKind::Code,
+            WindowKind::VerifyLink,
+            WindowKind::SignIn,
+            WindowKind::Offer,
+        ] {
             assert_eq!(WindowKind::parse(kind.as_str()), Some(kind));
         }
     }

@@ -24,10 +24,18 @@ pub(super) async fn list_deliveries(
     account_id: Option<&AccountId>,
     filter: Option<&str>,
 ) -> HandlerResult {
-    let rows = state.store.list_deliveries(parse_filter(filter)).await?;
+    let wanted = parse_filter(filter);
+    let rows = state.store.list_deliveries(wanted).await?;
+    let now = Utc::now();
     let deliveries = rows
         .into_iter()
         .filter(|row| account_id.is_none_or(|account_id| row.account_id == *account_id))
+        // A parcel with no news for too long went quiet: it is no longer
+        // active (blueprint 22, the delivery window), though All lists it.
+        .filter(|row| {
+            wanted != DeliveryListFilter::Active
+                || super::updates_digest::parcel_quiet_since(row).is_none_or(|quiet| quiet > now)
+        })
         .map(to_data)
         .collect();
     Ok(ResponseData::Deliveries { deliveries })

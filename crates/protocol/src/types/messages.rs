@@ -19,6 +19,8 @@ pub mod messages_copy {
     pub const FIRST_RUN_LINE: &str = "People you talk with";
     /// How many seconds Got it waits, showing its text, before it sends.
     pub const ACK_COUNTDOWN_SECONDS: u32 = 5;
+    /// How long a Got it preview's token can be sent with.
+    pub const ACK_PREVIEW_TTL_SECONDS: i64 = 60;
 }
 
 /// The bands, top to bottom.
@@ -428,7 +430,11 @@ pub struct PersonPageData {
 pub struct AckPlanData {
     pub account_id: AccountId,
     pub thread_id: ThreadId,
+    /// The message being acknowledged: their latest.
     pub reply_to_message_id: MessageId,
+    /// The address it is sent from.
+    pub from: String,
+    /// Exactly one recipient: Got it never replies to all.
     pub to: Vec<Address>,
     pub subject: String,
     /// The exact text that is sent.
@@ -439,6 +445,12 @@ pub struct AckPlanData {
     /// Clients show the text this long before sending, with undo.
     pub countdown_seconds: u32,
     pub dry_run: bool,
+    /// Set on a preview: send with it, and `text`, within a minute. It binds
+    /// the recipient, sender, target message and text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview_expires_at: Option<chrono::DateTime<chrono::Utc>>,
     /// Set once sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sent_message_id: Option<MessageId>,

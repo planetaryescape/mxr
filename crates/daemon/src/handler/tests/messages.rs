@@ -524,12 +524,11 @@ async fn a_conversation_shows_new_text_with_the_trimmed_marker() {
     assert_eq!(preview.text, "Yes, keep it at 5%.");
 }
 
-#[tokio::test]
-async fn got_it_previews_the_text_it_sends() {
-    let fx = Fixture::new().await;
+/// A thread where Samir answered your deck: Got it has someone to thank.
+async fn deck_thread(fx: &Fixture) -> (ThreadId, Envelope) {
     let thread = ThreadId::new();
     let mine = mail(
-        &fx,
+        fx,
         &thread,
         ("Me", ME),
         &[SAMIR],
@@ -539,10 +538,213 @@ async fn got_it_previews_the_text_it_sends() {
     )
     .await;
     body(
-        &fx,
+        fx,
         &mine.id,
         Some("Hi Samir,\n\nDeck attached.\n\nCheers,\nAlex"),
         None,
+    )
+    .await;
+    let theirs = mail(
+        fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Re: Deck",
+        Duration::hours(2),
+    )
+    .await;
+    body(fx, &theirs.id, Some("Thanks, reading it tonight."), None).await;
+    (thread, theirs)
+}
+
+async fn ack_at(
+    fx: &Fixture,
+    thread: &ThreadId,
+    dry_run: bool,
+    proof: Option<(&str, &str)>,
+    at: chrono::DateTime<Utc>,
+) -> Result<mxr_protocol::AckPlanData, String> {
+    crate::handler::messages_ack::ack_at(
+        &fx.state,
+        thread,
+        dry_run,
+        proof.map(|p| p.0),
+        proof.map(|p| p.1),
+        at,
+    )
+    .await
+    .map(|data| match data {
+        ResponseData::MessagesAck { ack } => ack,
+        other => panic!("expected an ack, got {other:?}"),
+    })
+    .map_err(|e| e.to_string())
+}
+
+async fn outbound_count(fx: &Fixture, thread: &ThreadId) -> usize {
+    fx.state
+        .store
+        .desk_messages_in_threads(&fx.account, std::slice::from_ref(thread))
+        .await
+        .unwrap()
+        .iter()
+        .filter(|m| m.direction == "outbound")
+        .count()
+}
+
+#[tokio::test]
+async fn got_it_sends_exactly_the_previewed_plan_once() {
+    let fx = Fixture::new().await;
+    let (thread, theirs) = deck_thread(&fx).await;
+    let now = Utc::now();
+    let preview = ack_at(&fx, &thread, true, None, now).await.unwrap();
+    assert!(preview.dry_run);
+    assert_eq!(preview.reply_to_message_id, theirs.id);
+    assert_eq!(preview.subject, "Re: Deck");
+    assert_eq!(preview.to.len(), 1, "never reply all");
+    assert_eq!(preview.to[0].email, SAMIR);
+    assert!(preview.text.to_lowercase().contains("got it"));
+    let token = preview
+        .preview_token
+        .clone()
+        .expect("a preview carries its token");
+    assert_eq!(
+        preview.countdown_seconds,
+        mxr_protocol::messages_copy::ACK_COUNTDOWN_SECONDS
+    );
+
+    let sent = ack_at(&fx, &thread, false, Some((&token, &preview.text)), now)
+        .await
+        .unwrap();
+    let sent_id = sent.sent_message_id.expect("sent");
+    let stored = fx.state.store.get_body(&sent_id).await.unwrap().unwrap();
+    assert_eq!(
+        stored.text_plain.as_deref().map(str::trim),
+        Some(preview.text.as_str())
+    );
+    assert_eq!(outbound_count(&fx, &thread).await, 2);
+
+    // The same token again: already acknowledged, nothing more goes out.
+    let again = ack_at(&fx, &thread, false, Some((&token, &preview.text)), now).await;
+    assert!(again.unwrap_err().contains("lready"), "a repeat is refused");
+    // And a fresh preview has nobody left to acknowledge.
+    assert!(ack_at(&fx, &thread, true, None, now).await.is_err());
+    assert_eq!(outbound_count(&fx, &thread).await, 2);
+    let messages = list(&fx).await;
+    assert!(messages
+        .your_turn
+        .iter()
+        .all(|r| r.id != format!("person:{SAMIR}")));
+}
+
+#[tokio::test]
+async fn got_it_refuses_to_send_without_a_preview() {
+    let fx = Fixture::new().await;
+    let (thread, _) = deck_thread(&fx).await;
+    let now = Utc::now();
+    let preview = ack_at(&fx, &thread, true, None, now).await.unwrap();
+    let token = preview.preview_token.clone().unwrap();
+    for proof in [
+        None,
+        Some(("", preview.text.as_str())),
+        Some((token.as_str(), "Thanks, got it.")),
+    ] {
+        let refused = ack_at(&fx, &thread, false, proof, now).await;
+        assert!(refused.is_err(), "{proof:?} must not send");
+    }
+    // A token minted by hand, without the daemon's key, is refused too.
+    let forged = format!("{}.{}", now.timestamp(), "0".repeat(64));
+    assert!(
+        ack_at(&fx, &thread, false, Some((&forged, &preview.text)), now)
+            .await
+            .is_err()
+    );
+    assert_eq!(outbound_count(&fx, &thread).await, 1, "nothing was sent");
+}
+
+#[tokio::test]
+async fn a_preview_older_than_a_minute_sends_nothing() {
+    let fx = Fixture::new().await;
+    let (thread, _) = deck_thread(&fx).await;
+    let then = Utc::now();
+    let preview = ack_at(&fx, &thread, true, None, then).await.unwrap();
+    let token = preview.preview_token.clone().unwrap();
+    let late = ack_at(
+        &fx,
+        &thread,
+        false,
+        Some((&token, &preview.text)),
+        then + Duration::seconds(61),
+    )
+    .await;
+    assert!(late.unwrap_err().contains("review"), "preview again");
+    assert_eq!(outbound_count(&fx, &thread).await, 1);
+}
+
+#[tokio::test]
+async fn a_conversation_that_changed_since_the_preview_sends_nothing() {
+    let fx = Fixture::new().await;
+    let (thread, _) = deck_thread(&fx).await;
+    let now = Utc::now();
+    let preview = ack_at(&fx, &thread, true, None, now).await.unwrap();
+    let token = preview.preview_token.clone().unwrap();
+    // Samir writes again before the countdown ends: a new target.
+    let newer = mail(
+        &fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Re: Deck",
+        Duration::minutes(1),
+    )
+    .await;
+    body(
+        &fx,
+        &newer.id,
+        Some("Actually, one more question first?"),
+        None,
+    )
+    .await;
+    let changed = ack_at(&fx, &thread, false, Some((&token, &preview.text)), now).await;
+    assert!(changed.unwrap_err().contains("changed"));
+    assert_eq!(outbound_count(&fx, &thread).await, 1);
+}
+
+async fn reply_to_body(fx: &Fixture, message: &MessageId, reply_to: &str) {
+    let mut metadata = MessageMetadata::default();
+    metadata.reply_to = vec![Address {
+        name: None,
+        email: reply_to.to_string(),
+    }];
+    fx.state
+        .store
+        .insert_body(&MessageBody {
+            message_id: message.clone(),
+            text_plain: Some("Thanks, reading it tonight.".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: Utc::now(),
+            metadata,
+        })
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn got_it_checks_where_the_reply_actually_goes() {
+    let now = Utc::now();
+    // A Reply-To on another domain you never wrote to: refused.
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Deck",
+        Duration::days(2),
     )
     .await;
     let theirs = mail(
@@ -555,71 +757,62 @@ async fn got_it_previews_the_text_it_sends() {
         Duration::hours(2),
     )
     .await;
-    body(&fx, &theirs.id, Some("Thanks, reading it tonight."), None).await;
+    reply_to_body(&fx, &theirs.id, "collect@harvester.example").await;
+    let refused = ack_at(&fx, &thread, true, None, now).await;
+    assert!(refused.unwrap_err().contains("collect@harvester.example"));
 
-    let preview = match request(
+    // A no-reply Reply-To on the same domain: refused.
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    mail(
         &fx,
-        Request::AckMessage {
-            thread_id: thread.clone(),
-            dry_run: true,
-            expect_text: None,
-        },
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Deck",
+        Duration::days(2),
     )
-    .await
-    {
-        ResponseData::MessagesAck { ack } => ack,
-        other => panic!("expected an ack, got {other:?}"),
-    };
-    assert!(preview.dry_run);
-    assert_eq!(preview.reply_to_message_id, theirs.id);
-    assert_eq!(preview.subject, "Re: Deck");
-    assert_eq!(preview.to[0].email, SAMIR);
-    assert!(preview.text.contains("got it") || preview.text.contains("Got it"));
-    assert_eq!(
-        preview.countdown_seconds,
-        mxr_protocol::messages_copy::ACK_COUNTDOWN_SECONDS
-    );
-
-    // Anything but the previewed text is refused.
-    let msg = IpcMessage {
-        id: 3,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::AckMessage {
-            thread_id: thread.clone(),
-            dry_run: false,
-            expect_text: Some("something else".into()),
-        }),
-    };
-    assert!(matches!(
-        handle_request(&fx.state, &msg).await.payload,
-        IpcPayload::Response(Response::Error { .. })
-    ));
-
-    let sent = match request(
+    .await;
+    let theirs = mail(
         &fx,
-        Request::AckMessage {
-            thread_id: thread.clone(),
-            dry_run: false,
-            expect_text: Some(preview.text.clone()),
-        },
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Re: Deck",
+        Duration::hours(2),
     )
-    .await
-    {
-        ResponseData::MessagesAck { ack } => ack,
-        other => panic!("expected an ack, got {other:?}"),
-    };
-    let sent_id = sent.sent_message_id.expect("sent");
-    let stored = fx.state.store.get_body(&sent_id).await.unwrap().unwrap();
-    assert_eq!(
-        stored.text_plain.as_deref().map(str::trim),
-        Some(preview.text.as_str())
-    );
-    // Your turn passed to them.
-    let messages = list(&fx).await;
-    assert!(messages
-        .your_turn
-        .iter()
-        .all(|r| r.id != format!("person:{SAMIR}")));
+    .await;
+    reply_to_body(&fx, &theirs.id, "no-reply@launchpad.example").await;
+    assert!(ack_at(&fx, &thread, true, None, now).await.is_err());
+
+    // A Reply-To on Samir's own domain is his colleague: allowed.
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Deck",
+        Duration::days(2),
+    )
+    .await;
+    let theirs = mail(
+        &fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Re: Deck",
+        Duration::hours(2),
+    )
+    .await;
+    reply_to_body(&fx, &theirs.id, "ops@launchpad.example").await;
+    let ok = ack_at(&fx, &thread, true, None, now).await.unwrap();
+    assert_eq!(ok.to[0].email, "ops@launchpad.example");
 }
 
 #[tokio::test]

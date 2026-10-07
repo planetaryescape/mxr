@@ -1355,7 +1355,17 @@ async fn dispatch(
             thread_id,
             dry_run,
             expect_text,
-        } => messages_ack::ack(state, thread_id, *dry_run, expect_text.as_deref()).await,
+            preview_token,
+        } => {
+            messages_ack::ack(
+                state,
+                thread_id,
+                *dry_run,
+                expect_text.as_deref(),
+                preview_token.as_deref(),
+            )
+            .await
+        }
         Request::MergePeople {
             account_id,
             into,

@@ -79,12 +79,20 @@ async fn person(
 pub(crate) struct AckBody {
     #[schema(value_type = String)]
     thread_id: ThreadId,
-    /// Preview only: the exact text, nothing sent.
-    #[serde(default)]
+    /// True by default: a preview of the exact plan with its token. Only an
+    /// explicit `false`, with the preview's token and text, sends.
+    #[serde(default = "preview_by_default")]
     dry_run: bool,
     /// The previewed text: the send refuses anything else.
     #[serde(default)]
     expect_text: Option<String>,
+    /// The preview's token, issued within the last minute.
+    #[serde(default)]
+    preview_token: Option<String>,
+}
+
+fn preview_by_default() -> bool {
+    true
 }
 
 async fn ack(
@@ -100,6 +108,7 @@ async fn ack(
             thread_id: body.thread_id,
             dry_run: body.dry_run,
             expect_text: body.expect_text,
+            preview_token: body.preview_token,
         },
     )
     .await?;

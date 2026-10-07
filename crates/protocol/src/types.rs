@@ -1821,15 +1821,20 @@ pub enum Request {
     },
     /// Got it: a short acknowledgement on `thread_id`, in your usual
     /// greeting and sign-off for that person, built from a template with
-    /// no model. `dry_run` returns the exact text without sending; a real
-    /// run with `expect_text` refuses to send anything else, so what was
-    /// previewed is what goes. Returns `ResponseData::MessagesAck`.
+    /// no model. A preview (the default) returns the exact plan and a
+    /// `preview_token`. A send (`dry_run: false`) needs that token, issued
+    /// within the last minute, and the previewed text: it goes only when
+    /// the recipient, sender, target message and text all still match,
+    /// and never twice for the same message. Returns
+    /// `ResponseData::MessagesAck`.
     AckMessage {
         thread_id: ThreadId,
-        #[serde(default)]
+        #[serde(default = "default_true")]
         dry_run: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         expect_text: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        preview_token: Option<String>,
     },
     /// Merge addresses into one person, by hand (D117): `into` becomes the
     /// person's primary address. `dry_run` shows the result without

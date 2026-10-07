@@ -74,15 +74,27 @@ pub async fn run(
             let thread_id = thread_id
                 .parse::<ThreadId>()
                 .map_err(|_| anyhow::anyhow!("not a thread id: {thread_id}"))?;
-            let preview = ack(&mut client, &thread_id, true, None).await?;
-            let ack = if dry_run {
-                preview
-            } else {
-                // Send exactly what was previewed: the daemon refuses
-                // anything else.
-                ack(&mut client, &thread_id, false, Some(preview.text)).await?
-            };
-            print!("{}", render_ack(&ack, format)?);
+            let preview = ack(&mut client, &thread_id, true, None, None).await?;
+            if dry_run {
+                print!("{}", render_ack(&preview, format)?);
+                return Ok(());
+            }
+            // As in the apps: the exact text first, a countdown you can
+            // stop, then a send that carries the preview's token, so the
+            // daemon refuses it if anything changed.
+            if !countdown(&preview).await? {
+                eprintln!("Got it not sent.");
+                return Ok(());
+            }
+            let sent = ack(
+                &mut client,
+                &thread_id,
+                false,
+                Some(preview.text.clone()),
+                preview.preview_token.clone(),
+            )
+            .await?;
+            print!("{}", render_ack(&sent, format)?);
         }
         MessagesAction::Merge {
             into,
@@ -147,6 +159,7 @@ async fn ack(
     thread_id: &ThreadId,
     dry_run: bool,
     expect_text: Option<String>,
+    preview_token: Option<String>,
 ) -> anyhow::Result<AckPlanData> {
     expect_response(
         client
@@ -154,6 +167,7 @@ async fn ack(
                 thread_id: thread_id.clone(),
                 dry_run,
                 expect_text,
+                preview_token,
             })
             .await?,
         |response| match response {
@@ -172,6 +186,32 @@ async fn person_merge(client: &mut IpcClient, request: Request) -> anyhow::Resul
         } => Some(merge),
         _ => None,
     })
+}
+
+/// Show the exact text, then count down on stderr. Ctrl-C cancels; returns
+/// whether the countdown ran out (send) rather than being stopped.
+async fn countdown(preview: &AckPlanData) -> anyhow::Result<bool> {
+    let to: Vec<&str> = preview.to.iter().map(|a| a.email.as_str()).collect();
+    eprintln!(
+        "Got it to {} · {}\n---\n{}\n---",
+        terminal_text(&to.join(", ")),
+        terminal_text(&preview.subject),
+        terminal_text_block(&preview.text)
+    );
+    let cancel = tokio::signal::ctrl_c();
+    tokio::pin!(cancel);
+    for left in (1..=preview.countdown_seconds).rev() {
+        eprint!("\rSending in {left}s. Ctrl-C to cancel. ");
+        tokio::select! {
+            _ = &mut cancel => {
+                eprintln!();
+                return Ok(false);
+            }
+            () = tokio::time::sleep(std::time::Duration::from_secs(1)) => {}
+        }
+    }
+    eprintln!();
+    Ok(true)
 }
 
 fn json<T: serde::Serialize>(value: &T) -> anyhow::Result<String> {

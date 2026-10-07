@@ -1690,6 +1690,7 @@ pub async fn run() -> anyhow::Result<()> {
                         thread_id,
                         dry_run: true,
                         expect_text: None,
+                        preview_token: None,
                     },
                 )
                 .await;

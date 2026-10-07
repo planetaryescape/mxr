@@ -550,7 +550,7 @@ impl MxrMcpServer {
 
     #[tool(
         name = "mxr_got_it",
-        description = "Got it: a short acknowledgement reply on a thread in the user's own greeting and sign-off, built from a template with no model. Without confirm=true it only previews the exact text; with confirm=true it sends exactly that previewed text (pass it back as expect_text) and daemon send gates still apply."
+        description = "Got it: a short acknowledgement reply on a thread in the user's own greeting and sign-off, built from a template with no model. Without confirm=true it only previews the exact text and returns a preview_token. To send, call again within a minute with confirm=true, the preview's text as expect_text and its preview_token; the daemon sends only if nothing changed and never twice for the same message, and its send gates still apply."
     )]
     pub async fn got_it(
         &self,
@@ -558,16 +558,17 @@ impl MxrMcpServer {
     ) -> Result<McpJson<Value>, ErrorData> {
         let thread_id = parse_id::<ThreadId>(&input.thread_id)?;
         let confirmed = input.confirm.unwrap_or(false);
-        if confirmed && input.expect_text.is_none() {
+        if confirmed && (input.expect_text.is_none() || input.preview_token.is_none()) {
             return Ok(McpJson(json!({
                 "blocked": true,
-                "reason": "preview first, then send with confirm=true and the previewed text as expect_text"
+                "reason": "preview first, then send with confirm=true, the previewed text as expect_text and its preview_token"
             })));
         }
         self.daemon_json(Request::AckMessage {
             thread_id,
             dry_run: !confirmed,
             expect_text: input.expect_text,
+            preview_token: input.preview_token,
         })
         .await
     }
@@ -812,6 +813,9 @@ pub struct GotItInput {
     /// The previewed text; the daemon refuses to send anything else.
     #[serde(default)]
     pub expect_text: Option<String>,
+    /// The preview's token, from a preview within the last minute.
+    #[serde(default)]
+    pub preview_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -985,6 +989,7 @@ mod tests {
                 thread_id: thread.as_str(),
                 confirm: None,
                 expect_text: None,
+                preview_token: None,
             }))
             .await
             .expect("preview");
@@ -993,6 +998,7 @@ mod tests {
                 thread_id: thread.as_str(),
                 confirm: Some(true),
                 expect_text: None,
+                preview_token: None,
             }))
             .await
             .expect("tool result");

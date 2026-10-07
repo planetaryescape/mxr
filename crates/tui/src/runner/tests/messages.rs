@@ -68,6 +68,9 @@ fn plan(app: &App) -> AckPlanData {
         built_from: "Your usual greeting and sign-off with Samir.".into(),
         countdown_seconds: 5,
         dry_run: true,
+        from: "alex@example.com".into(),
+        preview_token: Some("1.test".into()),
+        preview_expires_at: None,
         sent_message_id: None,
     }
 }
@@ -138,7 +141,7 @@ fn got_it_previews_counts_down_and_sends_exactly_that_text() {
     assert!(
         matches!(
             sent.as_slice(),
-            [Request::AckMessage { dry_run: false, expect_text: Some(text), thread_id }]
+            [Request::AckMessage { dry_run: false, expect_text: Some(text), thread_id, .. }]
                 if *text == preview.text && *thread_id == preview.thread_id
         ),
         "{sent:?}"

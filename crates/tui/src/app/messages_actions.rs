@@ -260,6 +260,7 @@ impl App {
                 thread_id: ack.plan.thread_id.clone(),
                 dry_run: false,
                 expect_text: Some(ack.plan.text.clone()),
+                preview_token: ack.plan.preview_token.clone(),
             },
             MutationEffect::Messages(format!(
                 "Sent got it to {}",

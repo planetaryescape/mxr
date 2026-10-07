@@ -109,3 +109,18 @@ through `handle_request`.
 
 - `allowed_accounts` matches by account email and config key as well as id,
   so two accounts sharing an email are allowed together.
+
+## Review of 0421b70f: more leaks
+
+A review of the first fix found paths it didn't close. Each is fixed
+in its own commit with a test that failed first.
+
+- **Shared thread ids (high).** Legacy Gmail thread ids aren't
+  account-scoped, so one id can hold two accounts' messages. Resolution used
+  `get_threads_batch`, which reports one account per id, while thread loads
+  return every account's messages. Threads now resolve through
+  `Store::thread_account_pairs` to every account holding them, and the
+  request is denied if any is outside the scope. As a second net,
+  `scope_response` cuts a `Thread` response to the allowed accounts'
+  messages, rebuilds its counts, participants and snippet from them, and
+  drops a cached summary written over the hidden ones.

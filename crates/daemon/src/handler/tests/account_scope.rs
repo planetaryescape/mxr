@@ -758,3 +758,92 @@ async fn dispatch_denies_another_accounts_records_to_a_scoped_mcp_client() {
         other => panic!("expected another account's ledger to be denied, got {other:?}"),
     }
 }
+
+fn scoped_profile(s: &Scoped) -> mxr_config::AgentProfileConfig {
+    s.fx.state
+        .config_snapshot()
+        .agent_surfaces
+        .profiles
+        .get("mcp")
+        .cloned()
+        .unwrap()
+}
+
+/// Legacy Gmail thread ids aren't account-scoped: one id can hold messages
+/// from two accounts. The check must see both accounts, not whichever one
+/// the thread row happens to report.
+#[tokio::test]
+async fn a_thread_id_shared_with_another_account_is_denied_and_filtered() {
+    let s = scoped().await;
+    let shared = ThreadId::new();
+    for (account, tag) in [(&s.own.account, "own"), (&s.other.account, "foreign")] {
+        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account.clone())
+            .thread_id(shared.clone())
+            .provider_id(format!("scope-shared-{tag}"))
+            .subject("Shared conversation")
+            .date(Utc::now())
+            .build();
+        s.fx.state
+            .store
+            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+            .await
+            .unwrap();
+    }
+    // Resolution sees both accounts. A check that took the one account the
+    // thread row reports would pass or fail on which row SQLite picked.
+    let mut holders =
+        super::super::account_scope::thread_accounts(&s.fx.state, std::slice::from_ref(&shared))
+            .await
+            .unwrap();
+    holders.sort_by_key(mxr_core::AccountId::as_str);
+    let mut expected = vec![s.other.account.clone(), s.own.account.clone()];
+    expected.sort_by_key(mxr_core::AccountId::as_str);
+    assert_eq!(holders, expected);
+
+    for req in [
+        Request::GetThread {
+            thread_id: shared.clone(),
+        },
+        Request::GetThreadContext {
+            thread_id: shared.clone(),
+        },
+        Request::GetThreadGists {
+            thread_ids: vec![shared.clone()],
+            generate: false,
+        },
+        Request::ExportThread {
+            thread_id: shared.clone(),
+            format: ExportFormat::Json,
+        },
+    ] {
+        assert_denied(&s, &req).await;
+    }
+
+    // Second safety net: a thread load answered to a scoped client keeps
+    // only the allowed accounts' messages.
+    let thread = s.fx.state.store.get_thread(&shared).await.unwrap().unwrap();
+    let messages =
+        s.fx.state
+            .store
+            .get_thread_envelopes(&shared)
+            .await
+            .unwrap();
+    assert_eq!(messages.len(), 2, "the fixture shares the thread id");
+    let filtered = super::super::account_scope::scope_response(
+        &s.fx.state,
+        &scoped_profile(&s),
+        ResponseData::Thread {
+            thread,
+            messages,
+            summary: None,
+        },
+    )
+    .await
+    .unwrap();
+    let ResponseData::Thread { messages, .. } = filtered else {
+        panic!("expected a thread")
+    };
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].account_id, s.own.account);
+}

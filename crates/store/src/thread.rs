@@ -15,6 +15,44 @@ impl super::Store {
         Ok(batch.pop())
     }
 
+    /// Every (thread, account) pair holding a message in these threads.
+    /// Legacy Gmail thread ids aren't account-scoped, so one id can span
+    /// accounts, and `get_threads_batch` reports only one of them; access
+    /// checks need all of them.
+    pub async fn thread_account_pairs(
+        &self,
+        thread_ids: &[ThreadId],
+    ) -> Result<Vec<(ThreadId, AccountId)>, sqlx::Error> {
+        use sqlx::Row;
+        if thread_ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let ids_json = serde_json::to_string(
+            &thread_ids
+                .iter()
+                .map(mxr_core::ThreadId::as_str)
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
+        let started_at = std::time::Instant::now();
+        let rows = sqlx::query(
+            "SELECT DISTINCT thread_id, account_id FROM messages
+             WHERE thread_id IN (SELECT value FROM json_each(?))",
+        )
+        .bind(ids_json)
+        .fetch_all(self.reader())
+        .await?;
+        trace_query("thread.thread_account_pairs", started_at, rows.len());
+        rows.iter()
+            .map(|row| {
+                Ok((
+                    decode_id(row.try_get::<String, _>("thread_id")?.as_str())?,
+                    decode_id(row.try_get::<String, _>("account_id")?.as_str())?,
+                ))
+            })
+            .collect()
+    }
+
     /// Hydrate Thread rows in bulk. Ids with zero matching messages
     /// are silently skipped — callers that need tombstone Threads for
     /// missing ids (typically the sync engine emitting

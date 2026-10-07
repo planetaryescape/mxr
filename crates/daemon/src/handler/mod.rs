@@ -8,7 +8,7 @@
 )]
 
 mod account_config;
-mod account_scope;
+pub(crate) mod account_scope;
 mod accounts;
 pub(crate) mod activity;
 mod admin;
@@ -1644,6 +1644,15 @@ async fn dispatch(
             mutations::set_flags(state, message_id, *flags).await
         }
         Request::GetSyncStatus { account_id } => runtime::get_sync_status(state, account_id).await,
+    };
+    // A scoped profile passed `enforce_client_profile`, so it exists.
+    let scoped_profile = account_scope::profile_name(source)
+        .and_then(|name| config.agent_surfaces.profiles.get(name));
+    let result = match (result, scoped_profile) {
+        (Ok(data), Some(profile)) => account_scope::scope_response(state, profile, data)
+            .await
+            .map_err(HandlerError::from),
+        (result, _) => result,
     };
 
     match result {

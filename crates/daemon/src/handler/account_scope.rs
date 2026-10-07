@@ -11,7 +11,11 @@ use crate::state::AppState;
 use mxr_config::AgentProfileConfig;
 use mxr_core::id::{AccountId, DeliveryId, DraftId, LabelId, MessageId, ThreadId};
 use mxr_core::types::Draft;
-use mxr_protocol::{AuthSessionId, JobData, MutationCommand, PromiseSourceData, Request};
+use mxr_core::types::{Envelope, MessageFlags, Thread};
+use mxr_protocol::{
+    AuthSessionId, ClientKind, JobData, MutationCommand, PromiseSourceData, Request, ResponseData,
+    ThreadSummaryData,
+};
 use std::sync::Arc;
 
 /// What a request reads or changes, as far as accounts go.
@@ -570,10 +574,7 @@ async fn resolve_targets(
     Ok(resolved)
 }
 
-async fn message_account(
-    state: &Arc<AppState>,
-    message_id: &MessageId,
-) -> Result<AccountId, String> {
+async fn message_account(state: &AppState, message_id: &MessageId) -> Result<AccountId, String> {
     state
         .store
         .get_envelope(message_id)
@@ -583,22 +584,28 @@ async fn message_account(
         .ok_or_else(|| format!("Message not found: {message_id}"))
 }
 
-async fn thread_accounts(
-    state: &Arc<AppState>,
+/// Every account holding each thread. Legacy Gmail thread ids aren't
+/// account-scoped, so one id can span accounts; all of them must be in
+/// scope, not just the one the thread row reports.
+pub(super) async fn thread_accounts(
+    state: &AppState,
     thread_ids: &[ThreadId],
 ) -> Result<Vec<AccountId>, String> {
-    let found = state
+    let pairs = state
         .store
-        .get_threads_batch(thread_ids)
+        .thread_account_pairs(thread_ids)
         .await
         .map_err(|e| e.to_string())?;
     if let Some(missing) = thread_ids
         .iter()
-        .find(|id| !found.iter().any(|thread| &thread.id == *id))
+        .find(|id| !pairs.iter().any(|(thread_id, _)| thread_id == *id))
     {
         return Err(format!("Thread not found: {missing}"));
     }
-    Ok(found.into_iter().map(|thread| thread.account_id).collect())
+    Ok(pairs
+        .into_iter()
+        .map(|(_, account_id)| account_id)
+        .collect())
 }
 
 /// An undo puts back messages, desk dismissals, promises, mode-done marks
@@ -702,7 +709,7 @@ pub(super) async fn enforce_account_allowlist(
 }
 
 async fn account_id_allowed(
-    state: &Arc<AppState>,
+    state: &AppState,
     profile: &AgentProfileConfig,
     account_id: &AccountId,
 ) -> Result<bool, String> {
@@ -741,4 +748,87 @@ fn account_token_allowed(profile: &AgentProfileConfig, token: &str) -> bool {
         .allowed_accounts
         .iter()
         .any(|allowed| allowed == token || allowed.eq_ignore_ascii_case(token))
+}
+
+/// Which profile governs a client kind, if any.
+pub(crate) fn profile_name(source: ClientKind) -> Option<&'static str> {
+    match source {
+        ClientKind::Agent | ClientKind::Mcp => Some(source.as_str()),
+        ClientKind::Human
+        | ClientKind::Tui
+        | ClientKind::Cli
+        | ClientKind::Script
+        | ClientKind::Web
+        | ClientKind::Daemon => None,
+    }
+}
+
+/// Cut a response down to what a scoped profile may see. Request checks
+/// already keep a scoped client to its accounts; this covers responses that
+/// are allowed but carry other accounts' rows, and is a second safety net for
+/// thread loads.
+pub(super) async fn scope_response(
+    state: &AppState,
+    profile: &AgentProfileConfig,
+    data: ResponseData,
+) -> Result<ResponseData, String> {
+    match data {
+        ResponseData::Thread {
+            thread,
+            messages,
+            summary,
+        } => scope_thread(state, profile, thread, messages, summary).await,
+        other => Ok(other),
+    }
+}
+
+/// Keep only the allowed accounts' messages of a thread, and rebuild the
+/// thread's summary fields from them so nothing of the rest shows through.
+async fn scope_thread(
+    state: &AppState,
+    profile: &AgentProfileConfig,
+    mut thread: Thread,
+    messages: Vec<Envelope>,
+    summary: Option<ThreadSummaryData>,
+) -> Result<ResponseData, String> {
+    let total = messages.len();
+    let mut kept = Vec::with_capacity(total);
+    for message in messages {
+        if account_id_allowed(state, profile, &message.account_id).await? {
+            kept.push(message);
+        }
+    }
+    if kept.len() == total {
+        return Ok(ResponseData::Thread {
+            thread,
+            messages: kept,
+            summary,
+        });
+    }
+    let Some(latest) = kept.iter().max_by_key(|message| message.date) else {
+        return Err(format!("Thread not found: {}", thread.id));
+    };
+    thread.account_id = latest.account_id.clone();
+    thread.snippet = latest.snippet.clone();
+    thread.latest_date = latest.date;
+    thread.message_ids = kept.iter().map(|message| message.id.clone()).collect();
+    thread.message_count = u32::try_from(kept.len()).unwrap_or(u32::MAX);
+    thread.unread_count = u32::try_from(
+        kept.iter()
+            .filter(|message| !message.flags.contains(MessageFlags::READ))
+            .count(),
+    )
+    .unwrap_or(u32::MAX);
+    thread.participants = Vec::new();
+    for message in &kept {
+        if !thread.participants.contains(&message.from) {
+            thread.participants.push(message.from.clone());
+        }
+    }
+    // A cached summary was written over every message, the hidden ones too.
+    Ok(ResponseData::Thread {
+        thread,
+        messages: kept,
+        summary: None,
+    })
 }

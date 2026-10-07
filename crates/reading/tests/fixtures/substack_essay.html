@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Why sync engines need tombstones</title>
+<style>.preview{display:none}</style></head>
+<body>
+<div class="preview" style="display:none;font-size:1px;color:#fff;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">Deletes are the hard part of every sync engine, and the fix is older than you think.&#8199;&#847;&#8199;&#847;</div>
+<table class="email-body-container" role="presentation" width="100%"><tr><td>
+<div class="post typography" dir="auto">
+  <div class="post-header">
+    <h1 class="post-title published"><a href="https://substack.com/app-link/post?publication_id=1&amp;post_id=2&amp;utm_source=post-email-title">Why sync engines need tombstones</a></h1>
+    <h3 class="subtitle">Deletes are the hard part of every sync engine</h3>
+    <table class="post-meta"><tr><td class="post-meta-item post-date"><span>Oct 6, 2026</span></td>
+    <td class="post-meta-item"><a href="https://substack.com/app-link/post?publication_id=1&amp;post_id=2&amp;action=share">Share</a></td></tr></table>
+  </div>
+  <table class="email-ufi-2-top"><tr>
+    <td><a class="email-icon-button" href="https://substack.com/app-link/post?action=like"><span class="email-button-text">Like</span></a></td>
+    <td><a class="email-icon-button" href="https://substack.com/app-link/post?comments=true"><span class="email-button-text">Comment</span></a></td>
+    <td><a class="email-icon-button" href="https://substack.com/redirect/2/eyJlIjoiaHR0cHM6Ly9yZXN0YWNr"><span class="email-button-text">Restack</span></a></td>
+  </tr></table>
+  <div class="body markup" dir="auto">
+    <p>Every sync engine I have built started with the easy part: copying rows from one place to another. The hard part, which arrives in the second week, is the row that is no longer there. A delete is the absence of data, and absence does not replicate on its own.</p>
+    <p>The standard answer is a <a href="https://substack.com/redirect/ed69ce43-9ba2-4eb6-a359-e1a2b5281f8f?j=eyJ1IjoicGYwdGUifQ.7Ouv">tombstone</a>: instead of removing the row, you mark it removed and keep the mark long enough for every replica to see it. CouchDB does this, Cassandra does this, and so does the <a href="https://substack.com/redirect/500042a7-1066-4f8e-a1c3-8bfbba1b2c3d?j=eyJ1IjoicGYwdGUifQ.abc">mail store I work on</a> when it tracks a message that left the inbox.</p>
+    <h2 class="header-with-anchor-widget"><a class="header-anchor-post" href="https://example.substack.com/p/tombstones#%C2%A7how-long">§</a>How long to keep them</h2>
+    <p>Keep a tombstone shorter than your slowest replica's offline window and a returning device will resurrect the row. Keep it forever and the table grows without bound. Most systems pick a window measured in weeks and accept that a device offline for longer has to resync from scratch.</p>
+    <p>There is a second, quieter cost. Every query now filters out the dead rows, and every index carries them, so the table you thought held a million rows is doing the work of two million. Compaction helps, but it has to coordinate with the window or it brings the resurrection problem back.</p>
+    <p>None of this is new. The papers are from the eighties, and the trade-offs have not moved. What has moved is how many devices one person carries, which makes the slowest replica slower than ever.</p>
+  </div>
+</div>
+<table class="email-footer"><tr><td class="footer">
+  <p>You're receiving this because you subscribed to Platform Notes.</p>
+  <p><a href="https://example.substack.com/action/disable_email?token=abc">Unsubscribe</a> · <a href="https://substack.com/app-link/settings">Manage preferences</a></p>
+  <p>© 2026 Platform Notes, 548 Market Street PMB 72296, San Francisco, CA 94104</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>

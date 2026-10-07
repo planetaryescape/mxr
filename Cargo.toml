@@ -138,6 +138,7 @@ members = [
     "crates/provider-smtp",
     "crates/reader",
     "crates/records",
+    "crates/reading",
     "crates/relationship",
     "crates/rules",
     "crates/safety",
@@ -217,6 +218,7 @@ mxr-provider-imap = { path = "crates/provider-imap", version = "0.6.0" }
 mxr-provider-outlook = { path = "crates/provider-outlook", version = "0.6.0" }
 mxr-provider-smtp = { path = "crates/provider-smtp", version = "0.6.0" }
 mxr-reader = { path = "crates/reader", version = "0.6.0" }
+mxr-reading = { path = "crates/reading", version = "0.6.0" }
 mxr-relationship = { path = "crates/relationship", version = "0.6.0" }
 mxr-rules = { path = "crates/rules", version = "0.6.0" }
 mxr-safety = { path = "crates/safety", version = "0.6.0" }
@@ -386,6 +388,7 @@ mxr-provider-imap = { workspace = true }
 mxr-provider-outlook = { workspace = true }
 mxr-provider-smtp = { workspace = true }
 mxr-reader = { workspace = true }
+mxr-reading = { workspace = true }
 mxr-relationship = { workspace = true }
 mxr-rules = { workspace = true }
 mxr-safety = { workspace = true }

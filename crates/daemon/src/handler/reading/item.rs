@@ -103,8 +103,8 @@ pub(in crate::handler) async fn get_item(state: &AppState, key: &str) -> Handler
     let now = Utc::now();
     let (issue, rows, idx) = load_item(state, key).await?;
     let ctx = Context::load(state, std::slice::from_ref(&issue.id), now).await?;
-    let visit = state.store.reading_visit().await?;
-    let sources = Sources::load(state, &[&issue], visit.first_seen, now).await?;
+    let visits = super::load_visits(state, std::slice::from_ref(&issue.account_id)).await?;
+    let sources = Sources::load(state, &[&issue], &visits, now).await?;
     let source = sources
         .get(&issue.account_id, &issue.sender)
         .ok_or_else(|| HandlerError::from("the item's source could not be read".to_string()))?;
@@ -455,8 +455,8 @@ pub(in crate::handler) async fn set_source(
         .await?
         .ok_or_else(|| HandlerError::Message(format!("No mail from {sender}")))?;
     let issue = Issue::from_envelope(&envelope);
-    let visit = state.store.reading_visit().await?;
-    let sources = Sources::load(state, &[&issue], visit.first_seen, now).await?;
+    let visits = super::load_visits(state, std::slice::from_ref(&issue.account_id)).await?;
+    let sources = Sources::load(state, &[&issue], &visits, now).await?;
     let source = sources
         .get(account_id, &sender)
         .ok_or_else(|| HandlerError::Message(format!("No mail from {sender}")))?;

@@ -37,9 +37,10 @@ EDITION_OUTPUT
 
 The edition has three bands:
 
-- **Since you were last here**: what arrived after your previous visit. A
-  visit ends after half an hour away, so "since you were last here" stays
-  put while you read.
+- **Since you were last here**: what arrived after your previous visit in
+  that account. A visit ends after half an hour away, so "since you were
+  last here" stays put while you read. No visit is recorded while
+  `MXR_ACTIVITY=off` or activity is paused.
 - **Earlier this week**: still inside its source's window.
 - **Fading**: in its last day.
 

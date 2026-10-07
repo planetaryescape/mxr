@@ -2001,7 +2001,9 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListMessages { .. }
         | Request::GetPerson { .. }
         | Request::ListMergeSuggestions { .. }
-        | Request::GetReadingEdition { .. }
+        | Request::GetReadingEdition {
+            mark_visit: false, ..
+        }
         | Request::GetReadingItem { .. }
         | Request::ExportReadingHighlights { .. }
         | Request::ListSignatures
@@ -2171,6 +2173,9 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::DismissRecord { .. }
         | Request::FileRecord { .. }
         | Request::SetRecordSender { .. }
+        | Request::GetReadingEdition {
+            mark_visit: true, ..
+        }
         | Request::SetReadingLater { .. }
         | Request::RecordReadingEngagement { .. }
         | Request::FetchArticle { .. }

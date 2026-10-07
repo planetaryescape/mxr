@@ -20,7 +20,8 @@
 --
 -- reading_sources holds per-source choices (the sender's own layout, a
 -- dismissed unsubscribe offer) and reading_visit when Reading was last
--- opened, for "Since you were last here".
+-- opened in each account, for "Since you were last here". No visit is
+-- written while activity is off or paused.
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS reading_items (
     message_id        TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
@@ -98,7 +99,7 @@ CREATE TABLE IF NOT EXISTS reading_sources (
 );
 
 CREATE TABLE IF NOT EXISTS reading_visit (
-    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
     first_seen INTEGER,
     boundary   INTEGER,
     last_seen  INTEGER

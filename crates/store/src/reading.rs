@@ -673,11 +673,17 @@ impl super::Store {
         Ok(())
     }
 
-    pub async fn reading_visit(&self) -> Result<ReadingVisitRow, sqlx::Error> {
-        let row =
-            sqlx::query("SELECT first_seen, boundary, last_seen FROM reading_visit WHERE id = 1")
-                .fetch_optional(self.reader())
-                .await?;
+    /// When Reading was opened in `account_id`.
+    pub async fn reading_visit(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<ReadingVisitRow, sqlx::Error> {
+        let row = sqlx::query(
+            "SELECT first_seen, boundary, last_seen FROM reading_visit WHERE account_id = ?",
+        )
+        .bind(account_id.as_str())
+        .fetch_optional(self.reader())
+        .await?;
         let Some(row) = row else {
             return Ok(ReadingVisitRow::default());
         };
@@ -688,14 +694,20 @@ impl super::Store {
         })
     }
 
-    pub async fn set_reading_visit(&self, visit: &ReadingVisitRow) -> Result<(), sqlx::Error> {
+    pub async fn set_reading_visit(
+        &self,
+        account_id: &AccountId,
+        visit: &ReadingVisitRow,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO reading_visit (id, first_seen, boundary, last_seen) VALUES (1, ?1, ?2, ?3)
-             ON CONFLICT(id) DO UPDATE SET
+            "INSERT INTO reading_visit (account_id, first_seen, boundary, last_seen)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(account_id) DO UPDATE SET
                  first_seen = COALESCE(reading_visit.first_seen, excluded.first_seen),
                  boundary = excluded.boundary,
                  last_seen = excluded.last_seen",
         )
+        .bind(account_id.as_str())
         .bind(visit.first_seen.map(|at| at.timestamp()))
         .bind(visit.boundary.map(|at| at.timestamp()))
         .bind(visit.last_seen.map(|at| at.timestamp()))

@@ -330,7 +330,7 @@ async fn articles_highlights_prefs_and_the_visit_round_trip() {
     );
 
     assert_eq!(
-        fx.store.reading_visit().await.expect("none"),
+        fx.store.reading_visit(&fx.account).await.expect("none"),
         ReadingVisitRow::default()
     );
     let visit = ReadingVisitRow {
@@ -338,16 +338,22 @@ async fn articles_highlights_prefs_and_the_visit_round_trip() {
         boundary: None,
         last_seen: Some(at(1)),
     };
-    fx.store.set_reading_visit(&visit).await.expect("visit");
     fx.store
-        .set_reading_visit(&ReadingVisitRow {
-            first_seen: Some(at(9)),
-            boundary: Some(at(1)),
-            last_seen: Some(at(9)),
-        })
+        .set_reading_visit(&fx.account, &visit)
+        .await
+        .expect("visit");
+    fx.store
+        .set_reading_visit(
+            &fx.account,
+            &ReadingVisitRow {
+                first_seen: Some(at(9)),
+                boundary: Some(at(1)),
+                last_seen: Some(at(9)),
+            },
+        )
         .await
         .expect("next");
-    let got = fx.store.reading_visit().await.expect("read");
+    let got = fx.store.reading_visit(&fx.account).await.expect("read");
     assert_eq!(got.first_seen, Some(at(1)), "the first visit is kept");
     assert_eq!(got.boundary, Some(at(1)));
 }

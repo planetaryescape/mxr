@@ -97,7 +97,8 @@ async fn issue(
 }
 
 async fn plan(fx: &Fixture, visit: &ReadingVisitRow, now: DateTime<Utc>) -> reading::Plan {
-    reading::plan(&fx.state, std::slice::from_ref(&fx.account), visit, now)
+    let visits = std::iter::once((fx.account.clone(), *visit)).collect();
+    reading::plan(&fx.state, std::slice::from_ref(&fx.account), &visits, now)
         .await
         .expect("edition")
 }
@@ -590,7 +591,11 @@ async fn the_later_count_covers_only_the_requests_accounts() {
         send_backend: None,
         enabled: true,
     };
-    fx.state.store.insert_account(&other).await.expect("account");
+    fx.state
+        .store
+        .insert_account(&other)
+        .await
+        .expect("account");
     let mut theirs = fx
         .state
         .store
@@ -602,14 +607,20 @@ async fn the_later_count_covers_only_the_requests_accounts() {
     theirs.account_id = other.id.clone();
     theirs.provider_id = format!("other-{}", theirs.id);
     theirs.message_id_header = Some(format!("<{}@other>", theirs.id));
-    fx.state.store.upsert_envelope(&theirs).await.expect("envelope");
+    fx.state
+        .store
+        .upsert_envelope(&theirs)
+        .await
+        .expect("envelope");
     fx.state
         .store
         .set_reading_later(&other.id, &theirs.id, 0, true, now)
         .await
         .expect("later");
 
-    let ResponseData::ReadingLater { later_count, copy, .. } = request(
+    let ResponseData::ReadingLater {
+        later_count, copy, ..
+    } = request(
         &fx,
         Request::SetReadingLater {
             item_keys: vec![format!("{mine}:0")],
@@ -623,4 +634,66 @@ async fn the_later_count_covers_only_the_requests_accounts() {
     };
     assert_eq!(later_count, 1, "the other account's shelf isn't counted");
     assert_eq!(copy, "Saved to Later. 1 thing saved.");
+}
+
+#[tokio::test]
+async fn opening_reading_records_a_visit_per_account_and_not_while_activity_is_paused() {
+    let fx = Fixture::new().await;
+    let other = mxr_core::Account {
+        id: mxr_core::AccountId::new(),
+        name: "Other".into(),
+        email: "other@example.com".into(),
+        sync_backend: None,
+        send_backend: None,
+        enabled: true,
+    };
+    fx.state
+        .store
+        .insert_account(&other)
+        .await
+        .expect("account");
+    let open = |account: &mxr_core::AccountId| Request::GetReadingEdition {
+        account_id: Some(account.clone()),
+        mark_visit: true,
+    };
+    request(&fx, open(&fx.account)).await;
+    let mine = fx
+        .state
+        .store
+        .reading_visit(&fx.account)
+        .await
+        .expect("visit");
+    assert!(mine.last_seen.is_some(), "opening Reading is a visit");
+    let theirs = fx
+        .state
+        .store
+        .reading_visit(&other.id)
+        .await
+        .expect("visit");
+    assert_eq!(
+        theirs,
+        ReadingVisitRow::default(),
+        "another account's visit is its own"
+    );
+
+    fx.state.activity.pause(None);
+    for _ in 0..200 {
+        if fx.state.activity.pause_status().0 {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert!(fx.state.activity.pause_status().0);
+    request(&fx, open(&other.id)).await;
+    let theirs = fx
+        .state
+        .store
+        .reading_visit(&other.id)
+        .await
+        .expect("visit");
+    assert_eq!(
+        theirs,
+        ReadingVisitRow::default(),
+        "no visit while activity is paused"
+    );
 }

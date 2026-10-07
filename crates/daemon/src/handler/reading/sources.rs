@@ -58,7 +58,7 @@ impl Sources {
     pub async fn load(
         state: &AppState,
         issues: &[&Issue],
-        tracking_since: Option<DateTime<Utc>>,
+        visits: &super::Visits,
         now: DateTime<Utc>,
     ) -> Result<Self, HandlerError> {
         // The newest issue of each source names it and says how to leave.
@@ -82,6 +82,8 @@ impl Sources {
         let tracking = state.activity.is_enabled();
         let mut out = HashMap::new();
         for (account, senders) in by_account {
+            // Counts start from the first visit in this account.
+            let tracking_since = visits.get(&account).and_then(|visit| visit.first_seen);
             // Stored addresses keep their case; ask for every spelling seen.
             let mut spellings: Vec<String> = issues
                 .iter()

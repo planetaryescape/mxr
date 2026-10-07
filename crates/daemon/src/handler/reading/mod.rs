@@ -404,6 +404,20 @@ pub(super) fn item_data(
     })
 }
 
+/// Each account's visit, which bands its own mail.
+pub(super) type Visits = HashMap<AccountId, ReadingVisitRow>;
+
+pub(super) async fn load_visits(
+    state: &AppState,
+    accounts: &[AccountId],
+) -> Result<Visits, HandlerError> {
+    let mut visits = Visits::new();
+    for account in accounts {
+        visits.insert(account.clone(), state.store.reading_visit(account).await?);
+    }
+    Ok(visits)
+}
+
 /// The edition as planned at `now`, with the threads it found expired.
 pub(super) struct Plan {
     pub edition: ReadingEditionData,
@@ -428,9 +442,10 @@ async fn current_issues(
 pub(super) async fn plan(
     state: &AppState,
     accounts: &[AccountId],
-    visit: &ReadingVisitRow,
+    visits: &Visits,
     now: DateTime<Utc>,
 ) -> Result<Plan, HandlerError> {
+    let boundary = |account: &AccountId| visits.get(account).and_then(|v| v.boundary);
     let issues = current_issues(state, accounts).await?;
     let later_rows = state.store.reading_later(accounts).await?;
     let in_edition: HashSet<&MessageId> = issues.iter().map(|issue| &issue.id).collect();
@@ -452,7 +467,7 @@ pub(super) async fn plan(
     let items = ensure_items(state, &all).await?;
     let message_ids: Vec<MessageId> = all.iter().map(|issue| issue.id.clone()).collect();
     let ctx = Context::load(state, &message_ids, now).await?;
-    let sources = Sources::load(state, &all, visit.first_seen, now).await?;
+    let sources = Sources::load(state, &all, visits, now).await?;
 
     let mut bands: HashMap<Band, Vec<(ReadingItemData, Rankable)>> = HashMap::new();
     let mut expired_threads: HashMap<(AccountId, ThreadId), bool> = HashMap::new();
@@ -467,7 +482,8 @@ pub(super) async fn plan(
         );
         let expires_at = mxr_reading::fade::expires_at(issue.date, &window);
         let key = (issue.account_id.clone(), issue.thread_id.clone());
-        let Some(band) = edition::band(issue.date, expires_at, visit.boundary, now) else {
+        let Some(band) = edition::band(issue.date, expires_at, boundary(&issue.account_id), now)
+        else {
             expired_threads.entry(key).or_insert(true);
             continue;
         };
@@ -533,7 +549,9 @@ pub(super) async fn plan(
         })
         .collect();
 
-    let left_off_here = visit.boundary.is_some()
+    // The latest visit across the accounts shown.
+    let last_visit_at = visits.values().filter_map(|visit| visit.boundary).max();
+    let left_off_here = last_visit_at.is_some()
         && groups
             .iter()
             .any(|group| group.band == ReadingBandData::SinceLastVisit)
@@ -552,7 +570,7 @@ pub(super) async fn plan(
             line: if never {
                 reading_copy::NEVER_HAD_ANY.to_string()
             } else {
-                clear_line(visit.boundary, later_count, now)
+                clear_line(last_visit_at, later_count, now)
             },
         }
     });
@@ -565,7 +583,7 @@ pub(super) async fn plan(
             generated_at: now,
             header: reading_copy::HEADER.to_string(),
             bands: groups,
-            last_visit_at: visit.boundary,
+            last_visit_at,
             left_off_here,
             later,
             later_count,
@@ -641,38 +659,40 @@ pub(super) async fn get_edition(
     let started = std::time::Instant::now();
     let now = Utc::now();
     let accounts = scoped_accounts(state, account_id).await?;
-    let mut stored = state.store.reading_visit().await?;
-    if stored == ReadingVisitRow::default() && demo_mailbox() {
-        // The demo mailbox comes with a history: Reading was last opened
-        // yesterday and has been watching for months, so every band and
-        // the unsubscribe evidence show on the first look.
-        stored = ReadingVisitRow {
-            first_seen: Some(now - Duration::days(120)),
-            boundary: Some(now - Duration::days(1)),
-            last_seen: Some(now - Duration::days(1)),
-        };
-        state.store.set_reading_visit(&stored).await?;
-    }
-    let visit = if mark_visit {
-        let opened = Visit {
-            boundary: stored.boundary,
-            last_seen: stored.last_seen,
+    let mut visits = load_visits(state, &accounts).await?;
+    // Opening Reading is a visit, unless activity is off or paused: one
+    // privacy switch for everything Reading learns about you.
+    let tracking = state.activity.is_enabled() && !state.activity.pause_status().0;
+    for (account, stored) in &mut visits {
+        if *stored == ReadingVisitRow::default() && demo_mailbox() {
+            // The demo mailbox comes with a history: Reading was last opened
+            // yesterday and has been watching for months, so every band and
+            // the unsubscribe evidence show on the first look.
+            *stored = ReadingVisitRow {
+                first_seen: Some(now - Duration::days(120)),
+                boundary: Some(now - Duration::days(1)),
+                last_seen: Some(now - Duration::days(1)),
+            };
+            state.store.set_reading_visit(account, stored).await?;
         }
-        .open(now);
-        let row = ReadingVisitRow {
-            first_seen: stored.first_seen.or(Some(now)),
-            boundary: opened.boundary,
-            last_seen: opened.last_seen,
-        };
-        state.store.set_reading_visit(&row).await?;
-        row
-    } else {
-        stored
-    };
+        if mark_visit && tracking {
+            let opened = Visit {
+                boundary: stored.boundary,
+                last_seen: stored.last_seen,
+            }
+            .open(now);
+            *stored = ReadingVisitRow {
+                first_seen: stored.first_seen.or(Some(now)),
+                boundary: opened.boundary,
+                last_seen: opened.last_seen,
+            };
+            state.store.set_reading_visit(account, stored).await?;
+        }
+    }
     let Plan {
         mut edition,
         expired,
-    } = plan(state, &accounts, &visit, now).await?;
+    } = plan(state, &accounts, &visits, now).await?;
     edition.expired_now = expire(state, &expired).await?;
     tracing::debug!(
         accounts = accounts.len(),
@@ -690,8 +710,8 @@ pub(super) async fn get_edition(
 pub(crate) async fn after_sync(state: &AppState, account_id: &AccountId) {
     let accounts = [account_id.clone()];
     let result = async {
-        let visit = state.store.reading_visit().await?;
-        let planned = plan(state, &accounts, &visit, Utc::now()).await?;
+        let visits = load_visits(state, &accounts).await?;
+        let planned = plan(state, &accounts, &visits, Utc::now()).await?;
         expire(state, &planned.expired).await
     }
     .await;

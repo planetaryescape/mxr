@@ -6,6 +6,7 @@
 //! go previews first and then commits with the preview's selection token,
 //! so the run acts on exactly the set it printed.
 
+use super::desk::plural;
 use crate::cli::{OutputFormat, UpdatesAction};
 use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
@@ -324,10 +325,6 @@ fn table(digest: &UpdatesDigestData) -> String {
         let _ = writeln!(out, "\n{let_go} `mxr updates let-go`");
     }
     out
-}
-
-fn plural(n: u32, one: &str, many: &str) -> String {
-    format!("{n} {}", if n == 1 { one } else { many })
 }
 
 fn render_let_go(result: &UpdatesLetGoData, format: OutputFormat) -> anyhow::Result<String> {

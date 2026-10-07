@@ -203,7 +203,7 @@ pub(super) async fn digest_from<Tz: TimeZone>(
     scope: &Scope,
     now: DateTime<Utc>,
     tz: &Tz,
-) -> Result<(UpdatesDigestData, Vec<Item>), HandlerError>
+) -> Result<(UpdatesDigestData, Vec<Item>, updates_digest::Selection), HandlerError>
 where
     Tz::Offset: std::fmt::Display,
 {
@@ -247,7 +247,7 @@ where
     let never_had_any = items.is_empty() && !state.store.any_update_facts(accounts).await?;
     let seen_key = seen_key(scope.account_id.as_ref());
     let last_seen = state.store.mode_last_viewed(&seen_key).await?;
-    let digest = updates_digest::compose(&DigestInputs {
+    let (digest, selection) = updates_digest::compose(&DigestInputs {
         items: &items,
         histories: &histories,
         sources: &sources,
@@ -265,7 +265,7 @@ where
         elapsed_ms = started.elapsed().as_secs_f64() * 1000.0,
         "updates digest composed"
     );
-    Ok((digest, items))
+    Ok((digest, items, selection))
 }
 
 /// Drop each message a thread's Updates mark already saw. Membership
@@ -348,7 +348,7 @@ where
         source_key: None,
         list_expired: expired,
     };
-    let (digest, _) = digest_from(state, &accounts, placed, &scope, now, tz).await?;
+    let (digest, _, _) = digest_from(state, &accounts, placed, &scope, now, tz).await?;
     if mark_seen {
         state
             .store
@@ -431,8 +431,7 @@ where
         source_key: source_key.map(str::to_string),
         list_expired: false,
     };
-    let (digest, items) = digest_from(state, &accounts, placed, &scope, now, tz).await?;
-    let selection = updates_digest::selection(&items, &scope, &digest);
+    let (digest, items, selection) = digest_from(state, &accounts, placed, &scope, now, tz).await?;
     if let Some(expected) = selection_token.filter(|token| !token.is_empty()) {
         if expected != selection.token {
             return Err(HandlerError::InvalidRequest(
@@ -576,7 +575,7 @@ pub(super) async fn set_source(
     let prior_row = state.store.update_sources(&account).await?.remove(&key);
     let prior = prior_row
         .as_ref()
-        .and_then(|row| parse_setting(&row.setting))
+        .and_then(|row| UpdateSourceSettingData::parse(&row.setting))
         .unwrap_or_default();
     if !dry_run {
         state
@@ -594,10 +593,6 @@ pub(super) async fn set_source(
             prior,
         },
     })
-}
-
-pub(super) fn parse_setting(value: &str) -> Option<UpdateSourceSettingData> {
-    UpdateSourceSettingData::parse(value)
 }
 
 /// Derive and cache the facts the digest will read: Updates' inbox mail
@@ -863,7 +858,7 @@ async fn deliveries_break_through(
         {
             continue;
         }
-        let dedup_key = format!("update|delivery|{}|{}", delivery.id, delivery.status);
+        let dedup_key = updates_digest::parcel_dedup_key(&delivery);
         if state
             .store
             .get_todo_by_dedup(&delivery.account_id, &dedup_key)
@@ -884,13 +879,14 @@ async fn deliveries_break_through(
             thread_id: delivery.thread_id.as_ref(),
             message_id: message_id.as_ref(),
             date: delivery.last_event_at,
-            title: &format!("Check delivery from {name}"),
+            title: &updates_digest::parcel_todo_title(&name),
             kind: "other",
             verb: "check",
             counterparty: &name,
             sender_domain: None,
             reason: format!("{} from {name} (rule)", NeedsYou::DeliveryException.label()),
-            relevant_until: delivery.last_event_at + Duration::days(7),
+            relevant_until: delivery.last_event_at
+                + Duration::days(updates_digest::PARCEL_WRONG_DAYS),
             dedup_key,
             now,
         });

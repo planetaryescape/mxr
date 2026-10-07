@@ -71,6 +71,11 @@ impl Signal {
         })
     }
 
+    /// New since before, or moved: what puts a source in Changed.
+    pub const fn is_change(self) -> bool {
+        matches!(self, Self::Changed | Self::NewSource)
+    }
+
     /// Needs a look: something to check, not just to know.
     pub const fn needs_a_look(self) -> bool {
         matches!(self, Self::Anomaly | Self::NeedsYou)

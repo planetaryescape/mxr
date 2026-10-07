@@ -24,9 +24,6 @@ CREATE TABLE IF NOT EXISTS update_facts (
     computed_at    INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_update_facts_source
-    ON update_facts(account_id, source_key, message_date);
-
 CREATE TABLE IF NOT EXISTS update_sources (
     account_id     TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     source_key     TEXT NOT NULL,

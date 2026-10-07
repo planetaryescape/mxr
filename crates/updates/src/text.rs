@@ -100,13 +100,26 @@ pub fn link_domain(url: &str) -> Option<String> {
         .rsplit('@')
         .next()?
         .split(':')
-        .next()?
-        .trim_end_matches('.')
-        .to_ascii_lowercase();
+        .next()?;
+    registrable_domain(host)
+}
+
+/// The registrable domain of a host ("github.com" for "www.github.com"),
+/// lowercased; the host itself when the public suffix list doesn't know it.
+pub(crate) fn registrable_domain(host: &str) -> Option<String> {
+    let host = host.trim().trim_end_matches('.').to_ascii_lowercase();
     if host.is_empty() {
         return None;
     }
     Some(psl::domain_str(&host).map_or_else(|| host.clone(), str::to_string))
+}
+
+/// "Strava" from "strava".
+pub(crate) fn capitalise(value: &str) -> String {
+    let mut chars = value.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
 }
 
 #[cfg(test)]

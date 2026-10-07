@@ -104,35 +104,6 @@ impl super::Store {
         Ok(out)
     }
 
-    /// Facts of `source_keys` in one account from `since` on, oldest first:
-    /// the history signals and deltas read.
-    pub async fn update_fact_history(
-        &self,
-        account_id: &AccountId,
-        source_keys: &[String],
-        since: DateTime<Utc>,
-    ) -> Result<Vec<UpdateFactRow>, sqlx::Error> {
-        if source_keys.is_empty() {
-            return Ok(Vec::new());
-        }
-        let wanted = encode_json(&source_keys)?;
-        let sql = format!(
-            "SELECT {FACT_COLUMNS} FROM update_facts
-             WHERE account_id = ?1 AND message_date >= ?2
-               AND source_key IN (SELECT value FROM json_each(?3))
-             ORDER BY message_date ASC, message_id ASC"
-        );
-        sqlx::query(sqlx::AssertSqlSafe(sql))
-            .bind(account_id.as_str())
-            .bind(since.timestamp())
-            .bind(wanted)
-            .fetch_all(self.reader())
-            .await?
-            .iter()
-            .map(fact_from_row)
-            .collect()
-    }
-
     /// Store derived facts, replacing older ones for the same message.
     pub async fn upsert_update_facts(
         &self,
@@ -375,15 +346,6 @@ mod tests {
             got.get(&envelope.id).map(|r| r.source_key.as_str()),
             Some("strava.com")
         );
-        let history = store
-            .update_fact_history(
-                &account.id,
-                &["strava.com".into()],
-                now - Duration::days(400),
-            )
-            .await
-            .unwrap();
-        assert_eq!(history.len(), 1);
 
         store
             .delete_messages_and_derived(&account.id, std::slice::from_ref(&envelope.provider_id))

@@ -67,10 +67,6 @@ impl Cuts {
         Ok(Self(times))
     }
 
-    pub fn times(&self) -> &[NaiveTime] {
-        &self.0
-    }
-
     /// "08:00" and "16:30".
     pub fn labels(&self) -> Vec<String> {
         self.0
@@ -131,11 +127,6 @@ impl Cuts {
                 next: now + Duration::days(1),
             },
         }
-    }
-
-    /// The cut at or before `at`: for a client naming a past cut.
-    pub fn cut_at_or_before<Tz: TimeZone>(&self, at: DateTime<Utc>, tz: &Tz) -> DateTime<Utc> {
-        self.window(at, tz).at
     }
 }
 

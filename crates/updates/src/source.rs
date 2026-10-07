@@ -8,6 +8,8 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::text::{capitalise, registrable_domain};
+
 /// "[acme/api]" or "[acme/api] " at the start of a subject: a repository.
 static REPO_TAG: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)^\s*(?:(?:re|fwd?):\s*)*\[([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\]")
@@ -17,16 +19,7 @@ static REPO_TAG: Lazy<Regex> = Lazy::new(|| {
 /// The registrable domain of an address: "github.com" for
 /// "notifications@github.com", "camden.gov.uk" for a subdomain sender.
 pub fn email_domain(email: &str) -> Option<String> {
-    let host = email
-        .trim()
-        .rsplit_once('@')?
-        .1
-        .trim_end_matches(['.', '>'])
-        .to_ascii_lowercase();
-    if host.is_empty() {
-        return None;
-    }
-    Some(psl::domain_str(&host).map_or_else(|| host.clone(), str::to_string))
+    registrable_domain(email.trim().rsplit_once('@')?.1.trim_end_matches('>'))
 }
 
 /// The stream a message belongs to.
@@ -92,13 +85,6 @@ fn strip_notification_suffix(name: &str) -> String {
             || name.to_string(),
             |suffix| name[..name.len() - suffix.len()].trim().to_string(),
         )
-}
-
-fn capitalise(value: &str) -> String {
-    let mut chars = value.chars();
-    chars.next().map_or_else(String::new, |first| {
-        first.to_uppercase().chain(chars).collect()
-    })
 }
 
 #[cfg(test)]

@@ -129,7 +129,6 @@ impl AccountKinds {
 }
 
 /// One message in a place, with its classification.
-#[derive(Clone)]
 pub(super) struct Placed {
     pub message: PlaceMessage,
     pub kind: MailKindData,

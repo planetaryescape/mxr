@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::numbers::{extract_numbers, Quoted};
 use crate::source::{source_key, source_name};
 use crate::template::{clean_subject, template_key};
-use crate::text::{clip, first_informative_line, pick_link};
+use crate::text::{capitalise, clip, first_informative_line, pick_link};
 use crate::window::{window, Window, WindowKind};
 use crate::Signal;
 
@@ -70,15 +70,6 @@ impl NeedsYou {
         }
     }
 
-    pub fn parse(value: &str) -> Option<Self> {
-        Some(match value {
-            "sign_in" => Self::SignIn,
-            "payment_failed" => Self::PaymentFailed,
-            "delivery_exception" => Self::DeliveryException,
-            _ => return None,
-        })
-    }
-
     /// "new sign-in alert", for the why line.
     pub const fn label(self) -> &'static str {
         match self {
@@ -104,14 +95,6 @@ impl TrackedKind {
             Self::Incident => "incident",
         }
     }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "build" => Some(Self::Build),
-            "incident" => Some(Self::Incident),
-            _ => None,
-        }
-    }
 }
 
 /// How a tracked thing stands: ended well, ended badly, or under way.
@@ -129,15 +112,6 @@ impl TrackedOutcome {
             Self::Good => "good",
             Self::Bad => "bad",
             Self::Progress => "progress",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "good" => Some(Self::Good),
-            "bad" => Some(Self::Bad),
-            "progress" => Some(Self::Progress),
-            _ => None,
         }
     }
 }
@@ -253,13 +227,6 @@ fn tracked(subject: &str) -> Option<Tracked> {
         key: template_key(&masked),
         state: state.as_str().to_ascii_lowercase(),
         outcome,
-    })
-}
-
-fn capitalise(value: &str) -> String {
-    let mut chars = value.chars();
-    chars.next().map_or_else(String::new, |first| {
-        first.to_uppercase().chain(chars).collect()
     })
 }
 

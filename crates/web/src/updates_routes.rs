@@ -107,9 +107,6 @@ async fn set_source(
     headers: HeaderMap,
     Json(body): Json<UpdateSourceBody>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
-    if body.source.trim().is_empty() {
-        return Err(BridgeError::BadRequest("source must not be empty".into()));
-    }
     let response = dispatch(
         &state,
         &headers,

@@ -299,7 +299,7 @@ where
     format!("{} {part}", local.format("%A"))
 }
 
-fn count_phrase(count: u32, one: &str, many: &str) -> String {
+pub(super) fn count_phrase(count: u32, one: &str, many: &str) -> String {
     if count == 1 {
         format!("1 {one}")
     } else {

@@ -7,6 +7,7 @@
 //! deltas are code. The digest's selection (what letting go acts on) is
 //! computed here once and shared by the preview and the run.
 
+use super::mode_rules::count_phrase;
 use super::updates::Item;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -30,7 +31,7 @@ pub(super) const MUTE_SUGGEST_AFTER: i64 = 8;
 /// The mute question comes back no sooner than this.
 const MUTE_SUGGEST_EVERY_DAYS: i64 = 30;
 /// A parcel that went wrong stays in Needs a look this long.
-const PARCEL_WRONG_DAYS: i64 = 7;
+pub(super) const PARCEL_WRONG_DAYS: i64 = 7;
 /// A delivered parcel shows for a day, then leaves on its own.
 const PARCEL_DELIVERED_DAYS: i64 = 1;
 /// No news for this long past its latest arrival date, a parcel goes quiet.
@@ -87,18 +88,10 @@ impl Histories {
             item.message.account_id.clone(),
             item.fact.source_key.clone(),
         );
-        let earlier: Vec<&Past> = self
-            .0
-            .get(&key)
-            .map(|list| {
-                list.iter()
-                    .filter(|past| {
-                        (past.date, past.id.as_uuid())
-                            < (item.message.date, item.message.id.as_uuid())
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let list = self.0.get(&key).map_or(&[][..], Vec::as_slice);
+        // Sorted by (date, id): everything before this message is a prefix.
+        let at = (item.message.date, item.message.id.as_uuid());
+        let earlier = &list[..list.partition_point(|past| (past.date, past.id.as_uuid()) < at)];
         let previous = earlier
             .iter()
             .rev()
@@ -151,6 +144,8 @@ pub(super) struct Selection {
     pub source_count: usize,
     /// Selected but not shown: muted, changes only, or past its window.
     pub hidden: usize,
+    /// Selected threads To do also holds.
+    pub in_todo: usize,
 }
 
 fn in_scope(item: &Item, scope: &Scope) -> bool {
@@ -178,46 +173,44 @@ fn token(ids: &[&MessageId], cut_at: DateTime<Utc>) -> String {
 }
 
 /// Everything in the cut and in scope, shown or hidden: the digest's
-/// stable set. Nothing that arrived after the cut is in it.
-fn chosen<'a>(items: &'a [Item], scope: &Scope, cut_at: DateTime<Utc>) -> Vec<&'a Item> {
-    items
+/// stable set, and what letting go of it does. Nothing that arrived after
+/// the cut is in it. The preview and the run both read this one rule.
+fn select(
+    items: &[Item],
+    scope: &Scope,
+    cut_at: DateTime<Utc>,
+    shown: &HashSet<&MessageId>,
+    todo_threads: &HashSet<&ThreadId>,
+) -> Selection {
+    let picked: Vec<&Item> = items
         .iter()
         .filter(|item| item.message.date <= cut_at && in_scope(item, scope))
-        .collect()
-}
-
-pub(super) fn selection(items: &[Item], scope: &Scope, digest: &UpdatesDigestData) -> Selection {
-    let picked = chosen(items, scope, digest.cut.at);
+        .collect();
     let ids: Vec<&MessageId> = picked.iter().map(|item| &item.message.id).collect();
-    let mut thread_ids: Vec<ThreadId> = Vec::new();
-    for item in &picked {
-        if !thread_ids.contains(&item.message.thread_id) {
-            thread_ids.push(item.message.thread_id.clone());
-        }
-    }
-    let threads: HashSet<&ThreadId> = thread_ids.iter().collect();
+    let mut seen = HashSet::new();
+    let thread_ids: Vec<ThreadId> = picked
+        .iter()
+        .map(|item| &item.message.thread_id)
+        .filter(|thread| seen.insert(*thread))
+        .cloned()
+        .collect();
     let keep = items
         .iter()
-        .filter(|item| {
-            item.message.date > digest.cut.at && threads.contains(&item.message.thread_id)
-        })
+        .filter(|item| item.message.date > cut_at && seen.contains(&item.message.thread_id))
         .map(|item| item.message.id.clone())
-        .collect();
-    let shown: HashSet<&MessageId> = digest
-        .needs_a_look
-        .iter()
-        .chain(&digest.changed)
-        .chain(&digest.routine)
-        .flat_map(|line| &line.message_ids)
         .collect();
     let sources: HashSet<(&AccountId, &str)> = picked
         .iter()
         .map(|item| (&item.message.account_id, item.fact.source_key.as_str()))
         .collect();
     Selection {
-        token: token(&ids, digest.cut.at),
+        token: token(&ids, cut_at),
         hidden: ids.iter().filter(|id| !shown.contains(*id)).count(),
-        message_ids: picked.iter().map(|item| item.message.id.clone()).collect(),
+        in_todo: thread_ids
+            .iter()
+            .filter(|t| todo_threads.contains(t))
+            .count(),
+        message_ids: ids.into_iter().cloned().collect(),
         source_count: sources.len(),
         thread_ids,
         keep,
@@ -225,7 +218,7 @@ pub(super) fn selection(items: &[Item], scope: &Scope, digest: &UpdatesDigestDat
 }
 
 fn plural(n: usize, one: &str, many: &str) -> String {
-    format!("{n} {}", if n == 1 { one } else { many })
+    count_phrase(super::now::count(n), one, many)
 }
 
 /// "Let go of 31 updates from 12 sources; 2 also in To do stay there."
@@ -450,12 +443,7 @@ where
         latest_at: message.date,
         time_label: (section == UpdateSectionData::NeedsALook)
             .then(|| time_label(message.date, ctx.inputs.tz)),
-        link: fact.link.as_ref().and_then(|url| {
-            Some(UpdateLinkData {
-                domain: mxr_updates::text::link_domain(url)?,
-                url: url.clone(),
-            })
-        }),
+        link: fact.link.as_deref().and_then(link_data),
         tracker,
         in_todo: todo.as_ref().map(|_| updates_copy::IN_TODO.to_string()),
         todo_id: todo,
@@ -513,9 +501,7 @@ where
         let moved = group
             .iter()
             .any(|m| m.item.fact.tracked.as_ref().map(|t| t.outcome) != outcome)
-            || group
-                .iter()
-                .any(|m| matches!(m.signal, Signal::Changed | Signal::NewSource));
+            || group.iter().any(|m| m.signal.is_change());
         let section = match outcome {
             Some(TrackedOutcome::Bad) => UpdateSectionData::NeedsALook,
             _ if moved => UpdateSectionData::Changed,
@@ -540,9 +526,7 @@ where
         ));
     }
     if !rest.is_empty() {
-        let changed = rest
-            .iter()
-            .any(|m| matches!(m.signal, Signal::Changed | Signal::NewSource));
+        let changed = rest.iter().any(|m| m.signal.is_change());
         let section = if changed {
             UpdateSectionData::Changed
         } else {
@@ -551,6 +535,21 @@ where
         out.extend(source_line(section, format!("{source}|source"), &rest, ctx));
     }
     out
+}
+
+/// Scored mail grouped by account and source, in a stable order.
+fn by_source(scored: Vec<Scored<'_>>) -> BTreeMap<(String, String), Vec<Scored<'_>>> {
+    let mut groups: BTreeMap<(String, String), Vec<Scored<'_>>> = BTreeMap::new();
+    for entry in scored {
+        groups
+            .entry((
+                entry.item.message.account_id.to_string(),
+                entry.item.fact.source_key.clone(),
+            ))
+            .or_default()
+            .push(entry);
+    }
+    groups
 }
 
 /// Lines for a set of items, split by setting: muted sources are hidden,
@@ -563,16 +562,7 @@ fn build_lines<'a, Tz: TimeZone>(
 where
     Tz::Offset: std::fmt::Display,
 {
-    let mut by_source: BTreeMap<(String, String), Vec<Scored<'a>>> = BTreeMap::new();
-    for entry in scored {
-        by_source
-            .entry((
-                entry.item.message.account_id.to_string(),
-                entry.item.fact.source_key.clone(),
-            ))
-            .or_default()
-            .push(entry);
-    }
+    let by_source = by_source(scored);
     let (mut lines, mut muted, mut changes_only) = (Vec::new(), 0, 0);
     for members in by_source.values() {
         let first = &members[0].item;
@@ -609,16 +599,7 @@ fn since_lines<Tz: TimeZone>(
 where
     Tz::Offset: std::fmt::Display,
 {
-    let mut by_source: BTreeMap<(String, String), Vec<Scored<'_>>> = BTreeMap::new();
-    for entry in scored {
-        by_source
-            .entry((
-                entry.item.message.account_id.to_string(),
-                entry.item.fact.source_key.clone(),
-            ))
-            .or_default()
-            .push(entry);
-    }
+    let by_source = by_source(scored);
     by_source
         .into_iter()
         .filter(|(_, members)| {
@@ -633,7 +614,7 @@ where
             let strongest = members.iter().map(|m| m.signal).max()?;
             let section = if strongest.needs_a_look() {
                 UpdateSectionData::NeedsALook
-            } else if matches!(strongest, Signal::Changed | Signal::NewSource) {
+            } else if strongest.is_change() {
                 UpdateSectionData::Changed
             } else {
                 UpdateSectionData::Routine
@@ -642,6 +623,23 @@ where
             source_line(section, format!("{account}|{key}|since"), &refs, ctx)
         })
         .collect()
+}
+
+/// The claim a parcel's breakthrough to-do holds, one per state.
+pub(super) fn parcel_dedup_key(delivery: &Delivery) -> String {
+    format!("update|delivery|{}|{}", delivery.id, delivery.status)
+}
+
+/// What `t` and the breakthrough call a parcel's to-do.
+pub(super) fn parcel_todo_title(name: &str) -> String {
+    format!("Check delivery from {name}")
+}
+
+fn link_data(url: &str) -> Option<UpdateLinkData> {
+    Some(UpdateLinkData {
+        domain: mxr_updates::text::link_domain(url)?,
+        url: url.to_string(),
+    })
 }
 
 pub(super) fn parcel_went_wrong(status: DeliveryStatus) -> bool {
@@ -761,7 +759,7 @@ where
     {
         detail.push(carrier.clone());
     }
-    let dedup = format!("update|delivery|{}|{}", delivery.id, delivery.status);
+    let dedup = parcel_dedup_key(delivery);
     let todo = todos
         .iter()
         .find(|todo| {
@@ -796,12 +794,7 @@ where
         latest_thread_id: delivery.thread_id.clone(),
         latest_at: delivery.last_event_at,
         time_label: None,
-        link: delivery.tracking_url.as_ref().and_then(|url| {
-            Some(UpdateLinkData {
-                domain: mxr_updates::text::link_domain(url)?,
-                url: url.clone(),
-            })
-        }),
+        link: delivery.tracking_url.as_deref().and_then(link_data),
         tracker: Some(UpdateTrackerData {
             kind: "parcel".to_string(),
             state: delivery.status.clone(),
@@ -814,7 +807,7 @@ where
         }),
         in_todo: todo.as_ref().map(|_| updates_copy::IN_TODO.to_string()),
         todo_id: todo,
-        todo_title: format!("Check delivery from {name}"),
+        todo_title: parcel_todo_title(&name),
         why: format!(
             "Here because: a parcel with a tracking state ({}). Leaves Updates when it ends.",
             delivery.source
@@ -897,7 +890,7 @@ fn mute_suggestion(
         })
 }
 
-pub(super) fn compose<Tz: TimeZone>(inputs: &DigestInputs<'_, Tz>) -> UpdatesDigestData
+pub(super) fn compose<Tz: TimeZone>(inputs: &DigestInputs<'_, Tz>) -> (UpdatesDigestData, Selection)
 where
     Tz::Offset: std::fmt::Display,
 {
@@ -933,8 +926,7 @@ where
         } else {
             window.at
         };
-        if matches!(signal, Signal::Changed | Signal::NewSource) && item.message.date <= fresh_from
-        {
+        if signal.is_change() && item.message.date <= fresh_from {
             signal = Signal::Routine;
         }
         let scored = Scored {
@@ -1060,24 +1052,14 @@ where
     } else {
         Vec::new()
     };
-    let picked = chosen(inputs.items, inputs.scope, window.at);
-    let picked_ids: Vec<&MessageId> = picked.iter().map(|item| &item.message.id).collect();
     let shown_ids: HashSet<&MessageId> = shown().flat_map(|line| &line.message_ids).collect();
-    let hidden = picked_ids
-        .iter()
-        .filter(|id| !shown_ids.contains(*id))
-        .count();
-    let picked_sources = picked
-        .iter()
-        .map(|item| (&item.message.account_id, item.fact.source_key.as_str()))
-        .collect::<HashSet<_>>()
-        .len();
-    let in_todo = picked
-        .iter()
-        .filter(|item| todo_by_thread.contains_key(&item.message.thread_id))
-        .map(|item| &item.message.thread_id)
-        .collect::<HashSet<_>>()
-        .len();
+    let selection = select(
+        inputs.items,
+        inputs.scope,
+        window.at,
+        &shown_ids,
+        &todo_by_thread.keys().copied().collect(),
+    );
     let all_sources: HashSet<(&AccountId, &str)> = inputs
         .items
         .iter()
@@ -1089,7 +1071,7 @@ where
         .filter(|row| row.setting == UpdateSourceSettingData::Muted.as_str())
         .count();
 
-    UpdatesDigestData {
+    let digest = UpdatesDigestData {
         generated_at: now,
         header: updates_copy::HEADER.to_string(),
         cut: UpdatesCutData {
@@ -1118,11 +1100,18 @@ where
             .then(|| format!("{since_last_look} expired since you last looked.")),
         expired_count: super::now::count(since_last_look),
         expired: expired_list,
-        let_go_line: (!picked_ids.is_empty())
-            .then(|| let_go_line(picked_ids.len(), picked_sources, hidden, in_todo)),
-        selection_token: token(&picked_ids, window.at),
+        let_go_line: (!selection.message_ids.is_empty()).then(|| {
+            let_go_line(
+                selection.message_ids.len(),
+                selection.source_count,
+                selection.hidden,
+                selection.in_todo,
+            )
+        }),
+        selection_token: selection.token.clone(),
         empty_state,
         source_total: super::now::count(all_sources.len()),
         muted_total: super::now::count(muted_total),
-    }
+    };
+    (digest, selection)
 }

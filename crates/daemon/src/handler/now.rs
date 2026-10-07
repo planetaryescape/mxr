@@ -105,14 +105,15 @@ where
     // Now puts them first, so its cap of three never hides one.
     let mut due_now = bands.now;
     due_now.sort_by_key(|todo| (!todo.overdue, todo.act_by_at.is_none(), todo.act_by_at));
-    let inbox = inbox_modes(state, accounts).await?;
+    let mut inbox = inbox_modes(state, accounts).await?;
     let scope = super::updates_digest::Scope {
         account_id: account_id.cloned(),
         ..Default::default()
     };
-    let (digest, _) =
-        super::updates::digest_from(state, accounts, inbox.updates.clone(), &scope, now, tz)
-            .await?;
+    // The digest is all Now and the rail read of Updates' mail.
+    let updates = std::mem::take(&mut inbox.updates);
+    let (digest, _, _) =
+        super::updates::digest_from(state, accounts, updates, &scope, now, tz).await?;
     Ok(NowSnapshot {
         owed: lane(DeskLaneKind::Owed),
         people_new: lane(DeskLaneKind::PeopleNew),

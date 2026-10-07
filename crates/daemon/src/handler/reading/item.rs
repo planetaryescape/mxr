@@ -4,13 +4,13 @@
 use super::sources::Sources;
 use super::{ensure_items, item_data, item_key, parse_item_key, Context, Issue};
 use crate::handler::places::AccountKinds;
-use crate::handler::{mail_kind, mode_guide, HandlerError, HandlerResult};
+use crate::handler::{mail_kind, HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::Utc;
 use mxr_core::id::{AccountId, MessageId};
 use mxr_protocol::{
-    ModeKindData, ReadingArticleData, ReadingHighlightData, ReadingItemDetailData,
-    ReadingLaterOutcomeData, ReadingParagraphData, ResponseData,
+    ReadingArticleData, ReadingHighlightData, ReadingItemDetailData, ReadingLaterOutcomeData,
+    ReadingParagraphData, ResponseData,
 };
 use mxr_reading::export::{to_markdown, HighlightExport};
 use mxr_reading::{pace, Paragraph, ParagraphKind};
@@ -271,10 +271,6 @@ pub(in crate::handler) async fn record_engagement(
         .get_envelope(&message_id)
         .await?
         .ok_or_else(|| HandlerError::Message(format!("No message for Reading item {key}")))?;
-    if report.opened {
-        // Reading something is the mode's main verb: the card has done its job.
-        mode_guide::retire(state, ModeKindData::Reading.id()).await?;
-    }
     // One privacy switch: MXR_ACTIVITY=off (or a pause) stops engagement too.
     if !state.activity.is_enabled() || state.activity.pause_status().0 {
         return Ok(ResponseData::ReadingEngagement {

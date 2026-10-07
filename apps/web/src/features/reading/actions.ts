@@ -69,7 +69,7 @@ export const readingActions: Action[] = [
   key("reading", "reading.later-shelf", "laterShelf", "Open Later", "B", {
     shortLabel: "Later shelf",
   }),
-  key("reading", "reading.close-card", "closeCard", "Close the note about Reading", "Escape", {
+  key("reading", "reading.close-hint", "closeHint", "Dismiss the hint", "Escape", {
     hideInPalette: true,
   }),
   // The reader.

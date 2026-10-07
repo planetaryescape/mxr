@@ -155,8 +155,7 @@ impl App {
             | Action::ReadingHighlight
             | Action::ReadingOpenEmail
             | Action::ReadingBack
-            | Action::ReadingLaterShelf
-            | Action::ReadingCloseCard => self.apply_reading_action(action),
+            | Action::ReadingLaterShelf => self.apply_reading_action(action),
             Action::OpenNow
             | Action::OpenMessages
             | Action::OpenArchiveMode

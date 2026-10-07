@@ -1,5 +1,5 @@
 import { Bookmark, Check, ExternalLink, MailX } from "lucide-react";
-import { memo } from "react";
+import { Fragment, memo, type ReactNode } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,7 @@ export const ReadingItemCard = memo(function ReadingItemCard({
   fading,
   shelf,
   handlers,
+  linkHint,
 }: {
   item: ReadingItem;
   /** Cursor position of the item itself. */
@@ -43,6 +44,8 @@ export const ReadingItemCard = memo(function ReadingItemCard({
   /** On the Later shelf: no fade, and the "still want it" question. */
   shelf?: boolean;
   handlers: CardHandlers;
+  /** A hint for one of this item's links, shown under that link. */
+  linkHint?: { key: string; node: ReactNode };
 }) {
   const focused = focusedKey === item.item_key;
   const lead = Boolean(item.lead) && !shelf;
@@ -110,13 +113,15 @@ export const ReadingItemCard = memo(function ReadingItemCard({
       {shown.length > 0 ? (
         <ul className="mt-2 grid gap-0.5" aria-label={`Links in ${item.title}`}>
           {shown.map((link) => (
-            <LinkRow
-              key={link.item_key}
-              link={link}
-              index={linkIndex.get(link.item_key) ?? -1}
-              focused={focusedKey === link.item_key}
-              handlers={handlers}
-            />
+            <Fragment key={link.item_key}>
+              <LinkRow
+                link={link}
+                index={linkIndex.get(link.item_key) ?? -1}
+                focused={focusedKey === link.item_key}
+                handlers={handlers}
+              />
+              {linkHint?.key === link.item_key ? <li className="pl-4">{linkHint.node}</li> : null}
+            </Fragment>
           ))}
           {more > 0 ? (
             <li>

@@ -223,8 +223,6 @@ pub enum Action {
     ReadingBack,
     /// `B`: the Later shelf, or back to the edition from it.
     ReadingLaterShelf,
-    /// Esc on Reading's first-encounter card: retire it in every client.
-    ReadingCloseCard,
     GoToLabel,
     // Command palette
     OpenCommandPalette,

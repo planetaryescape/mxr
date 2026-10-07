@@ -177,10 +177,10 @@ pub(crate) fn edition() -> ReadingEditionData {
     }
 }
 
-fn page(card: bool) -> ReadingPageState {
+fn page() -> ReadingPageState {
     ReadingPageState {
         edition: Some(edition()),
-        guide: Some(READING_GUIDE.to_data(if card { None } else { Some(at()) })),
+        guide: Some(READING_GUIDE.to_data(|_| None)),
         ..ReadingPageState::default()
     }
 }
@@ -243,7 +243,7 @@ fn render(page: &ReadingPageState, selected: usize, width: u16) -> String {
 
 #[test]
 fn the_edition_renders_its_bands_the_left_off_line_and_a_digests_links() {
-    let page = page(true);
+    let page = page();
     for width in [60u16, 80, 120] {
         let rendered = render(&page, 0, width);
         insta::assert_snapshot!(format!("reading_lens_edition_{width}"), rendered);
@@ -254,7 +254,10 @@ fn the_edition_renders_its_bands_the_left_off_line_and_a_digests_links() {
         assert!(rendered.contains("Later 2"), "{width}");
         assert!(rendered.contains("Local-first mail"), "{width}");
         assert!(rendered.contains("+ 1 more"), "{width}");
-        assert!(rendered.contains("Esc close"), "the card shows at {width}");
+        assert!(
+            !rendered.contains("Esc close"),
+            "no card at the top at {width}"
+        );
         assert!(
             !rendered.to_lowercase().contains("unread"),
             "no unread counts"
@@ -264,7 +267,7 @@ fn the_edition_renders_its_bands_the_left_off_line_and_a_digests_links() {
 
 #[test]
 fn a_tracked_link_says_via_and_the_offer_names_its_evidence() {
-    let rendered = render(&page(false), 0, 80);
+    let rendered = render(&page(), 0, 80);
     assert!(rendered.contains("via substack.com"));
     assert!(rendered.contains("You opened 0 of the last 11 issues"));
     assert!(rendered.contains("you read 8 of 10"));
@@ -272,7 +275,7 @@ fn a_tracked_link_says_via_and_the_offer_names_its_evidence() {
 
 #[test]
 fn the_empty_edition_says_so_in_the_daemons_words() {
-    let mut empty = page(false);
+    let mut empty = page();
     let edition = empty.edition.as_mut().expect("edition");
     edition.bands.clear();
     edition.left_off_here = false;
@@ -289,7 +292,7 @@ fn the_empty_edition_says_so_in_the_daemons_words() {
 
 #[test]
 fn the_reader_shows_the_article_with_where_it_came_from() {
-    let mut reading = page(false);
+    let mut reading = page();
     reading.reader = Some(detail(true));
     reading.reader_focused = true;
     reading.view = ReadingView::Article;
@@ -305,7 +308,7 @@ fn the_reader_shows_the_article_with_where_it_came_from() {
 
 #[test]
 fn an_unfetched_article_names_the_site_l_would_contact() {
-    let mut reading = page(false);
+    let mut reading = page();
     reading.reader = Some(detail(false));
     reading.reader_focused = true;
     reading.view = ReadingView::Article;
@@ -315,7 +318,7 @@ fn an_unfetched_article_names_the_site_l_would_contact() {
 
 #[test]
 fn the_unsubscribe_preview_shows_evidence_method_and_that_it_cannot_be_undone() {
-    let mut confirm = page(false);
+    let mut confirm = page();
     confirm.confirm = Some(ReadingConfirm::Unsubscribe {
         target: crate::app::ReadingUnsubscribeTarget {
             account_id: AccountId::from_provider_id("fake", "alex@demo.mxr.local"),
@@ -339,7 +342,7 @@ fn the_unsubscribe_preview_shows_evidence_method_and_that_it_cannot_be_undone() 
 
 #[test]
 fn the_let_go_preview_lists_exactly_the_previewed_issues() {
-    let mut confirm = page(false);
+    let mut confirm = page();
     let thread_ids = confirm.thread_ids();
     confirm.confirm = Some(ReadingConfirm::LetGoAll {
         thread_ids: thread_ids[..2].to_vec(),
@@ -356,7 +359,7 @@ fn minutes_left_and_the_highlight_follow_the_scroll() {
     assert_eq!(minutes_left(460, 0.0, 230), 2);
     assert_eq!(minutes_left(460, 0.75, 230), 1);
     assert_eq!(minutes_left(460, 1.0, 230), 0);
-    let mut reading = page(false);
+    let mut reading = page();
     reading.reader = Some(detail(false));
     assert!(paragraph_at_top(&reading).is_some_and(|p| p.starts_with("We rebuilt")));
     // Past the first paragraph and the heading, the third one is on top.
@@ -371,7 +374,7 @@ fn minutes_left_and_the_highlight_follow_the_scroll() {
 
 #[test]
 fn mail_text_cannot_reach_the_terminal_as_control_sequences() {
-    let mut hostile = page(false);
+    let mut hostile = page();
     hostile.edition.as_mut().expect("edition").bands[0].items[0].title = "Read\u{1b}[2J me".into();
     let rendered = render(&hostile, 0, 80);
     assert!(
@@ -384,7 +387,7 @@ fn mail_text_cannot_reach_the_terminal_as_control_sequences() {
 
 #[test]
 fn the_later_shelf_lists_what_you_kept_and_asks_once_about_old_things() {
-    let mut shelf = page(false);
+    let mut shelf = page();
     let mut kept = item(
         "kept",
         "WAL checkpoints, explained with pictures",

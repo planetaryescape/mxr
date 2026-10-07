@@ -683,7 +683,7 @@ Newsletters as an edition. `b`, `e`, `D` and `A` work on the item or link under 
 | `o` | Open the email as sent |  |
 | `K` | This sender here: move to… |  |
 | `B` | Open Later |  |
-| `Esc` | Close the note about Reading |  |
+| `Esc` | Dismiss the hint |  |
 
 ### Reading reader
 

@@ -6,7 +6,15 @@ import { bridge, openApp } from "./helpers/state";
 test.use({ viewport: { width: 1440, height: 900 } });
 
 interface Edition {
-  bands: { band: string; items: { item_key: string; thread_id: string; title: string; links?: { item_key: string; title: string; domain: string }[] }[] }[];
+  bands: {
+    band: string;
+    items: {
+      item_key: string;
+      thread_id: string;
+      title: string;
+      links?: { item_key: string; title: string; domain: string }[];
+    }[];
+  }[];
   later_count: number;
 }
 
@@ -48,7 +56,9 @@ async function blockingViolations(page: Page): Promise<string[]> {
   return results.violations
     .filter((violation) => violation.impact === "serious" || violation.impact === "critical")
     .flatMap((violation) =>
-      violation.nodes.map((node) => `${violation.id} (${violation.impact}): ${node.target.join(" ")}`),
+      violation.nodes.map(
+        (node) => `${violation.id} (${violation.impact}): ${node.target.join(" ")}`,
+      ),
     );
 }
 
@@ -86,9 +96,11 @@ test("Enter reads an item in a 66-character column with time left and a progress
   page,
 }) => {
   await openEdition(page);
-  await items(page).filter({ hasText: "The quiet death of the three-pane layout" }).click({
-    position: { x: 5, y: 5 },
-  });
+  await items(page)
+    .filter({ hasText: "The quiet death of the three-pane layout" })
+    .click({
+      position: { x: 5, y: 5 },
+    });
   await page.keyboard.press("Enter");
   const reader = page.getByTestId("reading-reader");
   await expect(reader).toBeVisible();
@@ -126,8 +138,12 @@ test("b on a digest link puts it on Later and names the site it saves the articl
   await link.click({ position: { x: 2, y: 2 } });
   await expect(link).toHaveAttribute("aria-current", "true");
   await page.keyboard.press("b");
-  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "Saved to Later" })).toBeVisible();
-  await expect(page.getByText(/Fetching from links\.demo\.mxr\.local|Article saved|Couldn't fetch/).first()).toBeVisible();
+  await expect(
+    page.locator("[data-sonner-toast]").filter({ hasText: "Saved to Later" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Fetching from links\.demo\.mxr\.local|Article saved|Couldn't fetch/).first(),
+  ).toBeVisible();
   await expect(page.getByTestId("later-count")).toContainText(`Later ${before + 1}`);
   // The Later shelf lists it.
   await page.getByTestId("later-count").click();
@@ -171,17 +187,18 @@ test("let go of all previews exactly what it lets go of, and undo brings it back
   await expect(dialog).toBeVisible();
   const preview = dialog.getByTestId("let-go-all-preview").locator("li");
   await expect(preview).toHaveCount(threads.size);
-  const previewed = new Set(await preview.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-thread"))));
+  const previewed = new Set(
+    await preview.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-thread"))),
+  );
   expect(previewed).toEqual(threads);
   await dialog.getByRole("button", { name: /^Let go of \d+ items?$/ }).click();
   await expect.poll(async () => (await edition(page)).bands.length, { timeout: 20_000 }).toBe(0);
   await expect(page.getByText(/You're current|Nothing here yet/)).toBeVisible();
   await page.keyboard.press("u");
   await expect
-    .poll(
-      async () => (await edition(page)).bands.flatMap((band) => band.items).length,
-      { timeout: 30_000 },
-    )
+    .poll(async () => (await edition(page)).bands.flatMap((band) => band.items).length, {
+      timeout: 30_000,
+    })
     .toBe(threads.size);
 });
 
@@ -189,13 +206,18 @@ test("D previews unsubscribing with the evidence, the method and that it can't b
   page,
 }) => {
   await openEdition(page);
-  await items(page).filter({ hasText: "Growth Digest" }).first().click({ position: { x: 5, y: 5 } });
+  await items(page)
+    .filter({ hasText: "Growth Digest" })
+    .first()
+    .click({ position: { x: 5, y: 5 } });
   await page.keyboard.press("D");
   const dialog = page.getByTestId("reading-unsubscribe");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("heading")).toHaveText("Unsubscribe from Growth Digest?");
   await expect(dialog.getByTestId("unsubscribe-evidence")).not.toBeEmpty();
-  await expect(dialog.getByTestId("unsubscribe-method")).toHaveText(/One click: the sender is told directly/);
+  await expect(dialog.getByTestId("unsubscribe-method")).toHaveText(
+    /One click: the sender is told directly/,
+  );
   await expect(dialog.getByTestId("unsubscribe-count")).toHaveText(/Also lets go of \d+ issues?/);
   await expect(dialog.getByTestId("unsubscribe-irreversible")).toHaveText(
     "This can't be undone from mxr; you'd resubscribe on their site.",
@@ -205,22 +227,71 @@ test("D previews unsubscribing with the evidence, the method and that it can't b
   await expect(items(page).filter({ hasText: "Growth Digest" }).first()).toBeVisible();
 });
 
-test("the card shows once and retires on reading", async ({ page }) => {
-  await waitForEdition(page);
-  await bridge(page, "/api/v1/mail/modes/reading/card", { seen: false });
-  await openApp(page, "/reading");
-  const card = page.getByTestId("mode-card");
-  await expect(card).toBeVisible();
-  await expect(card).toContainText("Enter read");
-  await expect(card).toContainText("b later");
-  await page.keyboard.press("Enter");
-  await expect(page.getByTestId("reading-reader")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(items(page).first()).toBeVisible();
-  await expect(page.getByTestId("mode-card")).toHaveCount(0);
-  // ? leads with the mode.
-  await page.keyboard.press("?");
-  await expect(page.getByTestId("mode-help")).toContainText("Reading:");
+/** Bring a hint back, as `mxr modes hint ID --show` does. */
+async function showHint(page: Page, id: string) {
+  await bridge(page, `/api/v1/mail/hints/${encodeURIComponent(id)}`, { seen: false });
+}
+
+async function hintSeen(page: Page, id: string): Promise<boolean> {
+  const { guides } = await bridge<{ guides: { hints: { id: string; seen: boolean }[] }[] }>(
+    page,
+    "/api/v1/mail/modes/guide?mode=reading",
+  );
+  return guides[0]!.hints.find((hint) => hint.id === id)!.seen;
+}
+
+/** Move the cursor with j until `focused` holds it. */
+async function cursorTo(page: Page, focused: ReturnType<Page["locator"]>) {
+  for (let step = 0; step < 40; step += 1) {
+    if ((await focused.count()) > 0) return;
+    await page.keyboard.press("j");
+  }
+  throw new Error("the cursor never reached it");
+}
+
+test.describe("hints", () => {
+  test.afterEach(async ({ page }) => {
+    for (const id of ["reading.link", "reading.fading"]) {
+      await bridge(page, `/api/v1/mail/hints/${id}`, { seen: true });
+    }
+  });
+
+  test("no card at the top, and the link hint sits under the first link the cursor reaches", async ({
+    page,
+  }) => {
+    await waitForEdition(page);
+    await showHint(page, "reading.link");
+    await openApp(page, "/reading");
+    await expect(items(page).first()).toBeVisible();
+    await expect(page.getByTestId("mode-card")).toHaveCount(0);
+    await expect(page.getByTestId("hint")).toHaveCount(0);
+    await cursorTo(page, page.locator("[data-testid='reading-link'][aria-current='true']"));
+    const hint = page.locator("[data-hint='reading.link']");
+    await expect(hint).toContainText("L fetches its article");
+    await page.keyboard.press("Escape");
+    await expect(hint).toHaveCount(0);
+    await expect.poll(() => hintSeen(page, "reading.link")).toBe(true);
+    // ? leads with the mode.
+    await page.keyboard.press("?");
+    await expect(page.getByTestId("mode-help")).toContainText("Reading:");
+  });
+
+  test("the fading hint sits under the Fading band and b dismisses it", async ({ page }) => {
+    await waitForEdition(page);
+    await showHint(page, "reading.fading");
+    await openApp(page, "/reading");
+    await expect(items(page).first()).toBeVisible();
+    await cursorTo(
+      page,
+      page.locator("[data-testid='band-fading'] [data-testid='reading-item'][aria-current='true']"),
+    );
+    const hint = page.getByTestId("band-fading").locator("[data-hint='reading.fading']");
+    await expect(hint).toContainText("b keeps one on Later");
+    await page.keyboard.press("b");
+    await expect(hint).toHaveCount(0);
+    await expect.poll(() => hintSeen(page, "reading.fading")).toBe(true);
+    await page.keyboard.press("u");
+  });
 });
 
 test.describe("on a phone", () => {
@@ -229,7 +300,9 @@ test.describe("on a phone", () => {
   test("cards fill the width with no horizontal scroll, and the reader too", async ({ page }) => {
     await openEdition(page);
     const overflow = () =>
-      page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
     expect(await overflow()).toBeLessThanOrEqual(0);
     await items(page).first().locator("h3 a").click();
     await expect(page.getByTestId("reading-reader")).toBeVisible();

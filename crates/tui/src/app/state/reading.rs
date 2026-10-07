@@ -94,8 +94,6 @@ pub struct ReadingPageState {
     pub edition: Option<ReadingEditionData>,
     pub guide: Option<ModeGuideData>,
     /// Closed here before the daemon answered, so it never flickers back.
-    pub card_closed: bool,
-    pub card_close_mutation: Option<crate::app::MutationId>,
     /// Ask the runtime for the edition and the guide.
     pub pending_refresh: bool,
     /// The next refresh counts as a visit. Only opening the lens does.
@@ -171,12 +169,25 @@ impl ReadingPageState {
         out
     }
 
-    /// The first-encounter card shows at the top once Reading has items,
-    /// until it is closed here or retired anywhere.
-    pub fn card_visible(&self) -> bool {
-        !self.card_closed
-            && self.guide.as_ref().is_some_and(|guide| !guide.card_seen)
-            && self.row_count() > 0
+    /// The keys Reading's hints attach to: the first item in the Fading
+    /// band, and the first link under a digest. None on the Later shelf.
+    pub fn hint_anchors(&self) -> (Option<&str>, Option<&str>) {
+        let Some(edition) = self.edition.as_ref().filter(|_| !self.later_shelf) else {
+            return (None, None);
+        };
+        let fading = edition
+            .bands
+            .iter()
+            .find(|band| band.band == mxr_protocol::ReadingBandData::Fading)
+            .and_then(|band| band.items.first())
+            .map(|item| item.item_key.as_str());
+        let link = edition
+            .bands
+            .iter()
+            .flat_map(|band| &band.items)
+            .find_map(|item| item.links.first())
+            .map(|link| link.item_key.as_str());
+        (fading, link)
     }
 
     /// Take a thread out of the edition before the daemon answers.

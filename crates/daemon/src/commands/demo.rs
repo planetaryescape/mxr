@@ -1017,8 +1017,12 @@ async fn seed_demo_reading(client: &mut IpcClient) -> anyhow::Result<()> {
             item_key: key,
             refresh: false,
         },
-        Request::SetModeGuideSeen {
-            mode: "reading".to_string(),
+        Request::SetHintSeen {
+            hint: mxr_protocol::READING_FADING_HINT.id.to_string(),
+            seen: false,
+        },
+        Request::SetHintSeen {
+            hint: mxr_protocol::READING_LINK_HINT.id.to_string(),
             seen: false,
         },
     ] {

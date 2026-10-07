@@ -62,7 +62,6 @@ impl App {
             Action::ReadingOpenEmail => self.reading_open_email(),
             Action::ReadingBack => self.reading_back(),
             Action::ReadingLaterShelf => self.toggle_later_shelf(),
-            Action::ReadingCloseCard => self.close_reading_card(),
             _ => {}
         }
     }
@@ -205,13 +204,11 @@ impl App {
         page.pending_item = page.reader.as_ref().map(|r| r.item.item_key.clone());
     }
 
-    /// Enter: read the item beside the list. Reading is the mode's main
-    /// verb, so it retires the card.
+    /// Enter: read the item beside the list.
     fn reading_read(&mut self) {
         let Some(target) = self.reading_target() else {
             return;
         };
-        self.retire_reading_card();
         let page = &mut self.mailbox.reading_page;
         page.reader_focused = true;
         page.opened_at = Some(std::time::Instant::now());
@@ -564,39 +561,6 @@ impl App {
         self.status_message = Some("Opening the email\u{2026}".into());
     }
 
-    fn close_reading_card(&mut self) {
-        if self.mailbox.reading_page.card_visible() {
-            self.retire_reading_card();
-        }
-    }
-
-    /// Retire Reading's first-encounter card here and in every other client.
-    fn retire_reading_card(&mut self) {
-        let page = &mut self.mailbox.reading_page;
-        if !page.card_visible() {
-            return;
-        }
-        page.card_closed = true;
-        let id = self.queue_best_effort_mutation(
-            Request::SetModeGuideSeen {
-                mode: READING_MODE.into(),
-                seen: true,
-            },
-            MutationEffect::StatusOnly(String::new()),
-            String::new(),
-        );
-        self.mailbox.reading_page.card_close_mutation = Some(id);
-    }
-
-    /// The daemon didn't store the closed card: show it again.
-    pub(crate) fn reopen_reading_card_after_failure(&mut self, failed: crate::app::MutationId) {
-        let page = &mut self.mailbox.reading_page;
-        if page.card_close_mutation == Some(failed) {
-            page.card_close_mutation = None;
-            page.card_closed = false;
-        }
-    }
-
     fn scroll_reader(&mut self, down: bool, lines: u16) {
         let page = &mut self.mailbox.reading_page;
         let max = page.reader_lines.saturating_sub(1);
@@ -628,7 +592,6 @@ impl App {
         }
         let plain = key.modifiers == KeyModifiers::NONE;
         let shifted = plain_or_shift(key.modifiers);
-        let card = page.card_visible();
         if page.reader_focused && page.reader.is_some() {
             match key.code {
                 KeyCode::Char('j') | KeyCode::Down if plain => {
@@ -658,7 +621,7 @@ impl App {
                 self.mailbox.active_pane = ActivePane::Sidebar;
                 return None;
             }
-            KeyCode::Esc if card => Some(Action::ReadingCloseCard),
+            KeyCode::Esc if self.active_hint().is_some() => Some(Action::DismissHint),
             KeyCode::Esc if page.later_shelf => Some(Action::ReadingLaterShelf),
             KeyCode::Char('B') if shifted => Some(Action::ReadingLaterShelf),
             KeyCode::Char('K') if shifted => Some(Action::OpenSenderKindMenu),

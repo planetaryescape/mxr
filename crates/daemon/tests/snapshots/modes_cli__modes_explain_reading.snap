@@ -1,33 +1,37 @@
 ---
 source: crates/daemon/tests/modes_cli.rs
+assertion_line: 183
 expression: "serde_json::to_string_pretty(&guides).unwrap()"
 ---
 [
   {
+    "about": "Reading is an edition of the newsletters you chose, with the sources you read most first. Nothing here is owed: items fade after a while unless you press b to keep them for later.",
     "add_one": "",
-    "card": "Reading is an edition of the newsletters you chose, with the sources you read most first. Nothing here is owed: items fade after a while unless you press b to keep them for later.",
-    "card_keys": [
-      {
-        "key": "Enter",
-        "verb": "read"
-      },
-      {
-        "key": "b",
-        "verb": "later"
-      },
-      {
-        "key": "e",
-        "verb": "let go"
-      },
-      {
-        "key": "D",
-        "verb": "unsubscribe"
-      }
-    ],
-    "card_seen": false,
     "clear_for_now": "Nothing new.",
     "first_run_line": "Newsletters, when you like",
     "header": "Newsletters you chose, as an edition. Read when you like.",
+    "hints": [
+      {
+        "anchor": "The first Fading band",
+        "id": "reading.fading",
+        "key": {
+          "key": "b",
+          "verb": "later"
+        },
+        "seen": false,
+        "text": "These go within a day; b keeps one on Later, which never fades."
+      },
+      {
+        "anchor": "The first link under a digest",
+        "id": "reading.link",
+        "key": {
+          "key": "L",
+          "verb": "fetch the linked article"
+        },
+        "seen": false,
+        "text": "Each link is its own item; L fetches its article, and only then does mxr contact that site."
+      }
+    ],
     "keys": [
       {
         "key": "Enter",

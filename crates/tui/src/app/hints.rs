@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use mxr_protocol::{HintData, ModeGuideData, Request};
 
 use super::*;
-use crate::app::state::NowRow;
+use crate::app::state::{NowRow, ReadingRow};
 
 /// Where the cursor is, as far as hints care: the page, the row, and the
 /// part of the page that has the keys.
@@ -144,6 +144,24 @@ impl App {
                     alone: page.row_count() == 1,
                 }
             }
+            MailboxView::Reading => {
+                let page = &self.mailbox.reading_page;
+                let rows = page.rows();
+                let under = rows.get(at).map(ReadingRow::key);
+                let (fading, link) = page.hint_anchors();
+                let ids = if under.is_some() && under == fading {
+                    vec!["reading.fading"]
+                } else if under.is_some() && under == link {
+                    vec!["reading.link"]
+                } else {
+                    Vec::new()
+                };
+                Candidates {
+                    guide: page.guide.as_ref(),
+                    ids,
+                    alone: rows.len() == 1,
+                }
+            }
             _ => none,
         }
     }
@@ -218,6 +236,8 @@ impl App {
                 action,
                 Action::RecordsCopyReference | Action::RecordsOpenDocument
             ),
+            "reading.fading" => matches!(action, Action::ReadingLater | Action::ReadingLetGo),
+            "reading.link" => matches!(action, Action::ReadingArticle | Action::ReadingRead),
             _ => false,
         };
         if acts {

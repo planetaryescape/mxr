@@ -1033,10 +1033,11 @@ test checks it). A hint shared by two modes has one id and one seen state.
 | `messages.got_it` | Messages | Got it, the first time it has focus or the pointer (TUI: a row whose turn is yours) | "Got it (.) sends a short note that you've seen it and takes them off Your turn." |
 | `archive.record` | Archive | The first record row | "Each row is one order, trip or bill, not an email; o opens the email it came from." |
 | `archive.answer` | Archive | The first answer to a question | "y copies what this answer found; Enter opens the document." |
+| `reading.fading` | Reading | The first Fading band (TUI: its first item) | "These go within a day; b keeps one on Later, which never fades." |
+| `reading.link` | Reading | The first link under a digest | "Each link is its own item; L fetches its article, and only then does mxr contact that site." |
 
-Updates and Reading add their own hints in the phases that ship them, at
-the analogous first-use points (a digest's let go, a pick's keep for
-later).
+Updates adds its own hints in the phase that ships it, at the analogous
+first-use point (a digest's let go).
 
 The topics hint says "yours to answer first" because the daemon orders a
 person's topics by state, your turn first, then by recency

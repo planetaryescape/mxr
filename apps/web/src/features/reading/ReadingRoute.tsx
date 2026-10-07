@@ -6,8 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
-import { useModeGuide, useRetireCard, type ModeGuide } from "@/features/modes/api";
-import { ModeCard } from "@/features/modes/ModeCard";
+import { AnchoredHint } from "@/features/hints/AnchoredHint";
+import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
+import { useModeGuide, type ModeGuide } from "@/features/modes/api";
 import { useModeDone } from "@/features/modes/modeDone";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { openMoveSenderFor } from "@/features/places/placeVerbs";
@@ -203,7 +204,6 @@ function Bands({
   const activePane = useMailboxPane((s) => s.activePane);
   const setActivePane = useMailboxPane((s) => s.setActivePane);
   const hidden = useModeDone((s) => s.hidden.reading);
-  const retire = useRetireCard("reading");
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [cursorKey, setCursorKey] = useState<string | null>(null);
 
@@ -227,12 +227,16 @@ function Bands({
     listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
   }, [index]);
 
-  const cardShown = Boolean(guide && !guide.card_seen && bands.length > 0 && view !== "later");
-  const { mutate: retireMutate } = retire;
-  const cardSeen = guide?.card_seen ?? true;
-  const retireCard = useCallback(() => {
-    if (!cardSeen) retireMutate();
-  }, [cardSeen, retireMutate]);
+  // Each hint shows when the cursor first reaches its element: the Fading
+  // band, and a link under a digest. Acting there dismisses it.
+  const onEdition = view !== "later";
+  const fadingHint = useHint("reading", "reading.fading", {
+    ready: onEdition && current?.band === "fading",
+  });
+  const linkHint = useHint("reading", "reading.link", {
+    ready: onEdition && current?.kind === "link",
+  });
+  const closeHint = useActiveHintDismiss();
 
   const read = useCallback(
     (key: string) => {
@@ -329,11 +333,12 @@ function Bands({
     up: () => move(-1),
     read: () => {
       if (!current) return;
-      retireCard();
+      linkHint.dismiss();
       read(current.key);
     },
     article: () => {
       if (!current) return;
+      linkHint.dismiss();
       const target = current.kind === "link" ? current.link : current.item;
       if (!target.url) {
         read(current.key);
@@ -343,8 +348,13 @@ function Bands({
         if (fetched && !fetched.error) read(current.key);
       });
     },
-    later: () => current && later(current.key),
+    later: () => {
+      if (!current) return;
+      fadingHint.dismiss();
+      later(current.key);
+    },
     letGo: () => {
+      fadingHint.dismiss();
       const item = itemOf(current);
       if (item) letGoItem(item);
     },
@@ -370,7 +380,7 @@ function Bands({
     },
     laterShelf: () =>
       void navigate({ to: "/reading", search: view === "later" ? {} : { view: "later" } }),
-    closeCard: cardShown ? retireCard : undefined,
+    closeHint,
   });
 
   const position = useMemo(() => {
@@ -420,7 +430,6 @@ function Bands({
       data-testid="reading-edition"
     >
       <SwipeLayer ref={swipeLayer} />
-      {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
       {edition.empty && view !== "later" ? (
         <p data-testid="reading-clear" className="mx-5 mt-3 text-[13px] text-foreground/90">
           {edition.empty.line}
@@ -447,6 +456,13 @@ function Bands({
                 ) : null}
               </h2>
             ) : null}
+            {band.band === "fading" && fadingHint.hint ? (
+              <AnchoredHint
+                hint={fadingHint.hint}
+                onDismiss={fadingHint.dismiss}
+                className="mx-5 mb-2"
+              />
+            ) : null}
             {band.items.map((item) => (
               <div key={item.item_key}>
                 <ReadingItemCard
@@ -458,6 +474,14 @@ function Bands({
                   fading={band.band === "fading"}
                   shelf={view === "later"}
                   handlers={handlers}
+                  linkHint={
+                    linkHint.hint && current?.kind === "link" && current.parent === item
+                      ? {
+                          key: current.key,
+                          node: <AnchoredHint hint={linkHint.hint} onDismiss={linkHint.dismiss} />,
+                        }
+                      : undefined
+                  }
                 />
                 {view === "later" && item.still_want_it ? (
                   <p

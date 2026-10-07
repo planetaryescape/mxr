@@ -370,16 +370,28 @@ pub const READING_GUIDE: ModeGuideCopy = ModeGuideCopy {
     add_one: "",
     clear_for_now: reading_copy::CLEAR_FOR_NOW,
     lands_here: reading_copy::LANDS_HERE,
-    card: reading_copy::CARD,
-    card_keys: &[
-        ("Enter", "read"),
-        ("b", "later"),
-        ("e", "let go"),
-        ("D", "unsubscribe"),
-    ],
+    about: reading_copy::ABOUT,
     why_template: "Here because: {evidence} ({source}). {fades}",
     keys: READING_KEYS,
     first_run_line: reading_copy::FIRST_RUN_LINE,
+    hints: &[READING_FADING_HINT, READING_LINK_HINT],
+};
+
+/// On the first Fading band: what fading means and the one key that stops it.
+pub const READING_FADING_HINT: HintCopy = HintCopy {
+    id: "reading.fading",
+    anchor: "The first Fading band",
+    text: "These go within a day; b keeps one on Later, which never fades.",
+    key: ("b", "later"),
+};
+
+/// On the first digest link: a link is its own item, and its article is
+/// fetched only when asked.
+pub const READING_LINK_HINT: HintCopy = HintCopy {
+    id: "reading.link",
+    anchor: "The first link under a digest",
+    text: "Each link is its own item; L fetches its article, and only then does mxr contact that site.",
+    key: ("L", "fetch the linked article"),
 };
 
 /// Every mode that has shipped, in rail order. Now leads: it is the front

@@ -10,7 +10,7 @@
 //! previews. Pure render; wiring lives in `app/reading_actions.rs`.
 
 use mxr_protocol::{
-    ModeGuideData, ReadingBandData, ReadingItemData, ReadingParagraphData, ReadingUnsubscribeData,
+    ReadingBandData, ReadingItemData, ReadingParagraphData, ReadingUnsubscribeData,
 };
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -95,32 +95,6 @@ impl Body {
     }
 }
 
-fn card_lines(body: &mut Body, guide: &ModeGuideData, width: usize, theme: &crate::theme::Theme) {
-    let accent = Style::default().fg(theme.accent);
-    body.lines.push(Line::from(""));
-    for line in wrap(&guide.card, width.saturating_sub(6)) {
-        body.lines.push(Line::from(vec![
-            Span::styled("  \u{2502} ", accent),
-            Span::styled(line, Style::default().fg(theme.text_primary)),
-        ]));
-    }
-    let keys = guide
-        .card_keys
-        .iter()
-        .map(|key| format!("{} {}", key.key, key.verb))
-        .collect::<Vec<_>>()
-        .join(dot());
-    for line in wrap(
-        &format!("{keys}{}Esc close", dot()),
-        width.saturating_sub(6),
-    ) {
-        body.lines.push(Line::from(vec![
-            Span::styled("  \u{2502} ", accent),
-            Span::styled(line, Style::default().fg(theme.text_secondary)),
-        ]));
-    }
-}
-
 fn marked(spans: Vec<Span<'static>>, selected: bool) -> Line<'static> {
     let mut spans = spans;
     if selected {
@@ -145,11 +119,6 @@ fn edition_body(view: &ReadingLensView<'_>, width: usize, theme: &crate::theme::
     };
     if page.later_shelf {
         return later_body(view, &edition.later, width, theme);
-    }
-    if page.card_visible() {
-        if let Some(guide) = &page.guide {
-            card_lines(&mut body, guide, width, theme);
-        }
     }
     if let Some(empty) = &edition.empty {
         body.lines.push(Line::from(""));

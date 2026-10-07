@@ -556,7 +556,7 @@ async fn an_article_on_this_machine_is_refused_and_the_reason_is_kept() {
 }
 
 #[tokio::test]
-async fn opening_an_item_records_engagement_and_retires_the_card() {
+async fn opening_an_item_records_engagement_and_leaves_hints_to_their_elements() {
     let fx = Fixture::new().await;
     let (id, _) = issue(&fx, WEEKLY, "Essay", &essay(300), Utc::now()).await;
     let ResponseData::ReadingEngagement {
@@ -586,7 +586,9 @@ async fn opening_an_item_records_engagement_and_retires_the_card() {
     else {
         panic!("guide");
     };
-    assert!(guides[0].card_seen);
+    // Hints are dismissed where they show, by Esc or acting on their
+    // element; reading an item says nothing about them.
+    assert!(guides[0].hints.iter().all(|hint| !hint.seen));
 }
 
 #[tokio::test]

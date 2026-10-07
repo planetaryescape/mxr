@@ -15,7 +15,7 @@ pub mod reading_copy {
     /// Clear for now, before the "since" date and the Later count: "Nothing
     /// new since Tuesday. Later has 4 things saved."
     pub const CLEAR_FOR_NOW: &str = "Nothing new.";
-    pub const CARD: &str = "Reading is an edition of the newsletters you chose, with the sources you read most first. Nothing here is owed: items fade after a while unless you press b to keep them for later.";
+    pub const ABOUT: &str = "Reading is an edition of the newsletters you chose, with the sources you read most first. Nothing here is owed: items fade after a while unless you press b to keep them for later.";
     pub const LANDS_HERE: &str =
         "Newsletters, digests and posts from writers: mail with an unsubscribe link that isn't a person or a notification.";
     pub const FIRST_RUN_LINE: &str = "Newsletters, when you like";

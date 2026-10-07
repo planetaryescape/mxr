@@ -155,10 +155,10 @@ impl App {
     /// the row's most pressing topic.
     pub(crate) fn selected_messages_topic(&self) -> Option<MessagesTopic> {
         let row = self.selected_messages_row()?;
-        let who = row
-            .person
-            .as_ref()
-            .map_or_else(|| row.title.clone(), mxr_protocol::PersonRefData::first_name);
+        let who = row.person.as_ref().map_or_else(
+            || row.title.clone(),
+            mxr_protocol::PersonRefData::first_name,
+        );
         let page = self.mailbox.messages_page.page_for_row(row);
         if let Some(conversation) = page.and_then(|page| page.conversation.as_ref()) {
             return Some(MessagesTopic {

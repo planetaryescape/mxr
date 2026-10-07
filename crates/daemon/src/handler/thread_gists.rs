@@ -370,7 +370,7 @@ async fn people_threads(
         let senders: Vec<String> = candidates
             .iter()
             .flat_map(|candidate| &candidate.envelopes)
-            .map(|envelope| envelope.from.email.to_ascii_lowercase())
+            .map(|envelope| envelope.from.email.clone())
             .collect::<HashSet<_>>()
             .into_iter()
             .collect();

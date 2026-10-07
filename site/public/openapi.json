@@ -9319,6 +9319,10 @@
           "list_id",
           "list_unsubscribe",
           "no_reply_address",
+          "transaction_alert",
+          "role_address",
+          "bulk_sender",
+          "templated_sender",
           "list_sender",
           "person",
           "copied"

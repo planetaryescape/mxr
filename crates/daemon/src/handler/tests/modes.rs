@@ -988,3 +988,101 @@ async fn quiet_mail_is_counted_on_the_rail_beside_messages() {
         .unwrap();
     assert_eq!(messages.quiet, Some(1));
 }
+
+/// A bank desk that has written the same two subjects for months and
+/// you never wrote back, and a toy shop's `hello@`: machines, not people.
+#[tokio::test]
+async fn templated_and_role_senders_you_never_wrote_to_land_in_updates_not_messages() {
+    let fx = Fixture::new().await;
+    let mut latest = ThreadId::new();
+    for n in 0..8 {
+        latest = ThreadId::new();
+        let subject = if n % 2 == 0 {
+            "Payment Confirmation"
+        } else {
+            "Foreign Payment"
+        };
+        mail(
+            &fx,
+            &latest,
+            "desk.officer@bank.example",
+            subject,
+            Duration::days(i64::from(8 - n) * 20) - Duration::hours(1),
+        )
+        .await;
+    }
+    let shop = ThreadId::new();
+    mail(
+        &fx,
+        &shop,
+        "hello@toys.example",
+        "What's new in the card store",
+        Duration::hours(2),
+    )
+    .await;
+    fx.state.store.refresh_contacts().await.unwrap();
+
+    let bank = membership(&fx, &latest).await;
+    assert_eq!(modes(&bank), [ModeKindData::Updates]);
+    assert_eq!(
+        bank.modes[0].reason,
+        "Here because: the same few subjects every time, and you have never written to them (rule)."
+    );
+    assert!(bank.in_inbox, "the inbox keeps it");
+    assert!(bank.new_sender.is_none());
+    let toys = membership(&fx, &shop).await;
+    assert_eq!(modes(&toys), [ModeKindData::Updates]);
+    assert_eq!(
+        toys.modes[0].reason,
+        "Here because: a role address you have never written to (rule)."
+    );
+
+    // Moving the sender to people wins over every rule.
+    request(
+        &fx,
+        Request::SetSenderKind {
+            account_id: fx.account.clone(),
+            sender_email: "desk.officer@bank.example".into(),
+            kind: Some(SenderKindData::People),
+        },
+    )
+    .await;
+    assert_eq!(
+        modes(&membership(&fx, &latest).await),
+        [ModeKindData::Messages]
+    );
+}
+
+/// The same bank desk, once you have written to it, is someone you talk to.
+#[tokio::test]
+async fn a_templated_sender_you_have_written_to_stays_in_messages() {
+    let fx = Fixture::new().await;
+    let mut latest = ThreadId::new();
+    for n in 0..8 {
+        latest = ThreadId::new();
+        mail(
+            &fx,
+            &latest,
+            "desk.officer@bank.example",
+            "Payment Confirmation",
+            Duration::days(i64::from(8 - n) * 20) - Duration::hours(1),
+        )
+        .await;
+    }
+    let mut asked = fx
+        .message(
+            &ThreadId::new(),
+            ME,
+            "desk.officer@bank.example",
+            Duration::days(200),
+            None,
+        )
+        .await;
+    asked.subject = "Question about a payment".into();
+    fx.store_envelope(&asked, MessageDirection::Outbound).await;
+    fx.state.store.refresh_contacts().await.unwrap();
+    assert_eq!(
+        modes(&membership(&fx, &latest).await),
+        [ModeKindData::Messages]
+    );
+}

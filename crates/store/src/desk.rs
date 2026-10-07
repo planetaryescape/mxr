@@ -57,6 +57,10 @@ pub struct DeskContact {
     /// Their usual interval between messages, in seconds, once the
     /// contacts refresher has seen enough mail.
     pub cadence_seconds: Option<i64>,
+    /// Their recent inbound mail. Only read for senders you have never
+    /// written to (see `Store::sender_histories`); empty until a caller
+    /// fills it.
+    pub history: crate::SenderHistory,
 }
 
 /// How far a thread had arrived when it was marked done: the ids of the
@@ -302,6 +306,7 @@ impl super::Store {
                     cadence_seconds: row
                         .try_get::<Option<f64>, _>("cadence_days_p50")?
                         .map(|days| (days * 86_400.0).round() as i64),
+                    history: crate::SenderHistory::default(),
                 })
             })
             .collect::<Result<Vec<_>, sqlx::Error>>()?;

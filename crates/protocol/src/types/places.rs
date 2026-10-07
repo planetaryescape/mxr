@@ -54,6 +54,18 @@ pub enum KindRuleData {
     ListUnsubscribe,
     /// A `no-reply@` address with no list headers: transactional mail.
     NoReplyAddress,
+    /// A bank or card alert: an amount in the subject with what happened
+    /// to it ("R437.77 reserved for purchase") or a masked card number.
+    TransactionAlert,
+    /// A role address (`forex@`, `hello@`, `support@`) you have never
+    /// written to.
+    RoleAddress,
+    /// Sent through a bulk-mail service (SendGrid, Amazon SES and the
+    /// like) by a sender you have never written to.
+    BulkSender,
+    /// A sender you have never written to whose latest subjects are a few
+    /// templates repeated.
+    TemplatedSender,
     /// The sender is known to write to lists.
     ListSender,
     /// None of the above: a person.

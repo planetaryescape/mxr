@@ -70,6 +70,7 @@ mod search;
 mod search_reindex_pending;
 mod semantic;
 mod send_time;
+mod sender_history;
 mod sender_profile;
 mod signatures;
 mod snippets;
@@ -128,6 +129,7 @@ pub use scheduled_sends::PendingScheduledSend;
 pub use screener::{ScreenerDecision, ScreenerDisposition, ScreenerQueueEntry};
 pub use semantic::SemanticIndexRow;
 pub use send_time::{SendTimeBucket, SendTimeConfidence, SendTimeRecommendation};
+pub use sender_history::{SenderHistory, SENDER_HISTORY_SUBJECTS};
 pub use sender_profile::{
     SenderEmailReference, SenderProfile, SenderSummary, SenderUnansweredQuestion,
     SenderWeeklyActivity,

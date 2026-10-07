@@ -177,14 +177,21 @@ Paper trail. The first rule that matches wins:
 |---|---|---|---|
 | 1 | You moved this sender with `mxr sender kind` or Move sender. | Your choice | `decision` |
 | 2 | A delivery update or a calendar invite. | Neither: they have their own pages | `delivery`, `invite` |
-| 3 | A notifying local part: `notifications@`, `alerts@`, `receipts@`, `billing@` and similar, matched anywhere in the local part. | Paper trail | `automated_address` |
+| 3 | A notifying local part: `notifications@`, `alerts@`, `receipts@`, `billing@`, bank alert senders such as `incontact@` and `statements@`, and similar, matched anywhere in the local part. | Paper trail | `automated_address` |
 | 4 | A newsletter local part: `newsletter@`, `digest@` and similar. | Reading | `newsletter_address` |
 | 5 | A notifying subdomain, such as `alerts.example.com`. | Paper trail | `automated_domain` |
 | 6 | A newsletter subdomain, such as `news.`, `updates.` or `marketing.`. | Reading | `newsletter_domain` |
 | 7 | A `List-Id` header, then a `List-Unsubscribe` header. | Reading | `list_id`, `list_unsubscribe` |
-| 8 | A `no-reply@` address with no list headers. | Paper trail | `no_reply_address` |
-| 9 | A sender known to write to lists. | Reading | `list_sender` |
-| 10 | Anything else. | A person: the desk | `person` |
+| 8 | A bank or card alert: the subject names an amount (`R437.77`, `£12.50`) with what happened to it (reserved, paid, debited) or a masked card or account number (`card..6131`). Replies never count. | Paper trail | `transaction_alert` |
+| 9 | A `no-reply@` address with no list headers. | Paper trail | `no_reply_address` |
+| 10 | A sender known to write to lists. | Reading | `list_sender` |
+| 11 | A sender you have never written to whose address is a role (`forex@`, `hello@`, `support@`, `team@` and similar), whose latest message came through a bulk-mail service (SendGrid, Mailgun, Amazon SES and the like), or whose latest subjects are the same few templates (five or more, at most half of them different once numbers are set aside). | Paper trail | `role_address`, `bulk_sender`, `templated_sender` |
+| 12 | Anything else. | A person: the desk | `person` |
+
+Person mail is mail from someone you have written to, or from someone who
+writes like a person: their own address, no list or bulk-mail headers, and
+subjects that vary. Writing to a sender once makes rule 11 stop applying to
+them; Move sender always wins.
 
 Subdomain rules look at subdomain labels only, so `news.com` itself does not
 match rule 6. A notifying address that also carries `List-Unsubscribe`

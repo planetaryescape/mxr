@@ -5026,7 +5026,7 @@ export interface components {
          *     means the user moved the sender; everything else is automatic.
          * @enum {string}
          */
-        KindRuleData: "decision" | "delivery" | "invite" | "automated_address" | "automated_domain" | "newsletter_address" | "newsletter_domain" | "list_id" | "list_unsubscribe" | "no_reply_address" | "list_sender" | "person" | "copied";
+        KindRuleData: "decision" | "delivery" | "invite" | "automated_address" | "automated_domain" | "newsletter_address" | "newsletter_domain" | "list_id" | "list_unsubscribe" | "no_reply_address" | "transaction_alert" | "role_address" | "bulk_sender" | "templated_sender" | "list_sender" | "person" | "copied";
         Label: {
             account_id: components["schemas"]["AccountId"];
             color?: string | null;

@@ -93,6 +93,7 @@ pub(super) fn signals<'a>(message: &'a DeskMessage, senders: &Senders) -> KindSi
     let key = message.from.email.to_ascii_lowercase();
     KindSignals {
         email: &message.from.email,
+        subject: &message.subject,
         has_list_id: message.list_id.is_some(),
         has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
         is_delivery: message.is_delivery,
@@ -101,6 +102,7 @@ pub(super) fn signals<'a>(message: &'a DeskMessage, senders: &Senders) -> KindSi
             .contacts
             .get(&key)
             .is_some_and(|contact| contact.is_list_sender),
+        sender: mail_kind::SenderFacts::of(senders.contacts.get(&key)),
         decision: senders.screener.get(&key).copied(),
     }
 }
@@ -687,7 +689,7 @@ pub(super) async fn quiet_count(
         let candidates = state.store.place_candidates(account).await?;
         let mut senders: Vec<String> = candidates
             .iter()
-            .map(|m| m.from_email.to_ascii_lowercase())
+            .map(|m| m.from_email.clone())
             .collect::<HashSet<_>>()
             .into_iter()
             .collect();

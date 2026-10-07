@@ -201,19 +201,17 @@ fn from_schema(record: SchemaRecord, fallback_issuer: &str, sent: DateTime<Utc>)
         }
     }
     if record.issued.is_none() {
-        // The markup said what, not when. A sender that marks up the
-        // transaction sends it when it happens, so the email's day stands
-        // in as checked and says where it came from; a rule's guess at a
-        // date stays unchecked.
-        fields.push(Found {
-            checked: true,
-            ..Found::at(
+        // The markup said what, not when: the email's day stands in, says
+        // so, and stays unchecked. Only schema.org and you check a date.
+        fields.push(
+            Found::at(
                 FieldName::IssuedAt,
                 Source::Rule,
                 crate::fields::day_at(sent.date_naive()),
                 EMAIL_DATE,
             )
-        });
+            .unchecked(),
+        );
     }
     if record.stage == Stage::Delivered {
         fields.push(
@@ -393,9 +391,9 @@ mod tests {
         assert!(found[0].field(FieldName::ValidUntil).is_some());
         assert_eq!(found[1].issuer, "Hotel Lisboa Plaza");
         // Markup that gives no booking time stands in the email's day,
-        // checked, with the email named as its source.
+        // unchecked, with the email named as its source.
         let issued = found[1].field(FieldName::IssuedAt).expect("issued");
-        assert!(issued.checked);
+        assert!(!issued.checked);
         assert_eq!(issued.evidence.as_deref(), Some(EMAIL_DATE));
     }
 

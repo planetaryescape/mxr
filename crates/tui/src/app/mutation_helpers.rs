@@ -200,6 +200,19 @@ impl App {
         }
     }
 
+    /// Messages' done here names what it did and where it went next: its
+    /// note, kept under this mutation, goes around the daemon's copy.
+    /// Any other mutation's completion is left as it is.
+    pub fn with_done_note(&mut self, id: MutationId, effect: MutationEffect) -> MutationEffect {
+        let note = self.mailbox.messages_page.done_notes.remove(&id);
+        match (effect, note) {
+            (MutationEffect::ModeDone(msg), Some(note)) if !msg.is_empty() => {
+                MutationEffect::ModeDone(note.line(&msg))
+            }
+            (effect, _) => effect,
+        }
+    }
+
     /// Apply the completion of a mutation to UI state.
     ///
     /// Called from the main event loop after the daemon's `MutationResult`
@@ -298,11 +311,6 @@ impl App {
                 if self.mailbox.mailbox_view == MailboxView::Todo {
                     self.refresh_todo();
                 }
-                // Messages' done names what it did and where it went next.
-                let msg = match self.mailbox.messages_page.done_note.take() {
-                    Some(note) if !msg.is_empty() => note.line(&msg),
-                    _ => msg,
-                };
                 if show_completion_status && !msg.is_empty() {
                     self.push_toast(Toast::success(msg));
                 }
@@ -610,8 +618,6 @@ impl App {
     }
 
     pub fn show_mutation_failure(&mut self, error: &MxrError) {
-        // A failed done here must not lend its words to the next one.
-        self.mailbox.messages_page.done_note = None;
         self.show_error_modal(
             "Mutation Failed",
             format!(

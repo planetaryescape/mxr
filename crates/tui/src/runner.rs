@@ -1663,12 +1663,13 @@ pub async fn run() -> anyhow::Result<()> {
                     Request::GetPerson {
                         account_id: None,
                         person: row_id.clone(),
-                        topic,
+                        topic: topic.clone(),
                     },
                 )
                 .await;
                 AsyncResult::PersonPage(
                     row_id,
+                    topic,
                     match resp {
                         Ok(Response::Ok {
                             data: ResponseData::PersonPage { page },
@@ -3351,6 +3352,7 @@ pub async fn run() -> anyhow::Result<()> {
                                     // this mutation.
                                     app.pending_optimistic.clear(id);
                                     let show_completion_status = app.pending_mutation_count == 0;
+                                    let effect = app.with_done_note(id, effect);
                                     app.apply_mutation_completion(effect, show_completion_status);
                                     // In the invites lens, a completed mutation is an
                                     // RSVP — refetch so the row's RSVP status updates.
@@ -3517,10 +3519,10 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Messages(Err(e)) => {
                             app.status_message = Some(format!("Couldn't load Messages: {e}"));
                         }
-                        AsyncResult::PersonPage(row_id, Ok(page)) => {
-                            app.set_person_page(row_id, *page);
+                        AsyncResult::PersonPage(row_id, topic, Ok(page)) => {
+                            app.set_person_page(row_id, topic, *page);
                         }
-                        AsyncResult::PersonPage(_, Err(e)) => {
+                        AsyncResult::PersonPage(_, _, Err(e)) => {
                             app.status_message = Some(format!("Couldn't load the person: {e}"));
                         }
                         AsyncResult::MessagesAck(Ok(plan)) => {

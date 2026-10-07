@@ -66,7 +66,13 @@ pub(crate) enum AsyncResult {
         >,
     ),
     /// A person's page, for this row id.
-    PersonPage(String, Result<Box<mxr_protocol::PersonPageData>, MxrError>),
+    /// A row's page, with the topic it was asked for, so a late answer for
+    /// an earlier request can be told apart and dropped.
+    PersonPage(
+        String,
+        Option<mxr_core::id::ThreadId>,
+        Result<Box<mxr_protocol::PersonPageData>, MxrError>,
+    ),
     /// Got it's dry run: the exact text and its countdown.
     MessagesAck(Result<Box<mxr_protocol::AckPlanData>, MxrError>),
     /// The dry run of letting go of Now's Updates card, for those threads.

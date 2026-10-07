@@ -208,7 +208,9 @@ impl App {
                 thread_id: Some(thread_id),
                 todo_id,
                 ..
-            } => self.queue_done(ModeKindData::Todo, thread_id, vec![todo_id]),
+            } => {
+                self.queue_done(ModeKindData::Todo, thread_id, vec![todo_id]);
+            }
             // A to-do you made with no email behind it: tick it off.
             NowTarget::Todo { todo_id, .. } => {
                 // It leaves at once, so the next row takes the cursor.
@@ -234,12 +236,21 @@ impl App {
 
     /// Done in `mode` for one thread, taking it off Now and the desk at
     /// once.
-    pub(crate) fn queue_mode_done(&mut self, mode: ModeKindData, thread_id: ThreadId) {
-        self.queue_done(mode, thread_id, Vec::new());
+    pub(crate) fn queue_mode_done(
+        &mut self,
+        mode: ModeKindData,
+        thread_id: ThreadId,
+    ) -> MutationId {
+        self.queue_done(mode, thread_id, Vec::new())
     }
 
     /// `queue_mode_done`, naming the to-dos to tick off in To do.
-    fn queue_done(&mut self, mode: ModeKindData, thread_id: ThreadId, todo_ids: Vec<String>) {
+    fn queue_done(
+        &mut self,
+        mode: ModeKindData,
+        thread_id: ThreadId,
+        todo_ids: Vec<String>,
+    ) -> MutationId {
         self.mailbox.now_page.remove_thread(&thread_id);
         if self.mailbox.mailbox_view == MailboxView::Now {
             self.mailbox.selected_index = self
@@ -258,7 +269,7 @@ impl App {
             },
             MutationEffect::ModeDone(format!("Done in {}", mode.name())),
             "Done here...".into(),
-        );
+        )
     }
 
     /// `A`: ask the daemon what letting go of the card's threads would do;

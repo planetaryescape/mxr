@@ -4,11 +4,11 @@
 //! the bands, the order and every message's new text; this state holds
 //! what came back and what the user is doing with it.
 
-use mxr_core::id::{MessageId, ThreadId};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
     AckPlanData, MessagesData, MessagesRowData, ModeGuideData, PersonPageData, TopicStateData,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// One selectable item in the list, in band order.
 #[derive(Debug, Clone, Copy)]
@@ -54,15 +54,26 @@ pub struct MessagesPageState {
     pub pending_refresh: bool,
     /// Ask the runtime for this row's page, on this topic.
     pub pending_person: Option<(String, Option<ThreadId>)>,
+    /// The page last asked for (`ask_person`). Only its answer is shown,
+    /// and verbs wait until it is: an older answer landing late (a refetch
+    /// of the topic just done) can't replace it.
+    pub person_target: Option<(String, Option<ThreadId>)>,
     /// Ask the daemon for a Got it preview on this thread.
     pub pending_ack_preview: Option<ThreadId>,
     /// The thread `.` asked a preview for: only its preview may start a
     /// countdown, and only while the lens is still on it.
     pub ack_requested: Option<ThreadId>,
     pub ack: Option<AckCountdown>,
-    /// What the last done here moved to, for its toast: "Done: Invoice."
-    /// and "Next: Pricing.", joined around the daemon's handoff copy.
-    pub done_note: Option<DoneNote>,
+    /// What each done here moved to, by its mutation, for its toast:
+    /// "Done: Invoice." and "Next: Pricing.", joined with the daemon's copy.
+    pub done_notes: HashMap<crate::app::MutationId, DoneNote>,
+}
+
+/// A row in the list: the same address in two accounts is two rows.
+pub type MessagesRowKey = (AccountId, String);
+
+pub fn row_key(row: &MessagesRowData) -> MessagesRowKey {
+    (row.account_id.clone(), row.id.clone())
 }
 
 /// Done here's toast, decided when `e` moved on: what was done and what
@@ -111,22 +122,42 @@ impl MessagesPageState {
         items
     }
 
-    /// Row ids in display order, for keeping the selection on a row.
-    pub fn row_ids(&self) -> Vec<String> {
+    /// Row keys in display order, for keeping the selection on a row.
+    pub fn row_keys(&self) -> Vec<MessagesRowKey> {
         self.items()
             .into_iter()
             .filter_map(|item| match item {
-                MessagesItem::Row(row) => Some(row.id.clone()),
+                MessagesItem::Row(row) => Some(row_key(row)),
                 MessagesItem::QuietToggle(_) => None,
             })
             .collect()
     }
 
     /// Where a row sits among the items, if it is shown.
-    pub fn index_of(&self, row_id: &str) -> Option<usize> {
+    pub fn index_of(&self, key: &MessagesRowKey) -> Option<usize> {
         self.items()
             .iter()
-            .position(|item| matches!(item, MessagesItem::Row(row) if row.id == row_id))
+            .position(|item| matches!(item, MessagesItem::Row(row) if row_key(row) == *key))
+    }
+
+    /// Ask for a row's page on a topic, and make it the one to show.
+    pub fn ask_person(&mut self, row_id: String, topic: Option<ThreadId>) {
+        self.person_target = Some((row_id.clone(), topic.clone()));
+        self.pending_person = Some((row_id, topic));
+    }
+
+    /// Whether the page asked for last is the one on screen.
+    pub fn target_shown(&self) -> bool {
+        let Some((row_id, topic)) = &self.person_target else {
+            return true;
+        };
+        self.page_for.as_ref() == Some(row_id)
+            && topic.as_ref().is_none_or(|topic| {
+                self.page
+                    .as_ref()
+                    .and_then(|p| p.conversation.as_ref())
+                    .is_some_and(|c| &c.thread_id == topic)
+            })
     }
 
     /// Whether done here already took this thread (a second `e` before
@@ -144,10 +175,10 @@ impl MessagesPageState {
     }
 
     /// Whether a row sits in the folded Quiet band.
-    pub fn in_quiet(&self, row_id: &str) -> bool {
+    pub fn in_quiet(&self, key: &MessagesRowKey) -> bool {
         self.messages
             .as_ref()
-            .is_some_and(|m| m.quiet.iter().any(|row| row.id == row_id))
+            .is_some_and(|m| m.quiet.iter().any(|row| row_key(row) == *key))
     }
 
     pub fn item_count(&self) -> usize {

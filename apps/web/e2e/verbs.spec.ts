@@ -181,7 +181,9 @@ async function bundleCount(page: Page, sender: string): Promise<number | undefin
 async function openSenderIssue(page: Page, sender: string) {
   await openApp(page, "/reading");
   const issue = page.locator(`[data-testid='reading-issue'][data-sender='${sender}']`).first();
-  await issue.click({ position: { x: 5, y: 5 } });
+  // Inside the issue's padding, clear of the sidebar's resize handle: its
+  // hit area reaches a few pixels into the feed and takes the press.
+  await issue.click({ position: { x: 14, y: 5 } });
   await expect(issue).toHaveAttribute("aria-current", "true");
   return issue;
 }

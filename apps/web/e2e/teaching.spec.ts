@@ -311,7 +311,8 @@ test("the first done here carries its hint in the toast, and only the first", as
   await expect(page.getByText(text)).toBeVisible();
   await expect.poll(() => hintSeen(page, "done_here")).toBe(true);
   await doneOn(candidates[1]!);
-  await expect(page.getByText(/Done in Messages|Archived/).first()).toBeVisible();
+  // The handoff toast, as Messages words it ("Done: Pricing copy.").
+  await expect(page.getByText(/Done: |Done with |Archived/).first()).toBeVisible();
   await expect(page.getByText(text)).toHaveCount(0);
 });
 

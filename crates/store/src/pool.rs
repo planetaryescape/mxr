@@ -1020,13 +1020,8 @@ const MIGRATIONS: &[Migration] = &[
     },
     Migration {
         version: 64,
-        name: "person_links",
-        kind: MigrationKind::Sql(include_str!("../migrations/064_person_links.sql")),
-    },
-    Migration {
-        version: 65,
-        name: "got_it_sends",
-        kind: MigrationKind::Sql(include_str!("../migrations/065_got_it_sends.sql")),
+        name: "messages",
+        kind: MigrationKind::Sql(include_str!("../migrations/064_messages.sql")),
     },
 ];
 

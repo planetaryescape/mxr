@@ -9,8 +9,9 @@ import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
-import { useModeGuide, useRetireCard, type ModeGuide } from "@/features/modes/api";
-import { ModeCard } from "@/features/modes/ModeCard";
+import { AnchoredHint } from "@/features/hints/AnchoredHint";
+import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
+import { useModeGuide, type ModeGuide } from "@/features/modes/api";
 import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
@@ -25,7 +26,7 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 import { fetchRunway, TODO_KEY, type Todo, type TodoRunway } from "./api";
 import { TodoCatchupView, TodoExpiredView } from "./TodoCatchupView";
 import { TodoRow } from "./TodoRow";
-import { openCount, primaryAction, runwayItems, type RunwayItem } from "./todoRows";
+import { openCount, primaryAction, runwayFill, runwayItems, type RunwayItem } from "./todoRows";
 import { markNotTodo, restoreTodos, tickOff, useTodoHidden } from "./todoVerbs";
 
 /**
@@ -192,7 +193,6 @@ function Bands({
   const setActivePane = useMailboxPane((s) => s.setActivePane);
   const navigate = useNavigate();
   const hidden = useTodoHidden((s) => s.hidden);
-  const retire = useRetireCard("todo");
   const [open, setOpen] = useState({ whenever: false, done: false });
   const [cursorId, setCursorId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -216,14 +216,16 @@ function Bands({
   }, [index]);
 
   const hasItems = openCount(runway) > 0;
-  const cardShown = Boolean(guide && !guide.card_seen && hasItems);
-  // `mutate` is stable; the whole mutation object is not, and the rows are
-  // memoized on the callbacks built from this.
-  const { mutate: retireMutate } = retire;
-  const cardSeen = guide?.card_seen ?? true;
-  const retireCard = useCallback(() => {
-    if (!cardSeen) retireMutate();
-  }, [cardSeen, retireMutate]);
+  // The runway hint sits under the first bar; the catch-up hint under the
+  // catch-up line. Only one shows at a time (features/hints).
+  const firstBar = items.find((item) => item.band !== "done" && runwayFill(item.todo) !== null);
+  const runwayHint = useHint("todo", "todo.runway", {
+    ready: firstBar !== undefined,
+    alone: items.length === 1 && runway.catchup_count === 0,
+  });
+  const catchupHint = useHint("todo", "todo.catchup", { ready: runway.catchup_count > 0 });
+  const { dismiss: dismissRunwayHint } = runwayHint;
+  const closeHint = useActiveHintDismiss();
 
   const openEmail = useCallback(
     (todo: Todo) => {
@@ -235,8 +237,8 @@ function Bands({
     (todo: Todo) => {
       const action = primaryAction(todo);
       if (!action) return;
-      // Doing the mode's main verb retires its card: the tip is spent.
-      retireCard();
+      // Doing what the button says is what the runway hint names.
+      dismissRunwayHint();
       if (action.kind === "reply") {
         useComposeUi.getState().openCompose(replyIntent(action.messageId, "single"), "overlay");
         return;
@@ -259,7 +261,7 @@ function Bands({
       }
       openEmail(todo);
     },
-    [navigate, openEmail, retireCard, setActivePane],
+    [dismissRunwayHint, navigate, openEmail, setActivePane],
   );
   const done = useCallback((todo: Todo) => void tickOff(todo), []);
   const restore = useCallback((todo: Todo) => void restoreTodos([todo]), []);
@@ -274,8 +276,10 @@ function Bands({
     if (next) setCursorId(next.todo.id);
   };
   const actionable = current && current.band !== "done" ? current.todo : undefined;
-  const openView = (view: "catchup" | "expired") =>
+  const openView = (view: "catchup" | "expired") => {
+    if (view === "catchup") catchupHint.dismiss();
     getRuntimeNavigate().navigate(`/todo?view=${view}`);
+  };
 
   // The reader keeps its own keys while it has focus.
   useShortcutScope("todo", !params.threadId || activePane !== "reader");
@@ -294,7 +298,7 @@ function Bands({
     source: () => current && toggleSource(current.todo),
     expired: () => openView("expired"),
     catchup: () => openView("catchup"),
-    closeCard: cardShown ? retireCard : undefined,
+    closeHint,
   });
 
   const { byBand, position } = useMemo(() => {
@@ -330,6 +334,11 @@ function Bands({
         onRestore={restore}
         onToggleSource={toggleSource}
         onOpenEmail={openEmail}
+        hint={
+          item === firstBar && runwayHint.hint ? (
+            <AnchoredHint hint={runwayHint.hint} onDismiss={runwayHint.dismiss} />
+          ) : undefined
+        }
       />
     );
   };
@@ -358,20 +367,25 @@ function Bands({
   return (
     <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
       <ModeFrame>
-        {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
         {runway.catchup_count > 0 ? (
-          <p data-testid="catchup-line" className="mx-5 mt-3 text-[13px] text-foreground/90">
-            Catch up: {plural(runway.catchup_count, "thing")} from before mxr sorted your mail might
-            still need you.{" "}
-            <Link
-              to="/todo"
-              search={{ view: "catchup" }}
-              className="underline decoration-border-strong underline-offset-4 hover:decoration-primary"
-            >
-              Keep or let go
-            </Link>{" "}
-            <KeyChip className="h-4 px-1">C</KeyChip>
-          </p>
+          <div className="mx-5 mt-3">
+            <p data-testid="catchup-line" className="text-[13px] text-foreground/90">
+              Catch up: {plural(runway.catchup_count, "thing")} from before mxr sorted your mail
+              might still need you.{" "}
+              <Link
+                to="/todo"
+                search={{ view: "catchup" }}
+                onClick={catchupHint.dismiss}
+                className="underline decoration-border-strong underline-offset-4 hover:decoration-primary"
+              >
+                Keep or let go
+              </Link>{" "}
+              <KeyChip className="h-4 px-1">C</KeyChip>
+            </p>
+            {catchupHint.hint ? (
+              <AnchoredHint hint={catchupHint.hint} onDismiss={catchupHint.dismiss} />
+            ) : null}
+          </div>
         ) : null}
 
         <div>

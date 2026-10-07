@@ -222,6 +222,8 @@ export interface TodoRowProps {
   onRestore: (todo: Todo) => void;
   onToggleSource: (todo: Todo) => void;
   onOpenEmail: (todo: Todo) => void;
+  /** The hint anchored under this row's runway bar, while it shows. */
+  hint?: ReactNode;
 }
 
 /**
@@ -242,6 +244,7 @@ export const TodoRow = memo(function TodoRow({
   onRestore,
   onToggleSource,
   onOpenEmail,
+  hint,
 }: TodoRowProps) {
   const leaving = useTodoHidden((s) => s.leaving.has(todo.id));
   const hide = useTodoHidden((s) => s.hide);
@@ -309,6 +312,7 @@ export const TodoRow = memo(function TodoRow({
                 </span>
               ) : null}
             </div>
+            {hint}
             {band !== "coming" ? (
               <p className="mt-1 text-pretty text-[12px] leading-5 text-muted-foreground">
                 <span data-testid="todo-why">{todo.why}</span>

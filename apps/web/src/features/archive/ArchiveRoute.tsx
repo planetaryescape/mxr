@@ -1,7 +1,6 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { ArrowLeft, FolderArchive, RefreshCw, SlidersHorizontal, X } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
@@ -10,8 +9,9 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
-import { modeGuideKey, useModeGuide, useRetireCard, type ModeGuide } from "@/features/modes/api";
-import { ModeCard } from "@/features/modes/ModeCard";
+import { AnchoredHint } from "@/features/hints/AnchoredHint";
+import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
+import { useModeGuide, type ModeGuide } from "@/features/modes/api";
 import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
@@ -97,13 +97,6 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
   const searchingAll = searched !== "" && searched === askedText && !typed.data?.answer;
   const all = useAnswer(searchingAll ? searched : "", true);
   const answer = searchingAll ? all : typed;
-  const qc = useQueryClient();
-  const answered = Boolean(answer.data?.answer);
-  // The first answer retires the card in the daemon; pick that up.
-  useEffect(() => {
-    if (answered) void qc.invalidateQueries({ queryKey: modeGuideKey("archive") });
-  }, [answered, qc]);
-
   // Cleared in the box: the answer goes at once, not after the debounce.
   const shownAnswer = query.trim() && askedText ? (answer.data ?? typed.data) : undefined;
   const list = answerList(shownAnswer);
@@ -227,7 +220,6 @@ function Ledger({
   const params = useParams({ strict: false }) as { threadId?: string };
   const activePane = useMailboxPane((s) => s.activePane);
   const singlePane = useMediaQuery(SINGLE_PANE_QUERY);
-  const retire = useRetireCard("archive");
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputId = useId();
@@ -275,12 +267,14 @@ function Ledger({
     if (!singlePane && (!active || active === document.body)) inputRef.current?.focus();
   }, [singlePane]);
 
-  const cardShown = Boolean(guide && !guide.card_seen && ledger.total > 0);
-  const { mutate: retireMutate } = retire;
-  const cardSeen = guide?.card_seen ?? true;
-  const retireCard = useCallback(() => {
-    if (!cardSeen) retireMutate();
-  }, [cardSeen, retireMutate]);
+  // One hint under the first record row, one under the first answer.
+  const answerHint = useHint("archive", "archive.answer", { ready: Boolean(answer?.answer) });
+  const recordHint = useHint("archive", "archive.record", {
+    ready: records.length > 0 && !answer?.answer,
+    alone: records.length === 1,
+  });
+  const { dismiss: dismissRecordHint } = recordHint;
+  const closeHint = useActiveHintDismiss();
 
   const select = useCallback((record: RecordData) => {
     setCursorId(record.id);
@@ -295,9 +289,10 @@ function Ledger({
   );
   const openEmail = useCallback(
     (record?: RecordData) => {
+      dismissRecordHint();
       if (record?.thread_id) nav?.open(record.thread_id);
     },
-    [nav],
+    [dismissRecordHint, nav],
   );
   const move = (delta: number) => {
     const base = onAnswer ? -1 + (delta > 0 ? 1 : 0) : index + delta;
@@ -319,6 +314,7 @@ function Ledger({
     setFilter({ issuer });
   };
   const copyRef = () => {
+    answerHint.dismiss();
     if (onAnswer && answer?.answer) void copyText(answer.answer.copy, "answer");
     else if (current) void copyReference(current);
   };
@@ -333,7 +329,10 @@ function Ledger({
     },
     copyReference: copyRef,
     copyAmount: () => current && void copyAmount(current),
-    openDocument: () => current && void openDocument(current),
+    openDocument: () => {
+      if (onAnswer) answerHint.dismiss();
+      if (current) void openDocument(current);
+    },
     openEmail: () => openEmail(current),
     issuer: () => issuerPage(current),
     prevYear: () => stepTo(-1),
@@ -356,9 +355,9 @@ function Ledger({
     filter: () => setFacetsOpen(true),
     close: () => {
       if (cardOpen) setCardOpen(false);
+      else if (closeHint) closeHint();
       else if (list) clearSearch();
       else if (filter.issuer) setFilter({ ...filter, issuer: undefined });
-      else if (cardShown) retireCard();
     },
   });
 
@@ -414,7 +413,6 @@ function Ledger({
           className="flex min-h-0 flex-col"
         >
           <div ref={listRef} className="@container min-h-0 min-w-0 flex-1 overflow-y-auto pb-6">
-            {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
             <form
               role="search"
               className="mx-5 mt-3"
@@ -457,13 +455,20 @@ function Ledger({
             {list ? (
               <MatchesHeader list={list} onClear={clearSearch} onIssuer={listIssuerPage} />
             ) : answer ? (
-              <AnswerCard
-                answer={answer}
-                onCopy={(text) => void copyText(text, "answer")}
-                onOpenDocument={(record) => void openDocument(record)}
-                onOpenEmail={(record) => openEmail(record)}
-                onShowAll={onShowAll}
-              />
+              <>
+                <AnswerCard
+                  answer={answer}
+                  onCopy={(text) => void copyText(text, "answer")}
+                  onOpenDocument={(record) => void openDocument(record)}
+                  onOpenEmail={(record) => openEmail(record)}
+                  onShowAll={onShowAll}
+                />
+                {answerHint.hint ? (
+                  <div className="mx-5">
+                    <AnchoredHint hint={answerHint.hint} onDismiss={answerHint.dismiss} />
+                  </div>
+                ) : null}
+              </>
             ) : answerPending ? (
               <p className="mx-5 mt-3 text-[12.5px] text-muted-foreground">Looking…</p>
             ) : null}
@@ -583,7 +588,7 @@ function Ledger({
                   <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
                     {group.records.map((record) => {
                       const rowIndex = position.get(record.id) ?? 0;
-                      return (
+                      const row = (
                         <LedgerRow
                           key={record.id}
                           record={record}
@@ -593,6 +598,15 @@ function Ledger({
                           onSelect={singlePane ? openCard : select}
                           onOpen={(target) => openEmail(target)}
                         />
+                      );
+                      if (rowIndex !== 0 || !recordHint.hint) return row;
+                      return (
+                        <Fragment key={record.id}>
+                          {row}
+                          <li className="mx-5">
+                            <AnchoredHint hint={recordHint.hint} onDismiss={recordHint.dismiss} />
+                          </li>
+                        </Fragment>
                       );
                     })}
                   </ul>

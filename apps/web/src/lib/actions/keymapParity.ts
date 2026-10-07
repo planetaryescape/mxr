@@ -174,7 +174,7 @@ export const SAME_ACTION: Record<string, string[]> = {
   "now.reply": ["Reply"],
   "now.open-email": ["NowOpenEmail"],
   "now.let-go-digest": ["NowLetGoDigest"],
-  "now.close-card": ["NowCloseCard"],
+  "now.close-hint": ["DismissHint"],
   "messages.down": ["MoveDown"],
   "messages.up": ["MoveUp"],
   "messages.open": ["MessagesOpen"],

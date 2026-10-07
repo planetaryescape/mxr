@@ -227,18 +227,23 @@ test("T on a conversation previews its record card before filing it in Archive",
   await expect(dialog).toHaveCount(0);
 });
 
-test("Archive's card shows once and the first answer retires it", async ({ page }) => {
+test("the first answer carries its hint; dismissed, it never returns", async ({ page }) => {
   await waitForRecords(page);
-  await bridge(page, "/api/v1/mail/modes/archive/card", { seen: false });
+  await bridge(page, "/api/v1/mail/hints/archive.answer", { seen: false });
   await openApp(page, "/archive");
-  const card = page.getByTestId("mode-card");
-  await expect(card).toContainText("Archiving an email in Gmail is a different thing");
+  await expect(page.getByTestId("mode-card")).toHaveCount(0);
+  await expect(page.getByTestId("hint")).toHaveCount(0);
   await ask(page).fill("lisbon booking ref");
   await expect(page.getByTestId("answer-value")).toHaveText("K7QX2M");
-  await expect(card).toHaveCount(0);
+  const hint = page.getByTestId("hint");
+  await expect(hint).toHaveText(/y copies what this answer found; Enter opens the document\./);
+  await expect(hint).toHaveCount(1);
+  await hint.getByRole("button", { name: "Dismiss hint (Esc)" }).click();
+  await expect(page.getByTestId("hint")).toHaveCount(0);
   await page.reload();
-  await expect(page.getByTestId("record-row").first()).toBeVisible();
-  await expect(page.getByTestId("mode-card")).toHaveCount(0);
+  await ask(page).fill("lisbon booking ref");
+  await expect(page.getByTestId("answer-value")).toHaveText("K7QX2M");
+  await expect(page.getByTestId("hint")).toHaveCount(0);
 });
 
 test("? leads with what Archive is for", async ({ page }) => {

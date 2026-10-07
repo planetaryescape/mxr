@@ -38,5 +38,5 @@ export const nowActions: Action[] = [
     shortLabel: "Let go of digest",
     tuiNote: "Previews the daemon's dry run first; undo afterwards",
   }),
-  key("now.close-card", "closeCard", "Close the note about Now", "Escape", { hideInPalette: true }),
+  key("now.close-hint", "closeHint", "Dismiss the hint", "Escape", { hideInPalette: true }),
 ];

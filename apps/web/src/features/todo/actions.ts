@@ -68,7 +68,7 @@ export const todoActions: Action[] = [
   }),
   key("todo", "todo.expired", "expired", "Expired list", "E", { shortLabel: "Expired" }),
   key("todo", "todo.catchup", "catchup", "Catch-up", "C", { shortLabel: "Catch-up" }),
-  key("todo", "todo.close-card", "closeCard", "Close the note about To do", "Escape", {
+  key("todo", "todo.close-hint", "closeHint", "Dismiss the hint", "Escape", {
     hideInPalette: true,
   }),
   ...move("catchup", "catchup"),

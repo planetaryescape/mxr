@@ -222,28 +222,6 @@ test("Paper trail's old address opens Updates", async ({ page }) => {
   await expect(page.getByTestId("early-mode-note")).toContainText("early version");
 });
 
-test("Now's card shows once: Esc retires it here, after a reload and for the TUI", async ({
-  page,
-}) => {
-  await waitForNow(page);
-  await bridge(page, "/api/v1/mail/modes/now/card", { seen: false });
-  await openApp(page, "/now");
-  const card = page.getByTestId("mode-card");
-  await expect(card).toBeVisible();
-  await expect(card).toContainText("Now shows at most ten things");
-  await expect(card).toContainText("e done here");
-  await page.keyboard.press("Escape");
-  await expect(card).toHaveCount(0);
-  await page.reload();
-  await expect(page.getByTestId("now-row").first()).toBeVisible();
-  await expect(page.getByTestId("mode-card")).toHaveCount(0);
-  const guide = await bridge<{ guides: { card_seen: boolean }[] }>(
-    page,
-    "/api/v1/mail/modes/guide?mode=now",
-  );
-  expect(guide.guides[0]!.card_seen).toBe(true);
-});
-
 test("? on Now leads with what Now is for", async ({ page }) => {
   await waitForNow(page);
   await openApp(page, "/now");

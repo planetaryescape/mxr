@@ -37,9 +37,14 @@ export interface PersonPaneProps {
   onReplyAllChange: (on: boolean) => void;
   onReply: () => void;
   onGotIt: () => void;
+  /** Got it gained focus or the pointer: its hint's moment of need. */
+  onGotItFocus: () => void;
   onUndoGotIt: () => void;
   onDone: () => void;
   onTodo: () => void;
+  /** Hints anchored under the topic list and above the footer's verbs. */
+  topicsHint?: React.ReactNode;
+  gotItHint?: React.ReactNode;
 }
 
 /**
@@ -145,6 +150,7 @@ export function PersonPane(props: PersonPaneProps) {
             <KeyChip className="h-4 px-1">[</KeyChip> <KeyChip className="h-4 px-1">]</KeyChip> step
             through topics
           </p>
+          {props.topicsHint ? <div className="px-2">{props.topicsHint}</div> : null}
         </ModeFrame>
       </nav>
       <div
@@ -199,6 +205,7 @@ export function PersonPane(props: PersonPaneProps) {
                 </button>
               </div>
             ) : null}
+            {props.gotItHint ? <div className="px-4 pt-2">{props.gotItHint}</div> : null}
             <div className="flex flex-wrap items-center gap-x-1 gap-y-1 px-3 pb-3 pt-2 text-[12.5px]">
               <label className="mr-2 inline-flex items-center gap-1.5 px-1 text-muted-foreground">
                 <input
@@ -212,6 +219,7 @@ export function PersonPane(props: PersonPaneProps) {
               <FooterButton
                 testId="got-it"
                 onClick={props.onGotIt}
+                onNeed={props.onGotItFocus}
                 disabled={props.ackLoading || props.pending !== null}
                 icon={<ThumbsUp className="size-3.5" aria-hidden />}
                 label="Got it"
@@ -242,6 +250,7 @@ export function PersonPane(props: PersonPaneProps) {
 function FooterButton({
   testId,
   onClick,
+  onNeed,
   disabled,
   icon,
   label,
@@ -249,6 +258,8 @@ function FooterButton({
 }: {
   testId: string;
   onClick: () => void;
+  /** Focus or pointer arrived: about to be used. */
+  onNeed?: () => void;
   disabled?: boolean;
   icon: React.ReactNode;
   label: string;
@@ -259,6 +270,8 @@ function FooterButton({
       type="button"
       data-testid={testId}
       onClick={onClick}
+      onFocus={onNeed}
+      onPointerEnter={onNeed}
       disabled={disabled}
       className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-foreground/90 hover:bg-accent disabled:opacity-50"
     >

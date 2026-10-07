@@ -10,8 +10,10 @@
 //!   build tracker in Needs a look.
 //! * Four Vercel deploys and one from last week: routine, one line.
 //! * A new Google sign-in two hours before the cut: it goes to To do on
-//!   arrival and shows "already in To do".
-//! * A Stripe payout that failed: Needs a look, and To do.
+//!   arrival and shows "already in To do". Gmail's own DMARC pass and
+//!   earlier mail from Google vouch for it.
+//! * A Stripe payout that failed: Needs a look, and To do, vouched for the
+//!   same way.
 //! * A verification code from before the cut: expired after ten minutes,
 //!   so it never shows.
 //! * A status page incident that was resolved: Changed.
@@ -24,7 +26,7 @@ use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::{Address, Envelope, MessageBody, MessageFlags, UnsubscribeMethod};
 
 /// Messages `updates_demo_messages` returns.
-pub(super) const UPDATES_DEMO_MESSAGE_COUNT: usize = 18;
+pub(super) const UPDATES_DEMO_MESSAGE_COUNT: usize = 20;
 
 fn thread(account_id: &AccountId, name: &str) -> ThreadId {
     ThreadId::from_scoped_provider_id(account_id, "fake", &format!("demo-updates-{name}"))
@@ -171,6 +173,26 @@ pub(super) fn updates_demo_messages(
             "vercel-old",
         ),
         (
+            read(message(
+                google.clone(),
+                self_addr,
+                "Your Google Account storage summary",
+                "You're using 41% of your 100 GB of Google Account storage.",
+                before(24 * 20),
+            )),
+            "google-prior",
+        ),
+        (
+            read(message(
+                stripe.clone(),
+                self_addr,
+                "Payout of R 3,980.00 is on its way",
+                "Your payout of R 3,980.00 to your bank account ending 4417 is on its way.",
+                before(24 * 14),
+            )),
+            "stripe-prior",
+        ),
+        (
             message(
                 google,
                 self_addr,
@@ -267,12 +289,22 @@ pub(super) fn updates_demo_messages(
     let mut built = Vec::with_capacity(UPDATES_DEMO_MESSAGE_COUNT);
     for (message, name) in messages {
         let thread_id = thread(account_id, name);
-        built.push(build_demo_msg(
-            first_num + built.len(),
-            account_id,
-            &thread_id,
-            message,
-        ));
+        let domain = message
+            .from
+            .email
+            .rsplit_once('@')
+            .map(|(_, host)| host.to_string())
+            .unwrap_or_default();
+        let (envelope, mut body) =
+            build_demo_msg(first_num + built.len(), account_id, &thread_id, message);
+        // Gmail's own verdict, as it stamps it, on the senders a
+        // breakthrough must be able to vouch for.
+        if name.starts_with("google") || name.starts_with("stripe") {
+            body.metadata.auth_results = vec![format!(
+                "mx.google.com; dkim=pass; spf=pass; dmarc=pass (p=REJECT) header.from={domain}"
+            )];
+        }
+        built.push((envelope, body));
     }
     for (message, hours) in deploys {
         let thread_id = thread(account_id, &format!("vercel-{hours}"));

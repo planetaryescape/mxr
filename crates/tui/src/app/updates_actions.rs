@@ -136,17 +136,22 @@ impl App {
     fn updates_let_go_all(&mut self) {
         let page = &mut self.mailbox.updates_page;
         if let Some(preview) = page.let_go_preview.take() {
+            let source = page.let_go_source.take();
             if preview.message_ids.is_empty() {
                 return;
             }
-            page.clear_digest();
+            match &source {
+                Some((_, key)) => page.remove_source(key),
+                None => page.clear_digest(),
+            }
             self.clamp_updates_selection();
             self.retire_updates_card();
+            let (account_id, source_key) = source.unzip();
             self.queue_mutation(
                 Request::LetGoDigest {
-                    account_id: None,
+                    account_id,
                     cut: Some(preview.cut_at),
-                    source_key: None,
+                    source_key,
                     selection_token: Some(preview.selection_token),
                     dry_run: false,
                 },
@@ -163,6 +168,7 @@ impl App {
             self.status_message = Some("Nothing in this digest to let go of".into());
             return;
         }
+        page.let_go_source = None;
         page.pending_let_go_preview = true;
         self.status_message = Some("Checking what letting go would change…".into());
     }
@@ -177,8 +183,8 @@ impl App {
         self.mailbox.updates_page.let_go_preview = Some(preview);
     }
 
-    /// `e`: let go of this source in the digest. No preview for one
-    /// source; the toast offers undo.
+    /// `e`: let go of this source in the digest, through the same
+    /// preview as `A`: the count shows first, Enter commits that selection.
     fn updates_let_go_source(&mut self) {
         let Some(line) = self.selected_updates_line() else {
             return;
@@ -187,26 +193,13 @@ impl App {
             self.status_message = Some("Trackers leave Updates on their own when they end".into());
             return;
         }
-        let cut = self
-            .mailbox
-            .updates_page
-            .digest
-            .as_ref()
-            .map(|digest| digest.cut.at);
-        self.mailbox.updates_page.remove_source(&line.source_key);
-        self.clamp_updates_selection();
-        self.retire_updates_card();
-        self.queue_mutation(
-            Request::LetGoDigest {
-                account_id: Some(line.account_id.clone()),
-                cut,
-                source_key: Some(line.source_key.clone()),
-                selection_token: None,
-                dry_run: false,
-            },
-            MutationEffect::ModeDone(String::new()),
-            "Letting go...".into(),
-        );
+        let page = &mut self.mailbox.updates_page;
+        page.let_go_source = Some((line.account_id.clone(), line.source_key.clone()));
+        page.pending_let_go_preview = true;
+        self.status_message = Some(format!(
+            "Checking what letting go of {} would change…",
+            crate::ui::sanitize::one_line(&line.source_name)
+        ));
     }
 
     /// `t`: this needs me. A to-do titled by the line, on its email.
@@ -218,7 +211,12 @@ impl App {
             self.status_message = Some("Already in To do".into());
             return;
         }
-        let Some(message_id) = line.latest_message_id.clone() else {
+        // The message the line's fact and title came from, not the newest.
+        let Some(message_id) = line
+            .fact_message_id
+            .clone()
+            .or_else(|| line.latest_message_id.clone())
+        else {
             self.status_message = Some("A tracker has no email to make a to-do from".into());
             return;
         };
@@ -302,6 +300,7 @@ impl App {
             return;
         }
         if page.let_go_preview.take().is_some() {
+            page.let_go_source = None;
             self.status_message = Some("Kept the digest".into());
             return;
         }

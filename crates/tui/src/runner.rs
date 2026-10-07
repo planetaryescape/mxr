@@ -1734,7 +1734,7 @@ pub async fn run() -> anyhow::Result<()> {
                 .map(|card| card.since);
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
-                AsyncResult::NowDigestPreview(preview_let_go(&bg, cut).await)
+                AsyncResult::NowDigestPreview(preview_let_go(&bg, cut, None).await)
             });
         }
 
@@ -1752,9 +1752,10 @@ pub async fn run() -> anyhow::Result<()> {
                 .digest
                 .as_ref()
                 .map(|digest| digest.cut.at);
+            let source = app.mailbox.updates_page.let_go_source.clone();
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
-                AsyncResult::UpdatesLetGoPreview(preview_let_go(&bg, cut).await)
+                AsyncResult::UpdatesLetGoPreview(preview_let_go(&bg, cut, source).await)
             });
         }
 
@@ -4210,17 +4211,20 @@ pub(crate) fn updates_let_go_outcome(
     (Ok(app::MutationEffect::ModeDone(copy)), undo)
 }
 
-/// The daemon's dry run of letting go of the digest at `cut`.
+/// The daemon's dry run of letting go of the digest at `cut`, or of one
+/// account's source in it.
 async fn preview_let_go(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     cut: Option<chrono::DateTime<chrono::Utc>>,
+    source: Option<(mxr_core::id::AccountId, String)>,
 ) -> Result<mxr_protocol::UpdatesLetGoData, MxrError> {
+    let (account_id, source_key) = source.unzip();
     let resp = ipc_call(
         bg,
         Request::LetGoDigest {
-            account_id: None,
+            account_id,
             cut,
-            source_key: None,
+            source_key,
             selection_token: None,
             dry_run: true,
         },

@@ -43,6 +43,42 @@ async fn update(
     envelope
 }
 
+/// The receiving provider's own DMARC pass for `envelope`'s sender, as
+/// Gmail stamps it (the fake provider stands in for Gmail).
+async fn authentic(fx: &Fixture, envelope: &Envelope) {
+    let domain = mxr_updates::email_domain(&envelope.from.email).unwrap();
+    let metadata = mxr_core::types::MessageMetadata {
+        auth_results: vec![format!(
+            "mx.google.com; dkim=pass; spf=pass; dmarc=pass (p=REJECT) header.from={domain}"
+        )],
+        ..Default::default()
+    };
+    fx.state
+        .store
+        .insert_body(&mxr_core::types::MessageBody {
+            message_id: envelope.id.clone(),
+            text_plain: Some(String::new()),
+            text_html: None,
+            attachments: Vec::new(),
+            fetched_at: Utc::now(),
+            metadata,
+        })
+        .await
+        .unwrap();
+}
+
+/// Earlier mail from `from`, so the source isn't a first-time sender.
+async fn known_source(fx: &Fixture, from: &str) {
+    update(
+        fx,
+        &ThreadId::new(),
+        from,
+        "Your account summary",
+        Utc::now() - Duration::days(20),
+    )
+    .await;
+}
+
 async fn digest(fx: &Fixture, now: DateTime<Utc>) -> UpdatesDigestData {
     updates::digest_at(&fx.state, None, None, false, false, now, &utc())
         .await
@@ -264,6 +300,7 @@ async fn let_go_acts_on_exactly_the_previewed_cut() {
 async fn a_new_sign_in_breaks_through_once_and_shows_already_in_to_do() {
     let fx = Fixture::new().await;
     let (cut, now) = clock();
+    known_source(&fx, "no-reply@accounts.google.com").await;
     let alert = update(
         &fx,
         &ThreadId::new(),
@@ -290,6 +327,9 @@ async fn a_new_sign_in_breaks_through_once_and_shows_already_in_to_do() {
         cut - Duration::minutes(30),
     )
     .await;
+    for envelope in [&alert, &stale, &repeat] {
+        authentic(&fx, envelope).await;
+    }
     let made = updates::scan(
         &fx.state,
         &[alert.id.clone(), stale.id.clone(), repeat.id.clone()],
@@ -328,6 +368,192 @@ async fn a_new_sign_in_breaks_through_once_and_shows_already_in_to_do() {
         .all(|line| !line.message_ids.contains(&stale.id)));
     let preview = let_go(&fx, now, None, true).await.unwrap();
     assert!(preview.line.contains("also in To do"), "{}", preview.line);
+}
+
+#[tokio::test]
+async fn an_unauthenticated_or_first_time_alert_stays_in_needs_a_look() {
+    let fx = Fixture::new().await;
+    let (cut, now) = clock();
+    // Anyone can write this subject: no provider DMARC pass, no To do.
+    known_source(&fx, "security@evil.example").await;
+    let forged = update(
+        &fx,
+        &ThreadId::new(),
+        "security@evil.example",
+        "Security alert: New sign-in from Chrome on Windows",
+        cut - Duration::hours(1),
+    )
+    .await;
+    // Authenticated, but the first mail ever from this source.
+    let first = update(
+        &fx,
+        &ThreadId::new(),
+        "alerts@newbank.example",
+        "Your payment failed: card declined",
+        cut - Duration::hours(1),
+    )
+    .await;
+    authentic(&fx, &first).await;
+    let made = updates::scan(&fx.state, &[forged.id.clone(), first.id.clone()], now)
+        .await
+        .unwrap();
+    assert_eq!(made, 0);
+    let digest = digest(&fx, now).await;
+    for id in [&forged.id, &first.id] {
+        let line = digest
+            .needs_a_look
+            .iter()
+            .find(|line| line.message_ids.contains(id))
+            .expect("still in Needs a look");
+        assert!(line.todo_id.is_none());
+    }
+}
+
+#[tokio::test]
+async fn breakthroughs_key_by_source_alert_kind_and_day() {
+    let fx = Fixture::new().await;
+    let (cut, now) = clock();
+    known_source(&fx, "no-reply@accounts.google.com").await;
+    let mut ids = Vec::new();
+    for subject in [
+        "Security alert: New sign-in from Chrome on Windows",
+        "Unusual sign-in activity on your account",
+        "Your payment failed for Google One",
+    ] {
+        let envelope = update(
+            &fx,
+            &ThreadId::new(),
+            "no-reply@accounts.google.com",
+            subject,
+            cut - Duration::hours(1),
+        )
+        .await;
+        authentic(&fx, &envelope).await;
+        ids.push(envelope.id);
+    }
+    // Two wordings of a sign-in are one thing to check; a failed payment
+    // is another, never suppressed by it.
+    assert_eq!(updates::scan(&fx.state, &ids, now).await.unwrap(), 2);
+}
+
+#[tokio::test]
+async fn archived_alerts_never_break_through() {
+    let fx = Fixture::new().await;
+    let (cut, now) = clock();
+    known_source(&fx, "no-reply@accounts.google.com").await;
+    let alert = update(
+        &fx,
+        &ThreadId::new(),
+        "no-reply@accounts.google.com",
+        "Security alert: New sign-in from Chrome on Windows",
+        cut - Duration::hours(1),
+    )
+    .await;
+    authentic(&fx, &alert).await;
+    fx.state
+        .store
+        .set_message_labels(&alert.id, &[], mxr_core::types::EventSource::User)
+        .await
+        .unwrap();
+    assert_eq!(updates::scan(&fx.state, &[alert.id], now).await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn letting_go_of_one_source_leaves_another_sources_mail_in_a_shared_thread() {
+    let fx = Fixture::new().await;
+    let (cut, now) = clock();
+    let shared = ThreadId::new();
+    let vercel = update(
+        &fx,
+        &shared,
+        "notifications@vercel.com",
+        "Deployment succeeded",
+        cut - Duration::hours(2),
+    )
+    .await;
+    let strava = update(
+        &fx,
+        &shared,
+        "no-reply@strava.com",
+        "Your week in running: 21.3 km",
+        cut - Duration::hours(1),
+    )
+    .await;
+    let source = |token: Option<String>, dry_run: bool| {
+        let state = fx.state.clone();
+        async move {
+            updates::let_go_at(
+                &state,
+                &LetGo {
+                    account_id: None,
+                    cut: None,
+                    source_key: Some("vercel.com"),
+                    selection_token: token.as_deref(),
+                    dry_run,
+                },
+                now,
+                &utc(),
+            )
+            .await
+            .map_err(|error| error.to_string())
+        }
+    };
+    let preview = source(None, true).await.unwrap();
+    assert_eq!(preview.message_ids, vec![vercel.id.clone()]);
+    // A run without the preview's token is refused.
+    assert!(source(None, false)
+        .await
+        .unwrap_err()
+        .contains("Preview first"));
+    let run = source(Some(preview.selection_token.clone()), false)
+        .await
+        .unwrap();
+    assert_eq!(run.message_ids, vec![vercel.id.clone()]);
+    assert_eq!(run.items[0].archived, 0, "Strava's mail holds the thread");
+    let after = digest(&fx, now).await;
+    assert!(all_lines(&after)
+        .iter()
+        .any(|line| line.message_ids.contains(&strava.id)));
+    assert!(all_lines(&after)
+        .iter()
+        .all(|line| !line.message_ids.contains(&vercel.id)));
+}
+
+#[tokio::test]
+async fn this_needs_me_names_the_message_its_fact_came_from() {
+    let fx = Fixture::new().await;
+    let (cut, now) = clock();
+    update(
+        &fx,
+        &ThreadId::new(),
+        "notifications@plausible.io",
+        "Weekly report: 1,204 visitors",
+        cut - Duration::days(7) - Duration::hours(2),
+    )
+    .await;
+    let report = update(
+        &fx,
+        &ThreadId::new(),
+        "notifications@plausible.io",
+        "Weekly report: 998 visitors",
+        cut - Duration::hours(3),
+    )
+    .await;
+    update(
+        &fx,
+        &ThreadId::new(),
+        "notifications@plausible.io",
+        "Your site is getting more traffic",
+        cut - Duration::hours(1),
+    )
+    .await;
+    let digest = digest(&fx, now).await;
+    let line = all_lines(&digest)
+        .into_iter()
+        .find(|line| line.source_key == "plausible.io")
+        .unwrap();
+    assert!(line.fact.contains("998 visitors"), "{}", line.fact);
+    assert_eq!(line.fact_message_id.as_ref(), Some(&report.id));
 }
 
 #[tokio::test]
@@ -443,8 +669,17 @@ async fn a_parcel_with_no_news_goes_quiet_and_leaves_the_active_list() {
         eta_until: Some(now + Duration::days(1)),
         ..quiet.clone()
     };
+    // Its ETA passed ten days ago, but it moved yesterday: not quiet.
+    let late = mxr_store::Delivery {
+        id: DeliveryId::new(),
+        dedup_key: "late-parcel".into(),
+        eta_until: Some(now - Duration::days(10)),
+        last_event_at: now - Duration::days(1),
+        ..quiet.clone()
+    };
     fx.state.store.insert_delivery(&quiet).await.unwrap();
     fx.state.store.insert_delivery(&moving).await.unwrap();
+    fx.state.store.insert_delivery(&late).await.unwrap();
     let active = request(
         &fx,
         Request::ListDeliveries {
@@ -456,16 +691,23 @@ async fn a_parcel_with_no_news_goes_quiet_and_leaves_the_active_list() {
     let ResponseData::Deliveries { deliveries } = active else {
         panic!("{active:?}");
     };
-    assert_eq!(deliveries.len(), 1);
-    assert_eq!(deliveries[0].id, moving.id);
+    let mut active: Vec<_> = deliveries.iter().map(|d| d.id.clone()).collect();
+    active.sort_by_key(ToString::to_string);
+    let mut expected = vec![moving.id.clone(), late.id.clone()];
+    expected.sort_by_key(ToString::to_string);
+    assert_eq!(active, expected);
 
     let digest = digest(&fx, now).await;
     let parcels: Vec<_> = all_lines(&digest)
         .into_iter()
         .filter(|line| line.tracker.as_ref().is_some_and(|t| t.kind == "parcel"))
         .collect();
-    assert_eq!(parcels.len(), 1, "the quiet parcel went quiet long ago");
-    let tracker = parcels[0].tracker.as_ref().unwrap();
+    assert_eq!(parcels.len(), 2, "the quiet parcel went quiet long ago");
+    let tracker = parcels
+        .iter()
+        .find(|line| line.id.ends_with(&moving.id.to_string()))
+        .and_then(|line| line.tracker.as_ref())
+        .unwrap();
     assert_eq!(tracker.steps.len(), 4);
     assert_eq!(tracker.step, Some(1));
 }

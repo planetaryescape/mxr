@@ -17,7 +17,9 @@ use super::updates_digest::{self, DigestInputs, Scope};
 use super::{mode_done, HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Local, TimeZone, Utc};
+use mxr_config::SyncProviderConfig;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
+use mxr_core::types::ProviderKind;
 use mxr_core::MessageFlags;
 use mxr_protocol::{
     ModeKindData, ResponseData, SenderKindData, UpdateSourceChangeData, UpdateSourceSettingData,
@@ -432,12 +434,20 @@ where
         list_expired: false,
     };
     let (digest, items, selection) = digest_from(state, &accounts, placed, &scope, now, tz).await?;
-    if let Some(expected) = selection_token.filter(|token| !token.is_empty()) {
-        if expected != selection.token {
+    // The run lets go of exactly what a preview listed: its token hashes
+    // the cut and that message id set, and a run without one is refused.
+    match selection_token.filter(|token| !token.is_empty()) {
+        Some(expected) if expected != selection.token => {
             return Err(HandlerError::InvalidRequest(
                 "This digest changed since the preview. Preview it again, then let go.".into(),
             ));
         }
+        None if !dry_run => {
+            return Err(HandlerError::InvalidRequest(
+                "Preview first (dry_run), then let go with the preview's selection_token.".into(),
+            ));
+        }
+        _ => {}
     }
     if selection.thread_ids.is_empty() {
         return Ok(UpdatesLetGoData {
@@ -456,8 +466,8 @@ where
             undo_unavailable: false,
         });
     }
-    let done =
-        mode_done::let_go_updates(state, &selection.thread_ids, &selection.keep, dry_run).await?;
+    let chosen: HashSet<MessageId> = selection.message_ids.iter().cloned().collect();
+    let done = mode_done::let_go_updates(state, &selection.thread_ids, &chosen, dry_run).await?;
     let ResponseData::ModeDone {
         items: outcomes,
         mutation_id,
@@ -683,6 +693,7 @@ pub(super) async fn scan(
         }
         let facts = facts_for(state, &updates, &Local).await?;
         let settings = state.store.update_sources(&account).await?;
+        let trust = Trust::load(state, &account, now).await?;
         for message in updates {
             let Some(fact) = facts.get(&message.id) else {
                 continue;
@@ -693,6 +704,12 @@ pub(super) async fn scan(
             if fact.needs_you.is_none() && !breakthrough {
                 continue;
             }
+            if !trust.vouches_for(state, message).await? {
+                tracing::debug!(
+                    "an alert stays in Needs a look: its sender isn't authenticated or known"
+                );
+                continue;
+            }
             if break_through(state, message, fact, now).await? {
                 created += 1;
             }
@@ -700,6 +717,92 @@ pub(super) async fn scan(
     }
     created += deliveries_break_through(state, now).await?;
     Ok(created)
+}
+
+/// What decides whether an alert may go to To do on arrival: its subject is
+/// mail-controlled text, so the sender must pass the receiving provider's
+/// own DMARC check and be a source you had mail from before today. Anything
+/// else stays in Needs a look.
+struct Trust {
+    account_id: AccountId,
+    /// Authserv-ids whose `Authentication-Results` this account's provider
+    /// writes; empty means nothing can be vouched for.
+    authserv_ids: Vec<String>,
+    start_of_today: DateTime<Utc>,
+}
+
+impl Trust {
+    async fn load(
+        state: &AppState,
+        account_id: &AccountId,
+        now: DateTime<Utc>,
+    ) -> Result<Self, HandlerError> {
+        const GOOGLE: &str = "mx.google.com";
+        let cfg = state.config_snapshot();
+        let backend = state
+            .store
+            .get_account(account_id)
+            .await?
+            .and_then(|account| account.sync_backend);
+        let authserv_ids = match backend {
+            Some(backend) => match backend.provider_kind {
+                // The fake provider stands in for Gmail in the demo and tests.
+                ProviderKind::Gmail | ProviderKind::Fake => vec![GOOGLE.to_string()],
+                ProviderKind::Imap => {
+                    let gmail_host = matches!(
+                        cfg.accounts
+                            .get(&backend.config_key)
+                            .and_then(|account| account.sync.as_ref()),
+                        Some(SyncProviderConfig::Imap { host, .. })
+                            if host.ends_with("gmail.com") || host.ends_with("googlemail.com")
+                    );
+                    let mut ids = cfg.updates.trusted_authserv_ids.clone();
+                    if gmail_host {
+                        ids.push(GOOGLE.to_string());
+                    }
+                    ids
+                }
+                // Outlook's results carry no authserv-id to trust.
+                ProviderKind::Smtp | ProviderKind::OutlookPersonal | ProviderKind::OutlookWork => {
+                    Vec::new()
+                }
+            },
+            None => Vec::new(),
+        };
+        let today = now.with_timezone(&Local).date_naive();
+        let start_of_today = today
+            .and_hms_opt(0, 0, 0)
+            .and_then(|midnight| Local.from_local_datetime(&midnight).earliest())
+            .map_or(now - Duration::days(1), |at| at.with_timezone(&Utc));
+        Ok(Self {
+            account_id: account_id.clone(),
+            authserv_ids,
+            start_of_today,
+        })
+    }
+
+    async fn vouches_for(
+        &self,
+        state: &AppState,
+        message: &PlaceMessage,
+    ) -> Result<bool, HandlerError> {
+        let Some(domain) = mxr_updates::email_domain(&message.from_email) else {
+            return Ok(false);
+        };
+        let auth = state
+            .store
+            .update_auth_results(std::slice::from_ref(&message.id))
+            .await?
+            .remove(&message.id)
+            .unwrap_or_default();
+        if !mxr_updates::auth::dmarc_passes(&auth, &domain, &self.authserv_ids) {
+            return Ok(false);
+        }
+        Ok(state
+            .store
+            .has_mail_from_domain_before(&self.account_id, &domain, self.start_of_today)
+            .await?)
+    }
 }
 
 /// The to-do an update becomes on arrival, claimed by its dedup key so a
@@ -712,7 +815,10 @@ async fn break_through(
     fact: &Fact,
     now: DateTime<Utc>,
 ) -> Result<bool, HandlerError> {
-    if message.date < now - Duration::days(BREAKTHROUGH_MAX_AGE_DAYS)
+    // Archived or backfilled mail is history, never a new task.
+    if !message.in_inbox
+        || message.date < now - Duration::days(BREAKTHROUGH_MAX_AGE_DAYS)
+        || message.date > now
         || fact
             .window
             .as_ref()
@@ -721,8 +827,8 @@ async fn break_through(
         return Ok(false);
     }
     // One to-do per kind of alert from a source per day: ten sign-in
-    // alerts in an afternoon are one thing to check, not ten.
-    let dedup_key = breakthrough_key(fact, message.date);
+    // alerts in an afternoon, however worded, are one thing to check.
+    let dedup_key = breakthrough_key(fact, &message.id, message.date);
     if state
         .store
         .get_todo_by_dedup(&message.account_id, &dedup_key)
@@ -771,14 +877,18 @@ async fn break_through(
     Ok(true)
 }
 
-/// The claim an update's breakthrough holds: source, template and day.
-pub(super) fn breakthrough_key(fact: &Fact, date: DateTime<Utc>) -> String {
-    format!(
-        "update|{}|{}|{}",
-        fact.source_key,
-        fact.template_key,
-        date.format("%Y-%m-%d")
-    )
+/// The claim an update's breakthrough holds: source, alert kind and day.
+/// A source set to breakthrough with no alert kind sends every message.
+pub(super) fn breakthrough_key(fact: &Fact, message_id: &MessageId, date: DateTime<Utc>) -> String {
+    match fact.needs_you {
+        Some(kind) => format!(
+            "update|{}|{}|{}",
+            fact.source_key,
+            kind.as_str(),
+            date.format("%Y-%m-%d")
+        ),
+        None => format!("update|{}|message|{message_id}", fact.source_key),
+    }
 }
 
 struct BreakthroughRow<'a> {
@@ -879,13 +989,26 @@ async fn deliveries_break_through(
         {
             continue;
         }
-        let name = updates_digest::parcel_name(&delivery);
-        let message_id = state
+        // The carrier's latest email must pass the same check as any
+        // alert: authenticated by your provider, from a sender you knew.
+        let Some(message_id) = state
             .store
             .delivery_message_ids(&delivery.id)
             .await?
             .into_iter()
-            .last();
+            .last()
+        else {
+            continue;
+        };
+        let Some(message) = state.store.place_message(&message_id).await? else {
+            continue;
+        };
+        let trust = Trust::load(state, &delivery.account_id, now).await?;
+        if !message.in_inbox || !trust.vouches_for(state, &message).await? {
+            continue;
+        }
+        let message_id = Some(message_id);
+        let name = updates_digest::parcel_name(&delivery);
         let record = breakthrough_record(BreakthroughRow {
             account_id: &delivery.account_id,
             thread_id: delivery.thread_id.as_ref(),

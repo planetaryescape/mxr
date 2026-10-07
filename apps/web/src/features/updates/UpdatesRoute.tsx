@@ -97,6 +97,8 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
   const [routineOpen, setRoutineOpen] = useState(false);
   const [cursorId, setCursorId] = useState<string | null>(null);
   const [letGoOpen, setLetGoOpen] = useState(false);
+  // `e`: the line whose source the open preview is for.
+  const [letGoLineOf, setLetGoLineOf] = useState<UpdateLine | null>(null);
   const [tuning, setTuning] = useState<UpdateLine | null>(null);
   const { rows, bySection, quieter } = useMemo(
     () => digestRows(digest, { routineOpen, hidden }),
@@ -127,13 +129,11 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
     },
     [nav],
   );
-  const letGoLine = useCallback(
-    (line: UpdateLine) => {
-      if (!canLetGoSource(line)) return;
-      void letGoSource(line, account, digest.cut.at);
-    },
-    [account, digest.cut.at],
-  );
+  const letGoLine = useCallback((line: UpdateLine) => {
+    if (!canLetGoSource(line)) return;
+    setLetGoLineOf(line);
+    setLetGoOpen(true);
+  }, []);
   const needs = useCallback((line: UpdateLine) => void needsMe(line), []);
   const tune = useCallback((line: UpdateLine) => {
     if (canTune(line)) setTuning(line);
@@ -145,6 +145,10 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
   const commitLetGoAll = (selectionToken: string) => {
     // Letting go of the digest is the mode's main verb: the card is spent.
     retireCard();
+    if (letGoLineOf) {
+      void letGoSource(letGoLineOf, digest.cut.at, selectionToken);
+      return;
+    }
     void letGo(
       { account, cut: digest.cut.at, selectionToken },
       rows.map((row) => row.line.id),
@@ -160,7 +164,12 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
     down: () => move(1),
     up: () => move(-1),
     expand: quieter.sources > 0 ? () => setRoutineOpen(true) : undefined,
-    letGoAll: digest.let_go_line ? () => setLetGoOpen(true) : undefined,
+    letGoAll: digest.let_go_line
+      ? () => {
+          setLetGoLineOf(null);
+          setLetGoOpen(true);
+        }
+      : undefined,
     letGoSource: () => current && letGoLine(current),
     needsMe: () => current && !current.in_todo && needs(current),
     tune: () => current && tune(current),
@@ -216,7 +225,10 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
             variant="outline"
             className="ml-auto hidden md:inline-flex"
             data-testid="updates-let-go-all"
-            onClick={() => setLetGoOpen(true)}
+            onClick={() => {
+              setLetGoLineOf(null);
+              setLetGoOpen(true);
+            }}
           >
             Let go of all <KeyChip className="h-4 px-1">A</KeyChip>
           </Button>
@@ -296,7 +308,10 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
           <Button
             className="w-full"
             data-testid="updates-let-go-all-mobile"
-            onClick={() => setLetGoOpen(true)}
+            onClick={() => {
+              setLetGoLineOf(null);
+              setLetGoOpen(true);
+            }}
           >
             Let go of all {digest.message_count}
           </Button>
@@ -305,9 +320,13 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
 
       <LetGoAllDialog
         open={letGoOpen}
-        onOpenChange={setLetGoOpen}
+        onOpenChange={(open) => {
+          setLetGoOpen(open);
+          if (!open) setLetGoLineOf(null);
+        }}
         account={account}
         cut={digest.cut.at}
+        source={letGoLineOf}
         onConfirm={commitLetGoAll}
       />
       <TuneDialog

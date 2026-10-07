@@ -37,8 +37,11 @@ pub struct UpdatesPageState {
     /// Ask the runtime for the digest and its guide.
     pub pending_refresh: bool,
     pub routine_open: bool,
-    /// Ask the daemon what letting go of the whole digest would do.
+    /// Ask the daemon what letting go of the digest (or of
+    /// `let_go_source`) would do.
     pub pending_let_go_preview: bool,
+    /// `e`: the preview and the run are for this account's source only.
+    pub let_go_source: Option<(mxr_core::id::AccountId, String)>,
     /// The daemon's dry run: Enter lets go of exactly this selection.
     pub let_go_preview: Option<UpdatesLetGoData>,
     pub tune: Option<UpdatesTuneMenu>,

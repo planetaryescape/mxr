@@ -684,6 +684,7 @@ local time.
 ```toml
 [updates]
 cuts = ["08:00", "16:30"]
+trusted_authserv_ids = []
 ```
 
 - `cuts`: one to four `HH:MM` times, each once. Default `["08:00", "16:30"]`.
@@ -691,6 +692,13 @@ cuts = ["08:00", "16:30"]
   the next. An empty list, more than four times, a value that isn't
   `HH:MM` or a time listed twice falls back to the default, and the daemon
   logs a warning.
+- `trusted_authserv_ids`: for an IMAP account not on Gmail, the
+  authserv-ids your provider writes on the `Authentication-Results` it
+  adds (`"mx.example.net"`, or `"*.example.net"` for any host under it).
+  A new sign-in, failed payment or delivery problem goes to To do on
+  arrival only when that result says DMARC passed for the sender. Gmail
+  (over its API or IMAP) is known; Outlook accounts never break through.
+  Default empty.
 
 ```bash
 mxr updates --format json | jq '.cut'   # the cut in use, and every cut of the day

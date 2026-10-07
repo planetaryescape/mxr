@@ -34,6 +34,7 @@ export function LetGoAllDialog({
   onOpenChange,
   account,
   cut,
+  source,
   onConfirm,
 }: {
   open: boolean;
@@ -41,11 +42,14 @@ export function LetGoAllDialog({
   account: string | null;
   /** The cut the digest showed. */
   cut: string;
+  /** `e`: only this line's source, in its account. */
+  source?: UpdateLine | null;
   onConfirm: (selectionToken: string) => void;
 }) {
+  const scope = source ? { account: source.account_id, sourceKey: source.source_key } : { account };
   const preview = useQuery({
-    queryKey: ["updates-let-go-preview", account ?? "all", cut],
-    queryFn: () => letGoRequest({ account, cut, dryRun: true }),
+    queryKey: ["updates-let-go-preview", scope.account ?? "all", cut, source?.source_key ?? ""],
+    queryFn: () => letGoRequest({ ...scope, cut, dryRun: true }),
     enabled: open,
     staleTime: 0,
     gcTime: 0,

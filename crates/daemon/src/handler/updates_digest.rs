@@ -138,8 +138,6 @@ struct Scored<'a> {
 pub(super) struct Selection {
     pub thread_ids: Vec<ThreadId>,
     pub message_ids: Vec<MessageId>,
-    /// Updates mail in those threads that arrived after the cut: it stays.
-    pub keep: HashSet<MessageId>,
     pub token: String,
     pub source_count: usize,
     /// Selected but not shown: muted, changes only, or past its window.
@@ -194,11 +192,6 @@ fn select(
         .filter(|thread| seen.insert(*thread))
         .cloned()
         .collect();
-    let keep = items
-        .iter()
-        .filter(|item| item.message.date > cut_at && seen.contains(&item.message.thread_id))
-        .map(|item| item.message.id.clone())
-        .collect();
     let sources: HashSet<(&AccountId, &str)> = picked
         .iter()
         .map(|item| (&item.message.account_id, item.fact.source_key.as_str()))
@@ -213,7 +206,6 @@ fn select(
         message_ids: ids.into_iter().cloned().collect(),
         source_count: sources.len(),
         thread_ids,
-        keep,
     }
 }
 
@@ -439,6 +431,7 @@ where
         signal: signal_data(strongest),
         count: super::now::count(members.len()),
         latest_message_id: Some(message.id.clone()),
+        fact_message_id: Some(lead.item.message.id.clone()),
         latest_thread_id: Some(message.thread_id.clone()),
         latest_at: message.date,
         time_label: (section == UpdateSectionData::NeedsALook)
@@ -660,15 +653,16 @@ pub(super) fn parcel_name(delivery: &Delivery) -> String {
 }
 
 /// When a parcel still in flight went quiet: 7 days past its latest
-/// arrival date, or 14 days without news when it has none. `None` once
-/// delivered.
+/// arrival date or its latest event, whichever is later, or 14 days
+/// without news when it has no arrival date. A newer event restarts the
+/// clock. `None` once delivered.
 pub(super) fn parcel_quiet_since(delivery: &Delivery) -> Option<DateTime<Utc>> {
     if delivery.delivered_at.is_some() {
         return None;
     }
     Some(delivery.eta_until.map_or_else(
         || delivery.last_event_at + Duration::days(PARCEL_QUIET_NO_ETA_DAYS),
-        |eta| eta + Duration::days(PARCEL_QUIET_PAST_ETA_DAYS),
+        |eta| eta.max(delivery.last_event_at) + Duration::days(PARCEL_QUIET_PAST_ETA_DAYS),
     ))
 }
 
@@ -797,6 +791,7 @@ where
         message_ids: Vec::new(),
         thread_ids: delivery.thread_id.iter().cloned().collect(),
         latest_message_id: None,
+        fact_message_id: None,
         latest_thread_id: delivery.thread_id.clone(),
         latest_at: delivery.last_event_at,
         time_label: None,

@@ -139,7 +139,7 @@ test("let go of all acts on exactly the previewed cut, and u puts it back", asyn
   await expect(page.getByTestId("update-line").filter({ hasText: "Strava" })).toBeVisible();
 });
 
-test("K tunes a source with undo, and e lets go of one source", async ({ page }) => {
+test("K tunes a source with undo, and e previews then lets go of one source", async ({ page }) => {
   await waitForDigest(page);
   await openApp(page, "/updates");
   const plausible = page.getByTestId("update-line").filter({ hasText: "Plausible" });
@@ -155,6 +155,11 @@ test("K tunes a source with undo, and e lets go of one source", async ({ page })
 
   await plausible.hover();
   await page.keyboard.press("e");
+  // One source previews too: the count shows before anything changes.
+  const preview = page.getByTestId("updates-let-go-dialog");
+  await expect(preview).toContainText("from 1 source");
+  await expect(plausible).toBeVisible();
+  await preview.getByTestId("updates-let-go-confirm").click();
   await expect(plausible).toHaveCount(0);
   await page.keyboard.press("u");
   await expect(plausible).toBeVisible({ timeout: 30_000 });

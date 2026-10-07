@@ -114,9 +114,19 @@ The keys:
 A new sign-in alert, a failed payment and a parcel with a delivery problem
 don't wait for the cut. They become a to-do as soon as they sync ("Check
 new sign-in to Google", "Fix failed payment to Stripe") and still show in
-the next digest under Needs a look, marked "already in To do". One source's alerts
-of the same kind make one to-do a day, however often they sync. Mail older than two days and
-mail past its window never does.
+the next digest under Needs a look, marked "already in To do". One
+source's alerts of the same kind make one to-do a day, however they are
+worded. A sign-in alert and a failed payment from one source are two.
+
+Anyone can write "New sign-in" in a subject, so an alert goes to To do
+only when your provider's own check says the sender is who it claims
+(DMARC passed, in the `Authentication-Results` your provider added) and
+you had mail from that source before today. Everything else, including
+archived mail, mail older than two days and mail past its window, stays
+in Needs a look. Gmail accounts are covered as they are; for another IMAP
+provider, name its authserv-id in
+[`updates.trusted_authserv_ids`](/reference/config/#updates). Outlook
+accounts never break through.
 
 `t` on any line makes a to-do from it, with the title filled in.
 

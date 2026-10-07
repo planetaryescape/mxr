@@ -137,18 +137,24 @@ export async function letGo(
   }
 }
 
-/** `e`: let go of one source in the shown cut. No preview; Undo is one key. */
-export function letGoSource(line: UpdateLine, account: string | null, cut: string) {
-  return letGo({ account, cut, sourceKey: line.source_key }, [line.id]);
+/**
+ * `e`: let go of one source in the shown cut, after the same preview as
+ * the whole digest, with the token that preview returned.
+ */
+export function letGoSource(line: UpdateLine, cut: string, selectionToken: string) {
+  return letGo({ account: line.account_id, cut, sourceKey: line.source_key, selectionToken }, [
+    line.id,
+  ]);
 }
 
-/** `t`: this needs me. A to-do from the newest message, titled by the rules. */
+/** `t`: this needs me. A to-do from the message the line's fact came from. */
 export async function needsMe(line: UpdateLine): Promise<void> {
-  if (!line.latest_message_id) {
+  const messageId = line.fact_message_id ?? line.latest_message_id;
+  if (!messageId) {
     toast.info("This one has no email to make a to-do from");
     return;
   }
-  await makeTodo({ messageId: line.latest_message_id, title: line.todo_title });
+  await makeTodo({ messageId, title: line.todo_title });
   await refreshUpdates();
 }
 

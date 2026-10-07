@@ -91,13 +91,33 @@ fn esc_on_the_preview_keeps_the_digest() {
 }
 
 #[test]
-fn e_lets_go_of_one_source_and_a_tracker_stays() {
+fn e_previews_then_lets_go_of_one_source_and_a_tracker_stays() {
     let mut app = updates_app();
     select_source(&mut app, "Strava");
     press(&mut app, KeyCode::Char('e'));
+    assert!(
+        queued(&app).is_empty(),
+        "nothing changes before the preview"
+    );
+    assert!(std::mem::take(
+        &mut app.mailbox.updates_page.pending_let_go_preview
+    ));
+    assert_eq!(
+        app.mailbox
+            .updates_page
+            .let_go_source
+            .as_ref()
+            .map(|(_, key)| key.as_str()),
+        Some("strava"),
+        "the preview is for this source only"
+    );
+    let preview = super::now::let_go_preview(&[ThreadId::new()]);
+    app.show_updates_let_go_preview(preview.clone());
+    press(&mut app, KeyCode::Enter);
     assert!(matches!(
         queued(&app).as_slice(),
-        [Request::LetGoDigest { source_key: Some(key), dry_run: false, .. }] if key == "strava"
+        [Request::LetGoDigest { source_key: Some(key), selection_token: Some(token), dry_run: false, .. }]
+            if key == "strava" && token == &preview.selection_token
     ));
     assert!(app
         .mailbox

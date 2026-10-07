@@ -211,6 +211,10 @@ pub struct UpdateLineData {
     /// The newest message, for `o`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_message_id: Option<MessageId>,
+    /// The message `fact` and `todo_title` came from, for `t`. In Changed
+    /// it can be older than the newest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fact_message_id: Option<MessageId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_thread_id: Option<ThreadId>,
     pub latest_at: chrono::DateTime<chrono::Utc>,

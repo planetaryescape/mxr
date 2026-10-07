@@ -1959,11 +1959,14 @@ rules above; D117 records them.
   those it is, so nothing piles up out of sight in the inbox.
 - **Breakthrough is on, not a suggestion (phase 4).** A new sign-in, a
   failed payment and a delivery problem become a to-do on arrival, once per
-  source, kind of message and day by its dedup key (ten alerts in an
-  afternoon are one thing to check), only while inside their window and at most two
-  days old. "Auto-actions ship as suggestions" above still holds for model
-  placements; these three are rules with a fixed window, and the to-do
-  expires with it.
+  source, alert kind and day by its dedup key (differently worded alerts
+  of one kind are one thing to check), only for inbox mail inside its
+  window and at most two days old, and only when the receiving provider's
+  own `Authentication-Results` says DMARC passed for the sender and you had
+  mail from that source before today. Anything else stays in Needs a look.
+  "Auto-actions ship as suggestions" above still holds for model
+  placements; these three are authenticated rules with a fixed window, and
+  the to-do expires with it.
 - **The Updates fact chunk is deferred (phase 4).** Facts are cached in
   `update_facts` but are not yet a semantic index recipe; search still
   indexes Updates mail the way it indexes all mail.

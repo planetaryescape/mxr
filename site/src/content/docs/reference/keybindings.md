@@ -114,7 +114,7 @@ help modal (`?`).
 | Key | Action |
 |-----|--------|
 | `gh` | Go to Now (the front page) |
-| `gm` | Messages (the desk lens, early version) |
+| `gm` | Messages |
 | `gx` | To do |
 | `gu` | Updates (Paper trail, early version) |
 | `gr` | Reading |
@@ -236,8 +236,22 @@ mode.
 
 ## Messages
 
-The desk lens, as Messages' early version (`gm`). `e` is done in Messages;
-on a promise under Due it is the desk's Done, which keeps the promise.
+People as rows with their topics inside (`gm`). See
+[Messages](/guides/messages/).
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Open the person |
+| `r` / `a` | Reply / reply all on the selected topic |
+| `.` | Got it: a short acknowledgement after a countdown; `u` cancels |
+| `e` | Done here, until they write again |
+| `t` | Make a to-do from the topic |
+| `b` | Reply later |
+| `s` | Pin or unpin the person |
+| `c` | New topic with this person |
+| `[` / `]` | Previous / next topic |
+| `p` | The person's page |
+| `o` / `v` | The selected message as sent |
 
 ## Updates and Reading
 

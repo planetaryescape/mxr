@@ -17,7 +17,7 @@ page, and Messages, the mode for people, is the desk's lanes for now
 ## 1. Open the desk
 
 ```bash
-mxr web      # the web app opens on Now; g m opens the desk's lanes
+mxr web      # the web app opens on Now; g m opens Messages
 mxr desk     # the same lanes in the terminal
 ```
 
@@ -25,8 +25,9 @@ The desk shows what needs you, not what arrived: **You owe**, **Due**,
 **Waiting on** and **New from people**. Every row says why it is there and how
 long it has been. Newsletters and notifications are not on it.
 
-In the TUI, **Messages** in the sidebar opens the desk lens.
-[Start from Now](/guides/now/#messages-built-on-the-desk) covers every lane.
+[Messages](/guides/messages/) shows the same people as rows with their
+conversations inside.
+[Start from Now](/guides/now/#the-desks-lanes-and-messages) covers every lane.
 
 ## 2. Put away what needs nothing
 

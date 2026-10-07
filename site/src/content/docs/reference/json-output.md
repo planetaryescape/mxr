@@ -474,9 +474,12 @@ Successful sends return:
 `latest` or `you`. `mxr messages person ID --format json` adds
 `relationship_line`, every topic, and `conversation.messages[]`, each with
 `text` (the new text), `trimmed: {quote, signature}`, `trimmed_label` and
-`layout` (`compact` or `letter`). `mxr messages ack THREAD --dry-run
---format json` returns the exact `text`, `to`, `subject`, `built_from` and
-`countdown_seconds`; `sent_message_id` is set only after a real send.
+`layout` (`compact` or `letter`). `trimmed` also has `footer` (a disclaimer
+or unsubscribe footer), and `only_quoted` is true when a message was nothing
+but quoted text. `mxr messages ack THREAD --dry-run --format json` returns
+the exact `text`, `from`, `to`, `subject`, `built_from`,
+`countdown_seconds`, `preview_token` and `preview_expires_at`;
+`sent_message_id` is set only after a real send.
 
 ## Common `jq` patterns
 

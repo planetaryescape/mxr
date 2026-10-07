@@ -42,8 +42,10 @@ mxr judges each thread's shape from who took part:
 - One other person wrote in it or you wrote to them: a topic in their row.
 - Two or more other people took part: its own row, keyed by the thread,
   so it stays one row however the CC list changes.
-- You were only copied, or it went to more than 10 people, and you never
-  wrote in it: it goes to Updates, not Messages.
+- You were only copied and never wrote in it, or it went to more than 10
+  people: it goes to Updates, not Messages, and Updates lists it with the
+  reason "copied". A crowd thread stays in Messages while someone has
+  replied to you in it, with you in To, and you haven't answered yet.
 
 The 10-recipient line is `messages.large_thread_recipients` in
 [config](/reference/config/). Automated mail and lists never land here.
@@ -58,8 +60,10 @@ Each message shows what it says that the thread didn't already: the
 quoted history and signature are removed. mxr finds the quote by matching
 the message against the earlier messages in the thread, as well as by
 Gmail, Apple Mail and Outlook's quote markers, so it also catches quotes
-no client marked. A message that lost anything says "trimmed: quote, sig",
-and `o` (or `v`) shows it as sent. The CLI, TUI, web app and MCP all show
+no client marked. A message that lost anything says "trimmed: quote, sig"
+(or "footer" for a disclaimer or unsubscribe footer), and `o` (or `v`)
+shows it as sent. A reply that is nothing but quoted text reads "(only
+quoted text)", so nobody's earlier words pass as the sender's. The CLI, TUI, web app and MCP all show
 the same text.
 
 Length decides the layout. A message of three lines or fewer reads like
@@ -80,11 +84,20 @@ down for five seconds before sending, and `u` cancels it.
 
 ```bash
 mxr messages ack THREAD_ID --dry-run   # the exact text, nothing sent
-mxr messages ack THREAD_ID             # sends exactly that text
+mxr messages ack THREAD_ID             # shows it, counts down, then sends
 ```
 
 Got it is a real reply, so it reads fine in every mail client, unlike an
-emoji reaction.
+emoji reaction. Because it sends mail on one key, mxr guards it:
+
+- It goes only to one person, never to all. It refuses mailing lists,
+  automated and no-reply addresses, and a Reply-To on another domain you
+  have never written to; reply by hand in those cases.
+- What goes out is exactly what you saw. If someone writes again, or
+  anything about the reply changes during the countdown, nothing is sent
+  and you are asked to look again. A preview is good for one minute.
+- It never sends twice for the same message. Once you've written after
+  their message, there is nothing left to acknowledge.
 
 ## Keys
 

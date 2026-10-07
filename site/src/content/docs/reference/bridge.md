@@ -200,7 +200,7 @@ draws them. Done here previews with `dry_run: true` and returns one
 | `GET` | `/mail/now` | Now: People, Due soon, the Updates card and the evening Reading pick (`?account=`) |
 | `GET` | `/mail/people` | Messages: people in four bands with their topics (`?turn=mine\|theirs&limit=&account=`) |
 | `GET` | `/mail/people/page` | A person's page with the selected topic as new text (`?person=&topic=`) |
-| `POST` | `/mail/people/ack` | Got it: `{thread_id, dry_run, expect_text}`; a send refuses anything but the previewed text |
+| `POST` | `/mail/people/ack` | Got it: `{thread_id}` previews (dry run by default) and returns a `preview_token`; a send needs `dry_run: false`, the token (within a minute) and the previewed `expect_text`, and is refused if anything changed or it was already acknowledged |
 | `POST` | `/mail/people/merge` | Merge addresses into one person by hand (`dry_run` previews) |
 | `POST` | `/mail/people/split` | Take an address back out of its person (`dry_run` previews) |
 | `GET` | `/mail/people/merge-suggestions` | Merges mxr suggests: same name, written to both |

@@ -134,15 +134,35 @@ pub(crate) fn conversation_shape(thread: &[DeskMessage], inputs: &ShapeInputs<'_
     if people.is_empty() {
         return Shape::NotConversation;
     }
-    if !wrote_in
-        && ((copied && !addressed) || most_recipients > inputs.config.large_thread_recipients)
-    {
+    let crowd = most_recipients > inputs.config.large_thread_recipients;
+    if (!wrote_in && copied && !addressed) || (crowd && !answered_you(thread, inputs)) {
         return Shape::Copied;
     }
     match people.len() {
         1 => Shape::OneToOne(people.remove(0)),
         _ => Shape::Group(people),
     }
+}
+
+/// A crowd thread stays a conversation only while it is your turn in it:
+/// you wrote in it, and a person's reply after your last message has you
+/// in To. Otherwise the crowd rule sends it to Updates (blueprint 22).
+fn answered_you(thread: &[DeskMessage], inputs: &ShapeInputs<'_>) -> bool {
+    let is_self = inputs.is_self;
+    let live = || thread.iter().filter(|m| !m.trashed);
+    let Some(last_mine) = live()
+        .filter(|m| is_outbound(m, is_self))
+        .map(|m| m.seq)
+        .max()
+    else {
+        return false;
+    };
+    live().any(|m| {
+        m.seq > last_mine
+            && !is_outbound(m, is_self)
+            && (inputs.person_sender)(m)
+            && m.to.iter().any(|a| is_self(&a.email))
+    })
 }
 
 #[cfg(test)]
@@ -310,6 +330,41 @@ mod tests {
         to.push(ME);
         let thread = [message(&t, "lead@team.example", &to, &[], 1)];
         assert_eq!(shape(&thread), Shape::Copied);
+    }
+
+    #[test]
+    fn a_crowd_is_copied_even_after_you_wrote_in_it() {
+        let t = ThreadId::new();
+        let crowd: Vec<String> = (0..12).map(|i| format!("p{i}@team.example")).collect();
+        let mut to: Vec<&str> = crowd.iter().map(String::as_str).collect();
+        to.push(ME);
+        let thread = [
+            message(&t, "lead@team.example", &to, &[], 1),
+            message(&t, "p3@team.example", &to, &[], 2),
+            message(&t, ME, &to[..12], &[], 3),
+        ];
+        assert_eq!(shape(&thread), Shape::Copied);
+    }
+
+    #[test]
+    fn a_crowd_thread_stays_while_someone_answered_you_directly() {
+        // You wrote in it and a person replied to you, with you in To:
+        // your turn, so it stays in Messages until you answer.
+        let t = ThreadId::new();
+        let crowd: Vec<String> = (0..12).map(|i| format!("p{i}@team.example")).collect();
+        let crowd: Vec<&str> = crowd.iter().map(String::as_str).collect();
+        let mut with_me = crowd.clone();
+        with_me.insert(0, ME);
+        let thread = [
+            message(&t, "lead@team.example", &with_me, &[], 1),
+            message(&t, ME, &crowd, &[], 2),
+            message(&t, "p3@team.example", &with_me, &[], 3),
+        ];
+        assert!(matches!(shape(&thread), Shape::Group(_)));
+        // Once you answer, the crowd rule applies again.
+        let mut answered = thread.to_vec();
+        answered.push(message(&t, ME, &crowd, &[], 4));
+        assert_eq!(shape(&answered), Shape::Copied);
     }
 
     #[test]

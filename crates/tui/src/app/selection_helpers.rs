@@ -104,6 +104,7 @@ impl App {
                 | MutationEffect::RefreshPlaces(_)
                 | MutationEffect::SenderMoved(_)
                 | MutationEffect::Todo(_)
+                | MutationEffect::Records(_)
                 | MutationEffect::ModeDone(_)
                 | MutationEffect::Messages(_)
                 | MutationEffect::SentSuccess { .. } => Vec::new(),

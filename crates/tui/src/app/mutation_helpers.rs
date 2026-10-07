@@ -193,6 +193,7 @@ impl App {
             | MutationEffect::RefreshPlaces(_)
             | MutationEffect::SenderMoved(_)
             | MutationEffect::Todo(_)
+            | MutationEffect::Records(_)
             | MutationEffect::ModeDone(_)
             | MutationEffect::Messages(_)
             | MutationEffect::SentSuccess { .. } => {}
@@ -297,6 +298,12 @@ impl App {
                 if self.mailbox.mailbox_view == MailboxView::Todo {
                     self.refresh_todo();
                 }
+                if show_completion_status && !msg.is_empty() {
+                    self.push_toast(Toast::success(msg));
+                }
+            }
+            MutationEffect::Records(msg) => {
+                self.refresh_records();
                 if show_completion_status && !msg.is_empty() {
                     self.push_toast(Toast::success(msg));
                 }
@@ -500,6 +507,7 @@ impl App {
             | MutationEffect::RefreshPlaces(_)
             | MutationEffect::SenderMoved(_)
             | MutationEffect::Todo(_)
+            | MutationEffect::Records(_)
             | MutationEffect::ModeDone(_)
             | MutationEffect::Messages(_)
             | MutationEffect::SentSuccess { .. } => MutationSnapshot::None,
@@ -615,6 +623,7 @@ impl App {
         self.handle_mutation_reconciliation_failed(id);
         self.pending_optimistic.clear(id);
         self.reopen_todo_card_after_failure(id);
+        self.reopen_records_card_after_failure(id);
         self.reopen_now_card_after_failure(id);
         self.reopen_messages_card_after_failure(id);
         self.refresh_mailbox_after_mutation_failure();

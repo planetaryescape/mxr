@@ -235,11 +235,14 @@ impl App {
                         } else if self.mailbox.mailbox_view == MailboxView::People {
                             ui::messages_lens::draw(frame, chunks[1], &self.messages_view(), theme);
                         } else if self.mailbox.mailbox_view == MailboxView::ArchiveMode {
-                            ui::now_lens::draw_archive(
+                            ui::records_lens::draw(
                                 frame,
                                 chunks[1],
-                                self.rail_early_note("archive"),
-                                &self.mailbox.active_pane,
+                                &ui::records_lens::RecordsView {
+                                    page: &self.mailbox.records_page,
+                                    selected_index: self.mailbox.selected_index,
+                                    active_pane: &self.mailbox.active_pane,
+                                },
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::Todo {
@@ -365,11 +368,14 @@ impl App {
                         } else if self.mailbox.mailbox_view == MailboxView::People {
                             ui::messages_lens::draw(frame, chunks[1], &self.messages_view(), theme);
                         } else if self.mailbox.mailbox_view == MailboxView::ArchiveMode {
-                            ui::now_lens::draw_archive(
+                            ui::records_lens::draw(
                                 frame,
                                 chunks[1],
-                                self.rail_early_note("archive"),
-                                &self.mailbox.active_pane,
+                                &ui::records_lens::RecordsView {
+                                    page: &self.mailbox.records_page,
+                                    selected_index: self.mailbox.selected_index,
+                                    active_pane: &self.mailbox.active_pane,
+                                },
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::Todo {
@@ -600,6 +606,7 @@ impl App {
 
         ui::reply_later_prompt::draw(frame, area, self.modals.reply_later_prompt.as_ref(), theme);
         ui::todo_lens::draw_prompt(frame, area, self.mailbox.todo_page.prompt.as_ref(), theme);
+        ui::records_lens::draw_overlays(frame, area, &self.mailbox.records_page, theme);
 
         // Send confirmation overlay
         let time_preview = self.compose.pending_time.lines();

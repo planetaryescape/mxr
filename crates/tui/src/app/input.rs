@@ -194,6 +194,9 @@ impl App {
             }
             (KeyCode::Char('L'), modifiers) if plain_or_shift(modifiers) => Some(Action::OpenLinks),
             (KeyCode::Char('t'), KeyModifiers::NONE) => Some(Action::CreateTodoFromMessage),
+            (KeyCode::Char('T'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::PassToMode)
+            }
             (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::ExportThread)
             }
@@ -930,6 +933,16 @@ impl App {
             return None;
         }
 
+        if self.mailbox.records_page.prompt.is_some() {
+            self.records_prompt_key(key.code, key.modifiers);
+            return None;
+        }
+
+        if self.mailbox.records_page.pass_menu.is_some() {
+            self.pass_menu_key(key.code);
+            return None;
+        }
+
         if self.modals.snooze_panel.visible {
             // Custom-input mode: text-entry takes precedence over list navigation.
             if self.modals.snooze_panel.custom_input.is_some() {
@@ -1250,6 +1263,15 @@ impl App {
         // The second key of a chord (`g r`, `g a`, `i a`) completes it,
         // before any single-key binding such as `r` reply can claim it.
         if self.input.is_pending() {
+            // Archive's `g f` steps through its kind chips.
+            if self.records_list_focused()
+                && self.input.pending_prefix() == Some('g')
+                && key.code == KeyCode::Char('f')
+                && key.modifiers == KeyModifiers::NONE
+            {
+                self.input.reset();
+                return Some(Action::RecordsNextKind);
+            }
             return self.contextual_input_action(key);
         }
 
@@ -1370,6 +1392,9 @@ impl App {
             }
             ActivePane::MailList if self.mailbox.mailbox_view == MailboxView::People => {
                 self.messages_lens_key(key)
+            }
+            ActivePane::MailList if self.mailbox.mailbox_view == MailboxView::ArchiveMode => {
+                self.records_lens_key(key)
             }
             ActivePane::MailList => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),

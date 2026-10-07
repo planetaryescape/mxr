@@ -8,6 +8,7 @@ mod mailbox;
 mod messages;
 mod modals;
 mod now;
+mod records;
 mod rules;
 mod search;
 mod toasts;
@@ -48,6 +49,7 @@ pub use modals::{
     USER_ERROR_LOG_CAPACITY, WARN_STATUS_TTL,
 };
 pub use now::{NowDigestPreview, NowPageState, NowRow};
+pub use records::{PassMenu, RecordFixPrompt, RecordsPageState, RECORD_KIND_CHIPS};
 pub use rules::{RuleFormState, RulesPageState, RulesPanel, RulesState};
 pub use search::{
     PendingSearchCountRequest, PendingSearchDebounce, PendingSearchRequest, SearchPageState,

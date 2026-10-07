@@ -125,6 +125,23 @@ impl App {
             | Action::CatchupLetGo
             | Action::CatchupLetGoAll
             | Action::CreateTodoFromMessage => self.apply_todo_action(action),
+            Action::RecordsAsk
+            | Action::RecordsCopyReference
+            | Action::RecordsCopyAmount
+            | Action::RecordsOpenDocument
+            | Action::RecordsOpenCard
+            | Action::RecordsOpenEmail
+            | Action::RecordsIssuerPage
+            | Action::RecordsPrevYear
+            | Action::RecordsNextYear
+            | Action::RecordsFix
+            | Action::RecordsMarkChecked
+            | Action::RecordsDismiss
+            | Action::RecordsExport
+            | Action::RecordsNextKind
+            | Action::RecordsMakeTodo
+            | Action::RecordsBack
+            | Action::PassToMode => self.apply_records_action(action),
             Action::OpenNow
             | Action::OpenMessages
             | Action::OpenArchiveMode

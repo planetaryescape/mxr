@@ -191,6 +191,7 @@ impl App {
                                 status,
                             );
                         }
+                        UndoAction::Records(undo) => self.undo_records(undo, status),
                         // Setting the previous kind again is the undo; its
                         // own answer offers no further undo.
                         UndoAction::SenderKind {

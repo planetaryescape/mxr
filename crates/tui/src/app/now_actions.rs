@@ -76,7 +76,7 @@ impl App {
         match action {
             Action::OpenNow => self.open_now(),
             Action::OpenMessages => self.open_messages(),
-            Action::OpenArchiveMode => self.open_archive_mode(),
+            Action::OpenArchiveMode => self.open_archive_records(),
             Action::NowOpen => self.now_open(false),
             Action::NowOpenEmail => self.now_open(true),
             Action::NowDone => self.now_done(),
@@ -107,11 +107,6 @@ impl App {
         let page = &mut self.mailbox.now_page;
         page.digest_preview = None;
         page.pending_refresh = true;
-        self.mailbox.pending_rail_refresh = true;
-    }
-
-    fn open_archive_mode(&mut self) {
-        self.enter_mode_view(MailboxView::ArchiveMode);
         self.mailbox.pending_rail_refresh = true;
     }
 
@@ -158,11 +153,6 @@ impl App {
                     .format("%H:%M")
                     .to_string()
             })
-    }
-
-    /// What an early mode is built on, from the rail.
-    pub(crate) fn rail_early_note(&self, id: &str) -> Option<&str> {
-        self.rail_entry(id)?.early_note.as_deref()
     }
 
     /// Refetch Now and the rail after anything that can move them.

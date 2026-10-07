@@ -176,7 +176,7 @@ impl App {
                 .filter(|entry| entry.status == mxr_protocol::RailStatusData::Early)
                 .map(|entry| entry.id.clone())
                 .collect(),
-            None => ["messages", "updates", "reading", "archive"]
+            None => ["messages", "updates", "reading"]
                 .into_iter()
                 .map(String::from)
                 .collect(),

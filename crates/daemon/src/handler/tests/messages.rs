@@ -712,11 +712,13 @@ async fn a_conversation_that_changed_since_the_preview_sends_nothing() {
 }
 
 async fn reply_to_body(fx: &Fixture, message: &MessageId, reply_to: &str) {
-    let mut metadata = MessageMetadata::default();
-    metadata.reply_to = vec![Address {
-        name: None,
-        email: reply_to.to_string(),
-    }];
+    let metadata = MessageMetadata {
+        reply_to: vec![Address {
+            name: None,
+            email: reply_to.to_string(),
+        }],
+        ..MessageMetadata::default()
+    };
     fx.state
         .store
         .insert_body(&MessageBody {

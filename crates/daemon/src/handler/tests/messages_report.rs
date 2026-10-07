@@ -115,9 +115,14 @@ async fn messages_report() {
         );
         if let Some(conversation) = &page.conversation {
             let started = Instant::now();
-            let result =
-                crate::handler::messages_ack::ack(&state, &conversation.thread_id, true, None, None)
-                    .await;
+            let result = crate::handler::messages_ack::ack(
+                &state,
+                &conversation.thread_id,
+                true,
+                None,
+                None,
+            )
+            .await;
             println!(
                 "AckMessage --dry-run: {:.0} ms ({})",
                 ms(started),

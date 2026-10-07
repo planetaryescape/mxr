@@ -147,19 +147,8 @@ test("L names the site before fetching, and a saved article reads offline", asyn
   await expect(reader.getByRole("radio", { name: "Issue" })).toBeChecked();
   await page.keyboard.press("L");
   await expect(page.getByText("Fetching from platform.demo.mxr.local…").first()).toBeVisible();
-  const status = reader.getByTestId("article-status");
-  await expect(status).toBeVisible();
-  const saved = await status
-    .getByText(/reads offline/)
-    .isVisible()
-    .catch(() => false);
-  if (!saved) {
-    // Outside the demo profile the daemon refuses the demo's made-up site,
-    // and the reader says why and offers the browser.
-    await expect(status).toContainText(/couldn't be read here/);
-    await expect(status.getByRole("link", { name: "Open in browser" })).toBeVisible();
-    return;
-  }
+  // The demo mailbox serves its own articles, so nothing leaves the machine.
+  await expect(reader.getByTestId("article-status")).toContainText("reads offline");
   await expect(reader.getByTestId("reader-text")).toContainText("tombstones for three weeks");
   // Again: the saved copy, with nothing contacted.
   await page.keyboard.press("Escape");

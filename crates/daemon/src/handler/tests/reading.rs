@@ -575,3 +575,52 @@ async fn opening_an_item_records_engagement_and_retires_the_card() {
     };
     assert!(guides[0].card_seen);
 }
+
+#[tokio::test]
+async fn the_later_count_covers_only_the_requests_accounts() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    let (mine, _) = issue(&fx, WEEKLY, "Mine", &essay(200), now).await;
+    // Another account with its own item on Later.
+    let other = mxr_core::Account {
+        id: mxr_core::AccountId::new(),
+        name: "Other".into(),
+        email: "other@example.com".into(),
+        sync_backend: None,
+        send_backend: None,
+        enabled: true,
+    };
+    fx.state.store.insert_account(&other).await.expect("account");
+    let mut theirs = fx
+        .state
+        .store
+        .get_envelope(&mine)
+        .await
+        .expect("read")
+        .expect("envelope");
+    theirs.id = MessageId::new();
+    theirs.account_id = other.id.clone();
+    theirs.provider_id = format!("other-{}", theirs.id);
+    theirs.message_id_header = Some(format!("<{}@other>", theirs.id));
+    fx.state.store.upsert_envelope(&theirs).await.expect("envelope");
+    fx.state
+        .store
+        .set_reading_later(&other.id, &theirs.id, 0, true, now)
+        .await
+        .expect("later");
+
+    let ResponseData::ReadingLater { later_count, copy, .. } = request(
+        &fx,
+        Request::SetReadingLater {
+            item_keys: vec![format!("{mine}:0")],
+            later: true,
+            dry_run: false,
+        },
+    )
+    .await
+    else {
+        panic!("later");
+    };
+    assert_eq!(later_count, 1, "the other account's shelf isn't counted");
+    assert_eq!(copy, "Saved to Later. 1 thing saved.");
+}

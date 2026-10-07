@@ -181,9 +181,9 @@ fn highlight_data(
     }
 }
 
-async fn later_count(state: &AppState) -> Result<u32, HandlerError> {
-    let accounts = crate::handler::places::scoped_accounts(state, None).await?;
-    Ok(u32::try_from(state.store.reading_later(&accounts).await?.len()).unwrap_or(u32::MAX))
+/// Items on Later in the accounts the request touched.
+async fn later_count(state: &AppState, accounts: &[AccountId]) -> Result<u32, HandlerError> {
+    Ok(u32::try_from(state.store.reading_later(accounts).await?.len()).unwrap_or(u32::MAX))
 }
 
 pub(in crate::handler) async fn set_later(
@@ -199,6 +199,7 @@ pub(in crate::handler) async fn set_later(
     }
     let now = Utc::now();
     let mut outcomes = Vec::new();
+    let mut accounts: Vec<AccountId> = Vec::new();
     for key in keys {
         let loaded = load_item(state, key).await;
         let (issue, rows, idx) = match loaded {
@@ -214,6 +215,9 @@ pub(in crate::handler) async fn set_later(
                 continue;
             }
         };
+        if !accounts.contains(&issue.account_id) {
+            accounts.push(issue.account_id.clone());
+        }
         let title = rows
             .iter()
             .find(|row| row.idx == idx)
@@ -241,7 +245,7 @@ pub(in crate::handler) async fn set_later(
             error: None,
         });
     }
-    let count = later_count(state).await?;
+    let count = later_count(state, &accounts).await?;
     let copy = match (later, count) {
         (true, 1) => "Saved to Later. 1 thing saved.".to_string(),
         (true, n) => format!("Saved to Later. {n} things saved."),

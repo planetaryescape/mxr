@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
   prefilledMessageIntent,
   replyIntent,
@@ -19,6 +20,8 @@ import { useThreadModesMap } from "@/features/modes/membership";
 import { ModeCard } from "@/features/modes/ModeCard";
 import { markModeDone } from "@/features/modes/modeDone";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useSavedLayout } from "@/hooks/useSavedLayout";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { useScopeController } from "@/lib/keys/controllers";
@@ -37,6 +40,9 @@ import { MessagesList } from "./MessagesList";
 import { cursorRows, newTopicAddress, rowForThread, stepTopic } from "./messagesView";
 import { PersonPane } from "./PersonPane";
 import { useGotIt } from "./useGotIt";
+
+/** List and person page share the screen from Tailwind's md up. */
+const MESSAGES_SPLIT_QUERY = "(min-width: 768px)";
 
 export interface MessagesSearch {
   /** The selected row's id: `person:<email>` or `group:<thread>`. */
@@ -167,6 +173,8 @@ function MessagesBody({
     [navigate, search.turn],
   );
   const listRef = useRef<HTMLDivElement>(null);
+  const split = useMediaQuery(MESSAGES_SPLIT_QUERY);
+  const savedLayout = useSavedLayout("messages", { save: split });
   useEffect(() => {
     if (!selectedId) return;
     listRef.current
@@ -338,14 +346,16 @@ function MessagesBody({
 
   const empty = data.your_turn.length === 0;
   return (
-    <div className="flex min-h-0 flex-1">
-      <div
-        ref={listRef}
-        className={
-          pageOpen
-            ? "hidden min-h-0 md:flex md:w-[22rem] md:shrink-0 md:flex-col md:border-r md:border-border"
-            : "flex min-h-0 w-full flex-col md:w-[22rem] md:shrink-0 md:border-r md:border-border"
-        }
+    <ResizablePanelGroup className="min-h-0 flex-1" {...savedLayout}>
+      <ResizablePanel
+        id="messages-people"
+        hidden={!split && pageOpen}
+        defaultSize="22rem"
+        minSize="16rem"
+        maxSize="40rem"
+        groupResizeBehavior="preserve-pixel-size"
+        className="flex min-h-0 flex-col"
+        elementRef={listRef}
       >
         <MessagesHeader guide={guide} turn={search.turn} />
         <div className="min-h-0 flex-1 overflow-y-auto pb-6">
@@ -374,47 +384,46 @@ function MessagesBody({
           />
           {guide ? <KeyLine guide={guide} /> : null}
         </div>
-      </div>
-      <div
-        className={
-          pageOpen ? "flex min-h-0 min-w-0 flex-1" : "hidden min-h-0 min-w-0 flex-1 md:flex"
-        }
-      >
-        {page ? (
-          <PersonPane
-            page={page}
-            topic={topic}
-            asSent={asSent}
-            replyAll={replyAll}
-            pending={gotIt.pending}
-            ackLoading={gotIt.loading}
-            onBack={() => setPageOpen(false)}
-            onTopic={(thread) => selectedId && select(selectedId, { topic: thread })}
-            onToggleAsSent={(id) => setAsSent((open) => (open === id ? null : id))}
-            onReplyAllChange={setReplyAllOverride}
-            onReply={() => openReply(replyAll)}
-            onGotIt={() => conversation && void gotIt.start(conversation.thread_id)}
-            onUndoGotIt={gotIt.undo}
-            onDone={done}
-            onTodo={() => void makeTodo()}
-          />
-        ) : person.isError ? (
-          <Centered
-            icon={<RefreshCw className="size-6" />}
-            title="Couldn't open this person"
-            body={person.error.message}
-          />
-        ) : selectedId ? (
-          <div className="flex-1" aria-busy="true" />
-        ) : (
-          <Centered
-            icon={<ChevronRight className="size-6" />}
-            title="Nobody here yet"
-            body={guide?.never_had_any}
-          />
-        )}
-      </div>
-    </div>
+      </ResizablePanel>
+      {split ? <ResizableHandle aria-label="Resize people list" /> : null}
+      {split || pageOpen ? (
+        <ResizablePanel id="messages-conversation" className="flex min-h-0 min-w-0">
+          {page ? (
+            <PersonPane
+              page={page}
+              topic={topic}
+              asSent={asSent}
+              replyAll={replyAll}
+              pending={gotIt.pending}
+              ackLoading={gotIt.loading}
+              onBack={() => setPageOpen(false)}
+              onTopic={(thread) => selectedId && select(selectedId, { topic: thread })}
+              onToggleAsSent={(id) => setAsSent((open) => (open === id ? null : id))}
+              onReplyAllChange={setReplyAllOverride}
+              onReply={() => openReply(replyAll)}
+              onGotIt={() => conversation && void gotIt.start(conversation.thread_id)}
+              onUndoGotIt={gotIt.undo}
+              onDone={done}
+              onTodo={() => void makeTodo()}
+            />
+          ) : person.isError ? (
+            <Centered
+              icon={<RefreshCw className="size-6" />}
+              title="Couldn't open this person"
+              body={person.error.message}
+            />
+          ) : selectedId ? (
+            <div className="flex-1" aria-busy="true" />
+          ) : (
+            <Centered
+              icon={<ChevronRight className="size-6" />}
+              title="Nobody here yet"
+              body={guide?.never_had_any}
+            />
+          )}
+        </ResizablePanel>
+      ) : null}
+    </ResizablePanelGroup>
   );
 }
 

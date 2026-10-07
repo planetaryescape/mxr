@@ -8,6 +8,7 @@ import { OfflineBanner } from "@/components/OfflineBanner";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBar } from "@/components/StatusBar";
 import { Topbar } from "@/components/Topbar";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { fetchAccounts } from "@/features/accounts/api";
 import { llmStatusQuery } from "@/features/llm/useLlmStatus";
 import { useNewMessageNotifier } from "@/features/notifications/useNewMessageNotifier";
@@ -15,6 +16,7 @@ import { chimeSettingsQuery } from "@/features/sound/api";
 import { installSoundFeedback } from "@/features/sound/feedback";
 import { useKeyDispatcher } from "@/hooks/useKeyDispatcher";
 import { NARROW_SHELL_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
+import { SIDEBAR_ID, SIDEBAR_SIZE, useResizableSidebar } from "@/hooks/useResizableSidebar";
 import { setRuntimeNavigate } from "@/lib/actions";
 import { installKeyHints } from "@/lib/actions/keyHints";
 import { useComposeUi } from "@/features/compose/composeUiStore";
@@ -126,6 +128,7 @@ export function AppShell() {
   }, [accounts.data?.accounts.length, navigate, path]);
 
   const collapsed = sidebarCollapsed || narrow;
+  const sidebar = useResizableSidebar(narrow);
   const paletteOpen = useModals((s) => s.commandPaletteOpen);
   const searchOpen = useModals((s) => s.searchPaletteOpen);
   const launcherOpen = useModals((s) => s.composeLauncherOpen);
@@ -141,49 +144,79 @@ export function AppShell() {
   const mountPromises = useOnceTrue(promiseOffered);
 
   return (
-    <div
-      className="app-shell"
-      data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
-      data-rightrail-open={rightRail ? "true" : "false"}
-    >
+    <>
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-primary focus:px-3 focus:py-1.5 focus:text-primary-foreground"
       >
         Skip to content
       </a>
-      <aside className="app-shell-sidebar" aria-label="Mailboxes">
-        <Sidebar collapsed={collapsed} />
-      </aside>
-      <header className="app-shell-topbar">
-        <Topbar />
-      </header>
-      <main id="main" className="app-shell-main">
-        <OfflineBanner />
-        <ErrorBoundary resetKey={path}>
-          <Outlet />
-        </ErrorBoundary>
-      </main>
-      {rightRail ? (
-        <aside className="app-shell-rightrail" aria-label="Context">
-          <Suspense fallback={null}>
-            <RightRail />
-          </Suspense>
-        </aside>
-      ) : null}
-      <footer className="app-shell-statusbar">
-        <StatusBar />
-      </footer>
-      <MobileTabs />
-      <Suspense fallback={null}>
-        {mountPalette ? <CommandPaletteMount /> : null}
-        {mountLauncher ? <ComposeLauncher /> : null}
-        {mountCompose ? <ComposeHost /> : null}
-        {mountSearch ? <SearchPalette /> : null}
-        {mountDialogs ? <MailDialogs /> : null}
-        {mountHelp ? <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} /> : null}
-        {mountPromises ? <PromiseTray /> : null}
-      </Suspense>
-    </div>
+      <ResizablePanelGroup
+        className="app-frame"
+        // Inline: the group's own inline height (100%) beats a class.
+        style={{ height: "100dvh" }}
+        data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
+        elementRef={sidebar.frameRef}
+        {...sidebar.groupProps}
+      >
+        <ResizablePanel
+          id={SIDEBAR_ID}
+          data-shell-pane="sidebar"
+          collapsible
+          collapsedSize={SIDEBAR_SIZE.collapsedSize}
+          minSize={SIDEBAR_SIZE.minSize}
+          defaultSize={SIDEBAR_SIZE.defaultSize}
+          maxSize={SIDEBAR_SIZE.maxSize}
+          groupResizeBehavior="preserve-pixel-size"
+          panelRef={sidebar.panelRef}
+          onResize={sidebar.onResize}
+          className="flex min-h-0 flex-col"
+        >
+          <aside className="app-shell-sidebar" aria-label="Mailboxes">
+            <Sidebar collapsed={collapsed} />
+          </aside>
+        </ResizablePanel>
+        {narrow ? null : (
+          <ResizableHandle aria-label="Resize sidebar" className="bg-sidebar-border" />
+        )}
+        <ResizablePanel id="shell-body" className="flex min-h-0 min-w-0">
+          <div
+            className="app-shell"
+            data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
+            data-rightrail-open={rightRail ? "true" : "false"}
+          >
+            <header className="app-shell-topbar">
+              <Topbar />
+            </header>
+            <main id="main" className="app-shell-main">
+              <OfflineBanner />
+              <ErrorBoundary resetKey={path}>
+                <Outlet />
+              </ErrorBoundary>
+            </main>
+            {rightRail ? (
+              <aside className="app-shell-rightrail" aria-label="Context">
+                <Suspense fallback={null}>
+                  <RightRail />
+                </Suspense>
+              </aside>
+            ) : null}
+            <footer className="app-shell-statusbar">
+              <StatusBar />
+            </footer>
+            <MobileTabs />
+            <Suspense fallback={null}>
+              {mountPalette ? <CommandPaletteMount /> : null}
+              {mountLauncher ? <ComposeLauncher /> : null}
+              {mountCompose ? <ComposeHost /> : null}
+              {mountSearch ? <SearchPalette /> : null}
+              {mountDialogs ? <MailDialogs /> : null}
+              {mountHelp ? <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} /> : null}
+              {mountPromises ? <PromiseTray /> : null}
+            </Suspense>
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    </>
   );
 }

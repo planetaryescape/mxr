@@ -102,58 +102,62 @@
 }
 
 /*
- * App shell. Sidebar | main, with topbar and status bar bands; the right
- * rail joins as a third column when open. Below 1280px the sidebar drops
- * to its icon rail so list and reader keep their width; below 1024px the
- * right rail becomes an overlay sheet instead of a column.
+ * App shell. A resizable sidebar beside the shell grid (AppShell.tsx):
+ * topbar, main and status bar bands, and the right rail as a second
+ * column when open. Below 1280px the sidebar is pinned to its icon rail,
+ * with no handle, so list and reader keep their width; below 1024px the
+ * right rail becomes an overlay sheet instead of a column. The pins beat
+ * the library's inline flex sizes, so the saved width survives them.
  */
-.app-shell {
-  display: grid;
-  grid-template-columns: var(--shell-sidebar-w) minmax(0, 1fr);
-  grid-template-rows: var(--shell-topbar-h) minmax(0, 1fr) var(--shell-statusbar-h);
-  grid-template-areas:
-    "sidebar topbar"
-    "sidebar main"
-    "sidebar statusbar";
-  height: 100dvh;
+.app-frame {
   background-color: var(--background);
 }
 
-.app-shell[data-sidebar-collapsed="true"] {
-  grid-template-columns: var(--shell-sidebar-collapsed-w) minmax(0, 1fr);
+.app-frame[data-sidebar-collapsed="true"] > [data-shell-pane="sidebar"] {
+  flex: 0 0 var(--shell-sidebar-collapsed-w) !important;
+}
+
+.app-shell {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--shell-topbar-h) minmax(0, 1fr) var(--shell-statusbar-h);
+  grid-template-areas:
+    "topbar"
+    "main"
+    "statusbar";
 }
 
 .app-shell[data-rightrail-open="true"] {
-  grid-template-columns: var(--shell-sidebar-w) minmax(0, 1fr) var(--shell-rightrail-w);
+  grid-template-columns: minmax(0, 1fr) var(--shell-rightrail-w);
   grid-template-areas:
-    "sidebar topbar topbar"
-    "sidebar main rightrail"
-    "sidebar statusbar statusbar";
-}
-
-.app-shell[data-sidebar-collapsed="true"][data-rightrail-open="true"] {
-  grid-template-columns: var(--shell-sidebar-collapsed-w) minmax(0, 1fr) var(--shell-rightrail-w);
+    "topbar topbar"
+    "main rightrail"
+    "statusbar statusbar";
 }
 
 @media (max-width: 1279px) {
-  .app-shell,
-  .app-shell[data-sidebar-collapsed="false"] {
-    grid-template-columns: var(--shell-sidebar-collapsed-w) minmax(0, 1fr);
+  .app-frame > [data-shell-pane="sidebar"] {
+    flex: 0 0 var(--shell-sidebar-collapsed-w) !important;
   }
-  .app-shell[data-rightrail-open="true"],
-  .app-shell[data-sidebar-collapsed="false"][data-rightrail-open="true"] {
-    grid-template-columns: var(--shell-sidebar-collapsed-w) minmax(0, 1fr) var(--shell-rightrail-w);
+}
+
+/* At 1280px and up the sidebar's handle draws the rule. */
+@media (min-width: 1280px) {
+  .app-shell-sidebar.app-shell-sidebar {
+    border-right: 0;
   }
 }
 
 @media (max-width: 1023px) {
-  .app-shell[data-rightrail-open="true"],
-  .app-shell[data-sidebar-collapsed="false"][data-rightrail-open="true"] {
-    grid-template-columns: var(--shell-sidebar-collapsed-w) minmax(0, 1fr);
+  .app-shell[data-rightrail-open="true"] {
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "sidebar topbar"
-      "sidebar main"
-      "sidebar statusbar";
+      "topbar"
+      "main"
+      "statusbar";
   }
   .app-shell-rightrail {
     position: fixed;
@@ -164,8 +168,18 @@
   }
 }
 
+/*
+ * A resize handle's hover and drag (the library tracks both over its hit
+ * strip, which is wider than the 1px rule) set the col-resize cursor for
+ * the whole page, so it holds while the pointer runs ahead of the handle.
+ */
+:root:has([data-slot="resizable-handle"]:is([data-separator="hover"], [data-separator="active"]))
+  * {
+  cursor: col-resize !important;
+}
+
 .app-shell-sidebar {
-  grid-area: sidebar;
+  flex: 1 1 auto;
   border-right: 1px solid var(--sidebar-border);
   background-color: var(--sidebar);
   overflow: hidden;
@@ -214,11 +228,7 @@
 
 @media (max-width: 639px) {
   .app-shell,
-  .app-shell[data-sidebar-collapsed="false"],
-  .app-shell[data-sidebar-collapsed="true"],
-  .app-shell[data-rightrail-open="true"],
-  .app-shell[data-sidebar-collapsed="false"][data-rightrail-open="true"],
-  .app-shell[data-sidebar-collapsed="true"][data-rightrail-open="true"] {
+  .app-shell[data-rightrail-open="true"] {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: var(--shell-topbar-h) minmax(0, 1fr) auto;
     grid-template-areas:
@@ -226,8 +236,10 @@
       "main"
       "tabs";
   }
+  .app-frame > [data-shell-pane="sidebar"] {
+    display: none !important;
+  }
   /* Doubled class: the status bar's own rule comes later in this file. */
-  .app-shell-sidebar.app-shell-sidebar,
   .app-shell-statusbar.app-shell-statusbar {
     display: none;
   }

@@ -2,9 +2,11 @@ import { Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 
 import { ModeHeader, type FrameWidth } from "@/components/ModeFrame";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { LIST_PANE_SIZE } from "@/features/mailbox/listPane";
 import { ReaderNavContext, type ReaderNav } from "@/features/mailbox/readerNav";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
-import { cn } from "@/lib/utils";
+import { useSavedLayout } from "@/hooks/useSavedLayout";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -35,6 +37,8 @@ export function PlaceLayout({
   const readerLayout = useUiPrefs((s) => s.readerLayout);
   const setActivePane = useMailboxPane((s) => s.setActivePane);
   const hideList = threadOpen && (singlePane || wideReader || readerLayout === "full");
+  const split = threadOpen && !hideList;
+  const savedLayout = useSavedLayout(`place${basePath.replace("/", ":")}`, { save: split });
 
   useEffect(() => {
     if (!threadOpen && useMailboxPane.getState().activePane === "reader") setActivePane("mailbox");
@@ -55,19 +59,30 @@ export function PlaceLayout({
 
   return (
     <ReaderNavContext.Provider value={nav}>
-      <div className="flex min-h-0 min-w-0 flex-1">
-        <section
-          aria-label={label}
-          className={cn(
-            "mode-page flex min-h-0 min-w-0 flex-col bg-background",
-            threadOpen ? "w-[clamp(340px,36%,480px)] shrink-0 border-r border-border" : "flex-1",
-            hideList && "hidden",
-          )}
+      <ResizablePanelGroup className="min-h-0 min-w-0 flex-1" {...savedLayout}>
+        <ResizablePanel
+          id="place-list"
+          hidden={hideList}
+          defaultSize={LIST_PANE_SIZE.defaultSize}
+          minSize={LIST_PANE_SIZE.minSize}
+          maxSize={LIST_PANE_SIZE.maxSize}
+          groupResizeBehavior="preserve-pixel-size"
+          className="flex min-h-0 flex-col"
         >
-          {children}
-        </section>
-        {threadOpen ? <Outlet /> : null}
-      </div>
+          <section
+            aria-label={label}
+            className="mode-page flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+          >
+            {children}
+          </section>
+        </ResizablePanel>
+        {split ? <ResizableHandle aria-label={`Resize ${label} list`} /> : null}
+        {threadOpen ? (
+          <ResizablePanel id="place-reader" className="flex min-h-0 min-w-0">
+            <Outlet />
+          </ResizablePanel>
+        ) : null}
+      </ResizablePanelGroup>
     </ReaderNavContext.Provider>
   );
 }

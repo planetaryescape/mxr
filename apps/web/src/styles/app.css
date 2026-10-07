@@ -169,12 +169,10 @@
 }
 
 /*
- * A resize handle's hover and drag (the library tracks both over its hit
- * strip, which is wider than the 1px rule) set the col-resize cursor for
- * the whole page, so it holds while the pointer runs ahead of the handle.
+ * A resize handle is hovered or dragged (components/ui/resizable.tsx):
+ * col-resize everywhere, so it holds while the pointer runs ahead.
  */
-:root:has([data-slot="resizable-handle"]:is([data-separator="hover"], [data-separator="active"]))
-  * {
+:root[data-pane-resizing] * {
   cursor: col-resize !important;
 }
 

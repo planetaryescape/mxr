@@ -70,6 +70,15 @@ test("dragging the people list's handle resizes it, a reload keeps it and double
   const people = handle(page, "Resize people list");
   expect(await width(page, PEOPLE)).toBeCloseTo(22 * REM, 0);
 
+  // Hovering the handle shows col-resize across the page, and only then.
+  const cursor = () => page.evaluate(() => getComputedStyle(document.body).cursor);
+  expect(await cursor()).not.toBe("col-resize");
+  const box = await people.boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await expect.poll(cursor).toBe("col-resize");
+  await page.mouse.move(box!.x + 200, box!.y + 200);
+  await expect.poll(cursor).not.toBe("col-resize");
+
   await drag(page, people, 120);
   const dragged = await width(page, PEOPLE);
   expect(dragged).toBeGreaterThan(22 * REM + 100);

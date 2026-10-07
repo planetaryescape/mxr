@@ -192,7 +192,9 @@ async function pointerArchiveAndUndo(page: Page): Promise<void> {
   const rowId = (await mailRows(page).first().getAttribute("id"))!;
   const row = page.locator(`[id="${rowId}"]`);
   await expect(async () => {
-    await row.hover();
+    // At the row's left edge: the toasts sit top centre, over the middle of
+    // the first rows.
+    await row.hover({ position: { x: 24, y: 12 } });
     await row.locator('[title="Archive (e)"]').click({ timeout: 1000 });
   }).toPass({ timeout: 10_000 });
   await expect(row).toHaveCount(0);

@@ -18,7 +18,7 @@ import { useNaturalTime } from "@/features/time/useNaturalTime";
 
 import { invalidateMailQueries } from "../mailQueryInvalidation";
 import type { MailTarget } from "../target";
-import { VERB_FEEDBACK } from "../verbFeedback";
+import { toneFor, VERB_FEEDBACK } from "../verbFeedback";
 
 interface ReplyLaterDialogProps {
   target: MailTarget;
@@ -59,7 +59,7 @@ export function ReplyLaterDialog({ target, subject, waiting, onClose }: ReplyLat
       return;
     }
     void invalidateMailQueries();
-    toast.success(VERB_FEEDBACK["reply-later"].pastTense, {
+    toast[toneFor("reply-later")](VERB_FEEDBACK["reply-later"].pastTense, {
       action: {
         label: "Undo",
         onClick: () => void setReplyLater(messageId, false).then(() => invalidateMailQueries()),

@@ -59,6 +59,7 @@ export async function correctSender(
       const previous = set.previous ?? null;
       claim.settle(
         offerUndo(
+          "move-sender",
           correctionMessage(sender.label, kind),
           `sender-kind-${sender.accountId}-${sender.senderEmail}`,
           async () => {

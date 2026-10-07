@@ -474,3 +474,62 @@ svg.low-tide {
   background-color: color-mix(in oklch, var(--destructive) 22%, var(--background));
   color: var(--destructive);
 }
+
+/*
+ * Toasts: sonner's rich colours, mapped to the theme tokens. Its light
+ * defaults fall below WCAG AA (warning text is 3.1:1), and its blue info
+ * clashes with the cyan signal, so each type takes the theme's solid tone
+ * and that tone's foreground (AA in every theme). Neutral changes with an
+ * undo are info, so they take the accent. The Undo button inverts the
+ * pair, so it keeps the same contrast.
+ */
+:root [data-sonner-toaster][data-sonner-theme] {
+  --normal-bg: var(--popover);
+  --normal-bg-hover: var(--surface-elevated);
+  --normal-border: var(--border-strong);
+  --normal-text: var(--popover-foreground);
+  --success-bg: var(--success);
+  --success-border: var(--success);
+  --success-text: var(--success-foreground);
+  --info-bg: var(--primary);
+  --info-border: var(--primary);
+  --info-text: var(--primary-foreground);
+  --warning-bg: var(--warning);
+  --warning-border: var(--warning);
+  --warning-text: var(--warning-foreground);
+  --error-bg: var(--destructive);
+  --error-border: var(--destructive);
+  --error-text: var(--destructive-foreground);
+}
+
+:root [data-sonner-toaster] [data-sonner-toast][data-styled="true"] {
+  font-family: var(--font-sans);
+  /* A short drop-in and fade: sonner's own times, on the motion tokens. */
+  transition-duration: var(--motion-duration-slow);
+  transition-timing-function: var(--motion-ease);
+}
+
+:root [data-sonner-toast][data-rich-colors="true"][data-type="success"] [data-button] {
+  background: var(--success-text);
+  color: var(--success-bg);
+}
+:root [data-sonner-toast][data-rich-colors="true"][data-type="info"] [data-button] {
+  background: var(--info-text);
+  color: var(--info-bg);
+}
+:root [data-sonner-toast][data-rich-colors="true"][data-type="warning"] [data-button] {
+  background: var(--warning-text);
+  color: var(--warning-bg);
+}
+:root [data-sonner-toast][data-rich-colors="true"][data-type="error"] [data-button] {
+  background: var(--error-text);
+  color: var(--error-bg);
+}
+
+/*
+ * Reduced motion: a toast fades in and out and does not drop. This wins
+ * over sonner's own reduced-motion rule, which removes the fade too.
+ */
+:root[data-motion="reduced"] [data-sonner-toast] {
+  transition: opacity var(--motion-duration-slow) var(--motion-ease) !important;
+}

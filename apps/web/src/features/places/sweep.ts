@@ -65,6 +65,7 @@ export async function runSweep(
     if (archived > 0 && sound) playSound(sound);
     claim.settle(
       offerUndo(
+        "sweep",
         `Archived ${plural(archived, "message")} from ${where}${leftNote}`,
         `sweep-${swept.job.job_id}`,
         undoIds.length > 0 ? () => undoAll(undoIds) : null,

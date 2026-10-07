@@ -175,6 +175,7 @@ export async function markModeDone(
       if (sound) playSound(sound);
       claim.settle(
         offerUndo(
+          "mode-done",
           (options.message ?? doneToast)(done),
           `mode-done-${mutationId ?? `${mode}-${unique.join(",")}`}`,
           reverse,

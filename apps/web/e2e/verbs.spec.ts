@@ -44,6 +44,8 @@ function escapeRegExp(text: string): string {
 async function expectToast(page: Page, verb: Verb): Promise<void> {
   const words = new RegExp(`^${escapeRegExp(VERB_FEEDBACK[verb].pastTense)}\\b`);
   await expect(toast(page, words), verb).toBeVisible();
+  // In the verb's colour: green for done, the accent for a change with undo.
+  await expect(toast(page, words), verb).toHaveAttribute("data-type", VERB_FEEDBACK[verb].tone);
 }
 
 /** The verb's toast, its row gone, then `u` and the row back. */
@@ -668,25 +670,43 @@ for (const [verb, entry] of Object.entries(VERB_FEEDBACK) as [
   });
 }
 
-test("a bar that appears under a showing toast pushes the toast above it", async ({ page }) => {
+test("toasts sit top centre under the header, clear of search and Compose", async ({ page }) => {
   await openList(page, "/m/inbox");
   await mailList(page).focus();
-  // A toast first (star, held so it stays as it is), then the bulk bar.
+  // A toast that stays as it is: star, answered at once with an undo.
   await page.route("**/api/v1/mail/mutations/star", (route) =>
-    route.fulfill({ json: { ok: true, result: { succeeded: 1, failed: 0, requested: 1 } } }),
+    route.fulfill({
+      json: {
+        ok: true,
+        result: {
+          requested: 1,
+          succeeded: 1,
+          skipped: 0,
+          failed: 0,
+          mutation_id: "toast-place",
+          accounts: [],
+        },
+      },
+    }),
   );
   await page.keyboard.press("s");
   const shown = page.locator("[data-sonner-toast]").first();
   await expect(shown).toBeVisible();
-  // Let the toast settle, so only the bar mounting can move it.
-  await page.waitForTimeout(800);
-  await page.keyboard.press("x");
-  const bar = page.getByRole("toolbar", { name: "Selected conversations" });
-  await expect(bar).toBeVisible();
+  await expect(shown).toHaveAttribute("data-y-position", "top");
+  await expect(shown).toHaveAttribute("data-x-position", "center");
+  // A neutral change with an undo is the accent (info) toast.
+  await expect(shown).toHaveAttribute("data-type", "info");
+  const header = page.locator(".app-shell-topbar");
+  const viewport = page.viewportSize()!;
   await expect
     .poll(async () => {
-      const [toastBox, barBox] = await Promise.all([shown.boundingBox(), bar.boundingBox()]);
-      return toastBox && barBox ? toastBox.y + toastBox.height <= barBox.y : false;
+      const [toastBox, headerBox] = await Promise.all([shown.boundingBox(), header.boundingBox()]);
+      if (!toastBox || !headerBox) return "not laid out";
+      const below = toastBox.y >= headerBox.y + headerBox.height;
+      const centre = Math.abs(toastBox.x + toastBox.width / 2 - viewport.width / 2) <= 2;
+      return below && centre ? "top centre" : JSON.stringify({ toastBox, headerBox });
     })
-    .toBe(true);
+    .toBe("top centre");
+  // Search and Compose live in the header, so a toast under it covers neither.
+  await page.getByRole("button", { name: "Compose" }).first().click({ trial: true });
 });

@@ -246,10 +246,10 @@ fn table(digest: &UpdatesDigestData) -> String {
         plural(digest.source_count, "source", "sources")
     );
     if !digest.headline.is_empty() {
-        let _ = writeln!(out, "{}", digest.headline);
+        let _ = writeln!(out, "{}", terminal_text(&digest.headline));
     }
     if let Some(empty) = &digest.empty_state {
-        let _ = writeln!(out, "\n{empty}");
+        let _ = writeln!(out, "\n{}", terminal_text(empty));
     }
     for (title, lines) in [
         ("NEEDS A LOOK", &digest.needs_a_look),
@@ -279,14 +279,15 @@ fn table(digest: &UpdatesDigestData) -> String {
             if let Some(suggestion) = &line.suggestion {
                 let _ = writeln!(
                     out,
-                    "    {suggestion} `mxr updates source {} muted`",
-                    line.source_key
+                    "    {} `mxr updates source {} muted`",
+                    terminal_text(suggestion),
+                    terminal_text(&line.source_key)
                 );
             }
         }
     }
     if let Some(hidden) = &digest.hidden_line {
-        let _ = writeln!(out, "\n{hidden}");
+        let _ = writeln!(out, "\n{}", terminal_text(hidden));
     }
     if digest.since.message_count > 0 {
         let names: Vec<String> = digest
@@ -322,7 +323,7 @@ fn table(digest: &UpdatesDigestData) -> String {
         );
     }
     if let Some(let_go) = &digest.let_go_line {
-        let _ = writeln!(out, "\n{let_go} `mxr updates let-go`");
+        let _ = writeln!(out, "\n{} `mxr updates let-go`", terminal_text(let_go));
     }
     out
 }
@@ -381,4 +382,78 @@ fn render_source(change: &UpdateSourceChangeData, format: OutputFormat) -> anyho
             format!("{prefix}{}{undo}\n", change.copy)
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mxr_protocol::{UpdateSectionData, UpdateSignalData, UpdatesCutData, UpdatesSinceData};
+
+    #[test]
+    fn mail_text_is_sanitised_in_every_printed_field() {
+        let at = chrono::Utc::now();
+        let evil = "Evil\u{1b}[2J\nName";
+        let line = UpdateLineData {
+            id: "x".into(),
+            section: UpdateSectionData::Routine,
+            account_id: mxr_core::id::AccountId::new(),
+            source_key: "evil.example\u{1b}[31m".into(),
+            source_name: evil.into(),
+            sender_email: String::new(),
+            fact: evil.into(),
+            fact_source: "subject".into(),
+            numbers: Vec::new(),
+            delta: None,
+            signal: UpdateSignalData::Routine,
+            count: 1,
+            message_ids: Vec::new(),
+            thread_ids: Vec::new(),
+            latest_message_id: None,
+            fact_message_id: None,
+            latest_thread_id: None,
+            latest_at: at,
+            time_label: None,
+            link: None,
+            tracker: None,
+            todo_id: None,
+            in_todo: None,
+            todo_title: String::new(),
+            why: String::new(),
+            setting: UpdateSourceSettingData::EveryDigest,
+            suggestion: Some(format!("You've let go of {evil} 8 digests in a row.")),
+            provenance: Vec::new(),
+        };
+        let digest = UpdatesDigestData {
+            generated_at: at,
+            header: String::new(),
+            cut: UpdatesCutData {
+                at,
+                label: "08:00".into(),
+                title: "This morning's digest".into(),
+                previous_at: at,
+                next_at: at,
+                next_label: "16:30".into(),
+                cuts: Vec::new(),
+            },
+            headline: String::new(),
+            message_count: 1,
+            source_count: 1,
+            needs_a_look: Vec::new(),
+            changed: Vec::new(),
+            routine: vec![line],
+            since: UpdatesSinceData::default(),
+            hidden_line: None,
+            expired_line: None,
+            expired_count: 0,
+            expired: Vec::new(),
+            let_go_line: None,
+            selection_token: String::new(),
+            empty_state: None,
+            source_total: 1,
+            muted_total: 0,
+        };
+        let printed = table(&digest);
+        assert!(!printed.contains('\u{1b}'), "{printed:?}");
+        assert!(printed.contains("You've let go of Evil"), "{printed}");
+    }
 }

@@ -635,7 +635,7 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     try {
       await openApp(page, "/reading");
       const issue = page.locator(
-        `[data-testid='reading-issue'][data-sender='${bundle.sender_email}']`,
+        `[data-testid='reading-item'][data-sender='${bundle.sender_email}']`,
       );
       await issue.first().click({ position: { x: 5, y: 5 } });
       await page.keyboard.press("K");

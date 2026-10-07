@@ -19,6 +19,7 @@ import { messagesActions } from "@/features/messages/actions";
 import { nowActions } from "@/features/now/actions";
 import type { ShellResponse } from "@/features/mailbox/types";
 import { placeActions } from "@/features/places/actions";
+import { readingActions } from "@/features/reading/actions";
 import { rulesActions } from "@/features/rules/actions";
 import { screenerActions } from "@/features/screener/actions";
 import { todoActions } from "@/features/todo/actions";
@@ -64,6 +65,7 @@ const featureActions: Action[] = [
   ...placeActions,
   ...todoActions,
   ...archiveActions,
+  ...readingActions,
   ...nowActions,
   ...messagesActions,
   ...diagnosticsActions,

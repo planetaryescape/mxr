@@ -91,9 +91,9 @@ fn footer(name: &str, domain: &str) -> String {
     )
 }
 
-fn essay_paragraphs(title: &str) -> Vec<String> {
+fn essay_paragraphs() -> Vec<String> {
     vec![
-        format!("{title}. Every reader since 2002 shipped the same window: a list of sources on the left, a list of items in the middle and the item itself on the right. It was a good answer to a narrow question, which was how to show a lot of feeds on a small screen, and it hardened into the only answer."),
+        "Every reader since 2002 shipped the same window: a list of sources on the left, a list of items in the middle and the item itself on the right. It was a good answer to a narrow question, which was how to show a lot of feeds on a small screen, and it hardened into the only answer.".to_string(),
         "The trouble is the middle column. It turns every item into a row, and every row into a small debt. A row has a bold weight until you open it and a count beside its source until you clear it, so the shape of the window tells you that reading is a job with a backlog.".to_string(),
         "Paper never did this. A newspaper arrives, you read the front page and the two pieces that caught you, and the rest goes out with the recycling. Nobody keeps a count of the articles they skipped, and nobody feels behind on yesterday's paper.".to_string(),
         "A better reader starts from that. It shows what arrived since you last looked, puts the writers you actually finish at the top, and lets the rest fade on a schedule that matches how often each source writes. A daily fades in two days; a weekly lasts a fortnight.".to_string(),
@@ -214,7 +214,7 @@ pub(super) fn reading_demo_messages(
     // third is in its last day.
     for (i, title) in LONG_READS_TITLES.iter().enumerate() {
         let age = Duration::hours(LONG_READS_AGE_HOURS[i]);
-        let paragraphs = essay_paragraphs(title);
+        let paragraphs = essay_paragraphs();
         let html = essay_html(title, &paragraphs);
         push(
             issue(&long_reads, self_addr, title, paragraphs.join("\n\n"), now - age),

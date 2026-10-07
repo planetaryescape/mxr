@@ -7,7 +7,7 @@
  * only when the pending action changes.
  */
 
-import { Archive, Check, Clock, Trash2, type LucideIcon } from "lucide-react";
+import { Archive, Bookmark, Check, Clock, Trash2, type LucideIcon } from "lucide-react";
 import {
   forwardRef,
   useEffect,
@@ -49,6 +49,8 @@ const ICONS: Record<SwipeAction, LucideIcon> = {
   trash: Trash2,
   snooze: Clock,
   sweep: Archive,
+  later: Bookmark,
+  letgo: Check,
 };
 
 const TONES: Record<SwipeAction, string> = {
@@ -57,6 +59,8 @@ const TONES: Record<SwipeAction, string> = {
   sweep: "swipe-tone-primary",
   snooze: "swipe-tone-quiet",
   trash: "swipe-tone-destructive",
+  later: "swipe-tone-quiet",
+  letgo: "swipe-tone-primary",
 };
 
 /**
@@ -251,7 +255,8 @@ export function useRowSwipe(
         window.setTimeout(settle, 200);
         return;
       }
-      const leaves = action !== "snooze" && action !== "sweep";
+      // Later keeps the item where it is; let go and the mail verbs take it.
+      const leaves = action !== "snooze" && action !== "sweep" && action !== "later";
       if (!leaves || reduced()) {
         settle();
         active.target.commit(action);

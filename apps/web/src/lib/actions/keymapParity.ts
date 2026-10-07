@@ -18,7 +18,8 @@ export type ParityContext =
   | "todo"
   | "now"
   | "messages"
-  | "archive";
+  | "archive"
+  | "reading";
 
 /** The web scopes live in each context, innermost first. */
 const CONTEXT_SCOPES: Record<ParityContext, ActionScope[]> = {
@@ -30,6 +31,7 @@ const CONTEXT_SCOPES: Record<ParityContext, ActionScope[]> = {
   now: ["now", "global"],
   messages: ["messages", "global"],
   archive: ["archive", "global"],
+  reading: ["reading", "global"],
   // The TUI's screener is a modal that swallows every other key.
   screener: ["screener"],
 };
@@ -208,6 +210,18 @@ export const SAME_ACTION: Record<string, string[]> = {
   "archive.export": ["RecordsExport"],
   "archive.make-todo": ["RecordsMakeTodo"],
   "archive.close": ["RecordsBack"],
+  "reading.down": ["MoveDown"],
+  "reading.up": ["MoveUp"],
+  "reading.read": ["ReadingRead"],
+  "reading.article": ["ReadingArticle"],
+  "reading.later": ["ReadingLater"],
+  "reading.let-go": ["ReadingLetGo"],
+  "reading.unsubscribe": ["ReadingUnsubscribe"],
+  "reading.original": ["ReadingOriginal"],
+  "reading.let-go-all": ["ReadingLetGoAll"],
+  "reading.open-email": ["ReadingOpenEmail"],
+  "reading.later-shelf": ["ReadingLaterShelf"],
+  "reading.move-sender": ["OpenSenderKindMenu"],
 };
 
 export interface KeymapDifference {
@@ -486,6 +500,19 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   },
   {
     context: "archive",
+    keys: ["c"],
+    bound: "web",
+    why: "Compose works everywhere on the web; the TUI lens keeps c free",
+  },
+  // Reading.
+  {
+    context: "reading",
+    keys: ["Escape"],
+    bound: "web",
+    why: "Both close the Reading card with Esc; the TUI's keymap probe can't see a key that needs the card on screen",
+  },
+  {
+    context: "reading",
     keys: ["c"],
     bound: "web",
     why: "Compose works everywhere on the web; the TUI lens keeps c free",

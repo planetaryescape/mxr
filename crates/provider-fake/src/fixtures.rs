@@ -635,6 +635,12 @@ pub(crate) fn demo_message_count_from_env() -> Option<usize> {
     Some(requested.clamp(1, MAX_DEMO_MESSAGE_COUNT))
 }
 
+/// The fake provider serves the generated demo mailbox (`mxr demo`, and
+/// the web app's end-to-end daemon).
+pub fn demo_dataset_active() -> bool {
+    demo_message_count_from_env().is_some()
+}
+
 /// Materialise the whole demo dataset. Only tests want this shape; the
 /// provider streams pages instead.
 #[cfg(test)]

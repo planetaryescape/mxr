@@ -629,7 +629,8 @@ pub(super) async fn get_edition(
     let now = Utc::now();
     let accounts = scoped_accounts(state, account_id).await?;
     let mut stored = state.store.reading_visit().await?;
-    if stored == ReadingVisitRow::default() && mxr_config::is_demo_instance() {
+    let demo = mxr_config::is_demo_instance() || mxr_provider_fake::fixtures::demo_dataset_active();
+    if stored == ReadingVisitRow::default() && demo {
         // The demo mailbox comes with a history: Reading was last opened
         // yesterday and has been watching for months, so every band and
         // the unsubscribe evidence show on the first look.

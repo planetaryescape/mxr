@@ -50,7 +50,9 @@ pub(in crate::handler) async fn fetch_article(
         }
     }
 
-    let fetched = if mxr_config::is_demo_instance() {
+    // The demo mailbox, in `mxr demo` or the web app's end-to-end daemon.
+    let demo = mxr_config::is_demo_instance() || mxr_provider_fake::fixtures::demo_dataset_active();
+    let fetched = if demo {
         mxr_provider_fake::fixtures::demo_article_html(&url)
             .map(|html| (url.clone(), Vec::new(), html.to_string()))
             .ok_or_else(|| format!("the demo has no copy of {domain}; nothing was fetched"))

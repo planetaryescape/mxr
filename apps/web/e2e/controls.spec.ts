@@ -35,7 +35,7 @@ const INVENTORY = {
     "Send, remind if no reply",
     "Draft in your voice",
   ],
-  readingHeader: ["Sweep all"],
+  readingHeader: ["Let go of all"],
   paperTrailHeader: ["Sweep all"],
 } as const;
 

@@ -612,6 +612,7 @@ mod tests {
                 SemanticChunkSourceKind::Body,
                 SemanticChunkSourceKind::AttachmentSummary,
                 SemanticChunkSourceKind::AttachmentText,
+                SemanticChunkSourceKind::Highlight,
             ]
         );
     }
@@ -627,6 +628,7 @@ mod tests {
             vec![
                 SemanticChunkSourceKind::Header,
                 SemanticChunkSourceKind::Body,
+                SemanticChunkSourceKind::Highlight,
                 SemanticChunkSourceKind::AttachmentSummary,
                 SemanticChunkSourceKind::AttachmentText,
             ]
@@ -646,6 +648,7 @@ mod tests {
                 SemanticChunkSourceKind::Body,
                 SemanticChunkSourceKind::AttachmentSummary,
                 SemanticChunkSourceKind::AttachmentText,
+                SemanticChunkSourceKind::Highlight,
             ]
         );
     }
@@ -656,7 +659,13 @@ mod tests {
         let plan = semantic_query_plan(&ast).unwrap();
 
         assert_eq!(plan.text, "deployment");
-        assert_eq!(plan.source_kinds, vec![SemanticChunkSourceKind::Body]);
+        assert_eq!(
+            plan.source_kinds,
+            vec![
+                SemanticChunkSourceKind::Body,
+                SemanticChunkSourceKind::Highlight
+            ]
+        );
         assert!(has_negated_semantic_terms(&ast));
     }
 }

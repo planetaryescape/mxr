@@ -7,7 +7,7 @@
  * so vertical scrolling stays the browser's.
  */
 
-export type SwipeAction = "archive" | "done" | "trash" | "snooze" | "sweep";
+export type SwipeAction = "archive" | "done" | "trash" | "snooze" | "sweep" | "later" | "letgo";
 
 /** What a row does for each throw; a missing entry means that throw does nothing. */
 export interface SwipeMap {
@@ -96,4 +96,6 @@ export const SWIPE_WORDS: Record<SwipeAction, string> = {
   trash: "Trash",
   snooze: "Snooze",
   sweep: "Sweep sender",
+  later: "Later",
+  letgo: "Let go",
 };

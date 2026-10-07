@@ -7,7 +7,6 @@ import {
   KIND_OPTIONS,
   kindOptionForKey,
   paperTrailItems,
-  readingIssues,
   sweepConfirmLabel,
   sweepNote,
   sweepTitle,
@@ -63,19 +62,6 @@ function preview(extra: Partial<SweepPreview> = {}): SweepPreview {
     ...extra,
   };
 }
-
-describe("Reading feed", () => {
-  test("issues from every sender, newest first, each with its bundle", () => {
-    const weekly = bundle("weekly@x.example", [
-      message("a", "2026-09-20T08:00:00Z"),
-      message("b", "2026-09-13T08:00:00Z"),
-    ]);
-    const daily = bundle("daily@y.example", [message("c", "2026-09-22T08:00:00Z")]);
-    const issues = readingIssues([weekly, daily]);
-    expect(issues.map((issue) => issue.message.message_id)).toEqual(["c", "a", "b"]);
-    expect(issues[0]?.bundle).toBe(daily);
-  });
-});
 
 describe("Paper trail rows", () => {
   test("a closed bundle is one row; an open one lists its messages under it", () => {

@@ -553,3 +553,29 @@ svg.low-tide {
 :root[data-motion="reduced"] [data-sonner-toast] {
   transition: opacity var(--motion-duration-slow) var(--motion-ease) !important;
 }
+
+/* Reading (blueprint 22, phase 5). Fading items step back by colour, not
+   opacity, so their text keeps AA contrast in both schemes. */
+.reading-fading h3,
+.reading-fading h3 a {
+  color: var(--muted-foreground);
+}
+.reading-fading p {
+  color: var(--muted-foreground);
+}
+.reading-progress {
+  transform-origin: left center;
+  transition: transform var(--motion-duration-base) var(--ease-out);
+}
+:root[data-motion="reduced"] .reading-progress {
+  transition: none;
+}
+.reading-page {
+  overflow-wrap: anywhere;
+}
+.reading-mark {
+  background: color-mix(in oklab, var(--primary) 22%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 0.1em;
+}

@@ -50,7 +50,9 @@ export type ActionScope =
   | "expired"
   | "now"
   | "messages"
-  | "archive";
+  | "archive"
+  | "reading"
+  | "reading-reader";
 
 export interface ActionContext {
   path: string;

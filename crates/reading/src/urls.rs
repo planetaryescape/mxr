@@ -138,9 +138,17 @@ pub fn is_click_tracker(url: &Url) -> bool {
     ];
     HOSTS.contains(&host.as_str())
         || HOST_SUFFIXES.iter().any(|suffix| host.ends_with(suffix))
-        || (HOST_PREFIXES.iter().any(|prefix| host.starts_with(prefix))
-            && path.len() > 20)
-        || PATHS.iter().any(|prefix| path.starts_with(prefix)) && path.len() > 12
+        || (HOST_PREFIXES.iter().any(|prefix| host.starts_with(prefix)) && opaque_token(url.path()))
+        || PATHS.iter().any(|prefix| path.starts_with(prefix)) && opaque_token(url.path())
+}
+
+/// A path segment that reads as an id, not words: sixteen or more
+/// characters with at least four digits ("u001.OYBRJNT0z5pe6Uzq",
+/// "ed69ce43-9ba2-4eb6"), unlike "local-first-mail".
+fn opaque_token(path: &str) -> bool {
+    path.split('/').any(|segment| {
+        segment.len() >= 16 && segment.chars().filter(char::is_ascii_digit).count() >= 4
+    })
 }
 
 #[cfg(test)]
@@ -199,6 +207,8 @@ mod tests {
             "https://sqlite.org/releaselog/3_51.html",
             "https://www.example.com/2026/10/local-first-mail",
             "https://blog.rust-lang.org/2026/10/01/Rust-1.95.html",
+            "https://links.demo.mxr.local/articles/local-first-mail",
+            "https://link.example.com/2026/10/why-sync-engines-need-tombstones",
         ] {
             let url = Url::parse(raw).expect(raw);
             assert!(!is_click_tracker(&url), "{raw}");

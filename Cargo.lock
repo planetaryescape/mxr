@@ -4995,7 +4995,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-updates"
-version = "0.6.55"
+version = "0.6.56"
 dependencies = [
  "chrono",
  "once_cell",

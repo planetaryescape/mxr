@@ -149,3 +149,42 @@ in its own commit with a test that failed first.
   requests are classified `AllAccounts` and denied to scoped profiles. That
   trades away snippet use for scoped agents rather than show them text
   written for any account.
+
+## Second review: hydrated threads and the lag count
+
+- **Listed shared threads (high).** `ListThreads` for an allowed account
+  returns threads hydrated by `get_threads_batch`, which aggregates a shared
+  thread id over every account's messages: another account's subject,
+  participants, snippet, message ids and counts showed through.
+  `scope_response` now rebuilds every thread in a `Threads` response whose
+  id an excluded account also holds, from the allowed accounts' messages
+  only, and drops one with none of them. `Thread` and `Threads` are the only
+  responses that carry hydrated threads.
+- **Subject from a hidden message (medium).** The rebuilt thread kept the
+  aggregate `MIN(subject)`, which could be the hidden message's. The subject
+  is now recomputed the same way over the kept messages.
+- **Lag count (low).** `EventsLagged.skipped` counts every account's events.
+  A profiled connection now gets the resync signal with `skipped: 0`, both
+  when its own channel lags and when a lag event is relayed.
+
+Pending: `Request::GetFreshness` (feat/freshness-indicator) returns
+newest-arrival senders and subjects and per-account sync errors. Whichever
+branch merges second must classify it: its `account_id` as the target, and
+no account as `AllAccounts` (or a `GetStatus`-style response filter). The
+exhaustive match makes the rebase fail to compile until it does.
+
+## Known limits of a self-declared client tag
+
+The client kind on each request is declared by the client. The profile is a
+guardrail for cooperating clients such as the MCP server, not a security
+boundary: a client that wants everything can leave the tag out. So these
+are documented, not fixed in code:
+
+- An event-only connection, and any event that arrives before a
+  connection's first request, is unscoped: the daemon doesn't yet know the
+  connection is an agent's.
+- A socket that carries both `agent` and `mcp` requests is scoped by the
+  profile of the last one it saw.
+
+Follow-up: bind the profile at connect time, through a handshake that
+declares the client before any events are sent.

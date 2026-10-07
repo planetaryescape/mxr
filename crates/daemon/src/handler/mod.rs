@@ -1465,20 +1465,27 @@ async fn dispatch(
         Request::GetReadingEdition {
             account_id,
             mark_visit,
-        } => reading::get_edition(state, account_id.as_ref(), *mark_visit).await,
-        Request::GetReadingItem { item_key } => reading::get_item(state, item_key).await,
+        } => {
+            Box::pin(reading::get_edition(
+                state,
+                account_id.as_ref(),
+                *mark_visit,
+            ))
+            .await
+        }
+        Request::GetReadingItem { item_key } => Box::pin(reading::get_item(state, item_key)).await,
         Request::SetReadingLater {
             item_keys,
             later,
             dry_run,
-        } => reading::set_later(state, item_keys, *later, *dry_run).await,
+        } => Box::pin(reading::set_later(state, item_keys, *later, *dry_run)).await,
         Request::RecordReadingEngagement {
             item_key,
             opened,
             dwell_ms,
             progress,
         } => {
-            reading::record_engagement(
+            Box::pin(reading::record_engagement(
                 state,
                 item_key,
                 mxr_store::ReadingEngagementReport {
@@ -1486,11 +1493,11 @@ async fn dispatch(
                     dwell_ms: *dwell_ms,
                     progress: *progress,
                 },
-            )
+            ))
             .await
         }
         Request::FetchArticle { item_key, refresh } => {
-            reading::fetch_article(state, item_key, *refresh).await
+            Box::pin(reading::fetch_article(state, item_key, *refresh)).await
         }
         Request::SaveHighlight {
             item_key,
@@ -1498,10 +1505,17 @@ async fn dispatch(
             note,
             view,
         } => {
-            reading::save_highlight(state, item_key, quote, note.as_deref(), view.as_deref()).await
+            Box::pin(reading::save_highlight(
+                state,
+                item_key,
+                quote,
+                note.as_deref(),
+                view.as_deref(),
+            ))
+            .await
         }
         Request::ExportReadingHighlights { account_id } => {
-            reading::export_highlights(state, account_id.as_ref()).await
+            Box::pin(reading::export_highlights(state, account_id.as_ref())).await
         }
         Request::SetReadingSource {
             account_id,
@@ -1509,13 +1523,13 @@ async fn dispatch(
             original_layout,
             dismiss_unsubscribe_offer,
         } => {
-            reading::set_source(
+            Box::pin(reading::set_source(
                 state,
                 account_id,
                 sender_email,
                 *original_layout,
                 *dismiss_unsubscribe_offer,
-            )
+            ))
             .await
         }
         Request::SetModeDone {

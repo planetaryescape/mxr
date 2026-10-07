@@ -1200,7 +1200,7 @@ async fn post_sync_fanout(
 
     // Reading: extract the new newsletters and let go of what faded.
     if !initial_backfill_in_progress {
-        crate::handler::reading::after_sync(&state, &account_id).await;
+        Box::pin(crate::handler::reading::after_sync(&state, &account_id)).await;
     }
 }
 

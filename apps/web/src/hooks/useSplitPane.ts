@@ -24,6 +24,9 @@ const OTHER_PANE_MIN = "28rem";
 /** The handle's own resize keys (the library's), as opposed to Tab. */
 const RESIZE_KEYS = new Set(["ArrowLeft", "ArrowRight", "Home", "End", "Enter"]);
 
+/** The longest an opened split waits for idle time before fitting. */
+const IDLE_FIT_TIMEOUT_MS = 500;
+
 /** How long a key press or drag end stays "the person's" without a change. */
 const MARK_LAPSE_MS = 250;
 
@@ -71,15 +74,31 @@ export function useSplitPane(id: string, size: SidePaneSize, { active }: { activ
     }
   }, [active, panelRef, size.defaultSize, size.maxSize, size.minSize]);
 
-  // Before the first paint, and a frame after each change of the group's
-  // width: the library hears of the change from its own observer, and a
-  // resize asked for before then is sized against the old width.
+  // Before the first paint when the split mounts side by side, so a saved
+  // width never jumps. When a conversation opens into a split that was a
+  // lone list, once the browser is idle: opening is on the speed gate's
+  // path, and fitting reads layout, which costs a forced layout in the
+  // frames that paint the conversation. The layout from the last open
+  // still applies, so only a window resized while the list was alone has
+  // anything to fix. After that, a frame after each change of the group's
+  // width: the library hears of it from its own observer, and a resize
+  // asked for before then is sized against the old width.
+  const mounted = useRef(false);
   useLayoutEffect(() => {
+    const firstRun = !mounted.current;
+    mounted.current = true;
     const group = groupRef.current;
     if (!group || !active) return;
-    fit();
+    if (firstRun) fit();
+    const idle = whenIdle(fit);
     let frame = 0;
+    let initial = true;
     const observer = new ResizeObserver(() => {
+      // Observing reports the current size once: the idle fit has that.
+      if (initial) {
+        initial = false;
+        return;
+      }
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(fit);
     });
@@ -87,14 +106,21 @@ export function useSplitPane(id: string, size: SidePaneSize, { active }: { activ
     return () => {
       observer.disconnect();
       cancelAnimationFrame(frame);
+      idle.cancel();
     };
   }, [active, fit]);
   // A squeezed minimum re-registers the panel, which the library applies a
-  // render later: fit again on the next frame.
+  // render later: fit again on the next frame. Keyed on the minimum alone:
+  // `fit` changes whenever the split opens, and an extra fit then would read
+  // layout in the frame that paints the conversation.
+  const latestFit = useRef(fit);
   useLayoutEffect(() => {
-    const frame = requestAnimationFrame(fit);
+    latestFit.current = fit;
+  }, [fit]);
+  useLayoutEffect(() => {
+    const frame = requestAnimationFrame(() => latestFit.current());
     return () => cancelAnimationFrame(frame);
-  }, [squeezedMin, fit]);
+  }, [squeezedMin]);
 
   // Marks the next layout change as the person's. The library reports it
   // a render after its own keydown or pointerup listener resizes, so the
@@ -162,6 +188,16 @@ export function useSplitPane(id: string, size: SidePaneSize, { active }: { activ
       },
     },
   };
+}
+
+/** Runs `run` once the browser is idle (soon, where idle callbacks don't exist). */
+function whenIdle(run: () => void): { cancel: () => void } {
+  if ("requestIdleCallback" in window) {
+    const handle = window.requestIdleCallback(run, { timeout: IDLE_FIT_TIMEOUT_MS });
+    return { cancel: () => window.cancelIdleCallback(handle) };
+  }
+  const timer = globalThis.setTimeout(run, 0);
+  return { cancel: () => globalThis.clearTimeout(timer) };
 }
 
 /** A library size string in pixels, against the group's width. */

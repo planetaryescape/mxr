@@ -78,10 +78,10 @@ export function PlaceLayout({
 
   return (
     <ReaderNavContext.Provider value={nav}>
-      <ResizablePanelGroup className="min-h-0 min-w-0 flex-1" {...pane.groupProps}>
+      <ResizablePanelGroup className="relative min-h-0 min-w-0 flex-1" {...pane.groupProps}>
         <ResizablePanel
           id="place-list"
-          hidden={hideList}
+          data-parked={hideList || undefined}
           {...pane.sidePanelProps}
           className="flex min-h-0 flex-col"
         >
@@ -92,18 +92,23 @@ export function PlaceLayout({
             {children}
           </section>
         </ResizablePanel>
-        {split ? (
-          <ResizableHandle aria-label={`Resize ${label} list`} {...pane.handleProps} />
-        ) : null}
-        {threadOpen ? (
-          <ResizablePanel
-            id="place-reader"
-            {...pane.otherPanelProps}
-            className="flex min-h-0 min-w-0"
-          >
-            <Outlet />
-          </ResizablePanel>
-        ) : null}
+        {/* The handle and reader stay mounted, parked off screen while
+            unused (app.css): registering either with the library on open
+            reads layout mid-commit, which pushed opening a conversation
+            past the speed gate. */}
+        <ResizableHandle
+          aria-label={`Resize ${label} list`}
+          data-parked={!split || undefined}
+          {...pane.handleProps}
+        />
+        <ResizablePanel
+          id="place-reader"
+          data-parked={!threadOpen || undefined}
+          {...pane.otherPanelProps}
+          className="flex min-h-0 min-w-0"
+        >
+          {threadOpen ? <Outlet /> : null}
+        </ResizablePanel>
       </ResizablePanelGroup>
     </ReaderNavContext.Provider>
   );

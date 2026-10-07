@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.54](https://github.com/planetaryescape/mxr/compare/v0.6.53...v0.6.54) (2026-10-07)
+
+
+### Features
+
+* Messages shows people, with their conversations as topics ([#290](https://github.com/planetaryescape/mxr/issues/290)) ([584ed33](https://github.com/planetaryescape/mxr/commit/584ed33b85e59f95924b500f4e55dfece0a63e21))
+
+
+### Bug Fixes
+
+* clear this week's npm advisories in the web app and docs site ([#291](https://github.com/planetaryescape/mxr/issues/291)) ([871f6f7](https://github.com/planetaryescape/mxr/commit/871f6f73df37751d821b887a4b63439a7985c68e))
+
 ## [0.6.53](https://github.com/planetaryescape/mxr/compare/v0.6.52...v0.6.53) (2026-10-03)
 
 

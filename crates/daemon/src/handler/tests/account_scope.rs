@@ -759,6 +759,18 @@ async fn dispatch_denies_another_accounts_records_to_a_scoped_mcp_client() {
     }
 }
 
+async fn scoped_dispatch(s: &Scoped, req: Request) -> Response {
+    let msg = IpcMessage {
+        id: 11,
+        source: ::mxr_protocol::ClientKind::Mcp,
+        payload: IpcPayload::Request(req),
+    };
+    match handle_request(&s.fx.state, &msg).await.payload {
+        IpcPayload::Response(response) => response,
+        other => panic!("expected a response, got {other:?}"),
+    }
+}
+
 fn scoped_profile(s: &Scoped) -> mxr_config::AgentProfileConfig {
     s.fx.state
         .config_snapshot()
@@ -846,4 +858,46 @@ async fn a_thread_id_shared_with_another_account_is_denied_and_filtered() {
     };
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].account_id, s.own.account);
+}
+
+/// Status stays allowed as the version handshake, but a scoped client sees
+/// only its own accounts' names, sync health and counts.
+#[tokio::test]
+async fn status_shows_a_scoped_client_only_its_accounts() {
+    let s = scoped().await;
+    let mut other = crate::test_fixtures::test_account_with_id(s.other.account.clone());
+    other.name = "Other Account".into();
+    s.fx.state.store.insert_account(&other).await.unwrap();
+
+    let Response::Ok {
+        data:
+            ResponseData::Status {
+                accounts,
+                sync_statuses,
+                total_messages,
+                protocol_version,
+                ..
+            },
+    } = scoped_dispatch(&s, Request::GetStatus).await
+    else {
+        panic!("expected status")
+    };
+    assert_eq!(protocol_version, IPC_PROTOCOL_VERSION);
+    assert!(
+        !accounts.iter().any(|name| name == "Other Account"),
+        "{accounts:?}"
+    );
+    assert!(sync_statuses
+        .iter()
+        .all(|status| status.account_id == s.own.account));
+    let own_count =
+        s.fx.state
+            .store
+            .count_messages_grouped_by_account()
+            .await
+            .unwrap()
+            .get(&s.own.account)
+            .copied()
+            .unwrap_or(0);
+    assert_eq!(total_messages, own_count);
 }

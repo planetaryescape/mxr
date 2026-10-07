@@ -91,9 +91,9 @@ profile.
 
 `Unscoped` is kept to requests with no account data: `Ping`,
 `Authenticate`, `GetStatus` (the version handshake every client and the MCP
-status tool use; it lists account names and sync health, no mail), LLM and
-semantic status reads, notification chimes, snippets, signature names, the
-humanizer, `ResolveTime` and the mode guides.
+status tool use; its account rows are cut to the allowed accounts, see
+below), LLM and semantic status reads, notification chimes, snippets,
+signature names, the humanizer, `ResolveTime` and the mode guides.
 
 Behaviour change for scoped profiles: rules, logs, the activity log, saved
 searches, jobs listing and daemon maintenance are now denied, and `GetJob`
@@ -124,3 +124,7 @@ in its own commit with a test that failed first.
   `scope_response` cuts a `Thread` response to the allowed accounts'
   messages, rebuilds its counts, participants and snippet from them, and
   drops a cached summary written over the hidden ones.
+- **Status (medium).** `GetStatus` stays allowed as the handshake, but its
+  response is cut to the allowed accounts' names, sync statuses and message
+  count. Daemon-level fields (versions, pid, uptime, feature health,
+  semantic runtime) are unchanged.

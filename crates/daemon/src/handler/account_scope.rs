@@ -414,9 +414,9 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::DeleteSavedActivityFilter { .. } => AllAccounts,
 
         // ----- No account data -----
-        // Status lists account names and sync health but no mail, and every
-        // client calls it as the daemon version handshake; the MCP server's
-        // status tool depends on it.
+        // Every client calls status as the daemon version handshake and the
+        // MCP status tool depends on it; `scope_response` cuts its account
+        // rows down to the allowed accounts.
         Request::GetStatus
         | Request::Ping
         | Request::Authenticate { .. }
@@ -765,14 +765,65 @@ pub(crate) fn profile_name(source: ClientKind) -> Option<&'static str> {
 
 /// Cut a response down to what a scoped profile may see. Request checks
 /// already keep a scoped client to its accounts; this covers responses that
-/// are allowed but carry other accounts' rows, and is a second safety net for
-/// thread loads.
+/// are allowed but carry other accounts' rows (status) and is a
+/// second safety net for thread loads.
 pub(super) async fn scope_response(
     state: &AppState,
     profile: &AgentProfileConfig,
     data: ResponseData,
 ) -> Result<ResponseData, String> {
     match data {
+        ResponseData::Status {
+            uptime_secs,
+            accounts: _,
+            total_messages,
+            daemon_pid,
+            sync_statuses,
+            protocol_version,
+            daemon_version,
+            daemon_build_id,
+            repair_required,
+            semantic_runtime,
+            feature_health,
+            degraded,
+        } => {
+            let mut allowed = Vec::new();
+            for status in sync_statuses {
+                if account_id_allowed(state, profile, &status.account_id).await? {
+                    allowed.push(status);
+                }
+            }
+            let total_messages = if degraded {
+                total_messages
+            } else {
+                let counts = state
+                    .store
+                    .count_messages_grouped_by_account()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                allowed
+                    .iter()
+                    .map(|status| counts.get(&status.account_id).copied().unwrap_or(0))
+                    .sum()
+            };
+            Ok(ResponseData::Status {
+                uptime_secs,
+                accounts: allowed
+                    .iter()
+                    .map(|status| status.account_name.clone())
+                    .collect(),
+                total_messages,
+                daemon_pid,
+                sync_statuses: allowed,
+                protocol_version,
+                daemon_version,
+                daemon_build_id,
+                repair_required,
+                semantic_runtime,
+                feature_health,
+                degraded,
+            })
+        }
         ResponseData::Thread {
             thread,
             messages,

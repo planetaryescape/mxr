@@ -434,6 +434,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "Now's Not-sure choices, the Move button on an arrivals list row",
     optimistic: "Nothing moves until the daemon answers; then every client refetches.",
     pastTense: "Moved",
+    tone: "info",
     sound: null,
     undo: "reverse-request",
   },

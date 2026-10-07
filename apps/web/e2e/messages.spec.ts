@@ -57,10 +57,19 @@ test("each person is one row with topics, a group is its own row, a cc is not he
   await expect(page.getByTestId("mode-header").first()).toHaveText(
     "People you talk with, one row each. Reply or mark done.",
   );
+  // One row however many conversations he's in. Other specs may have
+  // answered him already, so his band isn't pinned down here.
   await expect(row(page, SAMIR)).toHaveCount(1);
-  await expect(page.getByTestId("band-your_turn").locator(`[data-row-id="${SAMIR}"]`)).toBeVisible();
-  await expect(page.getByTestId("messages-row").filter({ hasText: "Samir, Ruth" })).toHaveCount(1);
-  await expect(page.getByTestId("messages-row").filter({ hasText: "Offsite dates" })).toHaveCount(0);
+  // The group is its own row (in whichever band), and the thread you were
+  // only copied on is in no row at all.
+  const data = all(await messages(page));
+  const groups = data.filter((candidate) => candidate.title === "Samir, Ruth");
+  expect(groups).toHaveLength(1);
+  expect(groups[0]!.kind).toBe("group");
+  expect(groups[0]!.id).toMatch(/^group:/);
+  expect(
+    data.some((candidate) => candidate.topics.some((topic) => topic.subject === "Offsite dates")),
+  ).toBe(false);
   await expect(row(page, IRIS).getByTestId("row-preview")).toHaveText("You: Thanks, on it.");
   // No early-version marker on Messages any more.
   await expect(page.getByTestId("rail-early").filter({ hasText: /messages/i })).toHaveCount(0);
@@ -116,6 +125,14 @@ test("Got it shows the exact text and counts down; undo sends nothing", async ({
   const contract = await topicOf(page, SAMIR, "Contract renewal");
   await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}&topic=${contract}`);
   await expect(page.getByTestId("conversation")).toBeVisible();
+  const sent = async () =>
+    (
+      await bridge<{ page: { conversation: { messages: unknown[] } } }>(
+        page,
+        `/api/v1/mail/people/page?person=${encodeURIComponent(SAMIR)}&topic=${contract}`,
+      )
+    ).page.conversation.messages.length;
+  const before = await sent();
   await page.keyboard.press(".");
   const preview = page.getByTestId("got-it-preview");
   await expect(preview).toBeVisible();
@@ -124,10 +141,9 @@ test("Got it shows the exact text and counts down; undo sends nothing", async ({
   await page.keyboard.press("u");
   await expect(preview).toHaveCount(0);
   await expect(page.getByText("Got it cancelled. Nothing was sent.")).toBeVisible();
-  // Still Samir's turn: nothing went out.
+  // Past the countdown, nothing went out.
   await page.waitForTimeout(6_000);
-  const data = await messages(page);
-  expect(data.your_turn.some((candidate) => candidate.id === SAMIR)).toBe(true);
+  expect(await sent()).toBe(before);
 });
 
 test("Got it sends after the countdown and the turn passes", async ({ page }) => {

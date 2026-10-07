@@ -4540,7 +4540,7 @@
         "properties": {
           "dry_run": {
             "type": "boolean",
-            "description": "Preview only: the exact text, nothing sent."
+            "description": "True by default: a preview of the exact plan with its token. Only an\nexplicit `false`, with the preview's token and text, sends."
           },
           "expect_text": {
             "type": [
@@ -4548,6 +4548,13 @@
               "null"
             ],
             "description": "The previewed text: the send refuses anything else."
+          },
+          "preview_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The preview's token, issued within the last minute."
           },
           "thread_id": {
             "type": "string"
@@ -4561,6 +4568,7 @@
           "account_id",
           "thread_id",
           "reply_to_message_id",
+          "from",
           "to",
           "subject",
           "text",
@@ -4585,8 +4593,27 @@
           "dry_run": {
             "type": "boolean"
           },
+          "from": {
+            "type": "string",
+            "description": "The address it is sent from."
+          },
+          "preview_expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "preview_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set on a preview: send with it, and `text`, within a minute. It binds\nthe recipient, sender, target message and text."
+          },
           "reply_to_message_id": {
-            "$ref": "#/components/schemas/MessageId"
+            "$ref": "#/components/schemas/MessageId",
+            "description": "The message being acknowledged: their latest."
           },
           "sent_message_id": {
             "oneOf": [
@@ -4613,7 +4640,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Address"
-            }
+            },
+            "description": "Exactly one recipient: Got it never replies to all."
           }
         }
       },
@@ -5985,6 +6013,10 @@
           },
           "message_id": {
             "$ref": "#/components/schemas/MessageId"
+          },
+          "only_quoted": {
+            "type": "boolean",
+            "description": "Nothing but quoted text: `text` is the \"(only quoted text)\"\nplaceholder, and the message as sent is the way to read it."
           },
           "paragraphs": {
             "type": "integer",
@@ -8872,7 +8904,8 @@
           "list_unsubscribe",
           "no_reply_address",
           "list_sender",
-          "person"
+          "person",
+          "copied"
         ]
       },
       "Label": {
@@ -17223,7 +17256,7 @@
           },
           {
             "type": "object",
-            "description": "Got it: a short acknowledgement on `thread_id`, in your usual\ngreeting and sign-off for that person, built from a template with\nno model. `dry_run` returns the exact text without sending; a real\nrun with `expect_text` refuses to send anything else, so what was\npreviewed is what goes. Returns `ResponseData::MessagesAck`.",
+            "description": "Got it: a short acknowledgement on `thread_id`, in your usual\ngreeting and sign-off for that person, built from a template with\nno model. A preview (the default) returns the exact plan and a\n`preview_token`. A send (`dry_run: false`) needs that token, issued\nwithin the last minute, and the previewed text: it goes only when\nthe recipient, sender, target message and text all still match,\nand never twice for the same message. Returns\n`ResponseData::MessagesAck`.",
             "required": [
               "thread_id",
               "cmd"
@@ -17239,6 +17272,12 @@
                 "type": "boolean"
               },
               "expect_text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "preview_token": {
                 "type": [
                   "string",
                   "null"
@@ -24571,6 +24610,10 @@
           "signature"
         ],
         "properties": {
+          "footer": {
+            "type": "boolean",
+            "description": "A legal disclaimer or a tracking/unsubscribe footer."
+          },
           "quote": {
             "type": "boolean"
           },

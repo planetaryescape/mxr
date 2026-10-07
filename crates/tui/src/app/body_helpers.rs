@@ -169,6 +169,21 @@ impl App {
         Some(label)
     }
 
+    /// An account's name for a message, never its id.
+    pub(crate) fn account_display_name(&self, account_id: &mxr_core::AccountId) -> String {
+        self.freshness
+            .as_ref()
+            .and_then(|data| {
+                data.accounts
+                    .iter()
+                    .find(|account| &account.account_id == account_id)
+            })
+            .map_or_else(
+                || "an account".to_string(),
+                |account| account.account_name.clone(),
+            )
+    }
+
     /// Sync is failing, paused or stale somewhere: the bar shows its words
     /// in the warning colour.
     pub(super) fn sync_warning(&self) -> bool {

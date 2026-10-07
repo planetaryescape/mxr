@@ -48,6 +48,7 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
         DaemonEvent::SyncCompleted {
             messages_synced, ..
         } => {
+            app.user_sync_pending = false;
             app.mailbox.pending_labels_refresh = true;
             app.mailbox.pending_all_envelopes_refresh = true;
             app.mailbox.pending_subscriptions_refresh = true;
@@ -84,11 +85,16 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             app.restore_sidebar_selection(selected_sidebar);
         }
         DaemonEvent::SyncError { account_id, error } => {
-            app.modals.error = Some(app::ErrorModalState::new(
-                "Sync Failed",
-                format!("Account: {account_id}\n\n{error}"),
-            ));
-            app.status_message = Some(format!("Sync error: {error}"));
+            // A background retry never takes the keyboard: the status line's
+            // sync health (from the freshness refresh below) says which
+            // account is failing and when it tries again. A sync you asked
+            // for gets one line naming the account.
+            if std::mem::take(&mut app.user_sync_pending) {
+                app.status_message = Some(format!(
+                    "Sync failed for {}: {error}",
+                    app.account_display_name(&account_id)
+                ));
+            }
             app.diagnostics.pending_status_refresh = true;
         }
         DaemonEvent::ReminderTriggered { sent_message_id } => {
@@ -416,5 +422,79 @@ mod tests {
             !app.toasts.is_empty(),
             "unparseable correlation id must still push an error toast"
         );
+    }
+
+    fn app_with_account(account_id: &mxr_core::AccountId) -> App {
+        let mut app = App::new();
+        app.freshness = Some(mxr_protocol::FreshnessData {
+            generated_at: chrono::Utc::now(),
+            newest_message_at: None,
+            stale_after_secs: 900,
+            worst_account_id: None,
+            accounts: vec![mxr_protocol::AccountFreshnessData {
+                account_id: account_id.clone(),
+                account_name: "Work".into(),
+                label: "Work".into(),
+                newest_message_at: None,
+                last_sync_ok_at: None,
+                last_sync_attempt_at: None,
+                sync_in_progress: false,
+                health: mxr_protocol::SyncHealthData::Ok,
+                last_sync_error: None,
+            }],
+            arrivals: vec![],
+        });
+        app
+    }
+
+    #[test]
+    fn a_background_sync_failure_never_opens_a_modal() {
+        let account_id = mxr_core::AccountId::new();
+        let mut app = app_with_account(&account_id);
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::SyncError {
+                account_id,
+                error: "Provider error: connection refused".into(),
+            },
+        );
+        assert!(
+            app.modals.error.is_none(),
+            "no modal for a background retry"
+        );
+        assert!(app.status_message.is_none());
+        assert!(
+            app.diagnostics.pending_status_refresh,
+            "the status line's sync health refreshes instead"
+        );
+    }
+
+    #[test]
+    fn a_sync_you_asked_for_names_the_account_when_it_fails() {
+        let account_id = mxr_core::AccountId::new();
+        let mut app = app_with_account(&account_id);
+        app.user_sync_pending = true;
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::SyncError {
+                account_id: account_id.clone(),
+                error: "connection refused".into(),
+            },
+        );
+        assert!(app.modals.error.is_none());
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Sync failed for Work: connection refused")
+        );
+        // The next background retry is quiet again.
+        app.status_message = None;
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::SyncError {
+                account_id,
+                error: "connection refused".into(),
+            },
+        );
+        assert!(app.status_message.is_none());
     }
 }

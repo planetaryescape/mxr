@@ -284,6 +284,9 @@ pub struct App {
     /// refreshed with the status snapshot. Its words are worked out at draw
     /// time so the ages tick.
     pub freshness: Option<mxr_protocol::FreshnessData>,
+    /// You asked for a sync and it has not finished: its failure is worth a
+    /// status line, where a background retry's is not.
+    pub user_sync_pending: bool,
     pub visible_height: usize,
     pub html_image_support: Option<TerminalImageSupport>,
     pub html_image_assets: HashMap<MessageId, HashMap<String, HtmlImageEntry>>,
@@ -474,6 +477,7 @@ impl App {
             command_palette: CommandPaletteState::default(),
             last_sync_status: None,
             freshness: None,
+            user_sync_pending: false,
             visible_height: 20,
             html_image_support: None,
             html_image_assets: HashMap::new(),

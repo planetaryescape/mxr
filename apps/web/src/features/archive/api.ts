@@ -4,7 +4,7 @@
  * this file only moves them.
  */
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, type Query, useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";
 import type { components } from "@/api/generated";
@@ -30,6 +30,21 @@ type Export = Extract<Schemas["ResponseData"], { kind: "RecordExport" }>;
 
 /** Every Archive query starts with this, so one invalidation refreshes them. */
 export const RECORDS_KEY = ["records"] as const;
+
+/** Where the account sits in a ledger or answer key, after `RECORDS_KEY` and the view. */
+const ACCOUNT_KEY_INDEX = RECORDS_KEY.length + 1;
+
+/**
+ * Keeps the last result on screen while the next loads, but only within one
+ * account: after a switch, the previous account's records must not show as
+ * this account's while its own load.
+ */
+function keepWithinAccount<T>(account: string) {
+  return (
+    previous: T | undefined,
+    previousQuery: Query<T, Error, T, readonly unknown[]> | undefined,
+  ) => (previousQuery?.queryKey[ACCOUNT_KEY_INDEX] === account ? previous : undefined);
+}
 
 /** The ledger's filter as the bridge's query string. */
 export function ledgerQuery(
@@ -73,7 +88,7 @@ export function useLedger(filter: RecordFilter, limit?: number, enabled = true) 
     queryKey: [...RECORDS_KEY, "ledger", account ?? "all", filter, limit ?? null],
     queryFn: () => fetchLedger(account, filter, limit),
     enabled,
-    placeholderData: keepPreviousData,
+    placeholderData: keepWithinAccount<RecordLedger>(account ?? "all"),
     staleTime: 15_000,
     // Records file in the background after sync and on the first run.
     refetchInterval: 30_000,
@@ -117,7 +132,7 @@ export function useAnswer(query: string, fallback = false) {
     queryKey: [...RECORDS_KEY, "answer", account ?? "all", text, fallback],
     queryFn: () => fetchAnswer(account, text, fallback),
     enabled: text.length > 0,
-    placeholderData: keepPreviousData,
+    placeholderData: keepWithinAccount<RecordAnswer>(account ?? "all"),
     staleTime: 30_000,
   });
 }

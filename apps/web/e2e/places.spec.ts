@@ -23,7 +23,7 @@ async function bridge<T>(page: Page, path: string, body?: unknown): Promise<T> {
   return (await response.json()) as T;
 }
 
-function place(page: Page, slug: "reading" | "paper-trail") {
+function place(page: Page, slug: "reading") {
   return bridge<{ bundles: Bundle[]; total_messages: number }>(
     page,
     `/api/v1/mail/places/${slug}?messages_per_bundle=50`,
@@ -98,31 +98,31 @@ test("moving a sender from Reading to People takes it to the desk, and u brings 
   }
 });
 
-test("Paper trail: pin one, sweep the bundle without it, undo puts the rest back", async ({
-  page,
-}) => {
-  // A sender with several messages in the inbox, moved to Paper trail for
-  // this journey (the demo's automated senders have one each).
+test("Reading: pin one, sweep the sender without it, undo puts the rest back", async ({ page }) => {
+  // A sender with several messages in the inbox, moved to Reading for this
+  // journey (the demo's newsletters have one each). Sweep and pin live in
+  // Reading since Updates became a briefing.
   const [anyBundle] = (await place(page, "reading")).bundles;
   const account = anyBundle!.account_id;
   const sender = { account_id: account, sender_email: "ari@fieldkit.example" };
-  await setKind(page, sender, "paper_trail");
+  await setKind(page, sender, "reading");
   try {
-    const bundle = (await place(page, "paper-trail")).bundles.find(
+    const bundle = (await place(page, "reading")).bundles.find(
       (item) => item.sender_email === sender.sender_email,
     );
     expect(bundle?.message_count ?? 0).toBeGreaterThan(1);
     const total = bundle!.message_count;
 
-    await openApp(page, "/paper-trail");
-    const row = page.locator(`[data-testid='place-bundle'][data-sender='${sender.sender_email}']`);
-    await row.getByRole("button").click();
-    await expect(row.getByRole("button")).toHaveAttribute("aria-expanded", "true");
-    const messages = page.getByTestId("place-message");
-    await messages.first().getByRole("button", { name: "Pin" }).click();
-    await expect(messages.first()).toHaveAttribute("data-pinned", "true");
+    await openApp(page, "/reading");
+    const issue = page
+      .locator(`[data-testid='reading-issue'][data-sender='${sender.sender_email}']`)
+      .first();
+    await issue.click({ position: { x: 5, y: 5 } });
+    await expect(issue).toHaveAttribute("aria-current", "true");
+    await issue.getByRole("button", { name: /^Pin/ }).click();
+    await expect(issue).toContainText("Pinned");
 
-    // S sweeps the bundle under the cursor: the preview leaves the pin out.
+    // S sweeps the sender under the cursor: the preview leaves the pin out.
     await page.keyboard.press("S");
     const dialog = page.getByTestId("sweep-dialog");
     await expect(dialog).toContainText(`Archive ${total - 1} message`);
@@ -134,9 +134,8 @@ test("Paper trail: pin one, sweep the bundle without it, undo puts the rest back
     await expect
       .poll(
         async () =>
-          (await place(page, "paper-trail")).bundles.find(
-            (b) => b.sender_email === sender.sender_email,
-          )?.message_count,
+          (await place(page, "reading")).bundles.find((b) => b.sender_email === sender.sender_email)
+            ?.message_count,
         { timeout: 20_000 },
       )
       .toBe(1);
@@ -145,16 +144,15 @@ test("Paper trail: pin one, sweep the bundle without it, undo puts the rest back
     await expect
       .poll(
         async () =>
-          (await place(page, "paper-trail")).bundles.find(
-            (b) => b.sender_email === sender.sender_email,
-          )?.message_count,
+          (await place(page, "reading")).bundles.find((b) => b.sender_email === sender.sender_email)
+            ?.message_count,
         // Undo reverses each archived message; under a loaded suite that
         // takes longer than the default.
         { timeout: 20_000 },
       )
       .toBe(total);
   } finally {
-    const bundle = (await place(page, "paper-trail")).bundles.find(
+    const bundle = (await place(page, "reading")).bundles.find(
       (item) => item.sender_email === sender.sender_email,
     );
     const pinned = bundle?.messages.filter((m) => m.pinned).map((m) => m.message_id) ?? [];
@@ -168,11 +166,11 @@ test("Paper trail: pin one, sweep the bundle without it, undo puts the rest back
 test("A previews the whole place, and Enter alone never sweeps it", async ({ page }) => {
   const preview = await bridge<{ preview: { count: number } }>(
     page,
-    "/api/v1/mail/places/paper-trail/sweep",
+    "/api/v1/mail/places/reading/sweep",
     { dry_run: true },
   );
-  await openApp(page, "/paper-trail");
-  await expect(page.getByTestId("place-bundle").first()).toBeVisible();
+  await openApp(page, "/reading");
+  await expect(page.getByTestId("reading-issue").first()).toBeVisible();
   await page.keyboard.press("A");
   const dialog = page.getByTestId("sweep-dialog");
   await expect(dialog).toContainText(`Archive ${preview.preview.count} message`);
@@ -187,17 +185,14 @@ test("A previews the whole place, and Enter alone never sweeps it", async ({ pag
 
   // The real sweep needs a live preview token: a made-up one archives nothing.
   const state = readE2EState();
-  const refused = await page.request.post(
-    `${state.bridgeUrl}/api/v1/mail/places/paper-trail/sweep`,
-    {
-      headers: { authorization: `Bearer ${state.token}` },
-      data: { dry_run: false, preview_token: "not-a-preview" },
-    },
-  );
+  const refused = await page.request.post(`${state.bridgeUrl}/api/v1/mail/places/reading/sweep`, {
+    headers: { authorization: `Bearer ${state.token}` },
+    data: { dry_run: false, preview_token: "not-a-preview" },
+  });
   expect(refused.ok()).toBeFalsy();
   const after = await bridge<{ preview: { count: number } }>(
     page,
-    "/api/v1/mail/places/paper-trail/sweep",
+    "/api/v1/mail/places/reading/sweep",
     { dry_run: true },
   );
   expect(after.preview.count).toBe(preview.preview.count);
@@ -206,14 +201,14 @@ test("A previews the whole place, and Enter alone never sweeps it", async ({ pag
 test("A, Tab, Enter sweeps the whole place, and u puts it back", async ({ page }) => {
   const count = async () =>
     (
-      await bridge<{ preview: { count: number } }>(page, "/api/v1/mail/places/paper-trail/sweep", {
+      await bridge<{ preview: { count: number } }>(page, "/api/v1/mail/places/reading/sweep", {
         dry_run: true,
       })
     ).preview.count;
   const before = await count();
   expect(before).toBeGreaterThan(0);
-  await openApp(page, "/paper-trail");
-  await expect(page.getByTestId("place-bundle").first()).toBeVisible();
+  await openApp(page, "/reading");
+  await expect(page.getByTestId("reading-issue").first()).toBeVisible();
   await page.keyboard.press("A");
   const dialog = page.getByTestId("sweep-dialog");
   const confirm = dialog.getByRole("button", { name: /^Archive all / });

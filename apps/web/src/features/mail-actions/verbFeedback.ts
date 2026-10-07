@@ -269,7 +269,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
   },
   sweep: {
     actions: ["place.sweep-bundle", "place.sweep-all"],
-    alsoFrom: `the Sweep buttons, ${SWIPE} on a Paper trail sender`,
+    alsoFrom: `the Sweep buttons and the Reading feed`,
     optimistic: "The daemon's dry run shows the count first; then the swept mail leaves.",
     pastTense: "Archived",
     tone: "info",
@@ -310,7 +310,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
   },
   pin: {
     actions: ["place.pin"],
-    alsoFrom: "the pin button on a Paper trail or Reading message",
+    alsoFrom: "the pin button on a Reading issue",
     optimistic: "The pin fills at once.",
     pastTense: "Pinned",
     tone: "info",

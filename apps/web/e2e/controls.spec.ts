@@ -36,7 +36,7 @@ const INVENTORY = {
     "Draft in your voice",
   ],
   readingHeader: ["Let go of all"],
-  paperTrailHeader: ["Sweep all"],
+  updatesHeader: [],
 } as const;
 
 async function names(locator: Locator, role: "button" | "radio" = "button"): Promise<string[]> {
@@ -129,5 +129,5 @@ test("focus mode and the places keep exactly their inventoried controls", async 
   await expect(page.getByRole("heading", { level: 1, name: "Updates", exact: true })).toBeVisible();
   expect(
     await names(page.getByRole("region", { name: "Updates" }).locator("header").first()),
-  ).toEqual(INVENTORY.paperTrailHeader);
+  ).toEqual(INVENTORY.updatesHeader);
 });

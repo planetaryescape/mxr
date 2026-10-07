@@ -143,7 +143,7 @@ interface Bundle {
   messages: { message_id: string; pinned: boolean }[];
 }
 
-async function placeBundles(page: Page, slug: "reading" | "paper-trail"): Promise<Bundle[]> {
+async function placeBundles(page: Page, slug: "reading"): Promise<Bundle[]> {
   const place = await bridge<{ bundles: Bundle[] }>(
     page,
     `/api/v1/mail/places/${slug}?messages_per_bundle=50`,
@@ -152,10 +152,11 @@ async function placeBundles(page: Page, slug: "reading" | "paper-trail"): Promis
 }
 
 /**
- * Run `body` with a sender that has several inbox messages placed in Paper
- * trail (the demo's automated senders have one each), then put it back.
+ * Run `body` with a sender that has several inbox messages placed in
+ * Reading (the demo's newsletters have one each), then put it back. Sweep
+ * and pin live in Reading since Updates became a briefing.
  */
-async function withPaperTrailSender(
+async function withReadingSender(
   page: Page,
   body: (sender: string) => Promise<void>,
 ): Promise<void> {
@@ -163,7 +164,7 @@ async function withPaperTrailSender(
   const [reading] = await placeBundles(page, "reading");
   if (!reading) throw new Error("the demo has no Reading bundle to take the account from");
   const sender = { account_id: reading.account_id, sender_email: "ari@fieldkit.example" };
-  await bridge(page, "/api/v1/mail/senders/kind", { ...sender, kind: "paper_trail" });
+  await bridge(page, "/api/v1/mail/senders/kind", { ...sender, kind: "reading" });
   try {
     await body(sender.sender_email);
   } finally {
@@ -172,16 +173,17 @@ async function withPaperTrailSender(
 }
 
 async function bundleCount(page: Page, sender: string): Promise<number | undefined> {
-  const bundles = await placeBundles(page, "paper-trail");
+  const bundles = await placeBundles(page, "reading");
   return bundles.find((bundle) => bundle.sender_email === sender)?.message_count;
 }
 
-async function openBundle(page: Page, sender: string) {
-  await openApp(page, "/paper-trail");
-  const row = page.locator(`[data-testid='place-bundle'][data-sender='${sender}']`);
-  await row.getByRole("button").click();
-  await expect(row.getByRole("button")).toHaveAttribute("aria-expanded", "true");
-  return row;
+/** Reading with the cursor on the sender's newest issue. */
+async function openSenderIssue(page: Page, sender: string) {
+  await openApp(page, "/reading");
+  const issue = page.locator(`[data-testid='reading-issue'][data-sender='${sender}']`).first();
+  await issue.click({ position: { x: 5, y: 5 } });
+  await expect(issue).toHaveAttribute("aria-current", "true");
+  return issue;
 }
 
 function composer(page: Page) {
@@ -483,10 +485,10 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
   },
 
   sweep: async (page) => {
-    await withPaperTrailSender(page, async (sender) => {
+    await withReadingSender(page, async (sender) => {
       const total = (await bundleCount(page, sender))!;
       expect(total).toBeGreaterThan(1);
-      await openBundle(page, sender);
+      await openSenderIssue(page, sender);
       await page.keyboard.press("S");
       const dialog = page.getByTestId("sweep-dialog");
       await expect(dialog).toContainText(`Archive ${total} message`);
@@ -527,7 +529,7 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     const card = page.getByTestId("now-section-updates");
     await expect(card).toBeVisible();
     await page.keyboard.press("A");
-    const dialog = page.getByTestId("let-go-dialog");
+    const dialog = page.getByTestId("updates-let-go-dialog");
     await expect(dialog).toContainText(/^Let go of \d+ updates? from/);
     await dialog.getByRole("button", { name: "Let go", exact: true }).click();
     await expectToast(page, "digest-let-go");
@@ -616,16 +618,15 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
   }),
 
   pin: async (page) => {
-    await withPaperTrailSender(page, async (sender) => {
-      await openBundle(page, sender);
-      const message = page.getByTestId("place-message").first();
-      await message.getByRole("button", { name: "Pin" }).click();
+    await withReadingSender(page, async (sender) => {
+      const issue = await openSenderIssue(page, sender);
+      await issue.getByRole("button", { name: /^Pin/ }).click();
       await expectToast(page, "pin");
-      await expect(message).toHaveAttribute("data-pinned", "true");
+      await expect(issue).toContainText("Pinned");
       // Its undo is the same control again.
-      await message.getByRole("button", { name: "Unpin" }).click();
+      await issue.getByRole("button", { name: /^Unpin/ }).click();
       await expect(toast(page, /^Unpinned$/)).toBeVisible();
-      await expect(message).not.toHaveAttribute("data-pinned", "true");
+      await expect(issue.getByRole("button", { name: /^Pin/ })).toBeVisible();
     });
   },
 

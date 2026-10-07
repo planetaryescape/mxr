@@ -18,6 +18,7 @@ export type ParityContext =
   | "todo"
   | "now"
   | "messages"
+  | "updates"
   | "archive"
   | "reading";
 
@@ -31,6 +32,7 @@ const CONTEXT_SCOPES: Record<ParityContext, ActionScope[]> = {
   now: ["now", "global"],
   messages: ["messages", "global"],
   archive: ["archive", "global"],
+  updates: ["updates", "global"],
   reading: ["reading", "global"],
   // The TUI's screener is a modal that swallows every other key.
   screener: ["screener"],
@@ -48,7 +50,7 @@ export const SAME_ACTION: Record<string, string[]> = {
   "mail.undo": ["UndoLastMutation"],
   "nav.now": ["OpenNow"],
   "nav.messages": ["OpenMessages"],
-  "nav.updates": ["OpenPlace(PaperTrail)"],
+  "nav.updates": ["OpenUpdates"],
   "nav.archive-mode": ["OpenArchiveMode"],
   "nav.inbox": ["GoToInbox", "OpenSavedSearchByIndex(0)"],
   "nav.starred": ["GoToStarred"],
@@ -210,6 +212,16 @@ export const SAME_ACTION: Record<string, string[]> = {
   "archive.export": ["RecordsExport"],
   "archive.make-todo": ["RecordsMakeTodo"],
   "archive.close": ["RecordsBack"],
+  "updates.down": ["MoveDown"],
+  "updates.up": ["MoveUp"],
+  "updates.expand": ["UpdatesOpen"],
+  "updates.let-go-all": ["UpdatesLetGoAll"],
+  "updates.let-go-source": ["UpdatesLetGoSource"],
+  "updates.needs-me": ["UpdatesNeedsMe"],
+  "updates.tune": ["UpdatesTune"],
+  "updates.link": ["UpdatesOpenLink"],
+  "updates.open-email": ["UpdatesOpenEmail"],
+  "updates.close-card": ["UpdatesClose"],
   "reading.down": ["MoveDown"],
   "reading.up": ["MoveUp"],
   "reading.read": ["ReadingRead"],
@@ -500,6 +512,26 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   },
   {
     context: "archive",
+    keys: ["c"],
+    bound: "web",
+    why: "Compose works everywhere on the web; the TUI lens keeps c free",
+  },
+  // Updates.
+  {
+    context: "updates",
+    // prettier-ignore
+    keys: ["G", "g g", "H", "M", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
+    bound: "tui",
+    why: "The TUI lens shares the list's motions and pane keys; the web briefing moves with j and k",
+  },
+  {
+    context: "updates",
+    keys: ["i a", "i m", "i d", "i A", "i M", "i D"],
+    bound: "tui",
+    why: "The TUI lens passes invite answers through; the web answers an invite from the reader",
+  },
+  {
+    context: "updates",
     keys: ["c"],
     bound: "web",
     why: "Compose works everywhere on the web; the TUI lens keeps c free",

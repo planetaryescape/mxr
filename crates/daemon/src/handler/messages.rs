@@ -19,8 +19,8 @@ use super::desk_lanes::{
 use super::desk_timers::DeskTimers;
 use super::messages_text::{cached_ask, new_texts, wrapped_lines, TextRequest};
 use super::messages_view::{
-    band, build_row, closeness, day_label, preview, preview_text, rank_by_recency, rank_your_turn,
-    turn_ratio, you_preview, People, RowContext, RowKey, Topic, PINNED_CAP,
+    band, build_row, closeness, day_label, preview_text, rank_by_recency, rank_your_turn,
+    turn_ratio, People, RowContext, RowKey, Topic, PINNED_CAP,
 };
 use super::modes::messages_dismissals;
 use super::places::scoped_accounts;
@@ -31,9 +31,10 @@ use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
     messages_copy, ClosenessData, ComposerData, ConversationAttachmentData, ConversationData,
     ConversationMessageData, DeskLaneKind, DeskRowData, MergeSuggestionData, MessageLayoutData,
-    MessagesBandData, MessagesData, MessagesLapsedData, MessagesPreviewKindData, MessagesRowData,
-    MessagesRowKindData, MessagesTopicData, MessagesTurnData, PersonMergeData, PersonPageData,
-    PersonRefData, ResponseData, TopicStateData, TrimmedData,
+    MessagesBandData, MessagesData, MessagesLapsedData, MessagesPreviewData,
+    MessagesPreviewKindData, MessagesRowData, MessagesRowKindData, MessagesTopicData,
+    MessagesTurnData, PersonMergeData, PersonPageData, PersonRefData, ResponseData, TopicStateData,
+    TrimmedData,
 };
 use mxr_store::{DeskMessage, PersonFacts, PersonMerge};
 use std::collections::{HashMap, HashSet};
@@ -563,12 +564,12 @@ async fn fill_previews(
         };
         if topic.state == TopicStateData::YourTurn {
             if let Some(ask) = cached_ask(state, &topic.thread_id).await? {
-                row.preview = Some(preview(
-                    MessagesPreviewKindData::Ask,
-                    preview_text(&ask.quote),
-                    Some(ask.message_id),
-                    Some(ask.model),
-                ));
+                row.preview = Some(MessagesPreviewData {
+                    kind: MessagesPreviewKindData::Ask,
+                    text: preview_text(&ask.quote),
+                    message_id: Some(ask.message_id),
+                    model: Some(ask.model),
+                });
                 continue;
             }
         }
@@ -592,20 +593,19 @@ async fn fill_previews(
         let Some(text) = texts.get(&target) else {
             continue;
         };
-        row.preview = Some(if g.outbound.contains(&target) {
-            preview(
+        let (kind, text) = if g.outbound.contains(&target) {
+            (
                 MessagesPreviewKindData::You,
-                you_preview(&text.text),
-                Some(target),
-                None,
+                format!("You: {}", preview_text(&text.text)),
             )
         } else {
-            preview(
-                MessagesPreviewKindData::Latest,
-                preview_text(&text.text),
-                Some(target),
-                None,
-            )
+            (MessagesPreviewKindData::Latest, preview_text(&text.text))
+        };
+        row.preview = Some(MessagesPreviewData {
+            kind,
+            text,
+            message_id: Some(target),
+            model: None,
         });
     }
     Ok(())
@@ -917,7 +917,7 @@ async fn conversation(
         })
         .collect();
     let to = match row.kind {
-        MessagesRowKindData::Group => group_title_of(row),
+        MessagesRowKindData::Group => row.title.clone(),
         MessagesRowKindData::Person => row
             .person
             .as_ref()
@@ -937,10 +937,6 @@ async fn conversation(
             reply_all: topic.shape == mxr_protocol::ThreadShapeData::Group,
         },
     })
-}
-
-fn group_title_of(row: &MessagesRowData) -> String {
-    row.title.clone()
 }
 
 fn paragraphs(text: &str) -> usize {

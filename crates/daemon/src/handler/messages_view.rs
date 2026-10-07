@@ -10,8 +10,8 @@ use super::desk_lanes::{pace_ratio, RECENT_DAYS};
 use chrono::{DateTime, Datelike, Duration, Local, TimeZone, Utc};
 use mxr_core::id::{AccountId, ThreadId};
 use mxr_protocol::{
-    ClosenessData, DeskRowData, MessagesBandData, MessagesPreviewData, MessagesRowData,
-    MessagesRowKindData, MessagesTopicData, PersonRefData, TopicStateData,
+    ClosenessData, DeskRowData, MessagesBandData, MessagesRowData, MessagesRowKindData,
+    MessagesTopicData, PersonRefData, TopicStateData,
 };
 use mxr_store::{PersonFacts, PersonLink};
 use std::collections::{HashMap, HashSet};
@@ -404,25 +404,6 @@ pub(super) fn preview_text(text: &str) -> String {
     let cut: String = flat.chars().take(PREVIEW_CHARS).collect();
     let cut = cut.rsplit_once(' ').map_or(cut.as_str(), |(head, _)| head);
     format!("{}…", cut.trim_end_matches([',', ';', ':', ' ']))
-}
-
-/// Wrap the preview in "You: " when you wrote last.
-pub(super) fn you_preview(text: &str) -> String {
-    format!("You: {}", preview_text(text))
-}
-
-pub(super) fn preview(
-    kind: mxr_protocol::MessagesPreviewKindData,
-    text: String,
-    message_id: Option<mxr_core::id::MessageId>,
-    model: Option<String>,
-) -> MessagesPreviewData {
-    MessagesPreviewData {
-        kind,
-        text,
-        message_id,
-        model,
-    }
 }
 
 #[cfg(test)]

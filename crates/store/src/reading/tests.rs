@@ -70,7 +70,10 @@ async fn items_are_replaced_per_message_and_go_with_it() {
     let fx = Fx::new().await;
     let issue = fx.issue("p1", "news@platform.example", at(0)).await;
     let rows = vec![fx.item(&issue, 0, "Issue"), fx.item(&issue, 1, "Link one")];
-    fx.store.replace_reading_items(&issue, &rows).await.expect("write");
+    fx.store
+        .replace_reading_items(&issue, &rows)
+        .await
+        .expect("write");
     fx.store
         .replace_reading_items(&issue, &rows[..1])
         .await
@@ -96,22 +99,51 @@ async fn items_are_replaced_per_message_and_go_with_it() {
         .await
         .expect("read")
         .is_empty());
-    assert!(fx.store.reading_later(&[fx.account.clone()]).await.expect("later").is_empty());
+    assert!(fx
+        .store
+        .reading_later(&[fx.account.clone()])
+        .await
+        .expect("later")
+        .is_empty());
 }
 
 #[tokio::test]
 async fn later_is_set_once_kept_on_a_second_press_and_cleared() {
     let fx = Fx::new().await;
     let issue = fx.issue("p1", "news@platform.example", at(0)).await;
-    assert!(fx.store.set_reading_later(&fx.account, &issue, 1, true, at(1)).await.expect("on"));
-    fx.store.set_reading_later(&fx.account, &issue, 1, true, at(5)).await.expect("keep");
-    let later = fx.store.reading_later(&[fx.account.clone()]).await.expect("list");
+    assert!(fx
+        .store
+        .set_reading_later(&fx.account, &issue, 1, true, at(1))
+        .await
+        .expect("on"));
+    fx.store
+        .set_reading_later(&fx.account, &issue, 1, true, at(5))
+        .await
+        .expect("keep");
+    let later = fx
+        .store
+        .reading_later(&[fx.account.clone()])
+        .await
+        .expect("list");
     assert_eq!(later.len(), 1);
     assert_eq!(later[0].later_at, Some(at(1)), "the first save stays");
     assert_eq!(later[0].kept_at, Some(at(5)));
-    assert!(fx.store.set_reading_later(&fx.account, &issue, 1, false, at(6)).await.expect("off"));
-    assert!(!fx.store.set_reading_later(&fx.account, &issue, 1, false, at(6)).await.expect("noop"));
-    assert!(fx.store.reading_later(&[fx.account.clone()]).await.expect("list").is_empty());
+    assert!(fx
+        .store
+        .set_reading_later(&fx.account, &issue, 1, false, at(6))
+        .await
+        .expect("off"));
+    assert!(!fx
+        .store
+        .set_reading_later(&fx.account, &issue, 1, false, at(6))
+        .await
+        .expect("noop"));
+    assert!(fx
+        .store
+        .reading_later(&[fx.account.clone()])
+        .await
+        .expect("list")
+        .is_empty());
 }
 
 #[tokio::test]
@@ -153,7 +185,10 @@ async fn engagement_adds_time_keeps_the_furthest_point_and_finishes_at_ninety_pe
         .await
         .expect("items");
     assert_eq!(
-        fx.store.reading_finished_samples(10).await.expect("samples"),
+        fx.store
+            .reading_finished_samples(10)
+            .await
+            .expect("samples"),
         vec![(400, 35_000)]
     );
 }
@@ -163,7 +198,10 @@ async fn source_issues_are_each_senders_latest_with_what_you_opened() {
     let fx = Fx::new().await;
     let mut ids = Vec::new();
     for day in 0..5 {
-        ids.push(fx.issue(&format!("w{day}"), "news@platform.example", at(day * 24)).await);
+        ids.push(
+            fx.issue(&format!("w{day}"), "news@platform.example", at(day * 24))
+                .await,
+        );
     }
     fx.issue("other", "digest@growth.example", at(3)).await;
     fx.store
@@ -248,25 +286,41 @@ async fn articles_highlights_prefs_and_the_visit_round_trip() {
         note: Some("good".into()),
         created_at: at(3),
     };
-    fx.store.insert_reading_highlight(&highlight).await.expect("insert");
+    fx.store
+        .insert_reading_highlight(&highlight)
+        .await
+        .expect("insert");
     assert_eq!(
         fx.store.reading_highlights(None).await.expect("all"),
         vec![highlight.clone()]
     );
     assert_eq!(
-        fx.store.reading_highlights_for_message(&issue).await.expect("one"),
+        fx.store
+            .reading_highlights_for_message(&issue)
+            .await
+            .expect("one"),
         vec![highlight]
     );
 
     fx.store
-        .set_reading_source_prefs(&fx.account, "news@platform.example", Some(true), false, at(4))
+        .set_reading_source_prefs(
+            &fx.account,
+            "news@platform.example",
+            Some(true),
+            false,
+            at(4),
+        )
         .await
         .expect("prefs");
     fx.store
         .set_reading_source_prefs(&fx.account, "news@platform.example", None, true, at(5))
         .await
         .expect("dismiss");
-    let prefs = fx.store.reading_source_prefs(&fx.account).await.expect("prefs");
+    let prefs = fx
+        .store
+        .reading_source_prefs(&fx.account)
+        .await
+        .expect("prefs");
     assert_eq!(
         prefs.get("news@platform.example"),
         Some(&ReadingSourcePrefs {
@@ -275,7 +329,10 @@ async fn articles_highlights_prefs_and_the_visit_round_trip() {
         })
     );
 
-    assert_eq!(fx.store.reading_visit().await.expect("none"), ReadingVisitRow::default());
+    assert_eq!(
+        fx.store.reading_visit().await.expect("none"),
+        ReadingVisitRow::default()
+    );
     let visit = ReadingVisitRow {
         first_seen: Some(at(1)),
         boundary: None,

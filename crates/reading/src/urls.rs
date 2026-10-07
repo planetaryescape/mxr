@@ -169,7 +169,10 @@ mod tests {
             clean("https://example.com/a?mc_cid=1&mc_eid=2"),
             "https://example.com/a"
         );
-        assert_eq!(clean("https://example.com/a#part"), "https://example.com/a#part");
+        assert_eq!(
+            clean("https://example.com/a#part"),
+            "https://example.com/a#part"
+        );
     }
 
     #[test]
@@ -186,7 +189,13 @@ mod tests {
 
     #[test]
     fn only_web_links_are_kept() {
-        for raw in ["mailto:a@b.c", "javascript:alert(1)", "#top", "ftp://x.y/z", "not a url"] {
+        for raw in [
+            "mailto:a@b.c",
+            "javascript:alert(1)",
+            "#top",
+            "ftp://x.y/z",
+            "not a url",
+        ] {
             assert!(clean_url(raw).is_none(), "{raw}");
         }
     }

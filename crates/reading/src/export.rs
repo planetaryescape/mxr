@@ -39,7 +39,9 @@ pub fn to_markdown(highlights: &[HighlightExport]) -> String {
     let mut out = String::from("# Reading highlights\n");
     for (title, source, url, items) in groups {
         out.push_str(&format!("\n## {}\n\n", one_line(title)));
-        let first = items.first().map(|h| h.created_at.format("%Y-%m-%d").to_string());
+        let first = items
+            .first()
+            .map(|h| h.created_at.format("%Y-%m-%d").to_string());
         let mut meta = vec![one_line(source)];
         meta.extend(first);
         if let Some(url) = url {
@@ -77,7 +79,9 @@ mod tests {
     fn highlights_group_by_item_with_source_date_and_link() {
         let highlights = [
             HighlightExport {
-                quote: "A delete is the absence of a row,\nand an absence does not travel on its own.".into(),
+                quote:
+                    "A delete is the absence of a row,\nand an absence does not travel on its own."
+                        .into(),
                 note: Some("Use this in the sync talk".into()),
                 title: "Shipping a sync engine in 2026".into(),
                 source: "Platform Weekly".into(),

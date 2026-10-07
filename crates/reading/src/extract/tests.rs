@@ -148,7 +148,10 @@ fn a_beehiiv_digest_skips_the_sponsor_and_read_online() {
         got.links[1].blurb.as_deref(),
         Some("The first email sets the habit, and most of them ask for too much too soon.")
     );
-    assert!(got.links.iter().all(|l| l.tracked && l.domain == "link.mail.beehiiv.com"));
+    assert!(got
+        .links
+        .iter()
+        .all(|l| l.tracked && l.domain == "link.mail.beehiiv.com"));
     assert!(got
         .standfirst
         .as_deref()

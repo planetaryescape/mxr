@@ -316,15 +316,36 @@ mod tests {
     #[test]
     fn private_and_reserved_addresses_are_not_public() {
         for ip in [
-            "127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1",
-            "0.0.0.0", "255.255.255.255", "224.0.0.1", "198.18.0.1", "192.0.2.1", "::1", "::",
-            "fc00::1", "fd12::1", "fe80::1", "::ffff:10.0.0.1", "::ffff:127.0.0.1",
-            "64:ff9b::a00:1", "2001:db8::1",
+            "127.0.0.1",
+            "10.1.2.3",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.169.254",
+            "100.64.0.1",
+            "0.0.0.0",
+            "255.255.255.255",
+            "224.0.0.1",
+            "198.18.0.1",
+            "192.0.2.1",
+            "::1",
+            "::",
+            "fc00::1",
+            "fd12::1",
+            "fe80::1",
+            "::ffff:10.0.0.1",
+            "::ffff:127.0.0.1",
+            "64:ff9b::a00:1",
+            "2001:db8::1",
         ] {
             let ip: IpAddr = ip.parse().expect(ip);
             assert!(!is_public_ip(ip), "{ip} should be private");
         }
-        for ip in ["93.184.216.34", "1.1.1.1", "2606:4700:4700::1111", "64:ff9b::5db8:d822"] {
+        for ip in [
+            "93.184.216.34",
+            "1.1.1.1",
+            "2606:4700:4700::1111",
+            "64:ff9b::5db8:d822",
+        ] {
             let ip: IpAddr = ip.parse().expect(ip);
             assert!(is_public_ip(ip), "{ip} should be public");
         }
@@ -346,12 +367,15 @@ mod tests {
                 "{raw}"
             );
         }
-        for raw in ["http://user:pw@example.com/x", "ftp://example.com/x", "file:///etc/passwd"] {
+        for raw in [
+            "http://user:pw@example.com/x",
+            "ftp://example.com/x",
+            "file:///etc/passwd",
+        ] {
             assert_eq!(checked_url(raw), Err(FetchError::NotWeb), "{raw}");
         }
         assert_eq!(
-            checked_url("https://example.com/a?utm_source=x&id=1")
-                .map(|u| u.to_string()),
+            checked_url("https://example.com/a?utm_source=x&id=1").map(|u| u.to_string()),
             Ok("https://example.com/a?id=1".to_string())
         );
     }
@@ -375,15 +399,18 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/post"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_raw("<html><body><p>Hello</p></body></html>", "text/html; charset=utf-8"),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_raw(
+                "<html><body><p>Hello</p></body></html>",
+                "text/html; charset=utf-8",
+            ))
             .mount(&server)
             .await;
-        let got = fetch_page(&format!("{}/post?utm_source=mail", server.uri()), &local_policy())
-            .await
-            .expect("fetched");
+        let got = fetch_page(
+            &format!("{}/post?utm_source=mail", server.uri()),
+            &local_policy(),
+        )
+        .await
+        .expect("fetched");
         assert!(got.html.contains("Hello"));
         assert_eq!(got.contacted, ["127.0.0.1"]);
         assert_eq!(got.final_url.query(), None, "tracking stripped");
@@ -427,9 +454,7 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path("/b"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_raw("<p>landed</p>", "text/html"),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_raw("<p>landed</p>", "text/html"))
             .mount(&server)
             .await;
         let got = fetch_page(&format!("{}/a", server.uri()), &local_policy())
@@ -461,9 +486,7 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path("/pdf"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_raw("%PDF-1.7", "application/pdf"),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_raw("%PDF-1.7", "application/pdf"))
             .mount(&server)
             .await;
         let policy = FetchPolicy {

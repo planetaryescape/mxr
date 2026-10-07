@@ -40,7 +40,9 @@ pub fn reader_wpm(finished: &[(u32, u64)]) -> Option<u32> {
         .filter(|(words, dwell)| *words >= MIN_SAMPLE_WORDS && *dwell > 0)
         .map(|(words, dwell)| {
             let wpm = u64::from(*words) * 60_000 / dwell;
-            u32::try_from(wpm).unwrap_or(u32::MAX).clamp(MIN_WPM, MAX_WPM)
+            u32::try_from(wpm)
+                .unwrap_or(u32::MAX)
+                .clamp(MIN_WPM, MAX_WPM)
         })
         .collect();
     if samples.len() < MIN_SAMPLES {
@@ -76,6 +78,9 @@ mod tests {
         let pace = reader_wpm(&[(1000, 240_000), (1500, 300_000), (1000, 36_000_000)]);
         assert_eq!(pace, Some(250));
         // Short items don't count.
-        assert_eq!(reader_wpm(&[(100, 10_000), (100, 10_000), (100, 10_000)]), None);
+        assert_eq!(
+            reader_wpm(&[(100, 10_000), (100, 10_000), (100, 10_000)]),
+            None
+        );
     }
 }

@@ -372,7 +372,7 @@ pub(in crate::handler) async fn export_highlights(
 ) -> HandlerResult {
     let rows = state.store.reading_highlights(account_id).await?;
     let mut ids: Vec<MessageId> = rows.iter().map(|row| row.message_id.clone()).collect();
-    ids.sort_by(|a, b| a.as_str().cmp(&b.as_str()));
+    ids.sort_by_key(MessageId::as_str);
     ids.dedup();
     let issues: HashMap<MessageId, Issue> = state
         .store

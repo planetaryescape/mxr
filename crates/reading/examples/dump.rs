@@ -13,10 +13,17 @@ fn main() {
             text: (!is_html).then_some(body.as_str()),
             snippet: "",
         });
-        println!("== {path}: {:?} words={} headline={:?}", got.shape, got.words, got.headline);
+        println!(
+            "== {path}: {:?} words={} headline={:?}",
+            got.shape, got.words, got.headline
+        );
         println!("standfirst: {:?}", got.standfirst);
         for p in &got.paragraphs {
-            println!("  [{:?}] {}", p.kind, p.text.chars().take(90).collect::<String>());
+            println!(
+                "  [{:?}] {}",
+                p.kind,
+                p.text.chars().take(90).collect::<String>()
+            );
         }
         for l in &got.links {
             println!("  -> {} | {} | {:?}", l.title, l.domain, l.blurb);

@@ -953,7 +953,6 @@ fn mail_reading_highlights_post() {}
 #[allow(dead_code)]
 fn mail_reading_sources() {}
 
-
 #[utoipa::path(
     post,
     path = "/api/v1/mail/todos/catchup",

@@ -37,8 +37,8 @@ pub enum ArticleError {
 
 /// The article in `html`, fetched from `url`.
 pub fn extract_article(html: &str, url: Option<&str>) -> Result<Article, ArticleError> {
-    let mut readability = dom_smoothie::Readability::new(html, url, None)
-        .map_err(|_| ArticleError::NotFound)?;
+    let mut readability =
+        dom_smoothie::Readability::new(html, url, None).map_err(|_| ArticleError::NotFound)?;
     let article = readability.parse().map_err(|_| ArticleError::NotFound)?;
     let words = word_count(&article.text_content);
     if words < MIN_ARTICLE_WORDS {
@@ -82,10 +82,14 @@ mod tests {
 
     #[test]
     fn an_article_comes_out_as_text_without_the_chrome() {
-        let article = extract_article(ARTICLE, Some("https://platformweekly.example.com/sync")).expect("article");
+        let article = extract_article(ARTICLE, Some("https://platformweekly.example.com/sync"))
+            .expect("article");
         assert!(article.title.starts_with("Shipping a sync engine in 2026"));
         assert!(article.words > 120, "{}", article.words);
-        assert!(article.paragraphs.iter().any(|p| p.text.starts_with("The second decision was about deletes")));
+        assert!(article
+            .paragraphs
+            .iter()
+            .any(|p| p.text.starts_with("The second decision was about deletes")));
         assert!(!article.html.contains("Privacy"));
         assert!(!article.html.contains("About"));
     }
@@ -93,6 +97,9 @@ mod tests {
     #[test]
     fn a_paywall_stub_is_too_short() {
         let stub = "<html><body><article><h1>Members only</h1><p>Subscribe to keep reading this story.</p></article></body></html>";
-        assert!(matches!(extract_article(stub, None), Err(ArticleError::TooShort(_)) | Err(ArticleError::NotFound)));
+        assert!(matches!(
+            extract_article(stub, None),
+            Err(ArticleError::TooShort(_) | ArticleError::NotFound)
+        ));
     }
 }

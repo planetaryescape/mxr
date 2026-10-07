@@ -154,10 +154,14 @@ static FOOTER: Lazy<Regex> = Lazy::new(|| {
 static UNSUBSCRIBE_WORD: Lazy<Regex> = Lazy::new(|| regex(r"(?i)\bunsubscribe\b"));
 /// A paragraph that is only a date: "Oct 6, 2026", "6 October 2026".
 static DATE_ONLY: Lazy<Regex> = Lazy::new(|| {
-    regex(r"(?i)^(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s+)?(?:[a-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+[a-z]{3,9}\.?,?\s+\d{4}|\d{4}-\d{2}-\d{2})$")
+    regex(
+        r"(?i)^(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s+)?(?:[a-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+[a-z]{3,9}\.?,?\s+\d{4}|\d{4}-\d{2}-\d{2})$",
+    )
 });
 static GREETING: Lazy<Regex> = Lazy::new(|| {
-    regex(r"(?i)^(?:hi|hey|hello|dear|good (?:morning|afternoon|evening)|morning|greetings|welcome back)\b(?:[^.!?]{0,40}[.!?]|[^,.!?]{0,30}[,:])\s*")
+    regex(
+        r"(?i)^(?:hi|hey|hello|dear|good (?:morning|afternoon|evening)|morning|greetings|welcome back)\b(?:[^.!?]{0,40}[.!?]|[^,.!?]{0,30}[,:])\s*",
+    )
 });
 static READ_MORE: Lazy<Regex> = Lazy::new(|| {
     regex(
@@ -183,7 +187,8 @@ static CTA_VERB: Lazy<Regex> = Lazy::new(|| {
         r"(?i)^(?:view|watch|read|get|save|shop|buy|book|claim|learn|discover|explore|try|start|join|register|download|see|check|order|reserve|apply|listen|unlock|grab|redeem|continue|go to|visit|open|reply|rsvp|vote|donate)\b",
     )
 });
-static URL_IN_TEXT: Lazy<Regex> = Lazy::new(|| regex(r#"https?://[^\s<>()"']+[^\s<>()"'.,;:!?\]]"#));
+static URL_IN_TEXT: Lazy<Regex> =
+    Lazy::new(|| regex(r#"https?://[^\s<>()"']+[^\s<>()"'.,;:!?\]]"#));
 
 fn collapse(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -250,9 +255,41 @@ struct Walked {
 }
 
 const BLOCK_TAGS: &[&str] = &[
-    "p", "div", "td", "th", "tr", "table", "tbody", "thead", "tfoot", "li", "ul", "ol", "h1", "h2",
-    "h3", "h4", "h5", "h6", "blockquote", "section", "article", "header", "footer", "main", "pre",
-    "dd", "dt", "dl", "center", "figure", "figcaption", "hr", "aside", "nav", "address",
+    "p",
+    "div",
+    "td",
+    "th",
+    "tr",
+    "table",
+    "tbody",
+    "thead",
+    "tfoot",
+    "li",
+    "ul",
+    "ol",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "blockquote",
+    "section",
+    "article",
+    "header",
+    "footer",
+    "main",
+    "pre",
+    "dd",
+    "dt",
+    "dl",
+    "center",
+    "figure",
+    "figcaption",
+    "hr",
+    "aside",
+    "nav",
+    "address",
 ];
 const SKIP_TAGS: &[&str] = &[
     "script", "style", "head", "title", "noscript", "template", "svg", "button", "form", "select",
@@ -264,9 +301,11 @@ fn is_hidden(element: &scraper::node::Element) -> bool {
         || element
             .attr("style")
             .is_some_and(|style| HIDDEN_STYLE.is_match(style))
-        || element
-            .attr("class")
-            .is_some_and(|class| class.split_whitespace().any(|c| c.eq_ignore_ascii_case("preheader")))
+        || element.attr("class").is_some_and(|class| {
+            class
+                .split_whitespace()
+                .any(|c| c.eq_ignore_ascii_case("preheader"))
+        })
 }
 
 #[derive(Default)]
@@ -339,7 +378,9 @@ impl Walker {
         for mut anchor in self.pending.drain(..) {
             // The piece that holds the anchor's text, else the first.
             anchor.paragraph = (first..self.paragraphs.len())
-                .find(|&i| !anchor.text.is_empty() && self.paragraphs[i].text.contains(&anchor.text))
+                .find(|&i| {
+                    !anchor.text.is_empty() && self.paragraphs[i].text.contains(&anchor.text)
+                })
                 .unwrap_or(first);
             self.anchors.push(anchor);
         }
@@ -446,7 +487,11 @@ fn walk_text(text: &str) -> Walked {
     let mut paragraphs = Vec::new();
     let mut anchors = Vec::new();
     for block in text.replace("\r\n", "\n").split("\n\n") {
-        let lines: Vec<&str> = block.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+        let lines: Vec<&str> = block
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
         if lines.is_empty() {
             continue;
         }
@@ -544,7 +589,9 @@ fn classify(walked: Walked, headline: String, subject: &str) -> Extraction {
     let footer_start = anchors
         .iter()
         .filter(|a| a.paragraph >= half.saturating_sub(1))
-        .filter(|a| UNSUBSCRIBE_WORD.is_match(&a.text) || a.href.to_lowercase().contains("unsubscribe"))
+        .filter(|a| {
+            UNSUBSCRIBE_WORD.is_match(&a.text) || a.href.to_lowercase().contains("unsubscribe")
+        })
         .map(|a| a.paragraph)
         .min()
         .map_or(footer_start, |at| at.min(footer_start));
@@ -554,7 +601,10 @@ fn classify(walked: Walked, headline: String, subject: &str) -> Extraction {
     // A paragraph that is nothing but one boilerplate link is a button.
     // So is a row of them (Twitter LinkedIn).
     let mut leftover: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
-    for anchor in anchors.iter().filter(|a| boilerplate_link(a) && !a.text.is_empty()) {
+    for anchor in anchors
+        .iter()
+        .filter(|a| boilerplate_link(a) && !a.text.is_empty())
+    {
         let text = leftover
             .entry(anchor.paragraph)
             .or_insert_with(|| paragraphs[anchor.paragraph].text.clone());
@@ -620,11 +670,18 @@ fn classify(walked: Walked, headline: String, subject: &str) -> Extraction {
         let leads = paragraph
             .text
             .strip_prefix(&anchor.text)
-            .is_some_and(|rest| rest.trim_start().starts_with(['—', '–', '-', ':', '|', '·']) || rest.is_empty());
+            .is_some_and(|rest| {
+                rest.trim_start()
+                    .starts_with(['—', '–', '-', ':', '|', '·'])
+                    || rest.is_empty()
+            });
         let headline_like = anchor.in_heading
             || share >= 0.6
             || (anchor.in_strong && share >= 0.2)
-            || (leads && (anchor.in_strong || paragraph.kind == ParagraphKind::ListItem || share >= 0.15));
+            || (leads
+                && (anchor.in_strong
+                    || paragraph.kind == ParagraphKind::ListItem
+                    || share >= 0.15));
         if !headline_like {
             continue;
         }
@@ -641,20 +698,18 @@ fn classify(walked: Walked, headline: String, subject: &str) -> Extraction {
         links.push(item);
     }
 
-    let shape = if links.len() >= DIGEST_MIN_LINKS
-        && words / links.len() <= DIGEST_MAX_WORDS_PER_LINK
-    {
-        Shape::Digest
-    } else if words <= TEASER_MAX_WORDS
-        && (read_more.is_some()
-            || (links.len() == 1 && same_story(&links[0].title, &headline)))
-    {
-        Shape::Teaser
-    } else if words <= NOTICE_MAX_WORDS {
-        Shape::Notice
-    } else {
-        Shape::Single
-    };
+    let shape =
+        if links.len() >= DIGEST_MIN_LINKS && words / links.len() <= DIGEST_MAX_WORDS_PER_LINK {
+            Shape::Digest
+        } else if words <= TEASER_MAX_WORDS
+            && (read_more.is_some() || (links.len() == 1 && same_story(&links[0].title, &headline)))
+        {
+            Shape::Teaser
+        } else if words <= NOTICE_MAX_WORDS {
+            Shape::Notice
+        } else {
+            Shape::Single
+        };
     let main_link = match shape {
         Shape::Teaser => read_more
             .and_then(|anchor| link_item(anchor, None))
@@ -674,7 +729,11 @@ fn classify(walked: Walked, headline: String, subject: &str) -> Extraction {
         standfirst,
         words: u32::try_from(words).unwrap_or(u32::MAX),
         main_link,
-        links: if shape == Shape::Digest { links } else { Vec::new() },
+        links: if shape == Shape::Digest {
+            links
+        } else {
+            Vec::new()
+        },
         paragraphs: body_paragraphs,
     }
 }
@@ -689,7 +748,11 @@ fn same_story(title: &str, headline: &str) -> bool {
             .collect()
     };
     let (a, b) = (words(title), words(headline));
-    let (short, long) = if a.len() <= b.len() { (&a, &b) } else { (&b, &a) };
+    let (short, long) = if a.len() <= b.len() {
+        (&a, &b)
+    } else {
+        (&b, &a)
+    };
     !short.is_empty() && short.iter().filter(|w| long.contains(w)).count() * 2 >= short.len()
 }
 
@@ -714,8 +777,7 @@ fn blurb_for(
     // The next block is the next item's headline, not this one's blurb.
     let next_is_headline = anchors.iter().any(|other| {
         other.paragraph == next_index
-            && (other.in_heading
-                || other.text.chars().count() * 2 >= next.text.chars().count())
+            && (other.in_heading || other.text.chars().count() * 2 >= next.text.chars().count())
     });
     (next_index < footer_start
         && !next_is_headline

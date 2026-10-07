@@ -86,7 +86,9 @@ async fn later(
     Json(body): Json<ReadingLaterBody>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     if body.item_keys.is_empty() {
-        return Err(BridgeError::BadRequest("item_keys must not be empty".into()));
+        return Err(BridgeError::BadRequest(
+            "item_keys must not be empty".into(),
+        ));
     }
     let response = dispatch(
         &state,

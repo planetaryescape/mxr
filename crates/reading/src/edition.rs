@@ -102,7 +102,10 @@ impl SourceStats {
         if self.issues == 1 {
             return format!("You opened {} of its 1 issue", self.opened);
         }
-        format!("You opened {} of the last {} issues", self.opened, self.issues)
+        format!(
+            "You opened {} of the last {} issues",
+            self.opened, self.issues
+        )
     }
 
     /// The quiet "Unsubscribe?" offer: enough issues and none opened.
@@ -195,22 +198,50 @@ mod tests {
 
     #[test]
     fn affinity_weighs_finishing_over_opening() {
-        let finisher = SourceStats { issues: 10, opened: 9, finished: 9, total_issues: 40 };
-        let opener = SourceStats { issues: 10, opened: 10, finished: 0, total_issues: 40 };
+        let finisher = SourceStats {
+            issues: 10,
+            opened: 9,
+            finished: 9,
+            total_issues: 40,
+        };
+        let opener = SourceStats {
+            issues: 10,
+            opened: 10,
+            finished: 0,
+            total_issues: 40,
+        };
         assert!(finisher.affinity() > opener.affinity());
         assert!(SourceStats::default().affinity().abs() < f64::EPSILON);
     }
 
     #[test]
     fn evidence_names_the_count_and_the_offer_needs_eight_unopened() {
-        let ignored = SourceStats { issues: 11, opened: 0, finished: 0, total_issues: 30 };
+        let ignored = SourceStats {
+            issues: 11,
+            opened: 0,
+            finished: 0,
+            total_issues: 30,
+        };
         assert_eq!(ignored.evidence(), "You opened 0 of the last 11 issues");
         assert!(ignored.suggests_unsubscribe());
-        let read = SourceStats { issues: 11, opened: 1, ..ignored };
+        let read = SourceStats {
+            issues: 11,
+            opened: 1,
+            ..ignored
+        };
         assert!(!read.suggests_unsubscribe());
-        let few = SourceStats { issues: 5, opened: 0, ..ignored };
+        let few = SourceStats {
+            issues: 5,
+            opened: 0,
+            ..ignored
+        };
         assert!(!few.suggests_unsubscribe());
-        let one = SourceStats { issues: 1, opened: 1, finished: 0, total_issues: 1 };
+        let one = SourceStats {
+            issues: 1,
+            opened: 1,
+            finished: 0,
+            total_issues: 1,
+        };
         assert_eq!(one.evidence(), "You opened 1 of its 1 issue");
     }
 
@@ -218,7 +249,11 @@ mod tests {
     struct Item(&'static str, f64, bool, i64);
 
     fn key(item: &Item) -> Rankable {
-        Rankable { arrived: at(item.3), affinity: item.1, new_source: item.2 }
+        Rankable {
+            arrived: at(item.3),
+            affinity: item.1,
+            new_source: item.2,
+        }
     }
 
     #[test]

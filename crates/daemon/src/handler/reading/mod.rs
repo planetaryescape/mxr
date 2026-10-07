@@ -375,7 +375,7 @@ pub(super) fn item_data(
         why,
         fades,
         lead: false,
-        engagement: source.and_then(|s| s.engagement_line()),
+        engagement: source.and_then(SourceInfo::engagement_line),
         links,
         on_later,
         later_at,

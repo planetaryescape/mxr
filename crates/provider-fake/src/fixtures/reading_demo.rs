@@ -33,12 +33,14 @@ pub(super) const READING_DEMO_FINISHED: std::ops::Range<usize> = 2..LONG_READS;
 /// puts on Later.
 pub(super) const READING_DEMO_LATER_DIGEST: usize = LONG_READS;
 
-pub const DEMO_ARTICLE_SYNC: &str = "https://platform.demo.mxr.local/2026/10/shipping-a-sync-engine";
+pub const DEMO_ARTICLE_SYNC: &str =
+    "https://platform.demo.mxr.local/2026/10/shipping-a-sync-engine";
 pub const DEMO_ARTICLE_LOCAL_FIRST: &str = "https://links.demo.mxr.local/articles/local-first-mail";
 pub const DEMO_ARTICLE_WAL: &str = "https://links.demo.mxr.local/articles/wal-checkpoints";
 
 /// Hours old: 0.3, 6.5 and 13.1 days, then weekly from 21 days.
-const LONG_READS_AGE_HOURS: [i64; LONG_READS] = [7, 156, 314, 504, 672, 840, 1008, 1176, 1344, 1512];
+const LONG_READS_AGE_HOURS: [i64; LONG_READS] =
+    [7, 156, 314, 504, 672, 840, 1008, 1176, 1344, 1512];
 
 const LONG_READS_TITLES: [&str; LONG_READS] = [
     "The quiet death of the three-pane layout",
@@ -57,7 +59,13 @@ fn thread(account_id: &AccountId, name: &str) -> ThreadId {
     ThreadId::from_scoped_provider_id(account_id, "fake", &format!("demo-reading-{name}"))
 }
 
-fn issue(from: &Address, to: &Address, subject: &str, text: String, date: DateTime<Utc>) -> DemoMessage {
+fn issue(
+    from: &Address,
+    to: &Address,
+    subject: &str,
+    text: String,
+    date: DateTime<Utc>,
+) -> DemoMessage {
     DemoMessage {
         from: from.clone(),
         to: vec![to.clone()],
@@ -217,7 +225,13 @@ pub(super) fn reading_demo_messages(
         let paragraphs = essay_paragraphs();
         let html = essay_html(title, &paragraphs);
         push(
-            issue(&long_reads, self_addr, title, paragraphs.join("\n\n"), now - age),
+            issue(
+                &long_reads,
+                self_addr,
+                title,
+                paragraphs.join("\n\n"),
+                now - age,
+            ),
             format!("longreads-{i}"),
             html,
         );
@@ -249,7 +263,13 @@ pub(super) fn reading_demo_messages(
         };
         let (html, text) = teaser(title.trim_start_matches("New post: "), &url);
         push(
-            issue(&platform, self_addr, title, text, now - Duration::days(3 + 7 * i as i64)),
+            issue(
+                &platform,
+                self_addr,
+                title,
+                text,
+                now - Duration::days(3 + 7 * i as i64),
+            ),
             format!("platform-{i}"),
             html,
         );
@@ -314,7 +334,11 @@ mod tests {
 
     #[test]
     fn every_demo_article_is_served_and_nothing_else_is() {
-        for url in [DEMO_ARTICLE_SYNC, DEMO_ARTICLE_LOCAL_FIRST, DEMO_ARTICLE_WAL] {
+        for url in [
+            DEMO_ARTICLE_SYNC,
+            DEMO_ARTICLE_LOCAL_FIRST,
+            DEMO_ARTICLE_WAL,
+        ] {
             assert!(demo_article_html(url).is_some(), "{url}");
             assert!(demo_article_html(&format!("{url}?utm_source=x")).is_some());
         }

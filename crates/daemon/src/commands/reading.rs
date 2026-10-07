@@ -105,7 +105,10 @@ pub async fn run(
                 OutputFormat::Json | OutputFormat::Jsonl => {
                     println!("{}", serde_json::to_string_pretty(&highlight)?);
                 }
-                _ => println!("Saved a highlight from {}.", terminal_block(&highlight.title)),
+                _ => println!(
+                    "Saved a highlight from {}.",
+                    terminal_block(&highlight.title)
+                ),
             }
         }
         ReadingAction::Export { markdown } => {
@@ -115,7 +118,10 @@ pub async fn run(
                         account_id: account_id.clone(),
                     })
                     .await?,
-                ReadingHighlights { highlights, markdown }
+                ReadingHighlights {
+                    highlights,
+                    markdown
+                }
             );
             // Markdown unless JSON was asked for by name.
             match (markdown, format) {
@@ -164,10 +170,7 @@ fn all_items(edition: &ReadingEditionData) -> impl Iterator<Item = &ReadingItemD
 fn render_edition(edition: &ReadingEditionData, format: OutputFormat) -> anyhow::Result<String> {
     Ok(match format {
         OutputFormat::Json => format!("{}\n", serde_json::to_string_pretty(edition)?),
-        OutputFormat::Jsonl => format!(
-            "{}\n",
-            jsonl(&all_items(edition).collect::<Vec<_>>())?
-        ),
+        OutputFormat::Jsonl => format!("{}\n", jsonl(&all_items(edition).collect::<Vec<_>>())?),
         OutputFormat::Ids => all_items(edition)
             .map(|item| format!("{}\n", item.item_key))
             .collect(),
@@ -183,7 +186,9 @@ fn csv(edition: &ReadingEditionData) -> String {
             let _ = writeln!(
                 out,
                 "{},{},{},{},{},{:?},{}",
-                serde_json::to_string(&band.band).unwrap_or_default().trim_matches('"'),
+                serde_json::to_string(&band.band)
+                    .unwrap_or_default()
+                    .trim_matches('"'),
                 item.item_key,
                 csv_field(&item.source),
                 csv_field(&item.title),
@@ -230,7 +235,10 @@ fn item_lines(out: &mut String, item: &ReadingItemData) {
         let _ = writeln!(out, "    + {} more", item.links.len() - 4);
     }
     if let Some(offer) = &item.unsubscribe_offer {
-        let _ = writeln!(out, "    {offer}. D to unsubscribe in the app, or mxr unsubscribe.");
+        let _ = writeln!(
+            out,
+            "    {offer}. D to unsubscribe in the app, or mxr unsubscribe."
+        );
     }
     let _ = writeln!(out, "    {}", item.item_key);
 }
@@ -305,15 +313,13 @@ fn render_later(edition: &ReadingEditionData, format: OutputFormat) -> anyhow::R
 fn sources_text(edition: &ReadingEditionData) -> String {
     let mut out = String::from("Sources, best read first\n\n");
     for source in &edition.sources {
-        let gap = source
-            .median_gap_days
-            .map_or_else(
-                || "one issue so far".to_string(),
-                |d| match d.round() as i64 {
-                    ..=1 => "about daily".to_string(),
-                    n => format!("every {n} days"),
-                },
-            );
+        let gap = source.median_gap_days.map_or_else(
+            || "one issue so far".to_string(),
+            |d| match d.round() as i64 {
+                ..=1 => "about daily".to_string(),
+                n => format!("every {n} days"),
+            },
+        );
         let _ = writeln!(out, "{}  <{}>", source.name, source.sender_email);
         let _ = writeln!(
             out,
@@ -321,7 +327,11 @@ fn sources_text(edition: &ReadingEditionData) -> String {
             source.evidence, source.window_days
         );
         if source.suggest_unsubscribe {
-            let _ = writeln!(out, "    Unsubscribe? mxr unsubscribe --purge {}", source.sender_email);
+            let _ = writeln!(
+                out,
+                "    Unsubscribe? mxr unsubscribe --purge {}",
+                source.sender_email
+            );
         }
     }
     terminal_block(&out)
@@ -376,7 +386,11 @@ fn later_text(items: &[ReadingLaterOutcomeData], dry_run: bool, copy: &str) -> S
                 let _ = writeln!(out, "{title}: already as asked");
             }
             (None, true) if dry_run => {
-                let action = if item.on_later { "would go on" } else { "would come off" };
+                let action = if item.on_later {
+                    "would go on"
+                } else {
+                    "would come off"
+                };
                 let _ = writeln!(out, "{title}: {action} Later");
             }
             (None, true) => {
@@ -500,7 +514,11 @@ fn reader_text(
         item.arrived_at.format("%-d %b"),
         minutes(left)
     );
-    match (article, &detail.article, fetch.and_then(|f| f.error.as_deref())) {
+    match (
+        article,
+        &detail.article,
+        fetch.and_then(|f| f.error.as_deref()),
+    ) {
         (true, Some(saved), _) => {
             if saved.contacted.is_empty() {
                 let _ = writeln!(out, "Article from {} (a saved copy).\n", saved.final_url);
@@ -594,7 +612,10 @@ async fn let_go(
             }))?
         ),
         OutputFormat::Jsonl => println!("{}", jsonl(&outcomes)?),
-        _ => print!("{}", let_go_text(&edition, &outcomes, dry_run, mutation_id.as_deref())),
+        _ => print!(
+            "{}",
+            let_go_text(&edition, &outcomes, dry_run, mutation_id.as_deref())
+        ),
     }
     Ok(())
 }
@@ -636,7 +657,10 @@ mod tests {
     fn wrap_keeps_lines_within_the_measure() {
         let text = "Every reader since 2002 shipped the same window: a list of sources on the left and the item on the right.";
         let lines = wrap(text, 30);
-        assert!(lines.iter().all(|line| line.chars().count() <= 30), "{lines:?}");
+        assert!(
+            lines.iter().all(|line| line.chars().count() <= 30),
+            "{lines:?}"
+        );
         assert_eq!(lines.join(" "), text);
         assert!(wrap("", 30).is_empty());
     }

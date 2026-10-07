@@ -138,8 +138,7 @@ fn item_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<ReadingItemRow, sqlx::
         domain: row.try_get("domain")?,
         tracked: row.try_get::<i64, _>("tracked")? != 0,
         words: u32::try_from(row.try_get::<i64, _>("words")?).unwrap_or(0),
-        extractor_version: u32::try_from(row.try_get::<i64, _>("extractor_version")?)
-            .unwrap_or(0),
+        extractor_version: u32::try_from(row.try_get::<i64, _>("extractor_version")?).unwrap_or(0),
     })
 }
 
@@ -459,7 +458,10 @@ impl super::Store {
 
     /// Words and time read of items you finished, newest first, for your
     /// pace: the article's words when you read the article.
-    pub async fn reading_finished_samples(&self, limit: u32) -> Result<Vec<(u32, u64)>, sqlx::Error> {
+    pub async fn reading_finished_samples(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<(u32, u64)>, sqlx::Error> {
         let rows = sqlx::query(
             "SELECT COALESCE(NULLIF(ra.words, 0), ri.words, 0) AS words, rs.dwell_ms
              FROM reading_state rs
@@ -607,15 +609,13 @@ impl super::Store {
         &self,
         message_id: &MessageId,
     ) -> Result<Vec<ReadingHighlightRow>, sqlx::Error> {
-        sqlx::query(
-            "SELECT * FROM reading_highlights WHERE message_id = ? ORDER BY created_at, id",
-        )
-        .bind(message_id.as_str())
-        .fetch_all(self.reader())
-        .await?
-        .iter()
-        .map(highlight_from_row)
-        .collect()
+        sqlx::query("SELECT * FROM reading_highlights WHERE message_id = ? ORDER BY created_at, id")
+            .bind(message_id.as_str())
+            .fetch_all(self.reader())
+            .await?
+            .iter()
+            .map(highlight_from_row)
+            .collect()
     }
 
     /// Per-source choices for these senders, by lowercase address.
@@ -674,9 +674,10 @@ impl super::Store {
     }
 
     pub async fn reading_visit(&self) -> Result<ReadingVisitRow, sqlx::Error> {
-        let row = sqlx::query("SELECT first_seen, boundary, last_seen FROM reading_visit WHERE id = 1")
-            .fetch_optional(self.reader())
-            .await?;
+        let row =
+            sqlx::query("SELECT first_seen, boundary, last_seen FROM reading_visit WHERE id = 1")
+                .fetch_optional(self.reader())
+                .await?;
         let Some(row) = row else {
             return Ok(ReadingVisitRow::default());
         };

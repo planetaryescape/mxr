@@ -115,16 +115,52 @@ mod tests {
     #[test]
     fn newsletter_boilerplate_comes_off_the_subject() {
         let cases = [
-            ("[AINews] Reflection ships an open model", None, "Reflection ships an open model"),
-            ("Issue #42 | The quiet death of the three-pane layout", None, "The quiet death of the three-pane layout"),
+            (
+                "[AINews] Reflection ships an open model",
+                None,
+                "Reflection ships an open model",
+            ),
+            (
+                "Issue #42 | The quiet death of the three-pane layout",
+                None,
+                "The quiet death of the three-pane layout",
+            ),
             ("#563: SQLite 3.51 is out", None, "SQLite 3.51 is out"),
-            ("Vol. 3, Issue 7 - Shipping a sync engine", None, "Shipping a sync engine"),
-            ("Platform Weekly: Shipping a sync engine in 2026", Some("Platform Weekly"), "Shipping a sync engine in 2026"),
-            ("Shipping a sync engine in 2026 | Platform Weekly", Some("Platform Weekly"), "Shipping a sync engine in 2026"),
-            ("🚀 Local-first mail is having a moment 🎉", None, "Local-first mail is having a moment"),
-            ("This week in Rust: async closures land", None, "Async closures land"),
-            ("New post: Shipping a sync engine in 2026", None, "Shipping a sync engine in 2026"),
-            ("Local-first Links #41: six things worth your time", Some("Local-first Links"), "Six things worth your time"),
+            (
+                "Vol. 3, Issue 7 - Shipping a sync engine",
+                None,
+                "Shipping a sync engine",
+            ),
+            (
+                "Platform Weekly: Shipping a sync engine in 2026",
+                Some("Platform Weekly"),
+                "Shipping a sync engine in 2026",
+            ),
+            (
+                "Shipping a sync engine in 2026 | Platform Weekly",
+                Some("Platform Weekly"),
+                "Shipping a sync engine in 2026",
+            ),
+            (
+                "🚀 Local-first mail is having a moment 🎉",
+                None,
+                "Local-first mail is having a moment",
+            ),
+            (
+                "This week in Rust: async closures land",
+                None,
+                "Async closures land",
+            ),
+            (
+                "New post: Shipping a sync engine in 2026",
+                None,
+                "Shipping a sync engine in 2026",
+            ),
+            (
+                "Local-first Links #41: six things worth your time",
+                Some("Local-first Links"),
+                "Six things worth your time",
+            ),
         ];
         for (subject, source, want) in cases {
             assert_eq!(clean_headline(subject, source), want, "{subject}");
@@ -133,7 +169,10 @@ mod tests {
 
     #[test]
     fn a_headline_that_would_be_empty_falls_back_to_the_subject() {
-        assert_eq!(clean_headline("[Platform Weekly] #12", None), "[Platform Weekly] #12");
+        assert_eq!(
+            clean_headline("[Platform Weekly] #12", None),
+            "[Platform Weekly] #12"
+        );
         assert_eq!(clean_headline("Issue #4", None), "Issue #4");
         assert_eq!(clean_headline("  ", None), "");
     }

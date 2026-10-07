@@ -118,6 +118,7 @@ pub use mode_done::{ModeDoneMark, ModeDonePrior};
 pub use owed_replies::OwedReplyRow;
 pub use people::{NamedCorrespondent, PersonFacts, PersonLink, PersonMerge};
 pub use places::PlaceMessage;
+pub use pool::Store;
 pub use reading::{
     ReadingArticleRow, ReadingEngagementReport, ReadingHighlightRow, ReadingItemRow,
     ReadingSourcePrefs, ReadingStateRow, ReadingVisitRow, SourceIssue,

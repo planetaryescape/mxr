@@ -1382,7 +1382,10 @@ mod tests {
         let requests = requester.requests.lock().expect("requests lock");
         assert!(matches!(
             requests.as_slice(),
-            [Request::GetReadingEdition { mark_visit: false, .. }]
+            [Request::GetReadingEdition {
+                mark_visit: false,
+                ..
+            }]
         ));
     }
 

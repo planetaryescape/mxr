@@ -161,9 +161,17 @@ export function letterLead(message: ConversationMessage): { lead: string; hidden
     return { lead: message.text, hidden: 0 };
   }
   const ask = message.ask_quote;
-  const lead = (ask && blocks.find((block) => block.includes(ask))) || blocks[0] || "";
-  return { lead, hidden: blocks.length - 1 };
+  const asked = ask ? blocks.findIndex((block) => block.includes(ask)) : -1;
+  if (asked >= 0) return { lead: blocks[asked] ?? "", hidden: blocks.length - 1 };
+  // A greeting alone ("Hi Alex,") says nothing: lead with what follows too.
+  const first = blocks[0] ?? "";
+  const greeting = first.length <= GREETING_MAX_CHARS && first.endsWith(",") && blocks.length > 2;
+  const shown = greeting ? 2 : 1;
+  return { lead: blocks.slice(0, shown).join("\n\n"), hidden: blocks.length - shown };
 }
+
+/** A first paragraph this short ending in a comma is a greeting, not the point. */
+const GREETING_MAX_CHARS = 30;
 
 export interface TextPart {
   /** Where the part starts in the text: a stable key. */

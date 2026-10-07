@@ -81,7 +81,7 @@ export function PersonPane(props: PersonPaneProps) {
         <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           Topics
         </p>
-        <ul data-testid="topics" className="flex flex-col gap-0.5">
+        <ul data-testid="topics" className="flex max-h-[28vh] flex-col gap-0.5 overflow-y-auto">
           {page.topics.map((topic) => {
             const active = topic.thread_id === selected;
             return (

@@ -156,6 +156,11 @@ describe("length decides the shape", () => {
     );
     expect(lead).toEqual({ lead: "Can you reply with the next step?", hidden: 2 });
     expect(letterLead(message(text, { paragraphs: 3 })).lead).toBe("Thanks for the draft.");
+    const greeted = "Hi Alex,\n\nThe draft is fine.\n\nOne change.";
+    expect(letterLead(message(greeted, { paragraphs: 3 }))).toEqual({
+      lead: "Hi Alex,\n\nThe draft is fine.",
+      hidden: 1,
+    });
   });
 
   test("a compact note shows whole", () => {

@@ -238,3 +238,42 @@ async fn your_own_recent_mail_never_hides_the_last_arrival() {
         vec![arrival.id]
     );
 }
+
+#[tokio::test]
+async fn arrivals_name_the_mode_the_sender_rule_chose() {
+    let fx = Fixture::new().await;
+    let letter = fx
+        .message(
+            &ThreadId::new(),
+            "newsletter@news.example.com",
+            ME,
+            Duration::minutes(3),
+            None,
+        )
+        .await;
+    let person = fx
+        .message(
+            &ThreadId::new(),
+            "ana@example.com",
+            ME,
+            Duration::minutes(2),
+            None,
+        )
+        .await;
+    let data = freshness(&fx, None).await;
+    let went = |id: &mxr_core::id::MessageId| {
+        data.arrivals
+            .iter()
+            .find(|arrival| &arrival.message_id == id)
+            .and_then(|arrival| arrival.modes.first())
+            .map(|mode| (mode.mode, mode.tag.clone()))
+    };
+    assert_eq!(
+        went(&letter.id),
+        Some((ModeKindData::Reading, Some("newsletter".into())))
+    );
+    assert_eq!(
+        went(&person.id),
+        Some((ModeKindData::Messages, Some("person".into())))
+    );
+}

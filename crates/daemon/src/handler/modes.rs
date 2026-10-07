@@ -55,7 +55,7 @@ pub(super) const fn mark_name(mode: ModeKindData) -> Option<&'static str> {
 
 /// Built in its researched shape (To do, Messages, Archive) or an early
 /// version on an existing view (the rest, for now).
-const fn is_early(mode: ModeKindData) -> bool {
+pub(super) const fn is_early(mode: ModeKindData) -> bool {
     !matches!(
         mode,
         ModeKindData::Todo | ModeKindData::Messages | ModeKindData::Archive

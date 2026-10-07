@@ -137,10 +137,11 @@ pub struct ArrivalData {
     pub from: Address,
     pub subject: String,
     pub received_at: DateTime<Utc>,
-    /// The conversation is in the provider's inbox.
+    /// The message is in the provider's inbox.
     pub in_inbox: bool,
-    /// In rail order; each carries its one-word `tag`. Empty when no mode
-    /// holds it: Inbox only, or filed away on arrival.
+    /// The mode its sender's rule sent it to (the sender decision, list
+    /// headers, the address), with its one-word `tag`. Empty when it
+    /// arrived out of the inbox or from someone screened out.
     pub modes: Vec<ModeMembershipData>,
 }
 

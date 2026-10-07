@@ -4,25 +4,27 @@
 //!
 //! Nothing new is tracked: the newest arrival is a read of the messages
 //! table, sync health comes from the sync runtime status the sync loop
-//! already writes (error, failure class, backoff), and the modes come from
-//! the same placement `GetModeMembership` uses.
+//! already writes (error, failure class, backoff), and each arrival's mode
+//! comes from the sender classifier the modes use (`mail_kind`).
 
-use super::mode_rules::provider_name;
-use super::modes::place_threads;
+use super::desk::Senders;
+use super::mail_kind;
+use super::mode_rules::{membership, provider_name};
+use super::modes::{is_early, signals};
 use super::places::scoped_accounts;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
-use mxr_core::id::{AccountId, ThreadId};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::ProviderKind;
 use mxr_core::Account;
 use mxr_protocol::{
-    AccountFreshnessData, ArrivalData, FreshnessData, ResponseData, SyncErrorData,
-    SyncErrorKindData, SyncHealthData, ThreadModesData, FRESHNESS_DEFAULT_ARRIVALS,
-    FRESHNESS_MAX_ARRIVALS,
+    AccountFreshnessData, ArrivalData, FreshnessData, ModeKindData, ModeMembershipData,
+    ResponseData, SenderKindData, SyncErrorData, SyncErrorKindData, SyncHealthData,
+    FRESHNESS_DEFAULT_ARRIVALS, FRESHNESS_MAX_ARRIVALS,
 };
-use mxr_store::{Arrival, SyncRuntimeStatus};
-use std::collections::HashMap;
+use mxr_store::{Arrival, DeskMessage, SyncRuntimeStatus};
+use std::collections::{HashMap, HashSet};
 
 /// A sync that has not worked for this long is stale even with no error:
 /// five missed intervals, and never under fifteen minutes, so a slow
@@ -98,7 +100,7 @@ pub(super) async fn get_freshness(
                 .max(),
             stale_after_secs: stale_after,
             worst_account_id,
-            arrivals: place_arrivals(state, arrivals, now).await?,
+            arrivals: place_arrivals(state, arrivals).await?,
             accounts: freshness,
         },
     })
@@ -201,12 +203,13 @@ fn sync_error(row: &SyncRuntimeStatus) -> Option<SyncErrorData> {
     })
 }
 
-/// Each arrival with the modes its conversation is in now, placed the way
-/// `GetModeMembership` places it.
+/// Each arrival with the mode its sender's rule sent it to: the cheap,
+/// per-message part of placement (the sender decision, list headers, the
+/// address), not the whole thread's lanes, to-dos and done marks. Freshness
+/// is polled every minute and asks "where did it go?", which this answers.
 async fn place_arrivals(
     state: &AppState,
     arrivals: Vec<Arrival>,
-    now: DateTime<Utc>,
 ) -> Result<Vec<ArrivalData>, HandlerError> {
     let mut by_account: HashMap<AccountId, Vec<ThreadId>> = HashMap::new();
     for arrival in &arrivals {
@@ -215,19 +218,31 @@ async fn place_arrivals(
             threads.push(arrival.thread_id.clone());
         }
     }
-    let mut placed: HashMap<ThreadId, ThreadModesData> = HashMap::new();
+    let wanted: HashSet<&MessageId> = arrivals.iter().map(|arrival| &arrival.id).collect();
+    let mut went_to: HashMap<MessageId, (bool, Vec<ModeMembershipData>)> = HashMap::new();
     for (account, threads) in by_account {
-        for placement in place_threads(state, &account, &threads, now).await? {
-            placed.insert(placement.data.thread_id.clone(), placement.data);
+        let messages: Vec<DeskMessage> = state
+            .store
+            .desk_messages_in_threads(&account, &threads)
+            .await?
+            .into_iter()
+            .filter(|message| wanted.contains(&message.id))
+            .collect();
+        let senders = Senders::load(state, &account, &messages).await?;
+        for message in &messages {
+            went_to.insert(
+                message.id.clone(),
+                (message.in_inbox, sender_mode(message, &senders)),
+            );
         }
     }
     Ok(arrivals
         .into_iter()
         .map(|arrival| {
-            let modes = placed.get(&arrival.thread_id);
+            let (in_inbox, modes) = went_to.remove(&arrival.id).unwrap_or_default();
             ArrivalData {
-                in_inbox: modes.is_some_and(|data| data.in_inbox),
-                modes: modes.map(|data| data.modes.clone()).unwrap_or_default(),
+                in_inbox,
+                modes,
                 account_id: arrival.account_id,
                 message_id: arrival.id,
                 thread_id: arrival.thread_id,
@@ -237,6 +252,35 @@ async fn place_arrivals(
             }
         })
         .collect())
+}
+
+/// The mode a message's sender rule puts it in, with its one-word tag.
+/// None for mail out of the inbox or from someone screened out.
+fn sender_mode(message: &DeskMessage, senders: &Senders) -> Vec<ModeMembershipData> {
+    if !message.in_inbox || message.trashed {
+        return Vec::new();
+    }
+    let described = mail_kind::describe(&signals(message, senders));
+    let mode = match described.kind {
+        SenderKindData::People => ModeKindData::Messages,
+        SenderKindData::PaperTrail => ModeKindData::Updates,
+        SenderKindData::Reading => ModeKindData::Reading,
+        SenderKindData::ScreenedOut => return Vec::new(),
+    };
+    let sender = message
+        .from
+        .name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(&message.from.email);
+    let source = if described.corrected { "you" } else { "rule" };
+    vec![membership(
+        mode,
+        format!("Here because: {} ({source}).", described.reason),
+        format!("Also in {}: from {sender}", mode.name()),
+        is_early(mode),
+        mail_kind::rule_tag(described.rule),
+    )]
 }
 
 #[cfg(test)]

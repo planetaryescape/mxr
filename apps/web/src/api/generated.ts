@@ -3753,12 +3753,13 @@ export interface components {
         ArrivalData: {
             account_id: components["schemas"]["AccountId"];
             from: components["schemas"]["Address"];
-            /** @description The conversation is in the provider's inbox. */
+            /** @description The message is in the provider's inbox. */
             in_inbox: boolean;
             message_id: components["schemas"]["MessageId"];
             /**
-             * @description In rail order; each carries its one-word `tag`. Empty when no mode
-             *     holds it: Inbox only, or filed away on arrival.
+             * @description The mode its sender's rule sent it to (the sender decision, list
+             *     headers, the address), with its one-word `tag`. Empty when it
+             *     arrived out of the inbox or from someone screened out.
              */
             modes: components["schemas"]["ModeMembershipData"][];
             /** Format: date-time */

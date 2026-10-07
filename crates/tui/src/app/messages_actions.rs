@@ -608,6 +608,8 @@ impl App {
             KeyCode::Char('t') if plain => Some(Action::CreateTodoFromMessage),
             KeyCode::Char('b') if plain => Some(Action::FlagReplyLater),
             KeyCode::Char('u') if plain => Some(Action::UndoLastMutation),
+            KeyCode::Char('X') if shifted => Some(Action::OpenMoveMenu),
+            KeyCode::Char('K') if shifted => Some(Action::OpenSenderMoveMenu),
             KeyCode::Char('A') if shifted => None,
             _ => None,
         };

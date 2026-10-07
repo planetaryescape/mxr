@@ -181,6 +181,9 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             }
         }
         DaemonEvent::ThreadGistReady { gist } => app.row_gists.put(&gist),
+        // An email or sender moved in some client, or new mail was sorted:
+        // Now's line, the mode on screen and Inbox's chips refetch.
+        DaemonEvent::ModesChanged { .. } => app.modes_changed(),
         DaemonEvent::NewMessages { envelopes, total } => {
             // The status bar's "latest mail" moves with every arrival.
             app.diagnostics.pending_status_refresh = true;

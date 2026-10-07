@@ -857,6 +857,18 @@ impl App {
             };
         }
 
+        // Moves (D119): the menu `X` and `K` open, "Always for this
+        // sender? y/n" after a Not-sure answer, and the arrivals list.
+        if self.mailbox.trust.move_menu.is_some() {
+            return self.move_menu_key(key);
+        }
+        if let Some(action) = self.sender_ask_key(key) {
+            return Some(action);
+        }
+        if self.mailbox.trust.arrivals_list.is_some() && self.screen == Screen::Mailbox {
+            return self.arrivals_list_key(key);
+        }
+
         if self.mailbox.sender_kind_menu.is_some() {
             return match (key.code, key.modifiers) {
                 (KeyCode::Char(c), KeyModifiers::NONE) => {
@@ -1317,6 +1329,11 @@ impl App {
                 (KeyCode::Char('L'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::OpenLinks)
                 }
+                // X: move this email to another mode. K stays the
+                // previous message here.
+                (KeyCode::Char('X'), modifiers) if plain_or_shift(modifiers) => {
+                    Some(Action::OpenMoveMenu)
+                }
                 _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 _ => self.contextual_input_action(key),
             },
@@ -1395,6 +1412,13 @@ impl App {
                 }
                 // Right arrow opens selected message
                 (KeyCode::Right, KeyModifiers::NONE) => Some(Action::OpenSelected),
+                // X moves this email to another mode; K sets its sender's.
+                (KeyCode::Char('X'), modifiers) if plain_or_shift(modifiers) => {
+                    Some(Action::OpenMoveMenu)
+                }
+                (KeyCode::Char('K'), modifiers) if plain_or_shift(modifiers) => {
+                    Some(Action::OpenSenderMoveMenu)
+                }
                 _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 _ => self.contextual_input_action(key),
             },
@@ -1416,6 +1440,9 @@ impl App {
             (KeyCode::Char('p'), KeyModifiers::NONE) => Some(Action::TogglePin),
             (KeyCode::Char('K'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenSenderKindMenu)
+            }
+            (KeyCode::Char('X'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::OpenMoveMenu)
             }
             (KeyCode::Char('S'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::SweepBundle)

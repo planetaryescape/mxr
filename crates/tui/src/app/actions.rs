@@ -91,6 +91,14 @@ impl App {
         self.status_message = None;
         // Before the action moves the cursor or the page.
         self.dismiss_hint_acted_on(&action);
+        // "Always for this sender?" lasts until the next key that isn't its
+        // answer, so a later K never moves a sender by surprise.
+        if !matches!(
+            action,
+            Action::OpenSenderMoveMenu | Action::AnswerAlwaysForSender(_)
+        ) {
+            self.mailbox.trust.sender_ask = None;
+        }
 
         match action {
             Action::DismissHint => self.dismiss_active_hint(),
@@ -156,6 +164,14 @@ impl App {
             | Action::ReadingOpenEmail
             | Action::ReadingBack
             | Action::ReadingLaterShelf => self.apply_reading_action(action),
+            Action::OpenMoveMenu
+            | Action::OpenSenderMoveMenu
+            | Action::MoveEmailTo { .. }
+            | Action::NowAnswerNotSure(_)
+            | Action::AnswerAlwaysForSender(_)
+            | Action::OpenArrivals
+            | Action::ArrivalsNextBucket
+            | Action::CloseArrivals => self.apply_move_action(action),
             Action::OpenNow
             | Action::OpenMessages
             | Action::OpenArchiveMode

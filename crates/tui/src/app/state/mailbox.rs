@@ -168,6 +168,9 @@ pub struct MailListRow {
     pub triage_verdict: Option<String>,
     pub reply_later: bool,
     pub pending_mutation: bool,
+    /// Where the email went (D119): "Reading", "Spam". Inbox shows it
+    /// quietly; the selected row's full chip is in the list's title.
+    pub mode_chip: Option<&'static str>,
 }
 
 #[derive(Debug, Clone)]
@@ -616,6 +619,8 @@ pub struct MailboxState {
     pub records_page: super::RecordsPageState,
     /// Now (`GetNow`): the front page and its guide.
     pub now_page: super::NowPageState,
+    /// Moves, the sender ask, the arrivals list and Inbox's chips (D119).
+    pub trust: super::TrustState,
     /// Messages (`ListMessages`, `GetPerson`): the bands, the person page,
     /// the guide and a Got it counting down.
     pub messages_page: super::MessagesPageState,
@@ -733,6 +738,7 @@ impl MailboxState {
             todo_page: super::TodoPageState::default(),
             records_page: super::RecordsPageState::default(),
             now_page: super::NowPageState::default(),
+            trust: super::TrustState::default(),
             messages_page: super::MessagesPageState::default(),
             reading_page: super::ReadingPageState::default(),
             updates_page: super::UpdatesPageState::default(),

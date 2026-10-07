@@ -1,5 +1,6 @@
 mod accounts;
 mod analytics;
+mod arrivals;
 mod command_palette;
 mod compose;
 mod deliveries;
@@ -21,6 +22,9 @@ pub use accounts::{AccountFormMode, AccountFormState, AccountsPageState, Account
 pub use analytics::{
     AnalyticsCacheKey, AnalyticsState, AnalyticsView, ContactsMode, StorageMode, WrappedWindow,
     ANALYTICS_CACHE_TTL,
+};
+pub use arrivals::{
+    ArrivalsListFetch, ArrivalsListState, MoveMenu, SenderAsk, TrustState, CHIP_BATCH,
 };
 pub use command_palette::CommandPaletteState;
 pub use compose::{

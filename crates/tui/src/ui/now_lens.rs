@@ -7,7 +7,7 @@
 //! header line from Now's mode guide. Hints show in the status line
 //! (`app/hints.rs`). Pure render; wiring lives in `app/now_actions.rs`.
 
-use mxr_protocol::{NowData, NowPersonData, NowTodoData};
+use mxr_protocol::{ArrivalsData, NowData, NowPersonData, NowTodoData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -203,16 +203,34 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
     if !now.first_run.complete {
         body.text(SORTING_LINE, secondary);
     }
-    if now.item_count == 0 {
+    let arrivals = view.page.arrivals.as_ref();
+    let clear = now.item_count == 0;
+    let mut index = 0usize;
+    if let Some(arrivals) = arrivals {
+        arrivals_lines(&mut body, view, arrivals, clear, width, theme, &mut index);
+    }
+    if clear {
         if let Some(empty) = &now.empty_state {
-            body.blank();
-            for line in wrap(&one_line(empty), width.saturating_sub(4)) {
-                body.text(line, secondary);
+            // The arrivals line already said "Clear."; keep only when the
+            // next to-do surfaces.
+            let empty = one_line(empty);
+            let empty = match arrivals.and_then(|a| a.clear_line.as_ref()) {
+                Some(_) => empty
+                    .strip_prefix(mxr_protocol::now_copy::CLEAR)
+                    .map(str::trim)
+                    .unwrap_or(empty.as_str())
+                    .to_string(),
+                None => empty,
+            };
+            if !empty.is_empty() {
+                body.blank();
+                for line in wrap(&empty, width.saturating_sub(4)) {
+                    body.text(line, secondary);
+                }
             }
         }
     }
 
-    let mut index = 0usize;
     if !now.people.rows.is_empty() {
         body.blank();
         body.lines.push(section(
@@ -322,7 +340,75 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
         body.blank();
         body.text(one_line(not_now), muted);
     }
+    if let Some(track) = arrivals.and_then(|a| a.track_record.as_ref()) {
+        body.blank();
+        body.text(one_line(track), muted);
+    }
     body
+}
+
+/// The arrivals line under the headline, muted and with no count of its
+/// own to chase, then the day's Not-sure questions. Selectable: Enter on
+/// the line lists the emails behind it; a mode key answers a question.
+fn arrivals_lines(
+    body: &mut Body,
+    view: &NowView<'_>,
+    arrivals: &ArrivalsData,
+    clear: bool,
+    width: usize,
+    theme: &crate::theme::Theme,
+    index: &mut usize,
+) {
+    let muted = Style::default().fg(theme.text_muted);
+    let line = match (&arrivals.clear_line, clear) {
+        (Some(clear_line), true) => clear_line,
+        _ => &arrivals.line,
+    };
+    let selected = *index == view.selected_index;
+    let mut wrapped = wrap(&one_line(line), width.saturating_sub(4)).into_iter();
+    if let Some(first) = wrapped.next() {
+        body.select(
+            Line::from(vec![
+                Span::raw(marker(selected)),
+                Span::styled(first, muted),
+            ]),
+            selected,
+        );
+    }
+    for rest in wrapped {
+        body.text(rest, muted);
+    }
+    *index += 1;
+    if arrivals.not_sure.is_empty() {
+        return;
+    }
+    body.blank();
+    body.lines.push(section("Not sure", None, width, theme));
+    if let Some(ask) = &arrivals.not_sure_line {
+        body.text(one_line(ask), Style::default().fg(theme.text_secondary));
+    }
+    let choices = crate::app::MOVE_CHOICES
+        .iter()
+        .map(|(key, mode)| format!("{key} {}", mode.name()))
+        .collect::<Vec<_>>()
+        .join("  ");
+    for question in &arrivals.not_sure {
+        let selected = *index == view.selected_index;
+        body.select(
+            Line::from(vec![
+                Span::raw(marker(selected)),
+                Span::styled(
+                    truncate(&one_line(&question.line), width.saturating_sub(4)),
+                    Style::default().fg(theme.text_primary),
+                ),
+            ]),
+            selected,
+        );
+        if selected {
+            body.text(format!("  {choices}"), Style::default().fg(theme.accent));
+        }
+        *index += 1;
+    }
 }
 
 fn keys_line(page: &NowPageState) -> String {
@@ -661,6 +747,100 @@ pub(crate) mod tests {
         let rendered = render_at(&page(now, true), 120, 0);
         assert!(!rendered.contains('\u{1b}'));
         assert!(!rendered.contains('\u{202e}'));
+    }
+
+    fn arrivals(questions: usize) -> mxr_protocol::ArrivalsData {
+        use mxr_protocol::{ArrivalBucketData, ArrivalCountData, ModeKindData, MoveChoiceData};
+        let now = Utc::now();
+        let count = |bucket, count: u32, label: &str| ArrivalCountData {
+            bucket,
+            count,
+            label: label.into(),
+        };
+        let not_sure: Vec<mxr_protocol::NotSureData> = (0..questions)
+            .map(|i| mxr_protocol::NotSureData {
+                account_id: AccountId::new(),
+                message_id: MessageId::new(),
+                thread_id: ThreadId::new(),
+                sender_email: "maya@example.com".into(),
+                sender_name: Some("Maya Ortiz".into()),
+                subject: format!("Q{i} plan"),
+                mode: ModeKindData::Updates,
+                line: format!("Maya Ortiz copied you on \"Q{i} plan\". Updates for now."),
+                choices: MoveChoiceData::all(),
+            })
+            .collect();
+        mxr_protocol::ArrivalsData {
+            generated_at: now,
+            since: now,
+            until: now,
+            since_label: "08:12".into(),
+            total: 50,
+            counts: vec![
+                count(ArrivalBucketData::Messages, 8, "8 Messages"),
+                count(ArrivalBucketData::Updates, 10, "10 Updates"),
+                count(ArrivalBucketData::Reading, 31, "31 Reading"),
+                count(ArrivalBucketData::Spam, 1, "1 spam"),
+            ],
+            also: vec![count(ArrivalBucketData::Todo, 2, "2 in To do")],
+            line: "Since 08:12: 50 arrived. 8 Messages \u{b7} 10 Updates \u{b7} 31 Reading \u{b7} 1 spam. Also 2 in To do.".into(),
+            clear_line: Some("Clear. All 50 emails since 08:12 are accounted for.".into()),
+            latest_at: Some(now),
+            not_sure_line: (questions > 0).then(|| {
+                format!("{questions} emails I wasn't sure about. Where should these go?")
+            }),
+            not_sure_hint: None,
+            not_sure,
+            track_record: Some("Last week mxr sorted 310 emails; you moved 2.".into()),
+            never_bury: String::new(),
+        }
+    }
+
+    #[test]
+    fn the_arrivals_line_sits_under_the_headline_with_its_questions_and_track_record() {
+        let mut with_line = page(populated(), true);
+        with_line.arrivals = Some(arrivals(2));
+        for width in [60u16, 80, 120] {
+            let rendered = render_at(&with_line, width, 1);
+            let line = rendered.find("Since 08:12").expect("the line");
+            let not_sure = rendered.find("Not sure").expect("the questions");
+            let people = rendered.find("People").expect("People");
+            assert!(line < not_sure && not_sure < people, "{width}\n{rendered}");
+            // The selected question shows its keys; the other doesn't.
+            assert_eq!(
+                rendered.matches("m Messages").count(),
+                1,
+                "{width}\n{rendered}"
+            );
+            insta::assert_snapshot!(format!("now_lens_arrivals_{width}"), rendered);
+        }
+        let wide = render_at(&with_line, 120, 1);
+        assert!(wide.contains("Since 08:12: 50 arrived."), "{wide}");
+        assert!(wide.contains("2 emails I wasn't sure about"), "{wide}");
+        assert!(wide.contains("Maya Ortiz copied you on \"Q0 plan\""), "{wide}");
+        assert!(
+            wide.contains("Last week mxr sorted 310 emails; you moved 2."),
+            "{wide}"
+        );
+        assert!(wide.contains("Every email since then"), "the footer explains the line");
+    }
+
+    #[test]
+    fn a_clear_now_says_every_arrival_is_accounted_for_once() {
+        let mut clear_now = page(clear(), true);
+        clear_now.arrivals = Some(arrivals(0));
+        let rendered = render_at(&clear_now, 120, 0);
+        assert!(
+            rendered.contains("Clear. All 50 emails since 08:12 are accounted for."),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("Since 08:12:"), "{rendered}");
+        assert!(
+            rendered.contains("The next to-do surfaces"),
+            "when the next thing surfaces stays: {rendered}"
+        );
+        assert_eq!(rendered.matches("Clear.").count(), 1, "{rendered}");
+        assert!(!rendered.contains("Not sure"), "{rendered}");
     }
 
     #[test]

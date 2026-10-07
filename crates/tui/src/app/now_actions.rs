@@ -14,6 +14,12 @@ pub(crate) const NOW_MODE: &str = mxr_protocol::NOW_GUIDE.mode;
 
 /// What a row on Now refers to, copied out so the page can be changed.
 enum NowTarget {
+    /// The arrivals line: Enter lists the emails behind it.
+    Arrivals,
+    /// A Not-sure question: Enter opens the email; a mode key answers it.
+    NotSure {
+        message_id: MessageId,
+    },
     Person {
         thread_id: ThreadId,
         message_id: MessageId,
@@ -33,6 +39,10 @@ enum NowTarget {
 impl From<NowRow<'_>> for NowTarget {
     fn from(row: NowRow<'_>) -> Self {
         match row {
+            NowRow::Arrivals(_) => Self::Arrivals,
+            NowRow::NotSure(question) => Self::NotSure {
+                message_id: question.message_id.clone(),
+            },
             NowRow::Person(person) => Self::Person {
                 thread_id: person.row.thread_id.clone(),
                 message_id: person.row.message_id.clone(),
@@ -106,6 +116,8 @@ impl App {
         let page = &mut self.mailbox.now_page;
         page.digest_preview = None;
         page.pending_refresh = true;
+        // Opening Now is a visit: the arrivals line counts from the last.
+        page.pending_mark_seen = true;
         self.mailbox.pending_rail_refresh = true;
     }
 
@@ -170,7 +182,10 @@ impl App {
             return;
         };
         match target {
-            NowTarget::Person { message_id, .. } | NowTarget::Reading { message_id, .. } => {
+            NowTarget::Arrivals => self.apply(Action::OpenArrivals),
+            NowTarget::Person { message_id, .. }
+            | NowTarget::Reading { message_id, .. }
+            | NowTarget::NotSure { message_id } => {
                 self.mailbox.pending_invite_open = Some(message_id);
                 self.status_message = Some("Opening conversation…".into());
             }
@@ -196,6 +211,13 @@ impl App {
             return;
         };
         match target {
+            // Nothing to be done with the line, and a question is
+            // answered with a mode's key.
+            NowTarget::Arrivals => {}
+            NowTarget::NotSure { .. } => {
+                self.status_message =
+                    Some("Answer with m Messages, x To do, u Updates, r Reading or e Archive".into());
+            }
             NowTarget::Person { thread_id, .. } => {
                 self.queue_mode_done(ModeKindData::Messages, thread_id);
                 // After queueing, which sets its own progress line.
@@ -373,6 +395,17 @@ impl App {
             self.selected_now_row(),
             Some(NowRow::Person(person)) if person.new_sender.is_some()
         );
+        // A Not-sure question takes its answer in one key: the mode's
+        // `g` letter, before e, u and r mean done, undo and reply.
+        if plain && matches!(self.selected_now_row(), Some(NowRow::NotSure(_))) {
+            if let KeyCode::Char(c) = key.code {
+                if let Some((_, mode)) =
+                    crate::app::MOVE_CHOICES.iter().find(|(letter, _)| *letter == c)
+                {
+                    return Some(Action::NowAnswerNotSure(*mode));
+                }
+            }
+        }
         let action = match key.code {
             KeyCode::Char('/') if plain => Some(Action::OpenGlobalSearch),
             KeyCode::Char('h') | KeyCode::Left if plain => {
@@ -387,6 +420,8 @@ impl App {
             KeyCode::Char('r') if plain => Some(Action::Reply),
             KeyCode::Char('t') if plain => Some(Action::CreateTodoFromMessage),
             KeyCode::Char('A') if shifted => Some(Action::NowLetGoDigest),
+            KeyCode::Char('X') if shifted => Some(Action::OpenMoveMenu),
+            KeyCode::Char('K') if shifted => Some(Action::OpenSenderMoveMenu),
             KeyCode::Char('u') if plain => Some(Action::UndoLastMutation),
             KeyCode::Char(digit @ '1'..='4') if plain && asks => {
                 Some(Action::NowAnswerSender(digit as usize - '0' as usize))

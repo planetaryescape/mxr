@@ -23,10 +23,19 @@ impl App {
     }
 
     pub fn mail_list_rows(&self) -> Vec<MailListRow> {
-        self.with_pending_mutation_markers(Self::build_mail_list_rows(
+        let mut rows = self.with_pending_mutation_markers(Self::build_mail_list_rows(
             &self.mailbox.envelopes,
             self.mailbox.mail_list_mode,
-        ))
+        ));
+        let chips = &self.mailbox.trust.chips;
+        if !chips.is_empty() {
+            for row in &mut rows {
+                row.mode_chip = chips
+                    .get(&row.representative.id)
+                    .map(crate::app::chip_label);
+            }
+        }
+        rows
     }
 
     pub fn search_mail_list_rows(&self) -> Vec<MailListRow> {

@@ -27,6 +27,7 @@ pub(crate) const FRESHNESS_REQUEST: Request = Request::GetFreshness {
 mod message_actions;
 mod messages_actions;
 mod modal_actions;
+mod move_actions;
 mod mutation_actions;
 mod mutation_helpers;
 pub mod mutation_snapshot;
@@ -81,6 +82,7 @@ pub use mutation_snapshot::{
     MutationId, MutationIdGenerator, MutationSnapshot, MutationSnapshotStore, QueuedMutation,
     TRANSIENT_MUTATION_MAX_RETRIES,
 };
+pub(crate) use move_actions::{chip_label, move_status, sender_mode, MOVE_CHOICES};
 pub(crate) use now_actions::{mode_done_copy, NOW_MODE};
 pub use pending_optimistic::PendingOptimisticState;
 pub use promises::PromisePrompt;
@@ -235,6 +237,9 @@ pub enum UndoAction {
         source_key: String,
         prior: mxr_protocol::UpdateSourceSettingData,
     },
+    /// A move of an email or a sender (`MoveMessage`): put back exactly
+    /// as it was (`UndoMove`).
+    Move(i64),
 }
 
 /// Captured handle for a recent undoable mutation. The TUI uses this to

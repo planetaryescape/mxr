@@ -92,8 +92,9 @@ profile.
 `Unscoped` is kept to requests with no account data: `Ping`,
 `Authenticate`, `GetStatus` (the version handshake every client and the MCP
 status tool use; its account rows are cut to the allowed accounts, see
-below), LLM and semantic status reads, notification chimes, snippets,
-signature names, the humanizer, `ResolveTime` and the mode guides.
+below), LLM and semantic status reads, notification chimes,
+`ListSignatures` (filtered, see below), the humanizer, `ResolveTime` and
+the mode guides.
 
 Behaviour change for scoped profiles: rules, logs, the activity log, saved
 searches, jobs listing and daemon maintenance are now denied, and `GetJob`
@@ -128,3 +129,9 @@ in its own commit with a test that failed first.
   response is cut to the allowed accounts' names, sync statuses and message
   count. Daemon-level fields (versions, pid, uptime, feature health,
   semantic runtime) are unchanged.
+- **Signatures and snippets (medium).** `ListSignatures` hides any signature
+  that a default binds to an excluded account; unbound signatures and the
+  client's own stay. Snippets have no account binding at all, so the snippet
+  requests are classified `AllAccounts` and denied to scoped profiles. That
+  trades away snippet use for scoped agents rather than show them text
+  written for any account.

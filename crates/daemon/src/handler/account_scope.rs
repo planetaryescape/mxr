@@ -16,6 +16,7 @@ use mxr_protocol::{
     AuthSessionId, ClientKind, JobData, MutationCommand, PromiseSourceData, Request, ResponseData,
     ThreadSummaryData,
 };
+use mxr_store::SignatureScope;
 use std::sync::Arc;
 
 /// What a request reads or changes, as far as accounts go.
@@ -397,6 +398,11 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         // Signatures are shared by every account's defaults.
         | Request::SetSignature { .. }
         | Request::DeleteSignature { .. }
+        // Snippets are user text with no account binding, so a scoped
+        // profile can't be given a part of them.
+        | Request::ListSnippets
+        | Request::SetSnippet { .. }
+        | Request::DeleteSnippet { .. }
         | Request::ListDrafts
         | Request::ListOrphanedDrafts
         | Request::Shutdown
@@ -427,9 +433,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::PatchNotificationChimes { .. }
         | Request::PreviewNotificationChime { .. }
         | Request::GetSemanticStatus
-        | Request::ListSnippets
-        | Request::SetSnippet { .. }
-        | Request::DeleteSnippet { .. }
+        // `scope_response` hides signatures bound to an excluded account.
         | Request::ListSignatures
         | Request::HumanizerScore { .. }
         | Request::HumanizerRewrite { .. }
@@ -765,7 +769,7 @@ pub(crate) fn profile_name(source: ClientKind) -> Option<&'static str> {
 
 /// Cut a response down to what a scoped profile may see. Request checks
 /// already keep a scoped client to its accounts; this covers responses that
-/// are allowed but carry other accounts' rows (status) and is a
+/// are allowed but carry other accounts' rows (status, signatures) and is a
 /// second safety net for thread loads.
 pub(super) async fn scope_response(
     state: &AppState,
@@ -829,6 +833,32 @@ pub(super) async fn scope_response(
             messages,
             summary,
         } => scope_thread(state, profile, thread, messages, summary).await,
+        ResponseData::Signatures { signatures } => {
+            let mut hidden = Vec::new();
+            for default in state
+                .store
+                .list_signature_defaults()
+                .await
+                .map_err(|e| e.to_string())?
+            {
+                let bound_to = match &default.scope {
+                    SignatureScope::Global => None,
+                    SignatureScope::Account(account_id)
+                    | SignatureScope::Address { account_id, .. } => Some(account_id),
+                };
+                if let Some(account_id) = bound_to {
+                    if !account_id_allowed(state, profile, account_id).await? {
+                        hidden.push(default.signature.id);
+                    }
+                }
+            }
+            Ok(ResponseData::Signatures {
+                signatures: signatures
+                    .into_iter()
+                    .filter(|signature| !hidden.contains(&signature.id))
+                    .collect(),
+            })
+        }
         other => Ok(other),
     }
 }

@@ -901,3 +901,54 @@ async fn status_shows_a_scoped_client_only_its_accounts() {
             .unwrap_or(0);
     assert_eq!(total_messages, own_count);
 }
+
+/// Signatures bound to an excluded account are hidden; unbound ones and
+/// the agent's own stay. Snippets aren't tied to an account, so a scoped
+/// client gets none.
+#[tokio::test]
+async fn signatures_bound_elsewhere_are_hidden_and_snippets_denied() {
+    let s = scoped().await;
+    for name in ["theirs", "unbound", "mine"] {
+        request(
+            &s.fx,
+            Request::SetSignature {
+                name: name.into(),
+                body: format!("-- {name}"),
+            },
+        )
+        .await;
+    }
+    for (name, account) in [("theirs", &s.other.account), ("mine", &s.own.account)] {
+        request(
+            &s.fx,
+            Request::SetSignatureDefault {
+                name: name.into(),
+                kind: mxr_protocol::SignatureContextData::New,
+                account_id: Some(account.clone()),
+                from_email: None,
+            },
+        )
+        .await;
+    }
+    let Response::Ok {
+        data: ResponseData::Signatures { signatures },
+    } = scoped_dispatch(&s, Request::ListSignatures).await
+    else {
+        panic!("expected signatures")
+    };
+    let mut names: Vec<_> = signatures.iter().map(|sig| sig.name.as_str()).collect();
+    names.sort_unstable();
+    assert_eq!(names, ["mine", "unbound"]);
+
+    for req in [
+        Request::ListSnippets,
+        Request::SetSnippet {
+            name: "x".into(),
+            body: "y".into(),
+            vars: vec![],
+        },
+        Request::DeleteSnippet { name: "x".into() },
+    ] {
+        assert_denied(&s, &req).await;
+    }
+}

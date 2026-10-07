@@ -1335,6 +1335,7 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
     // same id undoes just those next time.
     let mut retryable: Vec<UndoEntrySnapshot> = Vec::new();
     let mut last_error: Option<String> = None;
+    let mut reindex: Vec<mxr_core::MessageId> = Vec::new();
     for (account_id, snapshots) in by_account {
         let provider = match state.get_provider(Some(&account_id)) {
             Ok(p) => p,
@@ -1346,7 +1347,10 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
         };
         for snapshot in snapshots {
             match restore_snapshot(state, provider.as_ref(), entry.kind, snapshot).await {
-                Ok(()) => restored += 1,
+                Ok(()) => {
+                    restored += 1;
+                    reindex.push(snapshot.message_id.clone());
+                }
                 Err(SnapshotError::Irreversible(msg)) => {
                     irreversible += 1;
                     last_error = Some(msg);
@@ -1358,6 +1362,15 @@ pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> Handle
             }
         }
     }
+
+    // One search commit for the whole undo, as `apply_mutation_batch` does:
+    // a commit per message made undoing a large let-go take seconds. The
+    // store is already restored, and a failed reindex leaves its messages
+    // marked for the next one, so it doesn't fail the undo.
+    log_non_fatal(
+        "undo: search reindex failed; the messages are marked for the next reindex",
+        reindex_messages_in_search(state, &reindex).await,
+    );
 
     if retryable.is_empty() {
         if restored == 0 {
@@ -1438,9 +1451,7 @@ async fn restore_snapshot(
             mxr_core::MessageFlags::STARRED,
         )
         .await?;
-        return reindex_message_in_search(state, &snapshot.message_id)
-            .await
-            .map_err(SnapshotError::Other);
+        return Ok(());
     }
 
     let prior_labels: std::collections::HashSet<&str> = snapshot
@@ -1530,13 +1541,7 @@ async fn restore_snapshot(
         .await?;
     }
 
-    // Refresh the Tantivy index so `mxr search label:inbox` (and friends)
-    // see the restored state immediately. Mirror what
-    // `apply_mutation_batch` does at the end of every batch.
-    reindex_message_in_search(state, &snapshot.message_id)
-        .await
-        .map_err(SnapshotError::Other)?;
-
+    // `undo_mutation` reindexes every restored message in one commit.
     Ok(())
 }
 

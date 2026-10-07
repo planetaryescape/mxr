@@ -231,6 +231,42 @@ pub(crate) async fn unfile_todos(state: &AppState, todos: &[TodoRecord]) {
     }
 }
 
+/// Records with a moment soon, soonest first, at most `cap`: the strip on
+/// Archive and the line on Now.
+pub(super) async fn coming_up(
+    state: &AppState,
+    accounts: &[AccountId],
+    now: DateTime<Utc>,
+    cap: usize,
+) -> Result<Vec<RecordMomentData>, HandlerError> {
+    let records = state
+        .store
+        .list_archive_records(&query_for(accounts, &RecordFilterData::default())?)
+        .await?;
+    let groups: HashMap<String, RecordGroup> = state
+        .store
+        .list_record_groups(Some(accounts))
+        .await?
+        .into_iter()
+        .map(|g| (g.id.clone(), g))
+        .collect();
+    Ok(mxr_records::coming_up::moments(&records, &groups, now, &Local)
+        .into_iter()
+        .take(cap)
+        .map(moment_data)
+        .collect())
+}
+
+fn moment_data(moment: mxr_records::coming_up::Moment) -> RecordMomentData {
+    RecordMomentData {
+        kind: moment.kind.as_str().to_string(),
+        record_id: moment.record_id,
+        group_id: moment.group_id,
+        at: moment.at,
+        label: moment.label,
+    }
+}
+
 /// Whether ticking off a to-do of this kind files a record.
 pub(crate) fn todo_files_record(todo_kind: &str) -> bool {
     pass::todo_record_kind(todo_kind).is_some()
@@ -841,13 +877,7 @@ pub(super) async fn list_records(
         groups.into_iter().map(|g| (g.id.clone(), g)).collect();
     let coming_up = mxr_records::coming_up::moments(&all, &groups, now, &Local)
         .into_iter()
-        .map(|moment| RecordMomentData {
-            kind: moment.kind.as_str().to_string(),
-            record_id: moment.record_id,
-            group_id: moment.group_id,
-            at: moment.at,
-            label: moment.label,
-        })
+        .map(moment_data)
         .collect();
     let issuer = filter.issuer.as_ref().and_then(|_| {
         let first = matching.first()?;

@@ -18,10 +18,6 @@ use crate::ui::todo_lens::wrap;
 /// Shown while the first run sorts history (blueprint 22, first run).
 const SORTING_LINE: &str = "Sorting your mail, newest first. Now fills in within a few minutes.";
 
-/// What Archive says until records ship (blueprint 22, Archive's copy).
-const ARCHIVE_HEADER: &str = "Receipts, orders, bookings and documents. Ask for what you need.";
-const ARCHIVE_EARLY: &str = "Early version: search, with receipts and records marked.";
-
 pub struct NowView<'a> {
     pub page: &'a NowPageState,
     pub selected_index: usize,
@@ -499,42 +495,6 @@ fn draw_digest_preview(
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
-/// Archive, the mode, before records ship: what it will be and what backs
-/// it now. Nothing is listed, so nothing pretends to be a record.
-pub fn draw_archive(
-    frame: &mut Frame,
-    area: Rect,
-    early_note: Option<&str>,
-    active_pane: &ActivePane,
-    theme: &crate::theme::Theme,
-) {
-    let block = Block::bordered()
-        .title(format!(" Archive \u{2500} {ARCHIVE_HEADER} "))
-        .border_type(BorderType::Rounded)
-        .border_style(theme.border_style(*active_pane == ActivePane::MailList));
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-    let width = inner.width as usize;
-    let mut lines = vec![Line::from("")];
-    for line in wrap(early_note.unwrap_or(ARCHIVE_EARLY), width.saturating_sub(4)) {
-        lines.push(Line::from(Span::styled(
-            format!("  {line}"),
-            Style::default().fg(theme.text_secondary),
-        )));
-    }
-    lines.push(Line::from(""));
-    for line in wrap(
-        "Records built from your mail, one card per order, trip or bill, are coming. Until then, / searches all your mail, and receipts are marked where they appear.",
-        width.saturating_sub(4),
-    ) {
-        lines.push(Line::from(Span::styled(
-            format!("  {line}"),
-            Style::default().fg(theme.text_muted),
-        )));
-    }
-    frame.render_widget(Paragraph::new(lines), inner);
-}
-
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -649,6 +609,7 @@ pub(crate) mod tests {
                 scanned: 10,
                 reached: None,
             },
+            coming_up: Vec::new(),
         }
     }
 

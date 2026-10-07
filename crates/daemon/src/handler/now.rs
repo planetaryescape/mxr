@@ -201,6 +201,7 @@ where
         empty_state,
         next_at,
         first_run,
+        coming_up: super::records::coming_up(state, &accounts, now, NOW_SECTION_CAP).await?,
     })
 }
 

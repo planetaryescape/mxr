@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.55](https://github.com/planetaryescape/mxr/compare/v0.6.54...v0.6.55) (2026-10-07)
+
+
+### Features
+
+* Archive keeps records you can ask questions of ([#294](https://github.com/planetaryescape/mxr/issues/294)) ([260a299](https://github.com/planetaryescape/mxr/commit/260a2991cccaa30385f0664ad730bc40d2bc823b))
+
 ## [0.6.54](https://github.com/planetaryescape/mxr/compare/v0.6.53...v0.6.54) (2026-10-07)
 
 

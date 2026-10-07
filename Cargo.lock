@@ -4310,6 +4310,7 @@ dependencies = [
  "mxr-todo",
  "mxr-transport",
  "mxr-tui",
+ "mxr-updates",
  "mxr-web",
  "nix 0.30.1",
  "nucleo",
@@ -4990,6 +4991,18 @@ dependencies = [
  "tui-big-text",
  "tui-textarea-2",
  "unicode-width",
+]
+
+[[package]]
+name = "mxr-updates"
+version = "0.6.53"
+dependencies = [
+ "chrono",
+ "once_cell",
+ "psl",
+ "regex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -43,30 +43,6 @@ async fn update(
     envelope
 }
 
-/// The receiving provider's own DMARC pass for `envelope`'s sender, as
-/// Gmail stamps it (the fake provider stands in for Gmail).
-async fn authentic(fx: &Fixture, envelope: &Envelope) {
-    let domain = mxr_updates::email_domain(&envelope.from.email).unwrap();
-    let metadata = mxr_core::types::MessageMetadata {
-        auth_results: vec![format!(
-            "mx.google.com; dkim=pass; spf=pass; dmarc=pass (p=REJECT) header.from={domain}"
-        )],
-        ..Default::default()
-    };
-    fx.state
-        .store
-        .insert_body(&mxr_core::types::MessageBody {
-            message_id: envelope.id.clone(),
-            text_plain: Some(String::new()),
-            text_html: None,
-            attachments: Vec::new(),
-            fetched_at: Utc::now(),
-            metadata,
-        })
-        .await
-        .unwrap();
-}
-
 /// Earlier mail from `from`, so the source isn't a first-time sender.
 async fn known_source(fx: &Fixture, from: &str) {
     update(
@@ -297,10 +273,18 @@ async fn let_go_acts_on_exactly_the_previewed_cut() {
 }
 
 #[tokio::test]
-async fn a_new_sign_in_breaks_through_once_and_shows_already_in_to_do() {
+async fn a_sign_in_alert_leads_needs_a_look_as_a_suggestion_and_t_makes_the_to_do() {
     let fx = Fixture::new().await;
     let (cut, now) = clock();
     known_source(&fx, "no-reply@accounts.google.com").await;
+    let routine = update(
+        &fx,
+        &ThreadId::new(),
+        "notifications@github.com",
+        "[acme/api] Run failed: CI - main (a1b2c3d)",
+        cut - Duration::minutes(10),
+    )
+    .await;
     let alert = update(
         &fx,
         &ThreadId::new(),
@@ -309,153 +293,87 @@ async fn a_new_sign_in_breaks_through_once_and_shows_already_in_to_do() {
         cut - Duration::hours(1),
     )
     .await;
-    // Three days old: past its window, it never breaks through.
-    let stale = update(
-        &fx,
-        &ThreadId::new(),
-        "no-reply@accounts.google.com",
-        "Security alert: New sign-in from Safari on Mac",
-        now - Duration::days(3),
-    )
-    .await;
-    // A second alert of the same kind that day is the same thing to check.
-    let repeat = update(
-        &fx,
-        &ThreadId::new(),
-        "no-reply@accounts.google.com",
-        "Security alert: New sign-in from Chrome on Windows",
-        cut - Duration::minutes(30),
-    )
-    .await;
-    for envelope in [&alert, &stale, &repeat] {
-        authentic(&fx, envelope).await;
-    }
-    let made = updates::scan(
-        &fx.state,
-        &[alert.id.clone(), stale.id.clone(), repeat.id.clone()],
-        now,
-    )
-    .await
-    .unwrap();
-    assert_eq!(made, 1);
-    let again = updates::scan(&fx.state, std::slice::from_ref(&alert.id), now)
+    // Arrival reads facts and makes nothing: no to-do without you.
+    updates::scan(&fx.state, &[alert.id.clone(), routine.id.clone()])
         .await
         .unwrap();
-    assert_eq!(again, 0, "claimed by its dedup key");
-    let todo = fx
+    let open = fx
         .state
         .store
         .open_todos_for_threads(&fx.account, std::slice::from_ref(&alert.thread_id))
         .await
-        .unwrap()
-        .pop()
-        .expect("a to-do");
-    assert_eq!(todo.title, "Check new sign-in to Google");
-    assert_eq!(todo.origin, "rule");
-    assert!(todo.relevant_until.is_some());
+        .unwrap();
+    assert!(open.is_empty(), "never a to-do on its own");
 
     let digest = digest(&fx, now).await;
-    let line = digest
+    let first = &digest.needs_a_look[0];
+    assert!(first.message_ids.contains(&alert.id), "suggestions lead");
+    assert_eq!(first.source_name, "Google (accounts.google.com)");
+    assert_eq!(
+        first.todo_title,
+        "Check new sign-in to Google (accounts.google.com)"
+    );
+    let suggestion = first.todo_suggestion.as_deref().expect("a suggestion");
+    assert!(suggestion.contains("new sign-in alert"), "{suggestion}");
+    assert!(first.todo_id.is_none());
+    assert!(first.link.is_none(), "a sign-in line never opens a link");
+
+    // t: the user's own action makes the to-do.
+    let made = request(
+        &fx,
+        Request::CreateTodo {
+            message_id: first.fact_message_id.clone().unwrap(),
+            title: first.todo_title.clone(),
+            kind: None,
+            due: None,
+            time_zone: None,
+            dry_run: false,
+        },
+    )
+    .await;
+    assert!(matches!(made, ResponseData::TodoChange { .. }));
+    let after = updates::digest_at(&fx.state, None, None, false, false, now, &utc())
+        .await
+        .unwrap();
+    let line = after
         .needs_a_look
         .iter()
         .find(|line| line.message_ids.contains(&alert.id))
-        .expect("a needs-a-look line");
+        .unwrap();
     assert_eq!(line.in_todo.as_deref(), Some("already in To do"));
-    assert_eq!(line.todo_id.as_deref(), Some(todo.id.as_str()));
-    assert!(line.link.is_none(), "a sign-in line never opens a link");
-    assert!(all_lines(&digest)
-        .iter()
-        .all(|line| !line.message_ids.contains(&stale.id)));
+    assert!(line.todo_suggestion.is_none());
     let preview = let_go(&fx, now, None, true).await.unwrap();
     assert!(preview.line.contains("also in To do"), "{}", preview.line);
 }
 
 #[tokio::test]
-async fn an_unauthenticated_or_first_time_alert_stays_in_needs_a_look() {
+async fn a_borrowed_brand_shows_its_real_host_and_is_still_only_a_suggestion() {
     let fx = Fixture::new().await;
     let (cut, now) = clock();
-    // Anyone can write this subject: no provider DMARC pass, no To do.
-    known_source(&fx, "security@evil.example").await;
-    let forged = update(
+    let mut forged = update(
         &fx,
         &ThreadId::new(),
-        "security@evil.example",
+        "security@g00gle-alerts.example",
         "Security alert: New sign-in from Chrome on Windows",
         cut - Duration::hours(1),
     )
     .await;
-    // Authenticated, but the first mail ever from this source.
-    let first = update(
-        &fx,
-        &ThreadId::new(),
-        "alerts@newbank.example",
-        "Your payment failed: card declined",
-        cut - Duration::hours(1),
-    )
-    .await;
-    authentic(&fx, &first).await;
-    let made = updates::scan(&fx.state, &[forged.id.clone(), first.id.clone()], now)
+    forged.from.name = Some("Google".into());
+    fx.store_envelope(&forged, MessageDirection::Inbound).await;
+    updates::scan(&fx.state, std::slice::from_ref(&forged.id))
         .await
         .unwrap();
-    assert_eq!(made, 0);
-    let digest = digest(&fx, now).await;
-    for id in [&forged.id, &first.id] {
-        let line = digest
-            .needs_a_look
-            .iter()
-            .find(|line| line.message_ids.contains(id))
-            .expect("still in Needs a look");
-        assert!(line.todo_id.is_none());
-    }
-}
-
-#[tokio::test]
-async fn breakthroughs_key_by_source_alert_kind_and_day() {
-    let fx = Fixture::new().await;
-    let (cut, now) = clock();
-    known_source(&fx, "no-reply@accounts.google.com").await;
-    let mut ids = Vec::new();
-    for subject in [
-        "Security alert: New sign-in from Chrome on Windows",
-        "Unusual sign-in activity on your account",
-        "Your payment failed for Google One",
-    ] {
-        let envelope = update(
-            &fx,
-            &ThreadId::new(),
-            "no-reply@accounts.google.com",
-            subject,
-            cut - Duration::hours(1),
-        )
-        .await;
-        authentic(&fx, &envelope).await;
-        ids.push(envelope.id);
-    }
-    // Two wordings of a sign-in are one thing to check; a failed payment
-    // is another, never suppressed by it.
-    assert_eq!(updates::scan(&fx.state, &ids, now).await.unwrap(), 2);
-}
-
-#[tokio::test]
-async fn archived_alerts_never_break_through() {
-    let fx = Fixture::new().await;
-    let (cut, now) = clock();
-    known_source(&fx, "no-reply@accounts.google.com").await;
-    let alert = update(
-        &fx,
-        &ThreadId::new(),
-        "no-reply@accounts.google.com",
-        "Security alert: New sign-in from Chrome on Windows",
-        cut - Duration::hours(1),
-    )
-    .await;
-    authentic(&fx, &alert).await;
-    fx.state
+    assert!(fx
+        .state
         .store
-        .set_message_labels(&alert.id, &[], mxr_core::types::EventSource::User)
+        .open_todos_for_threads(&fx.account, std::slice::from_ref(&forged.thread_id))
         .await
-        .unwrap();
-    assert_eq!(updates::scan(&fx.state, &[alert.id], now).await.unwrap(), 0);
+        .unwrap()
+        .is_empty());
+    let digest = digest(&fx, now).await;
+    let line = &digest.needs_a_look[0];
+    assert_eq!(line.source_name, "Google (g00gle-alerts.example)");
+    assert!(line.todo_title.ends_with("(g00gle-alerts.example)"));
 }
 
 #[tokio::test]
@@ -520,6 +438,58 @@ async fn letting_go_of_one_source_leaves_another_sources_mail_in_a_shared_thread
 }
 
 #[tokio::test]
+async fn a_message_put_back_in_the_inbox_is_never_archived_by_a_later_let_go() {
+    let fx = Fixture::new().await;
+    let (cut, now) = clock();
+    let thread = ThreadId::new();
+    let first = update(
+        &fx,
+        &thread,
+        "notifications@vercel.com",
+        "Deployment succeeded",
+        cut - Duration::hours(3),
+    )
+    .await;
+    // An earlier let go saw it; then you put it back in the inbox.
+    let mark = mxr_store::ModeDoneMark {
+        account_id: fx.account.clone(),
+        thread_id: thread.clone(),
+        mode: "updates".into(),
+        through: mxr_store::DeskDismissal::through(
+            &fx.state
+                .store
+                .desk_messages_in_threads(&fx.account, std::slice::from_ref(&thread))
+                .await
+                .unwrap(),
+        )
+        .unwrap(),
+    };
+    fx.state.store.mark_mode_done(&[mark]).await.unwrap();
+    let second = update(
+        &fx,
+        &thread,
+        "notifications@vercel.com",
+        "Deployment succeeded",
+        cut - Duration::hours(1),
+    )
+    .await;
+    let preview = let_go(&fx, now, None, true).await.unwrap();
+    assert_eq!(preview.message_ids, vec![second.id.clone()]);
+    let run = let_go(&fx, now, Some(&preview.selection_token), false)
+        .await
+        .unwrap();
+    assert_eq!(run.items[0].archived, 0, "{}", run.items[0].copy);
+    let restored = fx
+        .state
+        .store
+        .place_message(&first.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(restored.in_inbox, "the restored message stays in the inbox");
+}
+
+#[tokio::test]
 async fn this_needs_me_names_the_message_its_fact_came_from() {
     let fx = Fixture::new().await;
     let (cut, now) = clock();
@@ -576,8 +546,6 @@ async fn expired_codes_never_show_and_are_listed_as_expired() {
     assert_eq!(listed.expired.len(), 1);
     assert_eq!(listed.expired[0].message_id, code.id);
     assert_eq!(listed.expired[0].kind, "one-time code");
-    // Nothing breaks through past its window.
-    assert_eq!(updates::scan(&fx.state, &[code.id], now).await.unwrap(), 0);
     // Letting go of the cut takes the expired code with it.
     let preview = let_go(&fx, now, None, true).await.unwrap();
     assert_eq!(preview.hidden_count, 1);

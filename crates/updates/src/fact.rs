@@ -52,7 +52,8 @@ impl FactSource {
     }
 }
 
-/// Why an update can't wait for the cut: it goes to To do on arrival.
+/// Why an update leads Needs a look with a suggested to-do. mxr never
+/// adds the to-do itself; `t` does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NeedsYou {
@@ -147,8 +148,14 @@ pub struct Fact {
     /// The one place to go deeper. Never on a needs-you line or a link
     /// about money: those open the email.
     pub link: Option<String>,
-    /// What `t` prefills: "Check new sign-in to Google".
+    /// What `t` prefills: "Check new sign-in to Google
+    /// (accounts.google.com)". The sending host sits beside the display
+    /// name so branding is visible.
     pub todo_title: String,
+    /// The host the mail came from, as the address says it:
+    /// "accounts.google.com".
+    #[serde(default)]
+    pub sender_host: String,
 }
 
 /// A generic subject says nothing on its own: the body's first
@@ -303,11 +310,13 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
             .and_then(pick_link)
             .filter(|url| !MONEY_LINK.is_match(url))
     };
+    let sender_host = sender_host(input.from_email);
+    let branded = branded_name(&name, &sender_host);
     let todo_title = match needs_you {
-        Some(NeedsYou::SignIn) => format!("Check new sign-in to {name}"),
-        Some(NeedsYou::PaymentFailed) => format!("Fix failed payment to {name}"),
-        Some(NeedsYou::DeliveryException) => format!("Check delivery from {name}"),
-        None => clip(&format!("Check {name}: {text}"), 120),
+        Some(NeedsYou::SignIn) => format!("Check new sign-in to {branded}"),
+        Some(NeedsYou::PaymentFailed) => format!("Fix failed payment to {branded}"),
+        Some(NeedsYou::DeliveryException) => format!("Check delivery from {branded}"),
+        None => clip(&format!("Check {branded}: {text}"), 120),
     };
     Fact {
         template_key: template_key(input.subject),
@@ -322,6 +331,26 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
         tracked,
         link,
         todo_title,
+        sender_host,
+    }
+}
+
+/// The host part of an address, lowercased: "accounts.google.com".
+pub fn sender_host(from_email: &str) -> String {
+    from_email
+        .trim()
+        .rsplit_once('@')
+        .map(|(_, host)| host.trim_end_matches(['.', '>']).to_ascii_lowercase())
+        .unwrap_or_default()
+}
+
+/// "Google (accounts.google.com)": a display name anyone can choose,
+/// with the host the mail really came from beside it.
+pub fn branded_name(name: &str, host: &str) -> String {
+    if host.is_empty() || name.eq_ignore_ascii_case(host) {
+        name.to_string()
+    } else {
+        format!("{name} ({host})")
     }
 }
 
@@ -383,7 +412,10 @@ mod tests {
         assert_eq!(sign_in.needs_you, Some(NeedsYou::SignIn));
         assert_eq!(sign_in.base_signal, Some(Signal::NeedsYou));
         assert_eq!(sign_in.link, None);
-        assert_eq!(sign_in.todo_title, "Check new sign-in to Google");
+        assert_eq!(
+            sign_in.todo_title,
+            "Check new sign-in to Google (accounts.google.com)"
+        );
         assert_eq!(sign_in.window.map(|w| w.kind), Some(WindowKind::SignIn));
 
         let payout = derive_utc(&input(
@@ -435,6 +467,21 @@ mod tests {
         assert_eq!(tracked.outcome, TrackedOutcome::Good);
         assert_eq!(incident.base_signal, None);
         assert_eq!(incident.text, "Resolved: Degraded performance on the API");
+    }
+
+    #[test]
+    fn a_borrowed_brand_shows_the_host_it_came_from() {
+        let fake = derive_utc(&input(
+            "alerts@g00gle-security.example",
+            Some("Google"),
+            "Security alert: New sign-in from Chrome on Windows",
+            None,
+        ));
+        assert_eq!(
+            fake.todo_title,
+            "Check new sign-in to Google (g00gle-security.example)"
+        );
+        assert_eq!(fake.sender_host, "g00gle-security.example");
     }
 
     #[test]

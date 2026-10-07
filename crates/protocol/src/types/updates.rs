@@ -15,10 +15,10 @@ use super::ModeDoneOutcomeData;
 /// The words Updates teaches itself with (D118, the #284 copy).
 pub mod updates_copy {
     pub const HEADER: &str = "Notifications gathered twice a day. Read the digest, then let go.";
-    pub const NEVER_HAD_ANY: &str = "Notifications from services and apps land here and are gathered into a digest at 08:00 and 16:30. Anything that needs you, like a failed payment, goes straight to To do.";
+    pub const NEVER_HAD_ANY: &str = "Notifications from services and apps land here and are gathered into a digest at 08:00 and 16:30. Anything that needs you, like a failed payment, shows first with a suggested to-do.";
     /// Filled by code: "Nothing new since 08:00. Next digest at 16:30."
     pub const CLEAR_FOR_NOW: &str = "Nothing new since {cut}. Next digest at {next}.";
-    pub const CARD: &str = "Updates gathers notifications into a digest at 08:00 and 16:30, one line per source, like your bank or GitHub, with what changed first. Anything that needs you goes to To do at once, so you can read this and let it go.";
+    pub const CARD: &str = "Updates gathers notifications into a digest at 08:00 and 16:30, one line per source, like your bank or GitHub, with what changed first. Anything that needs you sits at the top with a suggested to-do that t adds, so you can read this and let it go.";
     pub const LANDS_HERE: &str = "Notifications from services and apps: builds, parcels, sign-in alerts, statements, reports and receipts.";
     pub const WHY: &str = "Here because: {evidence} ({source}). In the {cut} digest.";
     pub const FIRST_RUN_LINE: &str = "Notifications, twice a day";
@@ -59,7 +59,8 @@ pub enum UpdateSourceSettingData {
     ChangesOnly,
     /// Never in the digest; mail still reaches Archive and search.
     Muted,
-    /// Every message goes to To do on arrival.
+    /// Every message sits at the top of Needs a look with a suggested
+    /// to-do; nothing goes to To do until you press `t`.
     Breakthrough,
 }
 
@@ -102,7 +103,7 @@ impl UpdateSourceSettingData {
             Self::EveryDigest => "in every digest",
             Self::ChangesOnly => "only when something changes",
             Self::Muted => "muted, its mail stays in Archive and search",
-            Self::Breakthrough => "straight to To do on arrival",
+            Self::Breakthrough => "always at the top of Needs a look, with a suggested to-do",
         }
     }
 }
@@ -231,8 +232,14 @@ pub struct UpdateLineData {
     /// `updates_copy::IN_TODO` when `todo_id` is set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub in_todo: Option<String>,
-    /// What `t` prefills: "Check new sign-in to Google".
+    /// What `t` prefills: "Check new sign-in to Google
+    /// (accounts.google.com)", the sending host beside the display name.
     pub todo_title: String,
+    /// A sign-in alert, failed payment or delivery problem not yet in To
+    /// do: "Suggested to-do: new sign-in alert (rule). t adds it." mxr
+    /// never adds it for you.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub todo_suggestion: Option<String>,
     /// "Here because: automated sender, not a person (rule). In the 08:00
     /// digest."
     pub why: String,

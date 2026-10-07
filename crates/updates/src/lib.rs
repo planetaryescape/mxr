@@ -14,7 +14,6 @@
 //! the clock into stable sets. The daemon reads the store and the clock and
 //! hands plain data in.
 
-pub mod auth;
 pub mod cuts;
 pub mod fact;
 pub mod numbers;
@@ -36,7 +35,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped when a rule changes what a message derives to, so cached facts
 /// are recomputed.
-pub const RULES_VERSION: i64 = 1;
+pub const RULES_VERSION: i64 = 2;
 
 /// How much a message asks of you, strongest last. The digest puts a
 /// source in the section of its strongest signal.

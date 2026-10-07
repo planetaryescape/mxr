@@ -126,7 +126,7 @@ export const SETTING_LABEL: Record<UpdateSetting, string> = {
   every_digest: "In every digest",
   changes_only: "Only when something changes",
   muted: "Mute",
-  breakthrough: "Straight to To do on arrival",
+  breakthrough: "Always first, with a suggested to-do",
 };
 
 export const SETTINGS: readonly UpdateSetting[] = [
@@ -142,7 +142,7 @@ export function tuneToast(sourceName: string, setting: UpdateSetting): string {
     every_digest: "in every digest",
     changes_only: "only when something changes",
     muted: "muted, its mail stays in Archive and search",
-    breakthrough: "straight to To do on arrival",
+    breakthrough: "always first, with a suggested to-do",
   };
   return `${sourceName}: ${effect[setting]}.`;
 }

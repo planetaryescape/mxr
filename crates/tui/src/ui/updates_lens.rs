@@ -196,6 +196,16 @@ fn body_for(
                     body.lines.push(section(title, None, width, theme));
                 }
                 body.select(line_row(line, selected, width, theme), selected);
+                if let Some(suggested) = &line.todo_suggestion {
+                    for text in wrap(&one_line(suggested), width.saturating_sub(8)) {
+                        body.text(
+                            format!("    {text}"),
+                            Style::default()
+                                .fg(theme.warning)
+                                .add_modifier(ratatui::style::Modifier::BOLD),
+                        );
+                    }
+                }
                 if let Some(suggestion) = &line.suggestion {
                     for text in wrap(
                         &format!("{}  K tune", one_line(suggestion)),
@@ -486,6 +496,7 @@ pub(crate) mod tests {
             tracker: None,
             todo_id: None,
             in_todo: None,
+            todo_suggestion: None,
             todo_title: format!("Check {source}: {fact}"),
             why: "Here because: automated sender (rule). In the 08:00 digest.".into(),
             setting: UpdateSourceSettingData::EveryDigest,
@@ -516,11 +527,14 @@ pub(crate) mod tests {
         google.time_label = Some("06:12".into());
         google.todo_id = Some("todo_1".into());
         google.in_todo = Some("already in To do".into());
-        let stripe = line(
+        let mut stripe = line(
             UpdateSectionData::NeedsALook,
-            "Stripe",
+            "Stripe (stripe.com)",
             "Payout of R 4,210.00 failed: bank declined",
             1,
+        );
+        stripe.todo_suggestion = Some(
+            "Suggested to-do: failed payment from Stripe (stripe.com) (rule). t adds it.".into(),
         );
         let mut parcel = line(
             UpdateSectionData::Changed,

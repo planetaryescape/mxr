@@ -265,7 +265,7 @@ cut below.
 | `A` | Let go of the digest (previews first) |
 | `e` | Let go of this source |
 | `t` | This needs me: make a to-do from the line |
-| `K` | Tune the source: every digest, changes only, muted, breakthrough |
+| `K` | Tune the source: every digest, changes only, muted, breakthrough (always first, with a suggested to-do) |
 | `L` | Open the line's link (never a pay link) |
 | `o` | Open the email |
 | `u` | Undo |

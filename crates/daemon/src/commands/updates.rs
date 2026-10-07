@@ -417,6 +417,7 @@ mod tests {
             tracker: None,
             todo_id: None,
             in_todo: None,
+            todo_suggestion: None,
             todo_title: String::new(),
             why: String::new(),
             setting: UpdateSourceSettingData::EveryDigest,

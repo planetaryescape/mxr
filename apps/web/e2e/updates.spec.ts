@@ -11,6 +11,7 @@ interface LineAnswer {
   source_name: string;
   fact: string;
   in_todo?: string | null;
+  todo_suggestion?: string | null;
   delta?: { text: string } | null;
   tracker?: { kind: string } | null;
 }
@@ -35,8 +36,8 @@ interface LetGoAnswer {
 }
 
 /**
- * The demo's day of notifications is in and the Google sign-in broke
- * through to To do (both happen on the first sync).
+ * The demo's day of notifications is in, with the Google sign-in in
+ * Needs a look (the first sync brings it).
  */
 async function waitForDigest(page: Page): Promise<DigestAnswer["digest"]> {
   let digest: DigestAnswer["digest"] | null = null;
@@ -44,11 +45,11 @@ async function waitForDigest(page: Page): Promise<DigestAnswer["digest"]> {
     .poll(
       async () => {
         digest = (await bridge<DigestAnswer>(page, "/api/v1/mail/updates?expired=true")).digest;
-        return digest.needs_a_look.find((line) => line.source_key.includes("google"))?.in_todo;
+        return digest.needs_a_look.some((line) => line.source_key.includes("google"));
       },
       { timeout: 60_000 },
     )
-    .toBe("already in To do");
+    .toBe(true);
   return digest!;
 }
 
@@ -80,7 +81,10 @@ test("the digest is a briefing by source: what needs a look first, routine folde
   );
   const needsSection = page.getByTestId("updates-needs_a_look");
   const google = needsSection.getByTestId("update-line").filter({ hasText: "Google" });
-  await expect(google.getByTestId("update-in-todo")).toHaveText("already in To do");
+  // The sending host sits beside the display name, and nothing was added
+  // to To do on arrival: the alert is a highlighted suggestion.
+  await expect(google).toContainText("Google (accounts.google.com)");
+  await expect(google.getByTestId("update-todo-suggestion")).toContainText("Suggested to-do");
   await expect(google.getByRole("link")).toHaveCount(0);
   await expect(
     needsSection.getByTestId("update-line").filter({ hasText: "acme/api" }),
@@ -92,12 +96,22 @@ test("the digest is a briefing by source: what needs a look first, routine folde
   await expect(page.getByTestId("mail-row")).toHaveCount(0);
 });
 
-test("the sign-in that broke through is in To do", async ({ page }) => {
+test("a suggested to-do becomes one only when you add it", async ({ page }) => {
   await waitForDigest(page);
   await openApp(page, "/todo");
-  await expect(
-    page.getByTestId("todo-row").filter({ hasText: "Check new sign-in to Google" }),
-  ).toBeVisible();
+  const signIn = page.getByTestId("todo-row").filter({ hasText: "Check new sign-in to Google" });
+  await expect(signIn).toHaveCount(0);
+
+  await openApp(page, "/updates");
+  const google = page
+    .getByTestId("updates-needs_a_look")
+    .getByTestId("update-line")
+    .filter({ hasText: "Google" });
+  await google.getByTestId("update-todo-suggestion").getByRole("button").click();
+  await expect(google.getByTestId("update-in-todo")).toHaveText("already in To do");
+
+  await openApp(page, "/todo");
+  await expect(signIn.filter({ hasText: "accounts.google.com" })).toBeVisible();
 });
 
 test("let go of all acts on exactly the previewed cut, and u puts it back", async ({ page }) => {

@@ -189,61 +189,6 @@ impl super::Store {
         .await
     }
 
-    /// The `Authentication-Results` headers stored with these messages'
-    /// bodies, topmost first. Messages without a stored body are absent.
-    pub async fn update_auth_results(
-        &self,
-        message_ids: &[MessageId],
-    ) -> Result<HashMap<MessageId, Vec<String>>, sqlx::Error> {
-        let mut out = HashMap::with_capacity(message_ids.len());
-        for chunk in message_ids.chunks(crate::SQLITE_BIND_CHUNK) {
-            let wanted = encode_json(&chunk.iter().map(MessageId::as_str).collect::<Vec<_>>())?;
-            let rows = sqlx::query(
-                "SELECT message_id, json_extract(metadata_json, '$.auth_results') AS auth
-                 FROM bodies WHERE message_id IN (SELECT value FROM json_each(?1))",
-            )
-            .bind(wanted)
-            .fetch_all(self.reader())
-            .await?;
-            for row in &rows {
-                let auth: Option<String> = row.try_get("auth")?;
-                let results: Vec<String> = auth
-                    .as_deref()
-                    .map(serde_json::from_str)
-                    .transpose()
-                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?
-                    .unwrap_or_default();
-                out.insert(decode_id(row.try_get::<&str, _>("message_id")?)?, results);
-            }
-        }
-        Ok(out)
-    }
-
-    /// Whether this account has inbound mail from `domain` (or a host
-    /// under it) dated before `before`: a source you already knew.
-    pub async fn has_mail_from_domain_before(
-        &self,
-        account_id: &AccountId,
-        domain: &str,
-        before: DateTime<Utc>,
-    ) -> Result<bool, sqlx::Error> {
-        let domain = domain.to_ascii_lowercase();
-        let at = format!("@{domain}");
-        let sub = format!(".{domain}");
-        sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS (SELECT 1 FROM messages
-                            WHERE account_id = ?1 AND date < ?2 AND direction != 'outbound'
-                              AND (substr(lower(from_email), -length(?3)) = ?3
-                                   OR substr(lower(from_email), -length(?4)) = ?4))",
-        )
-        .bind(account_id.as_str())
-        .bind(before.timestamp())
-        .bind(at)
-        .bind(sub)
-        .fetch_one(self.reader())
-        .await
-    }
-
     /// Every tuned or tracked source of one account.
     pub async fn update_sources(
         &self,

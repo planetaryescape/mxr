@@ -4,7 +4,7 @@
 //! the same unit (blueprint 22, "Numbers are quoted, deltas are
 //! computed").
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -141,12 +141,16 @@ pub struct Delta {
 /// matched by position among numbers of that unit. `None` when no unit
 /// matches, when the count of that unit differs (which number is which?),
 /// or when the previous value is zero.
-pub fn delta(
+pub fn delta<Tz: TimeZone>(
     current: &[Quoted],
     previous: &[Quoted],
     current_at: DateTime<Utc>,
     previous_at: DateTime<Utc>,
-) -> Option<Delta> {
+    tz: &Tz,
+) -> Option<Delta>
+where
+    Tz::Offset: std::fmt::Display,
+{
     for (index, now) in current.iter().enumerate() {
         let ordinal = current[..index]
             .iter()
@@ -160,7 +164,7 @@ pub fn delta(
         let Some(before) = earlier.get(ordinal) else {
             continue;
         };
-        let period = period_label(current_at, previous_at);
+        let period = period_label(current_at, previous_at, tz);
         let (change, text) = if now.unit == "%" {
             let points = now.value - before.value;
             (points, change_text(points, " points", &period))
@@ -197,21 +201,45 @@ fn change_text(change: f64, suffix: &str, period: &str) -> String {
 }
 
 /// How the previous message is named: "on last week" for about a week
-/// apart, "on the day before", "on last month", else its date.
-fn period_label(current: DateTime<Utc>, previous: DateTime<Utc>) -> String {
+/// apart, "on the day before", "on last month", else its date in the
+/// user's zone.
+fn period_label<Tz: TimeZone>(current: DateTime<Utc>, previous: DateTime<Utc>, tz: &Tz) -> String
+where
+    Tz::Offset: std::fmt::Display,
+{
     let hours = (current - previous).num_hours();
     match hours {
         18..=30 => "on the day before".to_string(),
         144..=192 => "on last week".to_string(),
         648..=768 => "on last month".to_string(),
-        _ => format!("on {}", previous.format("%-d %b")),
+        _ => format!("on {}", previous.with_timezone(tz).format("%-d %b")),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Duration;
+    use chrono::{Duration, FixedOffset};
+
+    fn utc() -> FixedOffset {
+        FixedOffset::east_opt(0).unwrap()
+    }
+
+    #[test]
+    fn a_dated_delta_names_the_day_in_the_users_zone() {
+        // 23:30 UTC on 5 Oct is 6 Oct in UTC+2.
+        let previous = Utc.with_ymd_and_hms(2026, 10, 5, 23, 30, 0).unwrap();
+        let now = previous + Duration::days(3);
+        let found = delta(
+            &extract_numbers("998 visitors", 8),
+            &extract_numbers("1,204 visitors", 8),
+            now,
+            previous,
+            &FixedOffset::east_opt(2 * 3600).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(found.text, "down 17% on 6 Oct");
+    }
 
     fn units(text: &str) -> Vec<(String, String)> {
         extract_numbers(text, 8)
@@ -251,28 +279,29 @@ mod tests {
         let week_ago = at - Duration::days(7);
         let now = extract_numbers("Your week: 3 runs, 21.3 km", 8);
         let before = extract_numbers("Your week: 2 runs, 19 km", 8);
-        let found = delta(&now, &before, at, week_ago).expect("a delta");
+        let found = delta(&now, &before, at, week_ago, &utc()).expect("a delta");
         assert_eq!(found.raw, "3 runs");
         assert_eq!(found.text, "up 50% on last week");
 
         // Units differ: no delta, never a guess.
         let miles = extract_numbers("You ran 13.2 mi", 8);
         let km = extract_numbers("You ran 21.3 km", 8);
-        assert!(delta(&miles, &km, at, week_ago).is_none());
+        assert!(delta(&miles, &km, at, week_ago, &utc()).is_none());
         let pounds = extract_numbers("Balance £10", 8);
         let dollars = extract_numbers("Balance $12", 8);
-        assert!(delta(&pounds, &dollars, at, week_ago).is_none());
+        assert!(delta(&pounds, &dollars, at, week_ago, &utc()).is_none());
 
         // Two km now, one before: which is which? No delta.
         let two = extract_numbers("21 km and 3 km", 8);
         let one = extract_numbers("19 km", 8);
-        assert!(delta(&two, &one, at, week_ago).is_none());
+        assert!(delta(&two, &one, at, week_ago, &utc()).is_none());
 
         let pct = delta(
             &extract_numbers("Uptime 99.5%", 8),
             &extract_numbers("Uptime 99.9%", 8),
             at,
             at - Duration::days(3),
+            &utc(),
         )
         .expect("points");
         assert!(pct.text.starts_with("down 0.4 points on "), "{}", pct.text);
@@ -281,6 +310,7 @@ mod tests {
             &extract_numbers("12 signups", 8),
             at,
             at - Duration::hours(24),
+            &utc(),
         )
         .expect("same");
         assert_eq!(same.text, "same as the day before");
@@ -288,7 +318,8 @@ mod tests {
             &extract_numbers("5 runs", 8),
             &extract_numbers("0 runs", 8),
             at,
-            week_ago
+            week_ago,
+            &utc()
         )
         .is_none());
     }

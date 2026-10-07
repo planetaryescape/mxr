@@ -135,12 +135,12 @@ fn e_previews_then_lets_go_of_one_source_and_a_tracker_stays() {
 #[test]
 fn t_makes_a_to_do_from_the_line_unless_it_is_already_in_to_do() {
     let mut app = updates_app();
-    select_source(&mut app, "Stripe");
+    select_source(&mut app, "Stripe (stripe.com)");
     press(&mut app, KeyCode::Char('t'));
     assert!(matches!(
         queued(&app).as_slice(),
         [Request::CreateTodo { title, dry_run: false, .. }]
-            if title == "Check Stripe: Payout of R 4,210.00 failed: bank declined"
+            if title == "Check Stripe (stripe.com): Payout of R 4,210.00 failed: bank declined"
     ));
 
     let mut app = updates_app();

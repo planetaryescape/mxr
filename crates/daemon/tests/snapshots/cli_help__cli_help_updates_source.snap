@@ -2,7 +2,7 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Tune a source: every-digest, changes-only, muted or breakthrough (every message to To do on arrival)
+Tune a source: every-digest, changes-only, muted or breakthrough (every message at the top of Needs a look with a suggested to-do)
 
 Usage: mxr updates source [OPTIONS] <SOURCE> <SETTING>
 

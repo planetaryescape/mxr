@@ -5,7 +5,7 @@ expression: "serde_json::to_string_pretty(&updates).unwrap()"
 [
   {
     "add_one": "",
-    "card": "Updates gathers notifications into a digest at 08:00 and 16:30, one line per source, like your bank or GitHub, with what changed first. Anything that needs you goes to To do at once, so you can read this and let it go.",
+    "card": "Updates gathers notifications into a digest at 08:00 and 16:30, one line per source, like your bank or GitHub, with what changed first. Anything that needs you sits at the top with a suggested to-do that t adds, so you can read this and let it go.",
     "card_keys": [
       {
         "key": "A",
@@ -65,7 +65,7 @@ expression: "serde_json::to_string_pretty(&updates).unwrap()"
     "lands_here": "Notifications from services and apps: builds, parcels, sign-in alerts, statements, reports and receipts.",
     "mode": "updates",
     "name": "Updates",
-    "never_had_any": "Notifications from services and apps land here and are gathered into a digest at 08:00 and 16:30. Anything that needs you, like a failed payment, goes straight to To do.",
+    "never_had_any": "Notifications from services and apps land here and are gathered into a digest at 08:00 and 16:30. Anything that needs you, like a failed payment, shows first with a suggested to-do.",
     "why_template": "Here because: {evidence} ({source}). In the {cut} digest."
   }
 ]

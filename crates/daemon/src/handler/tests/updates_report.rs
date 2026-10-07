@@ -120,30 +120,18 @@ async fn updates_report() {
         preview.in_todo_count
     );
 
-    // Breakthroughs the last two days would make under the full gate, run
-    // on the copy: counts by kind, before and after the trust check.
-    let rows: Vec<(String,)> =
-        sqlx::query_as("SELECT id FROM messages WHERE date >= ?1 AND direction != 'outbound'")
-            .bind((at - chrono::Duration::days(2)).timestamp())
-            .fetch_all(state.store.reader())
-            .await
-            .unwrap();
-    let ids: Vec<mxr_core::id::MessageId> = rows.iter().map(|(id,)| id.parse().unwrap()).collect();
-    let mut candidates = 0usize;
-    for id in &ids {
-        if let Some(message) = state.store.place_message(id).await.unwrap() {
-            let facts = updates::facts_for(&state, &[&message], &Local)
-                .await
-                .unwrap();
-            if facts.get(id).is_some_and(|fact| fact.needs_you.is_some()) {
-                candidates += 1;
-            }
-        }
-    }
-    let made = updates::scan(&state, &ids, at).await.unwrap();
-    println!(
-        "Breakthroughs from the last two days: {candidates} needs-you alerts by rule, {made} sent to To do after the gate"
-    );
+    // Alerts that lead Needs a look as a suggested to-do; none is ever
+    // made into a to-do without the user.
+    let digest = updates::digest_at(&state, None, None, false, false, at, &Local)
+        .await
+        .unwrap();
+    let suggested = digest
+        .needs_a_look
+        .iter()
+        .chain(&digest.since.lines)
+        .filter(|line| line.todo_suggestion.is_some())
+        .count();
+    println!("Suggested to-dos (digest and since): {suggested}");
 
     let quiet = state
         .store

@@ -2215,7 +2215,7 @@ pub enum TodoAction {
 
 const UPDATES_LONG_ABOUT: &str = "Notifications gathered twice a day. Read the digest, then let go.
 
-Automated mail is gathered into a digest at fixed cuts, 08:00 and 16:30 by default (`updates.cuts` in config, one to four times). Each source is one line with its latest fact, the numbers it quotes and, where the previous message of the same kind quoted the same unit, the change, computed by code. Lines sort into Needs a look, Changed and Routine. Parcels, builds and incidents show where they are now. A new sign-in, a failed payment or a delivery problem goes to To do on arrival. One-time codes, sign-in alerts and offers expire and never show past their window.
+Automated mail is gathered into a digest at fixed cuts, 08:00 and 16:30 by default (`updates.cuts` in config, one to four times). Each source is one line with its latest fact, the numbers it quotes and, where the previous message of the same kind quoted the same unit, the change, computed by code. Lines sort into Needs a look, Changed and Routine. Parcels, builds and incidents show where they are now. A new sign-in, a failed payment or a delivery problem leads Needs a look as a suggested to-do; nothing goes to To do until you add it. One-time codes, sign-in alerts and offers expire and never show past their window.
 
 With no subcommand, prints the latest digest and what arrived since.";
 
@@ -2234,7 +2234,7 @@ pub enum UpdatesAction {
         dry_run: bool,
     },
     /// Tune a source: every-digest, changes-only, muted or breakthrough
-    /// (every message to To do on arrival).
+    /// (every message at the top of Needs a look with a suggested to-do).
     #[command(alias = "tune")]
     Source {
         /// A source key as the digest prints it, or an address it sends from.

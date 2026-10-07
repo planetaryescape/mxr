@@ -140,10 +140,10 @@ code computed against the previous message of that kind.
 or an incident. A tracker that ends well leaves Updates on its own; one that
 ends badly moves to Needs a look.
 
-**Breakthrough**: an update that goes to To do on arrival instead of waiting
-for the cut: a new sign-in, a failed payment, a delivery problem, or any
-message from a source tuned to `breakthrough`. The digest marks it "already
-in To do".
+**Suggested to-do**: an update that leads Needs a look with a highlighted
+line saying why: a new sign-in, a failed payment, a delivery problem, or
+any message from a source tuned to `breakthrough`. mxr never adds the to-do
+itself; `t` does, and the line then shows "already in To do".
 
 **Reading**: the mode for newsletters and posts you chose (`mxr reading`,
 `g r`), shown as an [edition](/guides/reading/): readable items in three

@@ -2123,7 +2123,7 @@ pub enum Request {
         dry_run: bool,
     },
     /// Tune a source: every digest, changes only, muted, or breakthrough
-    /// (every message to To do on arrival). `source` is a source key
+    /// (every message at the top of Needs a look with a suggested to-do). `source` is a source key
     /// ("github.com/acme/api") or a sender address. Returns
     /// `ResponseData::UpdateSource`.
     SetUpdateSource {

@@ -17,18 +17,15 @@ use super::updates_digest::{self, DigestInputs, Scope};
 use super::{mode_done, HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Local, TimeZone, Utc};
-use mxr_config::SyncProviderConfig;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_core::types::ProviderKind;
 use mxr_core::MessageFlags;
 use mxr_protocol::{
     ModeKindData, ResponseData, SenderKindData, UpdateSourceChangeData, UpdateSourceSettingData,
     UpdatesDigestData, UpdatesLetGoData,
 };
 use mxr_reader::{clean, ReaderConfig};
-use mxr_store::{PlaceMessage, SourceLetGo, TodoRecord, TodoState, UpdateFactRow};
-use mxr_todo::provenance::{FieldProvenance, FieldSource, FieldSources};
-use mxr_updates::{derive, Cuts, Fact, FactInput, NeedsYou, RULES_VERSION};
+use mxr_store::{PlaceMessage, SourceLetGo, TodoRecord, UpdateFactRow};
+use mxr_updates::{derive, Cuts, Fact, FactInput, RULES_VERSION};
 use std::collections::{HashMap, HashSet};
 
 /// The mode name `mode_views` and the guide use.
@@ -37,9 +34,6 @@ pub(super) const MODE: &str = "updates";
 const HISTORY_DAYS: i64 = 365;
 /// Earlier messages read per sender for that history.
 const HISTORY_PER_SENDER: u32 = 20;
-/// Only mail this recent breaks through to To do: a backfill page of old
-/// alerts never floods it.
-const BREAKTHROUGH_MAX_AGE_DAYS: i64 = 2;
 
 /// One automated message in Updates, with its fact.
 pub(super) struct Item {
@@ -639,28 +633,24 @@ pub(crate) async fn warm(state: &AppState) -> bool {
 // On arrival
 // ---------------------------------------------------------------------------
 
-/// Read newly synced Updates mail into facts and send what needs you to
-/// To do at once. Never errors the caller; failures are logged, like the
-/// delivery and to-do scans.
+/// Read newly synced Updates mail into facts, so the next digest doesn't
+/// pay for them. Nothing here makes a to-do: an alert that needs you is a
+/// suggestion at the top of Needs a look, and `t` is yours to press.
+/// Never errors the caller; failures are logged, like the delivery and
+/// to-do scans.
 pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
     if message_ids.is_empty() {
         return;
     }
-    match scan(state, message_ids, Utc::now()).await {
-        Ok(created) if created > 0 => {
-            tracing::info!(created, "updates broke through to To do");
-        }
-        Ok(_) => {}
-        Err(error) => tracing::warn!(%error, "updates scan failed"),
+    if let Err(error) = scan(state, message_ids).await {
+        tracing::warn!(%error, "updates scan failed");
     }
 }
 
-/// Facts for new Updates mail, then the breakthroughs. Returns how many
-/// to-dos it made.
+/// Facts for new Updates mail. Returns how many messages it read.
 pub(super) async fn scan(
     state: &AppState,
     message_ids: &[MessageId],
-    now: DateTime<Utc>,
 ) -> Result<usize, HandlerError> {
     let mut by_account: HashMap<AccountId, Vec<PlaceMessage>> = HashMap::new();
     for id in message_ids {
@@ -671,7 +661,7 @@ pub(super) async fn scan(
                 .push(message);
         }
     }
-    let mut created = 0;
+    let mut read = 0;
     for (account, messages) in by_account {
         let mut senders: Vec<String> = messages
             .iter()
@@ -688,345 +678,7 @@ pub(super) async fn scan(
                     == SenderKindData::PaperTrail
             })
             .collect();
-        if updates.is_empty() {
-            continue;
-        }
-        let facts = facts_for(state, &updates, &Local).await?;
-        let settings = state.store.update_sources(&account).await?;
-        let trust = Trust::load(state, &account, now).await?;
-        for message in updates {
-            let Some(fact) = facts.get(&message.id) else {
-                continue;
-            };
-            let breakthrough = settings
-                .get(&fact.source_key)
-                .is_some_and(|row| row.setting == UpdateSourceSettingData::Breakthrough.as_str());
-            if fact.needs_you.is_none() && !breakthrough {
-                continue;
-            }
-            if !trust.vouches_for(state, message).await? {
-                tracing::debug!(
-                    "an alert stays in Needs a look: its sender isn't authenticated or known"
-                );
-                continue;
-            }
-            if break_through(state, message, fact, now).await? {
-                created += 1;
-            }
-        }
+        read += facts_for(state, &updates, &Local).await?.len();
     }
-    created += deliveries_break_through(state, now).await?;
-    Ok(created)
-}
-
-/// What decides whether an alert may go to To do on arrival: its subject is
-/// mail-controlled text, so the sender must pass the receiving provider's
-/// own DMARC check and be a source you had mail from before today. Anything
-/// else stays in Needs a look.
-struct Trust {
-    account_id: AccountId,
-    /// Authserv-ids whose `Authentication-Results` this account's provider
-    /// writes; empty means nothing can be vouched for.
-    authserv_ids: Vec<String>,
-    start_of_today: DateTime<Utc>,
-}
-
-impl Trust {
-    async fn load(
-        state: &AppState,
-        account_id: &AccountId,
-        now: DateTime<Utc>,
-    ) -> Result<Self, HandlerError> {
-        const GOOGLE: &str = "mx.google.com";
-        let cfg = state.config_snapshot();
-        let backend = state
-            .store
-            .get_account(account_id)
-            .await?
-            .and_then(|account| account.sync_backend);
-        let authserv_ids = match backend {
-            Some(backend) => match backend.provider_kind {
-                // The fake provider stands in for Gmail in the demo and tests.
-                ProviderKind::Gmail | ProviderKind::Fake => vec![GOOGLE.to_string()],
-                ProviderKind::Imap => {
-                    let gmail_host = matches!(
-                        cfg.accounts
-                            .get(&backend.config_key)
-                            .and_then(|account| account.sync.as_ref()),
-                        Some(SyncProviderConfig::Imap { host, .. })
-                            if host.ends_with("gmail.com") || host.ends_with("googlemail.com")
-                    );
-                    let mut ids = cfg.updates.trusted_authserv_ids.clone();
-                    if gmail_host {
-                        ids.push(GOOGLE.to_string());
-                    }
-                    ids
-                }
-                // Outlook's results carry no authserv-id to trust.
-                ProviderKind::Smtp | ProviderKind::OutlookPersonal | ProviderKind::OutlookWork => {
-                    Vec::new()
-                }
-            },
-            None => Vec::new(),
-        };
-        let today = now.with_timezone(&Local).date_naive();
-        let start_of_today = today
-            .and_hms_opt(0, 0, 0)
-            .and_then(|midnight| Local.from_local_datetime(&midnight).earliest())
-            .map_or(now - Duration::days(1), |at| at.with_timezone(&Utc));
-        Ok(Self {
-            account_id: account_id.clone(),
-            authserv_ids,
-            start_of_today,
-        })
-    }
-
-    async fn vouches_for(
-        &self,
-        state: &AppState,
-        message: &PlaceMessage,
-    ) -> Result<bool, HandlerError> {
-        let Some(domain) = mxr_updates::email_domain(&message.from_email) else {
-            return Ok(false);
-        };
-        let auth = state
-            .store
-            .update_auth_results(std::slice::from_ref(&message.id))
-            .await?
-            .remove(&message.id)
-            .unwrap_or_default();
-        if !mxr_updates::auth::dmarc_passes(&auth, &domain, &self.authserv_ids) {
-            return Ok(false);
-        }
-        Ok(state
-            .store
-            .has_mail_from_domain_before(&self.account_id, &domain, self.start_of_today)
-            .await?)
-    }
-}
-
-/// The to-do an update becomes on arrival, claimed by its dedup key so a
-/// re-run or a re-sync never makes a second. Expired or old mail never
-/// breaks through, and mail To do's own rules already caught is left to
-/// them.
-async fn break_through(
-    state: &AppState,
-    message: &PlaceMessage,
-    fact: &Fact,
-    now: DateTime<Utc>,
-) -> Result<bool, HandlerError> {
-    // Archived or backfilled mail is history, never a new task.
-    if !message.in_inbox
-        || message.date < now - Duration::days(BREAKTHROUGH_MAX_AGE_DAYS)
-        || message.date > now
-        || fact
-            .window
-            .as_ref()
-            .is_some_and(|window| window.until < now)
-    {
-        return Ok(false);
-    }
-    // One to-do per kind of alert from a source per day: ten sign-in
-    // alerts in an afternoon, however worded, are one thing to check.
-    let dedup_key = breakthrough_key(fact, &message.id, message.date);
-    if state
-        .store
-        .get_todo_by_dedup(&message.account_id, &dedup_key)
-        .await?
-        .is_some()
-    {
-        return Ok(false);
-    }
-    let already = state
-        .store
-        .open_todos_for_threads(
-            &message.account_id,
-            std::slice::from_ref(&message.thread_id),
-        )
-        .await?
-        .iter()
-        .any(|todo| todo.source_message_id.as_ref() == Some(&message.id));
-    if already {
-        return Ok(false);
-    }
-    let (kind, verb, label) = match fact.needs_you {
-        Some(NeedsYou::PaymentFailed) => ("payment_failed", "fix", NeedsYou::PaymentFailed.label()),
-        Some(needs) => ("other", "check", needs.label()),
-        None => ("other", "check", "a source you set to breakthrough"),
-    };
-    let until = fact.window.as_ref().map_or(
-        message.date + Duration::days(BREAKTHROUGH_MAX_AGE_DAYS),
-        |w| w.until,
-    );
-    let record = breakthrough_record(BreakthroughRow {
-        account_id: &message.account_id,
-        thread_id: Some(&message.thread_id),
-        message_id: Some(&message.id),
-        date: message.date,
-        title: &fact.todo_title,
-        kind,
-        verb,
-        counterparty: &fact.source_name,
-        sender_domain: mxr_updates::email_domain(&message.from_email),
-        reason: format!("{label} from {} (rule)", fact.source_name),
-        relevant_until: until,
-        dedup_key,
-        now,
-    });
-    state.store.insert_todo(&record).await?;
-    Ok(true)
-}
-
-/// The claim an update's breakthrough holds: source, alert kind and day.
-/// A source set to breakthrough with no alert kind sends every message.
-pub(super) fn breakthrough_key(fact: &Fact, message_id: &MessageId, date: DateTime<Utc>) -> String {
-    match fact.needs_you {
-        Some(kind) => format!(
-            "update|{}|{}|{}",
-            fact.source_key,
-            kind.as_str(),
-            date.format("%Y-%m-%d")
-        ),
-        None => format!("update|{}|message|{message_id}", fact.source_key),
-    }
-}
-
-struct BreakthroughRow<'a> {
-    account_id: &'a AccountId,
-    thread_id: Option<&'a ThreadId>,
-    message_id: Option<&'a MessageId>,
-    date: DateTime<Utc>,
-    title: &'a str,
-    kind: &'a str,
-    verb: &'a str,
-    counterparty: &'a str,
-    sender_domain: Option<String>,
-    reason: String,
-    relevant_until: DateTime<Utc>,
-    dedup_key: String,
-    now: DateTime<Utc>,
-}
-
-fn breakthrough_record(row: BreakthroughRow<'_>) -> TodoRecord {
-    let mut fields = FieldSources::default();
-    let rule = || FieldProvenance::with_evidence(FieldSource::Rule, "Updates breakthrough rule");
-    fields.set("title", rule());
-    fields.set("kind", rule());
-    fields.set(
-        "relevant_until",
-        FieldProvenance::with_evidence(FieldSource::Table, "the update's relevancy window"),
-    );
-    TodoRecord {
-        id: mxr_todo::pass::new_todo_id(),
-        account_id: row.account_id.clone(),
-        thread_id: row.thread_id.cloned(),
-        source_message_id: row.message_id.cloned(),
-        source_date: Some(row.date),
-        kind: row.kind.to_string(),
-        verb: row.verb.to_string(),
-        doc_type: None,
-        title: mxr_updates::text::clip(row.title, 120),
-        counterparty: Some(row.counterparty.to_string()),
-        sender_domain: row.sender_domain,
-        amount_minor: None,
-        currency: None,
-        due_at: None,
-        due_words: None,
-        act_by_at: Some(row.now),
-        surface_at: Some(row.now),
-        scheduled_for: None,
-        action_url: None,
-        action_domain: None,
-        relevant_until: Some(row.relevant_until),
-        window_source: Some("rule".to_string()),
-        state: TodoState::Open,
-        expired_at: None,
-        expired_at_birth: false,
-        catchup: None,
-        looks_done_message_id: None,
-        looks_done_reason: None,
-        origin: "rule".to_string(),
-        reason: row.reason,
-        field_sources: fields.to_json(),
-        user_edited: false,
-        commitment_id: None,
-        rules_version: mxr_todo::RULES_VERSION,
-        dedup_key: row.dedup_key,
-        surfaced_at: None,
-        created_at: row.now,
-        updated_at: row.now,
-        done_at: None,
-        dismissed_at: None,
-    }
-}
-
-/// A parcel that went wrong (an exception, a failed attempt, a return)
-/// goes to To do once per state, while the news is fresh.
-async fn deliveries_break_through(
-    state: &AppState,
-    now: DateTime<Utc>,
-) -> Result<usize, HandlerError> {
-    let mut created = 0;
-    for delivery in state
-        .store
-        .list_deliveries(mxr_store::DeliveryListFilter::All)
-        .await?
-    {
-        let Some(status) = mxr_deliveries::DeliveryStatus::parse(&delivery.status) else {
-            continue;
-        };
-        if !updates_digest::parcel_went_wrong(status)
-            || delivery.last_event_at < now - Duration::days(BREAKTHROUGH_MAX_AGE_DAYS)
-        {
-            continue;
-        }
-        let dedup_key = updates_digest::parcel_dedup_key(&delivery);
-        if state
-            .store
-            .get_todo_by_dedup(&delivery.account_id, &dedup_key)
-            .await?
-            .is_some()
-        {
-            continue;
-        }
-        // The carrier's latest email must pass the same check as any
-        // alert: authenticated by your provider, from a sender you knew.
-        let Some(message_id) = state
-            .store
-            .delivery_message_ids(&delivery.id)
-            .await?
-            .into_iter()
-            .last()
-        else {
-            continue;
-        };
-        let Some(message) = state.store.place_message(&message_id).await? else {
-            continue;
-        };
-        let trust = Trust::load(state, &delivery.account_id, now).await?;
-        if !message.in_inbox || !trust.vouches_for(state, &message).await? {
-            continue;
-        }
-        let message_id = Some(message_id);
-        let name = updates_digest::parcel_name(&delivery);
-        let record = breakthrough_record(BreakthroughRow {
-            account_id: &delivery.account_id,
-            thread_id: delivery.thread_id.as_ref(),
-            message_id: message_id.as_ref(),
-            date: delivery.last_event_at,
-            title: &updates_digest::parcel_todo_title(&name),
-            kind: "other",
-            verb: "check",
-            counterparty: &name,
-            sender_domain: None,
-            reason: format!("{} from {name} (rule)", NeedsYou::DeliveryException.label()),
-            relevant_until: delivery.last_event_at
-                + Duration::days(updates_digest::PARCEL_WRONG_DAYS),
-            dedup_key,
-            now,
-        });
-        state.store.insert_todo(&record).await?;
-        created += 1;
-    }
-    Ok(created)
+    Ok(read)
 }

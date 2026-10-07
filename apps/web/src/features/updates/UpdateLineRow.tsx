@@ -148,6 +148,17 @@ export const UpdateLineRow = memo(function UpdateLineRow({
           <p data-testid="update-why" className="mt-0.5 text-[12px] text-muted-foreground">
             {line.why}
           </p>
+          {line.todo_suggestion ? (
+            <p
+              data-testid="update-todo-suggestion"
+              className="mt-1 flex flex-wrap items-center gap-2 rounded border border-warning/40 bg-warning/10 px-2 py-1 text-[12.5px] font-medium text-foreground"
+            >
+              {line.todo_suggestion}
+              <Button size="sm" variant="outline" onClick={() => onNeedsMe(line)}>
+                Add to To do
+              </Button>
+            </p>
+          ) : null}
           {line.suggestion ? (
             <p
               data-testid="update-suggestion"

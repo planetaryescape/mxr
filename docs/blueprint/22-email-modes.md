@@ -80,7 +80,7 @@ new message brings the thread back to that mode only (now-and-handoff.md
 | Any mode | `e` | Done here; provider archive only when no other mode holds the thread | "Done in Messages. Still in To do (due Wed)." or "Done. Archived in Gmail." |
 | Messages, Updates, Reading, Archive | `t` | A to-do prefilled from the ask and due words, in a one-line inline editor | "Added to To do: Sign lease renewal, act by Mon 13. g x" |
 | To do | `e` | Tick off; the source's record is filed in Archive with no prompt | "Ticked off. Filed in Archive." |
-| Updates | on arrival | A `needs_you` signal (new sign-in, failed payment, delivery exception) goes to To do at once and stays in the next digest marked "already in To do" | none |
+| Updates | `t` | A `needs_you` signal (new sign-in, failed payment, delivery exception) leads Needs a look as a suggested to-do; `t` adds it and the digest marks it "already in To do". Nothing is added on arrival (see "Decisions made on BK's behalf") | "Added to To do: …" |
 | Any mode | `T` | Pass to another mode, from a menu | names the destination |
 
 The destination's rail count ticks up (120 ms) and the item carries "Just
@@ -708,7 +708,7 @@ The cut is a stable set, so let go acts on exactly what the preview listed.
 Leftovers fold into the next cut instead of stacking.
 
 **In and out.** Enters by an Automated base mode or a copied thread;
-`needs_you` breaks through to To do on arrival. Leaves by let go. Trackers
+`needs_you` leads Needs a look as a suggested to-do that `t` adds; nothing goes to To do on arrival. Leaves by let go. Trackers
 that end well leave on their own (a delivered parcel goes to Archive); bad
 endings move to Needs a look. After eight digests let go without opening
 a source, mxr asks once whether to mute it.
@@ -1101,11 +1101,12 @@ and its key line is no longer shown on its own.
 - Header: "Notifications gathered twice a day. Read the digest, then let go."
 - Never had any: "Notifications from services and apps land here and are
   gathered into a digest at 08:00 and 16:30. Anything that needs you, like
-  a failed payment, goes straight to To do."
+  a failed payment, shows first with a suggested to-do."
 - Clear for now: "Nothing new since 08:00. Next digest at 16:30."
 - Card: "Updates gathers notifications into a digest at 08:00 and 16:30,
   one line per source, like your bank or GitHub, with what changed first. Anything that needs you
-  goes to To do at once, so you can read this and let it go."
+  sits at the top with a suggested to-do that t adds, so you can read
+  this and let it go."
   Keys: `A` let go of digest · `e` let go of this source · `t` this needs
   me · `K` tune a source
 - Why line: "Here because: automated sender, not a person (rule). In the
@@ -1421,7 +1422,7 @@ email reopens it.
   or a `scheduled_for` date. It stays as "was due Fri" until the user
   acts, as Sunsama exempts edited recurring tasks from rollover removal.
 - **Updates.** A fact past its window drops out of any cut not yet shown
-  and never breaks through to To do; an OTP that syncs after its 10
+  and is never suggested as a to-do; an OTP that syncs after its 10
   minutes never surfaces. Trackers end as above.
 - **Now.** Hard rule: nothing past `relevant_until` enters Now, and
   `GetNow` filters on it in the daemon, so every client agrees.
@@ -1957,16 +1958,18 @@ rules above; D117 records them.
   of a digest takes the whole cut, including mail tuning hid (muted,
   changes only) and mail past its window, and the preview says how many of
   those it is, so nothing piles up out of sight in the inbox.
-- **Breakthrough is on, not a suggestion (phase 4).** A new sign-in, a
-  failed payment and a delivery problem become a to-do on arrival, once per
-  source, alert kind and day by its dedup key (differently worded alerts
-  of one kind are one thing to check), only for inbox mail inside its
-  window and at most two days old, and only when the receiving provider's
-  own `Authentication-Results` says DMARC passed for the sender and you had
-  mail from that source before today. Anything else stays in Needs a look.
-  "Auto-actions ship as suggestions" above still holds for model
-  placements; these three are authenticated rules with a fixed window, and
-  the to-do expires with it.
+- **Breakthroughs are suggestions, not tasks (phase 4).** A new sign-in, a
+  failed payment and a delivery problem lead Needs a look with a
+  highlighted suggested to-do and its reason; `t` turns one into a to-do,
+  and nothing is added on arrival. Two review rounds found ways to forge an
+  automatic one (a forged lower `Authentication-Results`, the alert
+  counting as its own prior mail, a borrowed display name on an
+  authenticated domain, UTC-day claims, backfill order, Outlook failing
+  silently), so automatic creation waits for a design that survives
+  review, as the pay link does:
+  [auto-breakthrough.md](../issues/auto-breakthrough.md). Needs a look
+  lines and `t` titles show the sending host beside the display name
+  ("Google (accounts.google.com)").
 - **The Updates fact chunk is deferred (phase 4).** Facts are cached in
   `update_facts` but are not yet a semantic index recipe; search still
   indexes Updates mail the way it indexes all mail.

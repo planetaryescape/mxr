@@ -83,7 +83,10 @@ impl Histories {
 
     /// The signal an item carries given what its source sent before, and
     /// the delta against the previous message of its template.
-    fn score(&self, item: &Item) -> (Signal, Option<Delta>) {
+    fn score<Tz: TimeZone>(&self, item: &Item, tz: &Tz) -> (Signal, Option<Delta>)
+    where
+        Tz::Offset: std::fmt::Display,
+    {
         let key = (
             item.message.account_id.clone(),
             item.fact.source_key.clone(),
@@ -102,6 +105,7 @@ impl Histories {
                 &past.numbers,
                 item.message.date,
                 past.date,
+                tz,
             )
         });
         let history = History {
@@ -281,7 +285,14 @@ fn delta_data(found: &Delta) -> UpdateDeltaData {
     }
 }
 
-fn provenance(fact: &Fact, found: Option<&Delta>) -> Vec<UpdateProvenanceData> {
+fn provenance<Tz: TimeZone>(
+    fact: &Fact,
+    found: Option<&Delta>,
+    tz: &Tz,
+) -> Vec<UpdateProvenanceData>
+where
+    Tz::Offset: std::fmt::Display,
+{
     let entry = |field: &str, source: &str, evidence: String| UpdateProvenanceData {
         field: field.to_string(),
         source: source.to_string(),
@@ -311,7 +322,7 @@ fn provenance(fact: &Fact, found: Option<&Delta>) -> Vec<UpdateProvenanceData> {
                 "{} against {} on {}",
                 found.raw,
                 found.previous_raw,
-                found.against.format("%-d %b")
+                found.against.with_timezone(tz).format("%-d %b")
             ),
         ));
     }
@@ -390,6 +401,21 @@ where
         .iter()
         .find_map(|thread| ctx.todo_by_thread.get(thread))
         .map(|todo| todo.id.clone());
+    // A suggestion, never a to-do: `t` is the user's to press.
+    let todo_suggestion = if todo.is_some() {
+        None
+    } else {
+        members
+            .iter()
+            .find_map(|m| m.item.fact.needs_you)
+            .map(|needs| {
+                format!(
+                    "Suggested to-do: {} from {} (rule). t adds it.",
+                    needs.label(),
+                    mxr_updates::fact::branded_name(&fact.source_name, &fact.sender_host)
+                )
+            })
+    };
     let tracker = fact.tracked.as_ref().map(|tracked| {
         let first = members
             .iter()
@@ -422,7 +448,13 @@ where
         section,
         account_id: account.clone(),
         source_key: fact.source_key.clone(),
-        source_name: fact.source_name.clone(),
+        // In Needs a look the sending host sits beside the display name,
+        // so a borrowed brand ("Google" from someone else's domain) shows.
+        source_name: if section == UpdateSectionData::NeedsALook {
+            mxr_updates::fact::branded_name(&fact.source_name, &fact.sender_host)
+        } else {
+            fact.source_name.clone()
+        },
         sender_email: message.from_email.to_ascii_lowercase(),
         fact: fact.text.clone(),
         fact_source: fact.fact_source.as_str().to_string(),
@@ -440,6 +472,7 @@ where
         tracker,
         in_todo: todo.as_ref().map(|_| updates_copy::IN_TODO.to_string()),
         todo_id: todo,
+        todo_suggestion,
         todo_title: fact.todo_title.clone(),
         why: format!(
             "Here because: {} ({source}). In the {} digest.",
@@ -447,7 +480,7 @@ where
         ),
         setting,
         suggestion: None,
-        provenance: provenance(fact, lead.delta.as_ref()),
+        provenance: provenance(fact, lead.delta.as_ref(), ctx.inputs.tz),
         message_ids,
         thread_ids,
     })
@@ -575,6 +608,20 @@ where
                     } else {
                         lines.push(line);
                     }
+                }
+            }
+            // A breakthrough source leads Needs a look every time, with a
+            // suggested to-do; mxr still never adds the to-do itself.
+            UpdateSourceSettingData::Breakthrough => {
+                for mut line in lines_for_source(members, ctx) {
+                    line.section = UpdateSectionData::NeedsALook;
+                    if line.todo_id.is_none() && line.todo_suggestion.is_none() {
+                        line.todo_suggestion = Some(format!(
+                            "Suggested to-do: you asked to see every {} message first. t adds it.",
+                            line.source_name
+                        ));
+                    }
+                    lines.push(line);
                 }
             }
             _ => lines.extend(lines_for_source(members, ctx)),
@@ -808,6 +855,7 @@ where
         }),
         in_todo: todo.as_ref().map(|_| updates_copy::IN_TODO.to_string()),
         todo_id: todo,
+        todo_suggestion: None,
         todo_title: parcel_todo_title(&name),
         why: format!(
             "Here because: a parcel with a tracking state ({}). Leaves Updates when it ends.",
@@ -833,7 +881,14 @@ fn sort_lines(lines: &mut [UpdateLineData], section: UpdateSectionData) {
             })
         });
     } else {
-        lines.sort_by(|a, b| b.latest_at.cmp(&a.latest_at).then_with(|| a.id.cmp(&b.id)));
+        // Suggested to-dos lead Needs a look; then newest first.
+        lines.sort_by(|a, b| {
+            b.todo_suggestion
+                .is_some()
+                .cmp(&a.todo_suggestion.is_some())
+                .then_with(|| b.latest_at.cmp(&a.latest_at))
+                .then_with(|| a.id.cmp(&b.id))
+        });
     }
 }
 
@@ -919,7 +974,7 @@ where
             expired.push((item, window_end.until, window_end.kind.label()));
             continue;
         }
-        let (mut signal, found) = inputs.histories.score(item);
+        let (mut signal, found) = inputs.histories.score(item, tz);
         // New or changed means since the last digest: mail carried over
         // from an earlier cut is routine now, whatever it was then.
         let fresh_from = if item.message.date <= window.at {

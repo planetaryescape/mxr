@@ -148,18 +148,12 @@ pub struct UpdatesConfig {
     /// When the digest is gathered each day, local time: one to four
     /// "HH:MM" times. A bad list falls back to the defaults with a warning.
     pub cuts: Vec<String>,
-    /// For IMAP accounts not on Gmail: the authserv-ids your provider
-    /// stamps on the `Authentication-Results` it adds ("mx.example.net",
-    /// or "*.example.net" for any host under it). An alert breaks through
-    /// to To do only when that result says DMARC passed. Gmail is known.
-    pub trusted_authserv_ids: Vec<String>,
 }
 
 impl Default for UpdatesConfig {
     fn default() -> Self {
         Self {
             cuts: vec!["08:00".to_string(), "16:30".to_string()],
-            trusted_authserv_ids: Vec::new(),
         }
     }
 }

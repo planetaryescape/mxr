@@ -109,26 +109,21 @@ The keys:
 | `u` | Undo |
 | `?` | What Updates is for, then its keys |
 
-## What needs you goes to To do on arrival
+## What needs you leads Needs a look as a suggested to-do
 
 A new sign-in alert, a failed payment and a parcel with a delivery problem
-don't wait for the cut. They become a to-do as soon as they sync ("Check
-new sign-in to Google", "Fix failed payment to Stripe") and still show in
-the next digest under Needs a look, marked "already in To do". One
-source's alerts of the same kind make one to-do a day, however they are
-worded. A sign-in alert and a failed payment from one source are two.
+sit at the top of Needs a look, with a highlighted line saying why:
+"Suggested to-do: new sign-in alert from Google (accounts.google.com)
+(rule). t adds it." mxr never adds the to-do for you; `t` does, with the
+title filled in ("Check new sign-in to Google (accounts.google.com)"). The
+line then shows "already in To do".
 
-Anyone can write "New sign-in" in a subject, so an alert goes to To do
-only when your provider's own check says the sender is who it claims
-(DMARC passed, in the `Authentication-Results` your provider added) and
-you had mail from that source before today. Everything else, including
-archived mail, mail older than two days and mail past its window, stays
-in Needs a look. Gmail accounts are covered as they are; for another IMAP
-provider, name its authserv-id in
-[`updates.trusted_authserv_ids`](/reference/config/#updates). Outlook
-accounts never break through.
+Anyone can put "New sign-in" in a subject or "Google" in a display name, so
+every line in Needs a look and every title `t` fills in shows the host the
+mail came from beside the name. A sign-in alert from "Google" at
+`g00gle-alerts.example` reads "Google (g00gle-alerts.example)".
 
-`t` on any line makes a to-do from it, with the title filled in.
+`t` on any other line makes a to-do from it too.
 
 ## One-time codes and alerts expire and never show
 
@@ -141,7 +136,7 @@ Some updates stop mattering:
 | Sign-in or security alert | 2 days after it arrived |
 | Sale or offer | When it says it ends ("ends Sunday"), else 7 days |
 
-An update past its window never enters a digest and never goes to To do.
+An update past its window never enters a digest.
 It stays in your inbox and in search. List them:
 
 ```bash
@@ -162,7 +157,7 @@ mxr updates source notifications@strava.com muted
 | `every-digest` | In every digest (the default) |
 | `changes-only` | Only when something changed or needs a look |
 | `muted` | Never in the digest; still in your inbox, Archive and search |
-| `breakthrough` | Every message goes to To do on arrival |
+| `breakthrough` | Every message leads Needs a look with a suggested to-do |
 
 A source is named by the key the digest prints (the sender's domain, plus
 a repository for GitHub), or by any address it sends from. The output

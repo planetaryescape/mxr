@@ -7,7 +7,7 @@
 //! header line from Now's mode guide. Hints show in the status line
 //! (`app/hints.rs`). Pure render; wiring lives in `app/now_actions.rs`.
 
-use mxr_protocol::{ModeGuideData, NowData, NowPersonData, NowTodoData};
+use mxr_protocol::{NowData, NowPersonData, NowTodoData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 

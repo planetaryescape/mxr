@@ -9,7 +9,7 @@
 //! in the status line (`app/hints.rs`). Pure render; wiring lives in
 //! `app/todo_actions.rs`.
 
-use mxr_protocol::{ModeGuideData, TodoChangeData, TodoData};
+use mxr_protocol::{TodoChangeData, TodoData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 

@@ -53,7 +53,7 @@ Commands:
   snippets            Manage compose snippets (`;name` expansions)
   todo                Things email asked you to do, ordered by when to act.
   records             Receipts, orders, bookings and documents. Ask for what you need.
-  modes               How each mode explains itself: its job, empty states, card and keys
+  modes               How each mode explains itself: its job, empty states, keys and hints
   deliveries          Track packages and deliveries detected in your mail
   signatures          Manage outgoing compose signatures
   remind              Set or cancel a follow-up reminder on an outbound message. Reminders fire if no reply has arrived by the given time — surfacing the message back to the user as a follow-up

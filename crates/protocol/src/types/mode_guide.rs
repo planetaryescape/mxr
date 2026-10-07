@@ -169,7 +169,7 @@ pub const LET_GO_DIGEST_HINT: HintCopy = HintCopy {
     id: "updates.let_go",
     anchor: "The first \"Let go of this digest\" button",
     text: "A lets go of this digest only; new mail arrives in the next one.",
-    key: ("A", "let go of the digest"),
+    key: ("A", "let go of digest"),
 };
 
 /// To do's keys, in the order help lists them.
@@ -221,7 +221,7 @@ const NOW_KEYS: &[(&str, &str)] = &[
     ("t", "make it a to-do"),
     ("r", "reply"),
     ("o", "open the email"),
-    ("A", "let go of the digest"),
+    ("A", "let go of digest"),
     ("u", "undo"),
     ("?", "what is this"),
 ];

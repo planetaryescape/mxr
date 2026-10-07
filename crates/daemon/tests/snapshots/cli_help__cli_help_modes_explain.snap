@@ -2,7 +2,7 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-What a mode is for, what lands there, its first-encounter card and its keys. Every mode that has shipped when none is named
+What a mode is for, what lands there, how it works, its keys and its hints. Every mode that has shipped when none is named
 
 Usage: mxr modes explain [OPTIONS] [MODE]
 

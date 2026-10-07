@@ -4,30 +4,43 @@ expression: "serde_json::to_string_pretty(&guide).unwrap()"
 ---
 [
   {
+    "about": "Each row is a person, not an email, with your conversations inside as topics. The quoted line is what they asked; the row leaves Your turn when you reply or press got it (.).",
     "add_one": "",
-    "card": "Each row is a person, not an email, with your conversations inside as topics. The quoted line is what they asked; the row leaves Your turn when you reply or press got it (.).",
-    "card_keys": [
-      {
-        "key": "r",
-        "verb": "reply"
-      },
-      {
-        "key": ".",
-        "verb": "got it"
-      },
-      {
-        "key": "e",
-        "verb": "done here"
-      },
-      {
-        "key": "t",
-        "verb": "make it a to-do"
-      }
-    ],
-    "card_seen": false,
     "clear_for_now": "Nobody is waiting on you.",
     "first_run_line": "People you talk with",
     "header": "People you talk with, one row each. Reply or mark done.",
+    "hints": [
+      {
+        "anchor": "The first topic list on a person's page",
+        "id": "messages.topics",
+        "key": {
+          "key": "]",
+          "verb": "next topic"
+        },
+        "seen": false,
+        "text": "Every conversation with this person, yours to answer first; ] and [ step through them."
+      },
+      {
+        "anchor": "Got it, the first time it has focus",
+        "id": "messages.got_it",
+        "key": {
+          "key": ".",
+          "verb": "got it"
+        },
+        "seen": false,
+        "text": "Got it (.) sends a short note that you've seen it and takes them off Your turn."
+      },
+      {
+        "anchor": "The toast after the first e (done here) on a conversation",
+        "id": "done_here",
+        "key": {
+          "key": "e",
+          "verb": "done here"
+        },
+        "seen": false,
+        "text": "Done here (e) only clears this mode; it stays in To do until done there."
+      }
+    ],
     "keys": [
       {
         "key": "Enter",

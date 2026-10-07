@@ -906,6 +906,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/hints/{hint}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss a hint in every client, or show it again */
+        post: operations["mail_hint_seen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/humanizer/rewrite": {
         parameters: {
             query?: never;
@@ -1168,7 +1185,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** How a mode explains itself: header, empty states, first-encounter card, why template and keys */
+        /** How a mode explains itself: header, empty states, why template, keys and hints */
         get: operations["mail_mode_guide"];
         put?: never;
         post?: never;
@@ -1190,23 +1207,6 @@ export interface paths {
         put?: never;
         /** Which modes hold each of up to 100 threads, in request order */
         post: operations["mail_mode_membership_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/hints/{hint}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Dismiss a hint in every client, or show it again */
-        post: operations["mail_hint_seen"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4960,6 +4960,7 @@ export interface components {
              *     "now.from_mode".
              */
             id: string;
+            /** @description The key the hint names, with its verb in this mode. */
             key: components["schemas"]["ModeKeyData"];
             /** @description Dismissed by Esc or by acting on the element, in any client. */
             seen: boolean;
@@ -11490,6 +11491,40 @@ export interface operations {
             };
         };
     };
+    mail_hint_seen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description `todo.runway` */
+                hint: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HintSeenBody"];
+            };
+        };
+        responses: {
+            /** @description The `ModeGuides` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     mail_humanizer_rewrite: {
         parameters: {
             query?: never;
@@ -11973,40 +12008,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mail_hint_seen: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description `todo.runway` */
-                hint: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HintSeenBody"];
-            };
-        };
-        responses: {
-            /** @description The `ModeGuides` variant */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ResponseData"];
-                };
             };
             /** @description Missing or invalid bridge token */
             401: {

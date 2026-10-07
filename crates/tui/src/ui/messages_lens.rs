@@ -12,8 +12,7 @@
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use mxr_protocol::{
     ConversationData, ConversationMessageData, MessageLayoutData, MessagesBandData,
-    MessagesPreviewKindData, MessagesRowData, MessagesTopicData, ModeGuideData, PersonPageData,
-    TopicStateData,
+    MessagesPreviewKindData, MessagesRowData, MessagesTopicData, PersonPageData, TopicStateData,
 };
 use ratatui::prelude::*;
 use ratatui::widgets::*;

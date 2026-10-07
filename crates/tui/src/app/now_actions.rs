@@ -195,8 +195,9 @@ impl App {
         };
         match target {
             NowTarget::Person { thread_id, .. } => {
-                self.explain_done_here_once();
                 self.queue_mode_done(ModeKindData::Messages, thread_id);
+                // After queueing, which sets its own progress line.
+                self.explain_done_here_once();
             }
             NowTarget::Reading { thread_id, .. } => {
                 self.queue_mode_done(ModeKindData::Reading, thread_id);

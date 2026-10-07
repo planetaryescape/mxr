@@ -1,6 +1,5 @@
 ---
 source: crates/tui/src/ui/help_modal.rs
-assertion_line: 833
 expression: snapshot
 ---
 "                                                                                                    "
@@ -8,8 +7,7 @@ expression: snapshot
 "      ╭ Help ────────────────────────────────────────────────────────────────────────────────╮      "
 "      │Start Here                                                                           ▲│      "
 "      │Ctrl-p              Open command palette                                             █│      "
-"      │palette: Start Here Reopen onboarding walkthrough                                    █│      "
-"      │gc                  Edit config in $EDITOR                                           ║│      "
+"      │gc                  Edit config in $EDITOR                                           █│      "
 "      │?                   Toggle Help                                                      ║│      "
 "      │Esc                 Back / Close                                                     ║│      "
 "      │q                   Quit                                                             ║│      "
@@ -27,7 +25,8 @@ expression: snapshot
 "      │Undo a destructive actionu within 60s of archive/trash/spam/mark-read                ║│      "
 "      │                                                                                     ║│      "
 "      │Most Common Actions                                                                  ║│      "
-"      │Context             Mailbox / List                                                   ▼│      "
+"      │Context             Mailbox / List                                                   ║│      "
+"      │/                   Search all indexed mail                                          ▼│      "
 "      ╰──────────────────────────────────────────────────────────────────────────────────────╯      "
 "                                                                                                    "
 "                                                                                                    "

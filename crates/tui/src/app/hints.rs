@@ -265,8 +265,10 @@ impl App {
         if hint.seen || self.hints.closed.contains(DONE_HERE) {
             return;
         }
-        self.status_message = Some(hint.text.clone());
+        let text = hint.text.clone();
+        // Queueing the dismissal sets its own (empty) status; the hint wins.
         self.dismiss_hint(DONE_HERE.to_string());
+        self.status_message = Some(text);
     }
 
     /// The status line while a hint shows: the hint, then how to dismiss it.

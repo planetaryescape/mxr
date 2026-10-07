@@ -4,30 +4,33 @@ expression: "serde_json::to_string_pretty(&guides).unwrap()"
 ---
 [
   {
+    "about": "Each row is one thing to do, written as what to do, not the email's subject. Act by the first date; the bar fills from when it showed up to when it's due, and Enter does what the button says.",
     "add_one": "Press `t` on any email to add one yourself.",
-    "card": "Each row is one thing to do, written as what to do, not the email's subject. Act by the first date; the bar fills from when it showed up to when it's due, and Enter does what the button says.",
-    "card_keys": [
-      {
-        "key": "Enter",
-        "verb": "do it"
-      },
-      {
-        "key": "e",
-        "verb": "tick off"
-      },
-      {
-        "key": "Z",
-        "verb": "schedule"
-      },
-      {
-        "key": "X",
-        "verb": "not a to-do"
-      }
-    ],
-    "card_seen": false,
     "clear_for_now": "Nothing needs you.",
     "first_run_line": "What email asked you to do",
     "header": "Things email asked you to do, ordered by when to act.",
+    "hints": [
+      {
+        "anchor": "The first runway bar",
+        "id": "todo.runway",
+        "key": {
+          "key": "Enter",
+          "verb": "do it"
+        },
+        "seen": false,
+        "text": "The bar fills from when this showed up to when it's due; Enter does what the button says."
+      },
+      {
+        "anchor": "The first catch-up line",
+        "id": "todo.catchup",
+        "key": {
+          "key": "C",
+          "verb": "catch up"
+        },
+        "seen": false,
+        "text": "These came in before mxr sorted your mail. C goes through them: keep or let go of each."
+      }
+    ],
     "keys": [
       {
         "key": "Enter",
@@ -60,6 +63,10 @@ expression: "serde_json::to_string_pretty(&guides).unwrap()"
       {
         "key": "t",
         "verb": "make a to-do from a conversation"
+      },
+      {
+        "key": "C",
+        "verb": "catch up"
       },
       {
         "key": "?",

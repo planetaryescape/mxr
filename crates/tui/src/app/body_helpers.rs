@@ -44,12 +44,13 @@ impl App {
     /// state still win.
     pub fn status_bar_state(&self) -> ui::status_bar::StatusBarState {
         let mut state = self.base_status_bar_state();
-        let warned = self.connection_state_label().is_some()
-            || self.current_user_warn(std::time::Instant::now()).is_some()
-            || state
-                .status_message
-                .as_deref()
-                .is_some_and(|message| message.starts_with("Error:"));
+        let urgent = [
+            self.connection_state_label(),
+            self.current_user_warn(std::time::Instant::now()),
+        ];
+        let warned = state.status_message.as_deref().is_some_and(|message| {
+            message.starts_with("Error:") || urgent.iter().flatten().any(|u| u == message)
+        });
         if !warned {
             if let Some(hint) = self.hint_status_line() {
                 state.status_message = Some(hint);

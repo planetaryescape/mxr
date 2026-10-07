@@ -1952,3 +1952,19 @@ rules above; D117 records them.
 - **Who takes the five-second check.** BK and two people new to mxr, during dogfooding. Until they have, the independent grader runs it on the demo mailbox.
 - **Sign in with ChatGPT SDK.** Not built. See
   `docs/extractable-crates/14-chatgpt-sign-in-sdk.md`.
+- **Updates leftovers and hidden mail (phase 4).** Anything not let go
+  folds into the next digest instead of stacking a second one. Letting go
+  of a digest takes the whole cut, including mail tuning hid (muted,
+  changes only) and mail past its window, and the preview says how many of
+  those it is, so nothing piles up out of sight in the inbox.
+- **Breakthrough is on, not a suggestion (phase 4).** A new sign-in, a
+  failed payment and a delivery problem become a to-do on arrival, once per
+  message by its dedup key, only while inside their window and at most two
+  days old. "Auto-actions ship as suggestions" above still holds for model
+  placements; these three are rules with a fixed window, and the to-do
+  expires with it.
+- **The Updates fact chunk is deferred (phase 4).** Facts are cached in
+  `update_facts` but are not yet a semantic index recipe; search still
+  indexes Updates mail the way it indexes all mail.
+- **Updates' store is migration 065 (phase 4).** 064 is Messages'
+  `person_links`; versions apply by number, so phases can land in any order.

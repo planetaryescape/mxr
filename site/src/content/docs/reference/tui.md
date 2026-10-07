@@ -44,7 +44,7 @@ Behavior:
 - Focused-thread-message targeting for reply and mutations
 - Explicit right-pane dismissal with `Esc`
 - Bulk selection with confirmation modals
-- Sidebar lenses replace the mail list in place: **Desk**, **Reading**,
+- Sidebar lenses replace the mail list in place: **Desk**, **Updates**, **Reading**,
   **Paper trail**, **Subscriptions**, **Owed replies**, and **Calendar
   invites** (every detected invite with inline RSVP; see
   [keybindings](/reference/keybindings/#calendar-invites-lens))
@@ -60,6 +60,15 @@ it. A held key repeats in the TUI, so press Done once per row. When the desk
 or the owed-replies list clears, the status bar says **Low tide. Nobody's
 waiting on you.** The keys are in the
 [keybindings reference](/reference/keybindings/#go-to).
+
+## Updates
+
+**Updates** (`gu`) is the briefing lens: the latest digest in Needs a look,
+Changed and Routine, one line per source, with what arrived after the cut
+below it ([Read Updates as a briefing](/guides/updates/)). `A` lets go of
+the digest after a preview, `e` lets go of one source, `t` makes a to-do
+from a line, `K` tunes the source, `L` opens the line's link and `o` the
+email. The keys are in the [keybindings reference](/reference/keybindings/#updates).
 
 ## Reading and Paper trail
 

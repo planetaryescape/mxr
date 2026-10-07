@@ -41,7 +41,8 @@ items drawn from the modes, so you can answer "what needs me right now?"
 without opening each one. **Inbox** stays as the everything view, in
 arrival order.
 
-Paper trail is the early version of Updates.
+Messages, To do, [Updates](/guides/updates/), [Reading](/guides/reading/) and
+Archive are built in their own shape.
 
 ## One email can live in several modes (planned)
 
@@ -167,7 +168,7 @@ mxr semantic status
 | Now | Built | [Now](/guides/now/) (`mxr now`, `g h`): People, Due soon, the Updates card and an evening Reading pick, at most ten things; the rail (`mxr modes rail`), done here per mode (`mxr modes done`) and "Also in" (`mxr modes why`) | The first-run progress card and catch-up across every mode |
 | Messages | Built (`g m`) | [Messages](/guides/messages/) (`mxr messages`): people as rows with their topics inside, Your turn by closeness and pace, Got it (`mxr messages ack`), thread-aware quote stripping, manual merges with a suggestion; [Focus & reply](/guides/focus-and-reply/) | Incoming Gmail reactions as a mark on the message; the Messages index recipe once the retrieval eval favours it |
 | To do | Built (`g x`) | `mxr todo`: bills, renewals, forms and promises as one row each, with act-by dates; [calendar invites](/guides/calendar-invites/) (`mxr invites`) | A rail badge once `mxr modes eval` shows under one false to-do a week |
-| Updates | Early version, on Paper trail (`g u`) | [Paper trail](/guides/reading-and-paper-trail/) (`mxr paper-trail`, `mxr sweep`), done here with `e`, [deliveries](/guides/deliveries/) (`mxr deliveries`), [rules](/guides/rules/) | A briefing by source in two digests a day, let go in one key (phase 4) |
+| Updates | Built (`g u`) | [Updates](/guides/updates/) (`mxr updates`): one line per source at the 08:00 and 16:30 cuts, code-computed changes, parcels, builds and incidents as trackers, let go in one key (`mxr updates let-go`); a new sign-in, failed payment or delivery problem goes to To do on arrival; [deliveries](/guides/deliveries/) (`mxr deliveries`) | One fact per message in the semantic index, and model-written facts for generic subjects (phase 7) |
 | Reading | Built (`g r`) | [Reading](/guides/reading/) (`mxr reading`): an edition banded since your last visit, earlier and fading, a 66-character reader with the linked article on request, a Later shelf, let go with `e` and `A`, [unsubscribe](/guides/unsubscribe/) with evidence, highlights | Section-aware search chunks and lazy embedding for whole issues |
 | Archive | Built (`g e`) | [Archive](/guides/archive/) (`mxr records`): receipts, orders, bookings, bills and documents as one record each, an answer box (`mxr records ask "lisbon booking ref"`) with [`mxr ask`](/guides/archive-intelligence/) as its fallback, and a CSV export | Record fields read by the smart tier, and learned templates per issuer |
 

@@ -116,7 +116,7 @@ help modal (`?`).
 | `gh` | Go to Now (the front page) |
 | `gm` | Messages |
 | `gx` | To do |
-| `gu` | Updates (Paper trail, early version) |
+| `gu` | Updates, the briefing |
 | `gr` | Reading |
 | `ge` | Archive (records are coming) |
 | `gi` | Go to Inbox |
@@ -229,7 +229,7 @@ mode.
 | `r` | Reply to a person |
 | `o` | Open the email |
 | `t` | Make a to-do from the row's email |
-| `A` | Let go of the Updates card (previews first) |
+| `A` | Let go of the Updates digest on the card (previews first) |
 | `1`–`4` | Answer a new sender's question, on a row that asks one |
 | `Esc` | Dismiss the hint, when one shows |
 | `u` | Undo |
@@ -253,10 +253,28 @@ People as rows with their topics inside (`gm`). See
 | `p` | The person's page |
 | `o` / `v` | The selected message as sent |
 
-## Updates and Reading
+## Updates
 
-Lenses in the sidebar (`gu`, `gr`; `gp` opens Updates too). Mail keys act
-on the message under the cursor.
+The briefing lens (`gu`; `gp` opens it too): the latest digest in Needs a
+look, Changed and Routine, one line per source, with what arrived since the
+cut below.
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Next / previous line |
+| `A` | Let go of the digest (previews first) |
+| `e` | Let go of this source |
+| `t` | This needs me: make a to-do from the line |
+| `K` | Tune the source: every digest, changes only, muted, breakthrough |
+| `L` | Open the line's link (never a pay link) |
+| `o` | Open the email |
+| `u` | Undo |
+| `?` | What Updates is for, then its keys |
+
+## Reading
+
+A lens in the sidebar (`gr`). Mail keys act on the message under the
+cursor.
 
 | Key | Action |
 |-----|--------|

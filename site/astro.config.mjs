@@ -67,6 +67,7 @@ export default defineConfig({
             { label: 'Work Through Your Day', slug: 'guides/your-day' },
             { label: 'Start from Now', slug: 'guides/now' },
             { label: 'Messages: People You Talk With', slug: 'guides/messages' },
+            { label: 'Updates: a Briefing Twice a Day', slug: 'guides/updates' },
             { label: 'Reply to Everyone You Owe', slug: 'guides/focus-and-reply' },
             { label: 'Read Newsletters as an Edition', slug: 'guides/reading' },
             { label: 'Clear Reading and Paper Trail', slug: 'guides/reading-and-paper-trail' },

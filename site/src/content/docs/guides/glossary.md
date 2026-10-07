@@ -92,7 +92,7 @@ in a release yet; the rest exist today.
 **Mode**: one of the five jobs email does, each with its own view, unit and
 verbs: Messages, To do, Updates, Reading and Archive. One email can be in
 several modes at once; `mxr modes why` says which and why. Messages, To do,
-Reading and Archive are built; Updates is an early version on Paper trail.
+Updates, Reading and Archive are built.
 
 **Messages**: the mode for people you are in conversation with (`mxr
 messages`, `g m`). One row per person, merged across their addresses, with
@@ -121,8 +121,29 @@ mxr suggests a merge when two addresses you've written to share a name.
 instruction ("Pay council tax") with a due date and an act-by date
 (`mxr todo`, `g x`).
 
-**Updates** (early version): the mode for notifications (`g u`). Today it
-is Paper trail; the briefing by source in fixed digests is planned.
+**Updates**: the mode for notifications (`mxr updates`, `g u`), read as a
+briefing by source at fixed cuts and let go in one key. See
+[Read Updates as a briefing](/guides/updates/).
+
+**Digest**: Updates' batch: everything that arrived by the latest cut and
+wasn't let go, one line per source in Needs a look, Changed and Routine.
+
+**Cut**: a fixed time of day the digest is gathered, 08:00 and 16:30 by
+default (`updates.cuts`, one to four times). Mail after the cut waits in
+"arriving for" until the next one.
+
+**Source line**: one line in the digest for everything one source sent, its
+latest fact per kind of message, with the numbers it quoted and the change
+code computed against the previous message of that kind.
+
+**Tracker**: a thing with a state shown where it is now: a parcel, a build
+or an incident. A tracker that ends well leaves Updates on its own; one that
+ends badly moves to Needs a look.
+
+**Breakthrough**: an update that goes to To do on arrival instead of waiting
+for the cut: a new sign-in, a failed payment, a delivery problem, or any
+message from a source tuned to `breakthrough`. The digest marks it "already
+in To do".
 
 **Reading**: the mode for newsletters and posts you chose (`mxr reading`,
 `g r`), shown as an [edition](/guides/reading/): readable items in three
@@ -196,7 +217,8 @@ recipes, such as one fact per Updates message, are planned.
 
 **Let go**: Updates' and Reading's word for done. In Reading it is `e`, or
 `A` for everything in the edition, which acts on exactly the set its
-preview listed. Updates' digest is planned.
+preview listed. Letting go of an Updates digest does the same
+(`mxr updates let-go`).
 
 **Act-by date** (planned): the last day you can act and still meet a due
 date, such as three working days before a bill paid by bank transfer.

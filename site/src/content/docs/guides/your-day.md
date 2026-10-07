@@ -66,7 +66,22 @@ need an answer to. To stop watching one until a time, press `b` and type it
 **Send and remind me if no reply in** does the same from the start
 ([automated follow-ups](/guides/automated-followups/)).
 
-## 5. Clear Reading and Paper trail
+## 5. Read the Updates digest and let it go
+
+Twice a day, at 08:00 and 16:30, notifications are gathered into one
+digest: one line per source, what needs a look first. Read it, press `t` on
+anything that needs you, then let go of the whole digest with `A`:
+
+```bash
+mxr updates
+mxr updates let-go --dry-run
+```
+
+A new sign-in or a failed payment is already in To do by then.
+[Read Updates as a briefing](/guides/updates/) covers the sections, tuning
+and expiry.
+
+## 6. Clear Reading and Paper trail
 
 Read what you want in **Reading**, pin what you want to keep in **Paper
 trail**, then sweep the rest:
@@ -81,7 +96,7 @@ then on. [Clear Reading and Paper trail](/guides/reading-and-paper-trail/)
 covers the rules, pins and sweeps. Sweeping a receipt's email leaves its
 record in [Archive](/guides/archive/).
 
-## 6. Ask Archive when someone needs a reference
+## 7. Ask Archive when someone needs a reference
 
 When a call centre wants a booking reference or a shop wants proof of
 purchase, ask Archive instead of searching:
@@ -93,7 +108,7 @@ mxr records ask "lisbon booking ref"
 It answers with the field and where it came from. In the apps, `g e` opens
 Archive with the answer box focused, and `y` copies the reference.
 
-## 7. Low tide
+## 8. Low tide
 
 When the desk is empty, the web app shows low tide: **Low tide. Nobody's
 waiting on you.** with the next promise that is due. The TUI says the same in

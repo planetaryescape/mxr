@@ -106,6 +106,7 @@ exact origin, query string included.
 | `/search?q=…&mode=…` and `/search/<thread>?…` | Search results with the reader |
 | `/reply-queue/<thread?>`, `/owed/<thread?>`, `/snoozed/<thread?>` | Triage lists on the same list+reader component |
 | `/drafts`, `/screener`, `/invites`, `/subscriptions`, `/deliveries` | Triage pages |
+| `/updates` and `/updates/<thread>` | Updates: the digest as Needs a look, Changed and Routine, with since below; the reader opens beside it. `/paper-trail` is the plain list by sender |
 | `/analytics/<dashboard>`, `/rules`, `/accounts`, `/diagnostics`, `/activity`, `/jobs`, `/settings/<section>` | Tools |
 | `/compose/new`, `/compose/<draft>` | Deep links that open the compose host |
 | `/sender/<address>` | Sender profile page |

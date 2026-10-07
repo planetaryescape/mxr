@@ -958,7 +958,18 @@ async fn seed_demo_surfaces() -> anyhow::Result<()> {
     seed_surface!("snooze/reply-later", seed_demo_message_state);
     seed_surface!("drafts", seed_demo_drafts);
     seed_surface!("to-dos", seed_demo_todos);
+    seed_surface!("contacts", seed_demo_contacts);
     Ok(())
+}
+
+/// Builds the contacts table from the freshly synced mail now, rather than
+/// at the refresher's next five-minute tick, so Messages has closeness and
+/// "You've written N times" from the first look.
+async fn seed_demo_contacts(client: &mut IpcClient) -> anyhow::Result<()> {
+    match client.request(Request::RefreshContacts).await? {
+        Response::Ok { .. } => Ok(()),
+        Response::Error { message, .. } => anyhow::bail!(message),
+    }
 }
 
 /// Keeps the demo's sent "I'll send you the signed engagement form" as an

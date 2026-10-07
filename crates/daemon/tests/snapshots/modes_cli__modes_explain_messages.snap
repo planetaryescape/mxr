@@ -5,7 +5,7 @@ expression: "serde_json::to_string_pretty(&guide).unwrap()"
 [
   {
     "add_one": "",
-    "card": "Each row is a person, not an email, with your conversations inside as topics. The quoted line is what they asked; the row leaves Your turn when you reply or press `.` for got it.",
+    "card": "Each row is a person, not an email, with your conversations inside as topics. The quoted line is what they asked; the row leaves Your turn when you reply or press . for got it.",
     "card_keys": [
       {
         "key": "r",

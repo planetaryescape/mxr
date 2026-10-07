@@ -2,6 +2,7 @@ import { Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { Filter, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { LIST_PANE_SIZE } from "./listPane";
 import { MailboxList, type MailboxListProps } from "./MailboxList";
 import { Centered, ListSkeleton } from "./MailViewParts";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
@@ -9,9 +10,10 @@ import { ReaderNavContext, type ReaderNav } from "./readerNav";
 import type { MessageGroupView, MessageRowView } from "./types";
 import { ModeFrame } from "@/components/ModeFrame";
 import { Button } from "@/components/ui/button";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
+import { useSplitPane } from "@/hooks/useSplitPane";
 import { focusActivePane } from "@/lib/keys/focusPane";
-import { cn } from "@/lib/utils";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -109,6 +111,9 @@ export function ListWithReader({
     requestAnimationFrame(() => filterRef.current?.select());
   }, []);
   const hideList = threadOpen && (singlePane || readerLayout === "full");
+  const split = threadOpen && !hideList;
+  // One saved width for every mail list, so Inbox, labels and search match.
+  const pane = useSplitPane("mail-list", LIST_PANE_SIZE, { active: split });
 
   // When the conversation closes by any route (Esc, back button), hand the
   // keyboard back to the list. Keyed on the transition only: opening sets
@@ -154,128 +159,144 @@ export function ListWithReader({
 
   return (
     <ReaderNavContext.Provider value={nav}>
-      <div className="flex min-h-0 min-w-0 flex-1">
-        <section
-          aria-label={title}
-          className={cn(
-            "@container flex min-h-0 min-w-0 flex-col bg-background",
-            threadOpen ? "w-[clamp(340px,36%,480px)] shrink-0 border-r border-border" : "flex-1",
-            hideList && "hidden",
-          )}
+      <ResizablePanelGroup className="min-h-0 min-w-0 flex-1" {...pane.groupProps}>
+        <ResizablePanel
+          id="list-pane"
+          hidden={hideList}
+          {...pane.sidePanelProps}
+          className="flex min-h-0 flex-col"
         >
-          <header className="shrink-0 border-b border-border">
-            <ModeFrame>
-              {heading ?? (
-                <div className="flex h-11 items-center gap-3 px-4">
-                  <h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>
-                  {meta ? (
-                    <span className="truncate font-mono text-2xs text-muted-foreground tabular-nums">
-                      {meta}
+          <section
+            aria-label={title}
+            className="@container flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+          >
+            <header className="shrink-0 border-b border-border">
+              <ModeFrame>
+                {heading ?? (
+                  <div className="flex h-11 items-center gap-3 px-4">
+                    <h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>
+                    {meta ? (
+                      <span className="truncate font-mono text-2xs text-muted-foreground tabular-nums">
+                        {meta}
+                      </span>
+                    ) : null}
+                    <span className="ml-auto flex items-center gap-0.5">{actions}</span>
+                  </div>
+                )}
+                {toolbar ? <div className="px-4 pb-2.5">{toolbar}</div> : null}
+                {filterOpen ? (
+                  <div className="flex items-center gap-2 border-t border-border px-4 py-2">
+                    <Filter className="size-3.5 shrink-0 text-muted-foreground" />
+                    <input
+                      ref={filterRef}
+                      aria-label="Filter this list"
+                      value={filter}
+                      onChange={(event) => setFilter(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          setFilter("");
+                          setFilterOpen(false);
+                          focusActivePane();
+                        } else if (
+                          event.key === "Enter" &&
+                          (event.metaKey || event.ctrlKey) &&
+                          filter.trim()
+                        ) {
+                          event.preventDefault();
+                          void navigate({ to: "/search", search: { q: filter.trim() } });
+                        } else if (event.key === "Enter" || event.key === "ArrowDown") {
+                          event.preventDefault();
+                          setActivePane("mailbox");
+                          focusActivePane();
+                        }
+                      }}
+                      placeholder="Filter loaded conversations by sender, subject or snippet"
+                      className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+                    />
+                    <span className="shrink-0 font-mono text-2xs text-muted-foreground tabular-nums">
+                      {filter ? `${shownCount} of ${loadedCount}` : ""}
                     </span>
-                  ) : null}
-                  <span className="ml-auto flex items-center gap-0.5">{actions}</span>
-                </div>
-              )}
-              {toolbar ? <div className="px-4 pb-2.5">{toolbar}</div> : null}
-              {filterOpen ? (
-                <div className="flex items-center gap-2 border-t border-border px-4 py-2">
-                  <Filter className="size-3.5 shrink-0 text-muted-foreground" />
-                  <input
-                    ref={filterRef}
-                    aria-label="Filter this list"
-                    value={filter}
-                    onChange={(event) => setFilter(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") {
-                        event.preventDefault();
-                        setFilter("");
-                        setFilterOpen(false);
-                        focusActivePane();
-                      } else if (
-                        event.key === "Enter" &&
-                        (event.metaKey || event.ctrlKey) &&
-                        filter.trim()
-                      ) {
-                        event.preventDefault();
-                        void navigate({ to: "/search", search: { q: filter.trim() } });
-                      } else if (event.key === "Enter" || event.key === "ArrowDown") {
-                        event.preventDefault();
-                        setActivePane("mailbox");
-                        focusActivePane();
-                      }
-                    }}
-                    placeholder="Filter loaded conversations by sender, subject or snippet"
-                    className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
-                  />
-                  <span className="shrink-0 font-mono text-2xs text-muted-foreground tabular-nums">
-                    {filter ? `${shownCount} of ${loadedCount}` : ""}
-                  </span>
-                  {filter.trim() ? (
-                    <button
-                      type="button"
-                      onClick={() => void navigate({ to: "/search", search: { q: filter.trim() } })}
-                      className="shrink-0 text-[12px] text-primary hover:underline"
-                      title="Search all mail (⌘Enter)"
-                    >
-                      Search all mail
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </ModeFrame>
-          </header>
-          {phase !== "ready" ? (
-            <ListSkeleton quiet={phase === "quiet"} />
-          ) : status.isError && groups.length === 0 ? (
-            <Centered
-              icon={<RefreshCw className="size-6" />}
-              title={`Couldn't load ${title.toLowerCase()}`}
-              body={status.error?.message}
-              action={
-                <Button size="sm" onClick={() => void status.refetch()}>
-                  Try again
-                </Button>
-              }
-            />
-          ) : (
-            <MailboxList
-              {...listProps}
-              groups={visibleGroups}
-              scopeKey={scopeKey}
-              onFilter={openFilter}
-              label={title}
-              activeThreadId={threadId}
-              previewOnFocus={threadOpen && !hideList}
-              onOpenRow={onOpenRow}
-              onCloseThread={threadOpen ? close : undefined}
-              empty={
-                filter.trim() && loadedCount > 0 ? (
-                  <Centered
-                    icon={<Filter className="size-6" />}
-                    title="Nothing loaded matches"
-                    body={`No conversation in this list mentions “${filter.trim()}”.`}
-                    action={
-                      <Button
-                        size="sm"
-                        variant="outline"
+                    {filter.trim() ? (
+                      <button
+                        type="button"
                         onClick={() =>
                           void navigate({ to: "/search", search: { q: filter.trim() } })
                         }
+                        className="shrink-0 text-[12px] text-primary hover:underline"
+                        title="Search all mail (⌘Enter)"
                       >
                         Search all mail
-                      </Button>
-                    }
-                  />
-                ) : (
-                  empty
-                )
-              }
-            />
-          )}
-          {footer}
-        </section>
-        {threadOpen ? <Outlet /> : null}
-      </div>
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </ModeFrame>
+            </header>
+            {phase !== "ready" ? (
+              <ListSkeleton quiet={phase === "quiet"} />
+            ) : status.isError && groups.length === 0 ? (
+              <Centered
+                icon={<RefreshCw className="size-6" />}
+                title={`Couldn't load ${title.toLowerCase()}`}
+                body={status.error?.message}
+                action={
+                  <Button size="sm" onClick={() => void status.refetch()}>
+                    Try again
+                  </Button>
+                }
+              />
+            ) : (
+              <MailboxList
+                {...listProps}
+                groups={visibleGroups}
+                scopeKey={scopeKey}
+                onFilter={openFilter}
+                label={title}
+                activeThreadId={threadId}
+                previewOnFocus={threadOpen && !hideList}
+                onOpenRow={onOpenRow}
+                onCloseThread={threadOpen ? close : undefined}
+                empty={
+                  filter.trim() && loadedCount > 0 ? (
+                    <Centered
+                      icon={<Filter className="size-6" />}
+                      title="Nothing loaded matches"
+                      body={`No conversation in this list mentions “${filter.trim()}”.`}
+                      action={
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            void navigate({ to: "/search", search: { q: filter.trim() } })
+                          }
+                        >
+                          Search all mail
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    empty
+                  )
+                }
+              />
+            )}
+            {footer}
+          </section>
+        </ResizablePanel>
+        {split ? (
+          <ResizableHandle aria-label={`Resize ${title} list`} {...pane.handleProps} />
+        ) : null}
+        {threadOpen ? (
+          <ResizablePanel
+            id="reader-pane"
+            {...pane.otherPanelProps}
+            className="flex min-h-0 min-w-0"
+          >
+            <Outlet />
+          </ResizablePanel>
+        ) : null}
+      </ResizablePanelGroup>
     </ReaderNavContext.Provider>
   );
 }

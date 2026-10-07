@@ -8,7 +8,6 @@
  * draft is never hidden.
  */
 
-import { useRouterState } from "@tanstack/react-router";
 import { Maximize2, Minimize2, PictureInPicture2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -32,7 +31,6 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   const surface = useComposeUi((s) => s.surface);
   const setSurface = useComposeUi((s) => s.setSurface);
   const closeCompose = useComposeUi((s) => s.closeCompose);
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [slot, setSlot] = useState<HTMLElement | null>(null);
 
   // A send finishes after its undo window, possibly once the user has moved
@@ -71,15 +69,30 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     };
   }, [intent.key, sessionReady]);
 
-  // The inline slot lives at the bottom of the thread reader; re-resolve
-  // it whenever the route changes.
+  // The inline slot lives at the bottom of the thread reader. Re-resolve it
+  // whenever the DOM changes, not only the route: a pane can unmount and
+  // remount on the same path (Messages on a phone goes back to the people
+  // and reopens the person), and a portal into a detached slot would hide
+  // the draft for good. Without a slot the draft falls back to the overlay.
   useEffect(() => {
     if (surface !== "inline") {
       setSlot(null);
       return;
     }
-    setSlot(document.getElementById("inline-composer-slot"));
-  }, [surface, pathname]);
+    // Typing in the editor mutates the DOM too: only a new slot re-renders.
+    let current: HTMLElement | null | undefined;
+    const resolve = () => {
+      const next = document.getElementById("inline-composer-slot");
+      if (next !== current) {
+        current = next;
+        setSlot(next);
+      }
+    };
+    resolve();
+    const observer = new MutationObserver(resolve);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [surface]);
 
   // Bring the inline composer into view once it has content: the slot is
   // hidden while empty, so scrolling to it any earlier does nothing.

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
@@ -15,6 +16,7 @@ import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
+import { useSplitPane } from "@/hooks/useSplitPane";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
@@ -44,6 +46,8 @@ import { activeChip, groupByMonth, KIND_CHIPS, stepYear } from "./ledger";
 import { AnswerCard, LedgerRow, RecordCard } from "./RecordParts";
 
 const PAGE = 200;
+/** The record card beside the ledger. */
+const CARD_PANE_SIZE = { defaultSize: "38%", minSize: "20rem", maxSize: "36rem" };
 
 /**
  * Archive: a filing cabinet you ask questions of. The answer box is the
@@ -216,6 +220,8 @@ function Ledger({
   const current = onAnswer && answerRecord ? answerRecord : rowRecord;
   const full = useRecord(singlePane && !cardOpen ? null : (current?.id ?? null));
   const cardRecord = full.data && full.data.id === current?.id ? full.data : current;
+  const showSideCard = !singlePane && !params.threadId && cardRecord;
+  const pane = useSplitPane("archive-card", CARD_PANE_SIZE, { active: Boolean(showSideCard) });
 
   useEffect(() => {
     if (answer?.answer) setOnAnswer(true);
@@ -351,207 +357,223 @@ function Ledger({
     );
   }
 
-  const showSideCard = !singlePane && !params.threadId && cardRecord;
   return (
     <ModeFrame width="wide" className="flex min-h-0 flex-1">
-      <div ref={listRef} className="@container min-h-0 min-w-0 flex-1 overflow-y-auto pb-6">
-        {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
-        <form
-          role="search"
-          className="mx-5 mt-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (answer && !answer.answer && !answer.fallback?.answer) {
-              onSearchAll();
-              return;
-            }
-            inputRef.current?.blur();
-            setOnAnswer(true);
-          }}
+      <ResizablePanelGroup className="min-h-0 flex-1" {...pane.groupProps}>
+        <ResizablePanel
+          id="archive-ledger"
+          {...pane.otherPanelProps}
+          className="flex min-h-0 flex-col"
         >
-          <label htmlFor={inputId} className="sr-only">
-            Ask Archive
-          </label>
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[12px] text-muted-foreground">
-              /
-            </span>
-            <Input
-              id={inputId}
-              ref={inputRef}
-              value={query}
-              data-testid="archive-ask"
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  if (query) setQuery("");
-                  else event.currentTarget.blur();
+          <div ref={listRef} className="@container min-h-0 min-w-0 flex-1 overflow-y-auto pb-6">
+            {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
+            <form
+              role="search"
+              className="mx-5 mt-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (answer && !answer.answer && !answer.fallback?.answer) {
+                  onSearchAll();
+                  return;
                 }
+                inputRef.current?.blur();
+                setOnAnswer(true);
               }}
-              placeholder="What are you looking for?"
-              className="h-10 pl-7 text-[14px]"
-              autoComplete="off"
-            />
-          </div>
-        </form>
-        {answer ? (
-          <AnswerCard
-            answer={answer}
-            onCopy={(text) => void copyText(text, "answer")}
-            onOpenDocument={(record) => void openDocument(record)}
-            onOpenEmail={(record) => openEmail(record)}
-            onSelect={(record) => {
-              select(record);
-              if (singlePane) setCardOpen(true);
-            }}
-          />
-        ) : answerPending ? (
-          <p className="mx-5 mt-3 text-[12.5px] text-muted-foreground">Looking…</p>
-        ) : null}
+            >
+              <label htmlFor={inputId} className="sr-only">
+                Ask Archive
+              </label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[12px] text-muted-foreground">
+                  /
+                </span>
+                <Input
+                  id={inputId}
+                  ref={inputRef}
+                  value={query}
+                  data-testid="archive-ask"
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      if (query) setQuery("");
+                      else event.currentTarget.blur();
+                    }
+                  }}
+                  placeholder="What are you looking for?"
+                  className="h-10 pl-7 text-[14px]"
+                  autoComplete="off"
+                />
+              </div>
+            </form>
+            {answer ? (
+              <AnswerCard
+                answer={answer}
+                onCopy={(text) => void copyText(text, "answer")}
+                onOpenDocument={(record) => void openDocument(record)}
+                onOpenEmail={(record) => openEmail(record)}
+                onSelect={(record) => {
+                  select(record);
+                  if (singlePane) setCardOpen(true);
+                }}
+              />
+            ) : answerPending ? (
+              <p className="mx-5 mt-3 text-[12.5px] text-muted-foreground">Looking…</p>
+            ) : null}
 
-        {ledger.coming_up.length > 0 ? (
-          <section aria-label="Coming up" data-testid="coming-up" className="mx-5 mt-4">
-            <h2 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-              Coming up
-            </h2>
-            <ul className="mt-1 grid gap-0.5 text-[13px]">
-              {ledger.coming_up.map((moment) => (
-                <li key={`${moment.kind}-${moment.record_id}`}>
-                  <button
-                    type="button"
-                    className="min-h-8 text-left text-foreground hover:underline"
-                    onClick={() => {
-                      const target = records.find((record) => record.id === moment.record_id);
-                      if (target) {
-                        select(target);
-                        if (singlePane) setCardOpen(true);
-                      }
-                    }}
-                  >
-                    {moment.label}
-                  </button>
-                </li>
+            {ledger.coming_up.length > 0 ? (
+              <section aria-label="Coming up" data-testid="coming-up" className="mx-5 mt-4">
+                <h2 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+                  Coming up
+                </h2>
+                <ul className="mt-1 grid gap-0.5 text-[13px]">
+                  {ledger.coming_up.map((moment) => (
+                    <li key={`${moment.kind}-${moment.record_id}`}>
+                      <button
+                        type="button"
+                        className="min-h-8 text-left text-foreground hover:underline"
+                        onClick={() => {
+                          const target = records.find((record) => record.id === moment.record_id);
+                          if (target) {
+                            select(target);
+                            if (singlePane) setCardOpen(true);
+                          }
+                        }}
+                      >
+                        {moment.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            <div
+              className="mx-5 mt-4 flex flex-wrap items-center gap-1.5"
+              role="group"
+              aria-label="Kind"
+            >
+              {KIND_CHIPS.map((kindChip) => (
+                <button
+                  key={kindChip.id}
+                  type="button"
+                  aria-pressed={chip === kindChip.id}
+                  onClick={() => setFilter({ ...filter, kinds: kindChip.kinds })}
+                  className={cn(
+                    "min-h-8 rounded-full border px-3 text-[12.5px]",
+                    chip === kindChip.id
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                >
+                  {kindChip.label}
+                </button>
               ))}
-            </ul>
-          </section>
-        ) : null}
+              <button
+                type="button"
+                onClick={() => setFacetsOpen(true)}
+                className="ml-auto inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <SlidersHorizontal aria-hidden className="size-3.5" /> Filters
+                <KeyChip className="hidden h-4 px-1 md:inline-flex">g f</KeyChip>
+              </button>
+            </div>
+            <ActiveFilters filter={filter} setFilter={setFilter} ledger={ledger} />
 
-        <div
-          className="mx-5 mt-4 flex flex-wrap items-center gap-1.5"
-          role="group"
-          aria-label="Kind"
-        >
-          {KIND_CHIPS.map((kindChip) => (
-            <button
-              key={kindChip.id}
-              type="button"
-              aria-pressed={chip === kindChip.id}
-              onClick={() => setFilter({ ...filter, kinds: kindChip.kinds })}
-              className={cn(
-                "min-h-8 rounded-full border px-3 text-[12.5px]",
-                chip === kindChip.id
-                  ? "border-primary bg-primary/10 text-foreground"
-                  : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
-              )}
-            >
-              {kindChip.label}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setFacetsOpen(true)}
-            className="ml-auto inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <SlidersHorizontal aria-hidden className="size-3.5" /> Filters
-            <KeyChip className="hidden h-4 px-1 md:inline-flex">g f</KeyChip>
-          </button>
-        </div>
-        <ActiveFilters filter={filter} setFilter={setFilter} ledger={ledger} />
+            {ledger.issuer ? (
+              <section
+                aria-label={`${ledger.issuer.name}'s records`}
+                data-testid="issuer-page"
+                className="mx-5 mt-3"
+              >
+                <h2 className="text-[15px] font-semibold">{ledger.issuer.name}</h2>
+                <p className="text-[12.5px] text-muted-foreground">
+                  {plural(ledger.issuer.count, "record")}
+                  {ledger.issuer.totals.length > 0
+                    ? ` · ${ledger.issuer.totals.map((total) => total.display).join(" + ")}`
+                    : ""}
+                </p>
+              </section>
+            ) : null}
 
-        {ledger.issuer ? (
-          <section
-            aria-label={`${ledger.issuer.name}'s records`}
-            data-testid="issuer-page"
-            className="mx-5 mt-3"
-          >
-            <h2 className="text-[15px] font-semibold">{ledger.issuer.name}</h2>
-            <p className="text-[12.5px] text-muted-foreground">
-              {plural(ledger.issuer.count, "record")}
-              {ledger.issuer.totals.length > 0
-                ? ` · ${ledger.issuer.totals.map((total) => total.display).join(" + ")}`
-                : ""}
-            </p>
-          </section>
-        ) : null}
+            {ledger.empty_state && ledger.matching === 0 ? (
+              <p
+                data-testid="records-empty"
+                className="mx-5 mt-4 text-[13px] text-muted-foreground"
+              >
+                {ledger.empty_state}
+              </p>
+            ) : null}
 
-        {ledger.empty_state && ledger.matching === 0 ? (
-          <p data-testid="records-empty" className="mx-5 mt-4 text-[13px] text-muted-foreground">
-            {ledger.empty_state}
-          </p>
-        ) : null}
-
-        <div className="mt-2">
-          {groups.map((group, at) => (
-            <section
-              key={group.month?.month ?? `undated-${at}`}
-              aria-label={group.month?.label ?? "Undated"}
-              data-testid="record-month"
-            >
-              <h2 className="mx-5 mb-1 mt-4 flex items-baseline justify-between gap-3 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-                <span>{group.month?.label ?? "Undated"}</span>
-                {group.month ? (
-                  <span
-                    data-testid="month-totals"
-                    className="tabular-nums normal-case tracking-normal"
-                  >
-                    {group.month.count} ·{" "}
-                    {group.month.totals.length > 0
-                      ? group.month.totals.map((total) => total.display).join(" + ")
-                      : "no amounts"}
-                  </span>
-                ) : null}
-              </h2>
-              <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
-                {group.records.map((record) => {
-                  const rowIndex = position.get(record.id) ?? 0;
-                  return (
-                    <LedgerRow
-                      key={record.id}
-                      record={record}
-                      index={rowIndex}
-                      focused={!onAnswer && rowIndex === index}
-                      onSelect={singlePane ? openCard : select}
-                      onOpen={(target) => openEmail(target)}
-                    />
-                  );
-                })}
-              </ul>
-            </section>
-          ))}
-        </div>
-        {ledger.matching > records.length ? (
-          <div className="mx-5 mt-4">
-            <Button variant="outline" size="sm" onClick={onMore}>
-              Show more ({records.length} of {ledger.matching})
-            </Button>
+            <div className="mt-2">
+              {groups.map((group, at) => (
+                <section
+                  key={group.month?.month ?? `undated-${at}`}
+                  aria-label={group.month?.label ?? "Undated"}
+                  data-testid="record-month"
+                >
+                  <h2 className="mx-5 mb-1 mt-4 flex items-baseline justify-between gap-3 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+                    <span>{group.month?.label ?? "Undated"}</span>
+                    {group.month ? (
+                      <span
+                        data-testid="month-totals"
+                        className="tabular-nums normal-case tracking-normal"
+                      >
+                        {group.month.count} ·{" "}
+                        {group.month.totals.length > 0
+                          ? group.month.totals.map((total) => total.display).join(" + ")
+                          : "no amounts"}
+                      </span>
+                    ) : null}
+                  </h2>
+                  <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
+                    {group.records.map((record) => {
+                      const rowIndex = position.get(record.id) ?? 0;
+                      return (
+                        <LedgerRow
+                          key={record.id}
+                          record={record}
+                          index={rowIndex}
+                          focused={!onAnswer && rowIndex === index}
+                          onSelect={singlePane ? openCard : select}
+                          onOpen={(target) => openEmail(target)}
+                        />
+                      );
+                    })}
+                  </ul>
+                </section>
+              ))}
+            </div>
+            {ledger.matching > records.length ? (
+              <div className="mx-5 mt-4">
+                <Button variant="outline" size="sm" onClick={onMore}>
+                  Show more ({records.length} of {ledger.matching})
+                </Button>
+              </div>
+            ) : null}
+            {guide ? <KeyLine guide={guide} /> : null}
           </div>
+        </ResizablePanel>
+        {showSideCard && cardRecord ? (
+          <>
+            <ResizableHandle aria-label="Resize record card" {...pane.handleProps} />
+            <ResizablePanel
+              id="archive-card"
+              {...pane.sidePanelProps}
+              className="flex min-h-0 flex-col"
+            >
+              <aside aria-label="Record" className="min-h-0 flex-1 overflow-y-auto">
+                <RecordCard
+                  record={cardRecord}
+                  onCopy={(field) => void copyText(field.copy, field.label.toLowerCase())}
+                  onOpenDocument={() => void openDocument(cardRecord)}
+                  onOpenEmail={() => openEmail(cardRecord)}
+                  onIssuer={() => issuerPage(cardRecord)}
+                />
+              </aside>
+            </ResizablePanel>
+          </>
         ) : null}
-        {guide ? <KeyLine guide={guide} /> : null}
-      </div>
-      {showSideCard && cardRecord ? (
-        <aside
-          aria-label="Record"
-          className="hidden min-h-0 w-[clamp(320px,38%,440px)] shrink-0 overflow-y-auto border-l border-border lg:block"
-        >
-          <RecordCard
-            record={cardRecord}
-            onCopy={(field) => void copyText(field.copy, field.label.toLowerCase())}
-            onOpenDocument={() => void openDocument(cardRecord)}
-            onOpenEmail={() => openEmail(cardRecord)}
-            onIssuer={() => issuerPage(cardRecord)}
-          />
-        </aside>
-      ) : null}
+      </ResizablePanelGroup>
       {facetsOpen ? (
         <FacetsPanel
           ledger={ledger}

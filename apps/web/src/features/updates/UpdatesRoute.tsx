@@ -8,6 +8,7 @@ import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import { useModeGuide, useRetireCard, type ModeGuide } from "@/features/modes/api";
 import { ModeCard } from "@/features/modes/ModeCard";
+import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
@@ -57,7 +58,7 @@ function Briefing({ status }: { status: ReturnType<typeof useDigest> }) {
   const data = status.data;
   return (
     <>
-      <header className="shrink-0 border-b border-border px-5 pb-3 pt-4">
+      <ModeHeader>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-[17px] font-semibold tracking-tight text-foreground">Updates</h1>
           <p data-testid="mode-header" className="min-w-0 text-[12.5px] text-muted-foreground">
@@ -66,7 +67,7 @@ function Briefing({ status }: { status: ReturnType<typeof useDigest> }) {
               "Notifications gathered twice a day. Read the digest, then let go."}
           </p>
         </div>
-      </header>
+      </ModeHeader>
       {phase !== "ready" ? (
         <ListSkeleton quiet={phase === "quiet"} />
       ) : status.isError ? (
@@ -214,126 +215,131 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
 
   return (
     <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
-      {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
-      <div className="mx-5 mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <p data-testid="updates-cut" className="min-w-0 text-[13px] text-foreground/90">
-          {cutLine(digest)}
-        </p>
-        {digest.let_go_line ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="ml-auto hidden md:inline-flex"
-            data-testid="updates-let-go-all"
-            onClick={() => {
-              setLetGoLineOf(null);
-              setLetGoOpen(true);
-            }}
-          >
-            Let go of all <KeyChip className="h-4 px-1">A</KeyChip>
-          </Button>
-        ) : null}
-      </div>
-      {digest.headline ? (
-        <p data-testid="updates-headline" className="mx-5 mt-1 text-balance text-[15px]">
-          {digest.headline}
-        </p>
-      ) : null}
-
-      {!hasLines ? (
-        digest.empty_state ? (
-          <div className="mx-5 mt-6 flex items-start gap-3 text-[13px] text-muted-foreground">
-            <Bell aria-hidden className="mt-0.5 size-4 shrink-0" />
-            <p data-testid="updates-empty">
-              {digest.empty_state}
-              {digest.source_total > 0
-                ? ` ${plural(digest.source_total, "source")}, ${digest.muted_total} muted.`
-                : null}
-            </p>
-          </div>
-        ) : null
-      ) : (
-        <div className="max-w-[64rem]">
-          {section("needs_a_look")}
-          {section("changed")}
-          {section("routine")}
-          {quieter.sources > 0 ? (
-            <button
-              type="button"
-              data-testid="updates-quieter"
-              aria-expanded={routineOpen}
-              onClick={() => setRoutineOpen(true)}
-              className="mx-5 mt-1 inline-flex items-center gap-2 text-[12.5px] text-muted-foreground hover:text-foreground"
+      <ModeFrame>
+        {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
+        <div className="mx-5 mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <p data-testid="updates-cut" className="min-w-0 text-[13px] text-foreground/90">
+            {cutLine(digest)}
+          </p>
+          {digest.let_go_line ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto hidden md:inline-flex"
+              data-testid="updates-let-go-all"
+              onClick={() => {
+                setLetGoLineOf(null);
+                setLetGoOpen(true);
+              }}
             >
-              + {plural(quieter.sources, "quieter source")} ({quieter.messages})
-              <ChevronRight aria-hidden className="size-3" />
-            </button>
+              Let go of all <KeyChip className="h-4 px-1">A</KeyChip>
+            </Button>
           ) : null}
         </div>
-      )}
-
-      {digest.hidden_line ? (
-        <p data-testid="updates-hidden" className="mx-5 mt-4 text-[12.5px] text-muted-foreground">
-          {digest.hidden_line}
-        </p>
-      ) : null}
-      {digest.since.message_count > 0 ? (
-        <section
-          aria-label={digest.since.label}
-          data-testid="updates-since"
-          className="mx-5 mt-5 border-t border-dashed border-border pt-2 text-[12.5px] text-muted-foreground"
-        >
-          <p className="flex flex-wrap items-baseline justify-between gap-2">
-            <span>{digest.since.label}</span>
-            <span className="tabular-nums">{digest.since.message_count} so far</span>
+        {digest.headline ? (
+          <p data-testid="updates-headline" className="mx-5 mt-1 text-balance text-[15px]">
+            {digest.headline}
           </p>
-          <p className="mt-0.5 text-foreground/80">
-            {digest.since.lines
-              .map((line) =>
-                line.count > 1 ? `${line.source_name} (${line.count})` : line.source_name,
-              )
-              .join(", ")}
-          </p>
-        </section>
-      ) : null}
-      {digest.expired_line ? (
-        <p data-testid="updates-expired" className="mx-5 mt-4 text-[12.5px] text-muted-foreground">
-          {digest.expired_line}
-        </p>
-      ) : null}
-      {guide ? <KeyLine guide={guide} /> : null}
+        ) : null}
 
-      {digest.let_go_line ? (
-        <div className="sticky bottom-0 mt-6 bg-background/95 px-4 pb-3 pt-2 md:hidden">
-          <Button
-            className="w-full"
-            data-testid="updates-let-go-all-mobile"
-            onClick={() => {
-              setLetGoLineOf(null);
-              setLetGoOpen(true);
-            }}
+        {!hasLines ? (
+          digest.empty_state ? (
+            <div className="mx-5 mt-6 flex items-start gap-3 text-[13px] text-muted-foreground">
+              <Bell aria-hidden className="mt-0.5 size-4 shrink-0" />
+              <p data-testid="updates-empty">
+                {digest.empty_state}
+                {digest.source_total > 0
+                  ? ` ${plural(digest.source_total, "source")}, ${digest.muted_total} muted.`
+                  : null}
+              </p>
+            </div>
+          ) : null
+        ) : (
+          <div>
+            {section("needs_a_look")}
+            {section("changed")}
+            {section("routine")}
+            {quieter.sources > 0 ? (
+              <button
+                type="button"
+                data-testid="updates-quieter"
+                aria-expanded={routineOpen}
+                onClick={() => setRoutineOpen(true)}
+                className="mx-5 mt-1 inline-flex items-center gap-2 text-[12.5px] text-muted-foreground hover:text-foreground"
+              >
+                + {plural(quieter.sources, "quieter source")} ({quieter.messages})
+                <ChevronRight aria-hidden className="size-3" />
+              </button>
+            ) : null}
+          </div>
+        )}
+
+        {digest.hidden_line ? (
+          <p data-testid="updates-hidden" className="mx-5 mt-4 text-[12.5px] text-muted-foreground">
+            {digest.hidden_line}
+          </p>
+        ) : null}
+        {digest.since.message_count > 0 ? (
+          <section
+            aria-label={digest.since.label}
+            data-testid="updates-since"
+            className="mx-5 mt-5 border-t border-dashed border-border pt-2 text-[12.5px] text-muted-foreground"
           >
-            Let go of all {digest.message_count}
-          </Button>
-        </div>
-      ) : null}
+            <p className="flex flex-wrap items-baseline justify-between gap-2">
+              <span>{digest.since.label}</span>
+              <span className="tabular-nums">{digest.since.message_count} so far</span>
+            </p>
+            <p className="mt-0.5 text-foreground/80">
+              {digest.since.lines
+                .map((line) =>
+                  line.count > 1 ? `${line.source_name} (${line.count})` : line.source_name,
+                )
+                .join(", ")}
+            </p>
+          </section>
+        ) : null}
+        {digest.expired_line ? (
+          <p
+            data-testid="updates-expired"
+            className="mx-5 mt-4 text-[12.5px] text-muted-foreground"
+          >
+            {digest.expired_line}
+          </p>
+        ) : null}
+        {guide ? <KeyLine guide={guide} /> : null}
 
-      <LetGoAllDialog
-        open={letGoOpen}
-        onOpenChange={(open) => {
-          setLetGoOpen(open);
-          if (!open) setLetGoLineOf(null);
-        }}
-        account={account}
-        cut={digest.cut.at}
-        source={letGoLineOf}
-        onConfirm={commitLetGoAll}
-      />
-      <TuneDialog
-        line={tuning}
-        onOpenChange={(open) => !open && setTuning(null)}
-        onChoose={(line, setting) => void tuneSource(line, setting)}
-      />
+        {digest.let_go_line ? (
+          <div className="sticky bottom-0 mt-6 bg-background/95 px-4 pb-3 pt-2 md:hidden">
+            <Button
+              className="w-full"
+              data-testid="updates-let-go-all-mobile"
+              onClick={() => {
+                setLetGoLineOf(null);
+                setLetGoOpen(true);
+              }}
+            >
+              Let go of all {digest.message_count}
+            </Button>
+          </div>
+        ) : null}
+
+        <LetGoAllDialog
+          open={letGoOpen}
+          onOpenChange={(open) => {
+            setLetGoOpen(open);
+            if (!open) setLetGoLineOf(null);
+          }}
+          account={account}
+          cut={digest.cut.at}
+          source={letGoLineOf}
+          onConfirm={commitLetGoAll}
+        />
+        <TuneDialog
+          line={tuning}
+          onOpenChange={(open) => !open && setTuning(null)}
+          onChoose={(line, setting) => void tuneSource(line, setting)}
+        />
+      </ModeFrame>
     </div>
   );
 }

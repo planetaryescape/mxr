@@ -64,13 +64,40 @@ pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
         return;
     }
     match pass::scan_messages(&state.store, &pass_config(Utc::now()), message_ids).await {
-        Ok(summary) if summary.filed + summary.updated > 0 => tracing::info!(
-            filed = summary.filed,
-            updated = summary.updated,
-            "post-sync records scan"
-        ),
+        Ok(summary) if summary.filed + summary.updated > 0 => {
+            tracing::info!(
+                filed = summary.filed,
+                updated = summary.updated,
+                "post-sync records scan"
+            );
+            reindex_record_sources(state, message_ids).await;
+        }
         Ok(_) => {}
         Err(error) => tracing::warn!(%error, "records scan failed"),
+    }
+}
+
+/// The semantic worker may have chunked these messages before they were
+/// filed; ingesting them again adds Archive's field chunk. Unchanged chunks
+/// are not re-embedded.
+async fn reindex_record_sources(state: &AppState, message_ids: &[MessageId]) {
+    let filed: Vec<MessageId> = match state.store.archive_record_ids_for_messages(message_ids).await {
+        Ok(rows) => {
+            let mut ids: Vec<MessageId> = rows.into_iter().map(|(id, _)| id).collect();
+            ids.sort_by_key(MessageId::as_str);
+            ids.dedup();
+            ids
+        }
+        Err(error) => {
+            tracing::warn!(%error, "looking up filed messages for reindex failed");
+            return;
+        }
+    };
+    if filed.is_empty() {
+        return;
+    }
+    if let Err(error) = state.semantic.enqueue_ingest_messages(&filed).await {
+        tracing::warn!(%error, "semantic reindex of filed records failed to enqueue");
     }
 }
 

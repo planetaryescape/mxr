@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { targetFromRows } from "@/features/mail-actions/target";
+import { toneFor } from "@/features/mail-actions/verbFeedback";
 import type { MessageRowView } from "@/features/mailbox/types";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
@@ -47,7 +48,9 @@ export async function togglePin(message: PlaceMessage): Promise<void> {
   patchPinned(message.message_id, pinned);
   try {
     await pinMessages([message.message_id], pinned);
-    toast.success(pinned ? "Pinned: a sweep leaves it here" : "Unpinned", { duration: 2500 });
+    toast[toneFor("pin")](pinned ? "Pinned: a sweep leaves it here" : "Unpinned", {
+      duration: 2500,
+    });
   } catch (caught) {
     patchPinned(message.message_id, !pinned);
     toast.error(pinned ? "Couldn't pin" : "Couldn't unpin", {

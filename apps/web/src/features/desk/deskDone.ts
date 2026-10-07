@@ -98,6 +98,7 @@ export async function markDeskDone(
       const past = VERB_FEEDBACK["desk-done"].pastTense;
       claim.settle(
         offerUndo(
+          "desk-done",
           done === 1 ? past : `${past} with ${plural(done, "conversation")}`,
           `desk-done-${mutationId ?? threadIds.join(",")}`,
           reverse,

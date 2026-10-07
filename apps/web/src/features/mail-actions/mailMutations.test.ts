@@ -1,8 +1,10 @@
 import { InfiniteQueryObserver, QueryClient, type InfiniteData } from "@tanstack/react-query";
+import { isValidElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { mergeMailboxPages } from "@/features/mailbox/useMailboxQuery";
 import type { MailboxResponse, MessageRowView, MutationResponse } from "@/features/mailbox/types";
+import { UndoLabel } from "@/components/ui/sonner";
 import { setActiveQueryClient } from "@/lib/queryClient";
 import { useUndo } from "@/state/undoStore";
 
@@ -35,15 +37,21 @@ vi.mock("@/features/mailbox/api", async (importOriginal) => ({
 
 interface ToastOptions {
   description?: string;
-  action?: { label: string; onClick: () => void };
+  action?: { label: ReactNode; onClick: () => void };
 }
 const toast = vi.hoisted(() => ({
   success: vi.fn<(message: string, options?: ToastOptions) => void>(),
   error: vi.fn<(message: string, options?: ToastOptions) => void>(),
-  info: vi.fn<(message: string) => void>(),
+  warning: vi.fn<(message: string, options?: ToastOptions) => void>(),
+  info: vi.fn<(message: string, options?: ToastOptions) => void>(),
   dismiss: vi.fn<(id?: string | number) => void>(),
 }));
 vi.mock("sonner", () => ({ toast }));
+
+/** The Undo button's label: the word plus its `u` key hint. */
+function isUndoLabel(label: ReactNode): boolean {
+  return isValidElement(label) && label.type === UndoLabel;
+}
 
 const daemon = vi.hoisted(() => ({ down: false, refused: [] as string[] }));
 vi.mock("@/lib/daemonAvailability", () => ({
@@ -165,9 +173,11 @@ describe("performMailAction", () => {
 
     await vi.waitFor(() => expect(refetch).toHaveBeenCalled());
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const [message, options] = toast.success.mock.calls[0]!;
+    // Archive is a neutral change with an undo: the info (accent) toast.
+    expect(toast.success).not.toHaveBeenCalled();
+    const [message, options] = toast.info.mock.calls[0]!;
     expect(message).toBe("Archived 2 messages");
-    expect(options?.action?.label).toBe("Undo");
+    expect(isUndoLabel(options?.action?.label)).toBe(true);
     expect(useUndo.getState().lastMutationId).toBe("mut-1");
     // The old cache still has row a; the op keeps it hidden meanwhile.
     expect(usePendingMailOps.getState().ops).toHaveLength(1);
@@ -234,7 +244,9 @@ describe("performMailAction", () => {
 
     expect(outcome.ok).toBe(false);
     expect(toast.success).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith(
+    // Part done is a warning, not an error.
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith(
       "Archived 2 of 3 messages; the rest failed",
       expect.objectContaining({
         description: "Only 2 of 3 messages changed. Work: rate limited",
@@ -271,12 +283,12 @@ describe("performMailAction", () => {
     const outcome = await performMailAction("archive", ["a-1", "a-2", "b-1"]);
 
     expect(outcome.ok).toBe(false);
-    const [title, options] = toast.error.mock.calls[0]!;
+    const [title, options] = toast.warning.mock.calls[0]!;
     expect(title).toBe("Archived 1 of 3 messages; the rest failed");
     expect(options?.description).toBe(
       "Only 1 of 3 messages changed. Work: rate limited. Press u to undo what changed.",
     );
-    expect(options?.action?.label).toBe("Undo");
+    expect(isUndoLabel(options?.action?.label)).toBe(true);
 
     await expect(useUndo.getState().lastUndo?.()).resolves.toBe(true);
     expect(api.undoMutation).toHaveBeenCalledWith("mut-part");
@@ -354,7 +366,7 @@ describe("undo", () => {
     qc.setQueryData(SEARCH_KEY, { groups: [] });
     expect(qc.getQueryState(SEARCH_KEY)?.isInvalidated).toBe(false);
 
-    const [, options] = toast.success.mock.calls[0]!;
+    const [, options] = toast.info.mock.calls[0]!;
     options?.action?.onClick();
 
     await vi.waitFor(() => expect(toast.success).toHaveBeenCalledWith("Undone"));

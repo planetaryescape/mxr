@@ -200,6 +200,19 @@ impl App {
         }
     }
 
+    /// Messages' done here names what it did and where it went next: its
+    /// note, kept under this mutation, goes around the daemon's copy.
+    /// Any other mutation's completion is left as it is.
+    pub fn with_done_note(&mut self, id: MutationId, effect: MutationEffect) -> MutationEffect {
+        let note = self.mailbox.messages_page.done_notes.remove(&id);
+        match (effect, note) {
+            (MutationEffect::ModeDone(msg), Some(note)) if !msg.is_empty() => {
+                MutationEffect::ModeDone(note.line(&msg))
+            }
+            (effect, _) => effect,
+        }
+    }
+
     /// Apply the completion of a mutation to UI state.
     ///
     /// Called from the main event loop after the daemon's `MutationResult`

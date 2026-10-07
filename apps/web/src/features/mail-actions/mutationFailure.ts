@@ -3,7 +3,9 @@
  * it with a re-authorize shortcut when the failure looks like expired auth.
  */
 
+import { createElement } from "react";
 import { toast } from "sonner";
+import { UndoLabel } from "@/components/ui/sonner";
 
 import { requestAccountReauth } from "@/features/accounts/reauthRequest";
 import type { AccountMutationResult, MutationResponse } from "@/features/mailbox/types";
@@ -76,17 +78,18 @@ export function announceFailure(
   const result = failedResponse(error)?.result;
   const done = verb(action, payload);
   // "Archived 2 of 3 messages; the rest failed", or "Archived failed".
-  const title =
-    result && result.succeeded > 0
-      ? `${done} ${result.succeeded} of ${plural(result.requested, "message")}; the rest failed`
-      : `${done} failed`;
-  toast.error(title, {
+  const partial = Boolean(result && result.succeeded > 0);
+  const title = partial
+    ? `${done} ${result!.succeeded} of ${plural(result!.requested, "message")}; the rest failed`
+    : `${done} failed`;
+  // Part done is a warning (amber); nothing done is an error (red).
+  toast[partial ? "warning" : "error"](title, {
     description: undo
       ? `${error.message.replace(/\.?$/, ".")} Press u to undo what changed.`
       : error.message,
     duration: undo ? 60_000 : undefined,
     action: undo
-      ? { label: "Undo", onClick: () => void undo() }
+      ? { label: createElement(UndoLabel), onClick: () => void undo() }
       : account
         ? {
             label: `Re-authorize ${account.account_name}`,

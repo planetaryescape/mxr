@@ -105,6 +105,7 @@ async function withUndo(
     if (sound) playSound(sound);
     claim.settle(
       offerUndo(
+        verb,
         did ? options.message(change) : change.summary,
         `${verb}-${change.changed.map((todo) => todo.id).join(",")}`,
         reverse,

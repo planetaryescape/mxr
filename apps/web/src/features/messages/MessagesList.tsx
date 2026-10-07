@@ -1,12 +1,13 @@
 import { ChevronDown, ChevronRight, Users } from "lucide-react";
 
+import { ArrivalGlow } from "@/components/ArrivalGlow";
 import { AlsoInLine } from "@/features/modes/AlsoInLine";
 import type { ThreadModes } from "@/features/modes/membership";
 import { NewSenderQuestion } from "@/features/modes/NewSenderQuestion";
 import { cn } from "@/lib/utils";
 
 import type { MessagesData, MessagesRow } from "./api";
-import { initials, rowTime } from "./messagesView";
+import { initials, rowTime, type Arrival } from "./messagesView";
 
 /**
  * The people, in the daemon's bands: Your turn (closest first, then most
@@ -21,6 +22,8 @@ export function MessagesList({
   onToggleQuiet,
   onSelect,
   memberships,
+  hidden,
+  arrival,
 }: {
   data: MessagesData;
   selectedId: string | null;
@@ -29,6 +32,10 @@ export function MessagesList({
   onSelect: (id: string) => void;
   /** Which modes hold each row's first topic, for "Also in" and a new sender's question. */
   memberships?: ReadonlyMap<string, ThreadModes>;
+  /** Threads whose done is on its way: no longer counted on their row. */
+  hidden: ReadonlySet<string>;
+  /** The row a verb just moved to, marked once. */
+  arrival: Arrival | null;
 }) {
   const modesOf = (row: MessagesRow) => {
     const thread = row.topics[0]?.thread_id;
@@ -45,6 +52,8 @@ export function MessagesList({
               modes={modesOf(row)}
               selected={row.id === selectedId}
               onSelect={onSelect}
+              hidden={hidden}
+              arrival={arrival?.person === row.id ? arrival.key : null}
             />
           ))}
         </Band>
@@ -94,6 +103,8 @@ export function MessagesList({
               modes={modesOf(row)}
               selected={row.id === selectedId}
               onSelect={onSelect}
+              hidden={hidden}
+              arrival={arrival?.person === row.id ? arrival.key : null}
             />
           ))}
           {data.recent_total > data.recent.length ? (
@@ -127,6 +138,8 @@ export function MessagesList({
                   modes={modesOf(row)}
                   selected={row.id === selectedId}
                   onSelect={onSelect}
+                  hidden={hidden}
+                  arrival={arrival?.person === row.id ? arrival.key : null}
                 />
               ))}
             </ul>
@@ -177,13 +190,21 @@ function PersonRow({
   modes,
   selected,
   onSelect,
+  hidden,
+  arrival,
 }: {
   row: MessagesRow;
   modes?: ThreadModes;
   selected: boolean;
   onSelect: (id: string) => void;
+  hidden: ReadonlySet<string>;
+  /** Set while this row is the one a verb just moved to. */
+  arrival: number | null;
 }) {
   const preview = row.preview;
+  const topicCount = row.topics.filter(
+    (topic) => topic.state !== "done" && !hidden.has(topic.thread_id),
+  ).length;
   const subject = row.kind === "group" ? row.topics[0]?.subject : undefined;
   return (
     <li>
@@ -196,10 +217,11 @@ function PersonRow({
         title={row.why}
         onClick={() => onSelect(row.id)}
         className={cn(
-          "flex w-full items-start gap-3 px-4 py-2 text-left",
+          "relative flex w-full items-start gap-3 px-4 py-2 text-left",
           selected ? "bg-accent" : "hover:bg-accent/60",
         )}
       >
+        {arrival !== null ? <ArrivalGlow key={arrival} /> : null}
         <Face title={row.title} group={row.kind === "group"} />
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
@@ -212,6 +234,14 @@ function PersonRow({
             >
               {row.title}
             </span>
+            {topicCount > 1 ? (
+              <span
+                data-testid="row-topic-count"
+                className="shrink-0 text-[12px] tabular-nums text-muted-foreground"
+              >
+                {topicCount} topics
+              </span>
+            ) : null}
             <span className="shrink-0 text-[12px] tabular-nums text-muted-foreground">
               {rowTime(row)}
             </span>

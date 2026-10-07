@@ -12,6 +12,7 @@ import { useModeGuide, useRetireCard, type ModeGuide } from "@/features/modes/ap
 import { useThreadModesMap } from "@/features/modes/membership";
 import { ModeCard } from "@/features/modes/ModeCard";
 import { markModeDone, NONE_HIDDEN, useModeDone } from "@/features/modes/modeDone";
+import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
 import { tickOff } from "@/features/todo/todoVerbs";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
@@ -97,6 +98,14 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
     items.findIndex((item) => item.key === cursorKey),
   );
   const current: NowItem | undefined = items[index];
+  // A row done here leaves: the cursor takes the next one.
+  const itemKeys = useMemo(() => items.map((item) => item.key), [items]);
+  useAdvanceOnRemoval({
+    ids: itemKeys,
+    selectedId: cursorKey,
+    onAdvance: (next) => setCursorKey(next),
+    onEmpty: () => setCursorKey(null),
+  });
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });

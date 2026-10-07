@@ -472,10 +472,14 @@ impl App {
     /// refetch on failure, settles it), keeping the cursor in range.
     pub(super) fn remove_desk_thread(&mut self, thread_id: &mxr_core::ThreadId) {
         self.mailbox.desk_page.remove_thread(thread_id);
-        self.mailbox.selected_index = self
-            .mailbox
-            .selected_index
-            .min(self.mailbox.desk_page.row_count().saturating_sub(1));
+        // The cursor is the desk's only on the desk: a done from Now or
+        // Messages clamping to the desk's rows sent their cursor to the top.
+        if self.mailbox.mailbox_view == MailboxView::Desk {
+            self.mailbox.selected_index = self
+                .mailbox
+                .selected_index
+                .min(self.mailbox.desk_page.row_count().saturating_sub(1));
+        }
     }
 
     /// Enter on a desk row: fetch the row's message by id and open it in

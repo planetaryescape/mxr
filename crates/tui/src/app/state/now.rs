@@ -80,6 +80,13 @@ impl NowPageState {
             && self.now.as_ref().is_some_and(|now| now.item_count > 0)
     }
 
+    /// Take a to-do with no email off Now before the daemon answers.
+    pub fn remove_todo(&mut self, todo_id: &str) {
+        if let Some(now) = self.now.as_mut() {
+            now.due_soon.todos.retain(|todo| todo.todo.id != todo_id);
+        }
+    }
+
     /// Take a thread off Now before the daemon answers.
     pub fn remove_thread(&mut self, thread_id: &ThreadId) {
         let Some(now) = self.now.as_mut() else {

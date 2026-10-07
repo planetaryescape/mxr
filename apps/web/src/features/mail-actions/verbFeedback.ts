@@ -39,6 +39,13 @@ export type OtherVerb =
 
 export type Verb = MailAction | OtherVerb;
 
+/**
+ * Toast colours by type (sonner's rich colours over the theme tokens):
+ * success for done, info for a neutral change you can undo (archive, move,
+ * a handoff), warning for a partial failure, error for a failure.
+ */
+export type ToastTone = "success" | "info" | "warning" | "error";
+
 export type UndoPath =
   /** The daemon's undo for this mutation id (`u`, `z`, or the toast). */
   | "daemon-mutation"
@@ -65,6 +72,8 @@ interface VerbParts {
   /** Past tense for the result toast: "Archived 3 messages". */
   pastTense: string;
   sound: SoundEvent | null;
+  /** The toast's colour: done is success, a change with undo is info. */
+  tone: ToastTone;
   /** When it asks before acting. */
   confirm?: string;
 }
@@ -86,6 +95,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: `row and bulk buttons, reader toolbar, ${SWIPE} (short right)`,
     optimistic: "The rows leave the list at once; the reader moves to the next conversation.",
     pastTense: "Archived",
+    tone: "info",
     sound: "archived",
     undo: "daemon-mutation",
     confirm: "More than 20 messages at once.",
@@ -95,6 +105,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "bulk bar",
     optimistic: "The rows leave the list at once.",
     pastTense: "Read and archived",
+    tone: "info",
     sound: "archived",
     undo: "daemon-mutation",
     confirm: "More than 20 messages at once.",
@@ -104,6 +115,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: `row and bulk buttons, ${SWIPE} (long right)`,
     optimistic: "The rows leave the list at once.",
     pastTense: "Moved to Trash",
+    tone: "info",
     sound: null,
     undo: "daemon-mutation",
     confirm: "More than one conversation, or more than 20 messages.",
@@ -113,6 +125,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "bulk bar",
     optimistic: "The rows leave the list at once.",
     pastTense: "Marked as spam",
+    tone: "info",
     sound: null,
     undo: "daemon-mutation",
     confirm: "More than one conversation, or more than 20 messages.",
@@ -122,6 +135,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "row button, reader header",
     optimistic: "The star fills at once.",
     pastTense: "Starred",
+    tone: "info",
     sound: null,
     // The daemon restores each message's own prior star, so starring a
     // conversation with one starred message leaves that one starred.
@@ -134,6 +148,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     // the list doesn't show, so the row and the action agree.
     optimistic: "The star empties at once.",
     pastTense: "Unstarred",
+    tone: "info",
     sound: null,
     undo: "daemon-mutation",
   },
@@ -142,6 +157,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "row button, bulk bar",
     optimistic: "The row loses its unread mark at once.",
     pastTense: "Marked read",
+    tone: "info",
     sound: null,
     undo: "daemon-mutation",
   },
@@ -150,6 +166,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "row button, bulk bar",
     optimistic: "The row gains its unread mark at once.",
     pastTense: "Marked unread",
+    tone: "info",
     sound: null,
     undo: "daemon-mutation",
   },
@@ -158,6 +175,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the move dialog",
     optimistic: "The rows leave a list they no longer belong to.",
     pastTense: "Moved",
+    tone: "info",
     sound: null,
     undo: "daemon-mutation",
   },
@@ -166,6 +184,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the move dialog from a queue",
     optimistic: "The rows leave the queue at once.",
     pastTense: "Routed",
+    tone: "info",
     sound: null,
     undo: "daemon-mutation",
   },
@@ -174,6 +193,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the labels dialog",
     optimistic: "The label chip shows at once.",
     pastTense: "Labelled",
+    tone: "info",
     sound: null,
     undo: "daemon-mutation",
   },
@@ -183,6 +203,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     optimistic: "The chip goes; the rows leave that label's list.",
     // With the label: "Removed Hiring from 3 messages".
     pastTense: "Removed",
+    tone: "info",
     sound: null,
     undo: "daemon-mutation",
   },
@@ -191,6 +212,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the labels dialog",
     optimistic: "Chips change at once.",
     pastTense: "Updated labels on",
+    tone: "info",
     sound: null,
     undo: "daemon-mutation",
   },
@@ -199,6 +221,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: `row and bulk buttons, reader toolbar, ${SWIPE} (left)`,
     optimistic: "The rows leave the list once a time is chosen.",
     pastTense: "Snoozed",
+    tone: "info",
     sound: "snoozed",
     undo: "wake",
   },
@@ -207,6 +230,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "Enter with no time in its dialog",
     optimistic: "Nothing moves; the conversation joins the reply queue.",
     pastTense: "Added to your reply queue",
+    tone: "info",
     sound: null,
     undo: "reverse-request",
   },
@@ -216,6 +240,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     optimistic:
       "The conversation leaves the desk and the reply queue until then; on Waiting on it comes back only if nobody replied.",
     pastTense: "Reply later: back",
+    tone: "info",
     sound: null,
     undo: "daemon-mutation",
   },
@@ -224,6 +249,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the Send button, ⌘↵ in the composer",
     optimistic: "The composer closes and a countdown toast holds the send.",
     pastTense: "Message sent",
+    tone: "success",
     sound: "sent",
     undo: "send-window",
   },
@@ -232,6 +258,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the reader's unsubscribe line",
     optimistic: "Nothing moves until the dialog is confirmed.",
     pastTense: "Unsubscribed from",
+    tone: "success",
     sound: null,
     undo: "none",
     irreversible: true,
@@ -244,6 +271,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: `the Sweep buttons, ${SWIPE} on a Paper trail sender`,
     optimistic: "The daemon's dry run shows the count first; then the swept mail leaves.",
     pastTense: "Archived",
+    tone: "info",
     sound: "archived",
     undo: "daemon-job",
     confirm: "Always: it previews the daemon's dry run.",
@@ -254,6 +282,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: `the check on every desk row, ${SWIPE} (short right)`,
     optimistic: "The row leaves the desk at once; focus mode moves to the next conversation.",
     pastTense: "Done",
+    tone: "success",
     sound: "archived",
     undo: "daemon-mutation",
   },
@@ -264,6 +293,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the check on a Now row, Done here on a Messages person page",
     optimistic: "The row leaves this mode at once; the toast says where it still is.",
     pastTense: "Done",
+    tone: "success",
     sound: "archived",
     undo: "daemon-mutation",
   },
@@ -272,6 +302,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the Let go button on Now's Updates card",
     optimistic: "The card leaves Now once you confirm the preview.",
     pastTense: "Let go",
+    tone: "success",
     sound: "archived",
     undo: "daemon-mutation",
     confirm: "Previews the daemon's dry run: how many updates and which stay in To do",
@@ -281,6 +312,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the pin button on a Paper trail or Reading message",
     optimistic: "The pin fills at once.",
     pastTense: "Pinned",
+    tone: "info",
     sound: null,
     undo: "toggle",
   },
@@ -291,6 +323,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the check on a To do row, e on a Now row under Due soon",
     optimistic: "The row folds up and joins Done this week.",
     pastTense: "Ticked off",
+    tone: "success",
     sound: "archived",
     undo: "daemon-mutation",
   },
@@ -298,6 +331,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     actions: ["todo.dismiss"],
     optimistic: "The row leaves To do and never comes back for that email.",
     pastTense: "Not a to-do",
+    tone: "info",
     sound: null,
     undo: "reverse-request",
   },
@@ -305,6 +339,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     actions: ["todo.schedule"],
     optimistic: "Nothing moves until a time is chosen; then the row moves to that day.",
     pastTense: "Scheduled",
+    tone: "info",
     sound: null,
     undo: "reverse-request",
   },
@@ -312,6 +347,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     actions: ["todo.edit"],
     optimistic: "Nothing moves until the change is saved; then the row is yours.",
     pastTense: "Changed",
+    tone: "info",
     sound: null,
     undo: "reverse-request",
   },
@@ -319,6 +355,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     actions: ["mail.make-todo"],
     optimistic: "Nothing moves until the title is saved; the to-do joins To do.",
     pastTense: "Added to To do",
+    tone: "success",
     sound: null,
     undo: "reverse-request",
   },
@@ -326,6 +363,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     actions: ["todo.catchup-keep"],
     optimistic: "The row leaves the catch-up and joins the runway.",
     pastTense: "Kept",
+    tone: "success",
     sound: null,
     undo: "reverse-request",
   },
@@ -334,6 +372,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the Let go of all button, which previews first",
     optimistic: "The rows leave the catch-up and join the Expired list.",
     pastTense: "Let go of",
+    tone: "info",
     sound: null,
     undo: "reverse-request",
     confirm: "Let go of all: it previews the daemon's dry run.",
@@ -343,6 +382,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the palette's Pass to a mode",
     optimistic: "Nothing moves until the preview card is confirmed; then the record joins Archive.",
     pastTense: "Filed in Archive",
+    tone: "success",
     sound: null,
     undo: "reverse-request",
   },
@@ -350,6 +390,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     actions: ["archive.dismiss"],
     optimistic: "The row leaves Archive; the email is untouched and never filed again.",
     pastTense: "Not a record",
+    tone: "info",
     sound: null,
     undo: "reverse-request",
   },
@@ -357,6 +398,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     actions: ["archive.check"],
     optimistic: "Every unchecked amount and date becomes yours, and the card says checked.",
     pastTense: "Marked checked",
+    tone: "success",
     sound: null,
     undo: "reverse-request",
   },
@@ -364,6 +406,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     actions: ["archive.edit"],
     optimistic: "Nothing moves until the fix is saved; then the field is yours and checked.",
     pastTense: "Fixed",
+    tone: "success",
     sound: null,
     undo: "reverse-request",
   },
@@ -372,10 +415,16 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     alsoFrom: "the line under a message in Reading or Paper trail",
     optimistic: "The sender's mail leaves this place at once.",
     pastTense: "Moved",
+    tone: "info",
     sound: null,
     undo: "reverse-request",
   },
 };
+
+/** The toast colour a verb's result shows in. */
+export function toneFor(verb: Verb): ToastTone {
+  return VERB_FEEDBACK[verb].tone;
+}
 
 /** The sound a mail action makes, once per action. */
 export function soundFor(verb: Verb): SoundEvent | null {

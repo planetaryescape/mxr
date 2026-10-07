@@ -11,7 +11,8 @@
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use mxr_protocol::{
     ConversationData, ConversationMessageData, MessageLayoutData, MessagesBandData,
-    MessagesPreviewKindData, MessagesRowData, ModeGuideData, PersonPageData, TopicStateData,
+    MessagesPreviewKindData, MessagesRowData, MessagesTopicData, ModeGuideData, PersonPageData,
+    TopicStateData,
 };
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -302,6 +303,19 @@ fn list_body(view: &MessagesView<'_>, width: usize, theme: &crate::theme::Theme)
     body
 }
 
+/// A topic's name on a person's page: "with Ruth: Pricing copy" for a group.
+pub(crate) fn topic_label(topic: &MessagesTopicData) -> String {
+    if topic.with.is_empty() {
+        one_line(&topic.subject)
+    } else {
+        format!(
+            "with {}: {}",
+            topic.with.join(", "),
+            one_line(&topic.subject)
+        )
+    }
+}
+
 /// The topic strip: "Topics: [Contract renewal *] Launch checklist ·
 /// with Ruth: Pricing copy", wrapped.
 fn topic_strip(
@@ -314,15 +328,7 @@ fn topic_strip(
         .topics
         .iter()
         .map(|topic| {
-            let mut label = if topic.with.is_empty() {
-                one_line(&topic.subject)
-            } else {
-                format!(
-                    "with {}: {}",
-                    topic.with.join(", "),
-                    one_line(&topic.subject)
-                )
-            };
+            let mut label = topic_label(topic);
             if topic.state == TopicStateData::YourTurn {
                 label.push_str(" *");
             }

@@ -4,7 +4,10 @@
  * chunk, or by waking snoozed messages).
  */
 
+import { createElement } from "react";
 import { toast } from "sonner";
+
+import { UndoLabel } from "@/components/ui/sonner";
 
 import { undoMutation, unsnoozeMessage } from "@/features/mailbox/api";
 import type { MutationResponse } from "@/features/mailbox/types";
@@ -14,6 +17,7 @@ import { useUndo } from "@/state/undoStore";
 import { verb } from "./actionPastTense";
 import { invalidateMailQueries } from "./mailQueryInvalidation";
 import type { MailAction, MailActionPayload } from "./pendingMailOps";
+import { toneFor, type Verb } from "./verbFeedback";
 
 /** Undo by mutation id, then refresh every view that showed the change. */
 export async function performUndo(mutationId: string): Promise<boolean> {
@@ -110,7 +114,14 @@ export function announceSuccess(
   const reverse = daemonReverse(response) ?? (action === "snooze" ? () => wakeSnoozed(ids) : null);
   // Running an undo retires it, from the key or the toast, so it can't run
   // twice; it only clears itself, never a newer action's undo.
-  return offerUndo(message, `mutation-${mutationId ?? ids.join(",")}`, reverse, claim, mutationId);
+  return offerUndo(
+    action,
+    message,
+    `mutation-${mutationId ?? ids.join(",")}`,
+    reverse,
+    claim,
+    mutationId,
+  );
 }
 
 /** The daemon's undo for a response: its mutation id, or every job chunk's. */
@@ -144,11 +155,13 @@ export function keepPartialUndo(
 }
 
 /**
- * The success toast with its Undo, for any reversible change. Hands the
- * claimed undo slot to `reverse` if nothing newer took it; a change with no
- * reverse leaves the slot empty, so `u` never reaches past it.
+ * The result toast with its Undo, for any reversible change, in the verb's
+ * colour (verbFeedback). Hands the claimed undo slot to `reverse` if nothing
+ * newer took it; a change with no reverse leaves the slot empty, so `u`
+ * never reaches past it.
  */
 export function offerUndo(
+  kind: Verb,
   message: string,
   toastId: string,
   reverse: (() => Promise<boolean>) | null,
@@ -164,17 +177,18 @@ export function offerUndo(
       }
     : null;
   const newest = useUndo.getState().lastUndo === claim;
+  const show = toast[toneFor(kind)];
   if (!undo) {
     if (newest) useUndo.getState().recordNoUndo();
-    toast.success(message);
+    show(message);
     return null;
   }
   if (newest) useUndo.getState().recordUndo(undo, mutationId);
-  toast.success(message, {
+  show(message, {
     id: toastId,
     duration: 60_000,
     description: "Press u to undo",
-    action: { label: "Undo", onClick: () => void undo() },
+    action: { label: createElement(UndoLabel), onClick: () => void undo() },
   });
   return undo;
 }

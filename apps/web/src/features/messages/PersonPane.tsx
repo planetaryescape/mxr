@@ -2,6 +2,7 @@ import { ArrowLeft, Check, ListTodo, MessageSquareReply, ThumbsUp } from "lucide
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { ArrivalGlow } from "@/components/ArrivalGlow";
 import { KeyChip } from "@/components/KeyChip";
 import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { useComposeUi } from "@/features/compose/composeUiStore";
@@ -12,12 +13,20 @@ import { cn } from "@/lib/utils";
 import { mergePeople, refreshMessages, type MergeSuggestion, type PersonPage } from "./api";
 import { ConversationView } from "./Conversation";
 import { GotItBar } from "./GotItBar";
-import { topicLabel, topicStateLabel } from "./messagesView";
+import { topicLabel, topicStateLabel, type Arrival } from "./messagesView";
 import type { PendingAck } from "./useGotIt";
 
 export interface PersonPaneProps {
   page: PersonPage;
   topic: string | null;
+  /** Topics on this page still in Messages. */
+  left: number;
+  /** Threads whose done is on its way: they fold out of the topics. */
+  hidden: ReadonlySet<string>;
+  /** What a verb just moved to on this page, marked once. */
+  arrival: Arrival | null;
+  /** The page shown is the previous topic's while this one loads. */
+  loading: boolean;
   asSent: string | null;
   replyAll: boolean;
   pending: PendingAck | null;
@@ -74,6 +83,11 @@ export function PersonPane(props: PersonPaneProps) {
         <p data-testid="relationship-line" className="mt-1 text-[13px] text-muted-foreground">
           {page.relationship_line}
         </p>
+        {props.left > 0 ? (
+          <p data-testid="topics-left" className="mt-1 text-[12.5px] text-muted-foreground">
+            {props.left === 1 ? "1 topic" : `${props.left} topics`} left with {row.title}
+          </p>
+        ) : null}
         {(page.merge_suggestions ?? []).map((suggestion) => (
           <MergeLine key={suggestion.addresses.join(",")} suggestion={suggestion} />
         ))}
@@ -86,20 +100,30 @@ export function PersonPane(props: PersonPaneProps) {
           <ul data-testid="topics" className="flex max-h-[28vh] flex-col gap-0.5 overflow-y-auto">
             {page.topics.map((topic) => {
               const active = topic.thread_id === selected;
+              const leaving = props.hidden.has(topic.thread_id);
+              // A topic arrival marks that topic; a person arrival, the one open.
+              const arrived = props.arrival
+                ? (props.arrival.thread ?? selected) === topic.thread_id
+                : false;
               return (
-                <li key={topic.thread_id}>
+                <li
+                  key={topic.thread_id}
+                  data-leaving={leaving ? "true" : undefined}
+                  className={cn(leaving && "todo-fold pointer-events-none opacity-60")}
+                >
                   <button
                     type="button"
                     data-testid="topic"
                     aria-current={active ? "true" : undefined}
                     onClick={() => props.onTopic(topic.thread_id)}
                     className={cn(
-                      "flex w-full items-baseline gap-3 rounded-md px-2 py-1 text-left text-[13px]",
+                      "relative flex w-full items-baseline gap-3 rounded-md px-2 py-1 text-left text-[13px]",
                       active
                         ? "bg-accent text-foreground"
                         : "text-foreground/85 hover:bg-accent/60",
                     )}
                   >
+                    {arrived ? <ArrivalGlow key={props.arrival?.key} /> : null}
                     <span className="min-w-0 flex-1 truncate">
                       {topic.state === "your_turn" ? (
                         <span
@@ -123,11 +147,24 @@ export function PersonPane(props: PersonPaneProps) {
           </p>
         </ModeFrame>
       </nav>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        aria-busy={props.loading || undefined}
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto transition-opacity duration-fast",
+          props.loading && "opacity-40",
+        )}
+      >
         <ModeFrame width="reader">
           {conversation ? (
             <>
-              <h3 className="px-5 pt-4 text-[13px] font-medium text-muted-foreground">
+              <h3
+                data-testid="conversation-subject"
+                className="relative mx-3 mt-3 rounded-md px-2 py-1 text-[13px] font-medium text-muted-foreground"
+              >
+                {props.arrival &&
+                (props.arrival.thread ?? conversation.thread_id) === conversation.thread_id ? (
+                  <ArrivalGlow key={props.arrival.key} />
+                ) : null}
                 {conversation.subject}
               </h3>
               <AlsoInLine modes={modes} here="messages" className="px-5 pt-1" />

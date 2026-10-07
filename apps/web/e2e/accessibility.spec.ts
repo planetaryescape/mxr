@@ -84,6 +84,59 @@ for (const colorScheme of ["dark", "light"] as const) {
       expect(await blockingViolations(page)).toEqual([]);
     });
 
+    test("axe: a shown toast of each type", async ({ page }) => {
+      // Each mutation answers from here, so every type shows on cue: star
+      // (info, with Undo), its undo (success), a partial mark-read
+      // (warning) and a failed trash (error).
+      const result = (succeeded: number, failed: number) => ({
+        ok: true,
+        result: {
+          requested: succeeded + failed,
+          succeeded,
+          skipped: 0,
+          failed,
+          mutation_id: "a11y-toast",
+          accounts: failed
+            ? [
+                {
+                  account_id: "fake",
+                  account_name: "Fake",
+                  succeeded,
+                  skipped: 0,
+                  failed,
+                  error: "rate limited",
+                },
+              ]
+            : [],
+        },
+      });
+      await page.route("**/api/v1/mail/mutations/star", (route) =>
+        route.fulfill({ json: result(1, 0) }),
+      );
+      await page.route("**/api/v1/mail/mutations/undo", (route) =>
+        route.fulfill({ json: { ok: true } }),
+      );
+      await page.route("**/api/v1/mail/mutations/read", (route) =>
+        route.fulfill({ json: result(1, 1) }),
+      );
+      await page.route("**/api/v1/mail/mutations/trash", (route) =>
+        route.fulfill({ status: 500, json: { error: "provider unavailable" } }),
+      );
+      await openList(page, "/m/inbox");
+      await page.keyboard.press("s");
+      await page.keyboard.press("u");
+      await page.keyboard.press("I");
+      await page.keyboard.press("#");
+      const toasts = page.locator("[data-sonner-toast]");
+      for (const type of ["info", "success", "warning", "error"]) {
+        await expect(toasts.and(page.locator(`[data-type="${type}"]`)).first()).toBeVisible();
+      }
+      // Hovering holds them while axe reads them.
+      await toasts.first().hover();
+      await page.waitForTimeout(500);
+      expect(await blockingViolations(page)).toEqual([]);
+    });
+
     test("axe: compose overlay", async ({ page }) => {
       await openList(page, "/m/inbox");
       await page.keyboard.press("c");

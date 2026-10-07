@@ -33,7 +33,7 @@ fn messages_app(card_seen: bool) -> App {
     );
     let loaded = page(populated(), card_seen);
     app.set_messages(loaded.messages.unwrap(), loaded.guide);
-    let (row_id, _) = app
+    let (row_id, topic) = app
         .mailbox
         .messages_page
         .pending_person
@@ -41,7 +41,7 @@ fn messages_app(card_seen: bool) -> App {
         .expect("the selected row's page is asked for");
     let samir = samir_page();
     assert_eq!(row_id, samir.row.id);
-    app.set_person_page(row_id, samir);
+    app.set_person_page(row_id, topic, samir);
     app
 }
 
@@ -409,4 +409,265 @@ fn a_preview_nobody_asked_for_registers_nothing() {
     let mut app = messages_app(true);
     app.show_messages_ack(plan(&app), std::time::Instant::now());
     assert!(app.mailbox.messages_page.ack.is_none());
+}
+
+/// Where the row with this id sits in the list.
+fn at(app: &App, id: &str) -> usize {
+    let page = &app.mailbox.messages_page;
+    (0..page.item_count())
+        .find(|&index| page.row_at(index).is_some_and(|row| row.id == id))
+        .unwrap()
+}
+
+fn only_note(app: &App) -> crate::app::DoneNote {
+    let notes = &app.mailbox.messages_page.done_notes;
+    assert_eq!(notes.len(), 1, "one note, under the done's mutation");
+    notes.values().next().cloned().unwrap()
+}
+
+/// The page the daemon would send for `row` on its first topic.
+fn page_of(row: &mxr_protocol::MessagesRowData) -> mxr_protocol::PersonPageData {
+    let mut page = samir_page();
+    let topic = row.topics[0].clone();
+    let conversation = page.conversation.as_mut().unwrap();
+    conversation.thread_id = topic.thread_id.clone();
+    conversation.subject = topic.subject.clone();
+    page.topics = row.topics.clone();
+    page.row = row.clone();
+    page
+}
+
+/// Deliver the page the lens asked for last.
+fn answer(app: &mut App, page: mxr_protocol::PersonPageData) {
+    let (row_id, topic) = app.mailbox.messages_page.pending_person.take().unwrap();
+    app.set_person_page(row_id, topic, page);
+}
+
+fn selected_row_id(app: &App) -> Option<String> {
+    app.selected_messages_row().map(|row| row.id.clone())
+}
+
+fn subject_thread(app: &App, subject: &str) -> mxr_core::id::ThreadId {
+    app.mailbox
+        .messages_page
+        .page
+        .as_ref()
+        .unwrap()
+        .topics
+        .iter()
+        .find(|topic| topic.subject == subject)
+        .unwrap()
+        .thread_id
+        .clone()
+}
+
+#[test]
+fn done_with_topics_left_stays_on_the_person_and_opens_the_next_topic() {
+    let mut app = messages_app(true);
+    let samir = selected_row_id(&app).unwrap();
+    let launch = subject_thread(&app, "Launch checklist");
+    press(&mut app, KeyCode::Char('e'));
+    assert_eq!(selected_row_id(&app), Some(samir.clone()), "the row stays");
+    assert_eq!(
+        app.mailbox.messages_page.pending_person,
+        Some((samir, Some(launch))),
+        "the page asks for the next topic still in Messages, never the one done"
+    );
+    let note = only_note(&app);
+    assert_eq!(
+        note.line("Done. Archived in Gmail. u to undo"),
+        "Done: Contract renewal. Next: Launch checklist. Archived in Gmail. u to undo"
+    );
+}
+
+#[test]
+fn done_on_a_persons_last_topic_moves_to_the_next_person() {
+    let mut app = messages_app(true);
+    press(&mut app, KeyCode::Char('j'));
+    assert_eq!(
+        selected_row_id(&app).as_deref(),
+        Some("person:jon@example.com")
+    );
+    // `e` waits for Jon's page; then it is done for his topic.
+    press(&mut app, KeyCode::Char('e'));
+    assert!(queued(&app).is_empty(), "nothing shown yet, nothing done");
+    let jon = app.selected_messages_row().unwrap().clone();
+    answer(&mut app, page_of(&jon));
+    press(&mut app, KeyCode::Char('e'));
+    assert_eq!(
+        selected_row_id(&app).as_deref(),
+        Some("person:maya@example.com"),
+        "Jon has nothing left: the row after him opens"
+    );
+    let note = only_note(&app);
+    assert_eq!(note.line("Done."), "Done with Jon Bell. Next: Maya Ortiz.");
+}
+
+#[test]
+fn done_on_the_last_row_moves_to_the_previous_person() {
+    let mut app = messages_app(true);
+    app.mailbox.selected_index = at(&app, "person:iris@example.com");
+    app.sync_messages_page();
+    let iris = app.selected_messages_row().unwrap().clone();
+    answer(&mut app, page_of(&iris));
+    press(&mut app, KeyCode::Char('e'));
+    assert_eq!(
+        selected_row_id(&app).as_deref(),
+        Some("person:maya@example.com")
+    );
+}
+
+#[test]
+fn a_second_e_before_the_next_page_arrives_sends_nothing_again() {
+    let mut app = messages_app(true);
+    press(&mut app, KeyCode::Char('e'));
+    press(&mut app, KeyCode::Char('e'));
+    let dones = queued(&app)
+        .into_iter()
+        .filter(|request| matches!(request, Request::SetModeDone { .. }))
+        .count();
+    assert_eq!(dones, 1, "the page on screen is the one just done");
+}
+
+#[test]
+fn a_refetch_keeps_the_selection_on_the_person_not_the_position() {
+    let mut app = messages_app(true);
+    let iris = "person:iris@example.com";
+    app.mailbox.selected_index = at(&app, iris);
+    let mut data = populated();
+    let row = data.recent.remove(0);
+    data.your_turn.insert(0, row);
+    app.set_messages(data, None);
+    assert_eq!(selected_row_id(&app).as_deref(), Some(iris));
+}
+
+#[test]
+fn a_person_removed_by_sync_hands_the_selection_to_their_neighbour() {
+    let mut app = messages_app(true);
+    app.mailbox.selected_index = at(&app, "person:iris@example.com");
+    let mut data = populated();
+    data.recent.clear();
+    data.your_turn.remove(0);
+    app.set_messages(data, None);
+    assert_eq!(
+        selected_row_id(&app).as_deref(),
+        Some("person:maya@example.com"),
+        "the previous person, not the Quiet line that now sits at that position"
+    );
+}
+
+#[test]
+fn a_person_moved_into_quiet_with_topics_left_stays_in_view() {
+    let mut app = messages_app(true);
+    let iris = "person:iris@example.com";
+    app.mailbox.selected_index = at(&app, iris);
+    let mut data = populated();
+    let row = data.recent.remove(0);
+    data.quiet.insert(0, row);
+    app.set_messages(data, None);
+    assert!(app.mailbox.messages_page.quiet_open);
+    assert_eq!(selected_row_id(&app).as_deref(), Some(iris));
+}
+
+fn dones(app: &App) -> usize {
+    queued(app)
+        .into_iter()
+        .filter(|request| matches!(request, Request::SetModeDone { .. }))
+        .count()
+}
+
+#[test]
+fn e_waits_for_the_next_persons_page_before_doing_anything() {
+    let mut app = messages_app(true);
+    // Jon, then Iris: nobody pinned between them.
+    let mut data = populated();
+    data.pinned.clear();
+    app.set_messages(data, None);
+    press(&mut app, KeyCode::Char('j'));
+    let jon = app.selected_messages_row().unwrap().clone();
+    answer(&mut app, page_of(&jon));
+    press(&mut app, KeyCode::Char('e'));
+    assert_eq!(
+        selected_row_id(&app).as_deref(),
+        Some("person:iris@example.com")
+    );
+    // Iris's page hasn't come: `e` must not take her first topic unseen.
+    press(&mut app, KeyCode::Char('e'));
+    assert_eq!(dones(&app), 1);
+    let iris = app.selected_messages_row().unwrap().clone();
+    answer(&mut app, page_of(&iris));
+    press(&mut app, KeyCode::Char('e'));
+    assert_eq!(
+        dones(&app),
+        2,
+        "once her page is on screen, e is done for it"
+    );
+}
+
+#[test]
+fn a_late_answer_for_the_topic_just_done_never_replaces_the_next_one() {
+    let mut app = messages_app(true);
+    let samir = samir_page();
+    let contract = samir.topics[0].thread_id.clone();
+    let launch = subject_thread(&app, "Launch checklist");
+    press(&mut app, KeyCode::Char('e'));
+    // The done finishes before the next topic's page arrives: the refetch
+    // asks again for the next topic, not the one still on screen.
+    app.refresh_messages();
+    assert_eq!(
+        app.mailbox.messages_page.pending_person,
+        Some((samir.row.id.clone(), Some(launch.clone())))
+    );
+    let mut next = samir.clone();
+    next.conversation.as_mut().unwrap().thread_id = launch.clone();
+    answer(&mut app, next);
+    // An answer for the done topic, asked for earlier, lands last.
+    app.set_person_page(samir.row.id.clone(), Some(contract), samir);
+    let shown = app.mailbox.messages_page.page.as_ref().unwrap();
+    assert_eq!(shown.conversation.as_ref().unwrap().thread_id, launch);
+}
+
+#[test]
+fn the_same_address_in_two_accounts_keeps_its_own_row_across_a_refetch() {
+    let mut app = messages_app(true);
+    let mut data = populated();
+    let mut other = data.your_turn[0].clone();
+    other.account_id = mxr_core::AccountId::from_provider_id("fake", "work");
+    data.your_turn.push(other.clone());
+    app.set_messages(data.clone(), None);
+    // The work account's Samir, last in Your turn.
+    app.mailbox.selected_index = data.your_turn.len() - 1;
+    assert_eq!(
+        app.selected_messages_row().unwrap().account_id,
+        other.account_id
+    );
+    // A refetch puts the work account's row first.
+    let row = data.your_turn.pop().unwrap();
+    data.your_turn.insert(0, row);
+    app.set_messages(data, None);
+    assert_eq!(app.mailbox.selected_index, 0);
+    assert_eq!(
+        app.selected_messages_row().unwrap().account_id,
+        other.account_id
+    );
+}
+
+#[test]
+fn another_modes_done_never_borrows_messages_words() {
+    let mut app = messages_app(true);
+    press(&mut app, KeyCode::Char('e'));
+    let messages_done = *app.mailbox.messages_page.done_notes.keys().next().unwrap();
+    let other = app.mutation_id_generator.next_id();
+    let copy = || crate::app::MutationEffect::ModeDone("Done. Archived in Gmail.".into());
+    let plain = app.with_done_note(other, copy());
+    assert!(
+        matches!(plain, crate::app::MutationEffect::ModeDone(ref msg) if msg == "Done. Archived in Gmail."),
+        "{plain:?}"
+    );
+    let named = app.with_done_note(messages_done, copy());
+    assert!(
+        matches!(named, crate::app::MutationEffect::ModeDone(ref msg)
+            if msg.starts_with("Done: Contract renewal. Next: Launch checklist.")),
+        "{named:?}"
+    );
 }

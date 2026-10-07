@@ -9,6 +9,7 @@
 import { toast } from "sonner";
 
 import { claimUndo, offerUndo } from "@/features/mail-actions/mailUndo";
+import type { Verb } from "@/features/mail-actions/verbFeedback";
 import { openAttachment } from "@/features/mailbox/api";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { getActiveQueryClient } from "@/lib/queryClient";
@@ -111,6 +112,7 @@ function reverseOf(change: RecordChange): (() => Promise<boolean>) | null {
 
 /** Run a change, toast the daemon's message, and offer its undo on `u`. */
 async function withUndo(
+  verb: Verb,
   run: () => Promise<RecordChange>,
   failure: string,
 ): Promise<RecordChange | null> {
@@ -119,6 +121,7 @@ async function withUndo(
     const change = await run();
     claim.settle(
       offerUndo(
+        verb,
         change.message,
         `record-${change.action}-${change.records.map((record) => record.id).join(",")}`,
         reverseOf(change),
@@ -138,7 +141,11 @@ async function withUndo(
 /** `X`: not a record. The email is untouched and never filed again. */
 export function markNotRecord(record: RecordData) {
   if (refuseWhileDaemonDown("change it")) return;
-  return withUndo(() => dismissRecords([record.id]), "Couldn't take it out of Archive");
+  return withUndo(
+    "record-dismiss",
+    () => dismissRecords([record.id]),
+    "Couldn't take it out of Archive",
+  );
 }
 
 /** `v`: confirm every unchecked amount and date, so the card is checked. */
@@ -149,6 +156,7 @@ export function markChecked(record: RecordData) {
     return;
   }
   return withUndo(
+    "record-check",
     () => setRecordField(record.id, { op: "confirm_all" }),
     "Couldn't mark it checked",
   );
@@ -158,6 +166,7 @@ export function markChecked(record: RecordData) {
 export function editField(record: RecordData, edit: RecordEdit, applyToSender = false) {
   if (refuseWhileDaemonDown("change it")) return;
   return withUndo(
+    "record-fix",
     () => setRecordField(record.id, edit, { applyToSender }),
     "Couldn't change the record",
   );
@@ -176,7 +185,7 @@ export function previewFile(messageId: string) {
 /** File an email as a record by hand: exactly what the preview showed. */
 export function fileMessage(messageId: string) {
   if (refuseWhileDaemonDown("file it")) return;
-  return withUndo(() => fileRecord(messageId, false), "Couldn't file it in Archive");
+  return withUndo("record-file", () => fileRecord(messageId, false), "Couldn't file it in Archive");
 }
 
 /** The export's dry run: rows, totals, unchecked rows, missing PDFs. */

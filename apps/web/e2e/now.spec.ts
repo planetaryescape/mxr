@@ -104,7 +104,8 @@ test("e in Messages leaves the to-do open, says where it still is, and u undoes 
   // Messages names the other mode holding the thread.
   await expect(sam.getByTestId("also-in")).toContainText("Also in To do:");
   await page.keyboard.press("e");
-  const toast = page.locator("[data-sonner-toast]").filter({ hasText: "Done in Messages." });
+  // What was done, what opened next, then where the thread still is.
+  const toast = page.locator("[data-sonner-toast]").filter({ hasText: /^Done (with|: )/ });
   await expect(toast).toContainText("Still in To do");
   // The to-do is still open, and the thread is out of Messages only.
   const after = await modesOf(page, thread);

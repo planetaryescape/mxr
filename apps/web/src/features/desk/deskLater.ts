@@ -67,6 +67,7 @@ export async function deferThreads(threadIds: string[], choice: TimeChoice): Pro
       const reverse = mutationId ? () => performUndo(mutationId) : null;
       claim.settle(
         offerUndo(
+          "reply-later-at",
           deferredMessage(set, choice),
           `desk-later-${mutationId ?? unique.join(",")}`,
           reverse,

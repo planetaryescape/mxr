@@ -8,6 +8,8 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { UndoLabel } from "@/components/ui/sonner";
+
 export function SendCountdownTitle({ deadline }: { deadline: number }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -54,6 +56,6 @@ export function showSendCountdown({
         <SendCountdownBar seconds={seconds} />
       </>
     ),
-    action: { label: "Undo", onClick: onUndo },
+    action: { label: <UndoLabel />, onClick: onUndo },
   });
 }

@@ -2,17 +2,21 @@ import { describe, expect, test } from "vitest";
 
 import type { ConversationMessage, MessagesData, MessagesRow, MessagesTopic } from "./api";
 import {
+  afterDone,
   bands,
   countdownLabel,
   cursorRows,
+  doneLine,
   initials,
   letterLead,
+  openThreads,
   paragraphBlocks,
   rowForThread,
   splitAsk,
   stepTopic,
   topicLabel,
   topicStateLabel,
+  topicsLeft,
   waitLabel,
 } from "./messagesView";
 
@@ -187,5 +191,115 @@ describe("length decides the shape", () => {
       { at: 6, text: "Two." },
       { at: 13, text: "Three." },
     ]);
+  });
+});
+
+describe("done here moves on", () => {
+  const samir = row("person:samir", {
+    title: "Samir Patel",
+    topics: [
+      topic("contract", { state: "your_turn", subject: "Contract renewal" }),
+      topic("launch", { state: "waiting", subject: "Launch checklist" }),
+      topic("old", { state: "done" }),
+    ],
+  });
+  const jon = row("person:jon", { title: "Jon Bell" });
+  const iris = row("person:iris", { title: "Iris Chen" });
+  const list = data({ your_turn: [samir, jon], recent: [iris] });
+  // The page lists history the list doesn't: an old quiet thread.
+  const page = [...samir.topics, topic("history", { subject: "Old invoice" })];
+
+  test("a row's open threads leave out done and in-flight ones", () => {
+    expect([...openThreads(samir, new Set())]).toEqual(["contract", "launch"]);
+    expect([...openThreads(samir, new Set(["launch"]))]).toEqual(["contract"]);
+    expect([...openThreads(undefined, new Set())]).toEqual([]);
+    // The page lists history and group topics; only the row's count.
+    expect(topicsLeft(page, openThreads(samir, new Set())).map((t) => t.thread_id)).toEqual([
+      "contract",
+      "launch",
+    ]);
+  });
+
+  test("the person's next topic still in Messages, never history", () => {
+    const open = openThreads(samir, new Set());
+    const next = afterDone({
+      topics: page,
+      thread: "contract",
+      open,
+      rows: cursorRows(list, false),
+      person: samir.id,
+    });
+    expect(next).toEqual({ kind: "topic", topic: samir.topics[1] });
+  });
+
+  test("nothing left: the next person, the previous at the end, else none", () => {
+    const open = openThreads(samir, new Set(["launch"]));
+    const rows = cursorRows(list, false);
+    expect(afterDone({ topics: page, thread: "contract", open, rows, person: samir.id })).toEqual({
+      kind: "person",
+      row: jon,
+    });
+    const irisTopics = iris.topics;
+    expect(
+      afterDone({
+        topics: irisTopics,
+        thread: irisTopics[0]!.thread_id,
+        open,
+        rows,
+        person: iris.id,
+      }),
+    ).toEqual({ kind: "person", row: jon });
+    expect(
+      afterDone({
+        topics: irisTopics,
+        thread: irisTopics[0]!.thread_id,
+        open,
+        rows: [iris],
+        person: iris.id,
+      }),
+    ).toEqual({ kind: "none" });
+  });
+
+  test("the toast names what was done and what opened, then where it went", () => {
+    const next = { kind: "topic", topic: samir.topics[1]! } as const;
+    expect(doneLine({ subject: "Contract renewal" }, "Done. Archived in Gmail.", next)).toBe(
+      "Done: Contract renewal. Next: Launch checklist. Archived in Gmail.",
+    );
+    expect(
+      doneLine({ person: "Samir Patel" }, "Done in Messages. Still in To do (due Wed).", {
+        kind: "person",
+        row: jon,
+      }),
+    ).toBe("Done with Samir Patel. Next: Jon Bell. Still in To do (due Wed).");
+    expect(doneLine({ person: "Samir Patel" }, "Done.", { kind: "none" })).toBe(
+      "Done with Samir Patel.",
+    );
+  });
+
+  test("never opens a person whose own done is still on its way", () => {
+    const open = openThreads(samir, new Set(["launch"]));
+    const rows = cursorRows(list, false);
+    // Jon's only topic is being done: the next person is Iris.
+    expect(
+      afterDone({
+        topics: page,
+        thread: "contract",
+        open,
+        rows,
+        person: samir.id,
+        hidden: new Set(["launch", "t-person:jon"]),
+      }),
+    ).toEqual({ kind: "person", row: iris });
+    // Nobody else left but people on their way out: nothing opens.
+    expect(
+      afterDone({
+        topics: page,
+        thread: "contract",
+        open,
+        rows,
+        person: samir.id,
+        hidden: new Set(["launch", "t-person:jon", "t-person:iris"]),
+      }),
+    ).toEqual({ kind: "none" });
   });
 });

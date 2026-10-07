@@ -393,7 +393,7 @@ fn blend_bg(base: Color, tint: Color, tint_weight: u8) -> Color {
     )
 }
 
-fn color_rgb(color: Color) -> Option<(u8, u8, u8)> {
+pub(crate) fn color_rgb(color: Color) -> Option<(u8, u8, u8)> {
     match color {
         Color::Reset => None,
         Color::Black => Some((0, 0, 0)),

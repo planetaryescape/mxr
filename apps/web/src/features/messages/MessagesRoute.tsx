@@ -18,12 +18,14 @@ import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useModeGuide, useRetireCard, type ModeGuide } from "@/features/modes/api";
 import { useThreadModesMap } from "@/features/modes/membership";
 import { ModeCard } from "@/features/modes/ModeCard";
-import { markModeDone } from "@/features/modes/modeDone";
+import { doneToast, markModeDone, useModeDone } from "@/features/modes/modeDone";
+import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useSplitPane } from "@/hooks/useSplitPane";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useScopeController } from "@/lib/keys/controllers";
 
 import {
@@ -37,13 +39,26 @@ import {
   type PersonPage,
 } from "./api";
 import { MessagesList } from "./MessagesList";
-import { cursorRows, newTopicAddress, rowForThread, stepTopic } from "./messagesView";
+import {
+  afterDone,
+  type Arrival,
+  cursorRows,
+  doneLine,
+  newTopicAddress,
+  openThreads,
+  rowForThread,
+  stepTopic,
+  topicsLeft,
+} from "./messagesView";
 import { PersonPane } from "./PersonPane";
 import { useGotIt } from "./useGotIt";
 
 /** List and person page share the screen from Tailwind's md up. */
 const MESSAGES_SPLIT_QUERY = "(min-width: 768px)";
 const PEOPLE_PANE_SIZE = { defaultSize: "22rem", minSize: "16rem", maxSize: "40rem" };
+
+/** How long an arrival is marked; the glow itself is the scene duration. */
+const ARRIVAL_MS = 2_000;
 
 export interface MessagesSearch {
   /** The selected row's id: `person:<email>` or `group:<thread>`. */
@@ -149,12 +164,26 @@ function MessagesBody({
     () => [...data.your_turn, ...data.pinned, ...data.recent, ...data.quiet],
     [data],
   );
-  const selectedId = search.person ?? linked?.id ?? rows[0]?.id ?? null;
+  // After done here leaves nobody to open, nothing is selected until a row is.
+  const [cleared, setCleared] = useState(false);
+  const selectedId = search.person ?? (cleared ? null : (linked?.id ?? rows[0]?.id ?? null));
   const selected: MessagesRow | undefined = allRows.find((row) => row.id === selectedId);
   const topic = search.topic ?? (linked ? threadId : undefined) ?? null;
   const person = usePersonQuery(selectedId, topic);
   const page: PersonPage | undefined = person.data;
   const conversation = page?.conversation ?? null;
+  const hiddenDone = useModeDone((s) => s.hidden.messages);
+  const stillOpen = useMemo(() => openThreads(selected, hiddenDone), [selected, hiddenDone]);
+  const left = useMemo(
+    () => (page ? topicsLeft(page.topics, stillOpen).length : 0),
+    [stillOpen, page],
+  );
+  const [arrival, setArrival] = useState<Arrival | null>(null);
+  useEffect(() => {
+    if (!arrival) return;
+    const timer = setTimeout(() => setArrival(null), ARRIVAL_MS);
+    return () => clearTimeout(timer);
+  }, [arrival]);
   const [replyAllOverride, setReplyAllOverride] = useState<boolean | null>(null);
   const replyAll = replyAllOverride ?? conversation?.composer.reply_all ?? false;
   useEffect(() => {
@@ -169,19 +198,60 @@ function MessagesBody({
         search: { ...(search.turn ? { turn: search.turn } : {}), person: id, topic: options.topic },
         replace: true,
       });
+      setCleared(false);
       if (options.open) setPageOpen(true);
     },
     [navigate, search.turn],
   );
+
+  // A person who still has topics left stays in view, even when the
+  // daemon moves their row into the folded Quiet band.
+  useEffect(() => {
+    const id = search.person;
+    if (id && data.quiet.some((row) => row.id === id)) setQuietOpen(true);
+  }, [data.quiet, search.person]);
+
+  /** Open a row (and topic) a verb moved to, marked so the move is seen. */
+  const advanceTo = useCallback(
+    (id: string, topicId?: string) => {
+      select(id, { topic: topicId });
+      setArrival({ key: Date.now(), person: id, thread: topicId ?? null });
+    },
+    [select],
+  );
+  /** Nobody left to open: the page shows the empty state. */
+  const clearSelection = useCallback(() => {
+    setCleared(true);
+    setPageOpen(false);
+    void navigate({
+      to: "/messages",
+      search: search.turn ? { turn: search.turn } : {},
+      replace: true,
+    });
+  }, [navigate, search.turn]);
+
+  // A row that leaves the list some other way (sync, another client) takes
+  // the page with it to its neighbour.
+  const rowIds = useMemo(() => rows.map((row) => row.id), [rows]);
+  useAdvanceOnRemoval({
+    ids: rowIds,
+    selectedId: search.person ?? null,
+    isPresent: (id) => allRows.some((row) => row.id === id),
+    onAdvance: (id) => advanceTo(id),
+    onEmpty: clearSelection,
+  });
   const listRef = useRef<HTMLDivElement>(null);
   const split = useMediaQuery(MESSAGES_SPLIT_QUERY);
   const pane = useSplitPane("messages", PEOPLE_PANE_SIZE, { active: split });
+  // Into view when it is chosen, and when the daemon moves it to another
+  // band (done here can send a person from Your turn to Recent).
+  const selectedBand = selected?.band;
   useEffect(() => {
     if (!selectedId) return;
     listRef.current
       ?.querySelector(`[data-row-id="${CSS.escape(selectedId)}"]`)
       ?.scrollIntoView({ block: "nearest" });
-  }, [selectedId]);
+  }, [selectedId, selectedBand, quietOpen]);
 
   const retire = useRetireCard("messages");
   const { mutate: retireMutate } = retire;
@@ -194,8 +264,8 @@ function MessagesBody({
   // After a reply or Got it, the next person whose turn it is.
   const nextYourTurn = useCallback(() => {
     const next = data.your_turn.find((row) => row.id !== selectedId);
-    if (next) select(next.id);
-  }, [data.your_turn, select, selectedId]);
+    if (next) advanceTo(next.id);
+  }, [advanceTo, data.your_turn, selectedId]);
 
   const gotIt = useGotIt(`${selectedId ?? ""}|${conversation?.thread_id ?? ""}`, () => {
     retireCard();
@@ -229,10 +299,88 @@ function MessagesBody({
     [conversation],
   );
 
+  // Where the page is now, read when an undo lands (after any later move).
+  const here = useRef({ mounted: true, person: search.person, topic: search.topic });
+  here.current.person = search.person;
+  here.current.topic = search.topic;
+  useEffect(() => {
+    const current = here.current;
+    current.mounted = true;
+    return () => {
+      current.mounted = false;
+    };
+  }, []);
+
+  // Done here moves on at once, as the reader's archive does: to the
+  // person's next topic still in Messages, else the next person. While a
+  // topic's page is still loading, `e` waits: the page on screen is the
+  // one just done.
   const done = useCallback(() => {
-    if (!conversation) return;
-    void markModeDone("messages", [conversation.thread_id]);
-  }, [conversation]);
+    if (!conversation || !page || !selectedId || person.isPlaceholderData) return;
+    const thread = conversation.thread_id;
+    if (hiddenDone.has(thread)) return;
+    const next = afterDone({
+      topics: page.topics,
+      thread,
+      open: stillOpen,
+      rows,
+      person: selectedId,
+      hidden: hiddenDone,
+    });
+    const what =
+      next.kind === "topic" ? { subject: conversation.subject } : { person: page.row.title };
+    const from = selectedId;
+    // Where the move leaves the page: undo goes back only from there.
+    const landed =
+      next.kind === "topic"
+        ? { person: from, topic: next.topic.thread_id }
+        : next.kind === "person"
+          ? { person: next.row.id, topic: undefined }
+          : { person: undefined, topic: undefined };
+    if (next.kind === "topic") advanceTo(from, next.topic.thread_id);
+    else if (next.kind === "person") advanceTo(next.row.id);
+    else clearSelection();
+    const account = useUiPrefs.getState().accountScope;
+    const label = "subject" in what ? what.subject : what.person;
+    void markModeDone("messages", [thread], {
+      message: (outcomes) => doneLine(what, doneToast(outcomes), next),
+      onUndone: () => {
+        const now = here.current;
+        const stayed =
+          now.mounted &&
+          useUiPrefs.getState().accountScope === account &&
+          now.person === landed.person &&
+          now.topic === landed.topic;
+        if (stayed) {
+          advanceTo(from, thread);
+          return;
+        }
+        // They moved on: the undo puts it back without pulling them away.
+        toast.info(`Restored: ${label}`, {
+          action: {
+            label: "Open",
+            onClick: () => {
+              if (useUiPrefs.getState().accountScope !== account) {
+                useUiPrefs.getState().setAccountScope(account);
+              }
+              void navigate({ to: "/messages", search: { person: from, topic: thread } });
+            },
+          },
+        });
+      },
+    });
+  }, [
+    advanceTo,
+    clearSelection,
+    conversation,
+    hiddenDone,
+    navigate,
+    page,
+    person.isPlaceholderData,
+    rows,
+    selectedId,
+    stillOpen,
+  ]);
 
   const target = useCallback(async () => {
     if (!conversation) return null;
@@ -379,6 +527,8 @@ function MessagesBody({
             onToggleQuiet={() => setQuietOpen((open) => !open)}
             onSelect={(id) => select(id, { open: true })}
             memberships={memberships}
+            hidden={hiddenDone}
+            arrival={arrival}
           />
           {guide ? <KeyLine guide={guide} /> : null}
         </div>
@@ -396,6 +546,10 @@ function MessagesBody({
               topic={topic}
               asSent={asSent}
               replyAll={replyAll}
+              left={left}
+              hidden={hiddenDone}
+              arrival={arrival?.person === selectedId ? arrival : null}
+              loading={person.isPlaceholderData}
               pending={gotIt.pending}
               ackLoading={gotIt.loading}
               onBack={() => setPageOpen(false)}

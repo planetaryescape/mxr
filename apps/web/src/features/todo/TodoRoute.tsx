@@ -13,6 +13,7 @@ import { useModeGuide, useRetireCard, type ModeGuide } from "@/features/modes/ap
 import { ModeCard } from "@/features/modes/ModeCard";
 import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
+import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { getRuntimeNavigate } from "@/lib/actions/runtime";
@@ -201,6 +202,14 @@ function Bands({
     items.findIndex((item) => item.todo.id === cursorId),
   );
   const current: RunwayItem | undefined = items[index];
+  // A row ticked off or dismissed leaves: the cursor takes the next one.
+  const itemIds = useMemo(() => items.map((item) => item.todo.id), [items]);
+  useAdvanceOnRemoval({
+    ids: itemIds,
+    selectedId: cursorId,
+    onAdvance: (next) => setCursorId(next),
+    onEmpty: () => setCursorId(null),
+  });
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });

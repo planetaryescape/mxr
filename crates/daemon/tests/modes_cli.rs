@@ -48,7 +48,7 @@ fn modes_explain_prints_the_to_do_guide_and_card_state_holds() {
         .collect();
     assert_eq!(
         modes,
-        ["now", "messages", "todo"],
+        ["now", "messages", "todo", "archive"],
         "every shipped mode, Now first"
     );
     assert_eq!(again[2]["card_seen"], true, "a new command sees it closed");

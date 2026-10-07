@@ -23,6 +23,7 @@ import { readingActions } from "@/features/reading/actions";
 import { rulesActions } from "@/features/rules/actions";
 import { screenerActions } from "@/features/screener/actions";
 import { todoActions } from "@/features/todo/actions";
+import { updatesActions } from "@/features/updates/actions";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
 import { navigationActions } from "./navigationActions";
@@ -68,6 +69,7 @@ const featureActions: Action[] = [
   ...readingActions,
   ...nowActions,
   ...messagesActions,
+  ...updatesActions,
   ...diagnosticsActions,
   ...rulesActions,
   ...accountsActions,

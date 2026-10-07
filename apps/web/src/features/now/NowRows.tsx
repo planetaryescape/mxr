@@ -269,9 +269,8 @@ export function TodoRow({ item, modes, ...state }: RowState & { item: Due; modes
 }
 
 /**
- * The latest Updates as one card: how many, from whom, since which cut.
- * Updates is an early version (Paper trail) until the twice-daily digest
- * ships, and the card says so.
+ * The latest Updates digest as one card: its headline, up to three lines
+ * that need a look or changed, and how much routine waits behind them.
  */
 export function UpdatesCard({
   item,
@@ -288,16 +287,9 @@ export function UpdatesCard({
         >
           Updates
         </h2>
-        <span className="text-[12px] text-muted-foreground">{sinceLabel(card.since)}</span>
-        {card.early ? (
-          <span
-            data-testid="early-version"
-            title="Early version: Paper trail, automated mail in your inbox by sender, until the twice-daily digest ships."
-            className="rounded border border-border px-1 font-mono text-[10px] uppercase tracking-wide text-muted-foreground"
-          >
-            early version
-          </span>
-        ) : null}
+        <span className="text-[12px] text-muted-foreground">
+          {card.cut_label ? `${card.cut_label} digest` : sinceLabel(card.since)}
+        </span>
       </div>
       <ul className="grid grid-cols-[minmax(0,1fr)]">
         <li
@@ -319,8 +311,39 @@ export function UpdatesCard({
           ) : null}
           <div className="min-w-0">
             <p data-testid="now-updates-line" className="text-[13px] text-foreground/90">
-              {card.line}
+              {card.headline || card.line}
             </p>
+            {card.lines && card.lines.length > 0 ? (
+              <ul className="mt-1 grid gap-0.5">
+                {card.lines.map((line) => (
+                  <li
+                    key={line.id}
+                    data-testid="now-updates-item"
+                    className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[12.5px]"
+                  >
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "w-2 shrink-0 font-semibold",
+                        line.section === "needs_a_look" ? "text-warning" : "text-primary",
+                      )}
+                    >
+                      {line.section === "needs_a_look" ? "!" : "·"}
+                    </span>
+                    <span className="shrink-0 font-medium text-foreground/90">
+                      {line.source_name}
+                    </span>
+                    <span className="min-w-0 break-words text-foreground/80">{line.fact}</span>
+                    {line.in_todo ? (
+                      <span className="text-[11.5px] text-muted-foreground">({line.in_todo})</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {card.more_line ? (
+              <p className="mt-1 text-[12px] text-muted-foreground">{card.more_line}</p>
+            ) : null}
             <p className="mt-1.5 flex flex-wrap items-center gap-2">
               <Button asChild size="sm" variant="outline">
                 <Link to="/updates" onFocus={() => state.onSelect(item)}>

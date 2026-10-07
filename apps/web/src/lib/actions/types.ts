@@ -50,6 +50,7 @@ export type ActionScope =
   | "expired"
   | "now"
   | "messages"
+  | "updates"
   | "archive"
   | "reading"
   | "reading-reader";

@@ -8,6 +8,7 @@ export function modeOfScopes(scopes: readonly ActionScope[]): ModeId | null {
   if (scopes.includes("now")) return "now";
   if (scopes.includes("messages")) return "messages";
   if (scopes.includes("archive")) return "archive";
+  if (scopes.includes("updates")) return "updates";
   if (scopes.includes("reading") || scopes.includes("reading-reader")) return "reading";
   return scopes.some((scope) => scope === "todo" || scope === "catchup" || scope === "expired")
     ? "todo"

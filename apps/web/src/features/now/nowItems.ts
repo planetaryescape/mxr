@@ -30,7 +30,10 @@ export function nowItems(now: Now | undefined, hidden: HiddenByMode): NowItem[] 
     items.push({ kind: "todo", key: `todo:${todo.todo.id}`, threadId, todo });
   }
   const card = now.updates;
-  if (card && !card.thread_ids.every((id) => hidden.updates.has(id))) {
+  if (
+    card &&
+    (card.thread_ids.length === 0 || !card.thread_ids.every((id) => hidden.updates.has(id)))
+  ) {
     items.push({ kind: "updates", key: "updates", card });
   }
   if (now.reading) {

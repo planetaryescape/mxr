@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { PaperTrailRoute } from "@/features/places/PaperTrailRoute";
+import { UpdatesRoute } from "@/features/updates/UpdatesRoute";
 
-/** Updates, an early version on Paper trail (blueprint 22). */
+/** Updates: notifications as a twice-daily briefing by source (blueprint 22). */
 export const Route = createFileRoute("/updates")({
-  component: PaperTrailRoute,
+  component: UpdatesRoute,
 });

@@ -145,8 +145,8 @@ impl Found {
             field,
             evidence: Some(value.clone()),
             value: FieldValue::Text(value),
+            checked: source_checks(source),
             source,
-            checked: true,
         }
     }
 
@@ -159,7 +159,7 @@ impl Found {
         Self {
             field,
             value: FieldValue::At(at),
-            checked: source_checks_money_and_dates(source),
+            checked: source_checks(source),
             source,
             evidence: Some(evidence.into()),
         }
@@ -172,7 +172,7 @@ impl Found {
                 minor,
                 currency: currency.to_ascii_uppercase(),
             },
-            checked: source_checks_money_and_dates(source),
+            checked: source_checks(source),
             source,
             evidence: Some(evidence.into()),
         }
@@ -205,16 +205,16 @@ impl Found {
             rank: self.source.rank(),
             value_text,
             value_int,
-            checked: self.checked || !self.field.needs_checking(),
+            checked: self.checked,
             evidence: self.evidence.clone(),
             observed_at,
         }
     }
 }
 
-/// Markup and you are trusted for money and dates; a rule, a to-do's copy
-/// or a tracker's guess is not until confirmed.
-fn source_checks_money_and_dates(source: Source) -> bool {
+/// Only markup and you check a value; a rule, a to-do's copy or a
+/// tracker's guess is unchecked until confirmed.
+fn source_checks(source: Source) -> bool {
     matches!(source, Source::Schema | Source::User)
 }
 
@@ -247,13 +247,16 @@ mod tests {
         assert!(!rule.checked);
         let schema = Found::money(Source::Schema, 100, "GBP", "1.00");
         assert!(schema.checked);
-        // Text fields are never what makes a record unchecked.
-        let title = Found::text(FieldName::Title, Source::Rule, "XPS 14").to_store(
-            "m",
-            None,
-            day_at(NaiveDate::from_ymd_opt(2025, 3, 3).expect("day")),
-        );
-        assert!(title.checked);
+        // Only schema.org or you check a value, text included: a title a
+        // rule read is unchecked too.
+        let observed = day_at(NaiveDate::from_ymd_opt(2025, 3, 3).expect("day"));
+        let rule_title = Found::text(FieldName::Title, Source::Rule, "XPS 14");
+        assert!(!rule_title.checked);
+        assert!(!rule_title.to_store("m", None, observed).checked);
+        let schema_title = Found::text(FieldName::Title, Source::Schema, "XPS 14");
+        assert!(schema_title.to_store("m", None, observed).checked);
+        let your_issuer = Found::text(FieldName::Issuer, Source::User, "Dell");
+        assert!(your_issuer.to_store("m", None, observed).checked);
     }
 
     #[test]

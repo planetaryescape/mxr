@@ -490,7 +490,7 @@ fn field_data(kind: RecordKind, value: &RecordFieldValue) -> Option<RecordFieldD
         copy,
         source: value.source.clone(),
         source_label: source.describe().to_string(),
-        checked: value.checked || !name.needs_checking(),
+        checked: value.checked,
         evidence: value.evidence.clone(),
         message_id: value.message_id.clone(),
     })
@@ -605,9 +605,12 @@ fn to_data(record: &ArchiveRecord, ctx: &Context, full: bool, now: DateTime<Utc>
         .iter()
         .filter_map(|value| field_data(kind, value))
         .collect();
+    // Only money and dates decide whether a record is checked.
     let unchecked_fields = fields
         .iter()
-        .filter(|field| !field.checked)
+        .filter(|field| {
+            !field.checked && FieldName::parse(&field.field).is_some_and(FieldName::needs_checking)
+        })
         .map(|field| field.field.clone())
         .collect();
     let empty_docs = Vec::new();
@@ -1793,6 +1796,24 @@ async fn copy_pdf(
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    #[test]
+    fn the_chip_says_unchecked_for_a_rule_read_reference() {
+        let value = RecordFieldValue {
+            field: "reference".to_string(),
+            source_key: "m".to_string(),
+            message_id: None,
+            source: "rule".to_string(),
+            rank: 1,
+            value_text: Some("402-118".to_string()),
+            value_int: None,
+            checked: false,
+            evidence: Some("Order number: 402-118".to_string()),
+            observed_at: Utc::now(),
+        };
+        let chip = field_data(RecordKind::Order, &value).expect("a field");
+        assert!(!chip.checked, "a rule's reference is not checked");
+    }
 
     #[test]
     fn days_print_as_days_and_instants_with_their_time() {

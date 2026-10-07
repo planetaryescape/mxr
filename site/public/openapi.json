@@ -2201,6 +2201,37 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "list",
+            "in": "query",
+            "description": "Every match as a list, whatever the query asks for (default false)",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Where a list's page starts (default 0)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "list_limit",
+            "in": "query",
+            "description": "Records in a list's page (default 200)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -12336,7 +12367,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/RecordAnswerCardData"
+                "$ref": "#/components/schemas/RecordAnswerCardData",
+                "description": "The best match's card. In list mode it is the record the list\nhighlights."
               }
             ]
           },
@@ -12354,10 +12386,115 @@
               }
             ]
           },
+          "list": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordAnswerListData",
+                "description": "Every match, in list mode. Boxed so the answer stays small next to\nthe other `ResponseData` variants."
+              }
+            ]
+          },
+          "matching": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many records matched in all: \"Show all 23 matches\".",
+            "minimum": 0
+          },
+          "mode": {
+            "$ref": "#/components/schemas/RecordAnswerModeData"
+          },
           "query": {
             "type": "string"
           }
         }
+      },
+      "RecordAnswerListData": {
+        "type": "object",
+        "description": "Every record a list-mode query matched, shaped like the ledger.",
+        "required": [
+          "header",
+          "count",
+          "offset",
+          "records",
+          "months",
+          "totals",
+          "top_record_id"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Every match, not just this page.",
+            "minimum": 0
+          },
+          "first": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The oldest and newest match."
+          },
+          "header": {
+            "type": "string",
+            "description": "\"Anthropic · 23 records · £412.60\"."
+          },
+          "issuer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when every match has this one issuer: its issuer page."
+          },
+          "last": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "months": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordMonthData"
+            },
+            "description": "Every month of the matches, newest first, with counts and totals\nover all of them."
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordData"
+            },
+            "description": "This page of the matches, newest first, as the ledger orders them."
+          },
+          "top_record_id": {
+            "type": "string",
+            "description": "The best match, which the list highlights."
+          },
+          "totals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordAmountData"
+            },
+            "description": "One total per currency over every match, largest first; never\nconverted."
+          }
+        }
+      },
+      "RecordAnswerModeData": {
+        "type": "string",
+        "description": "How the answer box shows what matched.",
+        "enum": [
+          "answer",
+          "list"
+        ]
       },
       "RecordChangeData": {
         "type": "object",
@@ -19408,6 +19545,21 @@
                 "type": "integer",
                 "format": "int32",
                 "description": "Records in \"also matching\" after the answer.",
+                "minimum": 0
+              },
+              "list": {
+                "type": "boolean",
+                "description": "Every match as a list, whatever the query asks for: \"Show all\"."
+              },
+              "list_limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "offset": {
+                "type": "integer",
+                "format": "int32",
+                "description": "The page of a list: where it starts and how many records.",
                 "minimum": 0
               },
               "query": {

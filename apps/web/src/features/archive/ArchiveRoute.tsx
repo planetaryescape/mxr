@@ -214,8 +214,10 @@ function Ledger({
     listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
   }, [index]);
   // The answer box is the default focus on arrival.
+  // Only when nothing else holds the focus, so it never steals a field.
   useEffect(() => {
-    if (!singlePane) inputRef.current?.focus();
+    const active = document.activeElement;
+    if (!singlePane && (!active || active === document.body)) inputRef.current?.focus();
   }, [singlePane]);
 
   const cardShown = Boolean(guide && !guide.card_seen && ledger.total > 0);

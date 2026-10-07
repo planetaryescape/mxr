@@ -512,13 +512,13 @@ async fn the_rail_lists_now_the_modes_and_inbox_with_keys_and_counts() {
         "To do earns a badge later (D117)"
     );
     assert_eq!(entry("updates").count, Some(1));
-    assert_eq!(entry("reading").count, Some(0));
+    assert_eq!(entry("reading").count, None, "nothing in Reading is owed");
     assert_eq!(entry("archive").count, None);
-    for id in ["updates", "reading"] {
+    for id in ["updates"] {
         assert_eq!(entry(id).status, RailStatusData::Early, "{id}");
         assert!(entry(id).early_note.is_some(), "{id}");
     }
-    for id in ["now", "messages", "todo", "archive", "inbox"] {
+    for id in ["now", "messages", "todo", "reading", "archive", "inbox"] {
         assert_eq!(entry(id).status, RailStatusData::Built, "{id}");
         assert!(entry(id).header.is_some(), "{id}");
     }

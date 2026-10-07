@@ -240,7 +240,7 @@
     "g o": "OpenOwedReplies",
     "g p": "OpenPlace(PaperTrail)",
     "g q": "OpenReplyQueue",
-    "g r": "OpenPlace(Reading)",
+    "g r": "OpenReading",
     "g s": "GoToStarred",
     "g t": "GoToSent",
     "g u": "OpenPlace(PaperTrail)",

@@ -4736,7 +4736,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-reading"
-version = "0.6.55"
+version = "0.6.57"
 dependencies = [
  "chrono",
  "dom_smoothie",

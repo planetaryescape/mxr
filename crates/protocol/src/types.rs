@@ -13,6 +13,7 @@ mod places;
 mod platform;
 mod promises;
 mod records;
+mod reading;
 mod thread_context;
 mod todos;
 pub use desk::*;
@@ -26,6 +27,7 @@ pub use places::*;
 pub use platform::*;
 pub use promises::*;
 pub use records::*;
+pub use reading::*;
 pub use thread_context::*;
 pub use todos::*;
 
@@ -1991,6 +1993,90 @@ pub enum Request {
         #[serde(default)]
         dry_run: bool,
     },
+    // ----- Reading -----
+    /// The edition: Reading's items in three bands (since your last visit,
+    /// earlier, fading), ranked inside by how much you read each source,
+    /// plus Later and the sources. Items past their source's window are
+    /// marked done in Reading on the way (never archived at the provider).
+    /// `mark_visit` records that Reading was opened, so the next visit's
+    /// "since you were last here" starts from this one. Returns
+    /// `ResponseData::ReadingEdition`.
+    GetReadingEdition {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default)]
+        mark_visit: bool,
+    },
+    /// One item as the reader shows it: the issue as reader text, the
+    /// saved article, highlights and minutes left. Local only: it never
+    /// fetches. Returns `ResponseData::ReadingItem`.
+    GetReadingItem {
+        item_key: String,
+    },
+    /// Put items on Later (`later: true`, which also answers "Still want
+    /// it?" with keep) or take them off. A link put on Later has its article
+    /// fetched by the client with `FetchArticle`, so it reads offline.
+    /// Returns `ResponseData::ReadingLater`.
+    SetReadingLater {
+        item_keys: Vec<String>,
+        #[serde(default = "default_true")]
+        later: bool,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Local engagement for ranking and unsubscribe evidence: opened,
+    /// seconds read, how far. Never leaves the machine; with
+    /// `MXR_ACTIVITY=off` nothing is written. Returns
+    /// `ResponseData::ReadingEngagement`.
+    RecordReadingEngagement {
+        item_key: String,
+        #[serde(default)]
+        opened: bool,
+        /// Time spent reading since the last report, in milliseconds.
+        #[serde(default)]
+        dwell_ms: u64,
+        /// How far down the item, 0 to 1. Only ever moves forward.
+        #[serde(default)]
+        progress: f64,
+    },
+    /// Fetch and save the article an item links to, contacting the link's
+    /// site (and any site it redirects to). Only ever on an explicit
+    /// request; private addresses, redirects into them and pages over the
+    /// size cap are refused. A saved copy is served unless `refresh`.
+    /// Returns `ResponseData::ReadingArticle`.
+    FetchArticle {
+        item_key: String,
+        #[serde(default)]
+        refresh: bool,
+    },
+    /// Save a passage from an item, with an optional note. Highlights are
+    /// found by search and exported with `ExportReadingHighlights`. Returns
+    /// `ResponseData::ReadingHighlight`.
+    SaveHighlight {
+        item_key: String,
+        quote: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+        /// `issue` (default) or `article`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        view: Option<String>,
+    },
+    /// Every highlight, oldest first, with the same as one Markdown
+    /// document. Returns `ResponseData::ReadingHighlights`.
+    ExportReadingHighlights {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+    },
+    /// Per-source reading settings: show the sender's own layout (`R`), or
+    /// stop offering to unsubscribe. Returns `ResponseData::ReadingSource`.
+    SetReadingSource {
+        account_id: AccountId,
+        sender_email: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        original_layout: Option<bool>,
+        #[serde(default)]
+        dismiss_unsubscribe_offer: bool,
+    },
     /// A place (Reading or Paper trail): inbox mail of that kind grouped by
     /// sender, newest bundle first, each with the reason it is there.
     /// `account_id: None` covers every enabled account.
@@ -2255,6 +2341,14 @@ impl Request {
             | Self::FileRecord { .. }
             | Self::SetRecordSender { .. }
             | Self::ExportRecords { .. }
+            | Self::GetReadingEdition { .. }
+            | Self::GetReadingItem { .. }
+            | Self::SetReadingLater { .. }
+            | Self::RecordReadingEngagement { .. }
+            | Self::FetchArticle { .. }
+            | Self::SaveHighlight { .. }
+            | Self::ExportReadingHighlights { .. }
+            | Self::SetReadingSource { .. }
             | Self::GetRecipientBriefing { .. }
             | Self::SuggestCollaborators { .. }
             | Self::FindExpert { .. }
@@ -3303,6 +3397,47 @@ pub enum ResponseData {
     MergeSuggestions {
         suggestions: Vec<MergeSuggestionData>,
     },
+    /// Returned by `Request::GetReadingEdition`.
+    ReadingEdition {
+        edition: ReadingEditionData,
+    },
+    /// Returned by `Request::GetReadingItem`.
+    ReadingItem {
+        item: ReadingItemDetailData,
+    },
+    /// Returned by `Request::SetReadingLater`.
+    ReadingLater {
+        items: Vec<ReadingLaterOutcomeData>,
+        dry_run: bool,
+        /// Items on Later after this (unchanged on a dry run).
+        later_count: u32,
+        /// "Saved to Later. 4 things saved."
+        copy: String,
+    },
+    /// Returned by `Request::RecordReadingEngagement`.
+    ReadingEngagement {
+        item_key: String,
+        /// False when `MXR_ACTIVITY=off` or activity is paused.
+        recorded: bool,
+        finished: bool,
+    },
+    /// Returned by `Request::FetchArticle`.
+    ReadingArticle {
+        fetch: ReadingFetchData,
+    },
+    /// Returned by `Request::SaveHighlight`.
+    ReadingHighlight {
+        highlight: ReadingHighlightData,
+    },
+    /// Returned by `Request::ExportReadingHighlights`.
+    ReadingHighlights {
+        highlights: Vec<ReadingHighlightData>,
+        markdown: String,
+    },
+    /// Returned by `Request::SetReadingSource`.
+    ReadingSource {
+        source: ReadingSourceData,
+    },
     /// Returned by `Request::ListPlace`.
     Place {
         place: MailPlaceData,
@@ -3502,6 +3637,14 @@ impl ResponseData {
             | Self::RecordAnswer { .. }
             | Self::RecordChange { .. }
             | Self::RecordExport { .. }
+            | Self::ReadingEdition { .. }
+            | Self::ReadingItem { .. }
+            | Self::ReadingLater { .. }
+            | Self::ReadingEngagement { .. }
+            | Self::ReadingArticle { .. }
+            | Self::ReadingHighlight { .. }
+            | Self::ReadingHighlights { .. }
+            | Self::ReadingSource { .. }
             | Self::RecipientBriefing { .. }
             | Self::SuggestedCollaborators { .. }
             | Self::ExpertSuggestions { .. }

@@ -11,7 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{archive_copy, messages_copy, now_copy, todo_copy};
+use super::{archive_copy, messages_copy, now_copy, reading_copy, todo_copy};
 
 /// One key and the verb it does in this mode: "e tick off".
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -347,9 +347,50 @@ pub const ARCHIVE_GUIDE: ModeGuideCopy = ModeGuideCopy {
     ],
 };
 
+/// Reading's keys, per the blueprint's one key map.
+const READING_KEYS: &[(&str, &str)] = &[
+    ("Enter", "read"),
+    ("b", "later"),
+    ("e", "let go"),
+    ("L", "fetch the linked article"),
+    ("D", "unsubscribe"),
+    ("R", "original layout"),
+    ("A", "let go of everything shown"),
+    ("h", "highlight"),
+    ("o", "open the email"),
+    ("u", "undo"),
+    ("?", "what is this"),
+];
+
+pub const READING_GUIDE: ModeGuideCopy = ModeGuideCopy {
+    mode: "reading",
+    name: "Reading",
+    header: reading_copy::HEADER,
+    never_had_any: reading_copy::NEVER_HAD_ANY,
+    add_one: "",
+    clear_for_now: reading_copy::CLEAR_FOR_NOW,
+    lands_here: reading_copy::LANDS_HERE,
+    card: reading_copy::CARD,
+    card_keys: &[
+        ("Enter", "read"),
+        ("b", "later"),
+        ("e", "let go"),
+        ("D", "unsubscribe"),
+    ],
+    why_template: "Here because: {evidence} ({source}). {fades}",
+    keys: READING_KEYS,
+    first_run_line: reading_copy::FIRST_RUN_LINE,
+};
+
 /// Every mode that has shipped, in rail order. Now leads: it is the front
 /// page over the modes.
-pub const MODE_GUIDES: &[ModeGuideCopy] = &[NOW_GUIDE, MESSAGES_GUIDE, TODO_GUIDE, ARCHIVE_GUIDE];
+pub const MODE_GUIDES: &[ModeGuideCopy] = &[
+    NOW_GUIDE,
+    MESSAGES_GUIDE,
+    TODO_GUIDE,
+    READING_GUIDE,
+    ARCHIVE_GUIDE,
+];
 
 /// The guide for a mode id. Accepts "todo", "to-do" and "to do".
 pub fn mode_guide(mode: &str) -> Option<&'static ModeGuideCopy> {

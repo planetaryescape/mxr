@@ -57,6 +57,7 @@ mod owed;
 pub(crate) mod places;
 mod platform;
 mod promises;
+pub(crate) mod reading;
 pub(crate) mod records;
 mod relationship_profile;
 pub(crate) mod reply_later;
@@ -1461,6 +1462,62 @@ async fn dispatch(
         } => {
             modes::get_membership(state, message_id.as_ref(), thread_id.as_ref(), thread_ids).await
         }
+        Request::GetReadingEdition {
+            account_id,
+            mark_visit,
+        } => reading::get_edition(state, account_id.as_ref(), *mark_visit).await,
+        Request::GetReadingItem { item_key } => reading::get_item(state, item_key).await,
+        Request::SetReadingLater {
+            item_keys,
+            later,
+            dry_run,
+        } => reading::set_later(state, item_keys, *later, *dry_run).await,
+        Request::RecordReadingEngagement {
+            item_key,
+            opened,
+            dwell_ms,
+            progress,
+        } => {
+            reading::record_engagement(
+                state,
+                item_key,
+                mxr_store::ReadingEngagementReport {
+                    opened: *opened,
+                    dwell_ms: *dwell_ms,
+                    progress: *progress,
+                },
+            )
+            .await
+        }
+        Request::FetchArticle { item_key, refresh } => {
+            reading::fetch_article(state, item_key, *refresh).await
+        }
+        Request::SaveHighlight {
+            item_key,
+            quote,
+            note,
+            view,
+        } => {
+            reading::save_highlight(state, item_key, quote, note.as_deref(), view.as_deref()).await
+        }
+        Request::ExportReadingHighlights { account_id } => {
+            reading::export_highlights(state, account_id.as_ref()).await
+        }
+        Request::SetReadingSource {
+            account_id,
+            sender_email,
+            original_layout,
+            dismiss_unsubscribe_offer,
+        } => {
+            reading::set_source(
+                state,
+                account_id,
+                sender_email,
+                *original_layout,
+                *dismiss_unsubscribe_offer,
+            )
+            .await
+        }
         Request::SetModeDone {
             thread_ids,
             mode,
@@ -1928,6 +1985,9 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListMessages { .. }
         | Request::GetPerson { .. }
         | Request::ListMergeSuggestions { .. }
+        | Request::GetReadingEdition { .. }
+        | Request::GetReadingItem { .. }
+        | Request::ExportReadingHighlights { .. }
         | Request::ListSignatures
         | Request::ListSignatureDefaults
         | Request::ResolveSignature { .. }
@@ -2095,6 +2155,11 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::DismissRecord { .. }
         | Request::FileRecord { .. }
         | Request::SetRecordSender { .. }
+        | Request::SetReadingLater { .. }
+        | Request::RecordReadingEngagement { .. }
+        | Request::FetchArticle { .. }
+        | Request::SaveHighlight { .. }
+        | Request::SetReadingSource { .. }
         | Request::RebuildUserVoice { .. }
         | Request::SetScreenerDecision { .. }
         | Request::ClearScreenerDecision { .. }
@@ -2322,6 +2387,14 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SplitPerson { .. } => "split_person",
         Request::ListMergeSuggestions { .. } => "list_merge_suggestions",
         Request::SetModeDone { .. } => "set_mode_done",
+        Request::GetReadingEdition { .. } => "get_reading_edition",
+        Request::GetReadingItem { .. } => "get_reading_item",
+        Request::SetReadingLater { .. } => "set_reading_later",
+        Request::RecordReadingEngagement { .. } => "record_reading_engagement",
+        Request::FetchArticle { .. } => "fetch_article",
+        Request::SaveHighlight { .. } => "save_highlight",
+        Request::ExportReadingHighlights { .. } => "export_reading_highlights",
+        Request::SetReadingSource { .. } => "set_reading_source",
         Request::ScheduleTodo { .. } => "schedule_todo",
         Request::UpdateTodo { .. } => "update_todo",
         Request::CreateTodo { .. } => "create_todo",
@@ -2417,6 +2490,8 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListMessages { account_id, .. }
         | Request::GetPerson { account_id, .. }
         | Request::ListMergeSuggestions { account_id }
+        | Request::GetReadingEdition { account_id, .. }
+        | Request::ExportReadingHighlights { account_id }
         | Request::SetTodoCatchup { account_id, .. }
         | Request::ListSenders { account_id, .. }
         | Request::ListStorageBreakdown { account_id, .. }
@@ -2450,7 +2525,8 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::RebuildUserVoice { account_id }
         | Request::SetSenderKind { account_id, .. }
         | Request::MergePeople { account_id, .. }
-        | Request::SplitPerson { account_id, .. } => Some(account_id),
+        | Request::SplitPerson { account_id, .. }
+        | Request::SetReadingSource { account_id, .. } => Some(account_id),
         Request::DraftCompose { account_id, .. } => account_id.as_ref(),
         Request::DraftEval { account_id, .. } => account_id.as_ref(),
         Request::SetSignatureDefault { account_id, .. }

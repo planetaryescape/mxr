@@ -58,7 +58,7 @@ pub(super) const fn mark_name(mode: ModeKindData) -> Option<&'static str> {
 pub(super) const fn is_early(mode: ModeKindData) -> bool {
     !matches!(
         mode,
-        ModeKindData::Todo | ModeKindData::Messages | ModeKindData::Archive
+        ModeKindData::Todo | ModeKindData::Messages | ModeKindData::Reading | ModeKindData::Archive
     )
 }
 
@@ -651,10 +651,10 @@ const fn early_note(mode: ModeKindData) -> Option<&'static str> {
         ModeKindData::Updates => {
             Some("Early version: Paper trail, automated mail in your inbox by sender.")
         }
-        ModeKindData::Reading => {
-            Some("Early version: newsletters and lists in your inbox by sender.")
-        }
-        ModeKindData::Todo | ModeKindData::Messages | ModeKindData::Archive => None,
+        ModeKindData::Todo
+        | ModeKindData::Messages
+        | ModeKindData::Reading
+        | ModeKindData::Archive => None,
     }
 }
 
@@ -743,7 +743,9 @@ pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -
         },
         mode_entry(ModeKindData::Todo, count(snapshot.due_now.len())),
         mode_entry(ModeKindData::Updates, count(snapshot.inbox.updates.len())),
-        mode_entry(ModeKindData::Reading, count(snapshot.inbox.reading.len())),
+        // Reading shows no count: nothing in it is owed (only Later counts,
+        // inside the mode).
+        mode_entry(ModeKindData::Reading, None),
         mode_entry(ModeKindData::Archive, None),
     ]);
     entries.push(RailEntryData {

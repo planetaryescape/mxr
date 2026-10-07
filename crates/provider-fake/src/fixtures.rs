@@ -6,7 +6,10 @@ use std::collections::HashMap;
 mod messages_demo;
 mod modes_demo;
 mod records_demo;
+mod reading_demo;
 mod todo_demo;
+
+pub use reading_demo::demo_article_html;
 
 /// The provider id of the demo's sent message that promises the signed
 /// engagement form, which `mxr demo` keeps as an undated promise. Seeded
@@ -18,6 +21,16 @@ pub fn todo_demo_promise_provider_id() -> String {
         "demo-msg-{}",
         DELIVERY_DEMO_MESSAGE_COUNT + todo_demo::TODO_DEMO_PROMISE_POSITION + 1
     )
+}
+
+/// The Reading demo's issues the demo command marks as read to the end.
+pub fn reading_demo_finished_provider_ids() -> Vec<String> {
+    let first = DELIVERY_DEMO_MESSAGE_COUNT
+        + todo_demo::TODO_DEMO_MESSAGE_COUNT
+        + modes_demo::MODES_DEMO_MESSAGE_COUNT;
+    reading_demo::READING_DEMO_FINISHED
+        .map(|position| format!("demo-msg-{}", first + position + 1))
+        .collect()
 }
 
 pub const CURATED_DEMO_MESSAGE_COUNT: usize = 50;
@@ -763,6 +776,7 @@ impl DemoFixtureStream {
                 + modes_demo::MODES_DEMO_MESSAGE_COUNT
                 + messages_demo::MESSAGES_DEMO_MESSAGE_COUNT
                 + records_demo::RECORDS_DEMO_MESSAGE_COUNT
+                + reading_demo::READING_DEMO_MESSAGE_COUNT
         } else {
             0
         };
@@ -871,6 +885,12 @@ impl DemoFixtureStream {
             messages.len() + 1,
         ));
         messages.extend(records_demo::records_demo_messages(
+            &self.account_id,
+            &self.self_addr,
+            self.now,
+            messages.len() + 1,
+        ));
+        messages.extend(reading_demo::reading_demo_messages(
             &self.account_id,
             &self.self_addr,
             self.now,

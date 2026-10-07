@@ -854,6 +854,69 @@ pub fn map_request(
                 "Messages requests are not in the activity catalog yet"
             );
         }
+        // Reading: what you chose to read, keep or highlight, by item key
+        // (a message id and an index) and counts only, never text or URLs.
+        Request::RecordReadingEngagement {
+            item_key,
+            opened: true,
+            progress,
+            ..
+        } => (
+            "reading.open",
+            Some("reading_item"),
+            Some(item_key.clone()),
+            Some(serde_json::json!({
+                "progress_pct": (progress.clamp(0.0, 1.0) * 100.0).round(),
+            })),
+        ),
+        Request::SetReadingLater {
+            item_keys,
+            later,
+            dry_run: false,
+        } => (
+            if *later {
+                "reading.later"
+            } else {
+                "reading.unlater"
+            },
+            Some("reading_item"),
+            item_keys.first().cloned(),
+            Some(serde_json::json!({
+                "count": item_keys.len(),
+                "target_ids": item_keys,
+            })),
+        ),
+        Request::FetchArticle { item_key, refresh } => (
+            "reading.fetch_article",
+            Some("reading_item"),
+            Some(item_key.clone()),
+            Some(serde_json::json!({ "refresh": refresh })),
+        ),
+        Request::SaveHighlight {
+            item_key,
+            quote,
+            note,
+            ..
+        } => (
+            "reading.highlight",
+            Some("reading_item"),
+            Some(item_key.clone()),
+            Some(serde_json::json!({
+                "quote_chars": quote.chars().count(),
+                "has_note": note.is_some(),
+            })),
+        ),
+        Request::GetReadingEdition { .. }
+        | Request::GetReadingItem { .. }
+        | Request::RecordReadingEngagement { .. }
+        | Request::SetReadingLater { .. }
+        | Request::ExportReadingHighlights { .. }
+        | Request::SetReadingSource { .. } => {
+            skip_activity!(
+                "reading",
+                "reading views, dwell reports, previews and per-source settings are not activity"
+            );
+        }
         Request::GetModeGuide { .. } | Request::SetHintSeen { .. } => {
             skip_activity!(
                 "mode_guide",

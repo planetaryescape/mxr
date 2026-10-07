@@ -299,7 +299,9 @@ fn updates_card(digest: &UpdatesDigestData) -> Option<NowUpdatesCardData> {
         .chain(&digest.changed)
         .chain(&digest.routine)
         .collect();
-    if all.is_empty() {
+    // Parcels on their way aren't a digest to read: once its mail is let
+    // go, the card leaves Now unless a tracker went wrong.
+    if all.is_empty() || (digest.message_count == 0 && digest.needs_a_look.is_empty()) {
         return None;
     }
     let lines: Vec<_> = digest

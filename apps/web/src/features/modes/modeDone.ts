@@ -22,6 +22,7 @@ import { plural } from "@/lib/format";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
 import type { ModeKind } from "./membership";
+import { MESSAGES_KEY } from "@/features/messages/api";
 
 type Schemas = components["schemas"];
 export type ModeDoneOutcome = Schemas["ModeDoneOutcomeData"];
@@ -205,8 +206,8 @@ export async function markModeDone(
 }
 
 /**
- * Every view a done can change: mail lists, Now, membership, To do and the
- * rail. The rail polls on its own otherwise, so ordinary mail verbs leave it.
+ * Every view a done can change: mail lists, Now, membership, To do,
+ * Messages and the rail. The rail polls on its own otherwise, so ordinary mail verbs leave it.
  */
 export async function refreshModes(): Promise<void> {
   const qc = getActiveQueryClient();
@@ -214,5 +215,6 @@ export async function refreshModes(): Promise<void> {
     invalidateMailQueries(qc).catch(() => undefined),
     qc?.invalidateQueries({ queryKey: ["todos"] }).catch(() => undefined),
     qc?.invalidateQueries({ queryKey: ["rail"] }).catch(() => undefined),
+    qc?.invalidateQueries({ queryKey: MESSAGES_KEY }).catch(() => undefined),
   ]);
 }

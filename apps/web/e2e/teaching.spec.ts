@@ -137,3 +137,85 @@ test("both empty states teach: never had any, and clear for now", async ({ page 
   await expect(page.getByTestId("coming-week")).toContainText("Renew car insurance");
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+// ----- Messages -----
+
+async function showMessagesCard(page: Page) {
+  await bridge(page, "/api/v1/mail/modes/messages/card", { seen: false });
+}
+
+test("Messages' card shows once, closes on Esc, and stays closed", async ({ page }) => {
+  await showMessagesCard(page);
+  await openApp(page, "/messages");
+  await expect(page.getByTestId("mode-header").first()).toHaveText(
+    "People you talk with, one row each. Reply or mark done.",
+  );
+  const card = page.getByTestId("mode-card");
+  await expect(card).toContainText("Each row is a person, not an email");
+  await expect(card).toContainText("got it");
+  await page.keyboard.press("Escape");
+  await expect(card).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId("messages-row").first()).toBeVisible();
+  await expect(page.getByTestId("mode-card")).toHaveCount(0);
+});
+
+test("? in Messages leads with the mode", async ({ page }) => {
+  await openApp(page, "/messages");
+  await expect(page.getByTestId("messages-row").first()).toBeVisible();
+  await page.keyboard.press("?");
+  const modeHelp = page.getByRole("dialog").getByTestId("mode-help");
+  await expect(modeHelp).toContainText("Messages: People you talk with");
+  await expect(modeHelp).toContainText(". got it");
+});
+
+const PEOPLE_ROUTE = /\/api\/v1\/mail\/people(\?.*)?$/;
+
+test("Messages' empty states teach: never had any, and nobody waiting", async ({ page }) => {
+  const empty = {
+    generated_at: "2026-10-05T09:00:00Z",
+    header: "People you talk with, one row each. Reply or mark done.",
+    your_turn: [],
+    pinned: [],
+    recent: [],
+    quiet: [],
+    recent_total: 0,
+    quiet_total: 0,
+    row_count: 0,
+    thread_count: 0,
+    merge_suggestion_count: 0,
+  };
+  const never =
+    "When someone writes to you and you've written to them, they show up here, one row per person, with what they asked you.";
+  await page.route(PEOPLE_ROUTE, (route) =>
+    route.fulfill({ json: { kind: "Messages", messages: { ...empty, empty_state: never } } }),
+  );
+  await openApp(page, "/messages");
+  await expect(page.getByTestId("messages-empty")).toContainText(never);
+
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await page.route(PEOPLE_ROUTE, (route) =>
+    route.fulfill({
+      json: {
+        kind: "Messages",
+        messages: {
+          ...empty,
+          empty_state: "Nobody is waiting on you.",
+          lapsed: [
+            {
+              account_id: "acct",
+              person: { id: "ari@fieldkit.example", name: "Ari Stone", addresses: [] },
+              line: "Ari usually writes every week. Last: 19 days ago.",
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await page.reload();
+  await expect(page.getByTestId("messages-empty")).toContainText("Nobody is waiting on you.");
+  await expect(page.getByTestId("lapsed-line")).toHaveText(
+    "Ari usually writes every week. Last: 19 days ago.",
+  );
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});

@@ -222,7 +222,7 @@ function MessagesBody({
 
   const done = useCallback(() => {
     if (!conversation) return;
-    void markModeDone("messages", [conversation.thread_id]).then(() => refreshMessages());
+    void markModeDone("messages", [conversation.thread_id]);
   }, [conversation]);
 
   const target = useCallback(async () => {

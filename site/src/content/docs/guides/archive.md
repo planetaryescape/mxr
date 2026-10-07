@@ -297,4 +297,4 @@ source.
 - [Archive intelligence](/guides/archive-intelligence/): `mxr ask`, the
   fallback
 - [Deliveries](/guides/deliveries/)
-- `mxr records --help` for every flag
+- [`mxr records` CLI reference](/reference/cli/records/): every flag, generated from `--help`

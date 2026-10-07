@@ -881,7 +881,7 @@ async fn conversation(
         .map(|message| {
             let text = texts.get(&message.id);
             let body = text.map(|t| t.text.clone()).unwrap_or_default();
-            let trimmed = text.map_or(TrimmedData::default(), |t| t.trimmed);
+            let trimmed = text.map_or_else(TrimmedData::default, |t| t.trimmed);
             let ask_quote = ask
                 .as_ref()
                 .filter(|ask| ask.message_id == message.id && body.contains(&ask.quote))

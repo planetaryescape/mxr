@@ -5,7 +5,7 @@ fn fixture(name: &str) -> String {
         "{}/tests/fixtures/quotes/{name}",
         env!("CARGO_MANIFEST_DIR")
     );
-    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"))
+    std::fs::read_to_string(&path).expect("quote fixture should be readable")
 }
 
 fn earlier(text: &str) -> EarlierMessage<'_> {

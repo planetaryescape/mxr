@@ -165,8 +165,7 @@ pub(super) async fn cached_ask(
     };
     let model = gist
         .provenance
-        .map(|p| p.model)
-        .unwrap_or_else(|| "the configured model".to_string());
+        .map_or_else(|| "the configured model".to_string(), |p| p.model);
     Ok(gist.ask.and_then(|ask| ask.quote).map(|quote| CachedAsk {
         message_id: quote.message_id,
         quote: quote.text,

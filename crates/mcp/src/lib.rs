@@ -997,7 +997,7 @@ mod tests {
             .await
             .expect("tool result");
         assert_eq!(blocked.0["blocked"], true);
-        let requests = requester.requests.lock().unwrap();
+        let requests = requester.requests.lock().expect("requests lock");
         assert_eq!(
             requests.len(),
             1,

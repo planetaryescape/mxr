@@ -264,7 +264,11 @@ mod tests {
         };
         let built = messages_demo_messages(&account_id, &me, Utc::now(), 1);
         assert_eq!(built.len(), MESSAGES_DEMO_MESSAGE_COUNT);
-        let html = built[1].1.text_html.as_deref().unwrap();
+        let html = built[1]
+            .1
+            .text_html
+            .as_deref()
+            .expect("Samir's letter has an HTML part");
         assert!(html.contains("gmail_quote") && html.contains("gmail_signature"));
     }
 }

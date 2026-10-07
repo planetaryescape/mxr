@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use mxr_client::{ClientError, IpcConnection};
 use mxr_core::{id::MessageId, AccountId, Draft, DraftId, ThreadId};
-use mxr_protocol::{ClientKind, MutationCommand, Request, Response, ResponseData};
+use mxr_protocol::{
+    ClientKind, MutationCommand, RecordFilterData, RecordKindData, Request, Response, ResponseData,
+};
 use rmcp::{
     handler::server::{
         router::tool::ToolRouter,
@@ -299,6 +301,89 @@ impl MxrMcpServer {
             offset: input.offset.unwrap_or(0),
             messages_per_bundle: input.messages_per_bundle.unwrap_or(5),
             message_offset: 0,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_records",
+        description = "Archive's records (receipts, orders, bookings, invoices, statements, tickets, contracts, warranties, accounts) built from mail, one per thing rather than per email, newest first by transaction date, with month totals, facets and what is coming up. Every field says where it came from (schema.org, a rule, the user) and whether its amount or date is checked. Filter by kinds, issuer, year, has_pdf, checked. Read-only."
+    )]
+    pub async fn records(
+        &self,
+        Parameters(input): Parameters<RecordsInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let kinds = input
+            .kinds
+            .unwrap_or_default()
+            .iter()
+            .map(|kind| {
+                RecordKindData::parse(kind)
+                    .ok_or_else(|| mcp_error(format!("unknown record kind {kind}")))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        self.daemon_json(Request::ListRecords {
+            account_id: parse_optional_id(input.account_id)?,
+            filter: RecordFilterData {
+                kinds,
+                issuer: input.issuer,
+                year: input.year,
+                has_pdf: input.has_pdf,
+                checked: input.checked,
+                ..RecordFilterData::default()
+            },
+            limit: input.limit.unwrap_or(50),
+            offset: input.offset.unwrap_or(0),
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_records_ask",
+        description = "Ask Archive for a field: \"lisbon booking ref\", \"dell receipt 2025\", \"how much was the octopus bill\". Returns the field from record data on an answer card with its provenance, with no model. Only when no record matches does it fall back to a citation-checked answer over all mail, and the result says so. Read-only."
+    )]
+    pub async fn records_ask(
+        &self,
+        Parameters(input): Parameters<RecordsAskInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::AnswerFromRecords {
+            query: input.query,
+            account_id: parse_optional_id(input.account_id)?,
+            fallback: input.fallback.unwrap_or(true),
+            limit: 4,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_records_export_preview",
+        description = "Preview a CSV export of records (for taxes: invoices, receipts, statements): row count, total per currency, how many rows have an unchecked amount or date, and how many have no PDF. Read-only; the user exports with `mxr records export --csv` or the apps."
+    )]
+    pub async fn records_export_preview(
+        &self,
+        Parameters(input): Parameters<RecordsInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let kinds = input
+            .kinds
+            .unwrap_or_default()
+            .iter()
+            .map(|kind| {
+                RecordKindData::parse(kind)
+                    .ok_or_else(|| mcp_error(format!("unknown record kind {kind}")))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        self.daemon_json(Request::ExportRecords {
+            account_id: parse_optional_id(input.account_id)?,
+            filter: RecordFilterData {
+                kinds,
+                issuer: input.issuer,
+                year: input.year,
+                has_pdf: input.has_pdf,
+                checked: input.checked,
+                ..RecordFilterData::default()
+            },
+            attachments_dir: None,
+            dry_run: true,
         })
         .await
     }
@@ -757,6 +842,39 @@ pub struct ListPlaceInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct RecordsInput {
+    #[serde(default)]
+    pub account_id: Option<String>,
+    /// receipt, order, booking, invoice, statement, ticket, contract,
+    /// warranty, account
+    #[serde(default)]
+    pub kinds: Option<Vec<String>>,
+    #[serde(default)]
+    pub issuer: Option<String>,
+    #[serde(default)]
+    pub year: Option<i32>,
+    #[serde(default)]
+    pub has_pdf: Option<bool>,
+    #[serde(default)]
+    pub checked: Option<bool>,
+    #[serde(default)]
+    pub limit: Option<u32>,
+    #[serde(default)]
+    pub offset: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RecordsAskInput {
+    pub query: String,
+    #[serde(default)]
+    pub account_id: Option<String>,
+    /// Fall back to an answer over all mail when no record matches
+    /// (default true).
+    #[serde(default)]
+    pub fallback: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct SweepPreviewInput {
     pub place: PlaceInput,
     #[serde(default)]
@@ -962,6 +1080,9 @@ mod tests {
         assert!(names.contains(&"mxr_thread_gists"));
         assert!(names.contains(&"mxr_list_place"));
         assert!(names.contains(&"mxr_sweep_preview"));
+        assert!(names.contains(&"mxr_records"));
+        assert!(names.contains(&"mxr_records_ask"));
+        assert!(names.contains(&"mxr_records_export_preview"));
         assert!(names.contains(&"mxr_mutation_preview"));
         assert!(names.contains(&"mxr_send_draft"));
         assert!(names.contains(&"mxr_list_drafts"));
@@ -1079,6 +1200,32 @@ mod tests {
         assert!(matches!(
             requests.as_slice(),
             [Request::ListScheduledSends { account_id: Some(id) }] if *id == account_id
+        ));
+    }
+
+    #[tokio::test]
+    async fn the_export_tool_only_ever_previews() {
+        let requester = Arc::new(FakeRequester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
+        server
+            .records_export_preview(Parameters(RecordsInput {
+                account_id: None,
+                kinds: Some(vec!["invoice".into(), "receipts".into()]),
+                issuer: None,
+                year: Some(2025),
+                has_pdf: None,
+                checked: None,
+                limit: None,
+                offset: None,
+            }))
+            .await
+            .expect("tool result");
+        let requests = requester.requests.lock().expect("requests lock");
+        assert!(matches!(
+            requests.as_slice(),
+            [Request::ExportRecords { dry_run: true, attachments_dir: None, filter, .. }]
+                if filter.kinds == vec![RecordKindData::Invoice, RecordKindData::Receipt]
+                    && filter.year == Some(2025)
         ));
     }
 

@@ -164,10 +164,14 @@ describe("useHint", () => {
   });
 });
 
+/** The daemon's handoff copy, as markModeDone's default message reads it. */
+function handoff(done: readonly ModeDoneOutcome[]): string {
+  return done[0]?.copy ?? "";
+}
+
 describe("withDoneHereHint", () => {
   test("the first done here carries the hint in its toast, once", () => {
     qc.setQueryData(modeGuideKey("messages"), guide("messages", [hint("done_here")]));
-    const handoff = (done: readonly ModeDoneOutcome[]) => done[0]?.copy ?? "";
     const done: ModeDoneOutcome[] = [
       { copy: "Done in Messages.", mode: "messages", provider: "Gmail", thread_id: "t" },
     ];

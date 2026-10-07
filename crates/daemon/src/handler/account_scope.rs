@@ -976,7 +976,8 @@ fn rebuild_thread(thread: &mut Thread, kept: &[Envelope]) -> Result<(), String> 
 }
 
 /// Cut a daemon event down to what a scoped profile may see, or drop it.
-/// Events that concern no account (daemon health, lag) pass; events whose
+/// Events that concern no account (daemon health, lag without its count)
+/// pass; events whose
 /// account can't be worked out are dropped.
 pub(crate) async fn scope_event(
     state: &AppState,
@@ -1054,7 +1055,9 @@ pub(crate) async fn scope_event(
         // Its summary can name another account's messages, and nothing
         // ties it to an account.
         DaemonEvent::MutationReconciliationFailed { .. } => None,
-        DaemonEvent::EventsLagged { .. } => Some(event),
+        // The count covers every account's events, so a scoped client is
+        // told to resync without learning how much the others got.
+        DaemonEvent::EventsLagged { .. } => Some(DaemonEvent::EventsLagged { skipped: 0 }),
         DaemonEvent::ThreadGistReady { ref gist } => {
             let mut allowed = true;
             for account_id in thread_accounts(state, std::slice::from_ref(&gist.thread_id)).await? {

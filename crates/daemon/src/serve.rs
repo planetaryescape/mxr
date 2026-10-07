@@ -430,7 +430,7 @@ pub(crate) async fn serve_client_connection<S>(
                             FrameSend::Unencodable(error) => {
                                 tracing::warn!(%error, "daemon event could not be framed; dropped it and signalled resync");
                                 if !matches!(
-                                    send_frame(&mut sink, events_lagged_frame(1)).await,
+                                    send_frame(&mut sink, events_lagged_frame(scoped_lag_count(event_profile, 1))).await,
                                     FrameSend::Sent
                                 ) {
                                     can_send = false;
@@ -452,7 +452,7 @@ pub(crate) async fn serve_client_connection<S>(
                         // this client — it is not a broadcast event.
                         tracing::debug!(skipped, "client event stream lagged; signalling resync");
                         if !matches!(
-                            send_frame(&mut sink, events_lagged_frame(skipped)).await,
+                            send_frame(&mut sink, events_lagged_frame(scoped_lag_count(event_profile, skipped))).await,
                             FrameSend::Sent
                         ) {
                             can_send = false;
@@ -472,6 +472,16 @@ pub(crate) async fn serve_client_connection<S>(
     }
 
     tracing::debug!("Client disconnected");
+}
+
+/// A lag count covers every account's events, so a profiled connection gets
+/// the resync signal without it.
+fn scoped_lag_count(event_profile: Option<&str>, skipped: u64) -> u64 {
+    if event_profile.is_some() {
+        0
+    } else {
+        skipped
+    }
 }
 
 /// An event frame cut to what the named profile may see, or `None` to drop

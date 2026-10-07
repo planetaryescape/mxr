@@ -1777,6 +1777,73 @@ mod scoped_events {
         finish(&state, served).await;
     }
 
+    /// A lag count covers every account's events, so a scoped connection
+    /// is told to resync without being told how much it missed.
+    #[tokio::test]
+    async fn a_scoped_client_gets_no_global_count_when_it_lags() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let mut config = state.config_snapshot();
+        config.agent_surfaces.profiles.insert(
+            "mcp".into(),
+            mxr_config::AgentProfileConfig {
+                allowed_accounts: vec![state.default_account_id().as_str()],
+                ..Default::default()
+            },
+        );
+        state.set_config_for_test(config).await;
+        let (hot, bulk) = lanes();
+        let h = DuplexHarness::start().await;
+        let mut served = serve(&h, state.clone(), hot, bulk).await;
+        served
+            .client
+            .send(IpcMessage {
+                id: 1,
+                source: ClientKind::Mcp,
+                payload: IpcPayload::Request(Request::Ping),
+            })
+            .await
+            .unwrap();
+        served.recv_response(1).await;
+
+        // No await between sends: the serve task can't drain, so the
+        // 256-slot channel overflows for this connection.
+        for _ in 0..400u32 {
+            let _ = state.event_tx.send(daemon_event(sample_event()));
+        }
+        match served.recv().await.payload {
+            IpcPayload::Event(DaemonEvent::EventsLagged { skipped }) => assert_eq!(skipped, 0),
+            other => panic!("expected EventsLagged, got {other:?}"),
+        }
+        served
+            .client
+            .send(IpcMessage {
+                id: 2,
+                source: ClientKind::Mcp,
+                payload: IpcPayload::Request(Request::Ping),
+            })
+            .await
+            .unwrap();
+        assert!(pong(&served.recv_response(2).await));
+        finish(&state, served).await;
+    }
+
+    #[tokio::test]
+    async fn a_relayed_lag_event_carries_no_count_to_a_scoped_client() {
+        let state = AppState::in_memory().await.unwrap();
+        let profile = mxr_config::AgentProfileConfig::default();
+        let event = crate::handler::account_scope::scope_event(
+            &state,
+            &profile,
+            DaemonEvent::EventsLagged { skipped: 7 },
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            event,
+            Some(DaemonEvent::EventsLagged { skipped: 0 })
+        ));
+    }
+
     /// A connection that never identifies itself (the web event socket,
     /// `mxr events`) is not profiled and still gets every event.
     #[tokio::test]

@@ -817,7 +817,10 @@ pub fn map_request(
             // Records carry amounts, references and account numbers; until
             // the catalog has an ids-and-counts shape for them, none is
             // recorded.
-            skip_activity!("records", "Archive requests are not in the activity catalog yet");
+            skip_activity!(
+                "records",
+                "Archive requests are not in the activity catalog yet"
+            );
         }
         Request::GetTodoRunway { .. }
         | Request::ListTodos { .. }

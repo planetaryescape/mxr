@@ -8,8 +8,8 @@ use chrono::{DateTime, Duration, Utc};
 use mxr_core::id::{MessageId, ThreadId};
 use mxr_core::types::{Address, Envelope, MessageBody, MessageDirection, MessageFlags};
 use mxr_protocol::{
-    archive_copy, RecordAnswerData, RecordChangeData, RecordData, RecordEditData,
-    RecordExportData, RecordFilterData, RecordKindData, RecordLedgerData, TodoStateActionData,
+    archive_copy, RecordAnswerData, RecordChangeData, RecordData, RecordEditData, RecordExportData,
+    RecordFilterData, RecordKindData, RecordLedgerData, TodoStateActionData,
 };
 
 async fn put(
@@ -51,7 +51,8 @@ async fn put(
         label_provider_ids: vec![],
         keywords: std::collections::BTreeSet::new(),
     };
-    fx.store_envelope(&envelope, MessageDirection::Inbound).await;
+    fx.store_envelope(&envelope, MessageDirection::Inbound)
+        .await;
     fx.state
         .store
         .insert_body(&MessageBody {
@@ -68,7 +69,9 @@ async fn put(
 }
 
 fn ld(json: &str) -> String {
-    format!(r#"<html><head><script type="application/ld+json">{json}</script></head><body>x</body></html>"#)
+    format!(
+        r#"<html><head><script type="application/ld+json">{json}</script></head><body>x</body></html>"#
+    )
 }
 
 async fn ledger(fx: &Fixture, filter: RecordFilterData) -> RecordLedgerData {
@@ -215,7 +218,10 @@ async fn the_dell_orders_emails_are_one_row_and_the_ledger_totals_its_month() {
     assert_eq!(orders.records.len(), 1);
     let dell = &orders.records[0];
     assert_eq!(dell.source_count, 3);
-    assert_eq!(dell.amount.as_ref().map(|a| a.display.as_str()), Some("£1,249.00"));
+    assert_eq!(
+        dell.amount.as_ref().map(|a| a.display.as_str()),
+        Some("£1,249.00")
+    );
     assert_eq!(
         dell.stage_line.as_deref(),
         Some("ordered · shipped · delivered")
@@ -262,15 +268,29 @@ async fn a_correction_wins_over_every_rescan_and_its_preview_equals_it() {
         record
             .fields
             .iter()
-            .map(|f| (f.field.clone(), f.value.clone(), f.source.clone(), f.checked))
+            .map(|f| {
+                (
+                    f.field.clone(),
+                    f.value.clone(),
+                    f.source.clone(),
+                    f.checked,
+                )
+            })
             .collect::<Vec<_>>()
     };
     assert_eq!(strip(&preview.records[0]), strip(&applied.records[0]));
-    assert_eq!(applied.records[0].amount.as_ref().map(|a| a.minor), Some(119_900));
+    assert_eq!(
+        applied.records[0].amount.as_ref().map(|a| a.minor),
+        Some(119_900)
+    );
 
     crate::handler::records::scan_messages(&fx.state, &ids).await;
     let after = ledger(&fx, RecordFilterData::default()).await;
-    let dell_after = after.records.iter().find(|r| r.id == dell.id).expect("dell");
+    let dell_after = after
+        .records
+        .iter()
+        .find(|r| r.id == dell.id)
+        .expect("dell");
     assert_eq!(dell_after.amount.as_ref().map(|a| a.minor), Some(119_900));
     let amount = dell_after
         .fields
@@ -320,7 +340,10 @@ async fn not_a_record_stays_out_and_filing_by_hand_previews_what_it_files() {
     assert_eq!(filed.message, archive_copy::FILED);
     assert_eq!(preview.records[0].kind, filed.records[0].kind);
     assert_eq!(preview.records[0].amount, filed.records[0].amount);
-    assert_eq!(preview.records[0].fields.len(), filed.records[0].fields.len());
+    assert_eq!(
+        preview.records[0].fields.len(),
+        filed.records[0].fields.len()
+    );
     assert_eq!(ledger(&fx, RecordFilterData::default()).await.total, 3);
 }
 
@@ -344,7 +367,12 @@ async fn the_export_preview_counts_what_the_export_writes() {
     let real = unpack(request(&fx, export(false)).await);
     assert!(preview.csv.is_none());
     assert_eq!(
-        (preview.rows, preview.unchecked, preview.missing_pdfs, &preview.totals),
+        (
+            preview.rows,
+            preview.unchecked,
+            preview.missing_pdfs,
+            &preview.totals
+        ),
         (real.rows, real.unchecked, real.missing_pdfs, &real.totals)
     );
     assert_eq!(preview.rows, 3);
@@ -379,8 +407,7 @@ async fn a_ticked_off_council_tax_bill_is_filed_and_undo_takes_the_tick_back() {
         .store
         .open_todos_for_threads(
             &fx.account,
-            &[fx
-                .state
+            &[fx.state
                 .store
                 .get_envelope(&bill)
                 .await
@@ -416,7 +443,10 @@ async fn no_record_match_says_so_and_falls_back_to_all_mail() {
     let answer = ask(&fx, "warranty for the boiler").await;
     assert!(answer.answer.is_none());
     let fallback = answer.fallback.expect("a fallback");
-    assert_eq!(fallback.note, archive_copy::no_match("warranty for the boiler"));
+    assert_eq!(
+        fallback.note,
+        archive_copy::no_match("warranty for the boiler")
+    );
 }
 
 #[tokio::test]

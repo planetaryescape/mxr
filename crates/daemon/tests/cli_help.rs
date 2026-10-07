@@ -269,7 +269,10 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_records_show", &["records", "show", "--help"]),
         ("cli_help_records_ask", &["records", "ask", "--help"]),
         ("cli_help_records_fix", &["records", "fix", "--help"]),
-        ("cli_help_records_dismiss", &["records", "dismiss", "--help"]),
+        (
+            "cli_help_records_dismiss",
+            &["records", "dismiss", "--help"],
+        ),
         ("cli_help_records_file", &["records", "file", "--help"]),
         ("cli_help_records_sender", &["records", "sender", "--help"]),
         ("cli_help_records_export", &["records", "export", "--help"]),

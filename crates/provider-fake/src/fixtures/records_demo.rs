@@ -37,7 +37,13 @@ fn address(name: &str, email: &str) -> Address {
     }
 }
 
-fn message(from: Address, to: &Address, subject: &str, body: String, date: DateTime<Utc>) -> DemoMessage {
+fn message(
+    from: Address,
+    to: &Address,
+    subject: &str,
+    body: String,
+    date: DateTime<Utc>,
+) -> DemoMessage {
     DemoMessage {
         from,
         to: vec![to.clone()],
@@ -72,7 +78,10 @@ pub(super) fn records_demo_messages(
     first_num: usize,
 ) -> Vec<(Envelope, MessageBody)> {
     let mut built = Vec::with_capacity(RECORDS_DEMO_MESSAGE_COUNT);
-    let mut push = |message: DemoMessage, thread_id: ThreadId, html: Option<String>, pdf: Option<(&str, u64)>| {
+    let mut push = |message: DemoMessage,
+                    thread_id: ThreadId,
+                    html: Option<String>,
+                    pdf: Option<(&str, u64)>| {
         let num = first_num + built.len();
         let (mut envelope, mut body) = build_demo_msg(num, account_id, &thread_id, message);
         if let Some(html) = html {
@@ -102,7 +111,13 @@ pub(super) fn records_demo_messages(
     let dell = address("Dell", "orders@dell.co.uk");
     let order_text = "Thanks for your order.\nOrder number: 402-118\nXPS 14 laptop\nOrder total: £1,249.00\nYour invoice is attached.";
     push(
-        message(dell.clone(), self_addr, "Your Dell order confirmation", order_text.to_string(), ordered),
+        message(
+            dell.clone(),
+            self_addr,
+            "Your Dell order confirmation",
+            order_text.to_string(),
+            ordered,
+        ),
         thread(account_id, "dell-order"),
         Some(ld(
             &format!(
@@ -229,7 +244,8 @@ pub(super) fn records_demo_messages(
             address("Apple", "no_reply@email.apple.com"),
             self_addr,
             "Your receipt from Apple.",
-            "Receipt\nDocument No. MSXK21\niCloud+ with 200 GB storage £2.99\nTotal £2.99".to_string(),
+            "Receipt\nDocument No. MSXK21\niCloud+ with 200 GB storage £2.99\nTotal £2.99"
+                .to_string(),
             now - Duration::days(12),
         ),
         thread(account_id, "apple"),
@@ -242,7 +258,8 @@ pub(super) fn records_demo_messages(
             address("Airbnb", "automated@airbnb.com"),
             self_addr,
             "Booking confirmation - Porto",
-            "Booking reference: HMX8Q2\nCheck-in: 14 May\nCheck-out: 16 May\nTotal £412.00".to_string(),
+            "Booking reference: HMX8Q2\nCheck-in: 14 May\nCheck-out: 16 May\nTotal £412.00"
+                .to_string(),
             now - Duration::days(400),
         ),
         thread(account_id, "airbnb"),

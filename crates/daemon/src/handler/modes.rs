@@ -24,8 +24,7 @@ use super::desk_lanes::{
 use super::desk_timers::DeskTimers;
 use super::mail_kind::{self, KindSignals};
 use super::mode_rules::{
-    mark_covers, membership, merge_marks, messages_membership, quiet_membership,
-    screener_question,
+    mark_covers, membership, merge_marks, messages_membership, quiet_membership, screener_question,
 };
 use super::places::{placed_inbox, scoped_accounts, Placed};
 use super::todo_view::{now_order, to_data};
@@ -361,11 +360,19 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
             format!(
                 "Here because: {} ({}).",
                 record.reason,
-                if record.checked { "checked" } else { "unchecked" }
+                if record.checked {
+                    "checked"
+                } else {
+                    "unchecked"
+                }
             ),
             format!(
                 "Also in Archive: {}",
-                if what.is_empty() { record.kind.clone() } else { what }
+                if what.is_empty() {
+                    record.kind.clone()
+                } else {
+                    what
+                }
             ),
             is_early(ModeKindData::Archive),
         ));

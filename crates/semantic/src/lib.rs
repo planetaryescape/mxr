@@ -1552,7 +1552,10 @@ fn build_chunk_records(
     let mut chunks = build_chunks(envelope, body);
     // Archive's recipe adds one field chunk beside the header; the PDF text
     // already comes in as attachment text once the PDF is on disk.
-    if let Some(line) = record_fields.map(normalize_text).filter(|line| !line.is_empty()) {
+    if let Some(line) = record_fields
+        .map(normalize_text)
+        .filter(|line| !line.is_empty())
+    {
         let at = chunks
             .iter()
             .position(|(kind, _)| *kind != SemanticChunkSourceKind::Header)

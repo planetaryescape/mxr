@@ -449,7 +449,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::HumanizerRewrite { .. }
         | Request::ResolveTime { .. }
         | Request::GetModeGuide { .. }
-        | Request::SetModeGuideSeen { .. } => Unscoped,
+        | Request::SetHintSeen { .. } => Unscoped,
     }
 }
 

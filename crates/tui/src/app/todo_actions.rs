@@ -10,7 +10,6 @@ use mxr_protocol::{
     TodoCatchupDecisionData, TodoChangeData, TodoData, TodoEditData, TodoStateActionData,
 };
 
-/// The mode id `GetModeGuide` and `SetModeGuideSeen` take.
 /// The mode id `GetModeGuide` takes for To do.
 pub(crate) const TODO_MODE: &str = mxr_protocol::TODO_GUIDE.mode;
 

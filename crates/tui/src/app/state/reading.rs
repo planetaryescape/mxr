@@ -83,6 +83,9 @@ pub enum ReadingConfirm {
         target: ReadingUnsubscribeTarget,
         /// Issues in the mailbox that leave with it.
         message_count: u32,
+        /// The dry run's token: Enter commits exactly that preview. None
+        /// when the preview gave none, and then Enter does nothing.
+        preview_token: Option<String>,
     },
 }
 

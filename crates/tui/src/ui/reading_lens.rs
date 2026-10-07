@@ -742,6 +742,7 @@ fn draw_confirm(
         ReadingConfirm::Unsubscribe {
             target,
             message_count,
+            ..
         } => {
             let issues = if *message_count == 1 {
                 "issue"

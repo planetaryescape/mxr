@@ -50,7 +50,7 @@ mod mode_done;
 mod mode_guide;
 mod mode_rules;
 mod modes;
-mod mutations;
+pub(crate) mod mutations;
 mod notifications;
 mod now;
 mod owed;
@@ -1717,6 +1717,7 @@ async fn dispatch(
             account_id,
             dry_run,
             archive_on_no_method,
+            preview_token,
         } => {
             mutations::unsubscribe_purge(
                 state,
@@ -1724,6 +1725,7 @@ async fn dispatch(
                 account_id.as_ref(),
                 *dry_run,
                 *archive_on_no_method,
+                preview_token.as_deref(),
             )
             .await
         }

@@ -517,6 +517,7 @@ pub async fn run() -> anyhow::Result<()> {
                             account_id: Some(pending.account_id.clone()),
                             dry_run: false,
                             archive_on_no_method: false,
+                            preview_token: None,
                         },
                     )
                     .await;
@@ -3583,7 +3584,7 @@ pub async fn run() -> anyhow::Result<()> {
                             app.show_reading_let_go_preview(&thread_ids, items);
                         }
                         AsyncResult::ReadingUnsubscribePreview(target, Ok(result)) => {
-                            app.show_reading_unsubscribe_preview(target, result.message_count);
+                            app.show_reading_unsubscribe_preview(target, *result);
                         }
                         AsyncResult::ReadingLetGoPreview(_, Err(e))
                         | AsyncResult::ReadingUnsubscribePreview(_, Err(e)) => {
@@ -4509,13 +4510,14 @@ fn spawn_reading_fetches(
                     account_id: Some(target.account_id.clone()),
                     dry_run: true,
                     archive_on_no_method: false,
+                    preview_token: None,
                 },
             )
             .await;
             let result = match resp {
                 Ok(Response::Ok {
                     data: ResponseData::UnsubscribePurgeResult { result },
-                }) => Ok(result),
+                }) => Ok(Box::new(result)),
                 Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(e) => Err(e),
                 _ => Err(MxrError::Ipc(

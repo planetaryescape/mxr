@@ -325,6 +325,7 @@ fn the_unsubscribe_preview_shows_evidence_method_and_that_it_cannot_be_undone() 
             method: ReadingUnsubscribeData::OneClick,
         },
         message_count: 11,
+        preview_token: Some("tok".into()),
     });
     for width in [60u16, 80, 120] {
         let rendered = render(&confirm, 0, width);

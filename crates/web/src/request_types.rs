@@ -303,6 +303,9 @@ pub(super) struct UnsubscribePurgeRequest {
     pub(super) dry_run: bool,
     #[serde(default)]
     pub(super) archive_on_no_method: bool,
+    /// From the dry run: commit exactly that preview.
+    #[serde(default)]
+    pub(super) preview_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -5072,6 +5072,7 @@ async fn unsubscribe_purge_dry_run_returns_would_affect_ids() {
                         message_ids: ids_for_ipc.clone(),
                         mutation_id: None,
                         error: None,
+                        preview_token: Some("tok".into()),
                     },
                 },
             }),

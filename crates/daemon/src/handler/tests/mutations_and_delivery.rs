@@ -2267,6 +2267,7 @@ async fn unsubscribe_purge_dry_run_reports_method_and_sender_count() {
             account_id: None,
             dry_run: true,
             archive_on_no_method: false,
+            preview_token: None,
         }),
     };
     let resp = handle_request(&state, &msg).await;
@@ -2304,6 +2305,7 @@ async fn unsubscribe_purge_without_method_does_not_archive_unless_allowed() {
             account_id: None,
             dry_run: false,
             archive_on_no_method: false,
+            preview_token: None,
         }),
     };
     let resp = handle_request(&state, &msg).await;
@@ -3016,4 +3018,78 @@ async fn prepare_reply_ignores_a_synthesized_name_delivered_to_and_defaults_to_p
         "user@example.com",
         "a synthesized-name Delivered-To must not steer the From"
     );
+}
+
+async fn purge(
+    state: &Arc<AppState>,
+    address: &str,
+    dry_run: bool,
+    preview_token: Option<String>,
+) -> Response {
+    let msg = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::UnsubscribePurge {
+            address: address.into(),
+            account_id: None,
+            dry_run,
+            archive_on_no_method: true,
+            preview_token,
+        }),
+    };
+    match handle_request(state, &msg).await.payload {
+        IpcPayload::Response(response) => response,
+        other => panic!("expected a response, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn an_unsubscribe_committed_with_its_preview_token_clears_only_what_was_previewed() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    state
+        .sync_engine
+        .sync_account(state.default_provider().as_ref())
+        .await
+        .unwrap();
+    let Response::Ok {
+        data: ResponseData::UnsubscribePurgeResult { result: preview },
+    } = purge(&state, "alice@work.com", true, None).await
+    else {
+        panic!("expected a preview");
+    };
+    let token = preview
+        .preview_token
+        .clone()
+        .expect("a dry run issues a token");
+    assert!(preview.message_count > 0);
+
+    // Another sender's preview, or a made-up token, is refused.
+    let wrong = purge(&state, "noreply@rust-lang.org", false, Some(token.clone())).await;
+    assert!(matches!(wrong, Response::Error { .. }), "{wrong:?}");
+    let made_up = purge(&state, "alice@work.com", false, Some("nope".into())).await;
+    assert!(matches!(made_up, Response::Error { .. }), "{made_up:?}");
+
+    // Mail from the sender after the preview stays out of the commit.
+    let mut later = state
+        .store
+        .get_envelope(&preview.message_ids[0])
+        .await
+        .unwrap()
+        .unwrap();
+    later.id = mxr_core::MessageId::new();
+    later.provider_id = format!("after-preview-{}", later.id);
+    later.message_id_header = Some(format!("<{}@after>", later.id));
+    state.store.upsert_envelope(&later).await.unwrap();
+
+    let Response::Ok {
+        data: ResponseData::UnsubscribePurgeResult { result },
+    } = purge(&state, "alice@work.com", false, Some(token.clone())).await
+    else {
+        panic!("expected the purge");
+    };
+    assert_eq!(result.message_ids, preview.message_ids);
+    assert!(!result.message_ids.contains(&later.id));
+    // A token is good once.
+    let again = purge(&state, "alice@work.com", false, Some(token)).await;
+    assert!(matches!(again, Response::Error { .. }), "{again:?}");
 }

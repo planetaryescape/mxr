@@ -1027,6 +1027,11 @@ pub enum Request {
         /// read-archives the sender footprint and reports that unsubscribe was skipped.
         #[serde(default)]
         archive_on_no_method: bool,
+        /// From the dry run. When given, the purge acts on exactly the mail
+        /// that preview listed, with the method it showed, once; mail that
+        /// arrived since is left alone.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        preview_token: Option<String>,
     },
     Snooze {
         message_id: MessageId,
@@ -2617,6 +2622,9 @@ pub struct UnsubscribePurgeResultData {
     pub mutation_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// A dry run's token: pass it back to commit exactly this preview.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

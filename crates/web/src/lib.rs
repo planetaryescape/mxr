@@ -1361,6 +1361,7 @@ async fn unsubscribe_purge(
             account_id,
             dry_run: request.dry_run,
             archive_on_no_method: request.archive_on_no_method,
+            preview_token: request.preview_token,
         },
     )
     .await?

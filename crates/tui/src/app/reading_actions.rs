@@ -408,13 +408,25 @@ impl App {
     /// evidence; Enter on the preview unsubscribes.
     fn reading_unsubscribe(&mut self) {
         let page = &mut self.mailbox.reading_page;
-        if let Some(ReadingConfirm::Unsubscribe { target, .. }) = page.confirm.take() {
+        if let Some(ReadingConfirm::Unsubscribe {
+            target,
+            preview_token,
+            ..
+        }) = page.confirm.take()
+        {
+            // Only a preview the daemon answered with a token commits.
+            let Some(preview_token) = preview_token else {
+                self.status_message =
+                    Some("Nothing to unsubscribe with: preview again with D".into());
+                return;
+            };
             self.queue_mutation(
                 Request::UnsubscribePurge {
                     address: target.sender_email.clone(),
                     account_id: Some(target.account_id),
                     dry_run: false,
                     archive_on_no_method: false,
+                    preview_token: Some(preview_token),
                 },
                 MutationEffect::ModeDone(format!("Unsubscribed from {}", target.source)),
                 "Unsubscribing...".into(),
@@ -457,13 +469,19 @@ impl App {
     /// The daemon's dry run of the unsubscribe.
     pub(crate) fn show_reading_unsubscribe_preview(
         &mut self,
-        target: ReadingUnsubscribeTarget,
-        message_count: u32,
+        mut target: ReadingUnsubscribeTarget,
+        preview: mxr_protocol::UnsubscribePurgeResultData,
     ) {
         self.status_message = None;
+        // The method shown is the one the daemon would use now.
+        target.method = mxr_protocol::ReadingUnsubscribeData::from(&preview.method);
+        let preview_token = preview
+            .preview_token
+            .filter(|_| target.method != mxr_protocol::ReadingUnsubscribeData::None);
         self.mailbox.reading_page.confirm = Some(ReadingConfirm::Unsubscribe {
             target,
-            message_count,
+            message_count: preview.message_count,
+            preview_token,
         });
     }
 

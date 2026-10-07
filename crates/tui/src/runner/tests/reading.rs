@@ -198,17 +198,81 @@ fn unsubscribe_previews_with_the_evidence_before_it_commits() {
     assert!(queued(&app).is_empty());
     assert_eq!(target.evidence, "You opened 0 of the last 11 issues");
     assert_eq!(target.method, ReadingUnsubscribeData::OneClick);
-    app.show_reading_unsubscribe_preview(target.clone(), 11);
+    // The preview's own method wins over the edition's, and its token
+    // goes with the commit.
+    app.show_reading_unsubscribe_preview(
+        target.clone(),
+        purge_preview(
+            &target.sender_email,
+            mxr_core::types::UnsubscribeMethod::Mailto {
+                address: "leave@growth.example".into(),
+                subject: None,
+            },
+            Some("tok-1"),
+        ),
+    );
+    let Some(ReadingConfirm::Unsubscribe { target: shown, .. }) =
+        app.mailbox.reading_page.confirm.clone()
+    else {
+        panic!("a preview is on screen");
+    };
+    assert_eq!(shown.method, ReadingUnsubscribeData::Mailto);
     press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
     let requests = queued(&app);
     assert!(
         matches!(
             requests.as_slice(),
-            [Request::UnsubscribePurge { address, dry_run: false, .. }]
-                if *address == target.sender_email
+            [Request::UnsubscribePurge { address, dry_run: false, preview_token: Some(token), .. }]
+                if *address == target.sender_email && token == "tok-1"
         ),
         "{requests:?}"
     );
+}
+
+#[test]
+fn a_failed_or_tokenless_preview_never_unsubscribes() {
+    let mut app = reading_app();
+    for _ in 0..7 {
+        key(&mut app, 'j');
+    }
+    key(&mut app, 'D');
+    let target = app
+        .mailbox
+        .reading_page
+        .pending_unsubscribe_preview
+        .take()
+        .expect("a dry run is asked for first");
+    app.show_reading_unsubscribe_preview(
+        target.clone(),
+        purge_preview(
+            &target.sender_email,
+            mxr_core::types::UnsubscribeMethod::None,
+            None,
+        ),
+    );
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(queued(&app).is_empty());
+}
+
+fn purge_preview(
+    address: &str,
+    method: mxr_core::types::UnsubscribeMethod,
+    token: Option<&str>,
+) -> mxr_protocol::UnsubscribePurgeResultData {
+    mxr_protocol::UnsubscribePurgeResultData {
+        address: address.to_string(),
+        query: format!("from:{address}"),
+        account_id: None,
+        dry_run: true,
+        method,
+        status: mxr_protocol::UnsubscribePurgeStatusData::Preview,
+        message_count: 11,
+        archived_count: 0,
+        message_ids: Vec::new(),
+        mutation_id: None,
+        error: None,
+        preview_token: token.map(str::to_string),
+    }
 }
 
 #[test]

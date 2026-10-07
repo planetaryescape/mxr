@@ -80,6 +80,18 @@ pub enum ReadingUnsubscribeData {
     None,
 }
 
+impl From<&mxr_core::types::UnsubscribeMethod> for ReadingUnsubscribeData {
+    fn from(method: &mxr_core::types::UnsubscribeMethod) -> Self {
+        use mxr_core::types::UnsubscribeMethod;
+        match method {
+            UnsubscribeMethod::OneClick { .. } => Self::OneClick,
+            UnsubscribeMethod::HttpLink { .. } | UnsubscribeMethod::BodyLink { .. } => Self::Link,
+            UnsubscribeMethod::Mailto { .. } => Self::Mailto,
+            UnsubscribeMethod::None => Self::None,
+        }
+    }
+}
+
 /// Where an item came from, and how you read it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

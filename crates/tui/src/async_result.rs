@@ -106,7 +106,7 @@ pub(crate) enum AsyncResult {
     /// The dry run of unsubscribing from a source.
     ReadingUnsubscribePreview(
         crate::app::ReadingUnsubscribeTarget,
-        Result<mxr_protocol::UnsubscribePurgeResultData, MxrError>,
+        Result<Box<mxr_protocol::UnsubscribePurgeResultData>, MxrError>,
     ),
     /// An email's own text, cleaned, for `R`.
     ReadingOriginal(Result<String, MxrError>),

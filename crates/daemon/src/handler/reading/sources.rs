@@ -12,7 +12,6 @@ use crate::handler::HandlerError;
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
 use mxr_core::id::AccountId;
-use mxr_core::types::UnsubscribeMethod;
 use mxr_protocol::{ReadingSourceData, ReadingUnsubscribeData};
 use mxr_reading::edition::SourceStats;
 use mxr_reading::fade::{self, SourceWindow};
@@ -45,17 +44,6 @@ impl SourceInfo {
         } else {
             format!("you opened {} of {}", s.opened, s.issues)
         })
-    }
-}
-
-fn unsubscribe_data(method: &UnsubscribeMethod) -> ReadingUnsubscribeData {
-    match method {
-        UnsubscribeMethod::OneClick { .. } => ReadingUnsubscribeData::OneClick,
-        UnsubscribeMethod::HttpLink { .. } | UnsubscribeMethod::BodyLink { .. } => {
-            ReadingUnsubscribeData::Link
-        }
-        UnsubscribeMethod::Mailto { .. } => ReadingUnsubscribeData::Mailto,
-        UnsubscribeMethod::None => ReadingUnsubscribeData::None,
     }
 }
 
@@ -156,7 +144,7 @@ impl Sources {
                     median_gap_days: window.median_gap.map(days),
                     new_source: source_stats.is_new(),
                     original_layout: pref.original_layout,
-                    unsubscribe: unsubscribe_data(&issue.unsubscribe),
+                    unsubscribe: ReadingUnsubscribeData::from(&issue.unsubscribe),
                     suggest_unsubscribe: tracking
                         && !pref.unsubscribe_offer_dismissed
                         && source_stats.suggests_unsubscribe(),

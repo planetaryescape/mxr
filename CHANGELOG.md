@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.57](https://github.com/planetaryescape/mxr/compare/v0.6.56...v0.6.57) (2026-10-07)
+
+
+### Bug Fixes
+
+* done here moves on visibly, with coloured top-centre toasts ([#301](https://github.com/planetaryescape/mxr/issues/301)) ([954c3f0](https://github.com/planetaryescape/mxr/commit/954c3f0cab44589304c6a1c82d79e6290ce8ff6f))
+* make the sidebar and every list/detail split resizable ([#299](https://github.com/planetaryescape/mxr/issues/299)) ([9e5aae8](https://github.com/planetaryescape/mxr/commit/9e5aae8d8cc39b233bc7085bcb0fb0ef9a53a097))
+* scoped agents can only see and change their allowed accounts ([#303](https://github.com/planetaryescape/mxr/issues/303)) ([d82932a](https://github.com/planetaryescape/mxr/commit/d82932a76c2bc06bda8706a074dd1c1d8a8802b7))
+
 ## [0.6.56](https://github.com/planetaryescape/mxr/compare/v0.6.55...v0.6.56) (2026-10-07)
 
 

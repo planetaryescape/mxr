@@ -109,6 +109,7 @@ exact origin, query string included.
 | `/analytics/<dashboard>`, `/rules`, `/accounts`, `/diagnostics`, `/activity`, `/jobs`, `/settings/<section>` | Tools |
 | `/compose/new`, `/compose/<draft>` | Deep links that open the compose host |
 | `/sender/<address>` | Sender profile page |
+| `/archive` | Archive the mode: the answer box, the ledger of records by month and the record card. Not All Mail, which is `/m/archive` |
 
 `features/mailbox/lenses.ts` turns the shell's sidebar items into typed lenses.
 An unknown lens renders "No label by that name"; it never falls back to another

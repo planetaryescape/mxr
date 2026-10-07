@@ -23,6 +23,8 @@ Default release-build locations:
 
 The Tantivy search index and semantic model cache are local and rebuildable. Attachments opened or saved through mxr are written locally.
 
+Archive's records (receipts, orders, bookings, bills and documents) are rows in the local SQLite database, read from your mail by rules and schema.org markup on your machine. No model reads them, and the activity log records nothing about them. To make record PDFs open offline and searchable, the daemon downloads the PDFs of emails filed as records from your own mail provider ahead of time, newest first, up to 512 MB in total and skipping any over 15 MB. They are stored in the same attachment cache as files you open. Set `records.pdf_prefetch = false` in `config.toml` to download them only when opened, or `records.enabled = false` to file no records.
+
 ---
 
 ## Credentials

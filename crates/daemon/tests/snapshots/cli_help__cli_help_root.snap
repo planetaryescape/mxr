@@ -38,6 +38,7 @@ Commands:
   decisions           List or rebuild the citation-backed decision log
   ask                 Ask a question against the local archive. Returns a citation- validated answer; the daemon rejects LLM citations that point to messages outside the retrieved set
   owed                List the replies you owe: the desk's You owe lane (mail from people in your inbox, from someone you've written to), most overdue against your usual pace with them first
+  messages            People you talk with, one row each. Reply or mark done.
   now                 The few things that need you now, from every mode.
   desk                What needs you, not what arrived: replies you owe, promises coming due, threads waiting on someone, and new mail from people, each with the reason it is there. Everything else is summarised as counts
   reading             Reading: newsletters and lists in your inbox, grouped by sender, each with the reason it is here. Nothing here counts as unread

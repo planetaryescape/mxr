@@ -46,8 +46,12 @@ fn modes_explain_prints_the_to_do_guide_and_card_state_holds() {
         .iter()
         .map(|guide| guide["mode"].as_str().unwrap())
         .collect();
-    assert_eq!(modes, ["now", "todo"], "every shipped mode, Now first");
-    assert_eq!(again[1]["card_seen"], true, "a new command sees it closed");
+    assert_eq!(
+        modes,
+        ["now", "messages", "todo"],
+        "every shipped mode, Now first"
+    );
+    assert_eq!(again[2]["card_seen"], true, "a new command sees it closed");
     assert_eq!(
         again[0]["card_seen"], false,
         "closing one card leaves the others"
@@ -95,4 +99,62 @@ fn now_and_the_rail_print_as_json_within_the_caps() {
         .map(|entry| entry["key"].as_str().unwrap())
         .collect();
     assert_eq!(keys, ["g h", "g m", "g x", "g u", "g r", "g e", "g i"]);
+}
+
+#[test]
+fn messages_print_as_json_and_got_it_previews_without_sending() {
+    let _guard = daemon_lock();
+    let temp = TempDir::new().expect("temp dir");
+    let (_daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "modes-messages");
+
+    let guide = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["modes", "explain", "messages", "--format", "json"],
+    );
+    insta::assert_snapshot!(
+        "modes_explain_messages",
+        serde_json::to_string_pretty(&guide).unwrap()
+    );
+
+    let messages = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["messages", "--format", "json"],
+    );
+    assert_eq!(
+        messages["header"],
+        "People you talk with, one row each. Reply or mark done."
+    );
+    for band in ["your_turn", "pinned", "recent", "quiet"] {
+        assert!(messages[band].is_array(), "{band}: {messages}");
+    }
+    let Some(row) = messages["your_turn"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["kind"] == "person")
+    else {
+        return;
+    };
+    let page = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["messages", "person", row["id"].as_str().unwrap(), "--format", "json"],
+    );
+    let conversation = &page["conversation"];
+    assert!(conversation["messages"].as_array().is_some(), "{page}");
+    let thread = conversation["thread_id"].as_str().unwrap();
+    let ack = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["messages", "ack", thread, "--dry-run", "--format", "json"],
+    );
+    assert_eq!(ack["dry_run"], true, "{ack}");
+    assert!(ack["sent_message_id"].is_null(), "a dry run sends nothing");
+    assert!(!ack["text"].as_str().unwrap().is_empty());
 }

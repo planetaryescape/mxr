@@ -1,0 +1,29 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+The bands (the default)
+
+Usage: mxr messages list [OPTIONS]
+
+Options:
+      --turn <TURN>
+          Only rows where it is this side's turn
+
+          Possible values:
+          - mine:   Your turn
+          - theirs: Waiting on them
+
+      --limit <LIMIT>
+          Rows to list in Recent and Quiet; totals count them all
+
+          [default: 50]
+
+      --account <ACCOUNT>
+          Limit to one account; the default covers every account
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

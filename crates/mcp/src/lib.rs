@@ -517,6 +517,62 @@ impl MxrMcpServer {
     }
 
     #[tool(
+        name = "mxr_messages",
+        description = "Messages: people the user talks with, one row each, in four bands (your_turn, pinned, recent, quiet). Each row is a person merged across their addresses (or a group thread), with its topics (threads), whose turn it is, the user's usual pace, and a preview: the verbatim ask from a cached gist, else the latest new text (quotes and signature removed). turn: 'mine' or 'theirs'. Read-only."
+    )]
+    pub async fn messages(
+        &self,
+        Parameters(input): Parameters<MessagesInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::ListMessages {
+            account_id: parse_optional_id(input.account_id)?,
+            turn: input.turn.map(Into::into),
+            limit: input.limit.unwrap_or(50).min(200),
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_person",
+        description = "One person's page from Messages: how the user knows them, every topic with them, and the selected topic as a conversation where each message is its new text (what it adds to the thread), with a trimmed flag when quotes or a signature were removed. person: a row id from mxr_messages (person:<email>, group:<thread>) or an address. Use mxr_read_message with include_body=true for a message as sent. Read-only."
+    )]
+    pub async fn person(
+        &self,
+        Parameters(input): Parameters<PersonInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::GetPerson {
+            account_id: parse_optional_id(input.account_id)?,
+            person: input.person,
+            topic: parse_optional_id(input.topic)?,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_got_it",
+        description = "Got it: a short acknowledgement reply on a thread in the user's own greeting and sign-off, built from a template with no model. Without confirm=true it only previews the exact text; with confirm=true it sends exactly that previewed text (pass it back as expect_text) and daemon send gates still apply."
+    )]
+    pub async fn got_it(
+        &self,
+        Parameters(input): Parameters<GotItInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let thread_id = parse_id::<ThreadId>(&input.thread_id)?;
+        let confirmed = input.confirm.unwrap_or(false);
+        if confirmed && input.expect_text.is_none() {
+            return Ok(McpJson(json!({
+                "blocked": true,
+                "reason": "preview first, then send with confirm=true and the previewed text as expect_text"
+            })));
+        }
+        self.daemon_json(Request::AckMessage {
+            thread_id,
+            dry_run: !confirmed,
+            expect_text: input.expect_text,
+        })
+        .await
+    }
+
+    #[tool(
         name = "mxr_send_draft",
         description = "Send a stored draft only when confirm=true. Daemon MCP profile send gates and draft safety checks still apply."
     )]
@@ -709,6 +765,56 @@ pub struct SweepPreviewInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct MessagesInput {
+    #[serde(default)]
+    pub account_id: Option<String>,
+    /// Only rows where it is this side's turn: mine or theirs.
+    #[serde(default)]
+    pub turn: Option<TurnInput>,
+    /// Rows in recent and quiet (default 50); totals count all.
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnInput {
+    Mine,
+    Theirs,
+}
+
+impl From<TurnInput> for mxr_protocol::MessagesTurnData {
+    fn from(turn: TurnInput) -> Self {
+        match turn {
+            TurnInput::Mine => Self::Mine,
+            TurnInput::Theirs => Self::Theirs,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct PersonInput {
+    /// A row id from mxr_messages or an address.
+    pub person: String,
+    /// The thread to show; defaults to the one whose turn it is.
+    #[serde(default)]
+    pub topic: Option<String>,
+    #[serde(default)]
+    pub account_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GotItInput {
+    pub thread_id: String,
+    /// Send. Without it, only the preview is returned.
+    #[serde(default)]
+    pub confirm: Option<bool>,
+    /// The previewed text; the daemon refuses to send anything else.
+    #[serde(default)]
+    pub expect_text: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct DraftAssistInput {
     pub thread_id: String,
     pub instruction: String,
@@ -861,9 +967,42 @@ mod tests {
         assert!(names.contains(&"mxr_delete_draft"));
         assert!(names.contains(&"mxr_copy_draft_to_provider"));
         assert!(names.contains(&"mxr_sync_draft_to_provider"));
+        assert!(names.contains(&"mxr_messages"));
+        assert!(names.contains(&"mxr_person"));
+        assert!(names.contains(&"mxr_got_it"));
 
         drop(client);
         server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn got_it_previews_unless_confirmed_with_the_previewed_text() {
+        let requester = Arc::new(FakeRequester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
+        let thread = ThreadId::new();
+        server
+            .got_it(Parameters(GotItInput {
+                thread_id: thread.as_str(),
+                confirm: None,
+                expect_text: None,
+            }))
+            .await
+            .expect("preview");
+        let blocked = server
+            .got_it(Parameters(GotItInput {
+                thread_id: thread.as_str(),
+                confirm: Some(true),
+                expect_text: None,
+            }))
+            .await
+            .expect("tool result");
+        assert_eq!(blocked.0["blocked"], true);
+        let requests = requester.requests.lock().unwrap();
+        assert_eq!(requests.len(), 1, "the blocked send never reached the daemon");
+        assert!(matches!(
+            &requests[0],
+            Request::AckMessage { dry_run: true, .. }
+        ));
     }
 
     #[tokio::test]

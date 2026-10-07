@@ -154,7 +154,7 @@ async fn the_landlords_email_is_in_messages_and_to_do_each_saying_why() {
     assert!(placed.in_inbox);
     let messages = &placed.modes[0];
     assert_eq!(messages.key, "g m");
-    assert!(messages.early, "Messages is an early version on the desk");
+    assert!(!messages.early, "Messages is built (phase 3)");
     assert!(
         messages
             .reason
@@ -490,11 +490,11 @@ async fn the_rail_lists_now_the_modes_and_inbox_with_keys_and_counts() {
     assert_eq!(entry("updates").count, Some(1));
     assert_eq!(entry("reading").count, Some(0));
     assert_eq!(entry("archive").count, None);
-    for id in ["messages", "updates", "reading", "archive"] {
+    for id in ["updates", "reading", "archive"] {
         assert_eq!(entry(id).status, RailStatusData::Early, "{id}");
         assert!(entry(id).early_note.is_some(), "{id}");
     }
-    for id in ["now", "todo", "inbox"] {
+    for id in ["now", "messages", "todo", "inbox"] {
         assert_eq!(entry(id).status, RailStatusData::Built, "{id}");
         assert!(entry(id).header.is_some(), "{id}");
     }

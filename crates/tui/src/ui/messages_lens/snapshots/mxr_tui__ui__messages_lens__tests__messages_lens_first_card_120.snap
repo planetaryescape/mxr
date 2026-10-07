@@ -7,7 +7,7 @@ expression: rendered
 "│ │ your conversations inside as topics. The   ││──────────────────────────────────────────────────────────────────────│"
 "│ │ quoted line is what they asked; the row    ││ Topics: [Contract renewal *] · Launch checklist · with Ruth: Pricing │"
 "│ │ leaves Your turn when you reply or press   ││ copy                                                                 │"
-"│ │ . for got it.                              ││──────────────────────────────────────────────────────────────────────│"
+"│ │ got it (.).                                ││──────────────────────────────────────────────────────────────────────│"
 "│ │ r reply · . got it · e done here · t make  ││                                                      You · Wed 23:00 │"
 "│ │ it a to-do · Esc close                     ││                                            Here's the renewal draft. │"
 "│                                              ││                                                                      │"

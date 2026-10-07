@@ -806,8 +806,8 @@ use the demo mailbox. Dates and counts are filled in by code.
   days ago."
 - Card: "Each row is a person, not an email, with your conversations
   inside as topics. The quoted line is what they asked; the row leaves
-  Your turn when you reply or press . for got it." (Backticks dropped:
-  clients show card text as typed.)
+  Your turn when you reply or press got it (.)." (Reworded so the key is
+  plain text: clients show card text as typed.)
   Keys: `r` reply · `.` got it · `e` done here · `t` make it a to-do
 - Why line: "Here because: Samir asked you a question, and you write to
   him often (rule)."

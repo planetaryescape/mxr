@@ -5,7 +5,7 @@ expression: rendered
 "╭ Messages ─ People you talk with, one row each. Reply or mark done. ──────────╮"
 "│ │ Each row is a person, not an email, with your conversations inside as      │"
 "│ │ topics. The quoted line is what they asked; the row leaves Your turn when  │"
-"│ │ you reply or press . for got it.                                           │"
+"│ │ you reply or press got it (.).                                             │"
 "│ │ r reply · . got it · e done here · t make it a to-do · Esc close           │"
 "│                                                                              │"
 "│                                                                              │"

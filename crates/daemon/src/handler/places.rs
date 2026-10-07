@@ -11,12 +11,12 @@ use super::mail_kind::{self, KindSignals};
 use super::{mutations, HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::Utc;
-use mxr_core::id::{AccountId, MessageId};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{AccountAddressLookup, UnsubscribeMethod};
 use mxr_core::MessageFlags;
 use mxr_protocol::{
-    MailKindData, MailPlaceData, ModeKindData, MutationCommand, PlaceBundleData, PlaceMessageData,
-    ResponseData, SenderKindData, SweepPreviewData, SweepSenderData,
+    KindRuleData, MailKindData, MailPlaceData, ModeKindData, MutationCommand, PlaceBundleData,
+    PlaceMessageData, ResponseData, SenderKindData, SweepPreviewData, SweepSenderData,
 };
 use mxr_store::{PlaceMessage, ScreenerDecision, ScreenerDisposition};
 use parking_lot::Mutex;
@@ -160,6 +160,7 @@ pub(super) async fn placed_inbox(
             .collect();
         senders.sort_unstable();
         let kinds = AccountKinds::load(state, account_id, &senders).await?;
+        let copied = copied_threads(state, account_id, &candidates, &kinds).await?;
         for message in candidates {
             if message.snoozed
                 || message.is_delivery
@@ -171,6 +172,22 @@ pub(super) async fn placed_inbox(
             }
             // Classify first; only mail that stays gets its reason written.
             let signals = kinds.signals(&message);
+            if copied.contains(&message.thread_id)
+                && mail_kind::classify(&signals).kind == mail_kind::SenderKind::Person
+            {
+                // A person's mail in a thread you were only copied on is in
+                // Updates (blueprint 22), so Updates lists it.
+                placed.push(Placed {
+                    message,
+                    kind: MailKindData {
+                        kind: SenderKindData::PaperTrail,
+                        rule: KindRuleData::Copied,
+                        reason: mail_kind::COPIED_REASON.to_string(),
+                        corrected: false,
+                    },
+                });
+                continue;
+            }
             if !matches!(
                 mail_kind::classify(&signals).kind.to_data(),
                 SenderKindData::Reading | SenderKindData::PaperTrail
@@ -182,6 +199,53 @@ pub(super) async fn placed_inbox(
         }
     }
     Ok(placed)
+}
+
+/// Threads among `candidates` where a person wrote and the thread's shape
+/// is copied: by the same rule the lanes and Messages use.
+async fn copied_threads(
+    state: &AppState,
+    account_id: &AccountId,
+    candidates: &[PlaceMessage],
+    kinds: &AccountKinds,
+) -> Result<HashSet<ThreadId>, HandlerError> {
+    let mut threads: Vec<ThreadId> = candidates
+        .iter()
+        .filter(|m| !kinds.is_outbound(m))
+        .filter(|m| mail_kind::classify(&kinds.signals(m)).kind == mail_kind::SenderKind::Person)
+        .map(|m| m.thread_id.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    if threads.is_empty() {
+        return Ok(HashSet::new());
+    }
+    threads.sort_by_key(ThreadId::as_str);
+    let messages = state
+        .store
+        .desk_messages_in_threads(account_id, &threads)
+        .await?;
+    let senders = super::desk::Senders::load(state, account_id, &messages).await?;
+    let is_self = super::desk::self_matcher(state, account_id).await?;
+    let config = super::conversation_shape::shape_config(state);
+    let person_sender = |m: &mxr_store::DeskMessage| senders.answers(m, &is_self);
+    let human = |email: &str| {
+        super::conversation_shape::human_address(email, &senders.contacts, &senders.screener)
+    };
+    let inputs = super::conversation_shape::ShapeInputs {
+        is_self: &is_self,
+        person_sender: &person_sender,
+        human_address: &human,
+        config,
+    };
+    Ok(messages
+        .chunk_by(|a, b| a.thread_id == b.thread_id)
+        .filter(|thread| {
+            super::conversation_shape::conversation_shape(thread, &inputs)
+                == super::conversation_shape::Shape::Copied
+        })
+        .map(|thread| thread[0].thread_id.clone())
+        .collect())
 }
 
 pub(super) async fn scoped_accounts(

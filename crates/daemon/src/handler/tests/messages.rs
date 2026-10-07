@@ -681,3 +681,63 @@ async fn a_quote_only_reply_shows_a_placeholder_not_the_quoted_words() {
     assert!(last.only_quoted);
     assert_eq!(last.trimmed_label.as_deref(), Some("trimmed: quote"));
 }
+
+async fn updates(fx: &Fixture) -> Vec<mxr_protocol::PlaceBundleData> {
+    match request(
+        fx,
+        Request::ListPlace {
+            place: mxr_protocol::MailPlaceData::PaperTrail,
+            account_id: None,
+            sender_email: None,
+            limit: 50,
+            offset: 0,
+            messages_per_bundle: 5,
+            message_offset: 0,
+        },
+    )
+    .await
+    {
+        ResponseData::Place { bundles, .. } => bundles,
+        other => panic!("expected a place, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_copied_thread_is_listed_in_updates_and_leaves_when_done_there() {
+    let fx = Fixture::new().await;
+    let copied = ThreadId::new();
+    mail(
+        &fx,
+        &copied,
+        ("Iris Chen", "iris@meridian.example"),
+        &[RUTH],
+        &[ME],
+        "Offsite",
+        Duration::hours(3),
+    )
+    .await;
+    let bundles = updates(&fx).await;
+    let iris = bundles
+        .iter()
+        .find(|b| b.sender_email == "iris@meridian.example")
+        .expect("the copied thread is in Updates' list, as its label says");
+    assert_eq!(iris.kind.rule, mxr_protocol::KindRuleData::Copied);
+    assert!(iris.kind.reason.contains("copied"), "{}", iris.kind.reason);
+    assert_eq!(iris.messages[0].thread_id, copied);
+
+    request(
+        &fx,
+        Request::SetModeDone {
+            thread_ids: vec![copied.clone()],
+            mode: mxr_protocol::ModeKindData::Updates,
+            dry_run: false,
+            todo_ids: vec![],
+            sender: None,
+        },
+    )
+    .await;
+    assert!(updates(&fx)
+        .await
+        .iter()
+        .all(|b| b.sender_email != "iris@meridian.example"));
+}

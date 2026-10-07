@@ -251,8 +251,12 @@ fn reason(signals: &KindSignals<'_>, classification: Classification) -> String {
         KindRuleData::ListUnsubscribe => "has List-Unsubscribe".to_string(),
         KindRuleData::ListSender => "sends to mailing lists".to_string(),
         KindRuleData::Person => "from a person".to_string(),
+        KindRuleData::Copied => COPIED_REASON.to_string(),
     }
 }
+
+/// Why a person's mail is in Updates: the thread's shape, not the sender.
+pub(super) const COPIED_REASON: &str = "copied to you, or sent to a crowd, and not your turn";
 
 /// The wire form: kind, rule, reason and whether the user chose it.
 pub(super) fn describe(signals: &KindSignals<'_>) -> MailKindData {

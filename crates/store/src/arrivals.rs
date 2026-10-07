@@ -36,7 +36,8 @@ impl super::Store {
     /// Any mailbox counts, archived included, except Trash and Spam: mail
     /// there says nothing about whether new mail is reaching you, and the
     /// popover that lists these opens each one. Drafts are yours, not an
-    /// arrival.
+    /// arrival, and so is mail of unknown direction from one of the
+    /// account's own addresses.
     ///
     /// An arrival's time is the earlier of its Date header and when mxr
     /// stored it: a sender's clock running ahead cannot make it the newest
@@ -61,6 +62,15 @@ impl super::Store {
                AND m.date <= ?2
                AND (m.flags & ?3) = 0
                AND m.direction != 'outbound'
+               AND NOT (
+                   m.direction = 'unknown'
+                   AND (
+                       lower(m.from_email) IN (
+                           SELECT lower(email) FROM account_addresses WHERE account_id = ?1
+                       )
+                       OR lower(m.from_email) = (SELECT lower(email) FROM accounts WHERE id = ?1)
+                   )
+               )
                AND NOT EXISTS (
                    SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
                    WHERE ml.message_id = m.id AND l.provider_id IN ('TRASH', 'SPAM', 'DRAFT')
@@ -225,6 +235,50 @@ mod tests {
         assert!(
             skew <= 5,
             "arrival time follows the store, not the header: {skew}s ahead"
+        );
+    }
+
+    #[tokio::test]
+    async fn your_own_mail_never_crowds_out_an_arrival() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let id = &account.id;
+        store
+            .add_account_address(id, "alias@example.com", false)
+            .await
+            .unwrap();
+        let arrival = put(
+            &store,
+            id,
+            "friend@x.com",
+            120,
+            MessageDirection::Inbound,
+            MessageFlags::empty(),
+        )
+        .await;
+        // Thirty newer messages of unknown direction from your own
+        // addresses: sent mail synced before the address table knew them.
+        for minutes in 0..30 {
+            let own = if minutes % 2 == 0 {
+                "TEST@example.com"
+            } else {
+                "alias@example.com"
+            };
+            put(
+                &store,
+                id,
+                own,
+                minutes,
+                MessageDirection::Unknown,
+                MessageFlags::empty(),
+            )
+            .await;
+        }
+        let arrivals = store.latest_arrivals(id, 5).await.unwrap();
+        assert_eq!(
+            arrivals.iter().map(|a| a.id.clone()).collect::<Vec<_>>(),
+            vec![arrival]
         );
     }
 }

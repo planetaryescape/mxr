@@ -7,7 +7,6 @@
 //! already writes (error, failure class, backoff), and the modes come from
 //! the same placement `GetModeMembership` uses.
 
-use super::desk::self_matcher;
 use super::mode_rules::provider_name;
 use super::modes::place_threads;
 use super::places::scoped_accounts;
@@ -106,26 +105,16 @@ pub(super) async fn get_freshness(
 }
 
 /// The account's newest received mail, at least one message so its newest
-/// arrival is known when no arrivals were asked for. A message of unknown
-/// direction from one of your own addresses is mail you sent.
+/// arrival is known when no arrivals were asked for.
 async fn received_mail(
     state: &AppState,
     account: &Account,
     limit: u32,
 ) -> Result<Vec<Arrival>, HandlerError> {
-    let is_self = self_matcher(state, &account.id).await?;
-    // A few spare rows cover unknown-direction mail of your own that the
-    // filter below drops.
-    let wanted = limit.max(1);
-    let mut received: Vec<Arrival> = state
+    Ok(state
         .store
-        .latest_arrivals(&account.id, wanted.saturating_add(10))
-        .await?
-        .into_iter()
-        .filter(|arrival| arrival.direction == "inbound" || !is_self(&arrival.from.email))
-        .collect();
-    received.truncate(usize::try_from(wanted).unwrap_or(usize::MAX));
-    Ok(received)
+        .latest_arrivals(&account.id, limit.max(1))
+        .await?)
 }
 
 /// What a warning calls the account: "Gmail" or "Outlook" when it is the

@@ -201,3 +201,40 @@ async fn sync_failures_surface_with_their_kind_and_the_worst_speaks_for_all() {
     let worst = data.worst_account_id.as_ref().unwrap();
     assert_eq!(by_id(worst).health, SyncHealthData::Failing);
 }
+
+#[tokio::test]
+async fn your_own_recent_mail_never_hides_the_last_arrival() {
+    let fx = Fixture::new().await;
+    let arrival = fx
+        .message(
+            &ThreadId::new(),
+            "ana@example.com",
+            ME,
+            Duration::hours(2),
+            None,
+        )
+        .await;
+    // Thirty newer messages from your own address with no stored
+    // direction: sent mail synced before the address table knew it.
+    for minutes in 0..30 {
+        let mut own = arrival.clone();
+        own.id = mxr_core::id::MessageId::new();
+        own.provider_id = format!("own-{}", own.id);
+        own.thread_id = ThreadId::new();
+        own.from.email = ME.into();
+        own.date = Utc::now() - Duration::minutes(minutes);
+        fx.state
+            .store
+            .upsert_envelope_with_direction(&own, MessageDirection::Unknown)
+            .await
+            .unwrap();
+    }
+    let data = freshness(&fx, None).await;
+    assert_eq!(
+        data.arrivals
+            .iter()
+            .map(|a| a.message_id.clone())
+            .collect::<Vec<_>>(),
+        vec![arrival.id]
+    );
+}

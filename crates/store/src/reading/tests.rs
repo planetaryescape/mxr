@@ -51,6 +51,7 @@ impl Fx {
         ReadingItemRow {
             message_id: message_id.clone(),
             idx,
+            position: idx,
             account_id: self.account.clone(),
             kind: if idx == 0 { "issue" } else { "link" }.to_string(),
             shape: "digest".to_string(),

@@ -9,7 +9,7 @@ mod reading_demo;
 mod records_demo;
 mod todo_demo;
 
-pub use reading_demo::demo_article_html;
+pub use reading_demo::{demo_article_html, DEMO_ARTICLE_WAL};
 
 /// The provider id of the demo's sent message that promises the signed
 /// engagement form, which `mxr demo` keeps as an undated promise. Seeded

@@ -89,6 +89,32 @@ fn strip_tracking(mut url: Url) -> Url {
     url
 }
 
+/// A link's identity within its issue: the same page however the issue
+/// orders or decorates it (tracking parameters, a `#fragment`, a trailing
+/// slash). A digest's link items are keyed by it, so Later, a saved
+/// article and highlights stay on their link when extraction runs again.
+/// FNV-1a over the normalised URL, kept to 52 bits and never 0 (the issue
+/// itself), so it round-trips through JSON numbers too.
+pub fn link_idx(raw: &str) -> i64 {
+    let normalised = clean_url(raw).map_or_else(
+        || raw.trim().to_string(),
+        |mut url| {
+            url.set_fragment(None);
+            let path = url.path().trim_end_matches('/').to_string();
+            url.set_path(if path.is_empty() { "/" } else { &path });
+            url.to_string()
+        },
+    );
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in normalised.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    i64::try_from(hash & 0x000f_ffff_ffff_ffff)
+        .unwrap_or(1)
+        .max(1)
+}
+
 /// The host as people say it: `www.` dropped, lowercase.
 pub fn display_domain(url: &Url) -> String {
     let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
@@ -222,6 +248,19 @@ mod tests {
             let url = Url::parse(raw).expect(raw);
             assert!(!is_click_tracker(&url), "{raw}");
         }
+    }
+
+    #[test]
+    fn a_links_key_ignores_tracking_fragments_and_trailing_slashes() {
+        let key = link_idx("https://sqlite.org/releaselog/3_51.html");
+        assert_eq!(link_idx("https://SQLite.org/releaselog/3_51.html#top"), key);
+        assert_eq!(
+            link_idx("https://sqlite.org/releaselog/3_51.html?utm_source=x"),
+            key
+        );
+        assert_eq!(link_idx("https://sqlite.org/releaselog/3_51.html/"), key);
+        assert_ne!(link_idx("https://sqlite.org/releaselog/3_50.html"), key);
+        assert!(key > 0 && key < (1 << 52));
     }
 
     #[test]

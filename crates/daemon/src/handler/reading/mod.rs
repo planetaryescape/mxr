@@ -205,6 +205,7 @@ fn item_rows(issue: &Issue, extraction: &mxr_reading::Extraction) -> Vec<Reading
     let mut rows = vec![ReadingItemRow {
         message_id: issue.id.clone(),
         idx: 0,
+        position: 0,
         account_id: issue.account_id.clone(),
         kind: "issue".to_string(),
         shape: extraction.shape.id().to_string(),
@@ -217,9 +218,16 @@ fn item_rows(issue: &Issue, extraction: &mxr_reading::Extraction) -> Vec<Reading
         extractor_version: EXTRACTOR_VERSION,
     }];
     for (i, link) in extraction.links.iter().enumerate() {
+        // Keyed by the link's URL, not its place, so what you did with it
+        // follows it if a later extraction orders the issue differently.
+        let mut idx = mxr_reading::urls::link_idx(&link.url);
+        while rows.iter().any(|row| row.idx == idx) {
+            idx += 1;
+        }
         rows.push(ReadingItemRow {
             message_id: issue.id.clone(),
-            idx: i64::try_from(i + 1).unwrap_or(i64::MAX),
+            idx,
+            position: i64::try_from(i + 1).unwrap_or(i64::MAX),
             account_id: issue.account_id.clone(),
             kind: "link".to_string(),
             shape: Shape::Digest.id().to_string(),

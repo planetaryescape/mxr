@@ -3,7 +3,8 @@
 -- a Later shelf.
 --
 -- reading_items is the extraction cache: one row per readable item of a
--- newsletter message. Index 0 is the issue; a digest's links are 1..n.
+-- newsletter message. Index 0 is the issue; a digest's links are keyed by
+-- their normalised URL and ordered by position.
 -- Rebuilt when extractor_version moves on. No model, no network.
 --
 -- reading_state is what you did with an item: Later (yours, never expires)
@@ -25,7 +26,11 @@
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS reading_items (
     message_id        TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    -- 0 for the issue; a link's id from its normalised URL, so its Later
+    -- state, article and highlights stay with it when extraction reorders.
     idx               INTEGER NOT NULL,
+    -- Display order within the issue.
+    position          INTEGER NOT NULL DEFAULT 0,
     account_id        TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     kind              TEXT NOT NULL CHECK (kind IN ('issue', 'link')),
     shape             TEXT NOT NULL CHECK (shape IN ('single', 'digest', 'teaser', 'notice')),

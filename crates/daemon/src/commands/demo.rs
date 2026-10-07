@@ -1003,7 +1003,10 @@ async fn seed_demo_reading(client: &mut IpcClient) -> anyhow::Result<()> {
             anyhow::bail!(message);
         }
     }
-    let key = format!("{later}:2");
+    let key = format!(
+        "{later}:{}",
+        mxr_reading::urls::link_idx(mxr_provider_fake::fixtures::DEMO_ARTICLE_WAL)
+    );
     for request in [
         Request::SetReadingLater {
             item_keys: vec![key.clone()],

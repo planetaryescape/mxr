@@ -697,3 +697,73 @@ async fn opening_reading_records_a_visit_per_account_and_not_while_activity_is_p
         "no visit while activity is paused"
     );
 }
+
+#[tokio::test]
+async fn a_digest_link_keeps_its_later_state_when_re_extraction_reorders_the_links() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    let (id, _) = issue(
+        &fx,
+        ("Local-first Links", "links@links.example"),
+        "Links",
+        DIGEST_HTML,
+        now,
+    )
+    .await;
+    let edition = plan(&fx, &ReadingVisitRow::default(), now).await.edition;
+    let sqlite = edition.bands[0].items[0]
+        .links
+        .iter()
+        .find(|link| link.title == "SQLite 3.51 release notes")
+        .expect("the SQLite link")
+        .item_key
+        .clone();
+    request(
+        &fx,
+        Request::SetReadingLater {
+            item_keys: vec![sqlite.clone()],
+            later: true,
+            dry_run: false,
+        },
+    )
+    .await;
+
+    // The same issue, its links in another order, extracted again.
+    let reordered = DIGEST_HTML.replace(
+        "<li><p><a href=\"https://sqlite.org/releaselog/3_51.html\">SQLite 3.51 release notes</a> — Faster JSON and a new WAL pragma.</p></li>\n",
+        "",
+    );
+    let reordered = reordered.replace(
+        "<ul>\n",
+        "<ul>\n<li><p><a href=\"https://sqlite.org/releaselog/3_51.html#top\">SQLite 3.51 release notes</a> — Faster JSON and a new WAL pragma.</p></li>\n",
+    );
+    assert_ne!(reordered, DIGEST_HTML);
+    fx.state
+        .store
+        .insert_body(&MessageBody {
+            message_id: id.clone(),
+            text_plain: None,
+            text_html: Some(reordered),
+            attachments: vec![],
+            fetched_at: now,
+            metadata: MessageMetadata::default(),
+        })
+        .await
+        .expect("body");
+    fx.state
+        .store
+        .replace_reading_items(&id, &[])
+        .await
+        .expect("clear the cache");
+
+    let edition = plan(&fx, &ReadingVisitRow::default(), now).await.edition;
+    let links = &edition.bands[0].items[0].links;
+    assert_eq!(
+        links[0].title, "SQLite 3.51 release notes",
+        "the new order shows"
+    );
+    assert_eq!(links[0].item_key, sqlite, "the link keeps its key");
+    assert!(links[0].on_later);
+    assert!(links[1..].iter().all(|link| !link.on_later));
+    assert_eq!(edition.later[0].title, "SQLite 3.51 release notes");
+}

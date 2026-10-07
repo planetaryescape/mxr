@@ -23,7 +23,7 @@ use scraper::{ElementRef, Html, Node};
 use serde::{Deserialize, Serialize};
 
 /// Bumped whenever extraction changes, so cached rows are rebuilt.
-pub const EXTRACTOR_VERSION: u32 = 1;
+pub const EXTRACTOR_VERSION: u32 = 2;
 
 /// A standfirst longer than this is cut at a word boundary.
 const STANDFIRST_MAX_CHARS: usize = 300;

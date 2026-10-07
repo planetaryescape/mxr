@@ -14,8 +14,10 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadingItemRow {
     pub message_id: MessageId,
-    /// 0 is the issue; a digest's links are 1..n.
+    /// 0 is the issue; a digest's link is keyed by its normalised URL.
     pub idx: i64,
+    /// Display order within the issue.
+    pub position: i64,
     pub account_id: AccountId,
     /// `issue` or `link`.
     pub kind: String,
@@ -129,6 +131,7 @@ fn item_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<ReadingItemRow, sqlx::
     Ok(ReadingItemRow {
         message_id: decode_id(&row.try_get::<String, _>("message_id")?)?,
         idx: row.try_get("idx")?,
+        position: row.try_get("position")?,
         account_id: decode_id(&row.try_get::<String, _>("account_id")?)?,
         kind: row.try_get("kind")?,
         shape: row.try_get("shape")?,
@@ -197,7 +200,7 @@ impl super::Store {
         let mut out = Vec::new();
         for chunk in message_ids.chunks(500) {
             let sql = format!(
-                "SELECT * FROM reading_items WHERE message_id IN ({}) ORDER BY message_id, idx",
+                "SELECT * FROM reading_items WHERE message_id IN ({}) ORDER BY message_id, position, idx",
                 placeholders(chunk.len())
             );
             let mut query = sqlx::query(sqlx::AssertSqlSafe(sql));
@@ -226,8 +229,8 @@ impl super::Store {
             sqlx::query(
                 "INSERT INTO reading_items
                      (message_id, idx, account_id, kind, shape, title, standfirst, url, domain,
-                      tracked, words, extractor_version)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                      tracked, words, extractor_version, position)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             )
             .bind(row.message_id.as_str())
             .bind(row.idx)
@@ -241,6 +244,7 @@ impl super::Store {
             .bind(i64::from(row.tracked))
             .bind(i64::from(row.words))
             .bind(i64::from(row.extractor_version))
+            .bind(row.position)
             .execute(&mut *tx)
             .await?;
         }

@@ -4572,6 +4572,7 @@
           "to",
           "subject",
           "text",
+          "html",
           "built_from",
           "countdown_seconds",
           "dry_run"
@@ -4596,6 +4597,10 @@
           "from": {
             "type": "string",
             "description": "The address it is sent from."
+          },
+          "html": {
+            "type": "string",
+            "description": "The exact HTML part that is sent, built from `text` by the same\nbuilder: every value is escaped, so nothing in a name or greeting\nbecomes a link or markup."
           },
           "preview_expires_at": {
             "type": [
@@ -4631,7 +4636,7 @@
           },
           "text": {
             "type": "string",
-            "description": "The exact text that is sent."
+            "description": "The exact text that is sent, as its plain-text part."
           },
           "thread_id": {
             "$ref": "#/components/schemas/ThreadId"

@@ -8,10 +8,16 @@ const sendAck = vi.fn<(plan: AckPlan) => Promise<AckPlan>>();
 vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
   previewAck: (threadId: string, signal: AbortSignal) => previewAck(threadId, signal),
-  sendAck: (plan: AckPlan) => sendAck(plan),
+  sendAck: (ack: AckPlan) => sendAck(ack),
   refreshMessages: async () => {},
 }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn<(message: string) => void>(),
+    error: vi.fn<(message: string) => void>(),
+    info: vi.fn<(message: string) => void>(),
+  },
+}));
 
 const { useGotIt } = await import("./useGotIt");
 
@@ -24,6 +30,7 @@ function plan(extra: Partial<AckPlan> = {}): AckPlan {
     to: [{ email: "samir@launchpad.example", name: "Samir Patel" }],
     subject: "Re: Contract renewal",
     text: "Thanks Samir, got it.",
+    html: "<p>Thanks Samir, got it.</p>",
     built_from: "No greeting or sign-off of yours with Samir to go on, so a plain thanks.",
     countdown_seconds: 5,
     dry_run: true,

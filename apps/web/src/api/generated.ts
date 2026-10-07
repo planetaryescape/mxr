@@ -3437,6 +3437,12 @@ export interface components {
             dry_run: boolean;
             /** @description The address it is sent from. */
             from: string;
+            /**
+             * @description The exact HTML part that is sent, built from `text` by the same
+             *     builder: every value is escaped, so nothing in a name or greeting
+             *     becomes a link or markup.
+             */
+            html: string;
             /** Format: date-time */
             preview_expires_at?: string | null;
             /**
@@ -3448,7 +3454,7 @@ export interface components {
             reply_to_message_id: components["schemas"]["MessageId"];
             sent_message_id?: null | components["schemas"]["MessageId"];
             subject: string;
-            /** @description The exact text that is sent. */
+            /** @description The exact text that is sent, as its plain-text part. */
             text: string;
             thread_id: components["schemas"]["ThreadId"];
             /** @description Exactly one recipient: Got it never replies to all. */

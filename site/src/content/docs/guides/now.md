@@ -22,8 +22,8 @@ disappears, and when they all have, Now says "Clear." and when the next to-do
 surfaces. The caps live in the daemon, so the web app, the TUI and
 `mxr now` show the same ten things.
 
-Messages and Updates are early versions built on the desk and Paper
-trail, and Archive's records are not built yet. Each says "early version"
+Updates is an early version built on Paper trail, and Archive's records
+are not built yet. Each says "early version"
 where it shows. [Email modes](/guides/email-modes/) has
 the status of each mode.
 

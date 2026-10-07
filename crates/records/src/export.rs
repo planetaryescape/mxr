@@ -54,13 +54,6 @@ pub fn preview(rows: &[ExportRow]) -> ExportPreview {
     out
 }
 
-/// "1249.00" from minor units: no symbol and no grouping, for spreadsheets.
-fn plain_amount(minor: i64) -> String {
-    let sign = if minor < 0 { "-" } else { "" };
-    let minor = minor.unsigned_abs();
-    format!("{sign}{}.{:02}", minor / 100, minor % 100)
-}
-
 pub const CSV_HEADER: [&str; 12] = [
     "date",
     "kind",
@@ -92,7 +85,9 @@ where
             row.kind.clone(),
             row.issuer.clone().unwrap_or_default(),
             row.title.clone().unwrap_or_default(),
-            row.amount_minor.map(plain_amount).unwrap_or_default(),
+            row.amount_minor
+                .map(mxr_todo::money::plain_amount)
+                .unwrap_or_default(),
             row.currency.clone().unwrap_or_default(),
             row.reference.clone().unwrap_or_default(),
             if row.checked { "yes" } else { "no" }.to_string(),

@@ -152,6 +152,16 @@ pub fn resolve_format(explicit: Option<OutputFormat>) -> OutputFormat {
     }
 }
 
+/// One value as JSON: compact on one line for JSONL, indented otherwise.
+pub fn print_json<T: Serialize>(value: &T, format: crate::cli::OutputFormat) -> anyhow::Result<()> {
+    if format == crate::cli::OutputFormat::Jsonl {
+        println!("{}", serde_json::to_string(value)?);
+    } else {
+        println!("{}", serde_json::to_string_pretty(value)?);
+    }
+    Ok(())
+}
+
 pub fn jsonl<T: Serialize>(items: &[T]) -> anyhow::Result<String> {
     items
         .iter()

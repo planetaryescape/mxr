@@ -14,10 +14,9 @@ use mxr_core::id::{AccountId, AttachmentId, MessageId};
 use mxr_protocol::{
     archive_copy, ArchiveAskFiltersData, RecordAmountData, RecordAnswerCardData, RecordAnswerData,
     RecordChangeData, RecordData, RecordDocumentData, RecordEditData, RecordExportData,
-    RecordFacetCountData, RecordFacetsData, RecordFallbackData, RecordFieldData,
-    RecordFilterData, RecordFirstRunData, RecordGroupData, RecordIssuerData, RecordKindData,
-    RecordLedgerData, RecordMomentData, RecordMonthData, RecordSourceData, RecordUndoData,
-    ResponseData,
+    RecordFacetCountData, RecordFacetsData, RecordFallbackData, RecordFieldData, RecordFilterData,
+    RecordFirstRunData, RecordGroupData, RecordIssuerData, RecordKindData, RecordLedgerData,
+    RecordMomentData, RecordMonthData, RecordSourceData, RecordUndoData, ResponseData,
 };
 use mxr_records::answer::{self, AnswerField, Candidate};
 use mxr_records::export::{self, ExportRow};
@@ -81,7 +80,11 @@ pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
 /// filed; ingesting them again adds Archive's field chunk. Unchanged chunks
 /// are not re-embedded.
 async fn reindex_record_sources(state: &AppState, message_ids: &[MessageId]) {
-    let filed: Vec<MessageId> = match state.store.archive_record_ids_for_messages(message_ids).await {
+    let filed: Vec<MessageId> = match state
+        .store
+        .archive_record_ids_for_messages(message_ids)
+        .await
+    {
         Ok(rows) => {
             let mut ids: Vec<MessageId> = rows.into_iter().map(|(id, _)| id).collect();
             ids.sort_by_key(MessageId::as_str);
@@ -143,7 +146,8 @@ pub(crate) async fn prefetch_pdfs(state: &AppState) -> u32 {
     if !config.pdf_prefetch {
         return 0;
     }
-    let budget = i64::try_from(config.pdf_budget_mb.saturating_mul(1024 * 1024)).unwrap_or(i64::MAX);
+    let budget =
+        i64::try_from(config.pdf_budget_mb.saturating_mul(1024 * 1024)).unwrap_or(i64::MAX);
     let max_file =
         i64::try_from(config.pdf_max_file_mb.saturating_mul(1024 * 1024)).unwrap_or(i64::MAX);
     let (mut used, _) = match state.store.record_pdfs_on_disk().await {
@@ -153,7 +157,11 @@ pub(crate) async fn prefetch_pdfs(state: &AppState) -> u32 {
             return 0;
         }
     };
-    let wanted = match state.store.record_pdfs_to_fetch(max_file, PDFS_PER_TICK).await {
+    let wanted = match state
+        .store
+        .record_pdfs_to_fetch(max_file, PDFS_PER_TICK)
+        .await
+    {
         Ok(wanted) => wanted,
         Err(error) => {
             tracing::warn!(%error, "record PDF prefetch lookup failed");
@@ -207,7 +215,9 @@ pub(crate) async fn file_ticked_todos(state: &AppState, todos: &[TodoRecord]) ->
                 }
             }
             Ok(_) => {}
-            Err(error) => tracing::warn!(todo = %todo.id, %error, "filing a ticked-off to-do failed"),
+            Err(error) => {
+                tracing::warn!(todo = %todo.id, %error, "filing a ticked-off to-do failed");
+            }
         }
     }
     for account in accounts {
@@ -239,9 +249,13 @@ pub(super) async fn coming_up(
     now: DateTime<Utc>,
     cap: usize,
 ) -> Result<Vec<RecordMomentData>, HandlerError> {
+    // Only records with a date still ahead: Now asks on every refresh.
     let records = state
         .store
-        .list_archive_records(&query_for(accounts, &RecordFilterData::default())?)
+        .list_archive_records(&RecordQuery {
+            moment_after: Some(now),
+            ..query_for(accounts, &RecordFilterData::default())?
+        })
         .await?;
     let groups: HashMap<String, RecordGroup> = state
         .store
@@ -250,11 +264,13 @@ pub(super) async fn coming_up(
         .into_iter()
         .map(|g| (g.id.clone(), g))
         .collect();
-    Ok(mxr_records::coming_up::moments(&records, &groups, now, &Local)
-        .into_iter()
-        .take(cap)
-        .map(moment_data)
-        .collect())
+    Ok(
+        mxr_records::coming_up::moments(&records, &groups, now, &Local)
+            .into_iter()
+            .take(cap)
+            .map(moment_data)
+            .collect(),
+    )
 }
 
 fn moment_data(moment: mxr_records::coming_up::Moment) -> RecordMomentData {
@@ -279,7 +295,9 @@ pub(crate) fn todo_files_record(todo_kind: &str) -> bool {
 pub(super) async fn resolve_record_id(state: &AppState, raw: &str) -> Result<String, HandlerError> {
     let raw = raw.trim();
     if raw.is_empty() {
-        return Err(HandlerError::InvalidRequest("Give a record id.".to_string()));
+        return Err(HandlerError::InvalidRequest(
+            "Give a record id.".to_string(),
+        ));
     }
     if state.store.get_archive_record(raw).await?.is_some() {
         return Ok(raw.to_string());
@@ -298,17 +316,16 @@ pub(super) async fn resolve_record_id(state: &AppState, raw: &str) -> Result<Str
         .as_slice()
     {
         [only] => Ok(only.clone()),
-        [] => Err(HandlerError::InvalidRequest(format!("No record matches {raw}."))),
+        [] => Err(HandlerError::InvalidRequest(format!(
+            "No record matches {raw}."
+        ))),
         _ => Err(HandlerError::InvalidRequest(format!(
             "{raw} matches more than one record; use more of the id."
         ))),
     }
 }
 
-async fn resolve_record_ids(
-    state: &AppState,
-    raw: &[String],
-) -> Result<Vec<String>, HandlerError> {
+async fn resolve_record_ids(state: &AppState, raw: &[String]) -> Result<Vec<String>, HandlerError> {
     if raw.is_empty() {
         return Err(HandlerError::InvalidRequest(
             "Give at least one record id.".to_string(),
@@ -354,45 +371,43 @@ struct Context {
 }
 
 impl Context {
+    /// Loads what the records need in parallel: their fields, documents and
+    /// sources, and the groups they belong to with member counts.
     async fn load(
         state: &AppState,
         records: &[ArchiveRecord],
         accounts: Option<&[AccountId]>,
     ) -> Result<Self, HandlerError> {
         let ids: Vec<String> = records.iter().map(|r| r.id.clone()).collect();
-        let groups = state.store.list_record_groups(accounts).await?;
+        let mut group_ids: Vec<String> =
+            records.iter().filter_map(|r| r.group_id.clone()).collect();
+        group_ids.sort_unstable();
+        group_ids.dedup();
+        let store = &state.store;
+        let (groups, group_counts, field_rows, document_rows, source_rows) = tokio::try_join!(
+            store.list_record_groups(accounts),
+            store.record_group_counts(&group_ids),
+            store.archive_record_fields(&ids),
+            store.archive_record_documents(&ids),
+            store.archive_record_sources(&ids),
+        )?;
         let mut fields: HashMap<String, Vec<RecordFieldValue>> = HashMap::new();
-        for (record_id, field) in state.store.archive_record_fields(&ids).await? {
+        for (record_id, field) in field_rows {
             fields.entry(record_id).or_default().push(field);
         }
         let mut documents: HashMap<String, Vec<RecordDocument>> = HashMap::new();
-        for document in state.store.archive_record_documents(&ids).await? {
+        for document in document_rows {
             documents
                 .entry(document.record_id.clone())
                 .or_default()
                 .push(document);
         }
         let mut sources: HashMap<String, Vec<RecordSource>> = HashMap::new();
-        for source in state.store.archive_record_sources(&ids).await? {
+        for source in source_rows {
             sources
                 .entry(source.record_id.clone())
                 .or_default()
                 .push(source);
-        }
-        let mut group_counts: HashMap<String, u32> = HashMap::new();
-        if !groups.is_empty() {
-            let all = state
-                .store
-                .list_archive_records(&RecordQuery {
-                    account_ids: accounts.map(<[AccountId]>::to_vec),
-                    ..RecordQuery::default()
-                })
-                .await?;
-            for record in &all {
-                if let Some(group) = &record.group_id {
-                    *group_counts.entry(group.clone()).or_default() += 1;
-                }
-            }
         }
         Ok(Self {
             groups: groups.into_iter().map(|g| (g.id.clone(), g)).collect(),
@@ -414,7 +429,9 @@ fn date_label(at: DateTime<Utc>) -> String {
     if is_day(at) {
         at.format("%-d %b %Y").to_string()
     } else {
-        at.with_timezone(&Local).format("%a %-d %b %Y %H:%M").to_string()
+        at.with_timezone(&Local)
+            .format("%a %-d %b %Y %H:%M")
+            .to_string()
     }
 }
 
@@ -425,12 +442,6 @@ fn short_day(at: DateTime<Utc>) -> String {
     } else {
         at.with_timezone(&Local).format("%-d %b").to_string()
     }
-}
-
-fn plain_amount(minor: i64) -> String {
-    let sign = if minor < 0 { "-" } else { "" };
-    let minor = minor.unsigned_abs();
-    format!("{sign}{}.{:02}", minor / 100, minor % 100)
 }
 
 fn amount_data(minor: i64, currency: &str) -> RecordAmountData {
@@ -445,21 +456,16 @@ fn kind_data(kind: &str) -> RecordKindData {
     RecordKindData::parse(kind).unwrap_or(RecordKindData::Receipt)
 }
 
-fn amount_label(kind: RecordKindData) -> &'static str {
-    match kind {
-        RecordKindData::Receipt | RecordKindData::Order => "Paid",
-        RecordKindData::Booking | RecordKindData::Ticket => "Price",
-        _ => "Amount",
-    }
-}
-
 fn field_data(kind: RecordKind, value: &RecordFieldValue) -> Option<RecordFieldData> {
     let name = FieldName::parse(&value.field)?;
     let (shown, copy) = match name {
         FieldName::Amount => {
             let minor = value.value_int?;
             let currency = value.value_text.as_deref()?;
-            (format_amount(minor, currency), plain_amount(minor))
+            (
+                format_amount(minor, currency),
+                mxr_todo::money::plain_amount(minor),
+            )
         }
         _ if name.is_date() => {
             let at = DateTime::from_timestamp(value.value_int?, 0)?;
@@ -473,7 +479,7 @@ fn field_data(kind: RecordKind, value: &RecordFieldValue) -> Option<RecordFieldD
     };
     let label = match name {
         FieldName::Reference => kind.reference_label().to_string(),
-        FieldName::Amount => amount_label(kind_data(kind.as_str())).to_string(),
+        FieldName::Amount => kind.amount_label().to_string(),
         other => other.label().to_string(),
     };
     let source = Source::parse(&value.source);
@@ -560,7 +566,11 @@ fn why(record: &ArchiveRecord, now: DateTime<Utc>) -> String {
     let mut line = format!(
         "Here because: {} ({}).",
         record.reason,
-        if record.checked { "checked" } else { "unchecked" }
+        if record.checked {
+            "checked"
+        } else {
+            "unchecked"
+        }
     );
     if let Some(by) = record.return_by.filter(|by| *by >= now) {
         line.push_str(&format!(
@@ -685,7 +695,7 @@ fn totals<'a>(records: impl IntoIterator<Item = &'a ArchiveRecord>) -> Vec<Recor
         .into_iter()
         .map(|(currency, minor)| amount_data(minor, &currency))
         .collect();
-    out.sort_by(|a, b| b.minor.cmp(&a.minor));
+    out.sort_by_key(|amount| std::cmp::Reverse(amount.minor));
     out
 }
 
@@ -698,7 +708,9 @@ fn query_for(
             .with_ymd_and_hms(year, 1, 1, 0, 0, 0)
             .earliest()
             .map(|at| at.with_timezone(&Utc))
-            .ok_or_else(|| HandlerError::InvalidRequest(format!("{year} is not a year mxr can read")))
+            .ok_or_else(|| {
+                HandlerError::InvalidRequest(format!("{year} is not a year mxr can read"))
+            })
     };
     let (from, until) = match filter.year {
         Some(year) => (Some(year_bound(year)?), Some(year_bound(year + 1)?)),
@@ -706,7 +718,11 @@ fn query_for(
     };
     Ok(RecordQuery {
         account_ids: Some(accounts.to_vec()),
-        kinds: filter.kinds.iter().map(|k| k.as_str().to_string()).collect(),
+        kinds: filter
+            .kinds
+            .iter()
+            .map(|k| k.as_str().to_string())
+            .collect(),
         issuer_key: filter
             .issuer
             .as_deref()
@@ -719,6 +735,7 @@ fn query_for(
         has_pdf: filter.has_pdf,
         checked: filter.checked,
         group_id: filter.group_id.clone(),
+        moment_after: None,
         include_dismissed: false,
     })
 }
@@ -762,7 +779,10 @@ fn facets(all: &[ArchiveRecord], with_pdf: u32) -> RecordFacetsData {
     for record in all {
         *kinds.entry(record.kind.clone()).or_default() += 1;
         if let (Some(key), Some(name)) = (&record.issuer_key, &record.issuer) {
-            issuers.entry(key.clone()).or_insert_with(|| (name.clone(), 0)).1 += 1;
+            issuers
+                .entry(key.clone())
+                .or_insert_with(|| (name.clone(), 0))
+                .1 += 1;
         }
         if let Some(date) = record.ledger_date() {
             *years.entry(date.with_timezone(&Local).year()).or_default() += 1;
@@ -780,7 +800,8 @@ fn facets(all: &[ArchiveRecord], with_pdf: u32) -> RecordFacetsData {
         kinds: kinds
             .into_iter()
             .map(|(kind, count)| {
-                let label = RecordKind::parse(&kind).map_or(kind.clone(), |k| k.label().to_string());
+                let label = RecordKind::parse(&kind)
+                    .map_or_else(|| kind.clone(), |k| k.label().to_string());
                 facet(kind, label, count)
             })
             .collect(),
@@ -860,22 +881,17 @@ pub(super) async fn list_records(
         .await?;
     let with_pdf = state
         .store
-        .list_archive_records(&RecordQuery {
-            has_pdf: Some(true),
-            ..query_for(&accounts, &RecordFilterData::default())?
-        })
-        .await?
-        .len();
-    let start = usize::try_from(offset).unwrap_or(usize::MAX).min(matching.len());
+        .count_archive_records_with_pdf(&accounts)
+        .await?;
+    let start = usize::try_from(offset)
+        .unwrap_or(usize::MAX)
+        .min(matching.len());
     let end = start
         .saturating_add(usize::try_from(limit.max(1)).unwrap_or(usize::MAX))
         .min(matching.len());
     let page = &matching[start..end];
     let ctx = Context::load(state, page, Some(&accounts)).await?;
-    let groups = state.store.list_record_groups(Some(&accounts)).await?;
-    let groups: HashMap<String, RecordGroup> =
-        groups.into_iter().map(|g| (g.id.clone(), g)).collect();
-    let coming_up = mxr_records::coming_up::moments(&all, &groups, now, &Local)
+    let coming_up = mxr_records::coming_up::moments(&all, &ctx.groups, now, &Local)
         .into_iter()
         .map(moment_data)
         .collect();
@@ -908,7 +924,7 @@ pub(super) async fn list_records(
             matching: u32::try_from(matching.len()).unwrap_or(u32::MAX),
             records: page.iter().map(|r| to_data(r, &ctx, false, now)).collect(),
             months: months(&matching),
-            facets: facets(&all, u32::try_from(with_pdf).unwrap_or(u32::MAX)),
+            facets: facets(&all, with_pdf),
             coming_up,
             filter: filter.clone(),
             issuer,
@@ -995,7 +1011,6 @@ pub(super) async fn answer_query(
                 .as_ref()
                 .and_then(|id| groups.get(id))
                 .map(|g| g.title.as_str()),
-            stages: &[],
         })
         .collect();
     let ranked = answer::rank(&parsed, &candidates);
@@ -1244,31 +1259,37 @@ pub(super) async fn set_field(
     let (store_edit, message, undo_fields) = match edit {
         RecordEditData::Set { field, value } => {
             let name = field_of(field)?;
+            let key = name.as_str().to_string();
             let (value_text, value_int) = parse_value(state, name, value, &record)?;
             (
                 RecordFieldEdit::Set {
-                    field: name.as_str().to_string(),
+                    field: key.clone(),
                     value_text,
                     value_int,
                 },
-                format!("Fixed {}. It stays as you set it.", name.label().to_lowercase()),
-                vec![name.as_str().to_string()],
+                format!(
+                    "Fixed {}. It stays as you set it.",
+                    name.label().to_lowercase()
+                ),
+                vec![key],
             )
         }
         RecordEditData::Confirm { field } => {
             let name = field_of(field)?;
+            let key = name.as_str().to_string();
             (
-                RecordFieldEdit::Confirm {
-                    field: name.as_str().to_string(),
-                },
+                RecordFieldEdit::Confirm { field: key.clone() },
                 format!("Confirmed {}.", name.label().to_lowercase()),
-                vec![name.as_str().to_string()],
+                vec![key],
             )
         }
         RecordEditData::ConfirmAll => (
             RecordFieldEdit::ConfirmUnchecked,
             "Marked checked.".to_string(),
-            Vec::new(),
+            mxr_store::RECORD_CHECKED_FIELDS
+                .iter()
+                .map(|f| (*f).to_string())
+                .collect(),
         ),
         RecordEditData::Clear { field } => {
             let name = field_of(field)?;
@@ -1276,18 +1297,13 @@ pub(super) async fn set_field(
                 RecordFieldEdit::Clear {
                     field: name.as_str().to_string(),
                 },
-                format!("Back to the {} read from the email.", name.label().to_lowercase()),
+                format!(
+                    "Back to the {} read from the email.",
+                    name.label().to_lowercase()
+                ),
                 Vec::new(),
             )
         }
-    };
-    let undo_fields = if matches!(edit, RecordEditData::ConfirmAll) {
-        mxr_store::RECORD_CHECKED_FIELDS
-            .iter()
-            .map(|f| (*f).to_string())
-            .collect()
-    } else {
-        undo_fields
     };
     let (after, fields) = state
         .store
@@ -1406,12 +1422,18 @@ pub(super) async fn dismiss(
         state.store.get_archive_records(&changed_ids).await?
     };
     let ctx = Context::load(state, &changed, None).await?;
-    let records: Vec<RecordData> = changed.iter().map(|r| to_data(r, &ctx, false, now)).collect();
+    let records: Vec<RecordData> = changed
+        .iter()
+        .map(|r| to_data(r, &ctx, false, now))
+        .collect();
     let message = match (restore, dry_run, records.len()) {
         (_, _, 0) => "Nothing to change.".to_string(),
         (false, false, 1) => archive_copy::NOT_A_RECORD.to_string(),
         (false, false, n) => format!("{n} marked not a record. The emails are untouched."),
-        (false, true, n) => format!("Would mark {} not a record. The emails stay as they are.", plural(n, "record")),
+        (false, true, n) => format!(
+            "Would mark {} not a record. The emails stay as they are.",
+            plural(n, "record")
+        ),
         (true, false, n) => format!("{} back in Archive.", plural(n, "record")),
         (true, true, n) => format!("Would bring back {}.", plural(n, "record")),
     };
@@ -1451,10 +1473,7 @@ pub(super) async fn file(
         let message = if record.dismissed_at.is_some() {
             "You marked this not a record; filing it brings it back.".to_string()
         } else {
-            format!(
-                "Would file in Archive: {}.",
-                describe(&data)
-            )
+            format!("Would file in Archive: {}.", describe(&data))
         };
         return Ok(change(true, "file", vec![data], message, None));
     }
@@ -1555,7 +1574,13 @@ pub(super) async fn set_sender(
     }
     state
         .store
-        .set_record_sender_verdict(&account, &sender, verdict, kind.map(RecordKindData::as_str), now)
+        .set_record_sender_verdict(
+            &account,
+            &sender,
+            verdict,
+            kind.map(RecordKindData::as_str),
+            now,
+        )
         .await?;
     match verdict {
         Some("always") => {
@@ -1635,7 +1660,7 @@ pub(super) async fn export_records(
             .iter()
             .map(|(currency, minor)| amount_data(*minor, currency))
             .collect();
-        out.sort_by(|a, b| b.minor.cmp(&a.minor));
+        out.sort_by_key(|amount| std::cmp::Reverse(amount.minor));
         out
     };
     let summary = {
@@ -1671,7 +1696,8 @@ pub(super) async fn export_records(
             .by_kind
             .iter()
             .map(|(kind, count)| {
-                let label = RecordKind::parse(kind).map_or(kind.clone(), |k| k.label().to_string());
+                let label =
+                    RecordKind::parse(kind).map_or_else(|| kind.clone(), |k| k.label().to_string());
                 facet(kind.clone(), label, *count)
             })
             .collect(),
@@ -1694,9 +1720,9 @@ pub(super) async fn export_records(
                 "The folder for PDFs must be an absolute path.".to_string(),
             ));
         }
-        tokio::fs::create_dir_all(&dir)
-            .await
-            .map_err(|error| HandlerError::Message(format!("Can't create {}: {error}", dir.display())))?;
+        tokio::fs::create_dir_all(&dir).await.map_err(|error| {
+            HandlerError::Message(format!("Can't create {}: {error}", dir.display()))
+        })?;
         for record in &records {
             let Some(pdf) = ctx
                 .documents
@@ -1736,7 +1762,13 @@ async fn copy_pdf(
     let issuer = record.issuer.clone().unwrap_or_default();
     let safe = |text: &str| -> String {
         text.chars()
-            .map(|c| if c.is_alphanumeric() || " .-_".contains(c) { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || " .-_".contains(c) {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect::<String>()
             .trim()
             .to_string()
@@ -1745,7 +1777,10 @@ async fn copy_pdf(
     let mut target = dir.join(name.trim());
     let mut n = 2;
     while tokio::fs::try_exists(&target).await.unwrap_or(false) {
-        target = dir.join(format!("{} ({n}).pdf", name.trim().trim_end_matches(".pdf")));
+        target = dir.join(format!(
+            "{} ({n}).pdf",
+            name.trim().trim_end_matches(".pdf")
+        ));
         n += 1;
     }
     tokio::fs::copy(&file.path, &target)
@@ -1763,8 +1798,11 @@ mod tests {
     fn days_print_as_days_and_instants_with_their_time() {
         let day = mxr_records::fields::day_at(NaiveDate::from_ymd_opt(2025, 3, 3).expect("day"));
         assert_eq!(date_label(day), "3 Mar 2025");
-        let instant = Utc.with_ymd_and_hms(2025, 6, 12, 6, 40, 0).single().expect("time");
+        let instant = Utc
+            .with_ymd_and_hms(2025, 6, 12, 6, 40, 0)
+            .single()
+            .expect("time");
         assert!(date_label(instant).contains("2025"));
-        assert_eq!(plain_amount(124_900), "1249.00");
+        assert_eq!(mxr_todo::money::plain_amount(124_900), "1249.00");
     }
 }

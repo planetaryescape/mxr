@@ -19,6 +19,7 @@ mod mode_routes;
 mod openapi;
 mod place_routes;
 mod promise_routes;
+mod record_routes;
 mod request_types;
 mod routes_v6;
 mod row_labels;
@@ -26,7 +27,6 @@ mod row_labels;
 mod spa;
 mod thread_context_routes;
 mod time_routes;
-mod record_routes;
 mod todo_routes;
 
 pub use openapi::ApiDoc;

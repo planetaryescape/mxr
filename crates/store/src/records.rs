@@ -44,10 +44,12 @@ macro_rules! winner {
     };
 }
 
-/// Recomputes every winning column of the records in `temp.mxr_records`
-/// from their field candidates and source emails. Shared by the filing
-/// path and the message delete, so both leave the same columns.
-pub(crate) const RECOMPUTE_SQL: &str = concat!(
+/// The SET list that recomputes every winning column of a record from its
+/// field candidates and source emails. Shared by the filing path and the
+/// message delete, so both leave the same columns.
+macro_rules! recompute_set {
+    () => {
+        concat!(
     "UPDATE records SET ",
     "kind = COALESCE(",
     winner!("value_text", "kind"),
@@ -110,8 +112,18 @@ pub(crate) const RECOMPUTE_SQL: &str = concat!(
                   ORDER BY rm.message_at DESC, rm.message_id DESC LIMIT 1), thread_id), ",
     "last_message_at = COALESCE((SELECT MAX(rm.message_at) FROM record_messages rm
                         WHERE rm.record_id = records.id), last_message_at) ",
+        )
+    };
+}
+
+/// Recomputes the records listed in `temp.mxr_records`.
+pub(crate) const RECOMPUTE_SQL: &str = concat!(
+    recompute_set!(),
     "WHERE id IN (SELECT id FROM temp.mxr_records)"
 );
+
+/// Recomputes one record, bound at `?1`.
+const RECOMPUTE_ONE_SQL: &str = concat!(recompute_set!(), "WHERE id = ?1");
 
 /// A row of `records`. Kinds, origins and stages are plain strings here;
 /// their vocabulary lives in `mxr-records`.
@@ -286,7 +298,20 @@ pub struct RecordQuery {
     pub has_pdf: Option<bool>,
     pub checked: Option<bool>,
     pub group_id: Option<String>,
+    /// Only records with a date still ahead of this instant (a trip, a
+    /// ticket, a return window, a warranty): the coming-up strip.
+    pub moment_after: Option<DateTime<Utc>>,
     pub include_dismissed: bool,
+}
+
+/// The dedup key of a record a ticked-off to-do made itself.
+pub fn todo_record_dedup_key(todo_id: &str) -> String {
+    format!("todo|{todo_id}")
+}
+
+/// The source key of the field candidates a ticked-off to-do carried.
+pub fn todo_record_source_key(todo_id: &str) -> String {
+    format!("todo:{todo_id}")
 }
 
 /// A correction the user makes to one record.
@@ -426,6 +451,13 @@ async fn recompute_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     record_ids: &[&str],
 ) -> Result<(), sqlx::Error> {
+    if let [only] = record_ids {
+        sqlx::query(RECOMPUTE_ONE_SQL)
+            .bind(*only)
+            .execute(&mut **tx)
+            .await?;
+        return Ok(());
+    }
     sqlx::query("CREATE TEMP TABLE IF NOT EXISTS mxr_records (id TEXT PRIMARY KEY)")
         .execute(&mut **tx)
         .await?;
@@ -445,13 +477,16 @@ async fn recompute_in_tx(
     Ok(())
 }
 
+/// Writes a field candidate. With `only_if_changed`, an existing candidate
+/// with the same value and checked state is left as it is (a re-scan of the
+/// same email); returns whether a row was written.
 async fn upsert_field_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     record_id: &str,
     value: &RecordFieldValue,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO record_fields
+    only_if_changed: bool,
+) -> Result<bool, sqlx::Error> {
+    const UPSERT: &str = "INSERT INTO record_fields
             (record_id, field, source_key, message_id, source, rank, value_text, value_int,
              checked, evidence, observed_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
@@ -463,22 +498,32 @@ async fn upsert_field_in_tx(
             value_int = excluded.value_int,
             checked = excluded.checked,
             evidence = excluded.evidence,
-            observed_at = excluded.observed_at",
-    )
-    .bind(record_id)
-    .bind(&value.field)
-    .bind(&value.source_key)
-    .bind(value.message_id.as_ref().map(MessageId::as_str))
-    .bind(&value.source)
-    .bind(value.rank)
-    .bind(&value.value_text)
-    .bind(value.value_int)
-    .bind(i64::from(value.checked))
-    .bind(&value.evidence)
-    .bind(value.observed_at.timestamp())
-    .execute(&mut **tx)
-    .await?;
-    Ok(())
+            observed_at = excluded.observed_at";
+    let sql = if only_if_changed {
+        sqlx::AssertSqlSafe(format!(
+            "{UPSERT} WHERE record_fields.value_text IS NOT excluded.value_text
+                OR record_fields.value_int IS NOT excluded.value_int
+                OR record_fields.checked <> excluded.checked"
+        ))
+    } else {
+        sqlx::AssertSqlSafe(UPSERT.to_string())
+    };
+    let written = sqlx::query(sql)
+        .bind(record_id)
+        .bind(&value.field)
+        .bind(&value.source_key)
+        .bind(value.message_id.as_ref().map(MessageId::as_str))
+        .bind(&value.source)
+        .bind(value.rank)
+        .bind(&value.value_text)
+        .bind(value.value_int)
+        .bind(i64::from(value.checked))
+        .bind(&value.evidence)
+        .bind(value.observed_at.timestamp())
+        .execute(&mut **tx)
+        .await?
+        .rows_affected();
+    Ok(written > 0)
 }
 
 async fn file_record_in_tx(
@@ -539,24 +584,7 @@ async fn file_record_in_tx(
         changed |= result.rows_affected() > 0;
     }
     for value in &filing.fields {
-        let before: Option<(Option<String>, Option<i64>, i64)> = sqlx::query_as(
-            "SELECT value_text, value_int, checked FROM record_fields
-             WHERE record_id = ?1 AND field = ?2 AND source_key = ?3",
-        )
-        .bind(&record_id)
-        .bind(&value.field)
-        .bind(&value.source_key)
-        .fetch_optional(&mut **tx)
-        .await?;
-        let same = before.as_ref().is_some_and(|(text, int, checked)| {
-            *text == value.value_text
-                && *int == value.value_int
-                && (*checked != 0) == value.checked
-        });
-        if !same {
-            upsert_field_in_tx(tx, &record_id, value).await?;
-            changed = true;
-        }
+        changed |= upsert_field_in_tx(tx, &record_id, value, true).await?;
     }
     if changed {
         if !inserted {
@@ -773,6 +801,14 @@ impl super::Store {
             conditions.push("group_id = ?".to_string());
             binds.push(Bind::Text(group.clone()));
         }
+        if let Some(after) = query.moment_after {
+            conditions.push(
+                "MAX(COALESCE(span_start, 0), COALESCE(span_end, 0), COALESCE(return_by, 0),
+                     COALESCE(warranty_until, 0)) >= ?"
+                    .to_string(),
+            );
+            binds.push(Bind::Int(after.timestamp()));
+        }
         if let Some(has_pdf) = query.has_pdf {
             let exists = "EXISTS (SELECT 1 FROM record_messages rm
                  JOIN attachments a ON a.message_id = rm.message_id
@@ -925,7 +961,8 @@ impl super::Store {
         let template = format!(
             "SELECT DISTINCT rm.thread_id AS source_thread, {} FROM record_messages rm
              JOIN records r ON r.id = rm.record_id
-             WHERE rm.thread_id IN ({{}}) AND r.dismissed_at IS NULL",
+             WHERE rm.thread_id IN ({{}}) AND r.dismissed_at IS NULL
+             ORDER BY rm.thread_id, r.created_at, r.id",
             RECORD_COLUMNS
                 .split(',')
                 .map(|column| format!("r.{}", column.trim()))
@@ -964,22 +1001,23 @@ impl super::Store {
             tx.rollback().await?;
             return Ok(None);
         }
-        let user = |field: &str, value_text: Option<String>, value_int: Option<i64>, evidence: &str| {
-            RecordFieldValue {
-                field: field.to_string(),
-                source_key: "user".to_string(),
-                message_id: None,
-                source: "user".to_string(),
-                rank: 4,
-                value_text,
-                value_int,
-                checked: true,
-                // A user row copies no text from mail, so it never outlives
-                // a delete with words from it.
-                evidence: Some(evidence.to_string()),
-                observed_at: now,
-            }
-        };
+        let user =
+            |field: &str, value_text: Option<String>, value_int: Option<i64>, evidence: &str| {
+                RecordFieldValue {
+                    field: field.to_string(),
+                    source_key: "user".to_string(),
+                    message_id: None,
+                    source: "user".to_string(),
+                    rank: 4,
+                    value_text,
+                    value_int,
+                    checked: true,
+                    // A user row copies no text from mail, so it never outlives
+                    // a delete with words from it.
+                    evidence: Some(evidence.to_string()),
+                    observed_at: now,
+                }
+            };
         let confirm_fields: Vec<String> = match edit {
             RecordFieldEdit::Set {
                 field,
@@ -990,6 +1028,7 @@ impl super::Store {
                     &mut tx,
                     record_id,
                     &user(field, value_text.clone(), *value_int, "you"),
+                    false,
                 )
                 .await?;
                 Vec::new()
@@ -1012,7 +1051,8 @@ impl super::Store {
                      WHERE record_id = ? AND field IN ({})",
                     in_list(RECORD_CHECKED_FIELDS.len())
                 );
-                let mut query = sqlx::query_scalar::<_, String>(sqlx::AssertSqlSafe(sql)).bind(record_id);
+                let mut query =
+                    sqlx::query_scalar::<_, String>(sqlx::AssertSqlSafe(sql)).bind(record_id);
                 for field in RECORD_CHECKED_FIELDS {
                     query = query.bind(*field);
                 }
@@ -1036,7 +1076,13 @@ impl super::Store {
             if matches!(edit, RecordFieldEdit::ConfirmUnchecked) && checked != 0 {
                 continue;
             }
-            upsert_field_in_tx(&mut tx, record_id, &user(field, text, int, "you confirmed")).await?;
+            upsert_field_in_tx(
+                &mut tx,
+                record_id,
+                &user(field, text, int, "you confirmed"),
+                false,
+            )
+            .await?;
         }
         sqlx::query("UPDATE records SET updated_at = ?2 WHERE id = ?1")
             .bind(record_id)
@@ -1101,31 +1147,27 @@ impl super::Store {
         dismiss: bool,
         now: DateTime<Utc>,
     ) -> Result<Vec<String>, sqlx::Error> {
+        let (set, unchanged) = if dismiss {
+            ("dismissed_at = ?1", "dismissed_at IS NULL")
+        } else {
+            ("dismissed_at = NULL", "dismissed_at IS NOT NULL")
+        };
+        let mut tx = self.writer().begin().await?;
         let mut changed = Vec::new();
-        for id in record_ids {
-            let result = if dismiss {
-                sqlx::query(
-                    "UPDATE records SET dismissed_at = ?2, updated_at = ?2
-                     WHERE id = ?1 AND dismissed_at IS NULL",
-                )
-                .bind(id)
-                .bind(now.timestamp())
-                .execute(self.writer())
-                .await?
-            } else {
-                sqlx::query(
-                    "UPDATE records SET dismissed_at = NULL, updated_at = ?2
-                     WHERE id = ?1 AND dismissed_at IS NOT NULL",
-                )
-                .bind(id)
-                .bind(now.timestamp())
-                .execute(self.writer())
-                .await?
-            };
-            if result.rows_affected() > 0 {
-                changed.push(id.clone());
+        for chunk in record_ids.chunks(crate::SQLITE_BIND_CHUNK) {
+            let sql = format!(
+                "UPDATE records SET {set}, updated_at = ?1
+                 WHERE {unchanged} AND id IN ({}) RETURNING id",
+                crate::in_list_after_first(chunk.len())
+            );
+            let mut query =
+                sqlx::query_scalar::<_, String>(sqlx::AssertSqlSafe(sql)).bind(now.timestamp());
+            for id in chunk {
+                query = query.bind(id);
             }
+            changed.extend(query.fetch_all(&mut *tx).await?);
         }
+        tx.commit().await?;
         Ok(changed)
     }
 
@@ -1137,7 +1179,7 @@ impl super::Store {
         todo_id: &str,
     ) -> Result<u64, sqlx::Error> {
         let mut tx = self.writer().begin().await?;
-        let source_key = format!("todo:{todo_id}");
+        let source_key = todo_record_source_key(todo_id);
         let touched: Vec<String> =
             sqlx::query_scalar("SELECT DISTINCT record_id FROM record_fields WHERE source_key = ?")
                 .bind(&source_key)
@@ -1149,7 +1191,7 @@ impl super::Store {
             .await?;
         let removed = sqlx::query("DELETE FROM records WHERE account_id = ? AND dedup_key = ?")
             .bind(account_id.as_str())
-            .bind(format!("todo|{todo_id}"))
+            .bind(todo_record_dedup_key(todo_id))
             .execute(&mut *tx)
             .await?
             .rows_affected();
@@ -1207,6 +1249,28 @@ impl super::Store {
                     span_start: decode_optional_timestamp(row.try_get("span_start")?)?,
                     span_end: decode_optional_timestamp(row.try_get("span_end")?)?,
                 })
+            })
+            .collect()
+    }
+
+    /// How many records (not dismissed) each of these groups holds.
+    pub async fn record_group_counts(
+        &self,
+        group_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, u32>, sqlx::Error> {
+        let rows = fetch_by_ids(
+            self.reader(),
+            "SELECT group_id, COUNT(*) AS n FROM records
+             WHERE group_id IN ({}) AND dismissed_at IS NULL GROUP BY group_id",
+            group_ids,
+        )
+        .await?;
+        rows.iter()
+            .map(|row| {
+                Ok((
+                    row.try_get::<String, _>("group_id")?,
+                    u32::try_from(row.try_get::<i64, _>("n")?).unwrap_or(u32::MAX),
+                ))
             })
             .collect()
     }
@@ -1437,6 +1501,30 @@ impl super::Store {
         Ok(())
     }
 
+    /// Delivered parcels of an account (not dismissed) whose delivery no
+    /// record carries yet, oldest first.
+    pub async fn delivered_deliveries_to_file(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<Vec<mxr_core::id::DeliveryId>, sqlx::Error> {
+        sqlx::query_scalar::<_, String>(
+            "SELECT d.id FROM deliveries d
+             WHERE d.account_id = ?1 AND d.delivered_at IS NOT NULL AND d.dismissed_at IS NULL
+               AND NOT EXISTS (
+                   SELECT 1 FROM record_fields rf
+                   JOIN delivery_messages dm ON dm.message_id = rf.message_id
+                   WHERE dm.delivery_id = d.id AND rf.source = 'delivery'
+                     AND rf.field = 'delivered_at' AND rf.value_int = d.delivered_at)
+             ORDER BY d.delivered_at",
+        )
+        .bind(account_id.as_str())
+        .fetch_all(self.reader())
+        .await?
+        .iter()
+        .map(|id| decode_id(id))
+        .collect()
+    }
+
     // ----- PDF prefetch -----
 
     /// PDFs of filed records' emails that are not on disk, newest record
@@ -1524,6 +1612,31 @@ impl super::Store {
                 .or_insert(line);
         }
         Ok(out)
+    }
+
+    /// Records (not dismissed) of these accounts with a PDF among their
+    /// emails' attachments.
+    pub async fn count_archive_records_with_pdf(
+        &self,
+        account_ids: &[AccountId],
+    ) -> Result<u32, sqlx::Error> {
+        if account_ids.is_empty() {
+            return Ok(0);
+        }
+        let sql = format!(
+            "SELECT COUNT(*) FROM records
+             WHERE dismissed_at IS NULL AND account_id IN ({})
+               AND EXISTS (SELECT 1 FROM record_messages rm
+                   JOIN attachments a ON a.message_id = rm.message_id
+                   WHERE rm.record_id = records.id
+                     AND (LOWER(a.mime_type) = 'application/pdf' OR LOWER(a.filename) LIKE '%.pdf'))",
+            in_list(account_ids.len())
+        );
+        let mut query = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql));
+        for id in account_ids {
+            query = query.bind(id.as_str());
+        }
+        Ok(u32::try_from(query.fetch_one(self.reader()).await?).unwrap_or(u32::MAX))
     }
 
     /// Records not dismissed, by kind, for counts.

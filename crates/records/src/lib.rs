@@ -117,13 +117,13 @@ impl RecordKind {
         }
     }
 
-    /// Kinds that go into a tax export by default: invoices, receipts and
-    /// statements, plus orders, which are receipts with a delivery.
-    pub fn is_financial(self) -> bool {
-        matches!(
-            self,
-            Self::Receipt | Self::Order | Self::Invoice | Self::Statement
-        )
+    /// What the amount is called on this kind's card: "Paid", "Price".
+    pub fn amount_label(self) -> &'static str {
+        match self {
+            Self::Receipt | Self::Order => "Paid",
+            Self::Booking | Self::Ticket => "Price",
+            _ => "Amount",
+        }
     }
 }
 

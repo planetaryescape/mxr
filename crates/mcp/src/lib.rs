@@ -313,25 +313,10 @@ impl MxrMcpServer {
         &self,
         Parameters(input): Parameters<RecordsInput>,
     ) -> Result<McpJson<Value>, ErrorData> {
-        let kinds = input
-            .kinds
-            .unwrap_or_default()
-            .iter()
-            .map(|kind| {
-                RecordKindData::parse(kind)
-                    .ok_or_else(|| mcp_error(format!("unknown record kind {kind}")))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let (account_id, filter) = input.filter()?;
         self.daemon_json(Request::ListRecords {
-            account_id: parse_optional_id(input.account_id)?,
-            filter: RecordFilterData {
-                kinds,
-                issuer: input.issuer,
-                year: input.year,
-                has_pdf: input.has_pdf,
-                checked: input.checked,
-                ..RecordFilterData::default()
-            },
+            account_id,
+            filter,
             limit: input.limit.unwrap_or(50),
             offset: input.offset.unwrap_or(0),
         })
@@ -363,25 +348,10 @@ impl MxrMcpServer {
         &self,
         Parameters(input): Parameters<RecordsInput>,
     ) -> Result<McpJson<Value>, ErrorData> {
-        let kinds = input
-            .kinds
-            .unwrap_or_default()
-            .iter()
-            .map(|kind| {
-                RecordKindData::parse(kind)
-                    .ok_or_else(|| mcp_error(format!("unknown record kind {kind}")))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let (account_id, filter) = input.filter()?;
         self.daemon_json(Request::ExportRecords {
-            account_id: parse_optional_id(input.account_id)?,
-            filter: RecordFilterData {
-                kinds,
-                issuer: input.issuer,
-                year: input.year,
-                has_pdf: input.has_pdf,
-                checked: input.checked,
-                ..RecordFilterData::default()
-            },
+            account_id,
+            filter,
             attachments_dir: None,
             dry_run: true,
         })
@@ -861,6 +831,32 @@ pub struct RecordsInput {
     pub limit: Option<u32>,
     #[serde(default)]
     pub offset: Option<u32>,
+}
+
+impl RecordsInput {
+    /// The account and the filter both record tools send.
+    fn filter(&self) -> Result<(Option<AccountId>, RecordFilterData), ErrorData> {
+        let kinds = self
+            .kinds
+            .iter()
+            .flatten()
+            .map(|kind| {
+                RecordKindData::parse(kind)
+                    .ok_or_else(|| mcp_error(format!("unknown record kind {kind}")))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((
+            parse_optional_id(self.account_id.clone())?,
+            RecordFilterData {
+                kinds,
+                issuer: self.issuer.clone(),
+                year: self.year,
+                has_pdf: self.has_pdf,
+                checked: self.checked,
+                ..RecordFilterData::default()
+            },
+        ))
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

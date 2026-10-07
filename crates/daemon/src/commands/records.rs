@@ -8,12 +8,11 @@ use crate::cli::{OutputFormat, RecordFilterArgs, RecordsAction};
 use crate::commands::selection::parse_message_id;
 use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
-use crate::output::{jsonl, resolve_format, terminal_block};
+use crate::output::{jsonl, print_json, resolve_format, terminal_block};
 use chrono::Local;
 use mxr_protocol::{
-    archive_copy, RecordAnswerData, RecordChangeData, RecordData, RecordEditData,
-    RecordExportData, RecordFilterData, RecordKindData, RecordLedgerData, Request, Response,
-    ResponseData,
+    archive_copy, RecordAnswerData, RecordChangeData, RecordData, RecordEditData, RecordExportData,
+    RecordFilterData, RecordKindData, RecordLedgerData, Request, Response, ResponseData,
 };
 use std::fmt::Write as _;
 
@@ -36,7 +35,7 @@ pub async fn run(
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let format = resolve_format(format);
-    let action = action.unwrap_or(RecordsAction::List {
+    let action = action.unwrap_or_else(|| RecordsAction::List {
         filter: RecordFilterArgs::default(),
         limit: 200,
         offset: 0,
@@ -242,22 +241,10 @@ fn parse_kind(raw: &str) -> anyhow::Result<RecordKindData> {
     })
 }
 
-/// "99.50" or "1,200" to minor units.
+/// "99.50", "£1,200" to minor units.
 fn parse_minor(raw: &str) -> anyhow::Result<i64> {
-    let cleaned: String = raw
-        .chars()
-        .filter(|c| c.is_ascii_digit() || *c == '.')
-        .collect();
-    let (whole, frac) = cleaned.split_once('.').unwrap_or((&cleaned, ""));
-    let whole: i64 = whole
-        .parse()
-        .map_err(|_| anyhow::anyhow!("{raw} is not an amount."))?;
-    let frac: i64 = match frac.len() {
-        0 => 0,
-        1 => frac.parse::<i64>()? * 10,
-        _ => frac.get(..2).unwrap_or("0").parse()?,
-    };
-    Ok(whole * 100 + frac)
+    mxr_todo::money::parse_minor(raw.trim().trim_start_matches(['£', '$', '€']))
+        .ok_or_else(|| anyhow::anyhow!("{raw} is not an amount."))
 }
 
 fn filter_data(args: &RecordFilterArgs) -> anyhow::Result<RecordFilterData> {
@@ -283,15 +270,6 @@ fn filter_data(args: &RecordFilterArgs) -> anyhow::Result<RecordFilterData> {
         },
         group_id: args.group.clone(),
     })
-}
-
-fn print_json<T: serde::Serialize>(value: &T, format: OutputFormat) -> anyhow::Result<()> {
-    if format == OutputFormat::Jsonl {
-        println!("{}", serde_json::to_string(value)?);
-    } else {
-        println!("{}", serde_json::to_string_pretty(value)?);
-    }
-    Ok(())
 }
 
 async fn change(client: &mut IpcClient, request: Request) -> anyhow::Result<RecordChangeData> {
@@ -362,9 +340,9 @@ fn day(at: chrono::DateTime<chrono::Utc>) -> String {
 fn row_line(record: &RecordData) -> String {
     let mut line = format!(
         "  {}  {:<16} {:<28} {:>12}  {:<12} {}  {}\n",
-        record.date.map(day).unwrap_or_else(|| "      ".to_string()),
-        clip(record.issuer.as_deref().unwrap_or("-"), 16),
-        clip(record.title.as_deref().unwrap_or(&record.kind_label), 28),
+        record.date.map_or_else(|| "      ".to_string(), day),
+        mxr_todo::text::clip(record.issuer.as_deref().unwrap_or("-"), 16),
+        mxr_todo::text::clip(record.title.as_deref().unwrap_or(&record.kind_label), 28),
         record
             .amount
             .as_ref()
@@ -376,31 +354,21 @@ fn row_line(record: &RecordData) -> String {
                 }
             })
             .unwrap_or_default(),
-        clip(record.reference.as_deref().unwrap_or(""), 12),
+        mxr_todo::text::clip(record.reference.as_deref().unwrap_or(""), 12),
         if record.pdf.is_some() { "PDF" } else { "-  " },
         record.id,
     );
-    for extra in [&record.stage_line, &record.detail_line].into_iter().flatten() {
+    for extra in [&record.stage_line, &record.detail_line]
+        .into_iter()
+        .flatten()
+    {
         let _ = writeln!(line, "          {extra}");
     }
     line
 }
 
-fn clip(value: &str, max: usize) -> String {
-    if value.chars().count() <= max {
-        value.to_string()
-    } else {
-        let mut out: String = value.chars().take(max.saturating_sub(1)).collect();
-        out.push('…');
-        out
-    }
-}
-
 fn ledger_text(ledger: &RecordLedgerData) -> String {
-    let mut out = format!(
-        "Archive  {} records\n{}\n",
-        ledger.total, ledger.header
-    );
+    let mut out = format!("Archive  {} records\n{}\n", ledger.total, ledger.header);
     if let Some(first_run) = &ledger.first_run {
         let _ = writeln!(out, "{}", first_run.line);
     }
@@ -442,8 +410,7 @@ fn ledger_text(ledger: &RecordLedgerData) -> String {
                 .iter()
                 .find(|m| Some(&m.month) == month.as_ref())
             {
-                let totals: Vec<&str> =
-                    header.totals.iter().map(|t| t.display.as_str()).collect();
+                let totals: Vec<&str> = header.totals.iter().map(|t| t.display.as_str()).collect();
                 let _ = writeln!(
                     out,
                     "\n{}  {} · {}",
@@ -504,7 +471,11 @@ fn card_text(record: &RecordData) -> String {
         let _ = writeln!(out, "\n{line}");
     }
     if let Some(group) = &record.group {
-        let _ = writeln!(out, "Part of {} \"{}\" ({})", group.kind, group.title, group.count);
+        let _ = writeln!(
+            out,
+            "Part of {} \"{}\" ({})",
+            group.kind, group.title, group.count
+        );
     }
     if !record.documents.is_empty() {
         out.push_str("\nDocuments\n");
@@ -514,7 +485,11 @@ fn card_text(record: &RecordData) -> String {
                 "  {}  {} KB{}",
                 document.filename,
                 document.size_bytes / 1024,
-                if document.on_disk { "" } else { "  (downloads when opened)" }
+                if document.on_disk {
+                    ""
+                } else {
+                    "  (downloads when opened)"
+                }
             );
         }
     }
@@ -526,7 +501,7 @@ fn card_text(record: &RecordData) -> String {
                 "  {}  {:<12} {}  {}",
                 day(source.date),
                 source.stage,
-                clip(&source.subject, 50),
+                mxr_todo::text::clip(&source.subject, 50),
                 source.message_id
             );
         }
@@ -552,17 +527,29 @@ fn answer_text(answer: &RecordAnswerData) -> String {
             let mut line = Vec::new();
             line.extend(record.issuer.clone());
             line.extend(record.title.clone());
-            line.extend(record.date.map(|at| at.with_timezone(&Local).format("%-d %b %Y").to_string()));
+            line.extend(
+                record
+                    .date
+                    .map(|at| at.with_timezone(&Local).format("%-d %b %Y").to_string()),
+            );
             let _ = writeln!(out, "{}", line.join(" · "));
             if let Some(group) = &record.group {
-                let _ = writeln!(out, "Part of {} \"{}\" ({})", group.kind, group.title, group.count);
+                let _ = writeln!(
+                    out,
+                    "Part of {} \"{}\" ({})",
+                    group.kind, group.title, group.count
+                );
             }
             if let Some(provenance) = &card.provenance {
                 let _ = writeln!(
                     out,
                     "from {} · {}",
                     provenance.source_label,
-                    if provenance.checked { "checked" } else { "unchecked" }
+                    if provenance.checked {
+                        "checked"
+                    } else {
+                        "unchecked"
+                    }
                 );
             }
             if let Some(pdf) = &record.pdf {
@@ -574,7 +561,11 @@ fn answer_text(answer: &RecordAnswerData) -> String {
                     .also
                     .iter()
                     .map(|r| {
-                        let name = r.title.clone().or_else(|| r.issuer.clone()).unwrap_or_default();
+                        let name = r
+                            .title
+                            .clone()
+                            .or_else(|| r.issuer.clone())
+                            .unwrap_or_default();
                         match &r.reference {
                             Some(reference) => format!("{name} ({reference})"),
                             None => name,
@@ -593,7 +584,7 @@ fn answer_text(answer: &RecordAnswerData) -> String {
                         out,
                         "  {}  {}  {}",
                         day(citation.date),
-                        clip(&citation.subject, 60),
+                        mxr_todo::text::clip(&citation.subject, 60),
                         citation.message_id
                     );
                 }

@@ -116,9 +116,9 @@ pub use people::{NamedCorrespondent, PersonFacts, PersonLink, PersonMerge};
 pub use places::PlaceMessage;
 pub use pool::Store;
 pub use records::{
-    ArchiveRecord, RecordDocument, RecordFieldEdit, RecordFieldValue, RecordFiled, RecordFiling, RecordGroup,
-    RecordLink, RecordPdfToFetch, RecordQuery, RecordRun, RecordSenderRule, RecordSource,
-    RECORD_CHECKED_FIELDS,
+    todo_record_dedup_key, todo_record_source_key, ArchiveRecord, RecordDocument, RecordFieldEdit,
+    RecordFieldValue, RecordFiled, RecordFiling, RecordGroup, RecordLink, RecordPdfToFetch,
+    RecordQuery, RecordRun, RecordSenderRule, RecordSource, RECORD_CHECKED_FIELDS,
 };
 pub use relationship_watchlist::{CadenceDriftRow, RelationshipWatchEntry};
 pub use rules::{row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecordInput};

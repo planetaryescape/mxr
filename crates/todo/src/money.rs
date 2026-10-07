@@ -43,6 +43,14 @@ pub fn format_amount(minor: i64, currency: &str) -> String {
     }
 }
 
+/// "1249.00" from minor units: no symbol and no grouping, for
+/// spreadsheets and the clipboard.
+pub fn plain_amount(minor: i64) -> String {
+    let sign = if minor < 0 { "-" } else { "" };
+    let minor = minor.unsigned_abs();
+    format!("{sign}{}.{:02}", minor / 100, minor % 100)
+}
+
 fn group_thousands(value: u64) -> String {
     let digits = value.to_string();
     let mut out = String::with_capacity(digits.len() + digits.len() / 3);
@@ -139,7 +147,8 @@ pub fn find_amounts(text: &str) -> Vec<(usize, Amount)> {
         .collect()
 }
 
-fn parse_minor(number: &str) -> Option<i64> {
+/// "1,249.00", "1249.5", "1249" to minor units, without floating point.
+pub fn parse_minor(number: &str) -> Option<i64> {
     let cleaned = number.replace(',', "");
     let (whole, frac) = cleaned.split_once('.').unwrap_or((&cleaned, ""));
     let whole: i64 = whole.parse().ok()?;

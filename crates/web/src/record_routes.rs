@@ -62,7 +62,10 @@ impl LedgerQuery {
     fn filter(&self) -> Result<RecordFilterData, BridgeError> {
         Ok(RecordFilterData {
             kinds: parse_kinds(self.kind.as_deref())?,
-            issuer: self.issuer.clone().filter(|issuer| !issuer.trim().is_empty()),
+            issuer: self
+                .issuer
+                .clone()
+                .filter(|issuer| !issuer.trim().is_empty()),
             year: self.year,
             min_amount_minor: self.min_amount_minor,
             max_amount_minor: self.max_amount_minor,
@@ -203,7 +206,9 @@ async fn dismiss(
     Json(body): Json<RecordDismissBody>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     if body.record_ids.is_empty() {
-        return Err(BridgeError::BadRequest("record_ids must not be empty".into()));
+        return Err(BridgeError::BadRequest(
+            "record_ids must not be empty".into(),
+        ));
     }
     let response = dispatch(
         &state,

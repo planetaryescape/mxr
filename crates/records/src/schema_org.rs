@@ -440,25 +440,12 @@ fn money(node: &Value, parent: &Value) -> Option<SchemaMoney> {
     if currency.len() != 3 {
         return None;
     }
-    let minor = parse_minor(&text)?;
+    let minor = mxr_todo::money::parse_minor(text.trim())?;
     (minor > 0).then_some(SchemaMoney {
         minor,
         currency,
         text,
     })
-}
-
-/// "1249.00", "1,249", "1249" to minor units, without floating point.
-fn parse_minor(text: &str) -> Option<i64> {
-    let cleaned = text.replace(',', "");
-    let (whole, frac) = cleaned.split_once('.').unwrap_or((&cleaned, ""));
-    let whole: i64 = whole.trim().parse().ok()?;
-    let frac: i64 = match frac.len() {
-        0 => 0,
-        1 => frac.parse::<i64>().ok()? * 10,
-        _ => frac.get(..2)?.parse().ok()?,
-    };
-    whole.checked_mul(100)?.checked_add(frac)
 }
 
 fn when(entity: &Value, keys: &[&str]) -> Option<SchemaWhen> {

@@ -21,9 +21,9 @@ use tokio_util::codec::Framed;
 
 mod compose_and_scheduling;
 mod place_routes;
+mod record_routes;
 mod thread_context_routes;
 mod time_routes;
-mod record_routes;
 mod todo_routes;
 
 const TEST_AUTH_TOKEN: &str = "test-token";

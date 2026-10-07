@@ -22,8 +22,8 @@ use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::MessageFlags;
 use mxr_reader::{clean, ReaderConfig};
 use mxr_store::{
-    ArchiveRecord, DeliveryListFilter, RecordFiled, RecordFiling, RecordGroup, RecordLink,
-    RecordSenderRule, Store, TodoRecord, TodoScanRow,
+    ArchiveRecord, RecordFiled, RecordFiling, RecordGroup, RecordLink, RecordSenderRule, Store,
+    TodoRecord, TodoScanRow,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -146,14 +146,13 @@ where
     let mut senders: HashMap<AccountId, Senders> = HashMap::new();
     let mut touched: Vec<AccountId> = Vec::new();
     for row in &rows {
-        if !senders.contains_key(&row.account_id) {
-            senders.insert(
-                row.account_id.clone(),
-                Senders::load(store, &row.account_id).await?,
-            );
-        }
-        let account_senders = senders.get(&row.account_id).cloned().unwrap_or_default();
-        let found = classify_or_skip(store, cfg, row, &account_senders).await;
+        let account_senders = match senders.entry(row.account_id.clone()) {
+            std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(Senders::load(store, &row.account_id).await?)
+            }
+        };
+        let found = classify_or_skip(store, cfg, row, account_senders).await;
         if found.filed + found.updated > 0 && !touched.contains(&row.account_id) {
             touched.push(row.account_id.clone());
         }
@@ -506,7 +505,7 @@ where
     let Some(kind) = todo_record_kind(&todo.kind) else {
         return Ok(None);
     };
-    let source_key = format!("todo:{}", todo.id);
+    let source_key = mxr_store::todo_record_source_key(&todo.id);
     let row = match &todo.source_message_id {
         Some(id) => store
             .list_todo_scan_rows(std::slice::from_ref(id))
@@ -573,7 +572,7 @@ where
             let filing = RecordFiling {
                 id: new_record_id(),
                 account_id: todo.account_id.clone(),
-                dedup_key: format!("todo|{}", todo.id),
+                dedup_key: mxr_store::todo_record_dedup_key(&todo.id),
                 kind: kind.as_str().to_string(),
                 origin: "todo".to_string(),
                 reason: "you ticked off the to-do it came from".to_string(),
@@ -620,17 +619,10 @@ fn strip_verb(title: &str) -> String {
         "pay", "fix", "renew", "sign", "give", "send", "return", "do", "verify",
     ];
     if verbs.contains(&first.to_ascii_lowercase().as_str()) && !rest.is_empty() {
-        crate_capitalise(rest)
+        mxr_todo::text::capitalise(rest)
     } else {
         title.to_string()
     }
-}
-
-fn crate_capitalise(value: &str) -> String {
-    let mut chars = value.chars();
-    chars.next().map_or_else(String::new, |first| {
-        first.to_uppercase().collect::<String>() + chars.as_str()
-    })
 }
 
 /// Files the order each delivered parcel completes, joining the record its
@@ -644,13 +636,12 @@ where
     Tz: TimeZone,
 {
     let mut changed = 0;
-    for delivery in store.list_deliveries(DeliveryListFilter::Delivered).await? {
-        if &delivery.account_id != account_id
-            || delivery.dismissed_at.is_some()
-            || delivery.delivered_at.is_none()
-        {
+    // Only parcels whose delivery no record carries yet: the rest were
+    // filed on an earlier tick.
+    for delivery_id in store.delivered_deliveries_to_file(account_id).await? {
+        let Some(delivery) = store.get_delivery(&delivery_id).await? else {
             continue;
-        }
+        };
         let message_ids = store.delivery_message_ids(&delivery.id).await?;
         let rows = store.list_todo_scan_rows(&message_ids).await?;
         // Newest first: the delivered email is the latest.

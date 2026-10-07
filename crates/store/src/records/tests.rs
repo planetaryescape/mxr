@@ -249,7 +249,14 @@ async fn the_user_wins_forever_and_confirming_checks_the_record() {
         .unwrap()
         .unwrap();
     assert!(preview.checked);
-    assert!(!fx.store.get_archive_record("r1").await.unwrap().unwrap().checked);
+    assert!(
+        !fx.store
+            .get_archive_record("r1")
+            .await
+            .unwrap()
+            .unwrap()
+            .checked
+    );
     fx.store
         .edit_archive_record("r1", &confirm, at(1), true)
         .await

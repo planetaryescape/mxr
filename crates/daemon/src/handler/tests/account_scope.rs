@@ -13,8 +13,8 @@ use mxr_protocol::{
     TodoStateData,
 };
 use mxr_store::{
-    CommitmentDirection, CommitmentStatus, ContactCommitmentRecord, UndoEntry, UndoEntrySnapshot,
-    UndoableMutationKind,
+    CommitmentDirection, CommitmentStatus, ContactCommitmentRecord, NewCorrection, UndoEntry,
+    UndoEntrySnapshot, UndoableMutationKind,
 };
 
 /// What one account owns, for naming in requests.
@@ -28,6 +28,7 @@ struct Owned {
     delivery: DeliveryId,
     commitment: String,
     undo: String,
+    correction: i64,
 }
 
 async fn seed(fx: &Fixture, account: &mxr_core::AccountId, tag: &str) -> Owned {
@@ -174,6 +175,25 @@ async fn seed(fx: &Fixture, account: &mxr_core::AccountId, tag: &str) -> Owned {
         .await
         .unwrap();
 
+    let correction = store
+        .insert_correction(&NewCorrection {
+            account_id: account.clone(),
+            scope: "email".into(),
+            message_id: Some(message.clone()),
+            sender_email: "orders@shop.example".into(),
+            from_mode: "updates".into(),
+            to_mode: "messages".into(),
+            rule: None,
+            source: "move".into(),
+            created_at: Utc::now(),
+            prior_moved_to: None,
+            prior_moved_at: None,
+            prior_disposition: None,
+            aspect_id: None,
+        })
+        .await
+        .unwrap();
+
     Owned {
         account: account.clone(),
         message,
@@ -184,6 +204,7 @@ async fn seed(fx: &Fixture, account: &mxr_core::AccountId, tag: &str) -> Owned {
         delivery,
         commitment,
         undo,
+        correction,
     }
 }
 
@@ -506,6 +527,40 @@ async fn messages_requests_stay_in_the_agents_accounts() {
 }
 
 #[tokio::test]
+async fn arrivals_requests_stay_in_the_agents_accounts() {
+    let s = scoped().await;
+    assert_scoped(&s, |o| Request::ListArrivals {
+        account_id: Some(o.account.clone()),
+        bucket: None,
+        since: None,
+        until: None,
+        limit: 100,
+    })
+    .await;
+    assert_scoped(&s, |o| Request::ListCorrections {
+        account_id: Some(o.account.clone()),
+        limit: 50,
+    })
+    .await;
+    assert_scoped(&s, |o| Request::GetArrivalModes {
+        message_ids: vec![o.message.clone()],
+    })
+    .await;
+    assert_scoped(&s, |o| Request::MoveMessage {
+        message_id: o.message.clone(),
+        mode: ModeKindData::Messages,
+        sender: false,
+        dry_run: true,
+        source: None,
+    })
+    .await;
+    assert_scoped(&s, |o| Request::UndoMove {
+        correction_id: o.correction,
+    })
+    .await;
+}
+
+#[tokio::test]
 async fn thread_desk_and_place_requests_stay_in_the_agents_accounts() {
     let s = scoped().await;
     assert_scoped(&s, |o| Request::GetThreadContext {
@@ -701,6 +756,10 @@ async fn requests_spanning_every_account_are_denied_and_unscoped_ones_allowed() 
             limit: 10,
         },
         Request::GetNow { account_id: None },
+        Request::GetArrivals {
+            account_id: None,
+            mark_seen: false,
+        },
         Request::ListMessages {
             account_id: None,
             turn: None,

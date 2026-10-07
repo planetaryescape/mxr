@@ -14,7 +14,8 @@ pub mod messages_copy {
     pub const NEVER_HAD_ANY: &str = "When someone writes to you and you've written to them, they show up here, one row per person, with what they asked you.";
     /// Followed by up to three people whose usual pace lapsed, as facts.
     pub const CLEAR: &str = "Nobody is waiting on you.";
-    pub const CARD: &str = "Each row is a person, not an email, with your conversations inside as topics. The quoted line is what they asked; the row leaves Your turn when you reply or press got it (.).";
+    /// The full explanation `?` leads with. Nothing shows it unasked.
+    pub const ABOUT: &str = "Each row is a person, not an email, with your conversations inside as topics. The quoted line is what they asked; the row leaves Your turn when you reply or press got it (.).";
     pub const LANDS_HERE: &str = "People you write to and who write to you, one row each; a group thread is its own row, and a thread you were only copied on goes to Updates.";
     pub const FIRST_RUN_LINE: &str = "People you talk with";
     /// How many seconds Got it waits, showing its text, before it sends.

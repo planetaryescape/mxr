@@ -453,7 +453,6 @@ async fn put_away(
     state.store.mark_mode_done(&marks).await?;
 
     let now = Utc::now();
-    let mut ticked_any = false;
     for plan in plans.iter_mut().filter(|plan| plan.error.is_none()) {
         if plan.todos.is_empty() {
             continue;
@@ -474,11 +473,7 @@ async fn put_away(
                 desk.commitments.push(prior);
             }
         }
-        ticked_any |= !plan.todos.is_empty();
         super::records::file_ticked_todos(state, &plan.todos).await;
-    }
-    if ticked_any {
-        super::mode_guide::retire(state, ModeKindData::Todo.id()).await?;
     }
     Ok(())
 }

@@ -231,7 +231,7 @@ mode.
 | `t` | Make a to-do from the row's email |
 | `A` | Let go of the Updates card (previews first) |
 | `1`–`4` | Answer a new sender's question, on a row that asks one |
-| `Esc` | Close the note about Now |
+| `Esc` | Dismiss the hint, when one shows |
 | `u` | Undo |
 
 ## Messages

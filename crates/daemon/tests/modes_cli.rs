@@ -1,6 +1,5 @@
 //! `mxr modes` against a real daemon: the copy each mode teaches itself
-//! with, as JSON, and the first-encounter card's seen state surviving
-//! between commands.
+//! with, as JSON, and a hint's seen state surviving between commands.
 
 #![expect(
     clippy::unwrap_used,
@@ -11,7 +10,7 @@ use mxr_test_support::daemon::{daemon_lock, run_json, spawn_fake_daemon};
 use tempfile::TempDir;
 
 #[test]
-fn modes_explain_prints_the_to_do_guide_and_card_state_holds() {
+fn modes_explain_prints_the_to_do_guide_and_hint_state_holds() {
     let _guard = daemon_lock();
     let temp = TempDir::new().expect("temp dir");
     let (_daemon, instance, data_dir, config_dir) = spawn_fake_daemon(&temp, "modes-explain");
@@ -31,9 +30,10 @@ fn modes_explain_prints_the_to_do_guide_and_card_state_holds() {
         &instance,
         &data_dir,
         &config_dir,
-        &["modes", "card", "todo", "--format", "json"],
+        &["modes", "hint", "todo.runway", "--format", "json"],
     );
-    assert_eq!(closed[0]["card_seen"], true, "{closed}");
+    assert_eq!(closed[0]["hints"][0]["id"], "todo.runway", "{closed}");
+    assert_eq!(closed[0]["hints"][0]["seen"], true, "{closed}");
     let again = run_json(
         &instance,
         &data_dir,
@@ -51,19 +51,22 @@ fn modes_explain_prints_the_to_do_guide_and_card_state_holds() {
         ["now", "messages", "todo", "archive"],
         "every shipped mode, Now first"
     );
-    assert_eq!(again[2]["card_seen"], true, "a new command sees it closed");
     assert_eq!(
-        again[0]["card_seen"], false,
-        "closing one card leaves the others"
+        again[2]["hints"][0]["seen"], true,
+        "a new command sees it dismissed"
+    );
+    assert_eq!(
+        again[2]["hints"][1]["seen"], false,
+        "dismissing one hint leaves the others"
     );
 
     let shown = run_json(
         &instance,
         &data_dir,
         &config_dir,
-        &["modes", "card", "todo", "--show", "--format", "json"],
+        &["modes", "hint", "todo.runway", "--show", "--format", "json"],
     );
-    assert_eq!(shown[0]["card_seen"], false, "{shown}");
+    assert_eq!(shown[0]["hints"][0]["seen"], false, "{shown}");
 }
 
 #[test]

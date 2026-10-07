@@ -278,7 +278,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_records_export", &["records", "export", "--help"]),
         ("cli_help_modes", &["modes", "--help"]),
         ("cli_help_modes_explain", &["modes", "explain", "--help"]),
-        ("cli_help_modes_card", &["modes", "card", "--help"]),
+        ("cli_help_modes_hint", &["modes", "hint", "--help"]),
         ("cli_help_modes_rail", &["modes", "rail", "--help"]),
         ("cli_help_modes_why", &["modes", "why", "--help"]),
         ("cli_help_modes_done", &["modes", "done", "--help"]),

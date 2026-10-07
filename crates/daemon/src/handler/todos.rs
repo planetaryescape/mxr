@@ -365,9 +365,6 @@ pub(super) async fn set_state(
         {
             mirror_promise(state, record, to, now).await?;
         }
-        if to == TodoState::Done && !changed_ids.is_empty() {
-            super::mode_guide::retire(state, MODE).await?;
-        }
         let changed = state.store.get_todos(&changed_ids).await?;
         // A ticked-off bill is a record in Archive; reopening it unfiles
         // what the tick-off filed.

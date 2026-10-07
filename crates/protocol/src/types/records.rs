@@ -21,7 +21,8 @@ pub mod archive_copy {
     pub const ADD_ONE_CLI: &str = "`mxr records file MESSAGE_ID` files one yourself.";
     /// Archive has no done: records stay.
     pub const CLEAR_FOR_NOW: &str = "Records stay. Ask for one, or browse by month.";
-    pub const CARD: &str = "Archive keeps records built from your mail: one card per order, trip or bill, and it answers in the field you asked for, like a booking reference. Archiving an email in Gmail is a different thing, and the toast always says which one happened.";
+    /// The full explanation `?` leads with. Nothing shows it unasked.
+    pub const ABOUT: &str = "Archive keeps records built from your mail: one card per order, trip or bill, and it answers in the field you asked for, like a booking reference. Archiving an email in Gmail is a different thing, and the toast always says which one happened.";
     pub const LANDS_HERE: &str = "Receipts, orders, bookings, bills, tickets, contracts and warranties, filed from your mail without you sorting anything.";
     pub const FIRST_RUN_LINE: &str = "Receipts, orders, bookings";
     /// The toast after a record is filed: never "Archived", which is the

@@ -506,8 +506,8 @@ pub(super) async fn ack_at(
         }
     };
     state.store.finish_got_it(&target, &sent).await?;
-    // Got it is Messages' main verb: its first-encounter card retires.
-    super::mode_guide::retire(state, "messages").await?;
+    // Using Got it dismisses the hint that explains it, from any client.
+    super::mode_guide::dismiss(state, "messages.got_it").await?;
     let mut plan = prepared.plan;
     plan.sent_message_id = Some(sent);
     Ok(ResponseData::MessagesAck { ack: plan })

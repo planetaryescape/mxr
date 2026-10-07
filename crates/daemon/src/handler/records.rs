@@ -32,8 +32,6 @@ use mxr_store::{
 use mxr_todo::money::format_amount;
 use std::collections::{BTreeMap, HashMap};
 
-/// The mode name the guide's seen state is stored under.
-const MODE: &str = "archive";
 /// History pages read per background tick, so a big mailbox is filed in
 /// steps rather than one long hold on the writer.
 const FIRST_RUN_PAGES_PER_TICK: u32 = 10;
@@ -1206,8 +1204,6 @@ pub(super) async fn answer_query(
                 }
             }
         };
-        // Asking is Archive's main verb: the first answer retires the card.
-        super::mode_guide::retire(state, MODE).await?;
         return Ok(ResponseData::RecordAnswer {
             answer: RecordAnswerData {
                 query: text.to_string(),

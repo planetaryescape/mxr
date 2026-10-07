@@ -831,8 +831,16 @@ async fn the_mode_guide_serves_to_do_copy_from_one_table() {
     assert_eq!(guide.mode, "todo");
     assert_eq!(guide.header, mxr_protocol::todo_copy::HEADER);
     assert_eq!(guide.never_had_any, mxr_protocol::todo_copy::NEVER_HAD_ANY);
-    assert_eq!(guide.card, mxr_protocol::todo_copy::CARD);
-    assert!(!guide.card_seen);
+    assert_eq!(guide.about, mxr_protocol::todo_copy::ABOUT);
+    assert_eq!(
+        guide
+            .hints
+            .iter()
+            .map(|h| h.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["todo.runway", "todo.catchup"]
+    );
+    assert!(guide.hints.iter().all(|hint| !hint.seen));
     assert!(guide
         .keys
         .iter()
@@ -866,13 +874,53 @@ async fn the_mode_guide_serves_to_do_copy_from_one_table() {
     );
 }
 
+fn hint_seen(guides: &[mxr_protocol::ModeGuideData], mode: &str, id: &str) -> Option<bool> {
+    guides
+        .iter()
+        .find(|guide| guide.mode == mode)?
+        .hints
+        .iter()
+        .find(|hint| hint.id == id)
+        .map(|hint| hint.seen)
+}
+
 #[tokio::test]
-async fn closing_the_card_holds_for_every_client_until_shown_again() {
+async fn a_dismissed_hint_holds_for_every_client_until_shown_again() {
+    let fx = Fixture::new().await;
+    let set = |hint: &str, seen| Request::SetHintSeen {
+        hint: hint.to_string(),
+        seen,
+    };
+    let ResponseData::ModeGuides { guides } = request(&fx, set("todo.runway", true)).await else {
+        panic!()
+    };
+    let runway = |guide: &mxr_protocol::ModeGuideData| {
+        guide
+            .hints
+            .iter()
+            .find(|hint| hint.id == "todo.runway")
+            .cloned()
+            .expect("runway hint")
+    };
+    let first = runway(&guides[0]).seen_at.expect("seen");
+    // A second dismissal keeps the first time, and a fresh read agrees;
+    // the mode's other hint is untouched.
+    request(&fx, set("todo.runway", true)).await;
+    let guide = todo_guide(&fx).await;
+    assert!(runway(&guide).seen);
+    assert_eq!(runway(&guide).seen_at, Some(first));
+    assert_eq!(hint_seen(&[guide], "todo", "todo.catchup"), Some(false));
+    request(&fx, set("todo.runway", false)).await;
+    assert!(!runway(&todo_guide(&fx).await).seen);
+}
+
+#[tokio::test]
+async fn a_shared_hint_is_one_hint_in_every_mode_it_attaches_in() {
     let fx = Fixture::new().await;
     let ResponseData::ModeGuides { guides } = request(
         &fx,
-        Request::SetModeGuideSeen {
-            mode: "todo".to_string(),
+        Request::SetHintSeen {
+            hint: "done_here".to_string(),
             seen: true,
         },
     )
@@ -880,32 +928,45 @@ async fn closing_the_card_holds_for_every_client_until_shown_again() {
     else {
         panic!()
     };
-    let first = guides[0].card_seen_at.expect("seen");
-    // A second close keeps the first time, and a fresh read agrees.
-    request(
-        &fx,
-        Request::SetModeGuideSeen {
-            mode: "todo".to_string(),
-            seen: true,
-        },
-    )
-    .await;
-    let guide = todo_guide(&fx).await;
-    assert!(guide.card_seen);
-    assert_eq!(guide.card_seen_at, Some(first));
-    request(
-        &fx,
-        Request::SetModeGuideSeen {
-            mode: "todo".to_string(),
-            seen: false,
-        },
-    )
-    .await;
-    assert!(!todo_guide(&fx).await.card_seen);
+    // The answer carries every mode the hint attaches in.
+    assert_eq!(
+        guides.iter().map(|g| g.mode.as_str()).collect::<Vec<_>>(),
+        vec!["now", "messages"]
+    );
+    let ResponseData::ModeGuides { guides } =
+        request(&fx, Request::GetModeGuide { mode: None }).await
+    else {
+        panic!()
+    };
+    assert_eq!(hint_seen(&guides, "now", "done_here"), Some(true));
+    assert_eq!(hint_seen(&guides, "messages", "done_here"), Some(true));
+    assert_eq!(hint_seen(&guides, "now", "now.from_mode"), Some(false));
 }
 
 #[tokio::test]
-async fn ticking_off_retires_the_card_but_a_preview_does_not() {
+async fn an_unknown_hint_is_refused_with_the_known_ids() {
+    let fx = Fixture::new().await;
+    let refused = handle_request(
+        &fx.state,
+        &IpcMessage {
+            id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SetHintSeen {
+                hint: "now.card".to_string(),
+                seen: true,
+            }),
+        },
+    )
+    .await;
+    let IpcPayload::Response(Response::Error { message, .. }) = refused.payload else {
+        panic!("an unknown hint is refused")
+    };
+    assert!(message.contains("No hint \"now.card\""), "{message}");
+    assert!(message.contains("todo.runway"), "{message}");
+}
+
+#[tokio::test]
+async fn ticking_off_leaves_every_hint_alone() {
     let fx = Fixture::new().await;
     let now = Utc::now();
     finish_first_run(&fx, now).await;
@@ -921,15 +982,17 @@ async fn ticking_off_retires_the_card_but_a_preview_does_not() {
     .await;
     scan(&fx, &[id], now).await;
     let todo_id = runway(&fx, now).await.now[0].id.clone();
-    let done = |dry_run| Request::SetTodoState {
-        todo_ids: vec![todo_id.clone()],
-        action: TodoStateActionData::Done,
-        dry_run,
-    };
-    request(&fx, done(true)).await;
-    assert!(!todo_guide(&fx).await.card_seen, "a preview is not a use");
-    request(&fx, done(false)).await;
-    assert!(todo_guide(&fx).await.card_seen);
+    request(
+        &fx,
+        Request::SetTodoState {
+            todo_ids: vec![todo_id],
+            action: TodoStateActionData::Done,
+            dry_run: false,
+        },
+    )
+    .await;
+    // Only Esc or acting on a hint's own element dismisses it.
+    assert!(todo_guide(&fx).await.hints.iter().all(|hint| !hint.seen));
 }
 
 #[tokio::test]

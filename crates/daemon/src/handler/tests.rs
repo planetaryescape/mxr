@@ -680,6 +680,7 @@ fn rules_form_maps_link_filters_to_link_density() {
     );
 }
 
+mod account_scope;
 mod body_and_invites;
 mod deferral;
 mod desk;

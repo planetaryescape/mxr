@@ -215,6 +215,16 @@ const COMMAND_EXAMPLES = {
       "mxr commitments resolve COMMITMENT_ID",
     ],
   },
+  messages: {
+    use: "People you talk with, one row each, with your conversations inside as topics: Your turn, Pinned, Recent and Quiet. `person` shows one person's page with each message's new text; `ack` sends Got it (preview with `--dry-run`); `merge` makes several addresses one person, by hand. See [Messages](/guides/messages/).",
+    examples: [
+      "mxr messages --turn mine",
+      "mxr messages --format json | jq -r '.your_turn[] | .title'",
+      "mxr messages person samir@launchpad.example",
+      "mxr messages ack THREAD_ID --dry-run",
+      "mxr messages merge --suggestions",
+    ],
+  },
   desk: {
     use: 'See what needs you: replies you owe, promises coming due, threads waiting on someone and new mail from people. `done` puts a row away; preview it with `--dry-run`. See [Clear the desk](/guides/now/) and the [desk reference](/reference/desk-and-places/).',
     examples: [

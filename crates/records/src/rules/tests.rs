@@ -147,6 +147,37 @@ fn marketing_and_list_mail_without_both_never_file() {
 }
 
 #[test]
+fn people_writing_about_contracts_and_failed_payments_are_not_records() {
+    assert!(read_one(
+        "Contract renewal details",
+        "Reference REF-2231. Total £40,000.00"
+    )
+    .is_none());
+    assert!(read_one(
+        "We can't process your payment",
+        "Amount due £11.99. Ref 77123"
+    )
+    .is_none());
+    let signed = read_one(
+        "Completed: Tenancy renewal",
+        "Envelope ID: 4471-AB. Reference 99812",
+    )
+    .expect("signed");
+    assert_eq!(signed.kind, RecordKind::Contract);
+}
+
+#[test]
+fn a_warranty_valid_until_is_one_date_not_two() {
+    let read = read_one(
+        "Your Bose order confirmation",
+        "Order number: BO-77120\nOrder total: £299.95\nWarranty valid until 3 May 2027.",
+    )
+    .expect("order");
+    assert!(field(&read, FieldName::WarrantyUntil).is_some());
+    assert!(field(&read, FieldName::ValidUntil).is_none());
+}
+
+#[test]
 fn the_total_beats_subtotals_and_unlabelled_amounts_pick_none() {
     let total = find_total("Subtotal £10.00\nShipping £2.00\nGrand total £12.00").expect("total");
     assert_eq!(total.minor, 1200);

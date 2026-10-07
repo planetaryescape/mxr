@@ -110,10 +110,12 @@ static KIND_RULES: Lazy<Vec<KindRule>> = Lazy::new(|| {
             Stage::Statement,
             r"\bstatement\b|\byour (?:new |latest |monthly )?bill\b|\bbill is (?:ready|available)\b",
         ),
+        // Only a finished e-signature: a person writing about a contract is
+        // a conversation, filed by hand (`T`) or "always file this sender".
         rule(
             K::Contract,
             Stage::Other,
-            r"\bcontract\b|\bagreement\b|^completed:|\bsigned\b|\btenancy\b|\blease\b",
+            r"^completed:|\b(?:fully )?executed\b|\ball parties have signed\b|\bsigned copy of\b",
         ),
         rule(
             K::Warranty,
@@ -131,7 +133,7 @@ static KIND_RULES: Lazy<Vec<KindRule>> = Lazy::new(|| {
 /// Marketing and nudges that use record words without being records.
 static NOT_A_RECORD: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r"(?i)\d+\s?% off|\bsale\b|\bdeals?\b|\boffers?\b|\bcomplete your (?:order|purchase|booking)\b|\bin your (?:cart|basket)\b|\bforgot something\b|\brate your\b|\breview your\b|\bhow was\b|\bwebinar\b|\bnewsletter\b|\blast chance\b|\bdon'?t miss\b|\bsave \d|\bfree shipping\b|\bdiscount\b|\bwin\b|\bsurvey\b",
+        r"(?i)\d+\s?% off|\bsale\b|\bdeals?\b|\boffers?\b|\bcomplete your (?:order|purchase|booking)\b|\bin your (?:cart|basket)\b|\bforgot something\b|\brate your\b|\breview your\b|\bhow was\b|\bwebinar\b|\bnewsletter\b|\blast chance\b|\bdon'?t miss\b|\bsave \d|\bfree shipping\b|\bdiscount\b|\bwin\b|\bsurvey\b|\bcan'?t process\b|\bcould(?:n'?t| not)\b|\bfailed\b|\bdeclined\b|\bunsuccessful\b|\bproblem with your payment\b|\bupdate your payment\b|\baction required\b",
     )
     .expect("valid marketing regex")
 });
@@ -234,33 +236,19 @@ where
             .map(|found| (rule, found.as_str().trim().to_lowercase()))
     })?;
     let text = format!("{subject}\n{}", input.body_text);
-    let reference = find_reference(&text, kind_rule.kind);
-    let amount = find_total(input.body_text);
+    let (reference, amount, mut fields) =
+        reference_and_total(&text, input.body_text, kind_rule.kind);
     // A kind word with nothing to file is a notification, not a record.
     let enough = match kind_rule.kind {
-        RecordKind::Order | RecordKind::Booking | RecordKind::Ticket => reference.is_some(),
-        RecordKind::Account => reference.is_some(),
+        RecordKind::Order | RecordKind::Booking | RecordKind::Ticket | RecordKind::Account => {
+            reference.is_some()
+        }
         _ => reference.is_some() || amount.is_some(),
     };
     if !enough || (input.list_mail && (reference.is_none() || amount.is_none())) {
         return None;
     }
 
-    let mut fields = Vec::new();
-    if let Some((value, words)) = &reference {
-        fields.push(Found {
-            evidence: Some(words.clone()),
-            ..Found::text(FieldName::Reference, Source::Rule, value.clone())
-        });
-    }
-    if let Some(amount) = amount {
-        fields.push(Found::money(
-            Source::Rule,
-            amount.minor,
-            &amount.currency,
-            amount.text,
-        ));
-    }
     let anchor = input.sent.with_timezone(tz);
     let domain = input
         .from_email
@@ -310,6 +298,21 @@ where
             fields.push(Found::at(field, Source::Rule, at, words));
         }
     }
+    // "Warranty valid until 3 May" is the warranty, not a second validity
+    // date read from the same words.
+    let warranty_words: Vec<String> = fields
+        .iter()
+        .filter(|f| f.field == FieldName::WarrantyUntil)
+        .filter_map(|f| f.evidence.clone())
+        .collect();
+    fields.retain(|f| {
+        f.field != FieldName::ValidUntil
+            || f.evidence.as_ref().is_none_or(|words| {
+                !warranty_words
+                    .iter()
+                    .any(|w| w.contains(words.as_str()) || words.contains(w.as_str()))
+            })
+    });
     if !fields.iter().any(|f| f.field == FieldName::WarrantyUntil) {
         if let Some(found) =
             warranty_from_years(&text, issued.as_ref().map_or(input.sent, |(at, _)| *at))
@@ -336,37 +339,29 @@ where
         phrase,
         account_ref: reference
             .as_ref()
-            .filter(|(value, _)| is_account_label(&reference_label(&text, value)))
-            .map(|(value, _)| value.clone()),
+            .filter(|found| found.names_account)
+            .map(|found| found.value.clone()),
         reference: reference
-            .filter(|(value, _)| !is_account_label(&reference_label(&text, value)))
-            .map(|(value, _)| value),
+            .filter(|found| !found.names_account)
+            .map(|found| found.value),
         fields,
     })
 }
 
-/// Labels that name an account rather than one transaction.
-fn is_account_label(label: &str) -> bool {
-    matches!(label, "account" | "customer" | "policy" | "membership")
-}
-
-/// The label a reference value was read under.
-fn reference_label(text: &str, value: &str) -> String {
-    REFERENCE
-        .captures_iter(text)
-        .find(|caps| {
-            caps.name("value")
-                .is_some_and(|v| v.as_str().trim_end_matches(['-', '/', '.']) == value)
-        })
-        .and_then(|caps| caps.name("label"))
-        .map(|label| label.as_str().to_ascii_lowercase())
-        .unwrap_or_default()
+/// A labelled reference read from an email.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FoundReference {
+    pub value: String,
+    /// The words it was read from, verbatim.
+    pub words: String,
+    /// An account, customer, policy or membership number: it names the
+    /// account, not one transaction.
+    pub names_account: bool,
 }
 
 /// The labelled reference that fits the kind best: an order number on an
-/// order, a booking reference on a booking. Returns the value and the words
-/// it was read from.
-pub fn find_reference(text: &str, kind: RecordKind) -> Option<(String, String)> {
+/// order, a booking reference on a booking.
+pub fn find_reference(text: &str, kind: RecordKind) -> Option<FoundReference> {
     let preferred: &[&str] = match kind {
         RecordKind::Order | RecordKind::Receipt => &[
             "order",
@@ -393,7 +388,7 @@ pub fn find_reference(text: &str, kind: RecordKind) -> Option<(String, String)> 
             &["reference", "ref", "policy", "order", "account"]
         }
     };
-    let mut best: Option<(usize, String, String)> = None;
+    let mut best: Option<(usize, FoundReference)> = None;
     for caps in REFERENCE.captures_iter(text) {
         let (Some(label), Some(value)) = (caps.name("label"), caps.name("value")) else {
             continue;
@@ -408,14 +403,51 @@ pub fn find_reference(text: &str, kind: RecordKind) -> Option<(String, String)> 
             .position(|p| *p == label)
             .unwrap_or(preferred.len());
         let words = caps.get(0).map_or("", |m| m.as_str()).trim().to_string();
-        if best
-            .as_ref()
-            .is_none_or(|(best_rank, _, _)| rank < *best_rank)
-        {
-            best = Some((rank, value.to_string(), words));
+        if best.as_ref().is_none_or(|(best_rank, _)| rank < *best_rank) {
+            best = Some((
+                rank,
+                FoundReference {
+                    value: value.to_string(),
+                    words,
+                    names_account: matches!(
+                        label.as_str(),
+                        "account" | "customer" | "policy" | "membership"
+                    ),
+                },
+            ));
         }
     }
-    best.map(|(_, value, words)| (value, words))
+    best.map(|(_, found)| found)
+}
+
+/// The reference and the total a rule reads, as fields with their quotes.
+pub fn reference_and_total(
+    text: &str,
+    body: &str,
+    kind: RecordKind,
+) -> (
+    Option<FoundReference>,
+    Option<mxr_todo::money::Amount>,
+    Vec<Found>,
+) {
+    let reference = find_reference(text, kind);
+    let amount = find_total(body);
+    let mut fields = Vec::new();
+    if let Some(found) = &reference {
+        fields.push(Found {
+            evidence: Some(found.words.clone()),
+            ..Found::text(FieldName::Reference, Source::Rule, found.value.clone())
+        });
+    }
+    if let Some(amount) = &amount {
+        fields.push(Found::money(
+            Source::Rule,
+            amount.minor,
+            &amount.currency,
+            amount.text.clone(),
+        ));
+    }
+    (reference, amount, fields)
 }
 
 fn is_common_word(value: &str) -> bool {
@@ -504,12 +536,9 @@ pub fn title_from_subject(subject: &str) -> Option<String> {
     if cleaned.chars().filter(|c| c.is_alphanumeric()).count() < 3 {
         return None;
     }
-    let mut title: String = cleaned.chars().take(80).collect();
-    if let Some(first) = title.get(..1) {
-        let upper = first.to_uppercase();
-        title.replace_range(..1, &upper);
-    }
-    Some(title)
+    Some(mxr_todo::text::capitalise(
+        &cleaned.chars().take(80).collect::<String>(),
+    ))
 }
 
 /// The issuer from the sender: the display name without "via", "no-reply"
@@ -621,9 +650,11 @@ pub fn past_day(expr: &str, anchor: NaiveDate) -> Option<NaiveDate> {
     }
 }
 
-fn month_of(word: &str) -> Option<u32> {
+/// The month a word names: "mar", "March", "sept". Used for dates in
+/// emails and in answer-box queries alike.
+pub fn month_of(word: &str) -> Option<u32> {
     let word = word.to_ascii_lowercase();
-    if word.len() < 3 {
+    if word.len() < 3 || !word.is_char_boundary(3) {
         return None;
     }
     [
@@ -641,16 +672,8 @@ fn month_of(word: &str) -> Option<u32> {
         "december",
     ]
     .iter()
-    .position(|name| {
-        name.starts_with(&word[..3])
-            && (word.len() == 3 || name.starts_with(&word) || word == "sept")
-    })
+    .position(|name| name.starts_with(&word))
     .and_then(|index| u32::try_from(index + 1).ok())
-}
-
-/// The year a date falls in, for ledger grouping.
-pub fn year_of(at: DateTime<Utc>) -> i32 {
-    at.year()
 }
 
 #[cfg(test)]

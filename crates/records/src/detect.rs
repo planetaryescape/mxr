@@ -201,17 +201,19 @@ fn from_schema(record: SchemaRecord, fallback_issuer: &str, sent: DateTime<Utc>)
         }
     }
     if record.issued.is_none() {
-        // The markup said what, not when: the email's date stands in, and
-        // says so.
-        fields.push(
-            Found::at(
+        // The markup said what, not when. A sender that marks up the
+        // transaction sends it when it happens, so the email's day stands
+        // in as checked and says where it came from; a rule's guess at a
+        // date stays unchecked.
+        fields.push(Found {
+            checked: true,
+            ..Found::at(
                 FieldName::IssuedAt,
                 Source::Rule,
                 crate::fields::day_at(sent.date_naive()),
                 EMAIL_DATE,
             )
-            .unchecked(),
-        );
+        });
     }
     if record.stage == Stage::Delivered {
         fields.push(
@@ -266,22 +268,7 @@ where
     Tz::Offset: std::fmt::Display,
 {
     let text = format!("{}\n{}", input.subject, input.body_text);
-    let reference = rules::find_reference(&text, kind);
-    let mut fields = Vec::new();
-    if let Some((value, words)) = &reference {
-        fields.push(Found {
-            evidence: Some(words.clone()),
-            ..Found::text(FieldName::Reference, Source::Rule, value.clone())
-        });
-    }
-    if let Some(amount) = rules::find_total(input.body_text) {
-        fields.push(Found::money(
-            Source::Rule,
-            amount.minor,
-            &amount.currency,
-            amount.text,
-        ));
-    }
+    let (reference, _, mut fields) = rules::reference_and_total(&text, input.body_text, kind);
     let day = input.sent.with_timezone(tz).date_naive();
     fields.push(
         Found::at(
@@ -301,8 +288,13 @@ where
         origin: Origin::Sender,
         reason: "you file everything from this sender".to_string(),
         issuer: issuer.to_string(),
-        reference: reference.map(|(value, _)| value),
-        account_ref: None,
+        account_ref: reference
+            .as_ref()
+            .filter(|found| found.names_account)
+            .map(|found| found.value.clone()),
+        reference: reference
+            .filter(|found| !found.names_account)
+            .map(|found| found.value),
         fields,
     }
 }
@@ -400,9 +392,11 @@ mod tests {
         assert_eq!(found[0].reference.as_deref(), Some("K7QX2M"));
         assert!(found[0].field(FieldName::ValidUntil).is_some());
         assert_eq!(found[1].issuer, "Hotel Lisboa Plaza");
-        // Markup that gives no booking time stands in the email's date,
-        // unchecked.
-        assert!(!found[1].field(FieldName::IssuedAt).expect("issued").checked);
+        // Markup that gives no booking time stands in the email's day,
+        // checked, with the email named as its source.
+        let issued = found[1].field(FieldName::IssuedAt).expect("issued");
+        assert!(issued.checked);
+        assert_eq!(issued.evidence.as_deref(), Some(EMAIL_DATE));
     }
 
     #[test]

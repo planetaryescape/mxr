@@ -8,7 +8,7 @@
 //! series), so an answer is never a loose guess; when no record matches
 //! every word, the caller falls back to `mxr ask` and says so.
 
-use crate::{RecordKind, Stage};
+use crate::RecordKind;
 use chrono::{DateTime, Datelike, Utc};
 use mxr_store::ArchiveRecord;
 
@@ -85,50 +85,30 @@ fn kind_words(word: &str) -> Option<&'static [RecordKind]> {
     })
 }
 
-fn month_number(word: &str) -> Option<u32> {
-    let months = [
-        "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
-    ];
-    if word.len() < 3 {
-        return None;
-    }
-    let full = [
-        "january",
-        "february",
-        "march",
-        "april",
-        "may",
-        "june",
-        "july",
-        "august",
-        "september",
-        "october",
-        "november",
-        "december",
-    ];
-    months
-        .iter()
-        .zip(full.iter())
-        .position(|(short, long)| word == *short || (long.starts_with(word) && word.len() >= 3))
-        .map(|index| u32::try_from(index).unwrap_or(0) + 1)
-}
-
 pub fn parse(text: &str) -> Query {
     let mut lower = format!(
         " {} ",
         text.to_lowercase().replace(['?', ',', '"', '\''], " ")
     );
     let mut asked = Asked::Any;
+    let mut kinds: Vec<RecordKind> = Vec::new();
     for (phrase, field) in ASKED_WORDS {
         let padded = format!(" {phrase} ");
         if lower.contains(&padded) {
             if asked == Asked::Any {
                 asked = *field;
             }
+            // "booking ref" asks for a reference and names a kind.
+            for word in phrase.split_whitespace() {
+                for kind in kind_words(word).unwrap_or_default() {
+                    if !kinds.contains(kind) {
+                        kinds.push(*kind);
+                    }
+                }
+            }
             lower = lower.replace(&padded, " ");
         }
     }
-    let mut kinds: Vec<RecordKind> = Vec::new();
     let mut year = None;
     let mut month = None;
     let mut terms = Vec::new();
@@ -152,7 +132,7 @@ pub fn parse(text: &str) -> Query {
                 }
             }
         }
-        if let Some(value) = month_number(word) {
+        if let Some(value) = crate::rules::month_of(word) {
             month = Some(value);
             continue;
         }
@@ -173,9 +153,10 @@ pub struct Candidate<'a> {
     pub record: &'a ArchiveRecord,
     /// The trip or series it belongs to.
     pub group_title: Option<&'a str>,
-    /// The stages its emails reached, for "delivered" and "refund".
-    pub stages: &'a [Stage],
 }
+
+/// When a record starts and its ledger date.
+type TieBreak = (Option<DateTime<Utc>>, Option<DateTime<Utc>>);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ranked {
@@ -204,7 +185,8 @@ fn matches(term: &str, haystack: &[String]) -> bool {
 /// term's best field (reference 5, issuer 3, place 2.5, group 2, title 2),
 /// plus 1.5 for a named kind, which also filters.
 pub fn rank(query: &Query, candidates: &[Candidate<'_>]) -> Vec<Ranked> {
-    let mut ranked: Vec<(Ranked, (Option<DateTime<Utc>>, Option<DateTime<Utc>>))> = Vec::new();
+    // Each match with (when it starts, its ledger date) for tie-breaks.
+    let mut ranked: Vec<(Ranked, TieBreak)> = Vec::new();
     for (index, candidate) in candidates.iter().enumerate() {
         let record = candidate.record;
         let date = record.ledger_date();
@@ -245,11 +227,6 @@ pub fn rank(query: &Query, candidates: &[Candidate<'_>]) -> Vec<Ranked> {
             (2.0, candidate.group_title.map(tokens).unwrap_or_default()),
             (2.0, record.title.as_deref().map(tokens).unwrap_or_default()),
         ];
-        let stage_words: Vec<String> = candidate
-            .stages
-            .iter()
-            .map(|stage| stage.word().to_string())
-            .collect();
         let mut score = 0.0;
         let mut all = true;
         for term in &query.terms {
@@ -258,11 +235,6 @@ pub fn rank(query: &Query, candidates: &[Candidate<'_>]) -> Vec<Ranked> {
                 .filter(|(_, haystack)| matches(term, haystack))
                 .map(|(weight, _)| *weight)
                 .fold(0.0_f32, f32::max);
-            let best = if best == 0.0 && matches(term, &stage_words) {
-                1.0
-            } else {
-                best
-            };
             if best == 0.0 {
                 all = false;
                 break;

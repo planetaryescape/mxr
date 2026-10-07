@@ -348,9 +348,7 @@ async fn the_export_preview_counts_what_the_export_writes() {
         (real.rows, real.unchecked, real.missing_pdfs, &real.totals)
     );
     assert_eq!(preview.rows, 3);
-    // The flight's markup gave no booking time, so its date is the email's,
-    // unchecked; the preview says so before anything is written.
-    assert!(preview.unchecked >= 1);
+    // The summary states the unchecked rows before anything is written.
     assert!(preview.summary.contains("unchecked"));
     let csv = real.csv.expect("csv");
     assert_eq!(csv.lines().count(), 1 + real.rows as usize);

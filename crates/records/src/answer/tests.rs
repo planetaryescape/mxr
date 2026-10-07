@@ -54,7 +54,6 @@ fn ids(query: &str, records: &[ArchiveRecord], groups: &[Option<&str>]) -> Vec<S
         .map(|(record, group)| Candidate {
             record,
             group_title: *group,
-            stages: &[],
         })
         .collect();
     rank(&parse(query), &candidates)
@@ -74,6 +73,12 @@ fn a_query_splits_into_the_field_asked_kinds_dates_and_words() {
     assert_eq!((query.year, query.month), (Some(2025), Some(3)));
     assert_eq!(query.terms, vec!["dell"]);
     assert_eq!(parse("how much was the octopus bill").asked, Asked::Amount);
+    let bare = parse("booking ref");
+    assert_eq!(bare.asked, Asked::Reference);
+    assert!(
+        bare.kinds.contains(&RecordKind::Booking),
+        "the phrase names a kind too"
+    );
 }
 
 #[test]

@@ -479,3 +479,76 @@ async fn never_file_a_sender_takes_their_records_out() {
     .await;
     assert_eq!(ledger(&fx, RecordFilterData::default()).await.total, 2);
 }
+
+#[tokio::test]
+async fn the_prefetch_writes_no_more_than_the_budget_whatever_a_pdf_declares() {
+    let fx = Fixture::new().await;
+    let message = put(
+        &fx,
+        ("Octopus Energy", "hello@octopus.energy"),
+        "Your bill is ready",
+        "Account number: A-99312\nAmount due: £128.40",
+        None,
+        Utc::now() - Duration::days(2),
+    )
+    .await;
+    let mut body = fx.state.store.get_body(&message).await.unwrap().unwrap();
+    // The fake provider returns 23 bytes for any attachment; this one says 10.
+    body.attachments.push(mxr_core::types::AttachmentMeta {
+        id: mxr_core::id::AttachmentId::new(),
+        message_id: message.clone(),
+        filename: "bill.pdf".to_string(),
+        mime_type: "application/pdf".to_string(),
+        disposition: Default::default(),
+        content_id: None,
+        content_location: None,
+        size_bytes: 10,
+        local_path: None,
+        provider_id: "att-1".to_string(),
+    });
+    fx.state.store.insert_body(&body).await.unwrap();
+    crate::handler::records::scan_messages(&fx.state, std::slice::from_ref(&message)).await;
+    let pdf_on_disk = |fx: &Fixture| {
+        let state = fx.state.clone();
+        let message = message.clone();
+        async move {
+            state
+                .store
+                .get_body(&message)
+                .await
+                .unwrap()
+                .unwrap()
+                .attachments[0]
+                .local_path
+                .clone()
+        }
+    };
+
+    // A 20-byte budget fits what the PDF declared, not what it is.
+    let fetched = crate::handler::records::prefetch_pdfs_within(&fx.state, 20, 1024).await;
+    assert_eq!(fetched, 0);
+    assert!(
+        pdf_on_disk(&fx).await.is_none(),
+        "nothing written over the cap"
+    );
+    let (_, on_disk) = fx.state.store.record_pdfs_on_disk().await.unwrap();
+    assert_eq!(on_disk, 0);
+    // Its real size is recorded, so the next tick skips it.
+    let size = fx
+        .state
+        .store
+        .get_body(&message)
+        .await
+        .unwrap()
+        .unwrap()
+        .attachments[0]
+        .size_bytes;
+    assert_eq!(size, 23);
+
+    // With room for it, it is written and its real bytes count.
+    let fetched = crate::handler::records::prefetch_pdfs_within(&fx.state, 1024, 1024).await;
+    assert_eq!(fetched, 1);
+    assert!(pdf_on_disk(&fx).await.is_some());
+    let (bytes, count) = fx.state.store.record_pdfs_on_disk().await.unwrap();
+    assert_eq!((bytes, count), (23, 1));
+}

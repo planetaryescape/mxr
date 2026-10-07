@@ -1560,6 +1560,21 @@ impl super::Store {
         .collect()
     }
 
+    /// Records an attachment's real size, found when a fetch returned more
+    /// than it declared.
+    pub async fn set_attachment_size(
+        &self,
+        attachment_id: &str,
+        size_bytes: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE attachments SET size_bytes = ?2 WHERE id = ?1")
+            .bind(attachment_id)
+            .bind(size_bytes)
+            .execute(self.writer())
+            .await?;
+        Ok(())
+    }
+
     /// Bytes and count of record PDFs already on disk: what the prefetch
     /// budget is measured against.
     pub async fn record_pdfs_on_disk(&self) -> Result<(i64, i64), sqlx::Error> {

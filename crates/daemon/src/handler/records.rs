@@ -146,20 +146,30 @@ pub(crate) async fn prefetch_pdfs(state: &AppState) -> u32 {
     if !config.pdf_prefetch {
         return 0;
     }
-    let budget =
-        i64::try_from(config.pdf_budget_mb.saturating_mul(1024 * 1024)).unwrap_or(i64::MAX);
-    let max_file =
-        i64::try_from(config.pdf_max_file_mb.saturating_mul(1024 * 1024)).unwrap_or(i64::MAX);
-    let (mut used, _) = match state.store.record_pdfs_on_disk().await {
-        Ok(used) => used,
+    prefetch_pdfs_within(
+        state,
+        config.pdf_budget_mb.saturating_mul(1024 * 1024),
+        config.pdf_max_file_mb.saturating_mul(1024 * 1024),
+    )
+    .await
+}
+
+/// The prefetch against a budget and a per-file cap in bytes. Each fetch
+/// may write at most what is left of the budget (and the per-file cap);
+/// the attachment's declared size only picks candidates, and the bytes
+/// actually written are what count against the budget.
+pub(crate) async fn prefetch_pdfs_within(state: &AppState, budget: u64, max_file: u64) -> u32 {
+    let used = match state.store.record_pdfs_on_disk().await {
+        Ok((bytes, _)) => u64::try_from(bytes).unwrap_or(0),
         Err(error) => {
             tracing::warn!(%error, "record PDF budget check failed");
             return 0;
         }
     };
+    let mut remaining = budget.saturating_sub(used);
     let wanted = match state
         .store
-        .record_pdfs_to_fetch(max_file, PDFS_PER_TICK)
+        .record_pdfs_to_fetch(i64::try_from(max_file).unwrap_or(i64::MAX), PDFS_PER_TICK)
         .await
     {
         Ok(wanted) => wanted,
@@ -170,17 +180,41 @@ pub(crate) async fn prefetch_pdfs(state: &AppState) -> u32 {
     };
     let mut fetched = Vec::new();
     for pdf in wanted {
-        if used + pdf.size_bytes > budget {
-            tracing::debug!(used, budget, "record PDF budget reached");
+        let declared = u64::try_from(pdf.size_bytes).unwrap_or(0);
+        if remaining == 0 || declared > remaining {
+            tracing::debug!(remaining, "record PDF budget reached");
             break;
         }
         let Ok(attachment_id) = pdf.attachment_id.parse::<AttachmentId>() else {
             continue;
         };
-        match super::materialize_attachment_file(state, &pdf.message_id, &attachment_id).await {
-            Ok(_) => {
-                used += pdf.size_bytes;
+        let cap = remaining.min(max_file);
+        match super::materialize_attachment_capped(
+            state,
+            &pdf.message_id,
+            &attachment_id,
+            Some(cap),
+        )
+        .await
+        {
+            Ok(super::Materialized::Written { bytes, .. }) => {
+                remaining = remaining.saturating_sub(bytes);
                 fetched.push(pdf.message_id);
+            }
+            Ok(super::Materialized::TooLarge { bytes }) => {
+                // Record the real size, so the next tick doesn't fetch it
+                // again: it is left until opened.
+                tracing::debug!(message = %pdf.message_id, cap, bytes, "record PDF larger than it said");
+                if let Err(error) = state
+                    .store
+                    .set_attachment_size(
+                        &pdf.attachment_id,
+                        i64::try_from(bytes).unwrap_or(i64::MAX),
+                    )
+                    .await
+                {
+                    tracing::warn!(%error, "recording a PDF's real size failed");
+                }
             }
             Err(error) => {
                 tracing::debug!(message = %pdf.message_id, %error, "record PDF prefetch skipped");

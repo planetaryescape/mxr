@@ -3732,6 +3732,38 @@ async fn materialize_attachment_file(
     message_id: &mxr_core::MessageId,
     attachment_id: &mxr_core::AttachmentId,
 ) -> Result<mxr_protocol::AttachmentFile, mxr_core::MxrError> {
+    match materialize_attachment_capped(state, message_id, attachment_id, None).await? {
+        Materialized::Written { file, .. } => Ok(file),
+        Materialized::TooLarge { .. } => Err(mxr_core::MxrError::Provider(
+            "attachment over its size cap".into(),
+        )),
+    }
+}
+
+/// What [`materialize_attachment_capped`] did.
+pub(super) enum Materialized {
+    /// On disk, with the bytes it takes there.
+    Written {
+        file: mxr_protocol::AttachmentFile,
+        bytes: u64,
+    },
+    /// The provider returned more than the cap: nothing was written.
+    TooLarge { bytes: u64 },
+}
+
+/// [`materialize_attachment_file`] with a hard cap on the bytes written:
+/// when the provider returns more than `cap` bytes, nothing is written. A
+/// file already on disk counts its size on disk. The bytes actually written
+/// become the attachment row's size, so a budget sums real bytes.
+///
+/// The provider trait hands back the whole attachment at once, so the cap
+/// bounds disk, not the memory of one fetch.
+pub(super) async fn materialize_attachment_capped(
+    state: &AppState,
+    message_id: &mxr_core::MessageId,
+    attachment_id: &mxr_core::AttachmentId,
+    cap: Option<u64>,
+) -> Result<Materialized, mxr_core::MxrError> {
     let envelope = state
         .store
         .get_envelope(message_id)
@@ -3748,10 +3780,17 @@ async fn materialize_attachment_file(
         .ok_or_else(|| mxr_core::MxrError::NotFound(format!("attachment {attachment_id}")))?;
 
     if let Some(path) = attachment.local_path.as_ref().filter(|path| path.exists()) {
-        return Ok(mxr_protocol::AttachmentFile {
-            attachment_id: attachment.id,
-            filename: attachment.filename,
-            path: path.display().to_string(),
+        let on_disk = tokio::fs::metadata(path)
+            .await
+            .map_err(mxr_core::MxrError::Io)?
+            .len();
+        return Ok(Materialized::Written {
+            file: mxr_protocol::AttachmentFile {
+                attachment_id: attachment.id,
+                filename: attachment.filename,
+                path: path.display().to_string(),
+            },
+            bytes: on_disk,
         });
     }
 
@@ -3761,6 +3800,10 @@ async fn materialize_attachment_file(
     let bytes = provider
         .fetch_attachment(&envelope.provider_id, &attachment.provider_id)
         .await?;
+    let written = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    if cap.is_some_and(|cap| written > cap) {
+        return Ok(Materialized::TooLarge { bytes: written });
+    }
 
     let target_dir = state.attachment_dir().join(message_id.as_str());
     tokio::fs::create_dir_all(&target_dir)
@@ -3769,26 +3812,37 @@ async fn materialize_attachment_file(
 
     let filename = sanitized_attachment_filename(&attachment.filename, &attachment.id);
     let path = target_dir.join(filename);
-    tokio::fs::write(&path, bytes)
-        .await
-        .map_err(mxr_core::MxrError::Io)?;
-    set_private_file_permissions(&path).await?;
+    let saved = async {
+        tokio::fs::write(&path, &bytes)
+            .await
+            .map_err(mxr_core::MxrError::Io)?;
+        set_private_file_permissions(&path).await
+    }
+    .await;
+    if let Err(error) = saved {
+        // A half-written file is never left behind.
+        let _ = tokio::fs::remove_file(&path).await;
+        return Err(error);
+    }
 
     for existing in &mut body.attachments {
         if existing.id == *attachment_id {
             existing.local_path = Some(path.clone());
+            existing.size_bytes = written;
         }
     }
-    state
-        .store
-        .insert_body(&body)
-        .await
-        .map_err(|err| mxr_core::MxrError::Store(err.to_string()))?;
+    if let Err(error) = state.store.insert_body(&body).await {
+        let _ = tokio::fs::remove_file(&path).await;
+        return Err(mxr_core::MxrError::Store(error.to_string()));
+    }
 
-    Ok(mxr_protocol::AttachmentFile {
-        attachment_id: attachment.id,
-        filename: attachment.filename,
-        path: path.display().to_string(),
+    Ok(Materialized::Written {
+        file: mxr_protocol::AttachmentFile {
+            attachment_id: attachment.id,
+            filename: attachment.filename,
+            path: path.display().to_string(),
+        },
+        bytes: written,
     })
 }
 

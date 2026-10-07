@@ -1981,6 +1981,417 @@
         }
       }
     },
+    "/api/v1/mail/records": {
+      "get": {
+        "tags": [],
+        "summary": "Archive's ledger: records by month with counts, totals, facets and what is coming up",
+        "operationId": "mail_records_ledger",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Comma-separated kinds: receipt, order, booking, invoice, statement, ticket, contract, warranty, account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "issuer",
+            "in": "query",
+            "description": "One issuer: the issuer page",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "description": "By the transaction's date",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "min_amount_minor",
+            "in": "query",
+            "description": "At least this, in minor units",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "max_amount_minor",
+            "in": "query",
+            "description": "At most this, in minor units",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "has_pdf",
+            "in": "query",
+            "description": "With or without a PDF",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "checked",
+            "in": "query",
+            "description": "Every amount and date confirmed, or not",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "group",
+            "in": "query",
+            "description": "One trip or series",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Rows on this page (default 200)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Rows to skip",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `RecordLedger` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown kind"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/records/answer": {
+      "get": {
+        "tags": [],
+        "summary": "The answer box: the field a query asks for from record fields, with no model; falls back to mxr ask only when no record matches",
+        "operationId": "mail_records_answer",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "What you remember: \"lisbon booking ref\"",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fallback",
+            "in": "query",
+            "description": "Fall back to mxr ask over all mail (default true)",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Records in \"also matching\" (default 4)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `RecordAnswer` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty query"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/records/dismiss": {
+      "post": {
+        "tags": [],
+        "summary": "Not a record, or back again; the email is never touched (dry_run previews)",
+        "operationId": "mail_records_dismiss",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordDismissBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `RecordChange` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No record ids"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/records/export": {
+      "post": {
+        "tags": [],
+        "summary": "Export records as CSV, and PDFs to a folder; dry_run returns the row count, totals, unchecked rows and missing PDFs for the same rows",
+        "operationId": "mail_records_export",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordExportBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `RecordExport` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/records/file": {
+      "post": {
+        "tags": [],
+        "summary": "File an email as a record yourself (dry_run returns the card it would file)",
+        "operationId": "mail_records_file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordFileBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `RecordChange` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid message id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/records/sender": {
+      "post": {
+        "tags": [],
+        "summary": "Always or never file a sender's mail (dry_run previews)",
+        "operationId": "mail_records_sender",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordSenderBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `RecordChange` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid message id or verdict"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/records/{record_id}": {
+      "get": {
+        "tags": [],
+        "summary": "One record's card: every field with where it came from, its documents and source emails",
+        "operationId": "mail_record_get",
+        "parameters": [
+          {
+            "name": "record_id",
+            "in": "path",
+            "description": "A full id or a unique prefix",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `Record` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/records/{record_id}/field": {
+      "post": {
+        "tags": [],
+        "summary": "Fix, confirm or clear a record field, or mark the card checked (dry_run previews)",
+        "operationId": "mail_record_field",
+        "parameters": [
+          {
+            "name": "record_id",
+            "in": "path",
+            "description": "A full id or a unique prefix",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordFieldBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `RecordChange` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/relationship": {
       "get": {
         "tags": [],
@@ -10733,6 +11144,13 @@
           "first_run"
         ],
         "properties": {
+          "coming_up": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordMomentData"
+            },
+            "description": "Archive records with a moment soon (a trip in 72 hours, a ticket\ntoday, a return window closing, a warranty ending), soonest first,\nat most three. One line on Now, never a badge."
+          },
           "due_soon": {
             "$ref": "#/components/schemas/NowDueData"
           },
@@ -11616,6 +12034,1182 @@
           }
         }
       },
+      "RecordAmountData": {
+        "type": "object",
+        "required": [
+          "minor",
+          "currency",
+          "display"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217."
+          },
+          "display": {
+            "type": "string",
+            "description": "\"\u00a31,249.00\"."
+          },
+          "minor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "In the currency's minor unit."
+          }
+        }
+      },
+      "RecordAnswerCardData": {
+        "type": "object",
+        "description": "The field the answer box returns.",
+        "required": [
+          "record",
+          "field",
+          "label",
+          "value",
+          "copy"
+        ],
+        "properties": {
+          "copy": {
+            "type": "string",
+            "description": "What `y` copies."
+          },
+          "field": {
+            "type": "string",
+            "description": "reference | amount | issued_at | document"
+          },
+          "label": {
+            "type": "string",
+            "description": "\"Booking ref\"."
+          },
+          "provenance": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordFieldData"
+              }
+            ]
+          },
+          "record": {
+            "$ref": "#/components/schemas/RecordData"
+          },
+          "value": {
+            "type": "string",
+            "description": "\"K7QX2M\"."
+          }
+        }
+      },
+      "RecordAnswerData": {
+        "type": "object",
+        "description": "Returned in `ResponseData::RecordAnswer`.",
+        "required": [
+          "query",
+          "asked"
+        ],
+        "properties": {
+          "also": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordData"
+            },
+            "description": "Other records that matched, best first: \"Also matching\"."
+          },
+          "answer": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordAnswerCardData"
+              }
+            ]
+          },
+          "asked": {
+            "type": "string",
+            "description": "reference | amount | date | document | any"
+          },
+          "fallback": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordFallbackData"
+              }
+            ]
+          },
+          "query": {
+            "type": "string"
+          }
+        }
+      },
+      "RecordChangeData": {
+        "type": "object",
+        "description": "Returned in `ResponseData::RecordChange`.",
+        "required": [
+          "dry_run",
+          "action",
+          "records",
+          "message"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "file | dismiss | restore | set_field | sender"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string",
+            "description": "The toast: \"Filed in Archive.\", never \"Archived\"."
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordData"
+            },
+            "description": "The records changed, or that would change, as they are (or would\nbe) after."
+          },
+          "undo": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordUndoData"
+              }
+            ]
+          }
+        }
+      },
+      "RecordData": {
+        "type": "object",
+        "description": "One record: a ledger row, and with `GetRecord` the whole card.",
+        "required": [
+          "id",
+          "account_id",
+          "kind",
+          "kind_label",
+          "reference_label",
+          "checked",
+          "document_count",
+          "source_count",
+          "why",
+          "origin"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "amount": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordAmountData"
+              }
+            ]
+          },
+          "checked": {
+            "type": "boolean",
+            "description": "Every money and date field came from schema.org or you."
+          },
+          "date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The ledger date: the transaction's, else the newest email's."
+          },
+          "delivered_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "detail_line": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"Return by 2 Apr (passed) \u00b7 Warranty to 3 Mar 2027\"."
+          },
+          "dismissed": {
+            "type": "boolean"
+          },
+          "document_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordDocumentData"
+            },
+            "description": "The card only (`GetRecord`): every file and every source email."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordFieldData"
+            },
+            "description": "Every field with its provenance."
+          },
+          "group": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordGroupData"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "issuer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "issuer_records": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The card only: how many other records this issuer has.",
+            "minimum": 0
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RecordKindData"
+          },
+          "kind_label": {
+            "type": "string",
+            "description": "\"Order\", \"Booking\"."
+          },
+          "message_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageId",
+                "description": "The newest source email."
+              }
+            ]
+          },
+          "origin": {
+            "type": "string",
+            "description": "schema | rule | delivery | todo | manual | sender"
+          },
+          "pdf": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordDocumentData",
+                "description": "The record's best document, a PDF first."
+              }
+            ]
+          },
+          "place": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reference": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reference_label": {
+            "type": "string",
+            "description": "\"Order\", \"Booking ref\": what the reference is called on this kind."
+          },
+          "return_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "source_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordSourceData"
+            }
+          },
+          "span_end": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "span_start": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "stage_line": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "An order's stages in one line: \"ordered \u00b7 shipped \u00b7 delivered 7 Mar\"."
+          },
+          "thread_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId",
+                "description": "The newest source email's thread, for \"open the email\"."
+              }
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What it is: \"XPS 14 laptop\", \"LHR -> LIS TP1357\". Never the subject\nline when better is known."
+          },
+          "unchecked_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The money and date fields still to confirm."
+          },
+          "valid_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "warranty_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "why": {
+            "type": "string",
+            "description": "\"Here because: order confirmation with schema.org markup (checked).\""
+          }
+        }
+      },
+      "RecordDismissBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/records/dismiss`.",
+        "required": [
+          "record_ids"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "record_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "restore": {
+            "type": "boolean",
+            "description": "Bring dismissed records back."
+          }
+        }
+      },
+      "RecordDocumentData": {
+        "type": "object",
+        "description": "A file attached to one of the record's emails.",
+        "required": [
+          "message_id",
+          "attachment_id",
+          "filename",
+          "mime_type",
+          "size_bytes",
+          "is_pdf",
+          "on_disk"
+        ],
+        "properties": {
+          "attachment_id": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "is_pdf": {
+            "type": "boolean"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "on_disk": {
+            "type": "boolean",
+            "description": "Already downloaded, so it opens offline."
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "RecordEditData": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Your value for a field: text, an amount (\"\u00a312.50\", \"12.50 EUR\") or a\ndate (\"3 March 2025\", \"2025-03-03\"). It wins over every extracted\nvalue, now and on every re-run.",
+            "required": [
+              "field",
+              "value",
+              "op"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "set"
+                ]
+              },
+              "value": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The extracted value is right: it becomes yours, checked.",
+            "required": [
+              "field",
+              "op"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "confirm"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Confirm every unchecked money and date field: the card is checked.",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "type": "string",
+                "enum": [
+                  "confirm_all"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Drop your value, so the extracted one shows again.",
+            "required": [
+              "field",
+              "op"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "clear"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "A correction to a record."
+      },
+      "RecordExportBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/records/export`.",
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attachments_dir": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "An absolute folder to copy each record's PDF into."
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/RecordFilterData"
+          }
+        }
+      },
+      "RecordExportData": {
+        "type": "object",
+        "description": "Returned in `ResponseData::RecordExport`. The dry run and the export\nread the same rows.",
+        "required": [
+          "dry_run",
+          "rows",
+          "totals",
+          "unchecked",
+          "missing_pdfs",
+          "by_kind",
+          "summary"
+        ],
+        "properties": {
+          "attachments_dir": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where PDFs were copied, when asked."
+          },
+          "by_kind": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordFacetCountData"
+            }
+          },
+          "csv": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The CSV, header first. Only on a real export."
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "missing_pdfs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Rows with no PDF.",
+            "minimum": 0
+          },
+          "pdf_errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "PDFs that could not be fetched or copied, by filename."
+          },
+          "pdfs_copied": {
+            "type": "integer",
+            "format": "int32",
+            "description": "PDFs copied there.",
+            "minimum": 0
+          },
+          "rows": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "summary": {
+            "type": "string",
+            "description": "\"142 records, \u00a318,204.11 and \u20ac612.00. 9 have an unchecked amount or\ndate; 31 have no PDF.\""
+          },
+          "totals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordAmountData"
+            },
+            "description": "One total per currency, largest first."
+          },
+          "unchecked": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Rows with an amount or date nobody has confirmed.",
+            "minimum": 0
+          }
+        }
+      },
+      "RecordFacetCountData": {
+        "type": "object",
+        "required": [
+          "value",
+          "label",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string",
+            "description": "What to filter by: \"order\", \"dell\", \"2025\"."
+          }
+        }
+      },
+      "RecordFacetsData": {
+        "type": "object",
+        "description": "Counts for each filter value over the matching records.",
+        "required": [
+          "kinds",
+          "issuers",
+          "years",
+          "has_pdf",
+          "checked",
+          "unchecked"
+        ],
+        "properties": {
+          "checked": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "has_pdf": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "issuers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordFacetCountData"
+            },
+            "description": "The thirty issuers with most records."
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordFacetCountData"
+            }
+          },
+          "unchecked": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "years": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordFacetCountData"
+            },
+            "description": "Newest first."
+          }
+        }
+      },
+      "RecordFallbackData": {
+        "type": "object",
+        "description": "What the answer box fell back to when no record matched.",
+        "required": [
+          "note"
+        ],
+        "properties": {
+          "answer": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ArchiveAnswerData",
+                "description": "`mxr ask`'s citation-checked answer, or the retrieved emails when no\nmodel is set up."
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the fallback has no answer, when it failed."
+          },
+          "note": {
+            "type": "string",
+            "description": "\"No record matches \"warranty dell\". Searching all mail instead.\""
+          }
+        }
+      },
+      "RecordFieldBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/records/{record_id}/field`.",
+        "required": [
+          "edit"
+        ],
+        "properties": {
+          "apply_to_sender": {
+            "type": "boolean",
+            "description": "With an issuer name: rename this sender's issuer on every record."
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "edit": {
+            "$ref": "#/components/schemas/RecordEditData"
+          }
+        }
+      },
+      "RecordFieldData": {
+        "type": "object",
+        "description": "One field of a record and where its value came from.",
+        "required": [
+          "field",
+          "label",
+          "value",
+          "copy",
+          "source",
+          "source_label",
+          "checked"
+        ],
+        "properties": {
+          "checked": {
+            "type": "boolean",
+            "description": "False for money or a date nobody has confirmed. Shown with an open\ndot."
+          },
+          "copy": {
+            "type": "string",
+            "description": "What `y` copies: the reference as written, or the amount as a plain\nnumber (\"1249.00\")."
+          },
+          "evidence": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The words it was read from, verbatim, or how it was worked out."
+          },
+          "field": {
+            "type": "string",
+            "description": "issuer, title, reference, amount, issued_at, span_start, span_end,\nplace, delivered_at, return_by, warranty_until, valid_until, kind"
+          },
+          "label": {
+            "type": "string",
+            "description": "\"Booking ref\", \"Paid\", \"Date\"."
+          },
+          "message_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageId",
+                "description": "The email it was read from."
+              }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "description": "schema | rule | delivery | todo | user"
+          },
+          "source_label": {
+            "type": "string",
+            "description": "\"schema.org markup\", \"a pattern in the email\", \"you\"."
+          },
+          "value": {
+            "type": "string",
+            "description": "As shown: \"\u00a31,249.00\", \"3 Mar 2025\", \"K7QX2M\"."
+          }
+        }
+      },
+      "RecordFileBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/records/file`.",
+        "required": [
+          "message_id"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordKindData"
+              }
+            ]
+          },
+          "message_id": {
+            "type": "string"
+          }
+        }
+      },
+      "RecordFilterData": {
+        "type": "object",
+        "description": "Which records a list or an export covers. Every condition is optional.",
+        "properties": {
+          "checked": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "group_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A trip or series."
+          },
+          "has_pdf": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "issuer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "An issuer name, matched without case: the issuer page."
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordKindData"
+            }
+          },
+          "max_amount_minor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "min_amount_minor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "In minor units."
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "RecordFirstRunData": {
+        "type": "object",
+        "description": "Where filing history has got to.",
+        "required": [
+          "complete",
+          "scanned",
+          "line"
+        ],
+        "properties": {
+          "complete": {
+            "type": "boolean"
+          },
+          "line": {
+            "type": "string",
+            "description": "\"Filing your records. 418 found so far, back to March 2023.\""
+          },
+          "reached": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The oldest email read so far."
+          },
+          "scanned": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "RecordGroupData": {
+        "type": "object",
+        "description": "The trip or series a record belongs to.",
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "trip | series"
+          },
+          "span_end": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "span_start": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "title": {
+            "type": "string",
+            "description": "\"Lisbon, June 2025\", \"Octopus Energy bills\"."
+          }
+        }
+      },
+      "RecordIssuerData": {
+        "type": "object",
+        "description": "The issuer page: every record from one issuer.",
+        "required": [
+          "name",
+          "count",
+          "totals"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "first": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "name": {
+            "type": "string"
+          },
+          "totals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordAmountData"
+            }
+          }
+        }
+      },
+      "RecordKindData": {
+        "type": "string",
+        "enum": [
+          "receipt",
+          "order",
+          "booking",
+          "invoice",
+          "statement",
+          "ticket",
+          "contract",
+          "warranty",
+          "account"
+        ]
+      },
+      "RecordLedgerData": {
+        "type": "object",
+        "description": "Returned in `ResponseData::RecordLedger`.",
+        "required": [
+          "header",
+          "total",
+          "matching",
+          "records",
+          "months",
+          "facets",
+          "coming_up",
+          "filter"
+        ],
+        "properties": {
+          "coming_up": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordMomentData"
+            },
+            "description": "Trips, tickets, return windows and warranties with a moment soon."
+          },
+          "empty_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when there is nothing to show: the never-had-any copy, or what\nthe filter excluded."
+          },
+          "facets": {
+            "$ref": "#/components/schemas/RecordFacetsData"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/RecordFilterData"
+          },
+          "first_run": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordFirstRunData"
+              }
+            ]
+          },
+          "header": {
+            "type": "string"
+          },
+          "issuer": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordIssuerData"
+              }
+            ]
+          },
+          "matching": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Records the filter matches.",
+            "minimum": 0
+          },
+          "months": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordMonthData"
+            },
+            "description": "Every month of the matching records, newest first, with counts and\ntotals over all of them, not just this page."
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordData"
+            },
+            "description": "This page of the matching records, newest first."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Every record, whatever the filter.",
+            "minimum": 0
+          }
+        }
+      },
+      "RecordMomentData": {
+        "type": "object",
+        "description": "A record with a moment coming up.",
+        "required": [
+          "kind",
+          "record_id",
+          "at",
+          "label"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "group_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "description": "trip | booking | ticket | return_window | warranty"
+          },
+          "label": {
+            "type": "string",
+            "description": "\"Lisbon, June 2025 \u00b7 in 3 days\", \"Return XPS 14 laptop by Wed\"."
+          },
+          "record_id": {
+            "type": "string"
+          }
+        }
+      },
+      "RecordMonthData": {
+        "type": "object",
+        "description": "One month of the ledger, with its count and totals.",
+        "required": [
+          "month",
+          "label",
+          "count",
+          "totals"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "label": {
+            "type": "string",
+            "description": "\"2025 \u00b7 March\"."
+          },
+          "month": {
+            "type": "string",
+            "description": "\"2025-03\"."
+          },
+          "totals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordAmountData"
+            },
+            "description": "One total per currency, largest first. Never converted."
+          }
+        }
+      },
       "RecordPromiseRequest": {
         "type": "object",
         "required": [
@@ -11640,6 +13234,105 @@
           "what": {
             "type": "string",
             "description": "What was promised, such as \"send the deck\"."
+          }
+        }
+      },
+      "RecordSenderBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/records/sender`.",
+        "required": [
+          "message_id"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordKindData"
+              }
+            ]
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`always` or `never`; omitted lets the rules decide again."
+          }
+        }
+      },
+      "RecordSourceData": {
+        "type": "object",
+        "description": "One email a record was built from.",
+        "required": [
+          "message_id",
+          "stage",
+          "date",
+          "subject",
+          "filed_by"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "filed_by": {
+            "type": "string",
+            "description": "detector | delivery | todo | manual | sender"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "stage": {
+            "type": "string",
+            "description": "confirmation | shipped | delivered | return | refund | invoice |\nstatement | booking | change | cancellation | receipt | other"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId"
+              }
+            ]
+          }
+        }
+      },
+      "RecordUndoData": {
+        "type": "object",
+        "description": "How `u` reverses a record change.",
+        "required": [
+          "kind",
+          "record_ids"
+        ],
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "kind": {
+            "type": "string",
+            "description": "restore | dismiss | clear_fields | sender"
+          },
+          "record_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -17379,6 +19072,266 @@
           },
           {
             "type": "object",
+            "description": "Archive's ledger: records newest first by transaction date, one page\nof `limit` from `offset`, with month counts and totals, facet counts\nand the \"coming up\" strip over every matching record. Local reads\nonly. Returns `ResponseData::RecordLedger`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListRecords"
+                ]
+              },
+              "filter": {
+                "$ref": "#/components/schemas/RecordFilterData"
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "offset": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "One record's card: every field with its provenance, its documents\nand its source emails. Takes a full id or a unique prefix. Returns\n`ResponseData::Record`.",
+            "required": [
+              "record_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetRecord"
+                ]
+              },
+              "record_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The answer box. A query that matches record fields returns the field\nasked for, with no model; only when no record matches does it fall\nback to `ArchiveAsk` (when `fallback`), and says so. Returns\n`ResponseData::RecordAnswer`.",
+            "required": [
+              "query",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "AnswerFromRecords"
+                ]
+              },
+              "fallback": {
+                "type": "boolean"
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Records in \"also matching\" after the answer.",
+                "minimum": 0
+              },
+              "query": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Correct a record's field, confirm it, or confirm the whole card. A\ncorrection is yours from then on and wins over every re-run.\n`apply_to_sender` with an issuer name renames this sender's issuer\non every record, now and later. Returns `ResponseData::RecordChange`.",
+            "required": [
+              "record_id",
+              "edit",
+              "cmd"
+            ],
+            "properties": {
+              "apply_to_sender": {
+                "type": "boolean"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetRecordField"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "edit": {
+                "$ref": "#/components/schemas/RecordEditData"
+              },
+              "record_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "\"Not a record\" (or back again with `restore`). The email is never\ntouched, and a dismissed record is never filed again. Returns\n`ResponseData::RecordChange`.",
+            "required": [
+              "record_ids",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DismissRecord"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "record_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "restore": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "File an email as a record by hand, as `kind` when given. The dry run\nreturns the card that would be filed, from the same plan the real\nfiling writes. Returns `ResponseData::RecordChange`.",
+            "required": [
+              "message_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "FileRecord"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "kind": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RecordKindData"
+                  }
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Always or never file mail from this message's sender (`verdict:\nNone` clears it). \"Always\" also files the sender's mail already\nhere. Returns `ResponseData::RecordChange`.",
+            "required": [
+              "message_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetRecordSender"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "kind": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RecordKindData"
+                  }
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "verdict": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "always | never"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Export the matching records as CSV, and their PDFs to\n`attachments_dir` when given. The dry run reports the row count,\ntotals, unchecked rows and missing PDFs for the same rows. Returns\n`ResponseData::RecordExport`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "attachments_dir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ExportRecords"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "filter": {
+                "$ref": "#/components/schemas/RecordFilterData"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "A place (Reading or Paper trail): inbox mail of that kind grouped by\nsender, newest bundle first, each with the reason it is there.\n`account_id: None` covers every enabled account.",
             "required": [
               "place",
@@ -20809,7 +22762,101 @@
           },
           {
             "type": "object",
-            "description": "Returned by `Request::SetModeDone`, one outcome per thread in\nrequest order. `mutation_id` undoes the whole run.",
+            "description": "Returned by `Request::SetModeDone`, one outcome per thread in\nrequest order. `mutation_id` undoes the whole run.\nReturned by `Request::ListRecords`.",
+            "required": [
+              "ledger",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RecordLedger"
+                ]
+              },
+              "ledger": {
+                "$ref": "#/components/schemas/RecordLedgerData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetRecord`.",
+            "required": [
+              "record",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Record"
+                ]
+              },
+              "record": {
+                "$ref": "#/components/schemas/RecordData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::AnswerFromRecords`.",
+            "required": [
+              "answer",
+              "kind"
+            ],
+            "properties": {
+              "answer": {
+                "$ref": "#/components/schemas/RecordAnswerData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RecordAnswer"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by the record mutations.",
+            "required": [
+              "change",
+              "kind"
+            ],
+            "properties": {
+              "change": {
+                "$ref": "#/components/schemas/RecordChangeData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RecordChange"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ExportRecords`.",
+            "required": [
+              "export",
+              "kind"
+            ],
+            "properties": {
+              "export": {
+                "$ref": "#/components/schemas/RecordExportData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RecordExport"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "items",
               "dry_run",

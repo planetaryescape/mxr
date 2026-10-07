@@ -100,6 +100,27 @@ pub(crate) enum AsyncResult {
     CalendarInvites(Result<Vec<mxr_protocol::CalendarInviteData>, MxrError>),
     /// Envelope fetched for an invite opened from the calendar-invites lens.
     InviteEnvelopeOpened(Result<Envelope, MxrError>),
+    /// Archive's ledger and, when the daemon served it, its guide. Boxed:
+    /// a ledger is large next to the other variants.
+    RecordsLedger(
+        Result<
+            Box<(
+                mxr_protocol::RecordLedgerData,
+                Option<mxr_protocol::ModeGuideData>,
+            )>,
+            MxrError,
+        >,
+    ),
+    RecordsAnswer(Result<Box<mxr_protocol::RecordAnswerData>, MxrError>),
+    RecordCard(Result<Box<mxr_protocol::RecordData>, MxrError>),
+    /// The export's dry run, or the CSV it wrote.
+    RecordsExport(Result<Box<mxr_protocol::RecordExportData>, MxrError>),
+    /// The dry run of a `,` fix.
+    RecordFixPreview(Result<Box<mxr_protocol::RecordChangeData>, MxrError>),
+    /// The dry run of filing a message from the `T` menu.
+    RecordFilePreview(Result<Box<mxr_protocol::RecordChangeData>, MxrError>),
+    /// A record's email, to open in the reader.
+    RecordEnvelopeOpened(Result<Envelope, MxrError>),
     /// A To do row's email, with the link to mark in it.
     TodoEnvelopeOpened(Result<Envelope, MxrError>, Option<String>),
     Briefing(Result<mxr_protocol::ThreadBriefingData, MxrError>),

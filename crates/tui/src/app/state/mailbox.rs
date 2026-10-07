@@ -49,8 +49,8 @@ pub enum MailboxView {
     /// Now (`Request::GetNow`): the front page, at most ten things in four
     /// fixed sections.
     Now,
-    /// Archive, the mode: an early version with nothing to list yet, so it
-    /// says so and points at search.
+    /// Archive, the mode (`Request::ListRecords`): records built from
+    /// mail, a ledger by month under an answer box.
     ArchiveMode,
     /// Messages, the mode (`Request::ListMessages`): people you talk with,
     /// one row each, with the selected person's page beside them.
@@ -607,6 +607,7 @@ pub struct MailboxState {
     pub desk_page: DeskPageState,
     /// To do (`GetTodoRunway`): the runway, its guide and its lists.
     pub todo_page: super::TodoPageState,
+    pub records_page: super::RecordsPageState,
     /// Now (`GetNow`): the front page and its guide.
     pub now_page: super::NowPageState,
     /// Messages (`ListMessages`, `GetPerson`): the bands, the person page,
@@ -721,6 +722,7 @@ impl MailboxState {
             owed_page: OwedRepliesPageState::default(),
             desk_page: DeskPageState::default(),
             todo_page: super::TodoPageState::default(),
+            records_page: super::RecordsPageState::default(),
             now_page: super::NowPageState::default(),
             messages_page: super::MessagesPageState::default(),
             rail: None,

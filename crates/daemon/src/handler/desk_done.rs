@@ -532,6 +532,13 @@ pub(super) async fn restore_desk_state(
         .store
         .reopen_ticked_todos(&desk.todos_ticked, Utc::now())
         .await?;
+    let reopened: Vec<String> = desk
+        .todos_ticked
+        .iter()
+        .map(|prior| prior.id.clone())
+        .collect();
+    let reopened = state.store.get_todos(&reopened).await?;
+    super::records::unfile_todos(state, &reopened).await;
     for commitment in &desk.commitments {
         state
             .store

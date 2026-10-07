@@ -294,6 +294,20 @@ function catchupVerb(verb: Verb, key: string): Journey {
   };
 }
 
+/** An Archive verb on the Apple receipt, answered from the ask box, then `u`. */
+function recordVerb(verb: Verb, act: (page: Page) => Promise<void>): Journey {
+  return async (page) => {
+    await openApp(page, "/archive");
+    await page.getByTestId("archive-ask").fill("apple");
+    await expect(page.getByTestId("answer-card")).toContainText("Apple");
+    await page.keyboard.press("Enter");
+    await act(page);
+    await expectToast(page, verb);
+    await page.keyboard.press("u");
+    await expectUndone(page);
+  };
+}
+
 const JOURNEYS: Partial<Record<Verb, Journey>> = {
   archive: rowVerb("archive", ["e"], { leaves: true }),
   "read-and-archive": rowVerb("read-and-archive", ["m"], { leaves: true }),
@@ -573,6 +587,31 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
 
   "todo-keep": catchupVerb("todo-keep", "Enter"),
   "todo-let-go": catchupVerb("todo-let-go", "e"),
+
+  "record-file": async (page) => {
+    await openList(page, "/m/inbox");
+    await mailList(page).focus();
+    await page.keyboard.press("T");
+    const dialog = page.getByTestId("pass-to-mode-dialog");
+    await expect(dialog.getByTestId("file-preview")).toContainText("Would file in Archive");
+    await dialog.getByRole("button", { name: "File in Archive" }).click();
+    await expectToast(page, "record-file");
+    await page.keyboard.press("u");
+    await expectUndone(page);
+  },
+  "record-dismiss": recordVerb("record-dismiss", async (page) => {
+    await page.keyboard.press("X");
+  }),
+  "record-check": recordVerb("record-check", async (page) => {
+    await page.keyboard.press("v");
+  }),
+  "record-fix": recordVerb("record-fix", async (page) => {
+    await page.keyboard.press(",");
+    const dialog = page.getByTestId("record-edit-dialog");
+    await dialog.getByRole("textbox").fill("£3.49");
+    await expect(dialog.getByTestId("record-edit-preview")).toContainText("£3.49");
+    await dialog.getByRole("button", { name: "Save" }).click();
+  }),
 
   pin: async (page) => {
     await withPaperTrailSender(page, async (sender) => {

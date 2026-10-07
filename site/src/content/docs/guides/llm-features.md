@@ -109,6 +109,7 @@ subscription.
 | Delivery confirmation | After sync, for mail the local heuristic shortlisted as shipping | That message's sender, subject and cleaned body |
 | Relationship summaries, commitments, voice matching, answer coverage, briefings, decisions, experts, `mxr ask` | In the background or on demand | Nothing: these are refused for a cloud endpoint unless `llm.allow_cloud_relationship_data = true` |
 | Drafts | When you ask for one | The conversation being drafted. Your other emails and habits only with `llm.allow_cloud_relationship_data = true` |
+| Archive's records and answer box | After sync and on demand | Nothing: records are read by rules and schema.org markup on your machine. Only when no record matches does the answer box fall back to `mxr ask`, under that row's rule |
 
 Prompts that carry mail wrap it as untrusted data and tell the model it is
 not an instruction. Check what the running daemon uses:
@@ -154,7 +155,9 @@ model for everything. None of this is in a release yet.
 - `llm.tiers.smart` will pull out fields that need care, such as the amount
   and deadline of a bill. It only sees mail already in To do, Archive or
   Messages. Without a cloud model it runs locally and marks its fields
-  unchecked.
+  unchecked. Archive ships without it: today its record fields come from
+  schema.org markup and labelled lines, and the smart tier will read record
+  fields the rules miss in a later phase.
 - `escalate`, an optional stronger model on the same provider and key, will
   take over when the smart model's answer fails the check that amounts and
   dates appear word for word in the email.

@@ -6,6 +6,7 @@
 
 import { create } from "zustand";
 
+import type { RecordData, RecordFilter } from "@/features/archive/api";
 import type { MailKind, SweepScope } from "@/features/places/api";
 import type { Todo } from "@/features/todo/api";
 
@@ -53,6 +54,12 @@ export type MailDialog =
   | { kind: "todo-edit"; todo: Todo }
   /** Make a to-do from a conversation (`t`). */
   | { kind: "todo-make"; messageId: string; suggestion: string; subject?: string }
+  /** Archive: fix or confirm a record's fields (`,`). */
+  | { kind: "record-edit"; record: RecordData }
+  /** Archive: preview the export of the records in view, then download it (`E`). */
+  | { kind: "record-export"; account: string | null; filter: RecordFilter }
+  /** Pass a conversation to another mode (`T`): this phase, file it in Archive. */
+  | { kind: "pass-to-mode"; messageId: string; subject?: string }
   /** To do's catch-up: preview letting go of every row, then do exactly that. */
   | { kind: "todo-let-go-all"; account: string | null }
   | {

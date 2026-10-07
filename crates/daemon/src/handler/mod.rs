@@ -55,6 +55,7 @@ mod owed;
 pub(crate) mod places;
 mod platform;
 mod promises;
+pub(crate) mod records;
 mod relationship_profile;
 pub(crate) mod reply_later;
 mod rules;
@@ -371,6 +372,12 @@ pub fn request_lane(req: &Request) -> IpcLane {
         // LLM-bearing operations: variable latency, can hold permits for
         // many seconds while awaiting inference.
         Request::ArchiveAsk { .. }
+        | Request::AnswerFromRecords { fallback: true, .. }
+        | Request::ExportRecords {
+            attachments_dir: Some(_),
+            dry_run: false,
+            ..
+        }
         | Request::CheckDraftSafety { .. }
         | Request::DraftCompose { .. }
         | Request::DraftRefine { .. }
@@ -1337,6 +1344,56 @@ async fn dispatch(
             decision,
             dry_run,
         } => todos::set_catchup(state, account_id.as_ref(), decision, *dry_run).await,
+        Request::ListRecords {
+            account_id,
+            filter,
+            limit,
+            offset,
+        } => records::list_records(state, account_id.as_ref(), filter, *limit, *offset).await,
+        Request::GetRecord { record_id } => records::get_record(state, record_id).await,
+        Request::AnswerFromRecords {
+            query,
+            account_id,
+            fallback,
+            limit,
+        } => records::answer_query(state, query, account_id.as_ref(), *fallback, *limit).await,
+        Request::SetRecordField {
+            record_id,
+            edit,
+            apply_to_sender,
+            dry_run,
+        } => records::set_field(state, record_id, edit, *apply_to_sender, *dry_run).await,
+        Request::DismissRecord {
+            record_ids,
+            restore,
+            dry_run,
+        } => records::dismiss(state, record_ids, *restore, *dry_run).await,
+        Request::FileRecord {
+            message_id,
+            kind,
+            dry_run,
+        } => records::file(state, message_id, *kind, *dry_run).await,
+        Request::SetRecordSender {
+            message_id,
+            verdict,
+            kind,
+            dry_run,
+        } => records::set_sender(state, message_id, verdict.as_deref(), *kind, *dry_run).await,
+        Request::ExportRecords {
+            account_id,
+            filter,
+            attachments_dir,
+            dry_run,
+        } => {
+            records::export_records(
+                state,
+                account_id.as_ref(),
+                filter,
+                attachments_dir.as_deref(),
+                *dry_run,
+            )
+            .await
+        }
         Request::GetModeGuide { mode } => mode_guide::get(state, mode.as_deref()).await,
         Request::SetModeGuideSeen { mode, seen } => mode_guide::set_seen(state, mode, *seen).await,
         Request::GetNow { account_id } => now::get_now(state, account_id.as_ref()).await,
@@ -1850,6 +1907,15 @@ async fn request_account_scope(
             account_id: None, ..
         }
         | Request::GetTodoCatchup { account_id: None }
+        | Request::ListRecords {
+            account_id: None, ..
+        }
+        | Request::AnswerFromRecords {
+            account_id: None, ..
+        }
+        | Request::ExportRecords {
+            account_id: None, ..
+        }
         | Request::GetNow { account_id: None }
         | Request::GetRail { account_id: None }
         | Request::ListMessages {
@@ -1904,9 +1970,21 @@ async fn request_account_scope(
             ..
         }
         | Request::RecordPromise { message_id, .. }
-        | Request::CreateTodo { message_id, .. } => {
+        | Request::CreateTodo { message_id, .. }
+        | Request::FileRecord { message_id, .. }
+        | Request::SetRecordSender { message_id, .. } => {
             envelope_account_scope(state, std::slice::from_ref(message_id)).await
         }
+        Request::GetRecord { record_id } | Request::SetRecordField { record_id, .. } => {
+            records::record_accounts(state, std::slice::from_ref(record_id))
+                .await
+                .map(RequestAccountScope::Accounts)
+                .map_err(|error| error.to_string())
+        }
+        Request::DismissRecord { record_ids, .. } => records::record_accounts(state, record_ids)
+            .await
+            .map(RequestAccountScope::Accounts)
+            .map_err(|error| error.to_string()),
         Request::GetTodo { todo_id }
         | Request::ScheduleTodo { todo_id, .. }
         | Request::UpdateTodo { todo_id, .. } => {
@@ -2209,6 +2287,10 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetTodo { .. }
         | Request::GetTodoCatchup { .. }
         | Request::GetModeGuide { .. }
+        | Request::ListRecords { .. }
+        | Request::GetRecord { .. }
+        | Request::AnswerFromRecords { .. }
+        | Request::ExportRecords { .. }
         | Request::GetNow { .. }
         | Request::GetRail { .. }
         | Request::GetModeMembership { .. }
@@ -2378,6 +2460,10 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::CreateTodo { .. }
         | Request::SetTodoCatchup { .. }
         | Request::SetModeGuideSeen { .. }
+        | Request::SetRecordField { .. }
+        | Request::DismissRecord { .. }
+        | Request::FileRecord { .. }
+        | Request::SetRecordSender { .. }
         | Request::RebuildUserVoice { .. }
         | Request::SetScreenerDecision { .. }
         | Request::ClearScreenerDecision { .. }
@@ -2611,6 +2697,14 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SetTodoCatchup { .. } => "set_todo_catchup",
         Request::GetModeGuide { .. } => "get_mode_guide",
         Request::SetModeGuideSeen { .. } => "set_mode_guide_seen",
+        Request::ListRecords { .. } => "list_records",
+        Request::GetRecord { .. } => "get_record",
+        Request::AnswerFromRecords { .. } => "answer_from_records",
+        Request::SetRecordField { .. } => "set_record_field",
+        Request::DismissRecord { .. } => "dismiss_record",
+        Request::FileRecord { .. } => "file_record",
+        Request::SetRecordSender { .. } => "set_record_sender",
+        Request::ExportRecords { .. } => "export_records",
         Request::GetRecipientBriefing { .. } => "get_recipient_briefing",
         Request::SuggestCollaborators { .. } => "suggest_collaborators",
         Request::FindExpert { .. } => "find_expert",
@@ -3638,6 +3732,38 @@ async fn materialize_attachment_file(
     message_id: &mxr_core::MessageId,
     attachment_id: &mxr_core::AttachmentId,
 ) -> Result<mxr_protocol::AttachmentFile, mxr_core::MxrError> {
+    match materialize_attachment_capped(state, message_id, attachment_id, None).await? {
+        Materialized::Written { file, .. } => Ok(file),
+        Materialized::TooLarge { .. } => Err(mxr_core::MxrError::Provider(
+            "attachment over its size cap".into(),
+        )),
+    }
+}
+
+/// What [`materialize_attachment_capped`] did.
+pub(super) enum Materialized {
+    /// On disk, with the bytes it takes there.
+    Written {
+        file: mxr_protocol::AttachmentFile,
+        bytes: u64,
+    },
+    /// The provider returned more than the cap: nothing was written.
+    TooLarge { bytes: u64 },
+}
+
+/// [`materialize_attachment_file`] with a hard cap on the bytes written:
+/// when the provider returns more than `cap` bytes, nothing is written. A
+/// file already on disk counts its size on disk. The bytes actually written
+/// become the attachment row's size, so a budget sums real bytes.
+///
+/// The provider trait hands back the whole attachment at once, so the cap
+/// bounds disk, not the memory of one fetch.
+pub(super) async fn materialize_attachment_capped(
+    state: &AppState,
+    message_id: &mxr_core::MessageId,
+    attachment_id: &mxr_core::AttachmentId,
+    cap: Option<u64>,
+) -> Result<Materialized, mxr_core::MxrError> {
     let envelope = state
         .store
         .get_envelope(message_id)
@@ -3654,10 +3780,17 @@ async fn materialize_attachment_file(
         .ok_or_else(|| mxr_core::MxrError::NotFound(format!("attachment {attachment_id}")))?;
 
     if let Some(path) = attachment.local_path.as_ref().filter(|path| path.exists()) {
-        return Ok(mxr_protocol::AttachmentFile {
-            attachment_id: attachment.id,
-            filename: attachment.filename,
-            path: path.display().to_string(),
+        let on_disk = tokio::fs::metadata(path)
+            .await
+            .map_err(mxr_core::MxrError::Io)?
+            .len();
+        return Ok(Materialized::Written {
+            file: mxr_protocol::AttachmentFile {
+                attachment_id: attachment.id,
+                filename: attachment.filename,
+                path: path.display().to_string(),
+            },
+            bytes: on_disk,
         });
     }
 
@@ -3667,6 +3800,10 @@ async fn materialize_attachment_file(
     let bytes = provider
         .fetch_attachment(&envelope.provider_id, &attachment.provider_id)
         .await?;
+    let written = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    if cap.is_some_and(|cap| written > cap) {
+        return Ok(Materialized::TooLarge { bytes: written });
+    }
 
     let target_dir = state.attachment_dir().join(message_id.as_str());
     tokio::fs::create_dir_all(&target_dir)
@@ -3675,26 +3812,37 @@ async fn materialize_attachment_file(
 
     let filename = sanitized_attachment_filename(&attachment.filename, &attachment.id);
     let path = target_dir.join(filename);
-    tokio::fs::write(&path, bytes)
-        .await
-        .map_err(mxr_core::MxrError::Io)?;
-    set_private_file_permissions(&path).await?;
+    let saved = async {
+        tokio::fs::write(&path, &bytes)
+            .await
+            .map_err(mxr_core::MxrError::Io)?;
+        set_private_file_permissions(&path).await
+    }
+    .await;
+    if let Err(error) = saved {
+        // A half-written file is never left behind.
+        let _ = tokio::fs::remove_file(&path).await;
+        return Err(error);
+    }
 
     for existing in &mut body.attachments {
         if existing.id == *attachment_id {
             existing.local_path = Some(path.clone());
+            existing.size_bytes = written;
         }
     }
-    state
-        .store
-        .insert_body(&body)
-        .await
-        .map_err(|err| mxr_core::MxrError::Store(err.to_string()))?;
+    if let Err(error) = state.store.insert_body(&body).await {
+        let _ = tokio::fs::remove_file(&path).await;
+        return Err(mxr_core::MxrError::Store(error.to_string()));
+    }
 
-    Ok(mxr_protocol::AttachmentFile {
-        attachment_id: attachment.id,
-        filename: attachment.filename,
-        path: path.display().to_string(),
+    Ok(Materialized::Written {
+        file: mxr_protocol::AttachmentFile {
+            attachment_id: attachment.id,
+            filename: attachment.filename,
+            path: path.display().to_string(),
+        },
+        bytes: written,
     })
 }
 

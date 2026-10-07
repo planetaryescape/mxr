@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{messages_copy, now_copy, todo_copy};
+use super::{archive_copy, messages_copy, now_copy, todo_copy};
 
 /// One key and the verb it does in this mode: "e tick off".
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -205,9 +205,49 @@ pub const MESSAGES_GUIDE: ModeGuideCopy = ModeGuideCopy {
     first_run_line: messages_copy::FIRST_RUN_LINE,
 };
 
+/// Archive's keys. Archive has no done: records stay, so `e` opens the
+/// email the record came from, as `o` does.
+const ARCHIVE_KEYS: &[(&str, &str)] = &[
+    ("/", "ask"),
+    ("y", "copy reference"),
+    ("Y", "copy amount"),
+    ("Enter", "open document"),
+    ("o", "the email"),
+    ("e", "the email"),
+    ("p", "issuer page"),
+    ("[", "previous year"),
+    ("]", "next year"),
+    (",", "fix a field"),
+    ("v", "mark checked"),
+    ("X", "not a record"),
+    ("E", "export"),
+    ("t", "make a to-do"),
+    ("?", "what is this"),
+];
+
+pub const ARCHIVE_GUIDE: ModeGuideCopy = ModeGuideCopy {
+    mode: "archive",
+    name: "Archive",
+    header: archive_copy::HEADER,
+    never_had_any: archive_copy::NEVER_HAD_ANY,
+    add_one: archive_copy::ADD_ONE_KEYS,
+    clear_for_now: archive_copy::CLEAR_FOR_NOW,
+    lands_here: archive_copy::LANDS_HERE,
+    card: archive_copy::CARD,
+    card_keys: &[
+        ("/", "ask"),
+        ("y", "copy reference"),
+        ("Enter", "open document"),
+        ("o", "the email"),
+    ],
+    why_template: "Here because: {evidence} ({source}).",
+    keys: ARCHIVE_KEYS,
+    first_run_line: archive_copy::FIRST_RUN_LINE,
+};
+
 /// Every mode that has shipped, in rail order. Now leads: it is the front
 /// page over the modes.
-pub const MODE_GUIDES: &[ModeGuideCopy] = &[NOW_GUIDE, MESSAGES_GUIDE, TODO_GUIDE];
+pub const MODE_GUIDES: &[ModeGuideCopy] = &[NOW_GUIDE, MESSAGES_GUIDE, TODO_GUIDE, ARCHIVE_GUIDE];
 
 /// The guide for a mode id. Accepts "todo", "to-do" and "to do".
 pub fn mode_guide(mode: &str) -> Option<&'static ModeGuideCopy> {
@@ -285,6 +325,7 @@ mod tests {
         }
         assert_eq!(mode_guide("Now").map(|g| g.mode), Some("now"));
         assert_eq!(mode_guide("messages").map(|g| g.mode), Some("messages"));
+        assert_eq!(mode_guide("Archive").map(|g| g.mode), Some("archive"));
         assert!(mode_guide("updates").is_none());
     }
 

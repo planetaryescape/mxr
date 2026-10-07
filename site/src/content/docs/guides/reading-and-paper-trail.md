@@ -13,6 +13,10 @@ instead:
 | **Reading** | Newsletters and mailing lists. | A feed, newest first, with every issue open. Nothing is bold and nothing counts as unread. |
 | **Paper trail** | Receipts, notifications, alerts and other automated mail. | One line per sender: how many, the newest subject, how long ago. Open a line to see its messages. |
 
+Receipts, orders, bookings and bills that mxr recognises are also filed
+as records in [Archive](/guides/archive/), which keeps them after you sweep
+their emails and answers with the field you need, like an order number.
+
 Both places are views over the inbox. Archiving a message takes it out, and
 undo puts it back. Deliveries and calendar invites have their own pages, so
 they are in neither. Neither place carries a count in the sidebar; the

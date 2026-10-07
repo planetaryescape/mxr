@@ -72,6 +72,15 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Archive',
+          items: [
+            { label: 'Archive', slug: 'guides/archive' },
+            { label: 'Search Workflow', slug: 'guides/search' },
+            { label: 'Semantic Search', slug: 'guides/semantic-search' },
+            { label: 'Archive Intelligence', slug: 'guides/archive-intelligence' },
+          ],
+        },
+        {
           label: 'Daily Use',
           items: [
             { label: 'Mailbox Workflow', slug: 'guides/mailbox' },
@@ -82,7 +91,6 @@ export default defineConfig({
             { label: 'Mail Merge', slug: 'guides/mail-merge' },
             { label: 'Pre-send Safety', slug: 'guides/pre-send-safety' },
             { label: 'Calendar Invites', slug: 'guides/calendar-invites' },
-            { label: 'Search Workflow', slug: 'guides/search' },
             { label: 'Labels and Saved Searches', slug: 'guides/labels-and-saved-searches' },
             { label: 'Sender View', slug: 'guides/sender-view' },
             { label: 'Snippets', slug: 'guides/snippets' },
@@ -97,13 +105,11 @@ export default defineConfig({
           items: [
             { label: 'Automated Follow-ups', slug: 'guides/automated-followups' },
             { label: 'Forgotten Work', slug: 'guides/forgotten-work' },
-            { label: 'Archive Intelligence', slug: 'guides/archive-intelligence' },
             { label: 'Deliveries', slug: 'guides/deliveries' },
             { label: 'Timing and Cadence', slug: 'guides/timing-and-cadence' },
             { label: 'Briefings and Loop-in', slug: 'guides/briefings-and-loop-in' },
             { label: 'Rules', slug: 'guides/rules' },
             { label: 'LLM Features', slug: 'guides/llm-features' },
-            { label: 'Semantic Search', slug: 'guides/semantic-search' },
             { label: 'Analytics', slug: 'guides/analytics' },
             { label: 'Crash-Safe Drafts', slug: 'guides/crash-safe-drafts' },
             { label: 'Activity Log', slug: 'guides/activity-log' },

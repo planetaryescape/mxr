@@ -260,7 +260,12 @@ async fn ticking_off_the_last_mode_archives_and_undo_puts_everything_back() {
     assert_eq!(preview.todos_ticked, vec![todo.clone()]);
     assert!(preview.still_in.is_empty());
     assert_eq!(preview.archived, 1, "Sam's message is the one in the inbox");
-    assert_eq!(preview.copy, "Ticked off. Archived on the mail server.");
+    // A signed lease is a contract: ticking it off files it in Archive,
+    // and the toast keeps that apart from the provider's archive.
+    assert_eq!(
+        preview.copy,
+        "Ticked off. Filed in Archive. Archived on the mail server."
+    );
     assert_eq!(todo_state(&fx, &todo).await, mxr_store::TodoState::Open);
     assert!(in_inbox(&fx, &ask.id).await);
 
@@ -268,7 +273,11 @@ async fn ticking_off_the_last_mode_archives_and_undo_puts_everything_back() {
     assert_eq!(outcome, preview);
     assert_eq!(todo_state(&fx, &todo).await, mxr_store::TodoState::Done);
     assert!(!in_inbox(&fx, &ask.id).await, "the last mode let go");
-    assert!(membership(&fx, &thread).await.modes.is_empty());
+    assert_eq!(
+        modes(&membership(&fx, &thread).await),
+        [ModeKindData::Archive],
+        "the filed contract stays in Archive"
+    );
 
     assert!(matches!(
         request(
@@ -282,6 +291,10 @@ async fn ticking_off_the_last_mode_archives_and_undo_puts_everything_back() {
     ));
     assert_eq!(todo_state(&fx, &todo).await, mxr_store::TodoState::Open);
     assert!(in_inbox(&fx, &ask.id).await);
+    assert!(
+        !modes(&membership(&fx, &thread).await).contains(&ModeKindData::Archive),
+        "undo unfiles what the tick-off filed"
+    );
     let row = fx.state.store.get_todo(&todo).await.unwrap().unwrap();
     assert!(row.done_at.is_none());
 }
@@ -326,6 +339,17 @@ async fn automated_mail_is_in_updates_a_receipt_also_in_archive_and_archive_neve
     )
     .await;
 
+    // Filed as a record (the detector needs a reference or a total, which
+    // this bare test mail lacks, so it is filed by hand).
+    request(
+        &fx,
+        Request::FileRecord {
+            message_id: receipt.id.clone(),
+            kind: Some(mxr_protocol::RecordKindData::Receipt),
+            dry_run: false,
+        },
+    )
+    .await;
     let notification = membership(&fx, &build).await;
     assert_eq!(modes(&notification), [ModeKindData::Updates]);
     assert_eq!(
@@ -340,7 +364,7 @@ async fn automated_mail_is_in_updates_a_receipt_also_in_archive_and_archive_neve
     assert_eq!(record.held_by, [ModeKindData::Updates]);
     assert_eq!(
         record.modes[1].reason,
-        "Here because: looks like a record, \"receipt\" in the subject (rule)."
+        "Here because: you filed it (unchecked)."
     );
 
     // Archive holds records, not the inbox: done in Updates archives.
@@ -490,11 +514,11 @@ async fn the_rail_lists_now_the_modes_and_inbox_with_keys_and_counts() {
     assert_eq!(entry("updates").count, Some(1));
     assert_eq!(entry("reading").count, Some(0));
     assert_eq!(entry("archive").count, None);
-    for id in ["updates", "reading", "archive"] {
+    for id in ["updates", "reading"] {
         assert_eq!(entry(id).status, RailStatusData::Early, "{id}");
         assert!(entry(id).early_note.is_some(), "{id}");
     }
-    for id in ["now", "messages", "todo", "inbox"] {
+    for id in ["now", "messages", "todo", "archive", "inbox"] {
         assert_eq!(entry(id).status, RailStatusData::Built, "{id}");
         assert!(entry(id).header.is_some(), "{id}");
     }

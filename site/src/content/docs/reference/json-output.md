@@ -481,6 +481,114 @@ the exact `text` and `html` parts, `from`, `to`, `subject`, `built_from`,
 `countdown_seconds`, `preview_token` and `preview_expires_at`;
 `sent_message_id` is set only after a real send.
 
+## Archive records
+
+`mxr records --format json` prints the ledger: `total` (every record),
+`matching` (records the filter kept), `records` (this page, newest first),
+`months` (every matching month, newest first, with `count` and one total per
+currency in `totals`), `facets` (`kinds`, `issuers`, `years` as
+`{value, label, count}`, plus `has_pdf`, `checked`, `unchecked`),
+`coming_up`, `filter`, and when they apply `issuer`, `empty_state` and
+`first_run`. `--format jsonl` prints one record per line.
+
+A record (trimmed, from the demo mailbox):
+
+```json
+{
+  "id": "rec_082186e6215c42bfbe4c7ac3eaa682ef",
+  "kind": "order",
+  "kind_label": "Order",
+  "issuer": "Amazon.com",
+  "title": "Delivered Amazon.com package",
+  "reference": "112-7480913-6624530",
+  "reference_label": "Order",
+  "date": "2026-10-06T12:00:00Z",
+  "checked": false,
+  "unchecked_fields": ["delivered_at", "issued_at"],
+  "stage_line": "shipped · delivered 7 Oct",
+  "document_count": 0,
+  "source_count": 3,
+  "why": "Here because: \"delivered:\" in the subject (unchecked).",
+  "origin": "rule",
+  "fields": [
+    {
+      "field": "delivered_at",
+      "label": "Delivered",
+      "value": "Wed 7 Oct 2026 06:12",
+      "copy": "Wed 7 Oct 2026 06:12",
+      "source": "delivery",
+      "source_label": "the delivery tracker",
+      "checked": false,
+      "evidence": "the delivery tracker",
+      "message_id": "b5a7c90b-10e9-5738-9799-27cf1ea28172"
+    }
+  ]
+}
+```
+
+`amount` is `{minor, currency, display}` when the record has one; `date` is
+the transaction's date, else the newest email's. A date with no time of
+day is stored at 12:00 UTC so it reads as the same day everywhere. Each
+entry in `fields` is the winning value of one field: `source` is `schema`,
+`rule`, `delivery`, `todo` or `user`, and `checked` is false for an amount or
+date nobody has confirmed. `mxr records show` adds `documents`, `sources`
+(the emails, with their `stage`) and `issuer_records`. `group` is the trip
+or series (`{id, kind, title, count, span_start, span_end}`).
+
+`mxr records ask "lisbon booking ref" --format json`:
+
+```json
+{
+  "query": "lisbon booking ref",
+  "asked": "reference",
+  "answer": {
+    "field": "reference",
+    "label": "Booking ref",
+    "value": "K7QX2M",
+    "copy": "K7QX2M",
+    "provenance": {
+      "field": "reference",
+      "source": "schema",
+      "source_label": "schema.org markup",
+      "checked": true,
+      "evidence": "K7QX2M"
+    },
+    "record": { "id": "rec_810960585d424fdf92aeefce6680819a", "kind": "booking" }
+  },
+  "also": [{ "id": "rec_dde42d9377554b539e34762a1fd18d2e" }]
+}
+```
+
+`asked` is `reference`, `amount`, `date`, `document` or `any`. With no
+match, `answer` is absent and `fallback` carries `note` and `mxr ask`'s
+`answer` (or `error`). `--format ids` prints the answer's `copy` value
+alone, ready for a pipe.
+
+`mxr records export --csv --dry-run --format json` reports what an export
+would write, from the same rows:
+
+```json
+{
+  "dry_run": true,
+  "rows": 7,
+  "totals": [{ "minor": 172966, "currency": "GBP", "display": "£1,729.66" }],
+  "unchecked": 7,
+  "missing_pdfs": 4,
+  "by_kind": [
+    { "value": "invoice", "label": "Invoice", "count": 1 },
+    { "value": "receipt", "label": "Receipt", "count": 2 },
+    { "value": "statement", "label": "Statement", "count": 4 }
+  ],
+  "summary": "7 records, £1,729.66. 7 have an unchecked amount or date; 4 have no PDF.",
+  "pdfs_copied": 0
+}
+```
+
+`mxr records fix`, `dismiss`, `file` and `sender` print a change:
+`{dry_run, action, records, message, undo?}`, where `message` is the toast
+("Filed in Archive.") and `undo` says how to reverse it (`restore`,
+`dismiss`, `clear_fields` or `sender`, with `record_ids` and `fields`).
+
 ## Common `jq` patterns
 
 ```bash
@@ -502,6 +610,12 @@ mxr search 'has:attachment' --limit 200 --format json \
 
 # IDs from attachment-bearing matches
 mxr search 'has:attachment older_than:30d' --format ids
+
+# Copy a booking reference
+mxr records ask "lisbon booking ref" --format ids | pbcopy
+
+# Records with an unchecked amount, before an export
+mxr records list --unchecked --format jsonl | jq -r 'select(.unchecked_fields | index("amount")) | .id'
 
 # Invite IDs to inspect before replying
 mxr search 'has:calendar newer_than:30d' --format ids \

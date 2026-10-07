@@ -262,6 +262,9 @@ struct IndexJobInner {
 struct ChunkPreparationInput {
     envelope: Envelope,
     body: Option<MessageBody>,
+    /// Archive's recipe: the fields of the record this message is a source
+    /// of, as one line. Exact identifiers in it stay on BM25 too.
+    record_fields: Option<String>,
 }
 
 #[cfg(feature = "local")]
@@ -1257,7 +1260,16 @@ impl SemanticEngine {
             return Ok(None);
         };
         let body = self.store.get_body(message_id).await?;
-        Ok(Some(ChunkPreparationInput { envelope, body }))
+        let record_fields = self
+            .store
+            .record_field_text_for_messages(std::slice::from_ref(message_id))
+            .await?
+            .remove(message_id);
+        Ok(Some(ChunkPreparationInput {
+            envelope,
+            body,
+            record_fields,
+        }))
     }
 
     async fn embed_texts(
@@ -1534,9 +1546,22 @@ fn semantic_chunk_id(
 fn build_chunk_records(
     envelope: &Envelope,
     body: Option<&MessageBody>,
+    record_fields: Option<&str>,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Vec<SemanticChunkRecord> {
-    let chunks = build_chunks(envelope, body);
+    let mut chunks = build_chunks(envelope, body);
+    // Archive's recipe adds one field chunk beside the header; the PDF text
+    // already comes in as attachment text once the PDF is on disk.
+    if let Some(line) = record_fields
+        .map(normalize_text)
+        .filter(|line| !line.is_empty())
+    {
+        let at = chunks
+            .iter()
+            .position(|(kind, _)| *kind != SemanticChunkSourceKind::Header)
+            .unwrap_or(chunks.len());
+        chunks.insert(at, (SemanticChunkSourceKind::Header, line));
+    }
     let mut chunk_records = Vec::with_capacity(chunks.len());
 
     for (index, (source_kind, normalized)) in chunks.into_iter().enumerate() {
@@ -1564,7 +1589,12 @@ fn build_message_chunk_batch(
 ) -> MessageChunkBatch {
     let started_at = Instant::now();
     let message_id = input.envelope.id.clone();
-    let chunks = build_chunk_records(&input.envelope, input.body.as_ref(), now);
+    let chunks = build_chunk_records(
+        &input.envelope,
+        input.body.as_ref(),
+        input.record_fields.as_deref(),
+        now,
+    );
     tracing::trace!(
         %message_id,
         elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
@@ -2799,6 +2829,26 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].source_kind, SemanticChunkSourceKind::Body);
         assert_eq!(hits[0].message_id, envelope.id);
+    }
+
+    #[test]
+    fn a_record_adds_one_field_chunk_after_the_header() {
+        let account = test_account();
+        let envelope = test_envelope(&account.id);
+        let plain = build_chunk_records(&envelope, None, None, chrono::Utc::now());
+        let with_record = build_chunk_records(
+            &envelope,
+            None,
+            Some("record booking TAP Air Portugal LHR -> LIS K7QX2M Lisbon"),
+            chrono::Utc::now(),
+        );
+        assert_eq!(with_record.len(), plain.len() + 1);
+        let field = with_record
+            .iter()
+            .find(|chunk| chunk.normalized.contains("k7qx2m"))
+            .expect("field chunk");
+        assert_eq!(field.source_kind, SemanticChunkSourceKind::Header);
+        assert_eq!(field.ordinal, 1);
     }
 
     #[test]

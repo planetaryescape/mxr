@@ -87,7 +87,9 @@ use utoipa::{
         mail_todos_catchup_get, mail_todos_catchup_set, mail_mode_guide, mail_mode_card,
         mail_now, mail_rail, mail_mode_membership_get, mail_mode_membership_post, mail_mode_done,
         mail_people, mail_people_page, mail_people_ack, mail_people_merge, mail_people_split,
-        mail_people_merge_suggestions
+        mail_people_merge_suggestions,
+        mail_records_ledger, mail_records_answer, mail_record_get, mail_record_field,
+        mail_records_dismiss, mail_records_file, mail_records_sender, mail_records_export
     ),
     components(schemas(
         Request,
@@ -112,6 +114,11 @@ use utoipa::{
         crate::messages_routes::AckBody,
         crate::messages_routes::MergeBody,
         crate::messages_routes::SplitBody,
+        crate::record_routes::RecordFieldBody,
+        crate::record_routes::RecordDismissBody,
+        crate::record_routes::RecordFileBody,
+        crate::record_routes::RecordSenderBody,
+        crate::record_routes::RecordExportBody,
     )),
     modifiers(&BearerSecurity),
     security(("bearer" = []))
@@ -683,6 +690,133 @@ fn mail_people_split() {}
 )]
 #[allow(dead_code)]
 fn mail_people_merge_suggestions() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/records",
+    summary = "Archive's ledger: records by month with counts, totals, facets and what is coming up",
+    params(
+        ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
+        ("kind" = Option<String>, Query, description = "Comma-separated kinds: receipt, order, booking, invoice, statement, ticket, contract, warranty, account"),
+        ("issuer" = Option<String>, Query, description = "One issuer: the issuer page"),
+        ("year" = Option<i32>, Query, description = "By the transaction's date"),
+        ("min_amount_minor" = Option<i64>, Query, description = "At least this, in minor units"),
+        ("max_amount_minor" = Option<i64>, Query, description = "At most this, in minor units"),
+        ("has_pdf" = Option<bool>, Query, description = "With or without a PDF"),
+        ("checked" = Option<bool>, Query, description = "Every amount and date confirmed, or not"),
+        ("group" = Option<String>, Query, description = "One trip or series"),
+        ("limit" = Option<u32>, Query, description = "Rows on this page (default 200)"),
+        ("offset" = Option<u32>, Query, description = "Rows to skip"),
+    ),
+    responses(
+        (status = 200, description = "The `RecordLedger` variant", body = ResponseData),
+        (status = 400, description = "Unknown kind"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_records_ledger() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/records/answer",
+    summary = "The answer box: the field a query asks for from record fields, with no model; falls back to mxr ask only when no record matches",
+    params(
+        ("q" = String, Query, description = "What you remember: \"lisbon booking ref\""),
+        ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
+        ("fallback" = Option<bool>, Query, description = "Fall back to mxr ask over all mail (default true)"),
+        ("limit" = Option<u32>, Query, description = "Records in \"also matching\" (default 4)"),
+    ),
+    responses(
+        (status = 200, description = "The `RecordAnswer` variant", body = ResponseData),
+        (status = 400, description = "Empty query"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_records_answer() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/records/{record_id}",
+    summary = "One record's card: every field with where it came from, its documents and source emails",
+    params(("record_id" = String, Path, description = "A full id or a unique prefix")),
+    responses(
+        (status = 200, description = "The `Record` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_record_get() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/records/{record_id}/field",
+    summary = "Fix, confirm or clear a record field, or mark the card checked (dry_run previews)",
+    params(("record_id" = String, Path, description = "A full id or a unique prefix")),
+    request_body = crate::record_routes::RecordFieldBody,
+    responses(
+        (status = 200, description = "The `RecordChange` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_record_field() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/records/dismiss",
+    summary = "Not a record, or back again; the email is never touched (dry_run previews)",
+    request_body = crate::record_routes::RecordDismissBody,
+    responses(
+        (status = 200, description = "The `RecordChange` variant", body = ResponseData),
+        (status = 400, description = "No record ids"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_records_dismiss() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/records/file",
+    summary = "File an email as a record yourself (dry_run returns the card it would file)",
+    request_body = crate::record_routes::RecordFileBody,
+    responses(
+        (status = 200, description = "The `RecordChange` variant", body = ResponseData),
+        (status = 400, description = "Invalid message id"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_records_file() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/records/sender",
+    summary = "Always or never file a sender's mail (dry_run previews)",
+    request_body = crate::record_routes::RecordSenderBody,
+    responses(
+        (status = 200, description = "The `RecordChange` variant", body = ResponseData),
+        (status = 400, description = "Invalid message id or verdict"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_records_sender() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/records/export",
+    summary = "Export records as CSV, and PDFs to a folder; dry_run returns the row count, totals, unchecked rows and missing PDFs for the same rows",
+    request_body = crate::record_routes::RecordExportBody,
+    responses(
+        (status = 200, description = "The `RecordExport` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_records_export() {}
 
 #[utoipa::path(
     post,

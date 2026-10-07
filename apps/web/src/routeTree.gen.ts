@@ -39,6 +39,7 @@ import { Route as TodoRouteImport } from './routes/todo'
 import { Route as UpdatesRouteImport } from './routes/updates'
 import { Route as AccountsKeyRouteImport } from './routes/accounts.$key'
 import { Route as AnalyticsDashboardRouteImport } from './routes/analytics.$dashboard'
+import { Route as ArchiveThreadIdRouteImport } from './routes/archive.$threadId'
 import { Route as ComposeDraftIdRouteImport } from './routes/compose.$draftId'
 import { Route as ComposeNewRouteImport } from './routes/compose.new'
 import { Route as DeskThreadIdRouteImport } from './routes/desk.$threadId'
@@ -211,6 +212,11 @@ const AnalyticsDashboardRoute = AnalyticsDashboardRouteImport.update({
   path: '/$dashboard',
   getParentRoute: () => AnalyticsRoute,
 } as any)
+const ArchiveThreadIdRoute = ArchiveThreadIdRouteImport.update({
+  id: '/$threadId',
+  path: '/$threadId',
+  getParentRoute: () => ArchiveRoute,
+} as any)
 const ComposeDraftIdRoute = ComposeDraftIdRouteImport.update({
   id: '/compose/$draftId',
   path: '/compose/$draftId',
@@ -322,7 +328,7 @@ export interface FileRoutesByFullPath {
   '/accounts': typeof AccountsRouteWithChildren
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
-  '/archive': typeof ArchiveRoute
+  '/archive': typeof ArchiveRouteWithChildren
   '/deliveries': typeof DeliveriesRoute
   '/desk': typeof DeskRouteWithChildren
   '/dev': typeof DevRoute
@@ -348,6 +354,7 @@ export interface FileRoutesByFullPath {
   '/updates': typeof UpdatesRouteWithChildren
   '/accounts/$key': typeof AccountsKeyRoute
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
+  '/archive/$threadId': typeof ArchiveThreadIdRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
   '/compose/new': typeof ComposeNewRoute
   '/desk/$threadId': typeof DeskThreadIdRoute
@@ -375,7 +382,7 @@ export interface FileRoutesByTo {
   '/accounts': typeof AccountsRouteWithChildren
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
-  '/archive': typeof ArchiveRoute
+  '/archive': typeof ArchiveRouteWithChildren
   '/deliveries': typeof DeliveriesRoute
   '/desk': typeof DeskRouteWithChildren
   '/dev': typeof DevRoute
@@ -401,6 +408,7 @@ export interface FileRoutesByTo {
   '/updates': typeof UpdatesRouteWithChildren
   '/accounts/$key': typeof AccountsKeyRoute
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
+  '/archive/$threadId': typeof ArchiveThreadIdRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
   '/compose/new': typeof ComposeNewRoute
   '/desk/$threadId': typeof DeskThreadIdRoute
@@ -429,7 +437,7 @@ export interface FileRoutesById {
   '/accounts': typeof AccountsRouteWithChildren
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
-  '/archive': typeof ArchiveRoute
+  '/archive': typeof ArchiveRouteWithChildren
   '/deliveries': typeof DeliveriesRoute
   '/desk': typeof DeskRouteWithChildren
   '/dev': typeof DevRoute
@@ -455,6 +463,7 @@ export interface FileRoutesById {
   '/updates': typeof UpdatesRouteWithChildren
   '/accounts/$key': typeof AccountsKeyRoute
   '/analytics/$dashboard': typeof AnalyticsDashboardRoute
+  '/archive/$threadId': typeof ArchiveThreadIdRoute
   '/compose/$draftId': typeof ComposeDraftIdRoute
   '/compose/new': typeof ComposeNewRoute
   '/desk/$threadId': typeof DeskThreadIdRoute
@@ -510,6 +519,7 @@ export interface FileRouteTypes {
     | '/updates'
     | '/accounts/$key'
     | '/analytics/$dashboard'
+    | '/archive/$threadId'
     | '/compose/$draftId'
     | '/compose/new'
     | '/desk/$threadId'
@@ -563,6 +573,7 @@ export interface FileRouteTypes {
     | '/updates'
     | '/accounts/$key'
     | '/analytics/$dashboard'
+    | '/archive/$threadId'
     | '/compose/$draftId'
     | '/compose/new'
     | '/desk/$threadId'
@@ -616,6 +627,7 @@ export interface FileRouteTypes {
     | '/updates'
     | '/accounts/$key'
     | '/analytics/$dashboard'
+    | '/archive/$threadId'
     | '/compose/$draftId'
     | '/compose/new'
     | '/desk/$threadId'
@@ -644,7 +656,7 @@ export interface RootRouteChildren {
   AccountsRoute: typeof AccountsRouteWithChildren
   ActivityRoute: typeof ActivityRoute
   AnalyticsRoute: typeof AnalyticsRouteWithChildren
-  ArchiveRoute: typeof ArchiveRoute
+  ArchiveRoute: typeof ArchiveRouteWithChildren
   DeliveriesRoute: typeof DeliveriesRoute
   DeskRoute: typeof DeskRouteWithChildren
   DevRoute: typeof DevRoute
@@ -889,6 +901,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AnalyticsDashboardRouteImport
       parentRoute: typeof AnalyticsRoute
     }
+    '/archive/$threadId': {
+      id: '/archive/$threadId'
+      path: '/$threadId'
+      fullPath: '/archive/$threadId'
+      preLoaderRoute: typeof ArchiveThreadIdRouteImport
+      parentRoute: typeof ArchiveRoute
+    }
     '/compose/$draftId': {
       id: '/compose/$draftId'
       path: '/compose/$draftId'
@@ -1063,6 +1082,17 @@ const AnalyticsRouteWithChildren = AnalyticsRoute._addFileChildren(
   AnalyticsRouteChildren,
 )
 
+interface ArchiveRouteChildren {
+  ArchiveThreadIdRoute: typeof ArchiveThreadIdRoute
+}
+
+const ArchiveRouteChildren: ArchiveRouteChildren = {
+  ArchiveThreadIdRoute: ArchiveThreadIdRoute,
+}
+
+const ArchiveRouteWithChildren =
+  ArchiveRoute._addFileChildren(ArchiveRouteChildren)
+
 interface DeskRouteChildren {
   DeskThreadIdRoute: typeof DeskThreadIdRoute
 }
@@ -1224,7 +1254,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountsRoute: AccountsRouteWithChildren,
   ActivityRoute: ActivityRoute,
   AnalyticsRoute: AnalyticsRouteWithChildren,
-  ArchiveRoute: ArchiveRoute,
+  ArchiveRoute: ArchiveRouteWithChildren,
   DeliveriesRoute: DeliveriesRoute,
   DeskRoute: DeskRouteWithChildren,
   DevRoute: DevRoute,

@@ -91,9 +91,9 @@ in a release yet; the rest exist today.
 
 **Mode**: one of the five jobs email does, each with its own view, unit and
 verbs: Messages, To do, Updates, Reading and Archive. One email can be in
-several modes at once; `mxr modes why` says which and why. Messages and To
-do are built; Updates and Reading are early versions on Paper trail and the
-Reading place; Archive's records are coming.
+several modes at once; `mxr modes why` says which and why. Messages, To do
+and Archive are built; Updates and Reading are early versions on Paper trail
+and the Reading place.
 
 **Messages**: the mode for people you are in conversation with (`mxr
 messages`, `g m`). One row per person, merged across their addresses, with
@@ -128,9 +128,11 @@ is Paper trail; the briefing by source in fixed digests is planned.
 **Reading** (early version): the mode for newsletters and posts you chose
 (`g r`), today the Reading place. The Later shelf is planned.
 
-**Archive** (mode, planned): records such as receipts, orders and bookings,
-with an answer box that returns the field you asked for. Not the same as
-the archive action, which removes mail from your provider's inbox.
+**Archive** (mode): records such as receipts, orders and bookings, with an
+answer box that returns the field you asked for (`mxr records`, `g e`). Not
+the same as the archive action, which removes mail from your provider's
+inbox: toasts say "Filed in Archive" for a record and "Archived in Gmail"
+for the provider action. See [Archive](/guides/archive/).
 
 **Now**: the front page across the modes, at most ten items in four fixed
 sections (`mxr now`, `g h`). See [Start from Now](/guides/now/).
@@ -145,9 +147,10 @@ it done there, so it never vanishes from every mode.
 **Inbox**: everything, in arrival order. Under the modes plan it stays as
 a lens over all mail, not a mode.
 
-**Handoff** (planned): passing an item from one mode to the next, such as
-making a to-do from a message (`t`) or letting a delivered parcel's order
-file itself in Archive. The toast names where the item went.
+**Handoff**: passing an item from one mode to the next, such as making a
+to-do from a message (`t`), filing an email in Archive (`T`), or a ticked-off
+bill or a delivered parcel's order filing itself in Archive. The toast names
+where the item went.
 
 **Done here**: finishing an item in one mode without clearing it from the
 others (`e`, `mxr modes done`). The provider archive happens when the last
@@ -172,9 +175,9 @@ amount and deadline from a bill. It sees only mail already placed in To
 do, Archive or Messages. Can step up (**escalate**) to a stronger model
 when its answer fails the check that amounts and dates appear verbatim.
 
-**Index recipe** (planned): what each mode indexes for semantic search,
-such as one fact per Updates message or each message's new text in
-Messages. Today one recipe covers all mail.
+**Index recipe**: what each mode indexes for semantic search. Archive's
+ships: one field chunk per record email plus its PDF text. The other modes'
+recipes, such as one fact per Updates message, are planned.
 
 **Let go** (planned): Updates' and Reading's word for done. Letting go of
 a digest acts on exactly the set the preview listed.
@@ -183,8 +186,17 @@ a digest acts on exactly the set the preview listed.
 date, such as three working days before a bill paid by bank transfer.
 To do surfaces an item ahead of its act-by date, not its due date.
 
-**Record** (planned): Archive's unit, built from one or more emails: an
-order's confirmation, dispatch and delivery are one record.
+**Record**: Archive's unit, built from one or more emails: an order's
+confirmation, dispatch and delivery are one record. Kinds: receipt, order,
+booking, invoice, statement, ticket, contract, warranty and account.
+
+**Trip** and **series**: records grouped by Archive. A trip is bookings
+whose dates overlap or come within a day of each other; a series is
+receipts or bills from one issuer in at least three different months.
+
+**Checked**: a record whose every amount and date came from schema.org
+markup or from you. A value read by a rule shows an open dot until you
+confirm it (`v`, `,`, `mxr records fix --confirm`).
 
 ## Pre-send safety
 

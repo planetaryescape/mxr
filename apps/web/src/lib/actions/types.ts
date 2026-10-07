@@ -49,7 +49,8 @@ export type ActionScope =
   | "catchup"
   | "expired"
   | "now"
-  | "messages";
+  | "messages"
+  | "archive";
 
 export interface ActionContext {
   path: string;

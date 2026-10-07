@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Not a record: take records out of Archive. The emails are untouched and they are never filed again
+
+Usage: mxr records dismiss [OPTIONS] <RECORD_ID>...
+
+Arguments:
+  <RECORD_ID>...
+
+Options:
+      --restore            Bring dismissed records back
+      --dry-run
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

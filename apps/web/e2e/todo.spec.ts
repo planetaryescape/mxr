@@ -88,9 +88,11 @@ test("e ticks off, and u brings it back", async ({ page }) => {
   await expect(spotify).toHaveAttribute("aria-current", "true");
   await page.keyboard.press("e");
   // Done in To do, so the toast says where the email still is, or that it
-  // was archived.
+  // was archived; a failed payment fixed files its record in Archive first.
   await expect(
-    page.locator("[data-sonner-toast]").filter({ hasText: /^Ticked off\. (Still in|Archived)/ }),
+    page
+      .locator("[data-sonner-toast]")
+      .filter({ hasText: /^Ticked off\. (Filed in Archive\. )?(Still in|Archived)/ }),
   ).toBeVisible();
   await expect(spotify).toHaveCount(0);
   await expect(page.getByTestId("done-toggle")).toContainText("Done this week");
@@ -115,7 +117,8 @@ test("an invite for an event that already happened never shows", async ({ page }
   await expect(row(page, "Fix payment for Spotify")).toBeVisible();
   await expect(page.getByText(/leaving drinks/i)).toHaveCount(0);
   await openApp(page, "/todo?view=catchup");
-  await expect(page.getByText("Already over, so not shown: 1 past invite.")).toBeVisible();
+  // The demo's old bills are over too; the invite is the one this test is about.
+  await expect(page.getByText(/^Already over, so not shown: .*1 past invite\.$/)).toBeVisible();
   await expect(page.getByText(/leaving drinks/i)).toHaveCount(0);
 });
 

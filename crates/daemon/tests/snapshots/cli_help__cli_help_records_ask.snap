@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Ask for a field: "lisbon booking ref", "dell receipt 2025". Falls back to `mxr ask` over all mail only when no record matches
+
+Usage: mxr records ask [OPTIONS] <QUERY>
+
+Arguments:
+  <QUERY>
+
+Options:
+      --no-fallback        Don't fall back to `mxr ask` when no record matches
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

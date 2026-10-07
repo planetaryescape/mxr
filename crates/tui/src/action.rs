@@ -165,6 +165,40 @@ pub enum Action {
     CatchupLetGoAll,
     /// `t` on a conversation: make a to-do from it.
     CreateTodoFromMessage,
+    /// Archive `/`: type into the answer box.
+    RecordsAsk,
+    /// Archive `y`: copy the record's reference.
+    RecordsCopyReference,
+    /// Archive `Y`: copy the record's amount.
+    RecordsCopyAmount,
+    /// Archive Enter: open the record's PDF, else its card.
+    RecordsOpenDocument,
+    /// Archive Right: the record's whole card, every field and source.
+    RecordsOpenCard,
+    /// Archive `o` and `e`: open the email the record came from.
+    RecordsOpenEmail,
+    /// Archive `p`: every record from this issuer.
+    RecordsIssuerPage,
+    /// Archive `[`: the year before.
+    RecordsPrevYear,
+    /// Archive `]`: the year after.
+    RecordsNextYear,
+    /// Archive `,`: fix a field as `field=value`, previewed first.
+    RecordsFix,
+    /// Archive `v`: confirm every unchecked amount and date.
+    RecordsMarkChecked,
+    /// Archive `X`: not a record. The email is untouched.
+    RecordsDismiss,
+    /// Archive `E`: preview the CSV export, then write it.
+    RecordsExport,
+    /// Archive `g f`: the next kind chip.
+    RecordsNextKind,
+    /// Archive `t`: make a to-do from the record's email.
+    RecordsMakeTodo,
+    /// Archive Esc: close the card, the answer or the issuer page.
+    RecordsBack,
+    /// `T` on a conversation: pass it to a mode (Archive, this phase).
+    PassToMode,
     GoToLabel,
     // Command palette
     OpenCommandPalette,

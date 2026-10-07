@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { accountsActions } from "@/features/accounts/actions";
 import { analyticsActions } from "@/features/analytics/actions";
+import { archiveActions } from "@/features/archive/actions";
 import { askActions } from "@/features/ask/actions";
 import { composeActions } from "@/features/compose/actions";
 import { diagnosticsActions } from "@/features/diagnostics/actions";
@@ -62,6 +63,7 @@ const featureActions: Action[] = [
   ...focusActions,
   ...placeActions,
   ...todoActions,
+  ...archiveActions,
   ...nowActions,
   ...messagesActions,
   ...diagnosticsActions,

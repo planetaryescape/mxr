@@ -873,6 +873,10 @@ use the demo mailbox. Dates and counts are filled in by code.
   email
 - Why line: "Here because: order confirmation with schema.org markup
   (checked). Return window closes Fri 12."
+- Shipped with two revisions (phase 6): the clear state is "Records stay.
+  Ask for one, or browse by month." because the guide table needs a line,
+  and the add-one line is "Press `T` on any email and pick Archive to file
+  it yourself." (see the phase 6 decisions below).
 
 **Inbox** (a lens, not a mode) gets a header only: "Everything, newest
 first. The modes hold the same mail, sorted."
@@ -1526,6 +1530,24 @@ to BM25.
 - **Tests:** detector and field fixtures per source;
   `handler/tests/records.rs` (correction wins forever, preview equals
   file); `e2e/archive.spec.ts`; per-field precision in `mxr modes eval`.
+- **Decisions made while building it:**
+  - Filing an email by hand is `T` (pass to a mode, then Archive), not `F`
+    as the research note had it. `F` is the full-width reader in both
+    clients, and `T` is this plan's key for passing an item to another
+    mode, so the one key grows a menu as later phases add destinations.
+  - In Archive, `e` opens the email, the same as `o`. Archive has no done,
+    so `e` has nothing else to mean there, and the research note used `e`
+    for the email.
+  - `v` marks a card checked as a shortcut beside `,`, which also confirms
+    one field at a time. The key map folded the research's `v` into `,`;
+    confirming every unchecked amount and date at once is the common case
+    after reading the card, so it keeps its own key.
+  - An account, customer or policy number names the account, not one bill,
+    so it doesn't merge bills: each bill stays a record and three months
+    of them from one issuer form a series.
+  - Smart-tier record fields and `mxr modes eval --extract` for records
+    are not in this phase: rules and schema.org only, with every rule's
+    amount and date unchecked until the user confirms it.
 
 ### Phase 7: Fast-tier classification for what rules can't tell, measured
 

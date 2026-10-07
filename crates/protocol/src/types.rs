@@ -11,6 +11,7 @@ mod now;
 mod places;
 mod platform;
 mod promises;
+mod records;
 mod thread_context;
 mod todos;
 pub use desk::*;
@@ -22,6 +23,7 @@ pub use now::*;
 pub use places::*;
 pub use platform::*;
 pub use promises::*;
+pub use records::*;
 pub use thread_context::*;
 pub use todos::*;
 
@@ -97,6 +99,14 @@ fn default_messages_limit() -> u32 {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_record_limit() -> u32 {
+    200
+}
+
+fn default_answer_limit() -> u32 {
+    4
 }
 
 fn default_place_messages_per_bundle() -> u32 {
@@ -1860,6 +1870,100 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         account_id: Option<AccountId>,
     },
+    // ----- Archive -----
+    /// Archive's ledger: records newest first by transaction date, one page
+    /// of `limit` from `offset`, with month counts and totals, facet counts
+    /// and the "coming up" strip over every matching record. Local reads
+    /// only. Returns `ResponseData::RecordLedger`.
+    ListRecords {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default)]
+        filter: RecordFilterData,
+        #[serde(default = "default_record_limit")]
+        limit: u32,
+        #[serde(default)]
+        offset: u32,
+    },
+    /// One record's card: every field with its provenance, its documents
+    /// and its source emails. Takes a full id or a unique prefix. Returns
+    /// `ResponseData::Record`.
+    GetRecord {
+        record_id: String,
+    },
+    /// The answer box. A query that matches record fields returns the field
+    /// asked for, with no model; only when no record matches does it fall
+    /// back to `ArchiveAsk` (when `fallback`), and says so. Returns
+    /// `ResponseData::RecordAnswer`.
+    AnswerFromRecords {
+        query: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default = "default_true")]
+        fallback: bool,
+        /// Records in "also matching" after the answer.
+        #[serde(default = "default_answer_limit")]
+        limit: u32,
+    },
+    /// Correct a record's field, confirm it, or confirm the whole card. A
+    /// correction is yours from then on and wins over every re-run.
+    /// `apply_to_sender` with an issuer name renames this sender's issuer
+    /// on every record, now and later. Returns `ResponseData::RecordChange`.
+    SetRecordField {
+        record_id: String,
+        edit: RecordEditData,
+        #[serde(default)]
+        apply_to_sender: bool,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// "Not a record" (or back again with `restore`). The email is never
+    /// touched, and a dismissed record is never filed again. Returns
+    /// `ResponseData::RecordChange`.
+    DismissRecord {
+        record_ids: Vec<String>,
+        #[serde(default)]
+        restore: bool,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// File an email as a record by hand, as `kind` when given. The dry run
+    /// returns the card that would be filed, from the same plan the real
+    /// filing writes. Returns `ResponseData::RecordChange`.
+    FileRecord {
+        message_id: MessageId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<RecordKindData>,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Always or never file mail from this message's sender (`verdict:
+    /// None` clears it). "Always" also files the sender's mail already
+    /// here. Returns `ResponseData::RecordChange`.
+    SetRecordSender {
+        message_id: MessageId,
+        /// always | never
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        verdict: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<RecordKindData>,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Export the matching records as CSV, and their PDFs to
+    /// `attachments_dir` when given. The dry run reports the row count,
+    /// totals, unchecked rows and missing PDFs for the same rows. Returns
+    /// `ResponseData::RecordExport`.
+    ExportRecords {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default)]
+        filter: RecordFilterData,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        attachments_dir: Option<String>,
+        #[serde(default)]
+        dry_run: bool,
+    },
     /// A place (Reading or Paper trail): inbox mail of that kind grouped by
     /// sender, newest bundle first, each with the reason it is there.
     /// `account_id: None` covers every enabled account.
@@ -2115,6 +2219,14 @@ impl Request {
             | Self::MergePeople { .. }
             | Self::SplitPerson { .. }
             | Self::ListMergeSuggestions { .. }
+            | Self::ListRecords { .. }
+            | Self::GetRecord { .. }
+            | Self::AnswerFromRecords { .. }
+            | Self::SetRecordField { .. }
+            | Self::DismissRecord { .. }
+            | Self::FileRecord { .. }
+            | Self::SetRecordSender { .. }
+            | Self::ExportRecords { .. }
             | Self::GetRecipientBriefing { .. }
             | Self::SuggestCollaborators { .. }
             | Self::FindExpert { .. }
@@ -3110,6 +3222,26 @@ pub enum ResponseData {
     },
     /// Returned by `Request::SetModeDone`, one outcome per thread in
     /// request order. `mutation_id` undoes the whole run.
+    /// Returned by `Request::ListRecords`.
+    RecordLedger {
+        ledger: RecordLedgerData,
+    },
+    /// Returned by `Request::GetRecord`.
+    Record {
+        record: RecordData,
+    },
+    /// Returned by `Request::AnswerFromRecords`.
+    RecordAnswer {
+        answer: RecordAnswerData,
+    },
+    /// Returned by the record mutations.
+    RecordChange {
+        change: RecordChangeData,
+    },
+    /// Returned by `Request::ExportRecords`.
+    RecordExport {
+        export: RecordExportData,
+    },
     ModeDone {
         items: Vec<ModeDoneOutcomeData>,
         dry_run: bool,
@@ -3332,6 +3464,11 @@ impl ResponseData {
             | Self::MessagesAck { .. }
             | Self::PersonMerge { .. }
             | Self::MergeSuggestions { .. }
+            | Self::RecordLedger { .. }
+            | Self::Record { .. }
+            | Self::RecordAnswer { .. }
+            | Self::RecordChange { .. }
+            | Self::RecordExport { .. }
             | Self::RecipientBriefing { .. }
             | Self::SuggestedCollaborators { .. }
             | Self::ExpertSuggestions { .. }

@@ -190,6 +190,16 @@ export function createMailVerbs(hooks: MailVerbHooks): ScopeController {
         subject: primary.subject || undefined,
       });
     },
+    passToMode: () => {
+      const target = single(hooks.getTarget(), "Pass to a mode");
+      const primary = target?.primary;
+      if (!primary || refuseWhileDaemonDown("file it")) return;
+      openMailDialog({
+        kind: "pass-to-mode",
+        messageId: primary.id,
+        subject: primary.subject || undefined,
+      });
+    },
     reply: openReply("single"),
     replyAll: openReply("all"),
     forward: openReply("forward"),

@@ -7,7 +7,7 @@ use crate::cli::{OutputFormat, TodoAction, TodoStateArg};
 use crate::commands::selection::parse_message_id;
 use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
-use crate::output::{jsonl, resolve_format, terminal_block};
+use crate::output::{jsonl, print_json, resolve_format, terminal_block};
 use mxr_core::id::AccountId;
 use mxr_protocol::{
     todo_copy, Request, Response, ResponseData, TodoCatchupData, TodoCatchupDecisionData,
@@ -196,15 +196,6 @@ fn parse_edit(edit: &str) -> anyhow::Result<TodoEditData> {
         field: field.trim().to_string(),
         value: value.trim().to_string(),
     })
-}
-
-fn print_json<T: serde::Serialize>(value: &T, format: OutputFormat) -> anyhow::Result<()> {
-    if format == OutputFormat::Jsonl {
-        println!("{}", serde_json::to_string(value)?);
-    } else {
-        println!("{}", serde_json::to_string_pretty(value)?);
-    }
-    Ok(())
 }
 
 async fn runway(

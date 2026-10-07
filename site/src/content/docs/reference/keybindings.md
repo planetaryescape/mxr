@@ -267,6 +267,33 @@ on the message under the cursor.
 | `A` | Sweep the whole place (previews first, opens on Cancel: `Tab`, then `Enter`) |
 | `>` / `+` | More senders / more from this sender |
 
+## Archive
+
+The records lens (`ge`), with the answer box focused. Archive has no done:
+records stay, so `e` opens the email like `o`.
+
+| Key | Action |
+|-----|--------|
+| `/` | Ask: type what you remember, `Enter` answers |
+| `j` / `k` | Next / previous record |
+| `y` / `Y` | Copy the reference / the amount |
+| `Enter` | Open the record's document (its PDF first) |
+| `o`, `e` | Open the email the record came from |
+| `p` | The issuer's page: every record from them |
+| `[` / `]` | Previous / next year |
+| `,` | Fix a field or confirm it (previews first) |
+| `v` | Mark the card checked: confirm every unchecked amount and date |
+| `X` | Not a record (the email is untouched) |
+| `E` | Export as CSV, after a preview of rows, totals, unchecked rows and missing PDFs |
+| `t` | Make a to-do from the record's email |
+| `g f` | Filters: kind, issuer, year |
+| `u` | Undo |
+| `?` | What Archive is, then every key |
+
+On any conversation, in the mailbox or the reader, `T` passes it to
+another mode. This release offers Archive: it shows the card it would file,
+and `Enter` files it. `F` stays the full-width reader.
+
 ## Calendar invites lens
 
 Open from the **Calendar invites** sidebar item. The list pane shows every
@@ -512,6 +539,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `D` | Unsubscribe… |  |
 | `b` | Reply later… |  |
 | `t` | Make a to-do from this |  |
+| `T` | Pass to a mode… |  |
 | `r` | Reply |  |
 | `a` | Reply all |  |
 | `f` | Forward |  |

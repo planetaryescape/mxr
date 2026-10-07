@@ -42,7 +42,7 @@ impl App {
             return self.mailbox.messages_page.item_count();
         }
         if self.mailbox.mailbox_view == MailboxView::ArchiveMode {
-            return 0;
+            return self.mailbox.records_page.row_count();
         }
         self.mail_list_rows().len()
     }
@@ -156,6 +156,7 @@ impl App {
             || self.todo_list_focused()
             || self.now_list_focused()
             || self.messages_list_focused()
+            || self.records_list_focused()
         {
             return None;
         }

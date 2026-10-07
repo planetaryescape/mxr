@@ -1,0 +1,20 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Always or never file mail from this email's sender
+
+Usage: mxr records sender [OPTIONS] <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>
+
+Options:
+      --always
+      --never
+      --clear              Let the rules decide again
+      --kind <KIND>        The kind "always" files as
+      --dry-run
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

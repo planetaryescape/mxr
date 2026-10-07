@@ -12,13 +12,15 @@ actions for each: reply, archive, label.
 
 mxr's plan is to treat email as five apps that share one inbox, called
 modes. Each mode has its own view, its own unit on screen and its own
-verbs. Most of this is not built yet. Today you get the desk, Reading,
-Paper trail, the screener, promises and deliveries, and each of those
-already does part of one mode's job.
+verbs. Now, To do and Archive are built. Messages, Updates and Reading run
+as early versions on the desk, Paper trail and the Reading place.
 
 Start with what ships:
 
 ```bash
+mxr now            # the few things that need you, from every mode
+mxr todo           # what email asked you to do, by when to act
+mxr records        # receipts, orders, bookings and bills, by month
 mxr desk           # people you owe, promises due, threads waiting on others
 mxr reading        # newsletters and lists, grouped by sender
 mxr paper-trail    # receipts and notifications, grouped by sender
@@ -39,8 +41,8 @@ items drawn from the modes, so you can answer "what needs me right now?"
 without opening each one. **Inbox** stays as the everything view, in
 arrival order.
 
-The desk you use today is the first version of Now. Reading and Paper
-trail are early versions of Reading, Updates and Archive.
+The desk is the early version of Messages. Reading and Paper trail are
+early versions of Reading and Updates.
 
 ## One email can live in several modes (planned)
 
@@ -51,7 +53,7 @@ three modes, each showing its own part of it:
 - Messages shows the landlord, with "are you around Thursday?" as what they
   asked.
 - To do shows "Sign lease renewal, act by Mon 13, due Wed 15".
-- Archive shows the signed lease once you've sent it back.
+- Archive files the lease as a contract when you tick the to-do off.
 
 Each mode keeps its own done state, so replying in Messages doesn't tick
 off the to-do. When you finish with an item in one mode, it moves on to the
@@ -148,9 +150,10 @@ The plan gives each mode its own recipe. Messages indexes each message's
 new text without the quoted history. To do indexes one line per task.
 Updates indexes one fact per message and folds repeats. Reading embeds
 articles only when you read them. Archive indexes record fields and
-leaves reference numbers to exact keyword search. Each recipe replaces
-today's chunking only if a retrieval test on real mail shows it finds
-things at least as well.
+leaves reference numbers to exact keyword search. Archive's recipe ships:
+a record's emails get one field chunk beside the header, plus their PDF
+text. The other recipes replace today's chunking only if a retrieval test
+on real mail shows they find things at least as well.
 
 See what today's index holds:
 
@@ -167,7 +170,7 @@ mxr semantic status
 | To do | Built (`g x`) | `mxr todo`: bills, renewals, forms and promises as one row each, with act-by dates; [calendar invites](/guides/calendar-invites/) (`mxr invites`) | A rail badge once `mxr modes eval` shows under one false to-do a week |
 | Updates | Early version, on Paper trail (`g u`) | [Paper trail](/guides/reading-and-paper-trail/) (`mxr paper-trail`, `mxr sweep`), done here with `e`, [deliveries](/guides/deliveries/) (`mxr deliveries`), [rules](/guides/rules/) | A briefing by source in two digests a day, let go in one key (phase 4) |
 | Reading | Early version, on the Reading place (`g r`) | [Reading](/guides/reading-and-paper-trail/) (`mxr reading`), done here with `e`, [subscriptions and unsubscribe](/guides/unsubscribe/) (`mxr subscriptions --rank`) | An edition with read time, a Later shelf, fading items (phase 5) |
-| Archive | Coming (`g e` says so) | [Search](/guides/search/), [semantic search](/guides/semantic-search/), [archive intelligence](/guides/archive-intelligence/) (`mxr ask`, `mxr decisions`), pins in Paper trail | Records with an answer box: ask "lisbon booking" and get the reference back (phase 6) |
+| Archive | Built (`g e`) | [Archive](/guides/archive/) (`mxr records`): receipts, orders, bookings, bills and documents as one record each, an answer box (`mxr records ask "lisbon booking ref"`) with [`mxr ask`](/guides/archive-intelligence/) as its fallback, and a CSV export | Record fields read by the smart tier, and learned templates per issuer |
 
 Classification by your own model is phase 7. Phase numbers come from the
 plan and can change; this page changes when each phase ships.
@@ -198,4 +201,5 @@ deletes everything derived from it" as a rule every new store must follow.
   finish
 - [Clear the desk](/guides/now/)
 - [Clear Reading and Paper trail](/guides/reading-and-paper-trail/)
+- [Archive](/guides/archive/)
 - [Glossary](/guides/glossary/#email-modes)

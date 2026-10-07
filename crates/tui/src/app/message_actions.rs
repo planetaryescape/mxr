@@ -124,7 +124,9 @@ impl App {
                         MailboxView::People => {
                             self.apply(Action::MessagesOpen);
                         }
-                        MailboxView::ArchiveMode => {}
+                        MailboxView::ArchiveMode => {
+                            self.apply(Action::RecordsOpenCard);
+                        }
                     }
                 }
             }

@@ -1,3 +1,8 @@
+import {
+  ExportDialog,
+  PassToModeDialog,
+  RecordEditDialog,
+} from "@/features/archive/ArchiveDialogs";
 import { SenderKindDialog } from "@/features/places/SenderKindDialog";
 import { SweepDialog } from "@/features/places/SweepDialog";
 import {
@@ -88,6 +93,14 @@ export function MailDialogs() {
           subject={dialog.subject}
           onClose={close}
         />
+      );
+    case "record-edit":
+      return <RecordEditDialog record={dialog.record} onClose={close} />;
+    case "record-export":
+      return <ExportDialog account={dialog.account} filter={dialog.filter} onClose={close} />;
+    case "pass-to-mode":
+      return (
+        <PassToModeDialog messageId={dialog.messageId} subject={dialog.subject} onClose={close} />
       );
     case "todo-let-go-all":
       return <LetGoAllDialog account={dialog.account} onClose={close} />;

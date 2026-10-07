@@ -9,8 +9,10 @@ mxr syncs Gmail, Outlook, Microsoft 365, and IMAP accounts into one local
 mailbox. It keeps your message history in SQLite, builds a local search index,
 and exposes the same mail controls through a TUI, a pipeable CLI, a web app,
 MCP, and an agent skill. Attachment names, types, and sizes are local; mxr
-downloads attachment contents when you open them. Send through Gmail, Outlook,
-or any SMTP server.
+downloads attachment contents when you open them, except the PDFs of the
+receipts, orders and bills it files as records, which it fetches ahead of
+time within a 512 MB budget (`records.pdf_prefetch`). Send through Gmail,
+Outlook, or any SMTP server.
 
 mxr sorts what arrives by what you do with it. The desk lists the people
 waiting on a reply and the promises you made that are coming due.
@@ -18,7 +20,9 @@ Newsletters go to Reading, and receipts and notifications go to Paper
 trail. A rule you can read places each message, and `mxr why` prints it.
 The next step is treating email as five apps that share one inbox
 (Messages, To do, Updates, Reading and Archive), each with its own view.
-Most of that is still planned:
+Now, To do and Archive are built: `mxr records ask "lisbon booking ref"`
+returns the reference from your filed records, with no model. The rest is
+still in early versions:
 [what each mode has today](https://mxr.sh/guides/email-modes/).
 
 Write `mxr`, say “Mixer”.
@@ -178,6 +182,8 @@ The recordings use the seeded demo inbox and real mxr commands.
 
 - Email bodies, headers, threads, labels, and contacts
 - Attachment names, MIME types, sizes, plus files cached after you open them
+  and record PDFs fetched ahead of time
+- Archive's records and every value read from your mail into them
 - SQLite as the canonical local store
 - Tantivy BM25 search across full mailbox history
 - Optional local embeddings for hybrid and semantic search

@@ -1754,6 +1754,8 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        spawn_records_fetches(&mut app, &bg, &queued);
+
         if let Some(list) = app.mailbox.todo_page.pending_list.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
@@ -2296,6 +2298,16 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::MessagesAck { .. },
                     }) => Ok(effect),
+                    Ok(Response::Ok {
+                        data: ResponseData::RecordChange { change },
+                    }) => {
+                        if let Some(undo) = records_undo(&change) {
+                            let _ = result_tx_inner.send(AsyncResult::UndoCaptured(undo));
+                        }
+                        // The daemon's own words: "Filed in Archive.", never
+                        // the provider's "Archived".
+                        Ok(app::MutationEffect::Records(change.message))
+                    }
                     Ok(Response::Ok {
                         data: ResponseData::TodoChange { change },
                     }) => {
@@ -3561,6 +3573,36 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::CalendarInvites(Err(e)) => {
                             app.status_message = Some(format!("Calendar invites error: {e}"));
                         }
+                        AsyncResult::RecordsLedger(Ok(loaded)) => {
+                            let (ledger, guide) = *loaded;
+                            app.set_records_ledger(ledger, guide);
+                        }
+                        AsyncResult::RecordsLedger(Err(e)) => {
+                            app.status_message = Some(format!("Couldn't load Archive: {e}"));
+                        }
+                        AsyncResult::RecordsAnswer(Ok(answer)) => {
+                            app.status_message = None;
+                            app.set_records_answer(*answer);
+                        }
+                        AsyncResult::RecordCard(Ok(record)) => app.set_record_card(*record),
+                        AsyncResult::RecordsExport(Ok(export)) => app.show_export(*export),
+                        AsyncResult::RecordFixPreview(Ok(preview)) => app.show_fix_preview(*preview),
+                        AsyncResult::RecordFixPreview(Err(e)) => app.show_fix_error(e.to_string()),
+                        AsyncResult::RecordFilePreview(Ok(preview)) => {
+                            app.show_file_preview(*preview);
+                        }
+                        AsyncResult::RecordsAnswer(Err(e))
+                        | AsyncResult::RecordCard(Err(e))
+                        | AsyncResult::RecordsExport(Err(e))
+                        | AsyncResult::RecordFilePreview(Err(e)) => {
+                            app.status_message = Some(format!("Archive: {e}"));
+                        }
+                        AsyncResult::RecordEnvelopeOpened(Ok(envelope)) => {
+                            app.open_record_envelope(envelope);
+                        }
+                        AsyncResult::RecordEnvelopeOpened(Err(e)) => {
+                            app.status_message = Some(format!("Open email failed: {e}"));
+                        }
                         AsyncResult::TodoEnvelopeOpened(Ok(envelope), link) => {
                             app.open_todo_envelope(envelope, link);
                         }
@@ -4092,6 +4134,201 @@ async fn fetch_todo_runway(
         _ => None,
     };
     Ok((runway, guide))
+}
+
+/// `u` for an Archive change, as the daemon described its reversal.
+pub(crate) fn records_undo(change: &mxr_protocol::RecordChangeData) -> Option<app::PendingUndo> {
+    if change.dry_run {
+        return None;
+    }
+    let undo = change.undo.clone()?;
+    if !matches!(undo.kind.as_str(), "restore" | "dismiss" | "clear_fields") {
+        return None;
+    }
+    let verb_past = match change.action.as_str() {
+        "dismiss" => "Took out of Archive",
+        "restore" => "Brought back",
+        "file" => "Filed",
+        _ => "Changed",
+    };
+    Some(app::PendingUndo {
+        verb_past: verb_past.into(),
+        count: u32::try_from(undo.record_ids.len()).unwrap_or(u32::MAX),
+        action: app::UndoAction::Records(undo),
+        applied_at: std::time::Instant::now(),
+    })
+}
+
+/// One Archive read: the payload `extract` takes out of the answer, or
+/// the daemon's error.
+async fn records_call<T>(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    request: Request,
+    extract: fn(ResponseData) -> Option<T>,
+) -> Result<T, MxrError> {
+    match ipc_call(bg, request).await {
+        Ok(Response::Ok { data }) => {
+            extract(data).ok_or_else(|| MxrError::Ipc("unexpected answer from Archive".into()))
+        }
+        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+        Err(e) => Err(e),
+    }
+}
+
+fn change_data(data: ResponseData) -> Option<Box<mxr_protocol::RecordChangeData>> {
+    match data {
+        ResponseData::RecordChange { change } => Some(Box::new(change)),
+        _ => None,
+    }
+}
+
+/// Starts whatever the Archive lens asked the runtime for.
+fn spawn_records_fetches(
+    app: &mut App,
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    queued: &mpsc::UnboundedSender<crate::runtime::AsyncResultTask>,
+) {
+    let page = &mut app.mailbox.records_page;
+    if std::mem::take(&mut page.pending_refresh) {
+        let bg = bg.clone();
+        let filter = page.filter.clone();
+        let _ = submit_task(queued, async move {
+            let (ledger, guide) = tokio::join!(
+                records_call(
+                    &bg,
+                    Request::ListRecords {
+                        account_id: None,
+                        filter,
+                        limit: 200,
+                        offset: 0,
+                    },
+                    |data| match data {
+                        ResponseData::RecordLedger { ledger } => Some(ledger),
+                        _ => None,
+                    },
+                ),
+                ipc_call(
+                    &bg,
+                    Request::GetModeGuide {
+                        mode: Some(crate::app::ARCHIVE_MODE.into()),
+                    },
+                ),
+            );
+            let guide = match guide {
+                Ok(Response::Ok {
+                    data: ResponseData::ModeGuides { mut guides },
+                }) if !guides.is_empty() => Some(guides.remove(0)),
+                _ => None,
+            };
+            AsyncResult::RecordsLedger(ledger.map(|ledger| Box::new((ledger, guide))))
+        });
+    }
+    if let Some(query) = page.pending_answer.take() {
+        let bg = bg.clone();
+        let _ = submit_task(queued, async move {
+            AsyncResult::RecordsAnswer(
+                records_call(
+                    &bg,
+                    Request::AnswerFromRecords {
+                        query,
+                        account_id: None,
+                        fallback: true,
+                        limit: 4,
+                    },
+                    |data| match data {
+                        ResponseData::RecordAnswer { answer } => Some(Box::new(answer)),
+                        _ => None,
+                    },
+                )
+                .await,
+            )
+        });
+    }
+    if let Some(record_id) = page.pending_card.take() {
+        let bg = bg.clone();
+        let _ = submit_task(queued, async move {
+            AsyncResult::RecordCard(
+                records_call(&bg, Request::GetRecord { record_id }, |data| match data {
+                    ResponseData::Record { record } => Some(Box::new(record)),
+                    _ => None,
+                })
+                .await,
+            )
+        });
+    }
+    if let Some(write) = page.pending_export.take() {
+        let bg = bg.clone();
+        let filter = page.filter.clone();
+        let _ = submit_task(queued, async move {
+            AsyncResult::RecordsExport(
+                records_call(
+                    &bg,
+                    Request::ExportRecords {
+                        account_id: None,
+                        filter,
+                        attachments_dir: None,
+                        dry_run: !write,
+                    },
+                    |data| match data {
+                        ResponseData::RecordExport { export } => Some(Box::new(export)),
+                        _ => None,
+                    },
+                )
+                .await,
+            )
+        });
+    }
+    if let Some((record_id, edit)) = page.pending_fix_preview.take() {
+        let bg = bg.clone();
+        let _ = submit_task(queued, async move {
+            AsyncResult::RecordFixPreview(
+                records_call(
+                    &bg,
+                    Request::SetRecordField {
+                        record_id,
+                        edit,
+                        apply_to_sender: false,
+                        dry_run: true,
+                    },
+                    change_data,
+                )
+                .await,
+            )
+        });
+    }
+    if let Some(message_id) = page.pending_file_preview.take() {
+        let bg = bg.clone();
+        let _ = submit_task(queued, async move {
+            AsyncResult::RecordFilePreview(
+                records_call(
+                    &bg,
+                    Request::FileRecord {
+                        message_id,
+                        kind: None,
+                        dry_run: true,
+                    },
+                    change_data,
+                )
+                .await,
+            )
+        });
+    }
+    if let Some(message_id) = page.pending_open.take() {
+        let bg = bg.clone();
+        let _ = submit_task(queued, async move {
+            AsyncResult::RecordEnvelopeOpened(
+                records_call(
+                    &bg,
+                    Request::GetEnvelope { message_id },
+                    |data| match data {
+                        ResponseData::Envelope { envelope } => Some(envelope),
+                        _ => None,
+                    },
+                )
+                .await,
+            )
+        });
+    }
 }
 
 /// `u` for a to-do change: put the rows back. A catch-up decision goes

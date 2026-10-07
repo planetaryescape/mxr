@@ -52,6 +52,7 @@ Commands:
   humanize            Score or rewrite text using the deterministic humanizer gate
   snippets            Manage compose snippets (`;name` expansions)
   todo                Things email asked you to do, ordered by when to act.
+  records             Receipts, orders, bookings and documents. Ask for what you need.
   modes               How each mode explains itself: its job, empty states, card and keys
   deliveries          Track packages and deliveries detected in your mail
   signatures          Manage outgoing compose signatures

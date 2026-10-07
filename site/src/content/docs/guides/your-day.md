@@ -78,9 +78,22 @@ mxr sweep paper-trail --yes
 
 Move a sender who is in the wrong place once, and their mail follows from
 then on. [Clear Reading and Paper trail](/guides/reading-and-paper-trail/)
-covers the rules, pins and sweeps.
+covers the rules, pins and sweeps. Sweeping a receipt's email leaves its
+record in [Archive](/guides/archive/).
 
-## 6. Low tide
+## 6. Ask Archive when someone needs a reference
+
+When a call centre wants a booking reference or a shop wants proof of
+purchase, ask Archive instead of searching:
+
+```bash
+mxr records ask "lisbon booking ref"
+```
+
+It answers with the field and where it came from. In the apps, `g e` opens
+Archive with the answer box focused, and `y` copies the reference.
+
+## 7. Low tide
 
 When the desk is empty, the web app shows low tide: **Low tide. Nobody's
 waiting on you.** with the next promise that is due. The TUI says the same in

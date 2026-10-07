@@ -1587,6 +1587,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Archive's ledger: records by month with counts, totals, facets and what is coming up */
+        get: operations["mail_records_ledger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/records/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The answer box: the field a query asks for from record fields, with no model; falls back to mxr ask only when no record matches */
+        get: operations["mail_records_answer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/records/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Not a record, or back again; the email is never touched (dry_run previews) */
+        post: operations["mail_records_dismiss"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/records/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export records as CSV, and PDFs to a folder; dry_run returns the row count, totals, unchecked rows and missing PDFs for the same rows */
+        post: operations["mail_records_export"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/records/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** File an email as a record yourself (dry_run returns the card it would file) */
+        post: operations["mail_records_file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/records/sender": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Always or never file a sender's mail (dry_run previews) */
+        post: operations["mail_records_sender"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/records/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One record's card: every field with where it came from, its documents and source emails */
+        get: operations["mail_record_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/records/{record_id}/field": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fix, confirm or clear a record field, or mark the card checked (dry_run previews) */
+        post: operations["mail_record_field"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/relationship": {
         parameters: {
             query?: never;
@@ -5384,6 +5520,12 @@ export interface components {
         };
         /** @description Returned by `Request::GetNow`. */
         NowData: {
+            /**
+             * @description Archive records with a moment soon (a trip in 72 hours, a ticket
+             *     today, a return window closing, a warranty ending), soonest first,
+             *     at most three. One line on Now, never a badge.
+             */
+            coming_up?: components["schemas"]["RecordMomentData"][];
             due_soon: components["schemas"]["NowDueData"];
             /**
              * @description Set when every section is empty: "Clear. The next to-do surfaces
@@ -5709,6 +5851,388 @@ export interface components {
             /** Format: int32 */
             sample_count: number;
         };
+        RecordAmountData: {
+            /** @description ISO 4217. */
+            currency: string;
+            /** @description "£1,249.00". */
+            display: string;
+            /**
+             * Format: int64
+             * @description In the currency's minor unit.
+             */
+            minor: number;
+        };
+        /** @description The field the answer box returns. */
+        RecordAnswerCardData: {
+            /** @description What `y` copies. */
+            copy: string;
+            /** @description reference | amount | issued_at | document */
+            field: string;
+            /** @description "Booking ref". */
+            label: string;
+            provenance?: null | components["schemas"]["RecordFieldData"];
+            record: components["schemas"]["RecordData"];
+            /** @description "K7QX2M". */
+            value: string;
+        };
+        /** @description Returned in `ResponseData::RecordAnswer`. */
+        RecordAnswerData: {
+            /** @description Other records that matched, best first: "Also matching". */
+            also?: components["schemas"]["RecordData"][];
+            answer?: null | components["schemas"]["RecordAnswerCardData"];
+            /** @description reference | amount | date | document | any */
+            asked: string;
+            fallback?: null | components["schemas"]["RecordFallbackData"];
+            query: string;
+        };
+        /** @description Returned in `ResponseData::RecordChange`. */
+        RecordChangeData: {
+            /** @description file | dismiss | restore | set_field | sender */
+            action: string;
+            dry_run: boolean;
+            /** @description The toast: "Filed in Archive.", never "Archived". */
+            message: string;
+            /**
+             * @description The records changed, or that would change, as they are (or would
+             *     be) after.
+             */
+            records: components["schemas"]["RecordData"][];
+            undo?: null | components["schemas"]["RecordUndoData"];
+        };
+        /** @description One record: a ledger row, and with `GetRecord` the whole card. */
+        RecordData: {
+            account_id: components["schemas"]["AccountId"];
+            amount?: null | components["schemas"]["RecordAmountData"];
+            /** @description Every money and date field came from schema.org or you. */
+            checked: boolean;
+            /**
+             * Format: date-time
+             * @description The ledger date: the transaction's, else the newest email's.
+             */
+            date?: string | null;
+            /** Format: date-time */
+            delivered_at?: string | null;
+            /** @description "Return by 2 Apr (passed) · Warranty to 3 Mar 2027". */
+            detail_line?: string | null;
+            dismissed?: boolean;
+            /** Format: int32 */
+            document_count: number;
+            /** @description The card only (`GetRecord`): every file and every source email. */
+            documents?: components["schemas"]["RecordDocumentData"][];
+            /** @description Every field with its provenance. */
+            fields?: components["schemas"]["RecordFieldData"][];
+            group?: null | components["schemas"]["RecordGroupData"];
+            id: string;
+            issuer?: string | null;
+            /**
+             * Format: int32
+             * @description The card only: how many other records this issuer has.
+             */
+            issuer_records?: number | null;
+            kind: components["schemas"]["RecordKindData"];
+            /** @description "Order", "Booking". */
+            kind_label: string;
+            message_id?: null | components["schemas"]["MessageId"];
+            /** @description schema | rule | delivery | todo | manual | sender */
+            origin: string;
+            pdf?: null | components["schemas"]["RecordDocumentData"];
+            place?: string | null;
+            reference?: string | null;
+            /** @description "Order", "Booking ref": what the reference is called on this kind. */
+            reference_label: string;
+            /** Format: date-time */
+            return_by?: string | null;
+            /** Format: int32 */
+            source_count: number;
+            sources?: components["schemas"]["RecordSourceData"][];
+            /** Format: date-time */
+            span_end?: string | null;
+            /** Format: date-time */
+            span_start?: string | null;
+            /** @description An order's stages in one line: "ordered · shipped · delivered 7 Mar". */
+            stage_line?: string | null;
+            thread_id?: null | components["schemas"]["ThreadId"];
+            /**
+             * @description What it is: "XPS 14 laptop", "LHR -> LIS TP1357". Never the subject
+             *     line when better is known.
+             */
+            title?: string | null;
+            /** @description The money and date fields still to confirm. */
+            unchecked_fields?: string[];
+            /** Format: date-time */
+            valid_until?: string | null;
+            /** Format: date-time */
+            warranty_until?: string | null;
+            /** @description "Here because: order confirmation with schema.org markup (checked)." */
+            why: string;
+        };
+        /** @description Body of `POST /api/v1/mail/records/dismiss`. */
+        RecordDismissBody: {
+            dry_run?: boolean;
+            record_ids: string[];
+            /** @description Bring dismissed records back. */
+            restore?: boolean;
+        };
+        /** @description A file attached to one of the record's emails. */
+        RecordDocumentData: {
+            attachment_id: string;
+            filename: string;
+            is_pdf: boolean;
+            message_id: components["schemas"]["MessageId"];
+            mime_type: string;
+            /** @description Already downloaded, so it opens offline. */
+            on_disk: boolean;
+            /** Format: int64 */
+            size_bytes: number;
+        };
+        /** @description A correction to a record. */
+        RecordEditData: {
+            field: string;
+            /** @enum {string} */
+            op: "set";
+            value: string;
+        } | {
+            field: string;
+            /** @enum {string} */
+            op: "confirm";
+        } | {
+            /** @enum {string} */
+            op: "confirm_all";
+        } | {
+            field: string;
+            /** @enum {string} */
+            op: "clear";
+        };
+        /** @description Body of `POST /api/v1/mail/records/export`. */
+        RecordExportBody: {
+            account_id?: string | null;
+            /** @description An absolute folder to copy each record's PDF into. */
+            attachments_dir?: string | null;
+            dry_run?: boolean;
+            filter?: components["schemas"]["RecordFilterData"];
+        };
+        /**
+         * @description Returned in `ResponseData::RecordExport`. The dry run and the export
+         *     read the same rows.
+         */
+        RecordExportData: {
+            /** @description Where PDFs were copied, when asked. */
+            attachments_dir?: string | null;
+            by_kind: components["schemas"]["RecordFacetCountData"][];
+            /** @description The CSV, header first. Only on a real export. */
+            csv?: string | null;
+            dry_run: boolean;
+            /**
+             * Format: int32
+             * @description Rows with no PDF.
+             */
+            missing_pdfs: number;
+            /** @description PDFs that could not be fetched or copied, by filename. */
+            pdf_errors?: string[];
+            /**
+             * Format: int32
+             * @description PDFs copied there.
+             */
+            pdfs_copied?: number;
+            /** Format: int32 */
+            rows: number;
+            /**
+             * @description "142 records, £18,204.11 and €612.00. 9 have an unchecked amount or
+             *     date; 31 have no PDF."
+             */
+            summary: string;
+            /** @description One total per currency, largest first. */
+            totals: components["schemas"]["RecordAmountData"][];
+            /**
+             * Format: int32
+             * @description Rows with an amount or date nobody has confirmed.
+             */
+            unchecked: number;
+        };
+        RecordFacetCountData: {
+            /** Format: int32 */
+            count: number;
+            label: string;
+            /** @description What to filter by: "order", "dell", "2025". */
+            value: string;
+        };
+        /** @description Counts for each filter value over the matching records. */
+        RecordFacetsData: {
+            /** Format: int32 */
+            checked: number;
+            /** Format: int32 */
+            has_pdf: number;
+            /** @description The thirty issuers with most records. */
+            issuers: components["schemas"]["RecordFacetCountData"][];
+            kinds: components["schemas"]["RecordFacetCountData"][];
+            /** Format: int32 */
+            unchecked: number;
+            /** @description Newest first. */
+            years: components["schemas"]["RecordFacetCountData"][];
+        };
+        /** @description What the answer box fell back to when no record matched. */
+        RecordFallbackData: {
+            answer?: null | components["schemas"]["ArchiveAnswerData"];
+            /** @description Why the fallback has no answer, when it failed. */
+            error?: string | null;
+            /** @description "No record matches "warranty dell". Searching all mail instead." */
+            note: string;
+        };
+        /** @description Body of `POST /api/v1/mail/records/{record_id}/field`. */
+        RecordFieldBody: {
+            /** @description With an issuer name: rename this sender's issuer on every record. */
+            apply_to_sender?: boolean;
+            dry_run?: boolean;
+            edit: components["schemas"]["RecordEditData"];
+        };
+        /** @description One field of a record and where its value came from. */
+        RecordFieldData: {
+            /**
+             * @description False for money or a date nobody has confirmed. Shown with an open
+             *     dot.
+             */
+            checked: boolean;
+            /**
+             * @description What `y` copies: the reference as written, or the amount as a plain
+             *     number ("1249.00").
+             */
+            copy: string;
+            /** @description The words it was read from, verbatim, or how it was worked out. */
+            evidence?: string | null;
+            /**
+             * @description issuer, title, reference, amount, issued_at, span_start, span_end,
+             *     place, delivered_at, return_by, warranty_until, valid_until, kind
+             */
+            field: string;
+            /** @description "Booking ref", "Paid", "Date". */
+            label: string;
+            message_id?: null | components["schemas"]["MessageId"];
+            /** @description schema | rule | delivery | todo | user */
+            source: string;
+            /** @description "schema.org markup", "a pattern in the email", "you". */
+            source_label: string;
+            /** @description As shown: "£1,249.00", "3 Mar 2025", "K7QX2M". */
+            value: string;
+        };
+        /** @description Body of `POST /api/v1/mail/records/file`. */
+        RecordFileBody: {
+            dry_run?: boolean;
+            kind?: null | components["schemas"]["RecordKindData"];
+            message_id: string;
+        };
+        /** @description Which records a list or an export covers. Every condition is optional. */
+        RecordFilterData: {
+            checked?: boolean | null;
+            /** @description A trip or series. */
+            group_id?: string | null;
+            has_pdf?: boolean | null;
+            /** @description An issuer name, matched without case: the issuer page. */
+            issuer?: string | null;
+            kinds?: components["schemas"]["RecordKindData"][];
+            /** Format: int64 */
+            max_amount_minor?: number | null;
+            /**
+             * Format: int64
+             * @description In minor units.
+             */
+            min_amount_minor?: number | null;
+            /** Format: int32 */
+            year?: number | null;
+        };
+        /** @description Where filing history has got to. */
+        RecordFirstRunData: {
+            complete: boolean;
+            /** @description "Filing your records. 418 found so far, back to March 2023." */
+            line: string;
+            /**
+             * Format: date-time
+             * @description The oldest email read so far.
+             */
+            reached?: string | null;
+            /** Format: int64 */
+            scanned: number;
+        };
+        /** @description The trip or series a record belongs to. */
+        RecordGroupData: {
+            /** Format: int32 */
+            count: number;
+            id: string;
+            /** @description trip | series */
+            kind: string;
+            /** Format: date-time */
+            span_end?: string | null;
+            /** Format: date-time */
+            span_start?: string | null;
+            /** @description "Lisbon, June 2025", "Octopus Energy bills". */
+            title: string;
+        };
+        /** @description The issuer page: every record from one issuer. */
+        RecordIssuerData: {
+            /** Format: int32 */
+            count: number;
+            /** Format: date-time */
+            first?: string | null;
+            /** Format: date-time */
+            last?: string | null;
+            name: string;
+            totals: components["schemas"]["RecordAmountData"][];
+        };
+        /** @enum {string} */
+        RecordKindData: "receipt" | "order" | "booking" | "invoice" | "statement" | "ticket" | "contract" | "warranty" | "account";
+        /** @description Returned in `ResponseData::RecordLedger`. */
+        RecordLedgerData: {
+            /** @description Trips, tickets, return windows and warranties with a moment soon. */
+            coming_up: components["schemas"]["RecordMomentData"][];
+            /**
+             * @description Set when there is nothing to show: the never-had-any copy, or what
+             *     the filter excluded.
+             */
+            empty_state?: string | null;
+            facets: components["schemas"]["RecordFacetsData"];
+            filter: components["schemas"]["RecordFilterData"];
+            first_run?: null | components["schemas"]["RecordFirstRunData"];
+            header: string;
+            issuer?: null | components["schemas"]["RecordIssuerData"];
+            /**
+             * Format: int32
+             * @description Records the filter matches.
+             */
+            matching: number;
+            /**
+             * @description Every month of the matching records, newest first, with counts and
+             *     totals over all of them, not just this page.
+             */
+            months: components["schemas"]["RecordMonthData"][];
+            /** @description This page of the matching records, newest first. */
+            records: components["schemas"]["RecordData"][];
+            /**
+             * Format: int32
+             * @description Every record, whatever the filter.
+             */
+            total: number;
+        };
+        /** @description A record with a moment coming up. */
+        RecordMomentData: {
+            /** Format: date-time */
+            at: string;
+            group_id?: string | null;
+            /** @description trip | booking | ticket | return_window | warranty */
+            kind: string;
+            /** @description "Lisbon, June 2025 · in 3 days", "Return XPS 14 laptop by Wed". */
+            label: string;
+            record_id: string;
+        };
+        /** @description One month of the ledger, with its count and totals. */
+        RecordMonthData: {
+            /** Format: int32 */
+            count: number;
+            /** @description "2025 · March". */
+            label: string;
+            /** @description "2025-03". */
+            month: string;
+            /** @description One total per currency, largest first. Never converted. */
+            totals: components["schemas"]["RecordAmountData"][];
+        };
         RecordPromiseRequest: {
             /** @description Return what would be stored without writing it. */
             dry_run?: boolean;
@@ -5721,6 +6245,36 @@ export interface components {
             message_id: string;
             /** @description What was promised, such as "send the deck". */
             what: string;
+        };
+        /** @description Body of `POST /api/v1/mail/records/sender`. */
+        RecordSenderBody: {
+            dry_run?: boolean;
+            kind?: null | components["schemas"]["RecordKindData"];
+            message_id: string;
+            /** @description `always` or `never`; omitted lets the rules decide again. */
+            verdict?: string | null;
+        };
+        /** @description One email a record was built from. */
+        RecordSourceData: {
+            /** Format: date-time */
+            date: string;
+            /** @description detector | delivery | todo | manual | sender */
+            filed_by: string;
+            message_id: components["schemas"]["MessageId"];
+            /**
+             * @description confirmation | shipped | delivered | return | refund | invoice |
+             *     statement | booking | change | cancellation | receipt | other
+             */
+            stage: string;
+            subject: string;
+            thread_id?: null | components["schemas"]["ThreadId"];
+        };
+        /** @description How `u` reverses a record change. */
+        RecordUndoData: {
+            fields?: string[];
+            /** @description restore | dismiss | clear_fields | sender */
+            kind: string;
+            record_ids: string[];
         };
         RelationshipDriftData: {
             /** Format: date-time */
@@ -6997,6 +7551,64 @@ export interface components {
         } | {
             account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
+            cmd: "ListRecords";
+            filter?: components["schemas"]["RecordFilterData"];
+            /** Format: int32 */
+            limit?: number;
+            /** Format: int32 */
+            offset?: number;
+        } | {
+            /** @enum {string} */
+            cmd: "GetRecord";
+            record_id: string;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "AnswerFromRecords";
+            fallback?: boolean;
+            /**
+             * Format: int32
+             * @description Records in "also matching" after the answer.
+             */
+            limit?: number;
+            query: string;
+        } | {
+            apply_to_sender?: boolean;
+            /** @enum {string} */
+            cmd: "SetRecordField";
+            dry_run?: boolean;
+            edit: components["schemas"]["RecordEditData"];
+            record_id: string;
+        } | {
+            /** @enum {string} */
+            cmd: "DismissRecord";
+            dry_run?: boolean;
+            record_ids: string[];
+            restore?: boolean;
+        } | {
+            /** @enum {string} */
+            cmd: "FileRecord";
+            dry_run?: boolean;
+            kind?: null | components["schemas"]["RecordKindData"];
+            message_id: components["schemas"]["MessageId"];
+        } | {
+            /** @enum {string} */
+            cmd: "SetRecordSender";
+            dry_run?: boolean;
+            kind?: null | components["schemas"]["RecordKindData"];
+            message_id: components["schemas"]["MessageId"];
+            /** @description always | never */
+            verdict?: string | null;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            attachments_dir?: string | null;
+            /** @enum {string} */
+            cmd: "ExportRecords";
+            dry_run?: boolean;
+            filter?: components["schemas"]["RecordFilterData"];
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
             cmd: "ListPlace";
             /**
              * Format: int32
@@ -7744,6 +8356,26 @@ export interface components {
             /** @enum {string} */
             kind: "ModeMembership";
             threads: components["schemas"]["ThreadModesData"][];
+        } | {
+            /** @enum {string} */
+            kind: "RecordLedger";
+            ledger: components["schemas"]["RecordLedgerData"];
+        } | {
+            /** @enum {string} */
+            kind: "Record";
+            record: components["schemas"]["RecordData"];
+        } | {
+            answer: components["schemas"]["RecordAnswerData"];
+            /** @enum {string} */
+            kind: "RecordAnswer";
+        } | {
+            change: components["schemas"]["RecordChangeData"];
+            /** @enum {string} */
+            kind: "RecordChange";
+        } | {
+            export: components["schemas"]["RecordExportData"];
+            /** @enum {string} */
+            kind: "RecordExport";
         } | {
             dry_run: boolean;
             items: components["schemas"]["ModeDoneOutcomeData"][];
@@ -11811,6 +12443,315 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description The `Rail` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_records_ledger: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description Comma-separated kinds: receipt, order, booking, invoice, statement, ticket, contract, warranty, account */
+                kind?: string;
+                /** @description One issuer: the issuer page */
+                issuer?: string;
+                /** @description By the transaction's date */
+                year?: number;
+                /** @description At least this, in minor units */
+                min_amount_minor?: number;
+                /** @description At most this, in minor units */
+                max_amount_minor?: number;
+                /** @description With or without a PDF */
+                has_pdf?: boolean;
+                /** @description Every amount and date confirmed, or not */
+                checked?: boolean;
+                /** @description One trip or series */
+                group?: string;
+                /** @description Rows on this page (default 200) */
+                limit?: number;
+                /** @description Rows to skip */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `RecordLedger` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Unknown kind */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_records_answer: {
+        parameters: {
+            query: {
+                /** @description What you remember: "lisbon booking ref" */
+                q: string;
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description Fall back to mxr ask over all mail (default true) */
+                fallback?: boolean;
+                /** @description Records in "also matching" (default 4) */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `RecordAnswer` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Empty query */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_records_dismiss: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordDismissBody"];
+            };
+        };
+        responses: {
+            /** @description The `RecordChange` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description No record ids */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_records_export: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordExportBody"];
+            };
+        };
+        responses: {
+            /** @description The `RecordExport` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_records_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordFileBody"];
+            };
+        };
+        responses: {
+            /** @description The `RecordChange` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Invalid message id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_records_sender: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordSenderBody"];
+            };
+        };
+        responses: {
+            /** @description The `RecordChange` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Invalid message id or verdict */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_record_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A full id or a unique prefix */
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `Record` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_record_field: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A full id or a unique prefix */
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordFieldBody"];
+            };
+        };
+        responses: {
+            /** @description The `RecordChange` variant */
             200: {
                 headers: {
                     [name: string]: unknown;

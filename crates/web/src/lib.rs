@@ -19,6 +19,7 @@ mod mode_routes;
 mod openapi;
 mod place_routes;
 mod promise_routes;
+mod record_routes;
 mod request_types;
 mod routes_v6;
 mod row_labels;

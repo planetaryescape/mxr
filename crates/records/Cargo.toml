@@ -1,0 +1,31 @@
+[package]
+name = "mxr-records"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Internal: Archive records (receipts, orders, bookings, bills) built from mail for mxr"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+mxr-core = { workspace = true }
+mxr-reader = { workspace = true }
+mxr-store = { workspace = true }
+mxr-todo = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+csv = { workspace = true }
+once_cell = { workspace = true }
+psl = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+tokio = { workspace = true }

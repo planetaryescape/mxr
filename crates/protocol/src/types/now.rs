@@ -6,7 +6,7 @@
 use mxr_core::id::*;
 use serde::{Deserialize, Serialize};
 
-use super::{DeskRowData, ScreenerQuestionData, TodoData, TodoFirstRunData};
+use super::{DeskRowData, RecordMomentData, ScreenerQuestionData, TodoData, TodoFirstRunData};
 
 /// Items each section shows before "and N more".
 pub const NOW_SECTION_CAP: usize = 3;
@@ -148,4 +148,9 @@ pub struct NowData {
     pub next_at: Option<chrono::DateTime<chrono::Utc>>,
     /// The newest-first first run, for "Sorting your mail" while it runs.
     pub first_run: TodoFirstRunData,
+    /// Archive records with a moment soon (a trip in 72 hours, a ticket
+    /// today, a return window closing, a warranty ending), soonest first,
+    /// at most three. One line on Now, never a badge.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub coming_up: Vec<RecordMomentData>,
 }

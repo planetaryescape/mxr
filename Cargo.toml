@@ -137,6 +137,7 @@ members = [
     "crates/provider-outlook",
     "crates/provider-smtp",
     "crates/reader",
+    "crates/records",
     "crates/relationship",
     "crates/rules",
     "crates/safety",
@@ -197,6 +198,7 @@ mxr-config = { path = "crates/config", version = "0.6.0" }
 mxr-core = { path = "crates/core", version = "0.6.0" }
 mxr-deliveries = { path = "crates/deliveries", version = "0.6.0" }
 mxr-todo = { path = "crates/todo", version = "0.6.0" }
+mxr-records = { path = "crates/records", version = "0.6.0" }
 mxr-export = { path = "crates/export", version = "0.6.0" }
 mxr-keychain = { path = "crates/keychain", version = "0.6.0" }
 mxr-humanizer = { path = "crates/humanizer", version = "0.6.0" }
@@ -369,6 +371,7 @@ mxr-config = { workspace = true }
 mxr-core = { workspace = true }
 mxr-deliveries = { workspace = true }
 mxr-todo = { workspace = true }
+mxr-records = { workspace = true }
 mxr-export = { workspace = true }
 mxr-keychain = { workspace = true }
 mxr-humanizer = { workspace = true }

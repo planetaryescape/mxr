@@ -152,5 +152,6 @@ mod mutations_and_bulk;
 mod now;
 mod places;
 mod reader_and_diagnostics;
+mod records;
 mod semantic_and_connection;
 mod todo;

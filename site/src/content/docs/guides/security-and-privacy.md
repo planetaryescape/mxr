@@ -29,6 +29,18 @@ There is no mxr-operated service in that list. Four other things can reach the n
 - Remote images in HTML mail, unless `render.html_remote_content = false` (the web app has its own Remote images toggle).
 - The unsubscribe endpoint a sender chose, when you run `mxr unsubscribe`.
 
+The daemon also downloads one kind of attachment before you open it: the PDFs of
+emails [Archive](/guides/archive/) filed as records, from your own provider,
+newest first, up to `records.pdf_budget_mb` (512 MB) in total and skipping
+any PDF over `records.pdf_max_file_mb` (15 MB). They go to the same
+attachment cache as the files you open, so they open offline and their text
+is searchable. Set `records.pdf_prefetch = false` to download them only when
+you open them.
+
+Records themselves are local rows in SQLite, read from your mail by rules
+and schema.org markup on your machine; no model sees them. The activity log
+records no record fields: Archive's requests are not written to it.
+
 [For agents](/guides/for-agents/#what-stays-local-what-doesnt) has the config that turns the last three off.
 
 ## Model features are off by default and go only where you point them
@@ -57,6 +69,7 @@ When your provider deletes or expunges a message and mxr syncs that change, the 
 | The message's link to a delivery | The delivery row itself |
 | The cached triage verdict | Attachment files you opened, under the attachment cache |
 | | Contact records and relationship summaries built from that mail |
+| Every value Archive read from the email; a record left with no source email is deleted, and one with other sources is recomputed from them | Values you typed into a record yourself, on a record that still has another source |
 
 Moving mail to Trash is not a delete: on Gmail the message keeps its derived data until Gmail empties the trash and reports the deletion. mxr has no command that deletes a message permanently.
 

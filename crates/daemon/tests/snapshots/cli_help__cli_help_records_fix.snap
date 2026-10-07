@@ -1,0 +1,21 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Fix a field (field=value), confirm one (--confirm), confirm the whole card (--confirm-all) or go back to the extracted value (--clear). Your value wins on every re-run
+
+Usage: mxr records fix [OPTIONS] <RECORD_ID> [FIELD=VALUE]
+
+Arguments:
+  <RECORD_ID>
+  [FIELD=VALUE]
+
+Options:
+      --confirm <FIELD>
+      --confirm-all
+      --clear <FIELD>
+      --sender             With issuer=NAME: name this sender's issuer on every record, now and later
+      --dry-run
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

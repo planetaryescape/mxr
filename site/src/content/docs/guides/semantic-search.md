@@ -48,6 +48,23 @@ mxr does **not** use OCR for:
 
 If PDF text extraction fails, that PDF is skipped for semantic text extraction.
 
+Attachments are indexed once they are on disk, which for most mail means
+once you open them. Archive is the exception: mxr downloads the PDFs of
+emails filed as [records](/guides/archive/) ahead of time, within
+`records.pdf_budget_mb` (512 MB by default), so their text is indexed.
+
+### Archive's emails get one more chunk
+
+An email that is a record's source gets a field chunk beside its header:
+the record's kind, issuer, what it is, its reference and its place
+("record booking TAP Air Portugal LHR -> LIS TP1357 K7QX2M Lisbon"). When
+new mail is filed, its emails are ingested again so the chunk lands even if
+the semantic worker read them first, and a prefetched PDF triggers the same;
+chunks that didn't change are not embedded again. Records filed from older
+mail get their chunk at the next reindex (`mxr semantic reindex`).
+Reference numbers also stay in the keyword index, so exact matches like
+`402-118` keep working in lexical and hybrid search.
+
 ## Default config
 
 ```toml

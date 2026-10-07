@@ -82,7 +82,7 @@ in every phase that adds a command.
 | `reference/mcp.md` | P1 | Each phase ships its MCP tools after the CLI |
 | `reference/time-phrases.md` | P1 | `mxr todo add --due PHRASE` and `mxr todo schedule` |
 | `reference/tui.md` | P1 | To do lens; P2: the sidebar becomes the rail; each mode adds its lens |
-| `guides/reading-and-paper-trail.md` | O | P4: Paper trail's notifications move to `guides/updates.md`; P5: Reading moves to `guides/reading.md`; P6: records move to `guides/archive.md`, and the page becomes a redirect |
+| `guides/reading-and-paper-trail.md` | O | P4: Paper trail's notifications move to `guides/updates.md`; P5: Reading moves to `guides/reading.md`; P6: records move to `guides/archive.md`, and the page becomes a redirect. P6 shipped `guides/archive.md` before P4 and P5 moved their halves, so the page stays, pointing records at Archive, until they do |
 | `reference/desk-and-places.md` | O | P2: replaced by `reference/now-and-modes.md` (Now sections, membership layers, per-mode done, the `mxr why` JSON with every mode) |
 | `guides/triage-flow.md` | O | P2: the Screener stops being a destination (an inline question on a first-time sender's row, `/screener` as history); reply later becomes `b` Later in Messages and Reading; P7 retires `mxr triage` |
 | `getting-started/imap-smtp-setup.md` | U | |

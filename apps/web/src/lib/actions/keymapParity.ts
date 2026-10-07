@@ -17,7 +17,8 @@ export type ParityContext =
   | "screener"
   | "todo"
   | "now"
-  | "messages";
+  | "messages"
+  | "archive";
 
 /** The web scopes live in each context, innermost first. */
 const CONTEXT_SCOPES: Record<ParityContext, ActionScope[]> = {
@@ -28,6 +29,7 @@ const CONTEXT_SCOPES: Record<ParityContext, ActionScope[]> = {
   todo: ["todo", "global"],
   now: ["now", "global"],
   messages: ["messages", "global"],
+  archive: ["archive", "global"],
   // The TUI's screener is a modal that swallows every other key.
   screener: ["screener"],
 };
@@ -189,6 +191,23 @@ export const SAME_ACTION: Record<string, string[]> = {
   "messages.person-page": ["MessagesPersonPage"],
   "messages.as-sent": ["MessagesAsSent"],
   "messages.escape": ["MessagesBack"],
+  "mail.pass-to-mode": ["PassToMode"],
+  "archive.down": ["MoveDown"],
+  "archive.up": ["MoveUp"],
+  "archive.ask": ["RecordsAsk"],
+  "archive.copy-reference": ["RecordsCopyReference"],
+  "archive.copy-amount": ["RecordsCopyAmount"],
+  "archive.open-document": ["RecordsOpenDocument"],
+  "archive.open-email": ["RecordsOpenEmail"],
+  "archive.issuer": ["RecordsIssuerPage"],
+  "archive.prev-year": ["RecordsPrevYear"],
+  "archive.next-year": ["RecordsNextYear"],
+  "archive.edit": ["RecordsFix"],
+  "archive.check": ["RecordsMarkChecked"],
+  "archive.dismiss": ["RecordsDismiss"],
+  "archive.export": ["RecordsExport"],
+  "archive.make-todo": ["RecordsMakeTodo"],
+  "archive.close": ["RecordsBack"],
 };
 
 export interface KeymapDifference {
@@ -356,7 +375,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "place",
     // prettier-ignore
-    keys: ["!", "#", "B", "E", "F", "I", "L", "O", "R", "U", "V", "W", "Z", "a", "b", "f", "l", "m", "r", "s", "t", "v", "x", "y", "i a", "i m", "i d", "i A", "i M", "i D"],
+    keys: ["!", "#", "B", "E", "F", "I", "L", "O", "R", "T", "U", "V", "W", "Z", "a", "b", "f", "l", "m", "r", "s", "t", "v", "x", "y", "i a", "i m", "i d", "i A", "i M", "i D"],
     bound: "tui",
     why: "Web rows here are bundles, and mail keys work once one is open in the reader; the TUI lens acts on the message under the cursor",
   },
@@ -444,6 +463,32 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     keys: ["Mod+Enter"],
     bound: "web",
     why: "The web's reply box sends and moves to the next person; the TUI composes in $EDITOR",
+  },
+  // Archive.
+  {
+    context: "archive",
+    keys: ["g f"],
+    bound: "both",
+    why: "The web opens every filter at once; the TUI steps through the kind chips",
+  },
+  {
+    context: "archive",
+    // prettier-ignore
+    keys: ["G", "g g", "H", "L", "M", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft", "ArrowRight"],
+    bound: "tui",
+    why: "The TUI lens shares the list's motions and pane keys, and Right opens the card; the web shows the card beside the ledger",
+  },
+  {
+    context: "archive",
+    keys: ["i a", "i m", "i d", "i A", "i M", "i D"],
+    bound: "tui",
+    why: "The TUI lens passes invite answers through; the web answers an invite from the reader",
+  },
+  {
+    context: "archive",
+    keys: ["c"],
+    bound: "web",
+    why: "Compose works everywhere on the web; the TUI lens keeps c free",
   },
   // Screener.
   {

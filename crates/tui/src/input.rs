@@ -63,6 +63,11 @@ impl InputHandler {
         }
     }
 
+    /// Drop a waiting chord prefix: a lens took its second key.
+    pub fn reset(&mut self) {
+        self.state = KeyState::Normal;
+    }
+
     pub fn check_timeout(&mut self) -> Option<Action> {
         if let KeyState::WaitingForSecond { deadline, .. } = &self.state {
             if Instant::now() > *deadline {

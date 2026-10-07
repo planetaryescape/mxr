@@ -1,0 +1,32 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Receipts, orders, bookings and documents. Ask for what you need.
+
+Archive keeps records built from your mail: one per order, trip or bill, not one per email. An order's confirmation, dispatch and delivery are one record; bookings whose dates overlap form a trip; a run of bills from one issuer is a series. Records are filed from schema.org markup (checked) and from labelled lines in the email (amounts and dates unchecked until you confirm them), from to-dos you tick off, from delivered parcels and by hand. Every field says where it came from. Filing in Archive never archives anything in your mail provider.
+
+With no subcommand, prints the ledger: one row per record, grouped by month with counts and totals, newest first.
+
+Usage: mxr records [OPTIONS] [COMMAND]
+
+Commands:
+  list     The ledger (the default): records by month, newest first
+  show     One record with every field and where it came from
+  ask      Ask for a field: "lisbon booking ref", "dell receipt 2025". Falls back to `mxr ask` over all mail only when no record matches [alias: find]
+  fix      Fix a field (field=value), confirm one (--confirm), confirm the whole card (--confirm-all) or go back to the extracted value (--clear). Your value wins on every re-run
+  dismiss  Not a record: take records out of Archive. The emails are untouched and they are never filed again
+  file     File an email as a record yourself
+  sender   Always or never file mail from this email's sender
+  export   Export records as CSV: --dry-run shows the row count, totals, unchecked rows and missing PDFs first
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --account <ACCOUNT>
+          Limit to one account; the default covers every account
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

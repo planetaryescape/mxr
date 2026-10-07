@@ -95,6 +95,20 @@ list its merchant, tracking number, and source email ids from
 `mxr deliveries get <id>`."
 ```
 
+## Delivered orders become records in Archive
+
+When a delivery reaches delivered, its order is filed in
+[Archive](/guides/archive/) as an order record, with the delivery date and
+the delivery's emails as sources. If the shop's own emails already filed
+that order number, the delivery joins that record rather than adding a
+second one, so the confirmation, dispatch and delivery are one row. A
+delivery with no order number becomes a record of its own. The tracker in
+`mxr deliveries` stays as it was.
+
+```bash
+mxr records list --kind order
+```
+
 ## In the apps
 
 - **TUI:** press `7` for the **Deliveries** tab. `j`/`k` to move, `o`/`Enter` to open the source email inline in a split preview (`Ctrl-d`/`Ctrl-u` scroll it, `Esc` closes it), `r` to resolve, `d` to dismiss, `D` to cycle the active/delivered/all filter, `g` to refresh. Opening the source email is handy for inspecting a false positive — e.g. a phishing "DHL" mail misread as a shipment — before dismissing it. See [keybindings](/reference/keybindings/).

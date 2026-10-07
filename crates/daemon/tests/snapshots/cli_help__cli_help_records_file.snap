@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+File an email as a record yourself
+
+Usage: mxr records file [OPTIONS] <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>
+
+Options:
+      --kind <KIND>        receipt, order, booking, invoice, statement, ticket, contract, warranty or account; the detector's reading otherwise
+      --dry-run
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

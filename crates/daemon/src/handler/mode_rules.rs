@@ -15,59 +15,6 @@ use mxr_protocol::{
 use mxr_store::DeskDismissal;
 use std::collections::HashMap;
 
-/// Local parts of senders whose mail is a record: receipts, bills,
-/// orders, bookings and statements.
-const RECORD_LOCAL_PARTS: &[&str] = &[
-    "receipt",
-    "billing",
-    "invoice",
-    "order",
-    "booking",
-    "reservation",
-    "statement",
-];
-
-/// Subject phrases that make an automated message a record, matched in
-/// lowercase. Notifications ("your order has shipped") stay Updates as
-/// well: a record is also an update until it's let go.
-const RECORD_SUBJECT_PHRASES: &[&str] = &[
-    "receipt",
-    "invoice",
-    "order confirmation",
-    "order confirmed",
-    "your order",
-    "booking confirmation",
-    "booking confirmed",
-    "reservation confirmed",
-    "your reservation",
-    "itinerary",
-    "e-ticket",
-    "statement is ready",
-    "your statement",
-    "payment confirmation",
-    "payment received",
-];
-
-/// What makes an automated message a record, for its why line: the
-/// subject phrase, or the sender's address.
-pub(super) fn record_evidence(from_email: &str, subject: &str) -> Option<String> {
-    let subject_lower = subject.to_lowercase();
-    if let Some(phrase) = RECORD_SUBJECT_PHRASES
-        .iter()
-        .find(|phrase| subject_lower.contains(*phrase))
-    {
-        return Some(format!("\"{phrase}\" in the subject"));
-    }
-    let local = from_email
-        .split_once('@')
-        .map_or(from_email, |(local, _)| local)
-        .to_ascii_lowercase();
-    RECORD_LOCAL_PARTS
-        .iter()
-        .find(|part| local.contains(*part))
-        .map(|part| format!("sent from a {part} address"))
-}
-
 /// A mode's done mark still holds when it saw every message of the mode
 /// (its id list; an older mark, its watermark). Updates and Reading read
 /// only their own messages, so your reply in a notification thread
@@ -477,20 +424,6 @@ mod tests {
         DateTime::parse_from_rfc3339(rfc3339)
             .unwrap()
             .with_timezone(&Utc)
-    }
-
-    #[test]
-    fn records_come_from_the_subject_or_the_sending_address() {
-        assert_eq!(
-            record_evidence("no-reply@shop.example", "Your receipt from Shop").as_deref(),
-            Some("\"receipt\" in the subject")
-        );
-        assert_eq!(
-            record_evidence("billing@thameswater.co.uk", "Reminder: your water bill").as_deref(),
-            Some("sent from a billing address")
-        );
-        assert!(record_evidence("notifications@github.com", "Build failed on main").is_none());
-        assert!(record_evidence("alerts@bank.example", "New sign-in to your account").is_none());
     }
 
     #[test]

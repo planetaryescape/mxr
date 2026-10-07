@@ -27,6 +27,7 @@ mod place_actions;
 mod platform_actions;
 mod promises;
 mod recorder;
+mod records_actions;
 mod reply_later_prompt;
 mod row_gists;
 mod rule_actions;
@@ -74,6 +75,7 @@ pub use pending_optimistic::PendingOptimisticState;
 pub use promises::PromisePrompt;
 #[cfg(test)]
 pub(crate) use promises::{PROMISE_ANSWER_GUARD, PROMISE_PROMPT_TTL};
+pub(crate) use records_actions::ARCHIVE_MODE;
 pub use row_gists::{RowGist, RowGistState, RowGists};
 use state::PendingPreviewRead;
 pub use state::*;
@@ -127,6 +129,9 @@ pub enum MutationEffect {
     /// A to-do changed (ticked off, scheduled, edited, made, restored,
     /// kept or let go): refetch the lens and say what happened.
     Todo(String),
+    /// A record changed (fixed, confirmed, dismissed, filed): refetch the
+    /// Archive lens and say what happened in the daemon's words.
+    Records(String),
     /// Done here in a mode (`SetModeDone`) or a sender answered: refetch
     /// Now, the rail, the desk, places and To do, and say what happened in
     /// the daemon's handoff words.
@@ -208,6 +213,9 @@ pub enum UndoAction {
     Todos(Vec<String>),
     /// Catch-up rows kept or let go: back in the batch, undecided.
     Catchup(Vec<String>),
+    /// An Archive change, reversed as the daemon's `RecordUndoData` says:
+    /// restore or dismiss records, or drop the fields you set.
+    Records(mxr_protocol::RecordUndoData),
 }
 
 /// Captured handle for a recent undoable mutation. The TUI uses this to

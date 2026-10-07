@@ -31,7 +31,11 @@ export type OtherVerb =
   | "todo-edit"
   | "todo-create"
   | "todo-keep"
-  | "todo-let-go";
+  | "todo-let-go"
+  | "record-file"
+  | "record-dismiss"
+  | "record-fix"
+  | "record-check";
 
 export type Verb = MailAction | OtherVerb;
 
@@ -333,6 +337,35 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     sound: null,
     undo: "reverse-request",
     confirm: "Let go of all: it previews the daemon's dry run.",
+  },
+  "record-file": {
+    actions: ["mail.pass-to-mode"],
+    alsoFrom: "the palette's Pass to a mode",
+    optimistic: "Nothing moves until the preview card is confirmed; then the record joins Archive.",
+    pastTense: "Filed in Archive",
+    sound: null,
+    undo: "reverse-request",
+  },
+  "record-dismiss": {
+    actions: ["archive.dismiss"],
+    optimistic: "The row leaves Archive; the email is untouched and never filed again.",
+    pastTense: "Not a record",
+    sound: null,
+    undo: "reverse-request",
+  },
+  "record-check": {
+    actions: ["archive.check"],
+    optimistic: "Every unchecked amount and date becomes yours, and the card says checked.",
+    pastTense: "Marked checked",
+    sound: null,
+    undo: "reverse-request",
+  },
+  "record-fix": {
+    actions: ["archive.edit"],
+    optimistic: "Nothing moves until the fix is saved; then the field is yours and checked.",
+    pastTense: "Fixed",
+    sound: null,
+    undo: "reverse-request",
   },
   "move-sender": {
     actions: ["place.move-sender", "reader.move-sender"],

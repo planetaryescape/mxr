@@ -97,7 +97,7 @@ where
                 reason: format!("\"{}\" in the subject", read.phrase),
                 issuer: fallback_issuer.clone(),
                 reference: read.reference,
-                account_ref: None,
+                account_ref: read.account_ref,
                 fields: read.fields,
             })
             .into_iter()

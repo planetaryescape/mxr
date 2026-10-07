@@ -202,10 +202,9 @@ fn matches(term: &str, haystack: &[String]) -> bool {
 
 /// Every candidate that matches every term, best first. Score sums each
 /// term's best field (reference 5, issuer 3, place 2.5, group 2, title 2),
-/// plus 1.5 for a named kind, which also filters; ties go to the newest
-/// record.
+/// plus 1.5 for a named kind, which also filters.
 pub fn rank(query: &Query, candidates: &[Candidate<'_>]) -> Vec<Ranked> {
-    let mut ranked: Vec<(Ranked, Option<DateTime<Utc>>)> = Vec::new();
+    let mut ranked: Vec<(Ranked, (Option<DateTime<Utc>>, Option<DateTime<Utc>>))> = Vec::new();
     for (index, candidate) in candidates.iter().enumerate() {
         let record = candidate.record;
         let date = record.ledger_date();
@@ -282,13 +281,21 @@ pub fn rank(query: &Query, candidates: &[Candidate<'_>]) -> Vec<Ranked> {
         if query.asked == Asked::Amount && record.amount_minor.is_some() {
             score += 0.5;
         }
-        ranked.push((Ranked { index, score }, date));
+        ranked.push((Ranked { index, score }, (record.span_start, date)));
     }
+    // Ties go to what starts first (a trip's flight before its hotel: what
+    // the desk asks for first), then to the newest record.
     ranked.sort_by(|a, b| {
         b.0.score
             .partial_cmp(&a.0.score)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| b.1.cmp(&a.1))
+            .then_with(|| match (a.1 .0, b.1 .0) {
+                (Some(x), Some(y)) => x.cmp(&y),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            })
+            .then_with(|| b.1 .1.cmp(&a.1 .1))
     });
     ranked.into_iter().map(|(ranked, _)| ranked).collect()
 }

@@ -694,6 +694,7 @@ mod now;
 mod owed;
 mod places;
 mod platform_and_export;
+mod records;
 mod routing_and_search;
 mod stars;
 mod thread_gists;

@@ -25,7 +25,11 @@ pub struct RuleRead {
     pub stage: Stage,
     /// The subject phrase that named the kind, for the why line.
     pub phrase: String,
+    /// The reference that names this one record, for its dedup key.
     pub reference: Option<String>,
+    /// An account, customer or policy number: it names the account, not
+    /// this bill, so each bill stays its own record and they form a series.
+    pub account_ref: Option<String>,
     pub fields: Vec<Found>,
 }
 
@@ -330,9 +334,33 @@ where
         kind: kind_rule.kind,
         stage: kind_rule.stage,
         phrase,
-        reference: reference.map(|(value, _)| value),
+        account_ref: reference
+            .as_ref()
+            .filter(|(value, _)| is_account_label(&reference_label(&text, value)))
+            .map(|(value, _)| value.clone()),
+        reference: reference
+            .filter(|(value, _)| !is_account_label(&reference_label(&text, value)))
+            .map(|(value, _)| value),
         fields,
     })
+}
+
+/// Labels that name an account rather than one transaction.
+fn is_account_label(label: &str) -> bool {
+    matches!(label, "account" | "customer" | "policy" | "membership")
+}
+
+/// The label a reference value was read under.
+fn reference_label(text: &str, value: &str) -> String {
+    REFERENCE
+        .captures_iter(text)
+        .find(|caps| {
+            caps.name("value")
+                .is_some_and(|v| v.as_str().trim_end_matches(['-', '/', '.']) == value)
+        })
+        .and_then(|caps| caps.name("label"))
+        .map(|label| label.as_str().to_ascii_lowercase())
+        .unwrap_or_default()
 }
 
 /// The labelled reference that fits the kind best: an order number on an

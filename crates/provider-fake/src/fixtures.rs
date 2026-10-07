@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 mod messages_demo;
 mod modes_demo;
+mod records_demo;
 mod todo_demo;
 
 /// The provider id of the demo's sent message that promises the signed
@@ -761,6 +762,7 @@ impl DemoFixtureStream {
                 + todo_demo::TODO_DEMO_MESSAGE_COUNT
                 + modes_demo::MODES_DEMO_MESSAGE_COUNT
                 + messages_demo::MESSAGES_DEMO_MESSAGE_COUNT
+                + records_demo::RECORDS_DEMO_MESSAGE_COUNT
         } else {
             0
         };
@@ -846,8 +848,8 @@ impl DemoFixtureStream {
     }
 
     /// Shipping mail, then To do mail, then the modes' landlord and new
-    /// sender, then Messages' people: the seeded messages at the head of
-    /// the personal account.
+    /// sender, then Messages' people, then the mail Archive files as
+    /// records: the seeded messages at the head of the personal account.
     fn delivery_messages(&self) -> Vec<(Envelope, MessageBody)> {
         let mut messages = delivery_demo_messages(&self.account_id, &self.self_addr, self.now);
         messages.extend(todo_demo::todo_demo_messages(
@@ -863,6 +865,12 @@ impl DemoFixtureStream {
             messages.len() + 1,
         ));
         messages.extend(messages_demo::messages_demo_messages(
+            &self.account_id,
+            &self.self_addr,
+            self.now,
+            messages.len() + 1,
+        ));
+        messages.extend(records_demo::records_demo_messages(
             &self.account_id,
             &self.self_addr,
             self.now,

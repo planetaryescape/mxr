@@ -86,7 +86,11 @@ fn receipts_statements_and_invoices_need_a_reference_or_an_amount() {
     )
     .expect("statement");
     assert_eq!(statement.kind, RecordKind::Statement);
-    assert_eq!(statement.reference.as_deref(), Some("A-99312"));
+    // An account number names the account, not this bill: each bill is
+    // its own record, and they form a series.
+    assert_eq!(statement.reference, None);
+    assert_eq!(statement.account_ref.as_deref(), Some("A-99312"));
+    assert!(field(&statement, FieldName::Reference).is_some());
     let invoice = read_one("Invoice INV-2025-0042", "Total due: $450.00").expect("invoice");
     assert_eq!(invoice.kind, RecordKind::Invoice);
     assert!(read_one("Your statement", "Log in to see it.").is_none());

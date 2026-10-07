@@ -49,9 +49,9 @@ pub(super) fn ack_text(first: &str, habits: &WritingHabits) -> (String, String) 
         (Some(_), Some(_)) => format!("Your usual greeting and sign-off with {first}."),
         (Some(_), None) => format!("Your usual greeting with {first}."),
         (None, Some(_)) => format!("Your usual sign-off with {first}."),
-        (None, None) => format!(
-            "No greeting or sign-off of yours with {first} to go on, so a plain thanks."
-        ),
+        (None, None) => {
+            format!("No greeting or sign-off of yours with {first} to go on, so a plain thanks.")
+        }
     };
     (text, built_from)
 }
@@ -93,7 +93,11 @@ struct Prepared {
     headers: ReplyHeaders,
 }
 
-async fn plan(state: &AppState, thread_id: &ThreadId, dry_run: bool) -> Result<Prepared, HandlerError> {
+async fn plan(
+    state: &AppState,
+    thread_id: &ThreadId,
+    dry_run: bool,
+) -> Result<Prepared, HandlerError> {
     let now = Utc::now();
     let Some((account_id, _)) = threads_by_account(state, std::slice::from_ref(thread_id))
         .await?
@@ -181,9 +185,7 @@ pub(super) async fn ack(
 ) -> HandlerResult {
     let prepared = plan(state, thread_id, dry_run).await?;
     if dry_run {
-        return Ok(ResponseData::MessagesAck {
-            ack: prepared.plan,
-        });
+        return Ok(ResponseData::MessagesAck { ack: prepared.plan });
     }
     if let Some(expected) = expect_text {
         if expected != prepared.plan.text {

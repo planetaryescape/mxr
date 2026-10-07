@@ -207,7 +207,10 @@ mod tests {
             message(&t, "samir@launchpad.example", &[ME], &[], 1),
             message(&t, ME, &["samir@launchpad.example"], &[], 2),
         ];
-        assert_eq!(shape(&thread), Shape::OneToOne("samir@launchpad.example".into()));
+        assert_eq!(
+            shape(&thread),
+            Shape::OneToOne("samir@launchpad.example".into())
+        );
     }
 
     #[test]
@@ -220,17 +223,38 @@ mod tests {
             &["ruth@keystone.example"],
             1,
         )];
-        assert_eq!(shape(&thread), Shape::OneToOne("samir@launchpad.example".into()));
+        assert_eq!(
+            shape(&thread),
+            Shape::OneToOne("samir@launchpad.example".into())
+        );
     }
 
     #[test]
     fn two_people_taking_part_make_a_group_and_cc_churn_keeps_it_one() {
         let t = ThreadId::new();
         let thread = [
-            message(&t, "samir@launchpad.example", &[ME], &["ruth@keystone.example"], 1),
-            message(&t, "ruth@keystone.example", &["samir@launchpad.example", ME], &[], 2),
+            message(
+                &t,
+                "samir@launchpad.example",
+                &[ME],
+                &["ruth@keystone.example"],
+                1,
+            ),
+            message(
+                &t,
+                "ruth@keystone.example",
+                &["samir@launchpad.example", ME],
+                &[],
+                2,
+            ),
             // Someone added, someone dropped: still the same group thread.
-            message(&t, ME, &["ruth@keystone.example"], &["jon@papertrail.example"], 3),
+            message(
+                &t,
+                ME,
+                &["ruth@keystone.example"],
+                &["jon@papertrail.example"],
+                3,
+            ),
             message(&t, "jon@papertrail.example", &[ME], &[], 4),
         ];
         let Shape::Group(people) = shape(&thread) else {
@@ -263,10 +287,19 @@ mod tests {
     fn writing_in_a_copied_thread_makes_it_a_conversation() {
         let t = ThreadId::new();
         let thread = [
-            message(&t, "iris@meridian.example", &["ruth@keystone.example"], &[ME], 1),
+            message(
+                &t,
+                "iris@meridian.example",
+                &["ruth@keystone.example"],
+                &[ME],
+                1,
+            ),
             message(&t, ME, &["iris@meridian.example"], &[], 2),
         ];
-        assert_eq!(shape(&thread), Shape::OneToOne("iris@meridian.example".into()));
+        assert_eq!(
+            shape(&thread),
+            Shape::OneToOne("iris@meridian.example".into())
+        );
     }
 
     #[test]
@@ -283,8 +316,17 @@ mod tests {
     fn neither_to_nor_cc_counts_as_addressed() {
         // Bcc, or an alias mxr doesn't know: never silently copied.
         let t = ThreadId::new();
-        let thread = [message(&t, "noor@tidewater.example", &["alias@example.net"], &[], 1)];
-        assert_eq!(shape(&thread), Shape::OneToOne("noor@tidewater.example".into()));
+        let thread = [message(
+            &t,
+            "noor@tidewater.example",
+            &["alias@example.net"],
+            &[],
+            1,
+        )];
+        assert_eq!(
+            shape(&thread),
+            Shape::OneToOne("noor@tidewater.example".into())
+        );
     }
 
     #[test]

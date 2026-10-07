@@ -55,7 +55,10 @@ pub struct PersonMerge {
 
 impl super::Store {
     /// Every link in the account.
-    pub async fn person_links(&self, account_id: &AccountId) -> Result<Vec<PersonLink>, sqlx::Error> {
+    pub async fn person_links(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<Vec<PersonLink>, sqlx::Error> {
         let rows = sqlx::query(
             "SELECT LOWER(email) AS email, LOWER(person_email) AS person_email, linked_at
              FROM person_links WHERE account_id = ?1 ORDER BY email",

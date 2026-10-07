@@ -43,7 +43,13 @@ fn message(
         from: from.clone(),
         to: to.iter().map(|a| (*a).clone()).collect(),
         cc: cc.iter().map(|a| (*a).clone()).collect(),
-        snippet: body.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(120).collect(),
+        snippet: body
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .take(120)
+            .collect(),
         subject: subject.to_string(),
         body_text: body.to_string(),
         date,
@@ -105,10 +111,22 @@ pub(super) fn messages_demo_messages(
     let contract = thread(account_id, "contract");
     let asked = "Hi Samir,\n\nHere's the renewal draft for next year. Could you check it with legal and let me know what changes on your side?\n\nAlex";
     push(
-        message(me, &[&samir], &[], "Contract renewal", asked, now - Duration::days(2), true),
+        message(
+            me,
+            &[&samir],
+            &[],
+            "Contract renewal",
+            asked,
+            now - Duration::days(2),
+            true,
+        ),
         &contract,
     );
-    let quoted_plain: String = asked.lines().map(|l| format!("> {l}")).collect::<Vec<_>>().join("\n");
+    let quoted_plain: String = asked
+        .lines()
+        .map(|l| format!("> {l}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     let letter = push(
         message(
             &samir,
@@ -140,11 +158,27 @@ pub(super) fn messages_demo_messages(
 
     let pricing = thread(account_id, "pricing");
     push(
-        message(me, &[&samir, &ruth], &[], "Pricing copy", "Here's the new pricing page copy. Does it read right to both of you?", now - Duration::days(4), true),
+        message(
+            me,
+            &[&samir, &ruth],
+            &[],
+            "Pricing copy",
+            "Here's the new pricing page copy. Does it read right to both of you?",
+            now - Duration::days(4),
+            true,
+        ),
         &pricing,
     );
     push(
-        message(&samir, &[me, &ruth], &[], "Re: Pricing copy", "Reads well to me. Ruth, the enterprise line is yours.", now - Duration::days(3), false),
+        message(
+            &samir,
+            &[me, &ruth],
+            &[],
+            "Re: Pricing copy",
+            "Reads well to me. Ruth, the enterprise line is yours.",
+            now - Duration::days(3),
+            false,
+        ),
         &pricing,
     );
     push(
@@ -154,21 +188,53 @@ pub(super) fn messages_demo_messages(
 
     let jon_thread = thread(account_id, "jon");
     push(
-        message(me, &[&jon], &[], "Pricing copy for the docs", "Jon, I moved the pricing copy into the docs draft.", now - Duration::days(1), true),
+        message(
+            me,
+            &[&jon],
+            &[],
+            "Pricing copy for the docs",
+            "Jon, I moved the pricing copy into the docs draft.",
+            now - Duration::days(1),
+            true,
+        ),
         &jon_thread,
     );
     push(
-        message(&jon, &[me], &[], "Re: Pricing copy for the docs", "Does the pricing copy read right to you?", now - Duration::hours(8), false),
+        message(
+            &jon,
+            &[me],
+            &[],
+            "Re: Pricing copy for the docs",
+            "Does the pricing copy read right to you?",
+            now - Duration::hours(8),
+            false,
+        ),
         &jon_thread,
     );
 
     let iris_thread = thread(account_id, "iris");
     push(
-        message(&iris, &[me], &[], "Incident note", "The incident note is ready for a read when you have a minute.", now - Duration::hours(30), false),
+        message(
+            &iris,
+            &[me],
+            &[],
+            "Incident note",
+            "The incident note is ready for a read when you have a minute.",
+            now - Duration::hours(30),
+            false,
+        ),
         &iris_thread,
     );
     push(
-        message(me, &[&iris], &[], "Re: Incident note", "Thanks, on it.", now - Duration::hours(28), true),
+        message(
+            me,
+            &[&iris],
+            &[],
+            "Re: Incident note",
+            "Thanks, on it.",
+            now - Duration::hours(28),
+            true,
+        ),
         &iris_thread,
     );
 

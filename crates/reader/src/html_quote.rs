@@ -205,7 +205,8 @@ mod tests {
 
     #[test]
     fn a_bare_forward_keeps_its_quote() {
-        let html = r#"<div class="gmail_quote">---------- Forwarded message ---------<br>The deck</div>"#;
+        let html =
+            r#"<div class="gmail_quote">---------- Forwarded message ---------<br>The deck</div>"#;
         let parts = split_html_quote(html);
         assert!(!parts.has_quote);
         assert!(parts.main.contains("The deck"));

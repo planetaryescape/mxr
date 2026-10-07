@@ -40,9 +40,13 @@ async fn messages_report() {
     let at = Utc::now();
 
     // Warm the page cache once so timings are steady-state, as in use.
-    let _ = messages::messages_at(&state, None, None, 50, at).await.unwrap();
+    let _ = messages::messages_at(&state, None, None, 50, at)
+        .await
+        .unwrap();
     let started = Instant::now();
-    let data = messages::messages_at(&state, None, None, 50, at).await.unwrap();
+    let data = messages::messages_at(&state, None, None, 50, at)
+        .await
+        .unwrap();
     println!("ListMessages: {:.0} ms", ms(started));
     println!(
         "  bands: your turn {}, pinned {}, recent {} (shown {}), quiet {} (shown {})",
@@ -107,23 +111,21 @@ async fn messages_report() {
             "GetPerson (top row): {:.0} ms, {} topics, {} messages shown",
             ms(started),
             page.topics.len(),
-            page.conversation
-                .as_ref()
-                .map_or(0, |c| c.messages.len())
+            page.conversation.as_ref().map_or(0, |c| c.messages.len())
         );
         if let Some(conversation) = &page.conversation {
             let started = Instant::now();
-            let result = crate::handler::messages_ack::ack(
-                &state,
-                &conversation.thread_id,
-                true,
-                None,
-            )
-            .await;
+            let result =
+                crate::handler::messages_ack::ack(&state, &conversation.thread_id, true, None)
+                    .await;
             println!(
                 "AckMessage --dry-run: {:.0} ms ({})",
                 ms(started),
-                if result.is_ok() { "ok" } else { "no one to answer" }
+                if result.is_ok() {
+                    "ok"
+                } else {
+                    "no one to answer"
+                }
             );
         }
     }
@@ -207,7 +209,11 @@ async fn messages_report() {
                     body.text_html.as_deref(),
                     &ReaderConfig::default(),
                 );
-                let new = new_text(body.text_plain.as_deref(), body.text_html.as_deref(), &earlier);
+                let new = new_text(
+                    body.text_plain.as_deref(),
+                    body.text_html.as_deref(),
+                    &earlier,
+                );
                 before_raw += plain.chars().count();
                 before_clean += old.content.chars().count();
                 after += new.text.chars().count();

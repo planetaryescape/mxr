@@ -19,8 +19,8 @@ use super::desk_lanes::{
 use super::desk_timers::DeskTimers;
 use super::messages_text::{cached_ask, new_texts, wrapped_lines, TextRequest};
 use super::messages_view::{
-    band, build_row, closeness, day_label, preview, preview_text, rank_by_recency,
-    rank_your_turn, turn_ratio, you_preview, People, RowContext, RowKey, Topic, PINNED_CAP,
+    band, build_row, closeness, day_label, preview, preview_text, rank_by_recency, rank_your_turn,
+    turn_ratio, you_preview, People, RowContext, RowKey, Topic, PINNED_CAP,
 };
 use super::modes::messages_dismissals;
 use super::places::scoped_accounts;
@@ -31,9 +31,9 @@ use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
     messages_copy, ClosenessData, ComposerData, ConversationAttachmentData, ConversationData,
     ConversationMessageData, DeskLaneKind, DeskRowData, MergeSuggestionData, MessageLayoutData,
-    MessagesBandData, MessagesData, MessagesLapsedData, MessagesPreviewKindData,
-    MessagesRowData, MessagesRowKindData, MessagesTopicData, MessagesTurnData, PersonMergeData,
-    PersonPageData, PersonRefData, ResponseData, TopicStateData, TrimmedData,
+    MessagesBandData, MessagesData, MessagesLapsedData, MessagesPreviewKindData, MessagesRowData,
+    MessagesRowKindData, MessagesTopicData, MessagesTurnData, PersonMergeData, PersonPageData,
+    PersonRefData, ResponseData, TopicStateData, TrimmedData,
 };
 use mxr_store::{DeskMessage, PersonFacts, PersonMerge};
 use std::collections::{HashMap, HashSet};
@@ -151,9 +151,7 @@ async fn gather(
         let mut turns: HashMap<ThreadId, DeskRowData> = thread_lanes(&inputs)
             .rows
             .into_iter()
-            .filter(|draft| {
-                matches!(draft.row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew)
-            })
+            .filter(|draft| matches!(draft.row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew))
             .map(|draft| (draft.row.thread_id.clone(), draft.row))
             .collect();
         let mut topics = Vec::new();
@@ -323,7 +321,8 @@ fn place_topic(
     } else {
         TopicStateData::Quiet
     };
-    let reply_to = last_stored(current, |m| !m.trashed && !is_outbound(m, is_self)).unwrap_or(latest);
+    let reply_to =
+        last_stored(current, |m| !m.trashed && !is_outbound(m, is_self)).unwrap_or(latest);
     let subject = clean_subject(&latest.subject);
     let shape_data = match key {
         RowKey::Person(_) => mxr_protocol::ThreadShapeData::OneToOne,
@@ -473,8 +472,7 @@ pub(super) async fn messages_at(
     pinned.truncate(PINNED_CAP);
     rank_by_recency(&mut recent);
     rank_by_recency(&mut quiet);
-    let row_count = u32::try_from(your_turn.len() + recent.len() + quiet.len())
-        .unwrap_or(u32::MAX)
+    let row_count = u32::try_from(your_turn.len() + recent.len() + quiet.len()).unwrap_or(u32::MAX)
         + u32::try_from(pinned.iter().filter(|r| !r.your_turn).count()).unwrap_or(0);
     match turn {
         Some(MessagesTurnData::Mine) => {
@@ -811,8 +809,19 @@ async fn group_page(
     thread_id: &ThreadId,
     now: DateTime<Utc>,
 ) -> Result<Option<PersonPageData>, HandlerError> {
-    let g = gather(state, account_id, Scope::Threads(std::slice::from_ref(thread_id)), now).await?;
-    let Some(topic) = g.topics.iter().find(|t| &t.data.thread_id == thread_id).cloned() else {
+    let g = gather(
+        state,
+        account_id,
+        Scope::Threads(std::slice::from_ref(thread_id)),
+        now,
+    )
+    .await?;
+    let Some(topic) = g
+        .topics
+        .iter()
+        .find(|t| &t.data.thread_id == thread_id)
+        .cloned()
+    else {
         return Ok(None);
     };
     let ctx = g.ctx(now);
@@ -852,11 +861,7 @@ async fn conversation(
     topic: &MessagesTopicData,
     row: &MessagesRowData,
 ) -> Result<ConversationData, HandlerError> {
-    let thread = g
-        .threads
-        .get(&topic.thread_id)
-        .cloned()
-        .unwrap_or_default();
+    let thread = g.threads.get(&topic.thread_id).cloned().unwrap_or_default();
     let shown: Vec<&DeskMessage> = thread.iter().filter(|m| !m.trashed).collect();
     let earlier_count = shown.len().saturating_sub(CONVERSATION_MAX);
     let shown = &shown[earlier_count..];
@@ -999,7 +1004,10 @@ fn header_line(closeness: ClosenessData, pace: Option<&str>) -> String {
 // ----- Merging people -----
 
 fn clean_address(address: &str) -> Result<String, HandlerError> {
-    let address = address.trim().trim_start_matches("person:").to_ascii_lowercase();
+    let address = address
+        .trim()
+        .trim_start_matches("person:")
+        .to_ascii_lowercase();
     if address.contains('@') && !address.contains(char::is_whitespace) {
         Ok(address)
     } else {
@@ -1076,7 +1084,16 @@ pub(super) async fn split(
     } else {
         primary
     };
-    merge_outcome(state, account_id, person, remaining, vec![address], dry_run, now).await
+    merge_outcome(
+        state,
+        account_id,
+        person,
+        remaining,
+        vec![address],
+        dry_run,
+        now,
+    )
+    .await
 }
 
 async fn merge_outcome(
@@ -1163,7 +1180,10 @@ async fn suggestions_for(
     let mut by_name: Vec<(String, Vec<String>)> = Vec::new();
     for candidate in candidates {
         let key = candidate.display_name.to_lowercase();
-        match by_name.iter_mut().find(|(name, _)| name.to_lowercase() == key) {
+        match by_name
+            .iter_mut()
+            .find(|(name, _)| name.to_lowercase() == key)
+        {
             Some((_, emails)) => emails.push(candidate.email),
             None => by_name.push((candidate.display_name, vec![candidate.email])),
         }

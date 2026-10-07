@@ -91,8 +91,7 @@ pub async fn run(
             dry_run,
         } => {
             if suggestions {
-                let account_id =
-                    resolve_optional_account(&mut client, account.as_deref()).await?;
+                let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
                 let suggestions = expect_response(
                     client
                         .request(Request::ListMergeSuggestions { account_id })
@@ -444,7 +443,10 @@ fn render_ack(ack: &AckPlanData, format: OutputFormat) -> anyhow::Result<String>
     let _ = writeln!(out, "---\n{}\n---", terminal_text_block(&ack.text));
     let _ = writeln!(out, "{}", terminal_text(&ack.built_from));
     if ack.dry_run {
-        let _ = writeln!(out, "Dry run: nothing sent. Run without --dry-run to send it.");
+        let _ = writeln!(
+            out,
+            "Dry run: nothing sent. Run without --dry-run to send it."
+        );
     } else if let Some(id) = &ack.sent_message_id {
         let _ = writeln!(out, "Sent ({id}).");
     }

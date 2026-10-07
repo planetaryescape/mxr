@@ -137,8 +137,10 @@ impl PersonRefData {
 /// "Samir" from "Samir Patel", or "samir" from "samir@launchpad.example".
 pub fn first_name(name: Option<&str>, email: &str) -> String {
     name.and_then(|name| name.split_whitespace().next())
-        .map(str::to_string)
-        .unwrap_or_else(|| email.split('@').next().unwrap_or(email).to_string())
+        .map_or_else(
+            || email.split('@').next().unwrap_or(email).to_string(),
+            str::to_string,
+        )
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]

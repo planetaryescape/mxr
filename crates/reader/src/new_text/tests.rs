@@ -54,7 +54,9 @@ fn outlook_html_reply_loses_everything_from_the_header_on() {
 fn outlook_plain_text_header_block_is_a_boundary() {
     let text = fixture("outlook_reply_unmarked.txt");
     let out = new_text(Some(&text), None, &[]);
-    assert!(out.text.starts_with("Approved. Please book it on the team card."));
+    assert!(out
+        .text
+        .starts_with("Approved. Please book it on the team card."));
     assert!(!out.text.contains("07:40"));
     assert!(out.trimmed.quote);
 }

@@ -4,7 +4,9 @@ use mxr_core::id::MessageId;
 use mxr_protocol::{DeskLaneKind, ThreadShapeData};
 
 fn now() -> DateTime<Utc> {
-    Utc.with_ymd_and_hms(2026, 10, 2, 15, 0, 0).single().unwrap()
+    Utc.with_ymd_and_hms(2026, 10, 2, 15, 0, 0)
+        .single()
+        .unwrap()
 }
 
 fn facts(email: &str, outbound: u32, inbound: u32, known_days: i64, last_days: i64) -> PersonFacts {
@@ -68,13 +70,28 @@ fn topic(key: RowKey, state: TopicStateData, hours_ago: i64) -> Topic {
 fn closeness_follows_reciprocity_recency_and_longevity() {
     let n = now();
     assert_eq!(closeness(None, n), ClosenessData::New);
-    assert_eq!(closeness(Some(&facts("a@x", 0, 9, 400, 1)), n), ClosenessData::New);
-    assert_eq!(closeness(Some(&facts("a@x", 48, 30, 900, 3)), n), ClosenessData::Close);
+    assert_eq!(
+        closeness(Some(&facts("a@x", 0, 9, 400, 1)), n),
+        ClosenessData::New
+    );
+    assert_eq!(
+        closeness(Some(&facts("a@x", 48, 30, 900, 3)), n),
+        ClosenessData::Close
+    );
     // Lots of mail, but a year quiet: no longer close.
-    assert_eq!(closeness(Some(&facts("a@x", 48, 30, 900, 200)), n), ClosenessData::Regular);
+    assert_eq!(
+        closeness(Some(&facts("a@x", 48, 30, 900, 200)), n),
+        ClosenessData::Regular
+    );
     // You write, they never answer: not close.
-    assert_eq!(closeness(Some(&facts("a@x", 20, 1, 900, 3)), n), ClosenessData::Regular);
-    assert_eq!(closeness(Some(&facts("a@x", 1, 1, 10, 3)), n), ClosenessData::Occasional);
+    assert_eq!(
+        closeness(Some(&facts("a@x", 20, 1, 900, 3)), n),
+        ClosenessData::Regular
+    );
+    assert_eq!(
+        closeness(Some(&facts("a@x", 1, 1, 10, 3)), n),
+        ClosenessData::Occasional
+    );
 }
 
 #[test]
@@ -82,13 +99,31 @@ fn a_rows_band_follows_its_topics() {
     let key = RowKey::Person("samir@launchpad.example".into());
     let n = now();
     assert_eq!(
-        band(&[topic(key.clone(), TopicStateData::Quiet, 2), topic(key.clone(), TopicStateData::YourTurn, 30)], n),
+        band(
+            &[
+                topic(key.clone(), TopicStateData::Quiet, 2),
+                topic(key.clone(), TopicStateData::YourTurn, 30)
+            ],
+            n
+        ),
         MessagesBandData::YourTurn
     );
-    assert_eq!(band(&[topic(key.clone(), TopicStateData::Waiting, 400)], n), MessagesBandData::Recent);
-    assert_eq!(band(&[topic(key.clone(), TopicStateData::Quiet, 30)], n), MessagesBandData::Recent);
-    assert_eq!(band(&[topic(key.clone(), TopicStateData::Quiet, 24 * 9)], n), MessagesBandData::Quiet);
-    assert_eq!(band(&[topic(key, TopicStateData::Done, 1)], n), MessagesBandData::Quiet);
+    assert_eq!(
+        band(&[topic(key.clone(), TopicStateData::Waiting, 400)], n),
+        MessagesBandData::Recent
+    );
+    assert_eq!(
+        band(&[topic(key.clone(), TopicStateData::Quiet, 30)], n),
+        MessagesBandData::Recent
+    );
+    assert_eq!(
+        band(&[topic(key.clone(), TopicStateData::Quiet, 24 * 9)], n),
+        MessagesBandData::Quiet
+    );
+    assert_eq!(
+        band(&[topic(key, TopicStateData::Done, 1)], n),
+        MessagesBandData::Quiet
+    );
 }
 
 #[test]
@@ -122,7 +157,10 @@ fn your_turn_ranks_closeness_first_then_how_late() {
     ];
     rank_your_turn(&mut rows);
     let order: Vec<&str> = rows.iter().map(|(r, _)| r.id.as_str()).collect();
-    assert_eq!(order, vec!["close-late", "close-fresh", "regular", "stranger"]);
+    assert_eq!(
+        order,
+        vec!["close-late", "close-fresh", "regular", "stranger"]
+    );
 }
 
 #[test]
@@ -146,7 +184,11 @@ fn a_person_with_several_threads_is_one_row_with_your_turn_first() {
         key,
         vec![
             topic(RowKey::Person(primary.clone()), TopicStateData::Waiting, 24),
-            topic(RowKey::Person(primary.clone()), TopicStateData::YourTurn, 16),
+            topic(
+                RowKey::Person(primary.clone()),
+                TopicStateData::YourTurn,
+                16,
+            ),
         ],
         &ctx,
     );
@@ -169,10 +211,16 @@ fn merged_addresses_are_one_person() {
         person_email: "samir@launchpad.example".into(),
         linked_at: now(),
     }]);
-    assert_eq!(people.primary("Samir.Patel@gmail.example"), "samir@launchpad.example");
+    assert_eq!(
+        people.primary("Samir.Patel@gmail.example"),
+        "samir@launchpad.example"
+    );
     assert_eq!(
         people.addresses("samir@launchpad.example"),
-        vec!["samir@launchpad.example".to_string(), "samir.patel@gmail.example".to_string()]
+        vec![
+            "samir@launchpad.example".to_string(),
+            "samir.patel@gmail.example".to_string()
+        ]
     );
 }
 
@@ -181,7 +229,10 @@ fn labels_read_plainly() {
     assert_eq!(pace_label(47 * 60), "usually 47m");
     assert_eq!(pace_label(5 * 3600), "usually 5h");
     assert_eq!(pace_label(3 * 86_400), "usually 3d");
-    assert_eq!(preview_text("Can you take a look\n\nand reply?"), "Can you take a look and reply?");
+    assert_eq!(
+        preview_text("Can you take a look\n\nand reply?"),
+        "Can you take a look and reply?"
+    );
     let long = preview_text(&"word ".repeat(60));
     assert!(long.ends_with('…') && long.chars().count() <= 141, "{long}");
     let n = now();

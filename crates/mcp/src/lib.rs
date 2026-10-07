@@ -998,7 +998,11 @@ mod tests {
             .expect("tool result");
         assert_eq!(blocked.0["blocked"], true);
         let requests = requester.requests.lock().unwrap();
-        assert_eq!(requests.len(), 1, "the blocked send never reached the daemon");
+        assert_eq!(
+            requests.len(),
+            1,
+            "the blocked send never reached the daemon"
+        );
         assert!(matches!(
             &requests[0],
             Request::AckMessage { dry_run: true, .. }

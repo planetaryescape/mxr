@@ -218,7 +218,11 @@ pub(super) fn band(topics: &[Topic], now: DateTime<Utc>) -> MessagesBandData {
 
 /// Build one row from its topics. The preview is filled in later, for the
 /// rows that are shown.
-pub(super) fn build_row(key: RowKey, mut topics: Vec<Topic>, ctx: &RowContext<'_>) -> MessagesRowData {
+pub(super) fn build_row(
+    key: RowKey,
+    mut topics: Vec<Topic>,
+    ctx: &RowContext<'_>,
+) -> MessagesRowData {
     sort_topics(&mut topics);
     let band = band(&topics, ctx.now);
     let turn = topics.iter().find_map(|t| t.turn.as_ref());
@@ -261,7 +265,15 @@ pub(super) fn build_row(key: RowKey, mut topics: Vec<Topic>, ctx: &RowContext<'_
     let pinned = person
         .as_ref()
         .is_some_and(|p| p.addresses.iter().any(|a| ctx.pinned.contains(a)));
-    let why = why_line(band, turn, person.as_ref(), &members, closeness, last_at, ctx.now);
+    let why = why_line(
+        band,
+        turn,
+        person.as_ref(),
+        &members,
+        closeness,
+        last_at,
+        ctx.now,
+    );
     MessagesRowData {
         id: key.id(),
         kind,

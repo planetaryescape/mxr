@@ -106,20 +106,77 @@ fn rows(messages: &MessagesData) -> Vec<&mxr_protocol::MessagesRowData> {
 async fn a_person_is_one_row_a_group_is_its_own_and_copied_mail_is_in_updates() {
     let fx = Fixture::new().await;
     let contract = ThreadId::new();
-    mail(&fx, &contract, ("Me", ME), &[SAMIR], &[], "Contract renewal", Duration::days(2)).await;
-    mail(&fx, &contract, ("Samir Patel", SAMIR), &[ME], &[], "Re: Contract renewal", Duration::hours(16)).await;
+    mail(
+        &fx,
+        &contract,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Contract renewal",
+        Duration::days(2),
+    )
+    .await;
+    mail(
+        &fx,
+        &contract,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Re: Contract renewal",
+        Duration::hours(16),
+    )
+    .await;
     let checklist = ThreadId::new();
-    mail(&fx, &checklist, ("Me", ME), &[SAMIR], &[], "Launch checklist", Duration::days(1)).await;
+    mail(
+        &fx,
+        &checklist,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Launch checklist",
+        Duration::days(1),
+    )
+    .await;
     let group = ThreadId::new();
-    mail(&fx, &group, ("Samir Patel", SAMIR), &[ME, RUTH], &[], "Pricing copy", Duration::days(3)).await;
-    mail(&fx, &group, ("Ruth Vega", RUTH), &[SAMIR, ME], &[], "Re: Pricing copy", Duration::days(2)).await;
+    mail(
+        &fx,
+        &group,
+        ("Samir Patel", SAMIR),
+        &[ME, RUTH],
+        &[],
+        "Pricing copy",
+        Duration::days(3),
+    )
+    .await;
+    mail(
+        &fx,
+        &group,
+        ("Ruth Vega", RUTH),
+        &[SAMIR, ME],
+        &[],
+        "Re: Pricing copy",
+        Duration::days(2),
+    )
+    .await;
     // You're only copied, and you never wrote in it.
     let copied = ThreadId::new();
-    mail(&fx, &copied, ("Iris Chen", "iris@meridian.example"), &[RUTH], &[ME], "Offsite", Duration::hours(3)).await;
+    mail(
+        &fx,
+        &copied,
+        ("Iris Chen", "iris@meridian.example"),
+        &[RUTH],
+        &[ME],
+        "Offsite",
+        Duration::hours(3),
+    )
+    .await;
 
     let messages = list(&fx).await;
     let all = rows(&messages);
-    let samir: Vec<_> = all.iter().filter(|r| r.id == format!("person:{SAMIR}")).collect();
+    let samir: Vec<_> = all
+        .iter()
+        .filter(|r| r.id == format!("person:{SAMIR}"))
+        .collect();
     assert_eq!(samir.len(), 1, "Samir is one row");
     let samir = samir[0];
     assert_eq!(samir.band, MessagesBandData::YourTurn);
@@ -137,7 +194,8 @@ async fn a_person_is_one_row_a_group_is_its_own_and_copied_mail_is_in_updates() 
     assert_eq!(group_row.title, "Samir, Ruth");
 
     assert!(
-        all.iter().all(|r| !r.topics.iter().any(|t| t.thread_id == copied)),
+        all.iter()
+            .all(|r| !r.topics.iter().any(|t| t.thread_id == copied)),
         "a copied thread is not in Messages"
     );
     match request(
@@ -173,11 +231,32 @@ async fn a_person_is_one_row_a_group_is_its_own_and_copied_mail_is_in_updates() 
 async fn your_turn_goes_quiet_after_a_week_without_a_cadence() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
-    mail(&fx, &thread, ("Me", ME), &["leo@workbench.example"], &[], "Desk lamp", Duration::days(12)).await;
-    mail(&fx, &thread, ("Leo Park", "leo@workbench.example"), &[ME], &[], "Re: Desk lamp", Duration::days(9)).await;
+    mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &["leo@workbench.example"],
+        &[],
+        "Desk lamp",
+        Duration::days(12),
+    )
+    .await;
+    mail(
+        &fx,
+        &thread,
+        ("Leo Park", "leo@workbench.example"),
+        &[ME],
+        &[],
+        "Re: Desk lamp",
+        Duration::days(9),
+    )
+    .await;
     let messages = list(&fx).await;
     assert!(messages.your_turn.is_empty());
-    assert_eq!(messages.empty_state.as_deref(), Some(mxr_protocol::messages_copy::CLEAR));
+    assert_eq!(
+        messages.empty_state.as_deref(),
+        Some(mxr_protocol::messages_copy::CLEAR)
+    );
     let leo = messages
         .quiet
         .iter()
@@ -192,15 +271,69 @@ async fn closer_people_rank_first_in_your_turn() {
     // Years of mail both ways with Maya.
     for days in [400, 300, 200, 100, 60, 40, 30, 20, 15, 12, 10, 8] {
         let t = ThreadId::new();
-        mail(&fx, &t, ("Me", ME), &["maya@orbit.example"], &[], "Notes", Duration::days(days)).await;
-        mail(&fx, &t, ("Maya Ortiz", "maya@orbit.example"), &[ME], &[], "Re: Notes", Duration::days(days) - Duration::hours(2)).await;
+        mail(
+            &fx,
+            &t,
+            ("Me", ME),
+            &["maya@orbit.example"],
+            &[],
+            "Notes",
+            Duration::days(days),
+        )
+        .await;
+        mail(
+            &fx,
+            &t,
+            ("Maya Ortiz", "maya@orbit.example"),
+            &[ME],
+            &[],
+            "Re: Notes",
+            Duration::days(days) - Duration::hours(2),
+        )
+        .await;
     }
     let newer = ThreadId::new();
-    mail(&fx, &newer, ("Me", ME), &["theo@northstar.example"], &[], "Hello", Duration::days(2)).await;
-    mail(&fx, &newer, ("Theo Nash", "theo@northstar.example"), &[ME], &[], "Re: Hello", Duration::hours(30)).await;
+    mail(
+        &fx,
+        &newer,
+        ("Me", ME),
+        &["theo@northstar.example"],
+        &[],
+        "Hello",
+        Duration::days(2),
+    )
+    .await;
+    mail(
+        &fx,
+        &newer,
+        ("Theo Nash", "theo@northstar.example"),
+        &[ME],
+        &[],
+        "Re: Hello",
+        Duration::hours(30),
+    )
+    .await;
     let maya = ThreadId::new();
-    mail(&fx, &maya, ("Me", ME), &["maya@orbit.example"], &[], "Launch", Duration::days(1)).await;
-    mail(&fx, &maya, ("Maya Ortiz", "maya@orbit.example"), &[ME], &[], "Re: Launch", Duration::hours(2)).await;
+    mail(
+        &fx,
+        &maya,
+        ("Me", ME),
+        &["maya@orbit.example"],
+        &[],
+        "Launch",
+        Duration::days(1),
+    )
+    .await;
+    mail(
+        &fx,
+        &maya,
+        ("Maya Ortiz", "maya@orbit.example"),
+        &[ME],
+        &[],
+        "Re: Launch",
+        Duration::hours(2),
+    )
+    .await;
     fx.state.store.refresh_contacts().await.unwrap();
 
     let messages = list(&fx).await;
@@ -209,23 +342,65 @@ async fn closer_people_rank_first_in_your_turn() {
         order,
         vec!["person:maya@orbit.example", "person:theo@northstar.example"]
     );
-    assert_eq!(messages.your_turn[0].closeness, mxr_protocol::ClosenessData::Close);
+    assert_eq!(
+        messages.your_turn[0].closeness,
+        mxr_protocol::ClosenessData::Close
+    );
 }
 
 #[tokio::test]
 async fn merging_is_manual_with_a_suggestion_and_makes_one_row() {
     let fx = Fixture::new().await;
     let work = ThreadId::new();
-    mail(&fx, &work, ("Me", ME), &[SAMIR], &[], "Contract", Duration::days(3)).await;
-    mail(&fx, &work, ("Samir Patel", SAMIR), &[ME], &[], "Re: Contract", Duration::days(2)).await;
+    mail(
+        &fx,
+        &work,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Contract",
+        Duration::days(3),
+    )
+    .await;
+    mail(
+        &fx,
+        &work,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Re: Contract",
+        Duration::days(2),
+    )
+    .await;
     let home = ThreadId::new();
-    mail(&fx, &home, ("Me", ME), &["samir.p@home.example"], &[], "Dinner", Duration::days(4)).await;
-    mail(&fx, &home, ("Samir Patel", "samir.p@home.example"), &[ME], &[], "Re: Dinner", Duration::days(1)).await;
+    mail(
+        &fx,
+        &home,
+        ("Me", ME),
+        &["samir.p@home.example"],
+        &[],
+        "Dinner",
+        Duration::days(4),
+    )
+    .await;
+    mail(
+        &fx,
+        &home,
+        ("Samir Patel", "samir.p@home.example"),
+        &[ME],
+        &[],
+        "Re: Dinner",
+        Duration::days(1),
+    )
+    .await;
     fx.state.store.refresh_contacts().await.unwrap();
 
     let before = list(&fx).await;
     assert_eq!(before.merge_suggestion_count, 1);
-    let samir_rows = rows(&before).into_iter().filter(|r| r.title == "Samir Patel").count();
+    let samir_rows = rows(&before)
+        .into_iter()
+        .filter(|r| r.title == "Samir Patel")
+        .count();
     assert_eq!(samir_rows, 2, "never merged on its own");
 
     let account = fx.account.clone();
@@ -247,7 +422,10 @@ async fn merging_is_manual_with_a_suggestion_and_makes_one_row() {
     assert_eq!(preview.person.addresses.len(), 2);
     assert_eq!(preview.thread_count, 2);
     assert_eq!(
-        rows(&list(&fx).await).into_iter().filter(|r| r.title == "Samir Patel").count(),
+        rows(&list(&fx).await)
+            .into_iter()
+            .filter(|r| r.title == "Samir Patel")
+            .count(),
         2,
         "a dry run changes nothing"
     );
@@ -263,10 +441,16 @@ async fn merging_is_manual_with_a_suggestion_and_makes_one_row() {
     )
     .await;
     let after = list(&fx).await;
-    let samir: Vec<_> = rows(&after).into_iter().filter(|r| r.title == "Samir Patel").collect();
+    let samir: Vec<_> = rows(&after)
+        .into_iter()
+        .filter(|r| r.title == "Samir Patel")
+        .collect();
     assert_eq!(samir.len(), 1);
     assert_eq!(samir[0].topics.len(), 2);
-    assert_eq!(after.merge_suggestion_count, 0, "a done merge is not suggested");
+    assert_eq!(
+        after.merge_suggestion_count, 0,
+        "a done merge is not suggested"
+    );
 
     request(
         &fx,
@@ -278,7 +462,10 @@ async fn merging_is_manual_with_a_suggestion_and_makes_one_row() {
     )
     .await;
     assert_eq!(
-        rows(&list(&fx).await).into_iter().filter(|r| r.title == "Samir Patel").count(),
+        rows(&list(&fx).await)
+            .into_iter()
+            .filter(|r| r.title == "Samir Patel")
+            .count(),
         2
     );
 }
@@ -287,7 +474,16 @@ async fn merging_is_manual_with_a_suggestion_and_makes_one_row() {
 async fn a_conversation_shows_new_text_with_the_trimmed_marker() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
-    let asked = mail(&fx, &thread, ("Me", ME), &[SAMIR], &[], "Rollout", Duration::days(1)).await;
+    let asked = mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Rollout",
+        Duration::days(1),
+    )
+    .await;
     body(
         &fx,
         &asked.id,
@@ -295,7 +491,16 @@ async fn a_conversation_shows_new_text_with_the_trimmed_marker() {
         None,
     )
     .await;
-    let reply = mail(&fx, &thread, ("Samir Patel", SAMIR), &[ME], &[], "Re: Rollout", Duration::hours(3)).await;
+    let reply = mail(
+        &fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Re: Rollout",
+        Duration::hours(3),
+    )
+    .await;
     body(
         &fx,
         &reply.id,
@@ -323,9 +528,33 @@ async fn a_conversation_shows_new_text_with_the_trimmed_marker() {
 async fn got_it_previews_the_text_it_sends() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
-    let mine = mail(&fx, &thread, ("Me", ME), &[SAMIR], &[], "Deck", Duration::days(2)).await;
-    body(&fx, &mine.id, Some("Hi Samir,\n\nDeck attached.\n\nCheers,\nAlex"), None).await;
-    let theirs = mail(&fx, &thread, ("Samir Patel", SAMIR), &[ME], &[], "Re: Deck", Duration::hours(2)).await;
+    let mine = mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Deck",
+        Duration::days(2),
+    )
+    .await;
+    body(
+        &fx,
+        &mine.id,
+        Some("Hi Samir,\n\nDeck attached.\n\nCheers,\nAlex"),
+        None,
+    )
+    .await;
+    let theirs = mail(
+        &fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Re: Deck",
+        Duration::hours(2),
+    )
+    .await;
     body(&fx, &theirs.id, Some("Thanks, reading it tonight."), None).await;
 
     let preview = match request(
@@ -346,7 +575,10 @@ async fn got_it_previews_the_text_it_sends() {
     assert_eq!(preview.subject, "Re: Deck");
     assert_eq!(preview.to[0].email, SAMIR);
     assert!(preview.text.contains("got it") || preview.text.contains("Got it"));
-    assert_eq!(preview.countdown_seconds, mxr_protocol::messages_copy::ACK_COUNTDOWN_SECONDS);
+    assert_eq!(
+        preview.countdown_seconds,
+        mxr_protocol::messages_copy::ACK_COUNTDOWN_SECONDS
+    );
 
     // Anything but the previewed text is refused.
     let msg = IpcMessage {
@@ -384,7 +616,10 @@ async fn got_it_previews_the_text_it_sends() {
     );
     // Your turn passed to them.
     let messages = list(&fx).await;
-    assert!(messages.your_turn.iter().all(|r| r.id != format!("person:{SAMIR}")));
+    assert!(messages
+        .your_turn
+        .iter()
+        .all(|r| r.id != format!("person:{SAMIR}")));
 }
 
 #[tokio::test]

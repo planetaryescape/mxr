@@ -99,7 +99,11 @@ pub(super) async fn new_texts(
                 })
             })
             .collect();
-        let result = new_text(body.text_plain.as_deref(), body.text_html.as_deref(), &earlier);
+        let result = new_text(
+            body.text_plain.as_deref(),
+            body.text_html.as_deref(),
+            &earlier,
+        );
         out.insert(
             message.id.clone(),
             MessageText {

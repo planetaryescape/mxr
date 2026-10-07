@@ -308,7 +308,9 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         let Some(held) = by_kind.get(&kind) else {
             continue;
         };
-        if modes.iter().any(|entry: &mxr_protocol::ModeMembershipData| entry.mode == mode)
+        if modes
+            .iter()
+            .any(|entry: &mxr_protocol::ModeMembershipData| entry.mode == mode)
             || done_in.contains(&mode)
         {
             continue;
@@ -380,9 +382,8 @@ fn shape_of(inputs: &PlaceInputs<'_>) -> Shape {
     let person_sender = |m: &DeskMessage| {
         mail_kind::classify(&signals(m, inputs.senders)).kind == mail_kind::SenderKind::Person
     };
-    let human = |email: &str| {
-        human_address(email, &inputs.senders.contacts, &inputs.senders.screener)
-    };
+    let human =
+        |email: &str| human_address(email, &inputs.senders.contacts, &inputs.senders.screener);
     conversation_shape(
         inputs.thread,
         &ShapeInputs {

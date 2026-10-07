@@ -500,7 +500,9 @@ pub(super) fn turn_decay(contact: Option<&DeskContact>) -> Duration {
     let floor = Duration::days(TURN_DECAY_FLOOR_DAYS);
     let cadence = contact
         .and_then(|c| c.cadence_seconds)
-        .map_or(floor, |seconds| Duration::seconds(seconds.saturating_mul(3)));
+        .map_or(floor, |seconds| {
+            Duration::seconds(seconds.saturating_mul(3))
+        });
     cadence.max(floor).min(Duration::days(DESK_WINDOW_DAYS))
 }
 

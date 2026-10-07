@@ -82,9 +82,7 @@ pub struct NewText {
 pub fn plain_text(text: Option<&str>, html_body: Option<&str>) -> String {
     let config = ReaderConfig::default();
     match (text, html_body) {
-        (Some(t), _) if !t.trim().is_empty() && !html::looks_like_html_document(t) => {
-            t.to_string()
-        }
+        (Some(t), _) if !t.trim().is_empty() && !html::looks_like_html_document(t) => t.to_string(),
         (Some(t), _) if !t.trim().is_empty() => html::to_plain_text(t, &config),
         (_, Some(h)) => html::to_plain_text(h, &config),
         _ => String::new(),
@@ -244,8 +242,7 @@ fn classify(line: &str, index: &EarlierIndex) -> LineClass {
     if line.trim().is_empty() {
         return LineClass::Blank;
     }
-    if ON_WROTE.is_match(line) || ORIGINAL_MESSAGE.is_match(line) || HEADER_FOLLOW.is_match(line)
-    {
+    if ON_WROTE.is_match(line) || ORIGINAL_MESSAGE.is_match(line) || HEADER_FOLLOW.is_match(line) {
         return LineClass::Header;
     }
     let line_words = words(line);

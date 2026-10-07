@@ -143,7 +143,13 @@ fn messages_print_as_json_and_got_it_previews_without_sending() {
         &instance,
         &data_dir,
         &config_dir,
-        &["messages", "person", row["id"].as_str().unwrap(), "--format", "json"],
+        &[
+            "messages",
+            "person",
+            row["id"].as_str().unwrap(),
+            "--format",
+            "json",
+        ],
     );
     let conversation = &page["conversation"];
     assert!(conversation["messages"].as_array().is_some(), "{page}");

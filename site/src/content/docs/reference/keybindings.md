@@ -665,6 +665,45 @@ Bundles of mail that isn't from people. The reader keeps its own keys.
 | `K` | Move sender to… | In the reader K is the previous message; use the palette or the line under the thread |
 | `D` | Unsubscribe… |  |
 
+### Reading edition
+
+Newsletters as an edition. `b`, `e`, `D` and `A` work on the item or link under the cursor; `D` and `A` preview first.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `j`, `ArrowDown` | Next |  |
+| `k`, `ArrowUp` | Previous |  |
+| `Enter` | Read |  |
+| `L` | Fetch the linked article |  |
+| `b` | Save for later |  |
+| `e` | Let go |  |
+| `D` | Unsubscribe… | Shows the evidence and the method first; nothing is sent until you confirm |
+| `R` | Read in the sender's layout |  |
+| `A` | Let go of everything shown… | Previews the daemon's dry run first; undo afterwards |
+| `o` | Open the email as sent |  |
+| `K` | This sender here: move to… |  |
+| `B` | Open Later |  |
+| `Esc` | Close the note about Reading |  |
+
+### Reading reader
+
+One item in a 66-character column. The article is fetched only on `L` or the Article tab.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `j`, `ArrowDown` | Scroll down |  |
+| `k`, `ArrowUp` | Scroll up |  |
+| `L` | Article: fetch and read it |  |
+| `I` | Issue: the email itself |  |
+| `b` | Save for later |  |
+| `e` | Let go and go back |  |
+| `n` | Next item |  |
+| `R` | Sender's layout or cleaned |  |
+| `h` | Highlight the selection |  |
+| `D` | Unsubscribe… |  |
+| `o` | Open the email as sent |  |
+| `Esc` | Back to the edition |  |
+
 <!-- web-keys:end -->
 
 ### Customization

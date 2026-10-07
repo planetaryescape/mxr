@@ -91,9 +91,8 @@ in a release yet; the rest exist today.
 
 **Mode**: one of the five jobs email does, each with its own view, unit and
 verbs: Messages, To do, Updates, Reading and Archive. One email can be in
-several modes at once; `mxr modes why` says which and why. Messages, To do
-and Archive are built; Updates and Reading are early versions on Paper trail
-and the Reading place.
+several modes at once; `mxr modes why` says which and why. Messages, To do,
+Reading and Archive are built; Updates is an early version on Paper trail.
 
 **Messages**: the mode for people you are in conversation with (`mxr
 messages`, `g m`). One row per person, merged across their addresses, with
@@ -125,8 +124,24 @@ instruction ("Pay council tax") with a due date and an act-by date
 **Updates** (early version): the mode for notifications (`g u`). Today it
 is Paper trail; the briefing by source in fixed digests is planned.
 
-**Reading** (early version): the mode for newsletters and posts you chose
-(`g r`), today the Reading place. The Later shelf is planned.
+**Reading**: the mode for newsletters and posts you chose (`mxr reading`,
+`g r`), shown as an [edition](/guides/reading/): readable items in three
+bands, ranked by what you read, with no unread count.
+
+**Edition**: Reading's front page: since you were last here, earlier this
+week and fading. A digest's links are items of their own and a teaser's
+item is its article.
+
+**Fade**: how long a Reading item stays: twice its source's usual gap
+between issues, from 2 to 14 days. Fading is done in Reading only; the
+email stays in your inbox and in search.
+
+**Later**: Reading's shelf of items you chose to keep. It never fades, and
+its count is the only one Reading shows. `b` in the apps, `mxr reading
+later` on the command line.
+
+**Highlight**: a passage saved from the reader with `h`, found by search
+and exported with `mxr reading export --markdown`.
 
 **Archive** (mode): records such as receipts, orders and bookings, with an
 answer box that returns the field you asked for (`mxr records`, `g e`). Not
@@ -179,8 +194,9 @@ when its answer fails the check that amounts and dates appear verbatim.
 ships: one field chunk per record email plus its PDF text. The other modes'
 recipes, such as one fact per Updates message, are planned.
 
-**Let go** (planned): Updates' and Reading's word for done. Letting go of
-a digest acts on exactly the set the preview listed.
+**Let go**: Updates' and Reading's word for done. In Reading it is `e`, or
+`A` for everything in the edition, which acts on exactly the set its
+preview listed. Updates' digest is planned.
 
 **Act-by date** (planned): the last day you can act and still meet a due
 date, such as three working days before a bill paid by bank transfer.

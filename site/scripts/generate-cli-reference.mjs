@@ -235,8 +235,15 @@ const COMMAND_EXAMPLES = {
     ],
   },
   reading: {
-    use: 'Newsletters and lists in your inbox, bundled by sender, each with the reason it is there. See [Reading and Paper trail](/guides/reading-and-paper-trail/).',
-    examples: ["mxr reading", "mxr reading --sender digest@news.example.com --format json"],
+    use: 'Newsletters as an edition: since your last visit, earlier this week and fading, ranked by what you read, with a Later shelf. See [Read newsletters as an edition](/guides/reading/).',
+    examples: [
+      "mxr reading",
+      "mxr reading edition --peek --format json",
+      "mxr reading open ITEM --article",
+      "mxr reading later --add ITEM",
+      "mxr reading let-go --all --dry-run",
+      "mxr reading export --markdown",
+    ],
   },
   'paper-trail': {
     use: 'Receipts, notifications and other automated mail in your inbox, bundled by sender. See [Reading and Paper trail](/guides/reading-and-paper-trail/).',

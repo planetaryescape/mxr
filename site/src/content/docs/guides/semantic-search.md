@@ -30,6 +30,7 @@ mxr prepares semantic chunks from:
 - Office docs
 - spreadsheets
 - PDFs with extractable text
+- passages you [highlighted in Reading](/guides/reading/#highlight-what-you-want-to-keep), one chunk each with its note, so a search finds the passage you kept rather than the window it fell in
 
 The cleaned body now also drops quoted history marked by Gmail, Apple Mail
 and Outlook in HTML mail, so a reply's chunks hold what it said rather than
@@ -198,7 +199,7 @@ Current dense source intent:
 
 - unfielded text: all chunk kinds
 - `subject:`: header chunks
-- `body:`: body chunks
+- `body:`: body chunks and Reading highlights
 - `filename:`: attachment-origin chunks
 
 Lexical search still handles literal field matching. Dense retrieval broadens recall inside the intended source area.

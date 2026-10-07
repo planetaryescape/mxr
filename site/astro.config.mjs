@@ -68,6 +68,7 @@ export default defineConfig({
             { label: 'Start from Now', slug: 'guides/now' },
             { label: 'Messages: People You Talk With', slug: 'guides/messages' },
             { label: 'Reply to Everyone You Owe', slug: 'guides/focus-and-reply' },
+            { label: 'Read Newsletters as an Edition', slug: 'guides/reading' },
             { label: 'Clear Reading and Paper Trail', slug: 'guides/reading-and-paper-trail' },
           ],
         },

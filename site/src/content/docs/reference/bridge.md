@@ -241,6 +241,24 @@ curl -H "Authorization: Bearer $MXR_TOKEN" \
   "$MXR_BASE/api/v1/mail/records/answer?q=lisbon%20booking%20ref"
 ```
 
+### Reading
+
+The daemon cuts newsletters into items, bands and ranks them, and owns the
+article fetch's guards. Item keys are `<message id>:<index>`; URL-encode
+them in a path. Let go is `/mail/modes/reading/done` and unsubscribe is
+`/mail/actions/unsubscribe/purge`, both previewed with `dry_run: true`.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/mail/reading` | The edition: bands, Later, sources (`?account=`, `?mark_visit=true` when the user opens Reading) |
+| `GET` | `/mail/reading/items/{item_key}` | One item for the reader: text, cleaned HTML, saved article, highlights, minutes left. Never fetches |
+| `POST` | `/mail/reading/later` | Put items on Later or take them off (`{item_keys, later, dry_run}`) |
+| `POST` | `/mail/reading/engagement` | Local engagement (`{item_key, opened, dwell_ms, progress}`); not written with `MXR_ACTIVITY=off` |
+| `POST` | `/mail/reading/items/{item_key}/article` | Fetch and save the linked article, contacting its site (`{refresh}`) |
+| `GET` | `/mail/reading/highlights` | Every highlight, plus the same as Markdown |
+| `POST` | `/mail/reading/highlights` | Save a passage (`{item_key, quote, note?, view?}`) |
+| `POST` | `/mail/reading/sources` | Per-source settings (`{account_id, sender_email, original_layout?, dismiss_unsubscribe_offer?}`) |
+
 ### Reply-later queue
 
 | Method | Path | Purpose |

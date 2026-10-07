@@ -12,8 +12,8 @@ actions for each: reply, archive, label.
 
 mxr's plan is to treat email as five apps that share one inbox, called
 modes. Each mode has its own view, its own unit on screen and its own
-verbs. Now, To do and Archive are built. Messages, Updates and Reading run
-as early versions on the desk, Paper trail and the Reading place.
+verbs. Now, Messages, To do, Reading and Archive are built. Updates runs as
+an early version on Paper trail.
 
 Start with what ships:
 
@@ -22,7 +22,7 @@ mxr now            # the few things that need you, from every mode
 mxr todo           # what email asked you to do, by when to act
 mxr records        # receipts, orders, bookings and bills, by month
 mxr desk           # people you owe, promises due, threads waiting on others
-mxr reading        # newsletters and lists, grouped by sender
+mxr reading        # newsletters as an edition, with a Later shelf
 mxr paper-trail    # receipts and notifications, grouped by sender
 ```
 
@@ -41,8 +41,7 @@ items drawn from the modes, so you can answer "what needs me right now?"
 without opening each one. **Inbox** stays as the everything view, in
 arrival order.
 
-The desk is the early version of Messages. Reading and Paper trail are
-early versions of Reading and Updates.
+Paper trail is the early version of Updates.
 
 ## One email can live in several modes (planned)
 
@@ -169,7 +168,7 @@ mxr semantic status
 | Messages | Built (`g m`) | [Messages](/guides/messages/) (`mxr messages`): people as rows with their topics inside, Your turn by closeness and pace, Got it (`mxr messages ack`), thread-aware quote stripping, manual merges with a suggestion; [Focus & reply](/guides/focus-and-reply/) | Incoming Gmail reactions as a mark on the message; the Messages index recipe once the retrieval eval favours it |
 | To do | Built (`g x`) | `mxr todo`: bills, renewals, forms and promises as one row each, with act-by dates; [calendar invites](/guides/calendar-invites/) (`mxr invites`) | A rail badge once `mxr modes eval` shows under one false to-do a week |
 | Updates | Early version, on Paper trail (`g u`) | [Paper trail](/guides/reading-and-paper-trail/) (`mxr paper-trail`, `mxr sweep`), done here with `e`, [deliveries](/guides/deliveries/) (`mxr deliveries`), [rules](/guides/rules/) | A briefing by source in two digests a day, let go in one key (phase 4) |
-| Reading | Early version, on the Reading place (`g r`) | [Reading](/guides/reading-and-paper-trail/) (`mxr reading`), done here with `e`, [subscriptions and unsubscribe](/guides/unsubscribe/) (`mxr subscriptions --rank`) | An edition with read time, a Later shelf, fading items (phase 5) |
+| Reading | Built (`g r`) | [Reading](/guides/reading/) (`mxr reading`): an edition banded since your last visit, earlier and fading, a 66-character reader with the linked article on request, a Later shelf, let go with `e` and `A`, [unsubscribe](/guides/unsubscribe/) with evidence, highlights | Section-aware search chunks and lazy embedding for whole issues |
 | Archive | Built (`g e`) | [Archive](/guides/archive/) (`mxr records`): receipts, orders, bookings, bills and documents as one record each, an answer box (`mxr records ask "lisbon booking ref"`) with [`mxr ask`](/guides/archive-intelligence/) as its fallback, and a CSV export | Record fields read by the smart tier, and learned templates per issuer |
 
 Classification by your own model is phase 7. Phase numbers come from the

@@ -42,6 +42,16 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
     intro: "Bundles of mail that isn't from people. The reader keeps its own keys.",
     match: (action) => only(action, "place"),
   },
+  {
+    title: "Reading edition",
+    intro: "Newsletters as an edition. `b`, `e`, `D` and `A` work on the item or link under the cursor; `D` and `A` preview first.",
+    match: (action) => only(action, "reading"),
+  },
+  {
+    title: "Reading reader",
+    intro: "One item in a 66-character column. The article is fetched only on `L` or the Article tab.",
+    match: (action) => only(action, "reading-reader"),
+  },
 ];
 
 function isGlobal(action: Action): boolean {

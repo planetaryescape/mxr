@@ -1772,6 +1772,25 @@ only. Index: section-aware chunks and link items, embedded lazily.
   Repo: `.agents/skills/mxr/SKILL.md`, `docs/web-app.md`.
 - **Tests:** extractor fixtures from real newsletter HTML (low confidence
   falls back to the subject); expiry clamp tests; `e2e/reading.spec.ts`.
+- **As built:** the requests are
+  `GetReadingEdition { mark_visit }`, `GetReadingItem`, `SetReadingLater {
+  dry_run }`, `RecordReadingEngagement`, `FetchArticle`, `SaveHighlight`,
+  `ExportReadingHighlights` and `SetReadingSource`; let go is `SetModeDone {
+  mode: reading, dry_run }` and unsubscribe the existing `UnsubscribePurge {
+  dry_run }`. Extraction lives in `crates/reading` (rules over `scraper`, no
+  model) and fetched articles go through `dom_smoothie`, a maintained
+  Readability.js port on the same HTML stack. Storage is migration 066.
+  Three choices made while building: the unsubscribe evidence counts only
+  issues that arrived after Reading was first opened and only mxr's own
+  engagement, because letting go marks mail read at the provider and the
+  read flag would call a skipped issue opened; expiry writes Reading's done
+  mark and never archives at the provider, as "Expiry lets go in its mode"
+  says; the article fetch refuses loopback, private, link-local and
+  `.local`/`.internal` hosts by name and by every resolved address, pins the
+  connection to the checked address, checks each redirect hop, uses no
+  proxy and stops at 5 MB. Highlights are indexed as their own semantic
+  chunk kind. Section-aware chunks and lazy embedding for whole issues are
+  not built yet.
 
 ### Phase 6: Archive as records with an answer box
 

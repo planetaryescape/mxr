@@ -1,7 +1,14 @@
 ---
 title: Clear Reading and Paper trail
-description: Read newsletters as a feed, then sweep receipts and notifications away.
+description: Sweep receipts and notifications away. Newsletters now have their own edition in Reading.
 ---
+
+:::note
+Reading is now its own mode: an edition with a reader, a Later shelf and
+fading items. See [Read newsletters as an edition](/guides/reading/). This
+page covers Paper trail, and the sender moves, pins and sweeps both places
+still share.
+:::
 
 Read what you want from newsletters and notifications, keep the few that
 matter, and archive the rest in one sweep. Mail that is not from a person
@@ -10,7 +17,7 @@ instead:
 
 | Place | What is in it | How it reads |
 |---|---|---|
-| **Reading** | Newsletters and mailing lists. | A feed, newest first, with every issue open. Nothing is bold and nothing counts as unread. |
+| **Reading** | Newsletters and mailing lists. | An [edition](/guides/reading/): readable items banded by your last visit, ranked by what you read. Nothing counts as unread. |
 | **Paper trail** | Receipts, notifications, alerts and other automated mail. | One line per sender: how many, the newest subject, how long ago. Open a line to see its messages. |
 
 Receipts, orders, bookings and bills that mxr recognises are also filed
@@ -48,8 +55,8 @@ Build Watch                        1  2026-09-27
     Pricing page copy review                                          e6de11f8-127a-58f6-8ce6-d828078395bd
 ```
 
-`mxr reading` prints the same shape for Reading. `--sender ADDRESS` shows one
-sender's bundle and `--account NAME` one account.
+`mxr reading senders` prints the same shape for Reading. `--sender ADDRESS`
+shows one sender's bundle and `--account NAME` one account.
 
 ## Check why a message is here
 

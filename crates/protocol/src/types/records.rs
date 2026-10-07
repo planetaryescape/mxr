@@ -413,6 +413,48 @@ pub struct RecordFallbackData {
     pub error: Option<String>,
 }
 
+/// How the answer box shows what matched.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum RecordAnswerModeData {
+    /// One record on the answer card: the query asked for a field, or one
+    /// record won clearly.
+    #[default]
+    Answer,
+    /// Every match: the query only named something several records match.
+    List,
+}
+
+/// Every record a list-mode query matched, shaped like the ledger.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RecordAnswerListData {
+    /// "Anthropic · 23 records · £412.60".
+    pub header: String,
+    /// Every match, not just this page.
+    pub count: u32,
+    pub offset: u32,
+    /// This page of the matches, newest first, as the ledger orders them.
+    pub records: Vec<RecordData>,
+    /// Every month of the matches, newest first, with counts and totals
+    /// over all of them.
+    pub months: Vec<RecordMonthData>,
+    /// One total per currency over every match, largest first; never
+    /// converted.
+    pub totals: Vec<RecordAmountData>,
+    /// The oldest and newest match.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last: Option<chrono::DateTime<chrono::Utc>>,
+    /// The best match, which the list highlights.
+    pub top_record_id: String,
+    /// Set when every match has this one issuer: its issuer page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+}
+
 /// Returned in `ResponseData::RecordAnswer`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -420,11 +462,22 @@ pub struct RecordAnswerData {
     pub query: String,
     /// reference | amount | date | document | any
     pub asked: String,
+    #[serde(default)]
+    pub mode: RecordAnswerModeData,
+    /// The best match's card. In list mode it is the record the list
+    /// highlights.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub answer: Option<RecordAnswerCardData>,
     /// Other records that matched, best first: "Also matching".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub also: Vec<RecordData>,
+    /// How many records matched in all: "Show all 23 matches".
+    #[serde(default)]
+    pub matching: u32,
+    /// Every match, in list mode. Boxed so the answer stays small next to
+    /// the other `ResponseData` variants.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list: Option<Box<RecordAnswerListData>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fallback: Option<RecordFallbackData>,
 }

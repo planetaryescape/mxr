@@ -11,8 +11,9 @@ use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, print_json, resolve_format, terminal_block};
 use chrono::Local;
 use mxr_protocol::{
-    archive_copy, RecordAnswerData, RecordChangeData, RecordData, RecordEditData, RecordExportData,
-    RecordFilterData, RecordKindData, RecordLedgerData, Request, Response, ResponseData,
+    archive_copy, RecordAnswerData, RecordAnswerListData, RecordChangeData, RecordData,
+    RecordEditData, RecordExportData, RecordFilterData, RecordKindData, RecordLedgerData,
+    RecordMonthData, Request, Response, ResponseData,
 };
 use std::fmt::Write as _;
 
@@ -88,7 +89,13 @@ pub async fn run(
                 }
             }
         }
-        RecordsAction::Ask { query, no_fallback } => {
+        RecordsAction::Ask {
+            query,
+            no_fallback,
+            all,
+            limit,
+            offset,
+        } => {
             let answer = expect_data!(
                 client
                     .request(Request::AnswerFromRecords {
@@ -96,6 +103,9 @@ pub async fn run(
                         account_id,
                         fallback: !no_fallback,
                         limit: 4,
+                        list: all,
+                        offset,
+                        list_limit: limit,
                     })
                     .await?,
                 RecordAnswer,
@@ -104,8 +114,10 @@ pub async fn run(
             match format {
                 OutputFormat::Json | OutputFormat::Jsonl => print_json(&answer, format),
                 OutputFormat::Ids => {
-                    if let Some(card) = &answer.answer {
-                        println!("{}", card.copy);
+                    match (&answer.list, &answer.answer) {
+                        (Some(list), _) => list.records.iter().for_each(|r| println!("{}", r.id)),
+                        (None, Some(card)) => println!("{}", card.copy),
+                        (None, None) => {}
                     }
                     Ok(())
                 }
@@ -395,6 +407,22 @@ fn ledger_text(ledger: &RecordLedgerData) -> String {
             let _ = writeln!(out, "  {}", moment.label);
         }
     }
+    out.push_str(&month_rows(&ledger.records, &ledger.months));
+    if ledger.matching as usize > ledger.records.len() {
+        let _ = writeln!(
+            out,
+            "\n{} of {} shown. Page with --offset.",
+            ledger.records.len(),
+            ledger.matching
+        );
+    }
+    out
+}
+
+/// Rows under their month headers, whose counts and totals cover every
+/// match, not just these rows.
+fn month_rows(records: &[RecordData], months: &[RecordMonthData]) -> String {
+    let mut out = String::new();
     let month_of_row = |record: &RecordData| {
         record.date.map(|at| {
             let local = at.with_timezone(&Local);
@@ -402,14 +430,10 @@ fn ledger_text(ledger: &RecordLedgerData) -> String {
         })
     };
     let mut current: Option<String> = None;
-    for record in &ledger.records {
+    for record in records {
         let month = month_of_row(record);
         if month != current {
-            if let Some(header) = ledger
-                .months
-                .iter()
-                .find(|m| Some(&m.month) == month.as_ref())
-            {
+            if let Some(header) = months.iter().find(|m| Some(&m.month) == month.as_ref()) {
                 let totals: Vec<&str> = header.totals.iter().map(|t| t.display.as_str()).collect();
                 let _ = writeln!(
                     out,
@@ -427,12 +451,32 @@ fn ledger_text(ledger: &RecordLedgerData) -> String {
         }
         out.push_str(&row_line(record));
     }
-    if ledger.matching as usize > ledger.records.len() {
+    out
+}
+
+/// A list-mode answer: the header, every match by month, and the best
+/// match marked.
+fn list_text(list: &RecordAnswerListData) -> String {
+    let mut out = format!("{}\n", list.header);
+    if let (Some(first), Some(last)) = (list.first, list.last) {
+        let long = |at: chrono::DateTime<chrono::Utc>| {
+            at.with_timezone(&Local).format("%-d %b %Y").to_string()
+        };
+        let _ = writeln!(out, "{} to {}", long(first), long(last));
+    }
+    if let Some(issuer) = &list.issuer {
+        let _ = writeln!(out, "Issuer page: mxr records --issuer \"{issuer}\"");
+    }
+    let _ = writeln!(out, "Best match: {}", list.top_record_id);
+    out.push_str(&month_rows(&list.records, &list.months));
+    let shown_to = list.offset as usize + list.records.len();
+    if (list.count as usize) > shown_to {
         let _ = writeln!(
             out,
-            "\n{} of {} shown. Page with --offset.",
-            ledger.records.len(),
-            ledger.matching
+            "\n{}-{} of {} shown. Page with --offset.",
+            list.offset as usize + 1,
+            shown_to,
+            list.count
         );
     }
     out
@@ -519,6 +563,9 @@ fn card_text(record: &RecordData) -> String {
 }
 
 fn answer_text(answer: &RecordAnswerData) -> String {
+    if let Some(list) = &answer.list {
+        return list_text(list);
+    }
     let mut out = String::new();
     match (&answer.answer, &answer.fallback) {
         (Some(card), _) => {
@@ -573,6 +620,13 @@ fn answer_text(answer: &RecordAnswerData) -> String {
                     })
                     .collect();
                 let _ = writeln!(out, "Also matching: {}", also.join(", "));
+            }
+            if answer.matching > 1 {
+                let _ = writeln!(
+                    out,
+                    "All {} matches: mxr records ask --all \"{}\"",
+                    answer.matching, answer.query
+                );
             }
         }
         (None, Some(fallback)) => {

@@ -5969,8 +5969,55 @@ export interface components {
             /** @description reference | amount | date | document | any */
             asked: string;
             fallback?: null | components["schemas"]["RecordFallbackData"];
+            list?: null | components["schemas"]["RecordAnswerListData"];
+            /**
+             * Format: int32
+             * @description How many records matched in all: "Show all 23 matches".
+             */
+            matching?: number;
+            mode?: components["schemas"]["RecordAnswerModeData"];
             query: string;
         };
+        /** @description Every record a list-mode query matched, shaped like the ledger. */
+        RecordAnswerListData: {
+            /**
+             * Format: int32
+             * @description Every match, not just this page.
+             */
+            count: number;
+            /**
+             * Format: date-time
+             * @description The oldest and newest match.
+             */
+            first?: string | null;
+            /** @description "Anthropic · 23 records · £412.60". */
+            header: string;
+            /** @description Set when every match has this one issuer: its issuer page. */
+            issuer?: string | null;
+            /** Format: date-time */
+            last?: string | null;
+            /**
+             * @description Every month of the matches, newest first, with counts and totals
+             *     over all of them.
+             */
+            months: components["schemas"]["RecordMonthData"][];
+            /** Format: int32 */
+            offset: number;
+            /** @description This page of the matches, newest first, as the ledger orders them. */
+            records: components["schemas"]["RecordData"][];
+            /** @description The best match, which the list highlights. */
+            top_record_id: string;
+            /**
+             * @description One total per currency over every match, largest first; never
+             *     converted.
+             */
+            totals: components["schemas"]["RecordAmountData"][];
+        };
+        /**
+         * @description How the answer box shows what matched.
+         * @enum {string}
+         */
+        RecordAnswerModeData: "answer" | "list";
         /** @description Returned in `ResponseData::RecordChange`. */
         RecordChangeData: {
             /** @description file | dismiss | restore | set_field | sender */
@@ -7666,6 +7713,15 @@ export interface components {
              * @description Records in "also matching" after the answer.
              */
             limit?: number;
+            /** @description Every match as a list, whatever the query asks for: "Show all". */
+            list?: boolean;
+            /** Format: int32 */
+            list_limit?: number;
+            /**
+             * Format: int32
+             * @description The page of a list: where it starts and how many records.
+             */
+            offset?: number;
             query: string;
         } | {
             apply_to_sender?: boolean;
@@ -12683,6 +12739,12 @@ export interface operations {
                 fallback?: boolean;
                 /** @description Records in "also matching" (default 4) */
                 limit?: number;
+                /** @description Every match as a list, whatever the query asks for (default false) */
+                list?: boolean;
+                /** @description Where a list's page starts (default 0) */
+                offset?: number;
+                /** @description Records in a list's page (default 200) */
+                list_limit?: number;
             };
             header?: never;
             path?: never;

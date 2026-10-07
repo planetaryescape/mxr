@@ -14,6 +14,7 @@ type Schemas = components["schemas"];
 export type RecordData = Schemas["RecordData"];
 export type RecordLedger = Schemas["RecordLedgerData"];
 export type RecordAnswer = Schemas["RecordAnswerData"];
+export type RecordAnswerList = Schemas["RecordAnswerListData"];
 export type RecordChange = Schemas["RecordChangeData"];
 export type RecordExport = Schemas["RecordExportData"];
 export type RecordField = Schemas["RecordFieldData"];
@@ -109,13 +110,23 @@ export function useRecord(id: string | null) {
   });
 }
 
+/** How much of a broad query's matches to bring: "Show all" and its page. */
+export interface AnswerListPage {
+  /** List every match, even when one answers the query. */
+  list?: boolean;
+  limit?: number;
+}
+
 export async function fetchAnswer(
   account: string | null,
   query: string,
   fallback: boolean,
+  page: AnswerListPage = {},
 ): Promise<RecordAnswer> {
   const params = new URLSearchParams({ q: query, fallback: String(fallback) });
   if (account) params.set("account", account);
+  if (page.list) params.set("list", "true");
+  if (page.limit != null) params.set("list_limit", String(page.limit));
   const answer = await apiFetch<Answer>(`/api/v1/mail/records/answer?${params.toString()}`);
   return answer.answer;
 }
@@ -123,14 +134,18 @@ export async function fetchAnswer(
 /**
  * The answer box. While typing it matches record fields only; `fallback`
  * (on Enter) also asks `mxr ask` over all mail, which may call the model,
- * so it never runs per keystroke.
+ * so it never runs per keystroke. A query that only names something comes
+ * back as a list of every match; `page.list` asks for that list whatever
+ * the query.
  */
-export function useAnswer(query: string, fallback = false) {
+export function useAnswer(query: string, fallback = false, page: AnswerListPage = {}) {
   const account = useUiPrefs((s) => s.accountScope);
   const text = query.trim();
+  const list = page.list ?? false;
+  const limit = page.limit ?? null;
   return useQuery({
-    queryKey: [...RECORDS_KEY, "answer", account ?? "all", text, fallback],
-    queryFn: () => fetchAnswer(account, text, fallback),
+    queryKey: [...RECORDS_KEY, "answer", account ?? "all", text, fallback, list, limit],
+    queryFn: () => fetchAnswer(account, text, fallback, { list, limit: limit ?? undefined }),
     enabled: text.length > 0,
     placeholderData: keepWithinAccount<RecordAnswer>(account ?? "all"),
     staleTime: 30_000,

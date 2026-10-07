@@ -13,10 +13,11 @@ use chrono::{DateTime, Datelike, Local, NaiveDate, TimeZone, Timelike, Utc};
 use mxr_core::id::{AccountId, AttachmentId, MessageId};
 use mxr_protocol::{
     archive_copy, ArchiveAskFiltersData, RecordAmountData, RecordAnswerCardData, RecordAnswerData,
-    RecordChangeData, RecordData, RecordDocumentData, RecordEditData, RecordExportData,
-    RecordFacetCountData, RecordFacetsData, RecordFallbackData, RecordFieldData, RecordFilterData,
-    RecordFirstRunData, RecordGroupData, RecordIssuerData, RecordKindData, RecordLedgerData,
-    RecordMomentData, RecordMonthData, RecordSourceData, RecordUndoData, ResponseData,
+    RecordAnswerListData, RecordAnswerModeData, RecordChangeData, RecordData, RecordDocumentData,
+    RecordEditData, RecordExportData, RecordFacetCountData, RecordFacetsData, RecordFallbackData,
+    RecordFieldData, RecordFilterData, RecordFirstRunData, RecordGroupData, RecordIssuerData,
+    RecordKindData, RecordLedgerData, RecordMomentData, RecordMonthData, RecordSourceData,
+    RecordUndoData, ResponseData,
 };
 use mxr_records::answer::{self, AnswerField, Candidate};
 use mxr_records::export::{self, ExportRow};
@@ -1012,12 +1013,83 @@ pub(super) async fn get_record(state: &AppState, raw_id: &str) -> HandlerResult 
     })
 }
 
+/// What the answer box was asked to return besides the query.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct AnswerAsk {
+    /// Fall back to `mxr ask` over all mail when no record matches.
+    pub fallback: bool,
+    /// Records in "also matching".
+    pub limit: u32,
+    /// Every match as a list, whatever the query asks for.
+    pub list: bool,
+    pub offset: u32,
+    pub list_limit: u32,
+}
+
+/// Every match of a list-mode query, newest first like the ledger, with
+/// this page's rows.
+fn answer_list(
+    query: &str,
+    matched: Vec<ArchiveRecord>,
+    top_record_id: String,
+    ask: AnswerAsk,
+) -> (RecordAnswerListData, Vec<ArchiveRecord>) {
+    let mut members = matched;
+    members.sort_by(|a, b| {
+        b.ledger_date()
+            .cmp(&a.ledger_date())
+            .then_with(|| b.id.cmp(&a.id))
+    });
+    let issuer = members
+        .first()
+        .and_then(|first| first.issuer_key.as_ref().zip(first.issuer.as_ref()))
+        .filter(|(key, _)| {
+            members
+                .iter()
+                .all(|record| record.issuer_key.as_ref() == Some(*key))
+        })
+        .map(|(_, name)| name.clone());
+    let totals = totals(&members);
+    let mut header = vec![
+        issuer.clone().unwrap_or_else(|| format!("\"{query}\"")),
+        plural(members.len(), "record"),
+    ];
+    if !totals.is_empty() {
+        header.push(
+            totals
+                .iter()
+                .map(|total| total.display.as_str())
+                .collect::<Vec<_>>()
+                .join(" + "),
+        );
+    }
+    let start = usize::try_from(ask.offset)
+        .unwrap_or(usize::MAX)
+        .min(members.len());
+    let end = start
+        .saturating_add(usize::try_from(ask.list_limit.max(1)).unwrap_or(usize::MAX))
+        .min(members.len());
+    let page = members[start..end].to_vec();
+    let list = RecordAnswerListData {
+        header: header.join(" \u{b7} "),
+        count: u32::try_from(members.len()).unwrap_or(u32::MAX),
+        offset: u32::try_from(start).unwrap_or(u32::MAX),
+        records: Vec::new(),
+        months: months(&members),
+        totals,
+        first: members.iter().filter_map(ArchiveRecord::ledger_date).min(),
+        last: members.iter().filter_map(ArchiveRecord::ledger_date).max(),
+        top_record_id,
+        issuer,
+    };
+    (list, page)
+}
+
 pub(super) async fn answer_query(
     state: &AppState,
     query: &str,
     account_id: Option<&AccountId>,
-    fallback: bool,
-    limit: u32,
+    ask: AnswerAsk,
 ) -> HandlerResult {
     let text = query.trim();
     if text.is_empty() {
@@ -1058,15 +1130,43 @@ pub(super) async fn answer_query(
         answer::Asked::Document => "document",
         answer::Asked::Any => "any",
     };
-    let take = usize::try_from(limit).unwrap_or(4) + 1;
+    let take = usize::try_from(ask.limit).unwrap_or(4) + 1;
     let top: Vec<&ArchiveRecord> = ranked
         .iter()
         .take(take)
         .map(|ranked| &records[ranked.index])
         .collect();
     if let Some(best) = top.first() {
-        let owned: Vec<ArchiveRecord> = top.iter().map(|r| (*r).clone()).collect();
+        let mode = if ask.list {
+            answer::Mode::List
+        } else {
+            answer::mode(&parsed, &ranked)
+        };
+        let (list, page) = match mode {
+            answer::Mode::Answer => (None, Vec::new()),
+            answer::Mode::List => {
+                let matched = ranked
+                    .iter()
+                    .map(|ranked| records[ranked.index].clone())
+                    .collect();
+                let (list, page) = answer_list(text, matched, best.id.clone(), ask);
+                (Some(list), page)
+            }
+        };
+        // One load covers the card, "also matching" and the list's page.
+        let mut owned: Vec<ArchiveRecord> = top.iter().map(|r| (*r).clone()).collect();
+        for record in &page {
+            if !owned.iter().any(|known| known.id == record.id) {
+                owned.push(record.clone());
+            }
+        }
         let ctx = Context::load(state, &owned, Some(&accounts)).await?;
+        let list = list.map(|list| {
+            Box::new(RecordAnswerListData {
+                records: page.iter().map(|r| to_data(r, &ctx, false, now)).collect(),
+                ..list
+            })
+        });
         let card = to_data(best, &ctx, false, now);
         let field = answer::answer_field(parsed.asked, best);
         let (label, value, copy, provenance) = match field {
@@ -1112,6 +1212,10 @@ pub(super) async fn answer_query(
             answer: RecordAnswerData {
                 query: text.to_string(),
                 asked: asked.to_string(),
+                mode: match mode {
+                    answer::Mode::Answer => RecordAnswerModeData::Answer,
+                    answer::Mode::List => RecordAnswerModeData::List,
+                },
                 answer: Some(RecordAnswerCardData {
                     record: card,
                     field: field.as_str().to_string(),
@@ -1125,11 +1229,13 @@ pub(super) async fn answer_query(
                     .skip(1)
                     .map(|record| to_data(record, &ctx, false, now))
                     .collect(),
+                matching: u32::try_from(ranked.len()).unwrap_or(u32::MAX),
+                list,
                 fallback: None,
             },
         });
     }
-    let fallback = if fallback {
+    let fallback = if ask.fallback {
         let filters = ArchiveAskFiltersData {
             account_id: account_id.cloned(),
             ..ArchiveAskFiltersData::default()
@@ -1155,8 +1261,11 @@ pub(super) async fn answer_query(
         answer: RecordAnswerData {
             query: text.to_string(),
             asked: asked.to_string(),
+            mode: RecordAnswerModeData::Answer,
             answer: None,
             also: Vec::new(),
+            matching: 0,
+            list: None,
             fallback,
         },
     })

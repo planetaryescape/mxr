@@ -1,6 +1,6 @@
 /* Records shaped like the daemon's, for Archive's unit tests. */
 
-import type { RecordAnswer, RecordData, RecordMonth } from "./api";
+import type { RecordAnswer, RecordAnswerList, RecordData, RecordMonth } from "./api";
 
 export function recordFixture(overrides: Partial<RecordData> = {}): RecordData {
   return {
@@ -106,6 +106,44 @@ export function answerFixture(overrides: Partial<RecordAnswer> = {}): RecordAnsw
       provenance: record.fields?.[0],
     },
     also: [recordFixture({ id: "rec_hotel", title: "Lisbon, 3 nights", reference: "88213" })],
+    mode: "answer",
+    matching: 2,
+    ...overrides,
+  };
+}
+
+/** "anthropic": three invoices from one issuer, listed, the April one best. */
+export function listFixture(overrides: Partial<RecordAnswerList> = {}): RecordAnswerList {
+  const invoice = (id: string, date: string, display: string) =>
+    recordFixture({
+      id,
+      kind: "invoice",
+      kind_label: "Invoice",
+      issuer: "Anthropic",
+      title: "Claude Pro",
+      reference: null,
+      date,
+      amount: { minor: 1_800, currency: "GBP", display },
+    });
+  return {
+    header: "Anthropic · 3 records · £54.00",
+    count: 3,
+    offset: 0,
+    records: [
+      invoice("rec_may", "2025-05-03T12:00:00Z", "£18.00"),
+      invoice("rec_apr", "2025-04-03T12:00:00Z", "£18.00"),
+      invoice("rec_mar", "2025-03-03T12:00:00Z", "£18.00"),
+    ],
+    months: [
+      monthFixture("2025-05", 1, "£18.00"),
+      monthFixture("2025-04", 1, "£18.00"),
+      monthFixture("2025-03", 1, "£18.00"),
+    ],
+    totals: [{ minor: 5_400, currency: "GBP", display: "£54.00" }],
+    first: "2025-03-03T12:00:00Z",
+    last: "2025-05-03T12:00:00Z",
+    top_record_id: "rec_apr",
+    issuer: "Anthropic",
     ...overrides,
   };
 }

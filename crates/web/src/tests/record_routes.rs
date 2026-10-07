@@ -78,7 +78,7 @@ async fn record_routes_forward_their_requests() {
     ));
     assert!(matches!(
         &seen[1],
-        Request::AnswerFromRecords { query, account_id: Some(id), fallback: true, limit: 4 }
+        Request::AnswerFromRecords { query, account_id: Some(id), fallback: true, limit: 4, list: false, offset: 0, list_limit: 200 }
             if query == "lisbon booking ref" && *id == account
     ));
     assert!(matches!(&seen[2], Request::GetRecord { record_id } if record_id == "rec_3f2a"));

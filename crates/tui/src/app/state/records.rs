@@ -6,8 +6,8 @@
 
 use mxr_core::id::MessageId;
 use mxr_protocol::{
-    ModeGuideData, RecordAnswerData, RecordChangeData, RecordData, RecordEditData,
-    RecordExportData, RecordFilterData, RecordKindData, RecordLedgerData,
+    ModeGuideData, RecordAnswerData, RecordAnswerListData, RecordChangeData, RecordData,
+    RecordEditData, RecordExportData, RecordFilterData, RecordKindData, RecordLedgerData,
 };
 
 /// The kind chips under the answer box, in order. `g f` steps through
@@ -66,6 +66,8 @@ pub struct RecordsPageState {
     pub asking: bool,
     pub query: String,
     pub answer: Option<RecordAnswerData>,
+    /// `a` asked for every match of the query on screen as a list.
+    pub answer_list: bool,
     /// The full card (`GetRecord`) drawn over the ledger.
     pub card: Option<RecordData>,
     pub prompt: Option<RecordFixPrompt>,
@@ -90,11 +92,22 @@ pub struct RecordsPageState {
 }
 
 impl RecordsPageState {
-    /// The ledger's rows, newest first.
+    /// The rows on screen, newest first: a list answer's matches while one
+    /// is showing, else the ledger's.
     pub fn rows(&self) -> &[RecordData] {
+        if let Some(list) = self.listed_matches() {
+            return list.records.as_slice();
+        }
         self.ledger
             .as_ref()
             .map_or(&[][..], |ledger| ledger.records.as_slice())
+    }
+
+    /// Every match of a broad query, while it is on screen.
+    pub fn listed_matches(&self) -> Option<&RecordAnswerListData> {
+        self.answer
+            .as_ref()
+            .and_then(|answer| answer.list.as_deref())
     }
 
     pub fn row_count(&self) -> usize {
@@ -109,10 +122,12 @@ impl RecordsPageState {
             && !self.rows().is_empty()
     }
 
-    /// The record an answer is about, while an answer is on screen.
+    /// The record an answer card is about, while one is on screen. A list
+    /// has no card: the keys act on its rows.
     pub fn answer_record(&self) -> Option<&RecordData> {
         self.answer
             .as_ref()
+            .filter(|answer| answer.list.is_none())
             .and_then(|answer| answer.answer.as_ref())
             .map(|card| &card.record)
     }

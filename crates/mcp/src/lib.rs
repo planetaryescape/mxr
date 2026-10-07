@@ -325,7 +325,7 @@ impl MxrMcpServer {
 
     #[tool(
         name = "mxr_records_ask",
-        description = "Ask Archive for a field: \"lisbon booking ref\", \"dell receipt 2025\", \"how much was the octopus bill\". Returns the field from record data on an answer card with its provenance, with no model. Only when no record matches does it fall back to a citation-checked answer over all mail, and the result says so. Read-only."
+        description = "Ask Archive for a field: \"lisbon booking ref\", \"dell receipt 2025\", \"how much was the octopus bill\". Returns the field from record data on an answer card with its provenance, with no model. A query that only names something several records match (\"anthropic\", \"lisbon\") comes back with mode \"list\": every match, paged, by month, with a count, totals per currency and the date span; `matching` counts every match either way, and `list: true` lists them for any query. Only when no record matches does it fall back to a citation-checked answer over all mail, and the result says so. Read-only."
     )]
     pub async fn records_ask(
         &self,
@@ -336,6 +336,9 @@ impl MxrMcpServer {
             account_id: parse_optional_id(input.account_id)?,
             fallback: input.fallback.unwrap_or(true),
             limit: 4,
+            list: input.list.unwrap_or(false),
+            offset: input.offset.unwrap_or(0),
+            list_limit: input.limit.unwrap_or(50),
         })
         .await
     }
@@ -868,6 +871,15 @@ pub struct RecordsAskInput {
     /// (default true).
     #[serde(default)]
     pub fallback: Option<bool>,
+    /// List every match, even when one answers the query (default false).
+    #[serde(default)]
+    pub list: Option<bool>,
+    /// Where a list's page starts (default 0).
+    #[serde(default)]
+    pub offset: Option<u32>,
+    /// Records in a list's page (default 50).
+    #[serde(default)]
+    pub limit: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

@@ -4,13 +4,15 @@ import {
   activeChip,
   amountCopy,
   amountUnchecked,
+  answerList,
   groupByMonth,
   KIND_CHIPS,
+  matchSpan,
   provenanceLine,
   referenceCopy,
   stepYear,
 } from "./ledger";
-import { monthFixture, recordFixture } from "./testing";
+import { answerFixture, listFixture, monthFixture, recordFixture } from "./testing";
 
 describe("Archive's ledger", () => {
   test("rows sit under the daemon's month headers, whose totals cover every matching record", () => {
@@ -77,5 +79,21 @@ describe("Archive's ledger", () => {
     expect(provenanceLine("a pattern in the email", false)).toBe(
       "from a pattern in the email · unchecked",
     );
+  });
+
+  test("only a list-mode answer replaces the ledger's rows", () => {
+    const list = listFixture();
+    expect(answerList(answerFixture({ mode: "list", list }))).toBe(list);
+    // An answer carries no list; an older daemon sends no mode at all.
+    expect(answerList(answerFixture())).toBeNull();
+    expect(answerList(answerFixture({ mode: undefined, list }))).toBeNull();
+    expect(answerList(undefined)).toBeNull();
+  });
+
+  test("the matches' span reads as one day when they share it", () => {
+    expect(matchSpan(listFixture())).toBe("3 Mar 2025 to 3 May 2025");
+    const day = "2025-04-03T12:00:00Z";
+    expect(matchSpan(listFixture({ first: day, last: day }))).toBe("3 Apr 2025");
+    expect(matchSpan(listFixture({ first: null, last: null }))).toBe("");
   });
 });

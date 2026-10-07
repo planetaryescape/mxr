@@ -4185,6 +4185,9 @@ fn change_data(data: ResponseData) -> Option<Box<mxr_protocol::RecordChangeData>
     }
 }
 
+/// The rows a list answer brings at once: as many as a ledger page.
+const RECORDS_ANSWER_LIST_LIMIT: u32 = 200;
+
 /// Starts whatever the Archive lens asked the runtime for.
 fn spawn_records_fetches(
     app: &mut App,
@@ -4227,6 +4230,7 @@ fn spawn_records_fetches(
         });
     }
     if let Some(query) = page.pending_answer.take() {
+        let list = page.answer_list;
         let bg = bg.clone();
         let _ = submit_task(queued, async move {
             AsyncResult::RecordsAnswer(
@@ -4237,6 +4241,9 @@ fn spawn_records_fetches(
                         account_id: None,
                         fallback: true,
                         limit: 4,
+                        list,
+                        offset: 0,
+                        list_limit: RECORDS_ANSWER_LIST_LIMIT,
                     },
                     |data| match data {
                         ResponseData::RecordAnswer { answer } => Some(Box::new(answer)),

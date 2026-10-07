@@ -92,6 +92,17 @@ async fn ledger(fx: &Fixture, filter: RecordFilterData) -> RecordLedgerData {
 }
 
 async fn ask(fx: &Fixture, query: &str) -> RecordAnswerData {
+    ask_page(fx, query, false, 0, 200).await
+}
+
+/// The answer box with "Show all" (`list`) and a list page.
+async fn ask_page(
+    fx: &Fixture,
+    query: &str,
+    list: bool,
+    offset: u32,
+    list_limit: u32,
+) -> RecordAnswerData {
     match request(
         fx,
         Request::AnswerFromRecords {
@@ -99,6 +110,9 @@ async fn ask(fx: &Fixture, query: &str) -> RecordAnswerData {
             account_id: None,
             fallback: true,
             limit: 4,
+            list,
+            offset,
+            list_limit,
         },
     )
     .await
@@ -674,4 +688,133 @@ async fn the_prefetch_writes_no_more_than_the_budget_whatever_a_pdf_declares() {
     assert!(pdf_on_disk(&fx).await.is_some());
     let (bytes, count) = fx.state.store.record_pdfs_on_disk().await.unwrap();
     assert_eq!((bytes, count), (23, 1));
+}
+
+/// Three Anthropic orders in two currencies, a month apart.
+async fn seed_anthropic(fx: &Fixture) {
+    let now = Utc::now();
+    let mut ids = Vec::new();
+    for (at, (number, price, currency)) in [
+        ("A-1001", "18.00", "GBP"),
+        ("A-1002", "18.00", "GBP"),
+        ("A-1003", "20.00", "USD"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let days = i64::try_from(at).unwrap() * 31 + 10;
+        let ordered = now - Duration::days(days);
+        ids.push(
+            put(
+                fx,
+                ("Anthropic", "billing@anthropic.com"),
+                "Your receipt from Anthropic",
+                &format!("Order number: {number}"),
+                Some(ld(&format!(
+                    r#"{{"@type":"Order","merchant":{{"name":"Anthropic"}},"orderNumber":"{number}","orderDate":"{}","price":"{price}","priceCurrency":"{currency}","acceptedOffer":{{"itemOffered":{{"name":"Claude Pro"}}}}}}"#,
+                    ordered.format("%Y-%m-%d")
+                ))),
+                ordered,
+            )
+            .await,
+        );
+    }
+    crate::handler::records::scan_messages(&fx.state, &ids).await;
+}
+
+#[tokio::test]
+async fn an_issuer_alone_lists_every_match_with_totals_per_currency() {
+    let fx = Fixture::new().await;
+    seed(&fx).await;
+    seed_anthropic(&fx).await;
+    let answer = ask(&fx, "anthropic").await;
+    assert_eq!(answer.mode, mxr_protocol::RecordAnswerModeData::List);
+    assert_eq!(answer.matching, 3);
+    let list = answer.list.expect("a list");
+    assert_eq!(list.count, 3);
+    assert_eq!(list.records.len(), 3);
+    assert_eq!(list.issuer.as_deref(), Some("Anthropic"));
+    // Never converted: one total per currency, largest first.
+    let totals: Vec<(&str, i64)> = list
+        .totals
+        .iter()
+        .map(|total| (total.currency.as_str(), total.minor))
+        .collect();
+    assert_eq!(totals, vec![("GBP", 3600), ("USD", 2000)]);
+    assert!(
+        list.header
+            .starts_with("Anthropic \u{b7} 3 records \u{b7} "),
+        "{}",
+        list.header
+    );
+    // Newest first, like the ledger, with the best match highlighted.
+    let dates: Vec<_> = list.records.iter().map(|r| r.date).collect();
+    let mut sorted = dates.clone();
+    sorted.sort_by(|a, b| b.cmp(a));
+    assert_eq!(dates, sorted);
+    assert!(list.records.iter().any(|r| r.id == list.top_record_id));
+    assert!(list.first < list.last);
+    let in_months: u32 = list.months.iter().map(|m| m.count).sum();
+    assert_eq!(in_months, 3);
+    // The card is still there for clients that only draw answers.
+    assert_eq!(
+        answer.answer.expect("the top match").record.id,
+        list.top_record_id
+    );
+}
+
+#[tokio::test]
+async fn a_list_pages_but_counts_and_totals_every_match() {
+    let fx = Fixture::new().await;
+    seed_anthropic(&fx).await;
+    let first = ask_page(&fx, "anthropic", false, 0, 2)
+        .await
+        .list
+        .expect("a list");
+    let rest = ask_page(&fx, "anthropic", false, 2, 2)
+        .await
+        .list
+        .expect("a list");
+    assert_eq!((first.count, first.records.len()), (3, 2));
+    assert_eq!((rest.count, rest.offset, rest.records.len()), (3, 2, 1));
+    assert_eq!(first.totals, rest.totals);
+    assert_eq!(first.months, rest.months);
+    let mut seen: Vec<&str> = first
+        .records
+        .iter()
+        .chain(&rest.records)
+        .map(|r| r.id.as_str())
+        .collect();
+    seen.sort_unstable();
+    seen.dedup();
+    assert_eq!(seen.len(), 3, "the pages hold every match once");
+    let past = ask_page(&fx, "anthropic", false, 9, 2)
+        .await
+        .list
+        .expect("a list");
+    assert!(past.records.is_empty());
+    assert_eq!(past.count, 3);
+}
+
+#[tokio::test]
+async fn a_field_query_is_an_answer_and_show_all_lists_its_matches() {
+    let fx = Fixture::new().await;
+    seed(&fx).await;
+    let answer = ask(&fx, "lisbon booking ref").await;
+    assert_eq!(answer.mode, mxr_protocol::RecordAnswerModeData::Answer);
+    assert!(answer.list.is_none());
+    assert_eq!(answer.matching, 2, "the flight and the hotel");
+    let all = ask_page(&fx, "lisbon booking ref", true, 0, 200).await;
+    assert_eq!(all.mode, mxr_protocol::RecordAnswerModeData::List);
+    let list = all.list.expect("a list");
+    assert_eq!(list.count, 2);
+    assert_eq!(list.top_record_id, answer.answer.expect("card").record.id);
+    // Two issuers: no issuer page, and the header names the query.
+    assert!(list.issuer.is_none());
+    assert!(
+        list.header
+            .starts_with("\"lisbon booking ref\" \u{b7} 2 records"),
+        "{}",
+        list.header
+    );
 }

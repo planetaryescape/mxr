@@ -1,5 +1,6 @@
 ---
 source: crates/web/src/tests.rs
+assertion_line: 977
 expression: summary
 ---
 {
@@ -213,6 +214,8 @@ expression: summary
     "RecordAmountData",
     "RecordAnswerCardData",
     "RecordAnswerData",
+    "RecordAnswerListData",
+    "RecordAnswerModeData",
     "RecordChangeData",
     "RecordData",
     "RecordDismissBody",

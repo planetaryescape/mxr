@@ -18,6 +18,7 @@ from schema.org markup · checked
 PDF: e-ticket-K7QX2M.pdf
 Record rec_810960585d424fdf92aeefce6680819a
 Also matching: Lisbon, 3 nights (88213), Lisbon Oceanario (OC-55120)
+All 3 matches: mxr records ask --all "lisbon booking ref"
 ```
 
 No model runs for that answer. The examples on this page come from the
@@ -128,6 +129,31 @@ issuer, what it is, place, reference, and its trip or series. Words like
 answer leads with; "receipt", "booking", "bills" and the other kinds narrow
 the records; a year or a month narrows the date. Ties go to what starts
 first, so a trip's flight answers before its hotel.
+
+A query that asks for a field gets one answer. So does a query one record
+wins clearly, such as a reference. A query that only names something, an
+issuer, a place or a trip, with or without a kind, year or month, lists
+every record that matches about as well, newest first by month, with a
+count, a total per currency (never converted) and the dates they span:
+
+```bash
+mxr records ask "octopus"
+```
+
+```text
+Octopus Energy · 3 records · £368.35
+9 Jul 2026 to 9 Sep 2026
+Issuer page: mxr records --issuer "Octopus Energy"
+Best match: rec_1fdbbc766c9442a29ebb06000bf735f1
+```
+
+The month headers and rows follow, as in the ledger.
+
+`--all` lists every match of any query, and `--limit` and `--offset` page a
+long list. In the apps the list takes the ledger's place under a header
+like "Octopus Energy · 3 records · £368.35", with the best match marked and
+"Clear search" (or Esc) to go back; under an answer card, "Show all 3
+matches" (`a` in the TUI) switches to the list.
 
 When no record matches every word, Archive says so and searches all your
 mail with [`mxr ask`](/guides/archive-intelligence/) instead:

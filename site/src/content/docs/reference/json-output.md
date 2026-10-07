@@ -555,14 +555,24 @@ or series (`{id, kind, title, count, span_start, span_end}`).
     },
     "record": { "id": "rec_810960585d424fdf92aeefce6680819a", "kind": "booking" }
   },
+  "mode": "answer",
+  "matching": 3,
   "also": [{ "id": "rec_dde42d9377554b539e34762a1fd18d2e" }]
 }
 ```
 
-`asked` is `reference`, `amount`, `date`, `document` or `any`. With no
-match, `answer` is absent and `fallback` carries `note` and `mxr ask`'s
-`answer` (or `error`). `--format ids` prints the answer's `copy` value
-alone, ready for a pipe.
+`asked` is `reference`, `amount`, `date`, `document` or `any`. `matching`
+counts every record that matched. `mode` is `answer` or `list`: a query that
+only names something several records match (`mxr records ask octopus`), or
+any query with `--all`, comes back as `list`, with `list` holding
+`{header, count, offset, records, months, totals, first, last,
+top_record_id, issuer?}`. `records` is one page of the matches, newest
+first; `count`, `months` and `totals` (one per currency, never converted)
+cover every match; `top_record_id` is the best match, also on `answer`;
+`issuer` is set when every match shares one. With no match, `answer` is
+absent and `fallback` carries `note` and `mxr ask`'s `answer` (or `error`).
+`--format ids` prints the answer's `copy` value alone, ready for a pipe, or
+in list mode the page's record ids, one per line.
 
 `mxr records export --csv --dry-run --format json` reports what an export
 would write, from the same rows:

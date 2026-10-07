@@ -276,6 +276,20 @@ async fn archive_requests_stay_in_the_agents_accounts() {
         account_id: Some(o.account.clone()),
         fallback: false,
         limit: 4,
+        list: false,
+        offset: 0,
+        list_limit: 200,
+    })
+    .await;
+    // "Show all" lists matches from the same scope as the answer.
+    assert_scoped(&s, |o| Request::AnswerFromRecords {
+        query: "order".into(),
+        account_id: Some(o.account.clone()),
+        fallback: false,
+        limit: 4,
+        list: true,
+        offset: 0,
+        list_limit: 200,
     })
     .await;
     assert_scoped(&s, |o| Request::ExportRecords {

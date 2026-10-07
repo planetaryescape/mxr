@@ -4,7 +4,14 @@
  * year stepping. Pure functions, so the route and its tests share them.
  */
 
-import type { RecordData, RecordFilter, RecordKind, RecordMonth } from "./api";
+import type {
+  RecordAnswer,
+  RecordAnswerList,
+  RecordData,
+  RecordFilter,
+  RecordKind,
+  RecordMonth,
+} from "./api";
 
 export interface KindChip {
   id: "all" | "receipts" | "orders" | "trips" | "bills" | "documents";
@@ -120,4 +127,17 @@ export function amountCopy(record: RecordData): string | null {
 /** "from schema.org markup · checked", the provenance chip's words. */
 export function provenanceLine(source: string, checked: boolean): string {
   return `from ${source} · ${checked ? "checked" : "unchecked"}`;
+}
+
+/** A listed query's matches, or null when the answer is one card. */
+export function answerList(answer: RecordAnswer | undefined): RecordAnswerList | null {
+  return answer?.mode === "list" ? (answer.list ?? null) : null;
+}
+
+/** "3 Mar 2024 to 9 Oct 2026", or one day when every match shares it. */
+export function matchSpan(list: RecordAnswerList): string {
+  const first = longDate(list.first);
+  const last = longDate(list.last);
+  if (!first || !last) return first || last;
+  return first === last ? first : `${first} to ${last}`;
 }

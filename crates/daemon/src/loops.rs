@@ -464,7 +464,8 @@ pub(crate) async fn finalize_sync_pass(
                         last_error: Some(Some(err_str.clone())),
                         failure_class: Some(Some(failure_class.to_string())),
                         consecutive_failures: Some(prior_consecutive_failures.saturating_add(1)),
-                        backoff_until: Some(None),
+                        // Left as the sync loop set it: the loop owns the
+                        // retry schedule and writes the next try after this.
                         sync_in_progress: Some(state.background_sync_queued(&account_id)),
                         current_cursor_summary: Some(Some(cursor_summary.clone())),
                         ..Default::default()
@@ -992,7 +993,7 @@ async fn sync_loop_for_account(
             skip_sleep = false;
         } else {
             let wait = if backoff_secs > 0 {
-                tracing::info!(account = %account_id, "Rate limited, backing off {backoff_secs}s");
+                tracing::info!(account = %account_id, "Last sync failed, retrying in {backoff_secs}s");
                 backoff_secs
             } else {
                 base_interval
@@ -1077,13 +1078,16 @@ async fn sync_loop_for_account(
                     consecutive_has_more = 0;
                 }
             }
-            Err(mxr_core::MxrError::RateLimited { retry_after_secs }) => {
-                // Same ceiling as every other backoff arm. A provider is free
-                // to send a Retry-After measured in days, and honouring it
-                // literally parks the account until the daemon restarts — on
-                // top of overflowing the doubling and the i64 conversion
-                // below. Re-polling a still-limited provider costs one 429.
-                backoff_secs = retry_after_secs.saturating_add(10).clamp(30, 300);
+            Err(error) => {
+                backoff_secs = next_backoff_secs(backoff_secs, &error);
+                tracing::info!(
+                    account = %account_id,
+                    class = classify_sync_error(&error.to_string()),
+                    backoff_secs,
+                    "sync failed; next try scheduled"
+                );
+                // Every failure records when the next try is, so clients can
+                // say "retrying 14:05" instead of only "failing".
                 let backoff_until = chrono::Utc::now()
                     + chrono::Duration::seconds(i64::try_from(backoff_secs).unwrap_or(300));
                 let _ = state
@@ -1096,9 +1100,6 @@ async fn sync_loop_for_account(
                         },
                     )
                     .await;
-            }
-            Err(_) => {
-                backoff_secs = (backoff_secs * 2).clamp(30, 300);
             }
         }
     }
@@ -1254,6 +1255,20 @@ async fn run_analytics_repair(state: &Arc<AppState>, account_id: &AccountId) {
     }
 }
 
+/// Seconds to wait before retrying after a failed sync. A rate limit waits
+/// what the provider asked plus a margin; anything else doubles. Both stay
+/// between 30 seconds and 5 minutes: a provider is free to send a
+/// Retry-After measured in days, and honouring it literally would park the
+/// account until the daemon restarts. Re-polling a still-limited provider
+/// costs one 429.
+pub(crate) fn next_backoff_secs(previous_secs: u64, error: &MxrError) -> u64 {
+    match error {
+        MxrError::RateLimited { retry_after_secs } => retry_after_secs.saturating_add(10),
+        _ => previous_secs.saturating_mul(2),
+    }
+    .clamp(30, 300)
+}
+
 pub(crate) fn classify_sync_error(error: &str) -> &'static str {
     let lower = error.to_ascii_lowercase();
     if lower.contains("rate limit") || lower.contains("retry after") {
@@ -1284,6 +1299,21 @@ pub(crate) fn classify_sync_error(error: &str) -> &'static str {
 #[cfg(test)]
 mod classify_sync_error_tests {
     use super::classify_sync_error;
+
+    #[test]
+    fn backoff_follows_a_rate_limit_and_doubles_otherwise_within_bounds() {
+        use super::next_backoff_secs;
+        use mxr_core::MxrError;
+        let limited = |secs| MxrError::RateLimited {
+            retry_after_secs: secs,
+        };
+        assert_eq!(next_backoff_secs(0, &limited(60)), 70);
+        assert_eq!(next_backoff_secs(0, &limited(86_400)), 300);
+        let offline = MxrError::Provider("connection refused".into());
+        assert_eq!(next_backoff_secs(0, &offline), 30);
+        assert_eq!(next_backoff_secs(30, &offline), 60);
+        assert_eq!(next_backoff_secs(240, &offline), 300);
+    }
 
     #[test]
     fn maps_common_sync_error_classes_for_event_payloads() {

@@ -144,7 +144,7 @@ test.describe("desktop", () => {
       await expect(warning).toHaveText(
         /^Fake Account unreachable, (last sync (just now|\d+m ago)|retrying .+)$/,
       );
-      await expect(warning).toHaveAttribute("href", "/diagnostics");
+      await expect(warning).toHaveAttribute("href", /^\/accounts\/[^/]+$/);
       await expect(trigger(page).locator("[data-tone]")).toHaveAttribute("data-tone", "bad");
       await shot(page, "desktop-warning");
 
@@ -154,7 +154,15 @@ test.describe("desktop", () => {
       );
       await page.keyboard.press("Escape");
       await warning.click();
-      await expect(page).toHaveURL(/\/diagnostics/);
+      await expect(page).toHaveURL(/\/accounts\/[^/]+$/);
+      const details = page.getByTestId("account-sync-details");
+      await expect(details).toContainText(/Can't sync/);
+      await expect(details).toContainText("Can't reach Fake Account.");
+      await expect(page.getByRole("status").filter({ hasText: /Can't sync/ })).toBeVisible();
+      await shot(page, "desktop-account-sync");
+
+      await page.goto("/accounts");
+      await expect(page.getByTestId("account-sync-health").first()).toHaveText(/^Can't sync/);
     } finally {
       restoreSyncs();
       await syncNow(page);

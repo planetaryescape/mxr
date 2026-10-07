@@ -13,6 +13,7 @@ import { Link } from "@tanstack/react-router";
 import { AlertTriangle } from "lucide-react";
 import { useState } from "react";
 
+import { useSignInAgain } from "./AccountSyncHealth";
 import { useFreshnessQuery } from "./api";
 import {
   ago,
@@ -24,6 +25,7 @@ import {
   syncLine,
   wentTo,
   worstAccount,
+  needsSignIn,
   type AccountFreshness,
   type Arrival,
   type Freshness,
@@ -66,6 +68,13 @@ function useSyncState(data: Freshness | undefined): SyncState {
     health: effectiveHealth(account, data.stale_after_secs, now),
     line: syncLine(account, data.stale_after_secs, now),
   };
+}
+
+/** The account's own page holds its sync details; Diagnostics when unknown. */
+function syncDetailsLink(sync: SyncState) {
+  return sync.account
+    ? ({ to: "/accounts/$key", params: { key: sync.account.account_id } } as const)
+    : ({ to: "/diagnostics" } as const);
 }
 
 /** "9:42 AM" today, "Mon, Oct 5, 2026, 9:42 AM" before. */
@@ -142,7 +151,7 @@ export function FreshnessIndicator({ compact = false }: { compact?: boolean }) {
             <span className="truncate">{sync.line}</span>
           ) : (
             <Link
-              to="/diagnostics"
+              {...syncDetailsLink(sync)}
               className="inline-flex min-w-0 items-center gap-1 rounded px-1 text-warning hover:bg-muted"
               title="Sync details"
               data-testid="freshness-warning"
@@ -167,6 +176,7 @@ function ArrivalsPanel({
   onNavigate: () => void;
 }) {
   const calm = isCalm(sync.health);
+  const signInAgain = useSignInAgain();
   return (
     <div className="font-sans text-[12.5px]">
       <p className="border-b border-border px-3 py-2 text-2xs font-medium text-muted-foreground">
@@ -199,13 +209,26 @@ function ArrivalsPanel({
           <span className={cn("min-w-0", !calm && "text-warning")}>
             {calm ? `Sync: ${sync.line}` : sync.line}
           </span>
-          <Link
-            to="/diagnostics"
-            onClick={onNavigate}
-            className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
-          >
-            Sync details
-          </Link>
+          {sync.account && needsSignIn(sync.account) ? (
+            <button
+              type="button"
+              onClick={() => {
+                onNavigate();
+                if (sync.account) signInAgain(sync.account.account_id);
+              }}
+              className="shrink-0 font-medium text-foreground underline-offset-2 hover:underline"
+            >
+              Sign in again
+            </button>
+          ) : (
+            <Link
+              {...syncDetailsLink(sync)}
+              onClick={onNavigate}
+              className="shrink-0 underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Sync details
+            </Link>
+          )}
         </p>
       </div>
     </div>

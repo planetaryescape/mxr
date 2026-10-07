@@ -123,7 +123,7 @@ describe("FreshnessIndicator", () => {
     });
     const warning = screen.getByTestId("freshness-warning");
     expect(warning).toHaveTextContent("Last sync 2h ago");
-    expect(warning).toHaveAttribute("href", "/diagnostics");
+    expect(warning).toHaveAttribute("href", "/accounts/acct-1");
   });
 
   test("a rate limit shows the paused warning with its retry time", () => {

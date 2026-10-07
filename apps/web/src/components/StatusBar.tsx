@@ -2,6 +2,7 @@ import { RefreshCw } from "lucide-react";
 
 import { ConnectionPill } from "@/components/ConnectionPill";
 import { KeyChip } from "@/components/KeyChip";
+import { useSyncHealthToasts } from "@/features/freshness/AccountSyncHealth";
 import { useFreshnessLive } from "@/features/freshness/api";
 import { FreshnessIndicator } from "@/features/freshness/FreshnessIndicator";
 import { syncNow } from "@/features/mailbox/actions";
@@ -22,6 +23,7 @@ export function StatusBar() {
   // The status bar is mounted on every page, so it owns the one live
   // subscription; the phone's topbar indicator reads the same query.
   useFreshnessLive();
+  useSyncHealthToasts();
 
   return (
     <>

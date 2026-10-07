@@ -1,6 +1,9 @@
 import { AlertTriangle, Cloud, CloudOff, Loader2 } from "lucide-react";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAllAccountsFreshness } from "@/features/freshness/api";
+import { effectiveHealth, isCalm, syncLine, worstAccount } from "@/features/freshness/copy";
+import { useClockLabel } from "@/lib/minuteClock";
 import { useConnectionStore } from "@/state/connectionStore";
 import { cn } from "@/lib/utils";
 
@@ -13,20 +16,34 @@ export function ConnectionPill({ compact = false }: ConnectionPillProps) {
   const lastErrorAt = useConnectionStore((s) => s.lastErrorAt);
   const errorMessage = useConnectionStore((s) => s.errorMessage);
   const protocolMismatch = useConnectionStore((s) => s.protocolMismatch);
-  const Icon = protocolMismatch
-    ? AlertTriangle
-    : status === "connected"
-      ? Cloud
-      : status === "connecting" || status === "reconnecting"
-        ? Loader2
-        : CloudOff;
+  // Connected to the daemon is not the same as mail arriving: a failing or
+  // stale account turns the pill amber and its tooltip says which.
+  const { data: freshness } = useAllAccountsFreshness();
+  const syncIssue = useClockLabel((now) => {
+    const worst = freshness ? worstAccount(freshness, now) : undefined;
+    if (!worst || !freshness) return "";
+    return isCalm(effectiveHealth(worst, freshness.stale_after_secs, now))
+      ? ""
+      : syncLine(worst, freshness.stale_after_secs, now);
+  });
+  const syncWarning = status === "connected" && !protocolMismatch && syncIssue !== "";
+  const Icon =
+    protocolMismatch || syncWarning
+      ? AlertTriangle
+      : status === "connected"
+        ? Cloud
+        : status === "connecting" || status === "reconnecting"
+          ? Loader2
+          : CloudOff;
   const tone = protocolMismatch
     ? "text-destructive"
-    : status === "connected"
-      ? "text-success"
-      : status === "connecting" || status === "reconnecting"
-        ? "text-warning"
-        : "text-destructive";
+    : syncWarning
+      ? "text-warning"
+      : status === "connected"
+        ? "text-success"
+        : status === "connecting" || status === "reconnecting"
+          ? "text-warning"
+          : "text-destructive";
   const label = protocolMismatch
     ? "protocol mismatch"
     : status === "connected"
@@ -64,7 +81,9 @@ export function ConnectionPill({ compact = false }: ConnectionPillProps) {
           : errorMessage
             ? errorMessage
             : status === "connected"
-              ? "WebSocket attached"
+              ? syncWarning
+                ? `Connected. ${syncIssue}`
+                : "WebSocket attached"
               : "Not connected"}
         {lastErrorAt ? (
           <div className="mt-1 opacity-60">

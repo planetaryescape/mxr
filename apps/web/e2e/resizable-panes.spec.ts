@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { mailList, openList, reader } from "./helpers/mail";
+import { mailList, modKey, openList, reader } from "./helpers/mail";
 import { openApp } from "./helpers/state";
 
 /*
@@ -141,18 +141,27 @@ test("the sidebar resizes, keeps its width, stops at its max and collapses below
   expect(await width(page, SIDEBAR)).toBeCloseTo(56, 0);
 });
 
+test("the sidebar's saved width comes back after a narrow window pins it to the rail", async ({
+  page,
+}) => {
+  await openMessages(page);
+  await drag(page, handle(page, "Resize sidebar"), 60);
+  await expect.poll(() => width(page, SIDEBAR)).toBeCloseTo(308, 0);
+  await page.setViewportSize({ width: 768, height: 900 });
+  await page.reload();
+  await expect.poll(() => width(page, SIDEBAR)).toBeCloseTo(56, 0);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect.poll(() => width(page, SIDEBAR)).toBeCloseTo(308, 0);
+  await page.reload();
+  await expect.poll(() => width(page, SIDEBAR)).toBeCloseTo(308, 0);
+});
+
 test("a saved width is there on the first frame, with no shift as the page loads", async ({
   page,
 }) => {
   await openMessages(page);
   await drag(page, handle(page, "Resize people list"), 100);
-  const stored = () =>
-    page.evaluate(() => localStorage.getItem("react-resizable-panels:mxr:split:messages"));
-  const afterPeopleDrag = await stored();
-  // Widening the sidebar narrows the split beside it, which keeps its
-  // list's pixels; that is saved too, a moment after the drag.
   await drag(page, handle(page, "Resize sidebar"), 40);
-  await expect.poll(stored).not.toBe(afterPeopleDrag);
   const people = await width(page, PEOPLE);
   const sidebar = await width(page, SIDEBAR);
 
@@ -220,6 +229,56 @@ test("Archive's record card resizes beside the ledger", async ({ page }) => {
   await expect.poll(() => width(page, '[id="archive-card"]')).toBeCloseTo(before + 80, 0);
   await card.dblclick();
   await expect.poll(() => width(page, '[id="archive-card"]')).toBeCloseTo(before, 0);
+});
+
+/** The reader's floor: never squeezed below this by a saved list width. */
+const READER_MIN = 28 * REM;
+
+test("at 768px a saved wide people list gives way to the conversation, and comes back", async ({
+  page,
+}) => {
+  await openMessages(page);
+  await handle(page, "Resize people list").focus();
+  await page.keyboard.press("End");
+  await expect.poll(() => width(page, PEOPLE)).toBeCloseTo(40 * REM, 0);
+
+  await page.setViewportSize({ width: 768, height: 900 });
+  await page.reload();
+  await expect(handle(page, "Resize people list")).toBeVisible();
+  await expect
+    .poll(() => width(page, '[id="messages-conversation"]'))
+    .toBeGreaterThanOrEqual(READER_MIN - 1);
+
+  // The saved width was a preference, not a casualty of the small window.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect.poll(() => width(page, PEOPLE)).toBeCloseTo(40 * REM, 0);
+  await page.reload();
+  await expect.poll(() => width(page, PEOPLE)).toBeCloseTo(40 * REM, 0);
+});
+
+test("at 1024px with the context rail open, a saved wide list leaves the reader its minimum", async ({
+  page,
+}) => {
+  await openFirstThread(page);
+  // End takes it to its maximum (a long drag would cross the email's iframe).
+  await handle(page, "Resize Inbox list").focus();
+  await page.keyboard.press("End");
+  await expect.poll(() => width(page, '[id="list-pane"]')).toBeCloseTo(40 * REM, 0);
+
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await page.reload();
+  await expect(reader(page)).toBeVisible();
+  await page.keyboard.press(`${await modKey(page)}+k`);
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await expect(palette).toBeVisible();
+  await palette.getByRole("combobox").fill("Find an expert");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("complementary", { name: "Context" })).toBeVisible();
+  await expect.poll(() => width(page, '[id="reader-pane"]')).toBeGreaterThanOrEqual(READER_MIN - 1);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.reload();
+  await expect.poll(() => width(page, '[id="list-pane"]')).toBeCloseTo(40 * REM, 0);
 });
 
 test.describe("at 390px", () => {

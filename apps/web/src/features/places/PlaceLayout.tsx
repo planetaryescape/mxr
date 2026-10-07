@@ -6,7 +6,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { LIST_PANE_SIZE } from "@/features/mailbox/listPane";
 import { ReaderNavContext, type ReaderNav } from "@/features/mailbox/readerNav";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
-import { useSavedLayout } from "@/hooks/useSavedLayout";
+import { useSplitPane } from "@/hooks/useSplitPane";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -38,7 +38,9 @@ export function PlaceLayout({
   const setActivePane = useMailboxPane((s) => s.setActivePane);
   const hideList = threadOpen && (singlePane || wideReader || readerLayout === "full");
   const split = threadOpen && !hideList;
-  const savedLayout = useSavedLayout(`place${basePath.replace("/", ":")}`, { save: split });
+  const pane = useSplitPane(`place${basePath.replace("/", ":")}`, LIST_PANE_SIZE, {
+    active: split,
+  });
 
   useEffect(() => {
     if (!threadOpen && useMailboxPane.getState().activePane === "reader") setActivePane("mailbox");
@@ -59,14 +61,11 @@ export function PlaceLayout({
 
   return (
     <ReaderNavContext.Provider value={nav}>
-      <ResizablePanelGroup className="min-h-0 min-w-0 flex-1" {...savedLayout}>
+      <ResizablePanelGroup className="min-h-0 min-w-0 flex-1" {...pane.groupProps}>
         <ResizablePanel
           id="place-list"
           hidden={hideList}
-          defaultSize={LIST_PANE_SIZE.defaultSize}
-          minSize={LIST_PANE_SIZE.minSize}
-          maxSize={LIST_PANE_SIZE.maxSize}
-          groupResizeBehavior="preserve-pixel-size"
+          {...pane.sidePanelProps}
           className="flex min-h-0 flex-col"
         >
           <section
@@ -76,9 +75,15 @@ export function PlaceLayout({
             {children}
           </section>
         </ResizablePanel>
-        {split ? <ResizableHandle aria-label={`Resize ${label} list`} /> : null}
+        {split ? (
+          <ResizableHandle aria-label={`Resize ${label} list`} {...pane.handleProps} />
+        ) : null}
         {threadOpen ? (
-          <ResizablePanel id="place-reader" className="flex min-h-0 min-w-0">
+          <ResizablePanel
+            id="place-reader"
+            {...pane.otherPanelProps}
+            className="flex min-h-0 min-w-0"
+          >
             <Outlet />
           </ResizablePanel>
         ) : null}

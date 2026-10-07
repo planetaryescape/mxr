@@ -21,7 +21,7 @@ import { ModeCard } from "@/features/modes/ModeCard";
 import { markModeDone } from "@/features/modes/modeDone";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
-import { useSavedLayout } from "@/hooks/useSavedLayout";
+import { useSplitPane } from "@/hooks/useSplitPane";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { useScopeController } from "@/lib/keys/controllers";
@@ -43,6 +43,7 @@ import { useGotIt } from "./useGotIt";
 
 /** List and person page share the screen from Tailwind's md up. */
 const MESSAGES_SPLIT_QUERY = "(min-width: 768px)";
+const PEOPLE_PANE_SIZE = { defaultSize: "22rem", minSize: "16rem", maxSize: "40rem" };
 
 export interface MessagesSearch {
   /** The selected row's id: `person:<email>` or `group:<thread>`. */
@@ -174,7 +175,7 @@ function MessagesBody({
   );
   const listRef = useRef<HTMLDivElement>(null);
   const split = useMediaQuery(MESSAGES_SPLIT_QUERY);
-  const savedLayout = useSavedLayout("messages", { save: split });
+  const pane = useSplitPane("messages", PEOPLE_PANE_SIZE, { active: split });
   useEffect(() => {
     if (!selectedId) return;
     listRef.current
@@ -346,14 +347,11 @@ function MessagesBody({
 
   const empty = data.your_turn.length === 0;
   return (
-    <ResizablePanelGroup className="min-h-0 flex-1" {...savedLayout}>
+    <ResizablePanelGroup className="min-h-0 flex-1" {...pane.groupProps}>
       <ResizablePanel
         id="messages-people"
         hidden={!split && pageOpen}
-        defaultSize="22rem"
-        minSize="16rem"
-        maxSize="40rem"
-        groupResizeBehavior="preserve-pixel-size"
+        {...pane.sidePanelProps}
         className="flex min-h-0 flex-col"
         elementRef={listRef}
       >
@@ -385,9 +383,13 @@ function MessagesBody({
           {guide ? <KeyLine guide={guide} /> : null}
         </div>
       </ResizablePanel>
-      {split ? <ResizableHandle aria-label="Resize people list" /> : null}
+      {split ? <ResizableHandle aria-label="Resize people list" {...pane.handleProps} /> : null}
       {split || pageOpen ? (
-        <ResizablePanel id="messages-conversation" className="flex min-h-0 min-w-0">
+        <ResizablePanel
+          id="messages-conversation"
+          {...pane.otherPanelProps}
+          className="flex min-h-0 min-w-0"
+        >
           {page ? (
             <PersonPane
               page={page}

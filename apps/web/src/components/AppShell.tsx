@@ -165,7 +165,7 @@ export function AppShell() {
           collapsible
           collapsedSize={SIDEBAR_SIZE.collapsedSize}
           minSize={SIDEBAR_SIZE.minSize}
-          defaultSize={SIDEBAR_SIZE.defaultSize}
+          defaultSize={sidebar.defaultSize}
           maxSize={SIDEBAR_SIZE.maxSize}
           groupResizeBehavior="preserve-pixel-size"
           panelRef={sidebar.panelRef}
@@ -177,7 +177,11 @@ export function AppShell() {
           </aside>
         </ResizablePanel>
         {narrow ? null : (
-          <ResizableHandle aria-label="Resize sidebar" className="bg-sidebar-border" />
+          <ResizableHandle
+            aria-label="Resize sidebar"
+            className="bg-sidebar-border"
+            {...sidebar.handleProps}
+          />
         )}
         <ResizablePanel id="shell-body" className="flex min-h-0 min-w-0">
           <div

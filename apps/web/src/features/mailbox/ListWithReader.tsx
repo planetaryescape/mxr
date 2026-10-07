@@ -12,7 +12,7 @@ import { ModeFrame } from "@/components/ModeFrame";
 import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
-import { useSavedLayout } from "@/hooks/useSavedLayout";
+import { useSplitPane } from "@/hooks/useSplitPane";
 import { focusActivePane } from "@/lib/keys/focusPane";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
@@ -111,9 +111,9 @@ export function ListWithReader({
     requestAnimationFrame(() => filterRef.current?.select());
   }, []);
   const hideList = threadOpen && (singlePane || readerLayout === "full");
-  // One saved width for every mail list, so Inbox, labels and search match.
   const split = threadOpen && !hideList;
-  const savedLayout = useSavedLayout("mail-list", { save: split });
+  // One saved width for every mail list, so Inbox, labels and search match.
+  const pane = useSplitPane("mail-list", LIST_PANE_SIZE, { active: split });
 
   // When the conversation closes by any route (Esc, back button), hand the
   // keyboard back to the list. Keyed on the transition only: opening sets
@@ -159,14 +159,11 @@ export function ListWithReader({
 
   return (
     <ReaderNavContext.Provider value={nav}>
-      <ResizablePanelGroup className="min-h-0 min-w-0 flex-1" {...savedLayout}>
+      <ResizablePanelGroup className="min-h-0 min-w-0 flex-1" {...pane.groupProps}>
         <ResizablePanel
           id="list-pane"
           hidden={hideList}
-          defaultSize={LIST_PANE_SIZE.defaultSize}
-          minSize={LIST_PANE_SIZE.minSize}
-          maxSize={LIST_PANE_SIZE.maxSize}
-          groupResizeBehavior="preserve-pixel-size"
+          {...pane.sidePanelProps}
           className="flex min-h-0 flex-col"
         >
           <section
@@ -287,9 +284,15 @@ export function ListWithReader({
             {footer}
           </section>
         </ResizablePanel>
-        {split ? <ResizableHandle aria-label={`Resize ${title} list`} /> : null}
+        {split ? (
+          <ResizableHandle aria-label={`Resize ${title} list`} {...pane.handleProps} />
+        ) : null}
         {threadOpen ? (
-          <ResizablePanel id="reader-pane" className="flex min-h-0 min-w-0">
+          <ResizablePanel
+            id="reader-pane"
+            {...pane.otherPanelProps}
+            className="flex min-h-0 min-w-0"
+          >
             <Outlet />
           </ResizablePanel>
         ) : null}

@@ -1,11 +1,12 @@
-import { useCallback, useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { usePanelRef, type Layout, type PanelSize } from "react-resizable-panels";
 
-import { useSavedLayout } from "@/hooks/useSavedLayout";
+import { panesWidth, readPaneWidth, writePaneWidth } from "@/hooks/paneWidth";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const DEFAULT_PX = 248;
 export const SIDEBAR_ID = "shell-sidebar";
+const STORAGE_KEY = "mxr:split:shell-sidebar";
 
 /**
  * The sidebar's widths (tokens.css has the default and the icon rail).
@@ -23,27 +24,46 @@ export const SIDEBAR_SIZE = {
  * button (and the saved preference on load) collapse or expand the panel;
  * a drag past the minimum collapses it, and a drag out of the rail expands
  * it, and the preference follows. `narrow` is the pinned icon-rail width.
+ *
+ * Its width is saved in pixels. While app.css pins the rail the library
+ * still sizes the panel against the narrow window, and coming back from it
+ * the library's guess can be far off, so the width is put back then.
  */
 export function useResizableSidebar(narrow: boolean) {
   const collapsedPref = useUiPrefs((s) => s.sidebarCollapsed);
   const panelRef = usePanelRef();
   const frameRef = useRef<HTMLDivElement>(null);
-  // The size a drag or key press left it at, as a percentage of the frame.
-  // Not every resize: a drag into the rail passes through the minimum.
-  const lastSize = useRef<number | null>(null);
+  const [saved] = useState(() => readPaneWidth(STORAGE_KEY));
+  // The width a drag or key press left it at. Not every resize: a drag into
+  // the rail passes through the minimum, and the narrow window lies.
+  const width = useRef(saved ?? DEFAULT_PX);
   // Read from the library's callbacks, which fire outside render.
   const narrowRef = useRef(narrow);
+  const restoring = useRef(false);
+
   useLayoutEffect(() => {
     narrowRef.current = narrow;
-  }, [narrow]);
-  const savedLayout = useSavedLayout("shell-sidebar", { save: !narrow });
+    if (narrow) return;
+    // The library hears of the wider window from its own observer: put the
+    // width back a frame later, and save nothing until then.
+    restoring.current = true;
+    const frame = requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (panel && !panel.isCollapsed()) panel.resize(`${width.current}px`);
+      restoring.current = false;
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      restoring.current = false;
+    };
+  }, [narrow, panelRef]);
 
   const onResize = useCallback(
     (size: PanelSize, _id: string | number | undefined, previous: PanelSize | undefined) => {
       const panel = panelRef.current;
       // While app.css pins the rail, the DOM width says nothing about the
       // panel's own size, and the panel can't be dragged.
-      if (!panel || narrowRef.current) return;
+      if (!panel || narrowRef.current || restoring.current) return;
       const prefs = useUiPrefs.getState();
       const collapsed = panel.isCollapsed();
       if (!collapsed && !prefs.sidebarCollapsed) {
@@ -61,23 +81,38 @@ export function useResizableSidebar(narrow: boolean) {
     const panel = panelRef.current;
     if (!panel) return;
     if (collapsedPref && !panel.isCollapsed()) panel.collapse();
-    else if (!collapsedPref && panel.isCollapsed()) {
-      // Back to the width it had, or the default after a reload.
-      panel.resize(lastSize.current === null ? `${DEFAULT_PX}px` : `${lastSize.current}%`);
-    }
+    else if (!collapsedPref && panel.isCollapsed()) panel.resize(`${width.current}px`);
   }, [collapsedPref, panelRef]);
 
-  const { onLayoutChanged: save } = savedLayout;
   const onLayoutChanged = useCallback(
     (layout: Layout) => {
-      save?.(layout);
-      const size = layout[SIDEBAR_ID];
-      if (size !== undefined && !narrowRef.current && !panelRef.current?.isCollapsed()) {
-        lastSize.current = size;
-      }
+      const share = layout[SIDEBAR_ID];
+      const panel = panelRef.current;
+      if (share === undefined || !panel || narrowRef.current || restoring.current) return;
+      if (panel.isCollapsed()) return;
+      const next = Math.round((share / 100) * panesWidth(frameRef.current));
+      if (next === width.current) return;
+      width.current = next;
+      writePaneWidth(STORAGE_KEY, next);
     },
-    [panelRef, save],
+    [panelRef],
   );
 
-  return { panelRef, frameRef, onResize, groupProps: { ...savedLayout, onLayoutChanged } };
+  return {
+    panelRef,
+    frameRef,
+    onResize,
+    groupProps: { onLayoutChanged },
+    // The library resets to `defaultSize`, which here may be the saved
+    // width; this resets to the real default.
+    handleProps: {
+      disableDoubleClick: true,
+      onDoubleClick: (event: MouseEvent) => {
+        event.preventDefault();
+        panelRef.current?.resize(SIDEBAR_SIZE.defaultSize);
+      },
+    },
+    // The saved width paints on the first frame.
+    defaultSize: saved === null ? SIDEBAR_SIZE.defaultSize : `${saved}px`,
+  };
 }

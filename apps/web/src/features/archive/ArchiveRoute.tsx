@@ -16,7 +16,7 @@ import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
-import { useSavedLayout } from "@/hooks/useSavedLayout";
+import { useSplitPane } from "@/hooks/useSplitPane";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
@@ -46,6 +46,8 @@ import { activeChip, groupByMonth, KIND_CHIPS, stepYear } from "./ledger";
 import { AnswerCard, LedgerRow, RecordCard } from "./RecordParts";
 
 const PAGE = 200;
+/** The record card beside the ledger. */
+const CARD_PANE_SIZE = { defaultSize: "38%", minSize: "20rem", maxSize: "36rem" };
 
 /**
  * Archive: a filing cabinet you ask questions of. The answer box is the
@@ -219,7 +221,7 @@ function Ledger({
   const full = useRecord(singlePane && !cardOpen ? null : (current?.id ?? null));
   const cardRecord = full.data && full.data.id === current?.id ? full.data : current;
   const showSideCard = !singlePane && !params.threadId && cardRecord;
-  const savedLayout = useSavedLayout("archive-card", { save: Boolean(showSideCard) });
+  const pane = useSplitPane("archive-card", CARD_PANE_SIZE, { active: Boolean(showSideCard) });
 
   useEffect(() => {
     if (answer?.answer) setOnAnswer(true);
@@ -357,8 +359,12 @@ function Ledger({
 
   return (
     <ModeFrame width="wide" className="flex min-h-0 flex-1">
-      <ResizablePanelGroup className="min-h-0 flex-1" {...savedLayout}>
-        <ResizablePanel id="archive-ledger" className="flex min-h-0 flex-col">
+      <ResizablePanelGroup className="min-h-0 flex-1" {...pane.groupProps}>
+        <ResizablePanel
+          id="archive-ledger"
+          {...pane.otherPanelProps}
+          className="flex min-h-0 flex-col"
+        >
           <div ref={listRef} className="@container min-h-0 min-w-0 flex-1 overflow-y-auto pb-6">
             {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
             <form
@@ -549,13 +555,10 @@ function Ledger({
         </ResizablePanel>
         {showSideCard && cardRecord ? (
           <>
-            <ResizableHandle aria-label="Resize record card" />
+            <ResizableHandle aria-label="Resize record card" {...pane.handleProps} />
             <ResizablePanel
               id="archive-card"
-              defaultSize="38%"
-              minSize="20rem"
-              maxSize="36rem"
-              groupResizeBehavior="preserve-pixel-size"
+              {...pane.sidePanelProps}
               className="flex min-h-0 flex-col"
             >
               <aside aria-label="Record" className="min-h-0 flex-1 overflow-y-auto">

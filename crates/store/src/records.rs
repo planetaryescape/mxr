@@ -333,6 +333,14 @@ pub enum RecordFieldEdit {
     Clear { field: String },
 }
 
+/// A sender's issuer name, set with a sender-wide edit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SenderIssuer {
+    pub account_id: AccountId,
+    pub sender_email: String,
+    pub issuer_name: String,
+}
+
 /// A per-sender correction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordSenderRule {
@@ -639,6 +647,110 @@ async fn read_in_tx(
     Ok(Some((record, fields)))
 }
 
+async fn edit_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    record_id: &str,
+    edit: &RecordFieldEdit,
+    now: DateTime<Utc>,
+) -> Result<Option<(ArchiveRecord, Vec<RecordFieldValue>)>, sqlx::Error> {
+    let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM records WHERE id = ?")
+        .bind(record_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+    if exists.is_none() {
+        return Ok(None);
+    }
+    let user = |field: &str, value_text: Option<String>, value_int: Option<i64>, evidence: &str| {
+        RecordFieldValue {
+            field: field.to_string(),
+            source_key: "user".to_string(),
+            message_id: None,
+            source: "user".to_string(),
+            rank: 4,
+            value_text,
+            value_int,
+            checked: true,
+            // A user row copies no text from mail, so it never outlives
+            // a delete with words from it.
+            evidence: Some(evidence.to_string()),
+            observed_at: now,
+        }
+    };
+    let confirm_fields: Vec<String> = match edit {
+        RecordFieldEdit::Set {
+            field,
+            value_text,
+            value_int,
+        } => {
+            upsert_field_in_tx(
+                tx,
+                record_id,
+                &user(field, value_text.clone(), *value_int, "you"),
+                false,
+            )
+            .await?;
+            Vec::new()
+        }
+        RecordFieldEdit::Clear { field } => {
+            sqlx::query(
+                "DELETE FROM record_fields
+                 WHERE record_id = ?1 AND field = ?2 AND source_key = 'user'",
+            )
+            .bind(record_id)
+            .bind(field)
+            .execute(&mut **tx)
+            .await?;
+            Vec::new()
+        }
+        RecordFieldEdit::Confirm { field } => vec![field.clone()],
+        RecordFieldEdit::ConfirmUnchecked => {
+            let sql = format!(
+                "SELECT DISTINCT field FROM record_fields
+                 WHERE record_id = ? AND field IN ({})",
+                in_list(RECORD_CHECKED_FIELDS.len())
+            );
+            let mut query =
+                sqlx::query_scalar::<_, String>(sqlx::AssertSqlSafe(sql)).bind(record_id);
+            for field in RECORD_CHECKED_FIELDS {
+                query = query.bind(*field);
+            }
+            query.fetch_all(&mut **tx).await?
+        }
+    };
+    for field in &confirm_fields {
+        let winner: Option<(Option<String>, Option<i64>, i64)> = sqlx::query_as(
+            "SELECT value_text, value_int, checked FROM record_fields
+             WHERE record_id = ?1 AND field = ?2
+             ORDER BY rank DESC, observed_at DESC, source_key DESC LIMIT 1",
+        )
+        .bind(record_id)
+        .bind(field)
+        .fetch_optional(&mut **tx)
+        .await?;
+        let Some((text, int, checked)) = winner else {
+            continue;
+        };
+        // Confirming everything leaves checked values as they are.
+        if matches!(edit, RecordFieldEdit::ConfirmUnchecked) && checked != 0 {
+            continue;
+        }
+        upsert_field_in_tx(
+            tx,
+            record_id,
+            &user(field, text, int, "you confirmed"),
+            false,
+        )
+        .await?;
+    }
+    sqlx::query("UPDATE records SET updated_at = ?2 WHERE id = ?1")
+        .bind(record_id)
+        .bind(now.timestamp())
+        .execute(&mut **tx)
+        .await?;
+    recompute_in_tx(tx, &[record_id]).await?;
+    read_in_tx(tx, record_id).await
+}
+
 impl super::Store {
     /// Files a record: inserts it or adds to the one with the same dedup
     /// key, links its emails and writes its field candidates, then
@@ -651,18 +763,44 @@ impl super::Store {
         Ok(filed)
     }
 
-    /// What [`Self::file_record`] would leave: the record and its field
-    /// candidates, read inside a transaction that is rolled back. The dry
-    /// run of a manual filing shows exactly what the real one writes.
-    pub async fn preview_file_record(
+    /// Files a record by hand: a record the user dismissed under the same
+    /// key comes back first, since filing by hand overrides "not a record".
+    /// With `commit: false` it all runs in a transaction that is rolled
+    /// back, so the dry run shows exactly what filing leaves. Returns the
+    /// outcome, whether a dismissal was undone, and the record as it is
+    /// after.
+    pub async fn file_record_by_hand(
         &self,
         filing: &RecordFiling,
-    ) -> Result<Option<(ArchiveRecord, Vec<RecordFieldValue>)>, sqlx::Error> {
+        commit: bool,
+    ) -> Result<
+        (
+            RecordFiled,
+            bool,
+            Option<(ArchiveRecord, Vec<RecordFieldValue>)>,
+        ),
+        sqlx::Error,
+    > {
         let mut tx = self.writer().begin().await?;
+        let restored = sqlx::query(
+            "UPDATE records SET dismissed_at = NULL, updated_at = ?3
+             WHERE account_id = ?1 AND dedup_key = ?2 AND dismissed_at IS NOT NULL",
+        )
+        .bind(filing.account_id.as_str())
+        .bind(&filing.dedup_key)
+        .bind(filing.now.timestamp())
+        .execute(&mut *tx)
+        .await?
+        .rows_affected()
+            > 0;
         let filed = file_record_in_tx(&mut tx, filing).await?;
-        let preview = read_in_tx(&mut tx, filed.id()).await?;
-        tx.rollback().await?;
-        Ok(preview)
+        let after = read_in_tx(&mut tx, filed.id()).await?;
+        if commit {
+            tx.commit().await?;
+        } else {
+            tx.rollback().await?;
+        }
+        Ok((filed, restored, after))
     }
 
     pub async fn get_archive_record(&self, id: &str) -> Result<Option<ArchiveRecord>, sqlx::Error> {
@@ -992,111 +1130,52 @@ impl super::Store {
         now: DateTime<Utc>,
         commit: bool,
     ) -> Result<Option<(ArchiveRecord, Vec<RecordFieldValue>)>, sqlx::Error> {
+        Ok(self
+            .edit_archive_records(&[record_id.to_string()], edit, now, None, commit)
+            .await?
+            .into_iter()
+            .next())
+    }
+
+    /// Applies one edit to several records, and with `sender` names that
+    /// sender's issuer for later mail, all in one transaction: either every
+    /// record changes or none does. Returns each record that exists, as the
+    /// edit leaves it.
+    pub async fn edit_archive_records(
+        &self,
+        record_ids: &[String],
+        edit: &RecordFieldEdit,
+        now: DateTime<Utc>,
+        sender: Option<&SenderIssuer>,
+        commit: bool,
+    ) -> Result<Vec<(ArchiveRecord, Vec<RecordFieldValue>)>, sqlx::Error> {
         let mut tx = self.writer().begin().await?;
-        let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM records WHERE id = ?")
-            .bind(record_id)
-            .fetch_optional(&mut *tx)
-            .await?;
-        if exists.is_none() {
-            tx.rollback().await?;
-            return Ok(None);
+        let mut out = Vec::with_capacity(record_ids.len());
+        for id in record_ids {
+            if let Some(after) = edit_in_tx(&mut tx, id, edit, now).await? {
+                out.push(after);
+            }
         }
-        let user =
-            |field: &str, value_text: Option<String>, value_int: Option<i64>, evidence: &str| {
-                RecordFieldValue {
-                    field: field.to_string(),
-                    source_key: "user".to_string(),
-                    message_id: None,
-                    source: "user".to_string(),
-                    rank: 4,
-                    value_text,
-                    value_int,
-                    checked: true,
-                    // A user row copies no text from mail, so it never outlives
-                    // a delete with words from it.
-                    evidence: Some(evidence.to_string()),
-                    observed_at: now,
-                }
-            };
-        let confirm_fields: Vec<String> = match edit {
-            RecordFieldEdit::Set {
-                field,
-                value_text,
-                value_int,
-            } => {
-                upsert_field_in_tx(
-                    &mut tx,
-                    record_id,
-                    &user(field, value_text.clone(), *value_int, "you"),
-                    false,
-                )
-                .await?;
-                Vec::new()
-            }
-            RecordFieldEdit::Clear { field } => {
-                sqlx::query(
-                    "DELETE FROM record_fields
-                     WHERE record_id = ?1 AND field = ?2 AND source_key = 'user'",
-                )
-                .bind(record_id)
-                .bind(field)
-                .execute(&mut *tx)
-                .await?;
-                Vec::new()
-            }
-            RecordFieldEdit::Confirm { field } => vec![field.clone()],
-            RecordFieldEdit::ConfirmUnchecked => {
-                let sql = format!(
-                    "SELECT DISTINCT field FROM record_fields
-                     WHERE record_id = ? AND field IN ({})",
-                    in_list(RECORD_CHECKED_FIELDS.len())
-                );
-                let mut query =
-                    sqlx::query_scalar::<_, String>(sqlx::AssertSqlSafe(sql)).bind(record_id);
-                for field in RECORD_CHECKED_FIELDS {
-                    query = query.bind(*field);
-                }
-                query.fetch_all(&mut *tx).await?
-            }
-        };
-        for field in &confirm_fields {
-            let winner: Option<(Option<String>, Option<i64>, i64)> = sqlx::query_as(
-                "SELECT value_text, value_int, checked FROM record_fields
-                 WHERE record_id = ?1 AND field = ?2
-                 ORDER BY rank DESC, observed_at DESC, source_key DESC LIMIT 1",
+        if let Some(sender) = sender {
+            sqlx::query(
+                "INSERT INTO record_senders (account_id, sender_email, issuer_name, decided_at)
+                 VALUES (?1, LOWER(?2), ?3, ?4)
+                 ON CONFLICT(account_id, sender_email) DO UPDATE SET
+                    issuer_name = excluded.issuer_name, decided_at = excluded.decided_at",
             )
-            .bind(record_id)
-            .bind(field)
-            .fetch_optional(&mut *tx)
-            .await?;
-            let Some((text, int, checked)) = winner else {
-                continue;
-            };
-            // Confirming everything leaves checked values as they are.
-            if matches!(edit, RecordFieldEdit::ConfirmUnchecked) && checked != 0 {
-                continue;
-            }
-            upsert_field_in_tx(
-                &mut tx,
-                record_id,
-                &user(field, text, int, "you confirmed"),
-                false,
-            )
-            .await?;
-        }
-        sqlx::query("UPDATE records SET updated_at = ?2 WHERE id = ?1")
-            .bind(record_id)
+            .bind(sender.account_id.as_str())
+            .bind(&sender.sender_email)
+            .bind(&sender.issuer_name)
             .bind(now.timestamp())
             .execute(&mut *tx)
             .await?;
-        recompute_in_tx(&mut tx, &[record_id]).await?;
-        let after = read_in_tx(&mut tx, record_id).await?;
+        }
         if commit {
             tx.commit().await?;
         } else {
             tx.rollback().await?;
         }
-        Ok(after)
+        Ok(out)
     }
 
     /// Records with a source email from `sender_email`, for corrections
@@ -1386,29 +1465,6 @@ impl super::Store {
         .bind(sender_email)
         .bind(verdict)
         .bind(kind)
-        .bind(now.timestamp())
-        .execute(self.writer())
-        .await?;
-        Ok(())
-    }
-
-    /// Names a sender's issuer for every record from them, now and later.
-    pub async fn set_record_sender_issuer(
-        &self,
-        account_id: &AccountId,
-        sender_email: &str,
-        issuer_name: Option<&str>,
-        now: DateTime<Utc>,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO record_senders (account_id, sender_email, issuer_name, decided_at)
-             VALUES (?1, LOWER(?2), ?3, ?4)
-             ON CONFLICT(account_id, sender_email) DO UPDATE SET
-                issuer_name = excluded.issuer_name, decided_at = excluded.decided_at",
-        )
-        .bind(account_id.as_str())
-        .bind(sender_email)
-        .bind(issuer_name)
         .bind(now.timestamp())
         .execute(self.writer())
         .await?;

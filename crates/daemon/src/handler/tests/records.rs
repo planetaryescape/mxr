@@ -481,6 +481,129 @@ async fn never_file_a_sender_takes_their_records_out() {
 }
 
 #[tokio::test]
+async fn a_sender_wide_edit_that_is_not_an_issuer_changes_nothing() {
+    let fx = Fixture::new().await;
+    seed(&fx).await;
+    let dell = ask(&fx, "402-118").await.answer.expect("dell").record;
+    let refused = handle_request(
+        &fx.state,
+        &IpcMessage {
+            id: 9,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::SetRecordField {
+                record_id: dell.id.clone(),
+                edit: RecordEditData::Confirm {
+                    field: "amount".to_string(),
+                },
+                apply_to_sender: true,
+                dry_run: false,
+            }),
+        },
+    )
+    .await;
+    assert!(
+        matches!(
+            refused.payload,
+            IpcPayload::Response(Response::Error { .. })
+        ),
+        "{:?}",
+        refused.payload
+    );
+    let after = fx
+        .state
+        .store
+        .archive_record_fields(std::slice::from_ref(&dell.id))
+        .await
+        .unwrap();
+    assert!(
+        after.iter().all(|(_, field)| field.source != "user"),
+        "the refused edit wrote nothing"
+    );
+}
+
+#[tokio::test]
+async fn renaming_a_senders_issuer_changes_every_record_from_them_at_once() {
+    let fx = Fixture::new().await;
+    let ids = seed(&fx).await;
+    // A second Dell email that files its own record.
+    let other = put(
+        &fx,
+        ("Dell", "orders@dell.co.uk"),
+        "Your receipt",
+        "Receipt no. R-55120 Total £20.00",
+        None,
+        Utc::now() - Duration::days(3),
+    )
+    .await;
+    crate::handler::records::scan_messages(&fx.state, &[other]).await;
+    let dell = ask(&fx, "402-118").await.answer.expect("dell").record;
+    let renamed = change(
+        request(
+            &fx,
+            Request::SetRecordField {
+                record_id: dell.id.clone(),
+                edit: RecordEditData::Set {
+                    field: "issuer".to_string(),
+                    value: "Dell UK".to_string(),
+                },
+                apply_to_sender: true,
+                dry_run: false,
+            },
+        )
+        .await,
+    );
+    assert_eq!(renamed.records.len(), 2, "{}", renamed.message);
+    assert!(renamed
+        .records
+        .iter()
+        .all(|record| record.issuer.as_deref() == Some("Dell UK")));
+    // Later mail from the sender is filed under the new name.
+    crate::handler::records::scan_messages(&fx.state, &ids).await;
+    let again = ask(&fx, "402-118").await.answer.expect("dell").record;
+    assert_eq!(again.issuer.as_deref(), Some("Dell UK"));
+}
+
+#[tokio::test]
+async fn filing_a_dismissed_record_by_hand_previews_it_back_and_files_it_back() {
+    let fx = Fixture::new().await;
+    let ids = seed(&fx).await;
+    let dell = ask(&fx, "402-118").await.answer.expect("dell").record;
+    request(
+        &fx,
+        Request::DismissRecord {
+            record_ids: vec![dell.id.clone()],
+            restore: false,
+            dry_run: false,
+        },
+    )
+    .await;
+    let file = |dry_run| Request::FileRecord {
+        message_id: ids[0].clone(),
+        kind: None,
+        dry_run,
+    };
+    let preview = change(request(&fx, file(true)).await);
+    assert!(!preview.records[0].dismissed, "the preview shows it back");
+    assert!(
+        fx.state
+            .store
+            .get_archive_record(&dell.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .dismissed_at
+            .is_some(),
+        "the dry run changed nothing"
+    );
+    let filed = change(request(&fx, file(false)).await);
+    assert_eq!(filed.message, archive_copy::FILED);
+    assert_eq!(preview.records[0].id, filed.records[0].id);
+    assert_eq!(preview.records[0].dismissed, filed.records[0].dismissed);
+    assert_eq!(preview.records[0].amount, filed.records[0].amount);
+    assert!(filed.undo.is_some(), "undo dismisses it again");
+}
+
+#[tokio::test]
 async fn the_prefetch_writes_no_more_than_the_budget_whatever_a_pdf_declares() {
     let fx = Fixture::new().await;
     let message = put(

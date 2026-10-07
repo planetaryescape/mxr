@@ -118,7 +118,7 @@ pub use pool::Store;
 pub use records::{
     todo_record_dedup_key, todo_record_source_key, ArchiveRecord, RecordDocument, RecordFieldEdit,
     RecordFieldValue, RecordFiled, RecordFiling, RecordGroup, RecordLink, RecordPdfToFetch,
-    RecordQuery, RecordRun, RecordSenderRule, RecordSource, RECORD_CHECKED_FIELDS,
+    RecordQuery, RecordRun, RecordSenderRule, RecordSource, SenderIssuer, RECORD_CHECKED_FIELDS,
 };
 pub use relationship_watchlist::{CadenceDriftRow, RelationshipWatchEntry};
 pub use rules::{row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecordInput};

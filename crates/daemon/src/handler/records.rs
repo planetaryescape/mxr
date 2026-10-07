@@ -1342,53 +1342,62 @@ pub(super) async fn set_field(
             )
         }
     };
-    let (after, fields) = state
-        .store
-        .edit_archive_record(&id, &store_edit, now, !dry_run)
-        .await?
-        .ok_or_else(|| HandlerError::InvalidRequest(format!("No record matches {raw_id}.")))?;
-    let mut records = vec![preview_data(state, &after, fields).await?];
-    let mut message = message;
-    if apply_to_sender {
-        let RecordEditData::Set { field, value } = edit else {
-            return Err(HandlerError::InvalidRequest(
-                "Only a new issuer name applies to a sender.".to_string(),
-            ));
-        };
-        if field_of(field)? != FieldName::Issuer {
-            return Err(HandlerError::InvalidRequest(
-                "Only a new issuer name applies to a sender.".to_string(),
-            ));
-        }
-        let sender = newest_sender(state, &record).await?;
-        let others: Vec<String> = state
-            .store
-            .archive_record_ids_from_sender(&record.account_id, &sender)
-            .await?
-            .into_iter()
-            .filter(|other| *other != id)
-            .collect();
-        for other in &others {
-            if let Some((after, fields)) = state
-                .store
-                .edit_archive_record(other, &store_edit, now, !dry_run)
-                .await?
-            {
-                records.push(preview_data(state, &after, fields).await?);
+    // A sender-wide edit is checked before anything is written, then
+    // applied to every record of the sender in one transaction.
+    let sender = if apply_to_sender {
+        let issuer = match edit {
+            RecordEditData::Set { field, value } if field_of(field)? == FieldName::Issuer => {
+                value.trim().to_string()
             }
-        }
-        if !dry_run {
+            _ => {
+                return Err(HandlerError::InvalidRequest(
+                    "Only a new issuer name applies to a sender.".to_string(),
+                ))
+            }
+        };
+        Some(mxr_store::SenderIssuer {
+            account_id: record.account_id.clone(),
+            sender_email: issuer_sender(state, &record).await?,
+            issuer_name: issuer,
+        })
+    } else {
+        None
+    };
+    let mut ids = vec![id.clone()];
+    if let Some(sender) = &sender {
+        ids.extend(
             state
                 .store
-                .set_record_sender_issuer(&record.account_id, &sender, Some(value.trim()), now)
-                .await?;
+                .archive_record_ids_from_sender(&record.account_id, &sender.sender_email)
+                .await?
+                .into_iter()
+                .filter(|other| *other != id),
+        );
+    }
+    let edited = state
+        .store
+        .edit_archive_records(&ids, &store_edit, now, sender.as_ref(), !dry_run)
+        .await?;
+    if edited.is_empty() {
+        return Err(HandlerError::InvalidRequest(format!(
+            "No record matches {raw_id}."
+        )));
+    }
+    let mut records = Vec::with_capacity(edited.len());
+    for (after, fields) in edited {
+        records.push(preview_data(state, &after, fields).await?);
+    }
+    let mut message = message;
+    if let Some(sender) = &sender {
+        if !dry_run {
             pass::regroup(&state.store, &record.account_id, now)
                 .await
                 .map_err(|error| HandlerError::Message(error.to_string()))?;
         }
         message = format!(
-            "{message} Applied to {} from {sender}, now and later.",
-            plural(records.len(), "record")
+            "{message} Applied to {} from {}, now and later.",
+            plural(records.len(), "record"),
+            sender.sender_email
         );
     }
     let undo = (!dry_run && !undo_fields.is_empty()).then(|| RecordUndoData {
@@ -1410,18 +1419,19 @@ fn plural(count: usize, noun: &str) -> String {
     }
 }
 
-/// The address of the newest email a record came from.
-async fn newest_sender(state: &AppState, record: &ArchiveRecord) -> Result<String, HandlerError> {
+/// The address of the first email a record came from: the issuer's own
+/// (a carrier's delivery email comes later).
+async fn issuer_sender(state: &AppState, record: &ArchiveRecord) -> Result<String, HandlerError> {
     let sources = state
         .store
         .archive_record_sources(std::slice::from_ref(&record.id))
         .await?;
-    let newest = sources
-        .last()
+    let first = sources
+        .first()
         .ok_or_else(|| HandlerError::Message("This record has no email left.".to_string()))?;
     let envelope = state
         .store
-        .get_envelope(&newest.message_id)
+        .get_envelope(&first.message_id)
         .await?
         .ok_or_else(|| HandlerError::Message("This record's email is gone.".to_string()))?;
     Ok(envelope.from.email.to_lowercase())
@@ -1500,51 +1510,37 @@ pub(super) async fn file(
     let filing = pass::plan_manual(&state.store, &cfg, message_id, kind)
         .await
         .map_err(|error| HandlerError::InvalidRequest(error.to_string()))?;
-    if dry_run {
-        let (record, fields) = state
-            .store
-            .preview_file_record(&filing)
-            .await?
-            .ok_or_else(|| HandlerError::Message("The preview found no record.".to_string()))?;
-        let data = preview_data(state, &record, fields).await?;
-        let message = if record.dismissed_at.is_some() {
-            "You marked this not a record; filing it brings it back.".to_string()
-        } else {
-            format!("Would file in Archive: {}.", describe(&data))
-        };
-        return Ok(change(true, "file", vec![data], message, None));
+    // The dry run and the filing run the same restore-then-file write; the
+    // dry run's transaction is rolled back.
+    let (filed, restored, after) = state.store.file_record_by_hand(&filing, !dry_run).await?;
+    let (record, fields) =
+        after.ok_or_else(|| HandlerError::Message("The filed record vanished.".to_string()))?;
+    if !dry_run {
+        pass::regroup(&state.store, &filing.account_id, now)
+            .await
+            .map_err(|error| HandlerError::Message(error.to_string()))?;
     }
-    let existing = state
-        .store
-        .get_archive_record_by_dedup(&filing.account_id, &filing.dedup_key)
-        .await?;
-    if let Some(dismissed) = existing.filter(|record| record.dismissed_at.is_some()) {
-        // Filing by hand overrides an earlier "not a record".
-        state
-            .store
-            .set_archive_records_dismissed(std::slice::from_ref(&dismissed.id), false, now)
-            .await?;
-    }
-    let filed = state.store.file_record(&filing).await?;
-    pass::regroup(&state.store, &filing.account_id, now)
-        .await
-        .map_err(|error| HandlerError::Message(error.to_string()))?;
-    let record = state
-        .store
-        .get_archive_record(filed.id())
-        .await?
-        .ok_or_else(|| HandlerError::Message("The filed record vanished.".to_string()))?;
-    let data = record_data(state, &record, true).await?;
-    let undo = matches!(filed, RecordFiled::Inserted { .. }).then(|| RecordUndoData {
+    let data = if dry_run {
+        preview_data(state, &record, fields).await?
+    } else {
+        record_data(state, &record, true).await?
+    };
+    let new_here = restored || matches!(filed, RecordFiled::Inserted { .. });
+    let message = match (dry_run, restored, new_here) {
+        (true, true, _) => format!(
+            "You marked this not a record; filing it brings it back: {}.",
+            describe(&data)
+        ),
+        (true, false, true) => format!("Would file in Archive: {}.", describe(&data)),
+        (false, _, true) => archive_copy::FILED.to_string(),
+        (_, _, false) => format!("Already in Archive: {}.", describe(&data)),
+    };
+    let undo = (!dry_run && new_here).then(|| RecordUndoData {
         kind: "dismiss".to_string(),
         record_ids: vec![record.id.clone()],
         fields: Vec::new(),
     });
-    let message = match filed {
-        RecordFiled::Inserted { .. } => archive_copy::FILED.to_string(),
-        _ => format!("Already in Archive: {}.", describe(&data)),
-    };
-    Ok(change(false, "file", vec![data], message, undo))
+    Ok(change(dry_run, "file", vec![data], message, undo))
 }
 
 /// "Dell, XPS 14 laptop".

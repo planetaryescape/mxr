@@ -49,6 +49,9 @@ pub enum MailboxView {
     /// Now (`Request::GetNow`): the front page, at most ten things in four
     /// fixed sections.
     Now,
+    /// Reading (`Request::GetReadingEdition`): newsletters as an edition,
+    /// with a reader beside it.
+    Reading,
     /// Archive, the mode (`Request::ListRecords`): records built from
     /// mail, a ledger by month under an answer box.
     ArchiveMode,
@@ -613,6 +616,8 @@ pub struct MailboxState {
     /// Messages (`ListMessages`, `GetPerson`): the bands, the person page,
     /// the guide and a Got it counting down.
     pub messages_page: super::MessagesPageState,
+    /// Reading (`GetReadingEdition`): the edition, the reader and its guide.
+    pub reading_page: super::ReadingPageState,
     /// The rail (`GetRail`): badges, counts and which modes are early.
     pub rail: Option<mxr_protocol::RailData>,
     pub pending_rail_refresh: bool,
@@ -725,6 +730,7 @@ impl MailboxState {
             records_page: super::RecordsPageState::default(),
             now_page: super::NowPageState::default(),
             messages_page: super::MessagesPageState::default(),
+            reading_page: super::ReadingPageState::default(),
             rail: None,
             pending_rail_refresh: false,
             place_page: PlacePageState::default(),

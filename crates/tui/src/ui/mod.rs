@@ -27,6 +27,7 @@ pub mod owed_lens;
 pub mod place_lens;
 pub mod platform_modal;
 pub mod records_lens;
+pub mod reading_lens;
 pub mod reply_later_prompt;
 pub mod reply_queue_modal;
 pub mod rules_page;

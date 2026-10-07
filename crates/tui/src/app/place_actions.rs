@@ -78,6 +78,9 @@ impl App {
         if let MailboxView::Place(place) = self.mailbox.mailbox_view {
             self.mailbox.pending_place_refresh = Some(place);
         }
+        if self.mailbox.mailbox_view == MailboxView::Reading {
+            self.refresh_reading();
+        }
         self.mailbox.pending_desk_refresh = true;
     }
 
@@ -145,6 +148,24 @@ impl App {
     }
 
     fn open_sender_kind_menu(&mut self) {
+        if self.reading_lens_focused() {
+            let Some(row) = self.selected_reading_row() else {
+                return;
+            };
+            let issue = row.issue();
+            self.mailbox.sender_kind_menu = Some(SenderKindMenu {
+                account_id: issue.account_id.clone(),
+                sender_email: issue.sender_email.clone(),
+                display: issue.source.clone(),
+                current: mxr_protocol::MailKindData {
+                    kind: SenderKindData::Reading,
+                    rule: mxr_protocol::KindRuleData::ListUnsubscribe,
+                    reason: issue.why.clone(),
+                    corrected: false,
+                },
+            });
+            return;
+        }
         if !self.place_list_focused() {
             self.status_message =
                 Some("Move a sender from Reading or Paper trail (g r, g p)".into());

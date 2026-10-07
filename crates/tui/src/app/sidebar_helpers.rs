@@ -135,8 +135,7 @@ impl App {
             todo_active: self.mailbox.mailbox_view == MailboxView::Todo,
             updates_active: self.mailbox.mailbox_view
                 == MailboxView::Place(mxr_protocol::MailPlaceData::PaperTrail),
-            reading_active: self.mailbox.mailbox_view
-                == MailboxView::Place(mxr_protocol::MailPlaceData::Reading),
+            reading_active: self.mailbox.mailbox_view == MailboxView::Reading,
             archive_active: self.mailbox.mailbox_view == MailboxView::ArchiveMode,
             early_modes: self.early_modes(),
             owed_active: self.mailbox.mailbox_view == MailboxView::Owed,
@@ -176,7 +175,7 @@ impl App {
                 .filter(|entry| entry.status == mxr_protocol::RailStatusData::Early)
                 .map(|entry| entry.id.clone())
                 .collect(),
-            None => ["messages", "updates", "reading"]
+            None => ["messages", "updates"]
                 .into_iter()
                 .map(String::from)
                 .collect(),
@@ -322,9 +321,7 @@ impl App {
             // Waiting on is a lane of the desk, which backs Messages.
             Some(SidebarItem::Messages | SidebarItem::Waiting) => Some(Action::OpenMessages),
             Some(SidebarItem::Todo) => Some(Action::OpenTodo),
-            Some(SidebarItem::Reading) => {
-                Some(Action::OpenPlace(mxr_protocol::MailPlaceData::Reading))
-            }
+            Some(SidebarItem::Reading) => Some(Action::OpenReading),
             Some(SidebarItem::Updates) => {
                 Some(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail))
             }

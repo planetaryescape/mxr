@@ -260,6 +260,7 @@ impl App {
                     MailboxView::Now => self.refresh_now(),
                     MailboxView::People => self.refresh_messages(),
                     MailboxView::Desk | MailboxView::Place(_) => self.refresh_places(),
+                    MailboxView::Reading => self.refresh_reading(),
                     _ => {}
                 }
                 self.mailbox.pending_subscriptions_refresh = true;
@@ -310,6 +311,9 @@ impl App {
                 self.refresh_places();
                 if self.mailbox.mailbox_view == MailboxView::Todo {
                     self.refresh_todo();
+                }
+                if self.mailbox.mailbox_view == MailboxView::Reading {
+                    self.refresh_reading();
                 }
                 if show_completion_status && !msg.is_empty() {
                     self.push_toast(Toast::success(msg));

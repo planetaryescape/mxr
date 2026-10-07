@@ -85,10 +85,10 @@ fn queued(app: &App) -> Vec<Request> {
 }
 
 #[test]
-fn chords_open_the_places_and_a_stale_fetch_for_another_place_is_ignored() {
+fn a_stale_fetch_for_another_place_is_ignored() {
     let mut app = App::new();
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
-    press(&mut app, KeyCode::Char('r'));
+    // `g r` opens Reading's own lens now; the place view is still reachable.
+    app.apply(Action::OpenPlace(MailPlaceData::Reading));
     assert_eq!(
         app.mailbox.mailbox_view,
         MailboxView::Place(MailPlaceData::Reading)

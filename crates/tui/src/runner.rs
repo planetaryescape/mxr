@@ -1706,6 +1706,8 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        spawn_reading_fetches(&mut app, &bg, &queued);
+
         if std::mem::take(&mut app.mailbox.pending_rail_refresh) {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
@@ -2296,6 +2298,22 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::ModeGuides { .. },
                     }) => Ok(effect),
+                    // Reading: the daemon's own words where it has them.
+                    Ok(Response::Ok {
+                        data: ResponseData::ReadingLater { copy, .. },
+                    }) => Ok(app::MutationEffect::ModeDone(copy)),
+                    Ok(Response::Ok {
+                        data:
+                            ResponseData::ReadingEngagement { .. }
+                            | ResponseData::ReadingSource { .. }
+                            | ResponseData::ReadingHighlight { .. },
+                    }) => Ok(effect),
+                    Ok(Response::Ok {
+                        data: ResponseData::UnsubscribePurgeResult { result },
+                    }) => match result.error {
+                        Some(error) => Err(MxrError::Ipc(error)),
+                        None => Ok(effect),
+                    },
                     Ok(Response::Ok {
                         data: ResponseData::MessagesAck { .. },
                     }) => Ok(effect),
@@ -3541,6 +3559,40 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::NowDigestPreview(_, Err(e)) => {
                             app.status_message = Some(format!("Couldn't preview: {e}"));
                         }
+                        AsyncResult::ReadingEdition(Ok(loaded)) => {
+                            let (edition, guide) = *loaded;
+                            app.set_reading_edition(edition, guide);
+                        }
+                        AsyncResult::ReadingEdition(Err(e)) => {
+                            app.status_message = Some(format!("Couldn't load Reading: {e}"));
+                        }
+                        AsyncResult::ReadingItem(key, Ok(detail)) => {
+                            app.set_reading_item(&key, *detail);
+                        }
+                        AsyncResult::ReadingItem(key, Err(e)) => {
+                            app.reading_item_failed(&key, &e.to_string());
+                        }
+                        AsyncResult::ReadingArticle(key, Ok(fetch)) => {
+                            app.set_reading_article(&key, fetch);
+                            app.refresh_reading();
+                        }
+                        AsyncResult::ReadingArticle(_, Err(e)) => {
+                            app.status_message = Some(format!("Couldn't fetch the article: {e}"));
+                        }
+                        AsyncResult::ReadingLetGoPreview(thread_ids, Ok(items)) => {
+                            app.show_reading_let_go_preview(&thread_ids, items);
+                        }
+                        AsyncResult::ReadingUnsubscribePreview(target, Ok(result)) => {
+                            app.show_reading_unsubscribe_preview(target, result.message_count);
+                        }
+                        AsyncResult::ReadingLetGoPreview(_, Err(e))
+                        | AsyncResult::ReadingUnsubscribePreview(_, Err(e)) => {
+                            app.status_message = Some(format!("Couldn't preview: {e}"));
+                        }
+                        AsyncResult::ReadingOriginal(Ok(text)) => app.set_reading_original(text),
+                        AsyncResult::ReadingOriginal(Err(e)) => {
+                            app.status_message = Some(format!("Couldn't read the email: {e}"));
+                        }
                         AsyncResult::TodoRunway(Ok((runway, guide))) => {
                             app.set_todo_runway(runway, guide);
                         }
@@ -4360,6 +4412,187 @@ pub(crate) fn todo_undo(change: &mxr_protocol::TodoChangeData) -> Option<app::Pe
         count: u32::try_from(change.changed.len()).unwrap_or(u32::MAX),
         applied_at: std::time::Instant::now(),
     })
+}
+
+/// Reading's fetches: the edition, the item under the cursor, an
+/// article asked for with `L` or `b`, the two previews and an email's own
+/// text for `R`.
+fn spawn_reading_fetches(
+    app: &mut App,
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    queued: &mpsc::UnboundedSender<crate::runtime::AsyncResultTask>,
+) {
+    if std::mem::take(&mut app.mailbox.reading_page.pending_refresh) {
+        let mark_visit = std::mem::take(&mut app.mailbox.reading_page.pending_mark_visit);
+        let bg = bg.clone();
+        let _ = submit_task(queued, async move {
+            AsyncResult::ReadingEdition(fetch_reading_edition(&bg, mark_visit).await.map(Box::new))
+        });
+    }
+    if let Some(key) = app.reading_item_to_load() {
+        let bg = bg.clone();
+        let _ = submit_task(queued, async move {
+            let resp = ipc_call(
+                &bg,
+                Request::GetReadingItem {
+                    item_key: key.clone(),
+                },
+            )
+            .await;
+            let result = match resp {
+                Ok(Response::Ok {
+                    data: ResponseData::ReadingItem { item },
+                }) => Ok(Box::new(item)),
+                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                Err(e) => Err(e),
+                _ => Err(MxrError::Ipc(
+                    "unexpected response to GetReadingItem".into(),
+                )),
+            };
+            AsyncResult::ReadingItem(key, result)
+        });
+    }
+    if let Some((key, refresh)) = app.mailbox.reading_page.pending_fetch.take() {
+        let bg = bg.clone();
+        let _ = submit_task(queued, async move {
+            let resp = ipc_call(
+                &bg,
+                Request::FetchArticle {
+                    item_key: key.clone(),
+                    refresh,
+                },
+            )
+            .await;
+            let result = match resp {
+                Ok(Response::Ok {
+                    data: ResponseData::ReadingArticle { fetch },
+                }) => Ok(fetch),
+                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                Err(e) => Err(e),
+                _ => Err(MxrError::Ipc("unexpected response to FetchArticle".into())),
+            };
+            AsyncResult::ReadingArticle(key, result)
+        });
+    }
+    if let Some(thread_ids) = app.mailbox.reading_page.pending_let_go_preview.take() {
+        let bg = bg.clone();
+        let _ = submit_task(queued, async move {
+            let resp = ipc_call(
+                &bg,
+                Request::SetModeDone {
+                    thread_ids: thread_ids.clone(),
+                    mode: mxr_protocol::ModeKindData::Reading,
+                    dry_run: true,
+                    todo_ids: Vec::new(),
+                    sender: None,
+                },
+            )
+            .await;
+            let result = match resp {
+                Ok(Response::Ok {
+                    data: ResponseData::ModeDone { items, .. },
+                }) => Ok(items),
+                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                Err(e) => Err(e),
+                _ => Err(MxrError::Ipc("unexpected response to SetModeDone".into())),
+            };
+            AsyncResult::ReadingLetGoPreview(thread_ids, result)
+        });
+    }
+    if let Some(target) = app.mailbox.reading_page.pending_unsubscribe_preview.take() {
+        let bg = bg.clone();
+        let _ = submit_task(queued, async move {
+            let resp = ipc_call(
+                &bg,
+                Request::UnsubscribePurge {
+                    address: target.sender_email.clone(),
+                    account_id: Some(target.account_id.clone()),
+                    dry_run: true,
+                    archive_on_no_method: false,
+                },
+            )
+            .await;
+            let result = match resp {
+                Ok(Response::Ok {
+                    data: ResponseData::UnsubscribePurgeResult { result },
+                }) => Ok(result),
+                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                Err(e) => Err(e),
+                _ => Err(MxrError::Ipc(
+                    "unexpected response to UnsubscribePurge".into(),
+                )),
+            };
+            AsyncResult::ReadingUnsubscribePreview(target, result)
+        });
+    }
+    if let Some(message_id) = app.mailbox.reading_page.pending_original.take() {
+        let bg = bg.clone();
+        let _ = submit_task(queued, async move {
+            let resp = ipc_call(&bg, Request::GetBody { message_id }).await;
+            let result = match resp {
+                Ok(Response::Ok {
+                    data: ResponseData::Body { body },
+                }) => Ok(mxr_reader::clean(
+                    body.text_plain.as_deref(),
+                    body.text_html.as_deref(),
+                    &mxr_reader::ReaderConfig::default(),
+                )
+                .content),
+                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                Err(e) => Err(e),
+                _ => Err(MxrError::Ipc("unexpected response to GetBody".into())),
+            };
+            AsyncResult::ReadingOriginal(result)
+        });
+    }
+}
+
+/// The edition and Reading's guide, fetched together so the header, the
+/// card and the items arrive at once. A guide error leaves the items.
+async fn fetch_reading_edition(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    mark_visit: bool,
+) -> Result<
+    (
+        mxr_protocol::ReadingEditionData,
+        Option<mxr_protocol::ModeGuideData>,
+    ),
+    MxrError,
+> {
+    let (edition, guide) = tokio::join!(
+        ipc_call(
+            bg,
+            Request::GetReadingEdition {
+                account_id: None,
+                mark_visit,
+            },
+        ),
+        ipc_call(
+            bg,
+            Request::GetModeGuide {
+                mode: Some(crate::app::READING_MODE.into()),
+            },
+        ),
+    );
+    let edition = match edition {
+        Ok(Response::Ok {
+            data: ResponseData::ReadingEdition { edition },
+        }) => edition,
+        Ok(Response::Error { message, .. }) => return Err(MxrError::Ipc(message)),
+        Err(e) => return Err(e),
+        _ => {
+            return Err(MxrError::Ipc(
+                "unexpected response to GetReadingEdition".into(),
+            ))
+        }
+    };
+    let guide = match guide {
+        Ok(Response::Ok {
+            data: ResponseData::ModeGuides { mut guides },
+        }) if !guides.is_empty() => Some(guides.remove(0)),
+        _ => None,
+    };
+    Ok((edition, guide))
 }
 
 #[cfg(test)]

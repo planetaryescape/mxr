@@ -188,7 +188,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "open_archive" => Some(Action::OpenArchiveMode),
         "open_todo" => Some(Action::OpenTodo),
         "create_todo" => Some(Action::CreateTodoFromMessage),
-        "open_reading" => Some(Action::OpenPlace(mxr_protocol::MailPlaceData::Reading)),
+        "open_reading" => Some(Action::OpenReading),
         "open_paper_trail" => Some(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail)),
         "go_all_mail" => Some(Action::GoToAllMail),
         "go_label" => Some(Action::GoToLabel),

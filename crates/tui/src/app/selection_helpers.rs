@@ -122,6 +122,7 @@ impl App {
                 | MailboxView::Todo
                 | MailboxView::Now
                 | MailboxView::People
+                | MailboxView::Reading
                 | MailboxView::ArchiveMode
         ) {
             return None;

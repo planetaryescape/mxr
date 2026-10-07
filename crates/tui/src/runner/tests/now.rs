@@ -66,10 +66,7 @@ fn each_rail_key_opens_its_mode() {
             'u',
             MailboxView::Place(mxr_protocol::MailPlaceData::PaperTrail),
         ),
-        (
-            'r',
-            MailboxView::Place(mxr_protocol::MailPlaceData::Reading),
-        ),
+        ('r', MailboxView::Reading),
         ('e', MailboxView::ArchiveMode),
         (
             'p',

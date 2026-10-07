@@ -73,6 +73,7 @@ impl App {
             MailboxView::Now => self.mailbox.now_page.guide.as_ref(),
             MailboxView::People => self.mailbox.messages_page.guide.as_ref(),
             MailboxView::ArchiveMode => self.mailbox.records_page.guide.as_ref(),
+            MailboxView::Reading => self.mailbox.reading_page.guide.as_ref(),
             _ => None,
         }
     }
@@ -293,6 +294,11 @@ impl App {
             now_person
         } else if messages_topic.is_some() {
             messages_topic
+        } else if self.reading_lens_focused() {
+            self.selected_reading_row().map(|row| {
+                let issue = row.issue();
+                (issue.message_id.clone(), issue.source.clone())
+            })
         } else if self.place_list_focused() {
             self.selected_place_row().map(|(bundle, message)| {
                 (

@@ -198,6 +198,33 @@ pub enum Action {
     RecordsBack,
     /// `T` on a conversation: pass it to a mode (Archive, this phase).
     PassToMode,
+    /// Open Reading (`g r`): the edition, with a reader beside it
+    /// (`Request::GetReadingEdition`).
+    OpenReading,
+    /// Enter: read the item under the cursor in the reader pane.
+    ReadingRead,
+    /// `L`: fetch the item's linked article, naming its site first.
+    ReadingArticle,
+    /// `b`: put the item on Later (a link's article is saved too).
+    ReadingLater,
+    /// `e`: let go of the item's issue in Reading.
+    ReadingLetGo,
+    /// `A`: preview letting go of everything shown, or confirm it.
+    ReadingLetGoAll,
+    /// `D`: preview unsubscribing from the item's source, or confirm it.
+    ReadingUnsubscribe,
+    /// `R`: the source's own text instead of the reader, remembered.
+    ReadingOriginal,
+    /// `h`: save the paragraph at the top of the reader as a highlight.
+    ReadingHighlight,
+    /// `o`: open the email itself.
+    ReadingOpenEmail,
+    /// Esc in the reader: back to the edition.
+    ReadingBack,
+    /// `B`: the Later shelf, or back to the edition from it.
+    ReadingLaterShelf,
+    /// Esc on Reading's first-encounter card: retire it in every client.
+    ReadingCloseCard,
     GoToLabel,
     // Command palette
     OpenCommandPalette,

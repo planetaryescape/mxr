@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
+import { ModeFrame } from "@/components/ModeFrame";
 import { Button } from "@/components/ui/button";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
@@ -122,94 +123,96 @@ export function TodoCatchupView({ runway }: { runway: TodoRunway | undefined }) 
   const now = runway?.now.length ?? 0;
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" data-testid="todo-catchup">
-      <section
-        aria-label="Your last two weeks, sorted"
-        className="mx-5 mt-4 max-w-[64rem] border-l-2 border-primary bg-surface px-4 py-3"
-      >
-        <h2 className="text-[15px] font-semibold">Your last two weeks, sorted</h2>
-        <p className="mt-1 grid grid-cols-[5rem_minmax(0,1fr)] gap-x-3 text-[13px] @2xl:grid-cols-[5rem_minmax(0,16rem)_minmax(0,1fr)]">
-          <span className="font-medium">To do</span>
-          <span data-testid="first-run-counts">
-            {plural(open, "thing")}, {now} to act on now
-          </span>
-          <span className="col-span-2 text-muted-foreground @2xl:col-span-1">
-            What email asked you to do
-          </span>
-        </p>
-        {catchup.data?.already_over_line ? (
-          <p className="mt-1 text-[12.5px] text-muted-foreground">
-            {catchup.data.already_over_line}
+      <ModeFrame>
+        <section
+          aria-label="Your last two weeks, sorted"
+          className="mx-5 mt-4 border-l-2 border-primary bg-surface px-4 py-3"
+        >
+          <h2 className="text-[15px] font-semibold">Your last two weeks, sorted</h2>
+          <p className="mt-1 grid grid-cols-[5rem_minmax(0,1fr)] gap-x-3 text-[13px] @2xl:grid-cols-[5rem_minmax(0,16rem)_minmax(0,1fr)]">
+            <span className="font-medium">To do</span>
+            <span data-testid="first-run-counts">
+              {plural(open, "thing")}, {now} to act on now
+            </span>
+            <span className="col-span-2 text-muted-foreground @2xl:col-span-1">
+              What email asked you to do
+            </span>
           </p>
-        ) : null}
-      </section>
-      <header className="mx-5 mt-5 flex max-w-[64rem] flex-wrap items-baseline gap-x-4 gap-y-2">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-[15px] font-semibold" data-testid="catchup-title">
-            {catchup.data?.title ?? "Catch up"}
-          </h2>
-          {catchup.data && catchup.data.todos.length > 0 ? (
-            <p className="mt-0.5 max-w-[62ch] text-[12.5px] text-muted-foreground">
-              {catchup.data.why}
+          {catchup.data?.already_over_line ? (
+            <p className="mt-1 text-[12.5px] text-muted-foreground">
+              {catchup.data.already_over_line}
             </p>
           ) : null}
-        </div>
-        {rows.length > 0 ? (
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={() => openMailDialog({ kind: "todo-let-go-all", account })}
-          >
-            Let go of all <KeyChip className="ml-1 h-4 px-1">A</KeyChip>
-          </Button>
-        ) : null}
-        <BackLink />
-      </header>
-      {catchup.isError ? (
-        <p className="mx-5 mt-4 text-[13px] text-muted-foreground">
-          Couldn't load the catch-up: {catchup.error.message}
-        </p>
-      ) : null}
-      <ul ref={listRef} aria-label="Catch-up" className="max-w-[64rem] py-2">
-        {rows.map((todo, position) => (
-          <PlainRow
-            key={todo.id}
-            todo={todo}
-            index={position}
-            focused={position === index}
-            onSelect={() => setCursorId(todo.id)}
-          >
+        </section>
+        <header className="mx-5 mt-5 flex flex-wrap items-baseline gap-x-4 gap-y-2">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[15px] font-semibold" data-testid="catchup-title">
+              {catchup.data?.title ?? "Catch up"}
+            </h2>
+            {catchup.data && catchup.data.todos.length > 0 ? (
+              <p className="mt-0.5 max-w-[62ch] text-[12.5px] text-muted-foreground">
+                {catchup.data.why}
+              </p>
+            ) : null}
+          </div>
+          {rows.length > 0 ? (
             <Button
-              size="xs"
               variant="outline"
-              onClick={(event) => {
-                event.stopPropagation();
-                void decideCatchup(account, [todo], "keep");
-              }}
-            >
-              Keep {position === index ? <KeyChip className="ml-1 h-4 px-1">↵</KeyChip> : null}
-            </Button>
-            <Button
               size="xs"
-              variant="ghost"
-              onClick={(event) => {
-                event.stopPropagation();
-                void decideCatchup(account, [todo], "let_go");
-              }}
+              onClick={() => openMailDialog({ kind: "todo-let-go-all", account })}
             >
-              Let go {position === index ? <KeyChip className="ml-1 h-4 px-1">e</KeyChip> : null}
+              Let go of all <KeyChip className="ml-1 h-4 px-1">A</KeyChip>
             </Button>
-          </PlainRow>
-        ))}
-      </ul>
-      {catchup.data && catchup.data.overflow_count > 0 ? (
-        <p className="mx-5 pb-4 text-[12.5px] text-muted-foreground">
-          {plural(catchup.data.overflow_count, "more")} didn't fit and{" "}
-          <Link to="/todo" search={{ view: "expired" }} className="underline underline-offset-4">
-            are in the Expired list
-          </Link>
-          .
-        </p>
-      ) : null}
+          ) : null}
+          <BackLink />
+        </header>
+        {catchup.isError ? (
+          <p className="mx-5 mt-4 text-[13px] text-muted-foreground">
+            Couldn't load the catch-up: {catchup.error.message}
+          </p>
+        ) : null}
+        <ul ref={listRef} aria-label="Catch-up" className="max-w-[64rem] py-2">
+          {rows.map((todo, position) => (
+            <PlainRow
+              key={todo.id}
+              todo={todo}
+              index={position}
+              focused={position === index}
+              onSelect={() => setCursorId(todo.id)}
+            >
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void decideCatchup(account, [todo], "keep");
+                }}
+              >
+                Keep {position === index ? <KeyChip className="ml-1 h-4 px-1">↵</KeyChip> : null}
+              </Button>
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void decideCatchup(account, [todo], "let_go");
+                }}
+              >
+                Let go {position === index ? <KeyChip className="ml-1 h-4 px-1">e</KeyChip> : null}
+              </Button>
+            </PlainRow>
+          ))}
+        </ul>
+        {catchup.data && catchup.data.overflow_count > 0 ? (
+          <p className="mx-5 pb-4 text-[12.5px] text-muted-foreground">
+            {plural(catchup.data.overflow_count, "more")} didn't fit and{" "}
+            <Link to="/todo" search={{ view: "expired" }} className="underline underline-offset-4">
+              are in the Expired list
+            </Link>
+            .
+          </p>
+        ) : null}
+      </ModeFrame>
     </div>
   );
 }
@@ -232,41 +235,43 @@ export function TodoExpiredView() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" data-testid="todo-expired">
-      <header className="mx-5 mt-4 flex max-w-[64rem] flex-wrap items-baseline gap-x-4">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-[15px] font-semibold">Expired</h2>
-          <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-            Past their window, or let go in the catch-up. Restore puts one back in To do, and it
-            stays until you act.
-          </p>
-        </div>
-        <BackLink />
-      </header>
-      {expired.data && rows.length === 0 ? (
-        <p className="mx-5 mt-6 text-[13px] text-muted-foreground">Nothing has expired.</p>
-      ) : null}
-      <ul ref={listRef} aria-label="Expired to-dos" className="max-w-[64rem] py-2">
-        {rows.map((todo, position) => (
-          <PlainRow
-            key={todo.id}
-            todo={todo}
-            index={position}
-            focused={position === index}
-            onSelect={() => setCursorId(todo.id)}
-          >
-            <Button
-              size="xs"
-              variant="outline"
-              onClick={(event) => {
-                event.stopPropagation();
-                void restoreTodos([todo]);
-              }}
+      <ModeFrame>
+        <header className="mx-5 mt-4 flex flex-wrap items-baseline gap-x-4">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[15px] font-semibold">Expired</h2>
+            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+              Past their window, or let go in the catch-up. Restore puts one back in To do, and it
+              stays until you act.
+            </p>
+          </div>
+          <BackLink />
+        </header>
+        {expired.data && rows.length === 0 ? (
+          <p className="mx-5 mt-6 text-[13px] text-muted-foreground">Nothing has expired.</p>
+        ) : null}
+        <ul ref={listRef} aria-label="Expired to-dos" className="max-w-[64rem] py-2">
+          {rows.map((todo, position) => (
+            <PlainRow
+              key={todo.id}
+              todo={todo}
+              index={position}
+              focused={position === index}
+              onSelect={() => setCursorId(todo.id)}
             >
-              Restore {position === index ? <KeyChip className="ml-1 h-4 px-1">↵</KeyChip> : null}
-            </Button>
-          </PlainRow>
-        ))}
-      </ul>
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void restoreTodos([todo]);
+                }}
+              >
+                Restore {position === index ? <KeyChip className="ml-1 h-4 px-1">↵</KeyChip> : null}
+              </Button>
+            </PlainRow>
+          ))}
+        </ul>
+      </ModeFrame>
     </div>
   );
 }

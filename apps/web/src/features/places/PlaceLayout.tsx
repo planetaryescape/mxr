@@ -1,6 +1,7 @@
 import { Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 
+import { ModeHeader, type FrameWidth } from "@/components/ModeFrame";
 import { ReaderNavContext, type ReaderNav } from "@/features/mailbox/readerNav";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
@@ -58,7 +59,7 @@ export function PlaceLayout({
         <section
           aria-label={label}
           className={cn(
-            "@container flex min-h-0 min-w-0 flex-col bg-background",
+            "mode-page flex min-h-0 min-w-0 flex-col bg-background",
             threadOpen ? "w-[clamp(340px,36%,480px)] shrink-0 border-r border-border" : "flex-1",
             hideList && "hidden",
           )}
@@ -76,16 +77,19 @@ export function PlaceHeader({
   title,
   meta,
   actions,
+  width = "list",
 }: {
   title: string;
   meta?: ReactNode;
   actions?: ReactNode;
+  /** The frame the place's content sits in, so the title lines up with it. */
+  width?: FrameWidth;
 }) {
   return (
-    <header className="flex shrink-0 flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-5 pb-3 pt-4">
+    <ModeHeader width={width} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
       <h1 className="text-[17px] font-semibold tracking-tight text-foreground">{title}</h1>
       {meta ? <p className="min-w-0 text-[12.5px] text-muted-foreground">{meta}</p> : null}
       {actions ? <div className="ml-auto flex items-center gap-2">{actions}</div> : null}
-    </header>
+    </ModeHeader>
   );
 }

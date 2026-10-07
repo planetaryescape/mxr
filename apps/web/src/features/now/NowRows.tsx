@@ -69,6 +69,7 @@ function RowFrame({
   state,
   label,
   main,
+  meta,
   actions,
   extra,
 }: {
@@ -77,6 +78,8 @@ function RowFrame({
   /** The link's accessible name: where it opens and what the row says. */
   label: string;
   main: ReactNode;
+  /** The row's date or due line, just left of the action rail. */
+  meta?: ReactNode;
   actions: ReactNode;
   extra?: ReactNode;
 }) {
@@ -105,7 +108,14 @@ function RowFrame({
       >
         {main}
       </Link>
-      <span className="row-span-2 flex items-start gap-1">{actions}</span>
+      {/*
+        The action rail has one width on every row, buttons shown or not, so
+        dates line up in one column against the right edge.
+      */}
+      <span className="row-span-2 flex items-start gap-1">
+        {meta}
+        <span className="flex w-[3.75rem] shrink-0 items-start justify-end gap-1">{actions}</span>
+      </span>
       {extra ? <div className="min-w-0">{extra}</div> : null}
     </li>
   );
@@ -180,14 +190,16 @@ export function PersonRow({
           <AlsoInLine modes={modes} here="messages" keys={false} />
         </>
       }
+      meta={
+        <time
+          dateTime={row.since}
+          className="whitespace-nowrap font-mono text-2xs tabular-nums text-muted-foreground"
+        >
+          {age}
+        </time>
+      }
       actions={
         <>
-          <time
-            dateTime={row.since}
-            className="whitespace-nowrap font-mono text-2xs tabular-nums text-muted-foreground"
-          >
-            {age}
-          </time>
           <button
             type="button"
             aria-label={`Reply to ${who}`}
@@ -238,19 +250,17 @@ export function TodoRow({ item, modes, ...state }: RowState & { item: Due; modes
         </>
       }
       extra={<AlsoInLine modes={modes} here="todo" keys={false} />}
-      actions={
-        <>
-          <span
-            className={cn(
-              "whitespace-nowrap text-[12px]",
-              todo.overdue ? "text-warning" : "text-muted-foreground",
-            )}
-          >
-            {todo.when_label}
-          </span>
-          <DoneButton item={item} state={state} title="Tick off (e)" />
-        </>
+      meta={
+        <span
+          className={cn(
+            "whitespace-nowrap text-[12px]",
+            todo.overdue ? "text-warning" : "text-muted-foreground",
+          )}
+        >
+          {todo.when_label}
+        </span>
       }
+      actions={<DoneButton item={item} state={state} title="Tick off (e)" />}
     />
   );
 }

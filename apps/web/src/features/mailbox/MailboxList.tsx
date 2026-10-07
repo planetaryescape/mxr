@@ -589,7 +589,11 @@ export function MailboxList({
         onMouseDown={() => setActivePane("mailbox")}
       >
         <SwipeLayer ref={swipeLayerRef} />
-        <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+        {/* Rows stop at the page frame on a wide screen; the scrollbar stays at the edge. */}
+        <div
+          className="@container mode-frame"
+          style={{ height: virtualizer.getTotalSize(), position: "relative" }}
+        >
           {virtualItems.map((virtualItem) => {
             const item = flat[virtualItem.index];
             if (!item) return null;

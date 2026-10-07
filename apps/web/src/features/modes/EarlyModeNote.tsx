@@ -10,7 +10,10 @@ export function EarlyModeNote({ mode }: { mode: string }) {
   const entry = useRailQuery().data?.entries.find((candidate) => candidate.id === mode);
   if (!entry) return null;
   return (
-    <div data-testid="early-mode-note" className="px-5 pt-3 text-[12.5px] text-muted-foreground">
+    <div
+      data-testid="early-mode-note"
+      className="mode-frame px-5 pt-3 text-[12.5px] text-muted-foreground"
+    >
       {entry.header ? <p data-testid="mode-header">{entry.header}</p> : null}
       {entry.status === "early" ? (
         <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">

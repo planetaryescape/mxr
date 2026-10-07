@@ -35,6 +35,7 @@ export function MessageText({
   const segments = useMemo(() => normalizeSegments(splitMessageText(text)), [text]);
   return (
     <div
+      data-testid="message-text"
       className={
         plain
           ? "max-w-[var(--reading-measure)] font-mono text-[13px] leading-6 text-foreground"

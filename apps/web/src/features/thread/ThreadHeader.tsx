@@ -28,6 +28,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { ModeFrame } from "@/components/ModeFrame";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -77,29 +78,30 @@ export function ThreadHeader({
   const people = data.thread.participants.map((person) => person.name?.trim() || person.email);
   return (
     <header className="shrink-0 border-b border-border bg-background">
-      <div className="flex items-center gap-1 px-3 pt-2">
-        <IconAction icon={X} label="Close" keys="Escape" command="close" />
-        <IconAction
-          icon={ChevronUp}
-          label="Previous conversation"
-          keys="N"
-          command="prevThread"
-          disabled={!position || position.index <= 0}
-        />
-        <IconAction
-          icon={ChevronDown}
-          label="Next conversation"
-          keys="n"
-          command="nextThread"
-          disabled={!position || position.index >= position.total - 1}
-        />
-        {position ? (
-          <span className="ml-1 font-mono text-2xs text-muted-foreground tabular-nums">
-            {position.index + 1} of {position.total.toLocaleString()}
-          </span>
-        ) : null}
-        <span className="mx-2 h-5 w-px bg-border" aria-hidden />
-        {/*
+      <ModeFrame width="reader">
+        <div className="flex items-center gap-1 px-3 pt-2">
+          <IconAction icon={X} label="Close" keys="Escape" command="close" />
+          <IconAction
+            icon={ChevronUp}
+            label="Previous conversation"
+            keys="N"
+            command="prevThread"
+            disabled={!position || position.index <= 0}
+          />
+          <IconAction
+            icon={ChevronDown}
+            label="Next conversation"
+            keys="n"
+            command="nextThread"
+            disabled={!position || position.index >= position.total - 1}
+          />
+          {position ? (
+            <span className="ml-1 font-mono text-2xs text-muted-foreground tabular-nums">
+              {position.index + 1} of {position.total.toLocaleString()}
+            </span>
+          ) : null}
+          <span className="mx-2 h-5 w-px bg-border" aria-hidden />
+          {/*
           Persistent controls, each earning its place: Close, previous and
           next move through the queue (used on every thread); Archive is the
           most frequent verb; Snooze is deferral, a first-class verb; the
@@ -107,38 +109,39 @@ export function ThreadHeader({
           with its key, and in the command palette. Reply sits at the end of
           the thread (ReplyField), where reading ends.
         */}
-        <IconAction icon={Archive} label="Archive" keys="e" command="archive" />
-        <IconAction icon={Clock} label="Snooze" keys="Z" command="snooze" />
-        <span className="ml-auto flex items-center gap-1">
-          <ViewSwitch view={view} />
-          <MoreMenu
-            hasAttachments={hasAttachments}
-            canReplyAll={canReplyAll}
-            starred={starred}
-            full={full}
-          />
-        </span>
-      </div>
-      <div className="px-5 pb-3 pt-2">
-        <h1 className="text-balance text-lg font-semibold leading-snug tracking-tight">
-          {data.thread.subject || "(no subject)"}
-        </h1>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-muted-foreground">
-          <span>{plural(data.thread.message_count, "message")}</span>
-          {people.length > 0 ? (
-            <>
-              <span aria-hidden>·</span>
-              <span className="truncate">
-                {people.slice(0, 4).join(", ")}
-                {people.length > 4 ? ` and ${people.length - 4} more` : ""}
-              </span>
-            </>
-          ) : null}
-          {labels.map((label) => (
-            <LabelBadge key={label.id} label={label} />
-          ))}
+          <IconAction icon={Archive} label="Archive" keys="e" command="archive" />
+          <IconAction icon={Clock} label="Snooze" keys="Z" command="snooze" />
+          <span className="ml-auto flex items-center gap-1">
+            <ViewSwitch view={view} />
+            <MoreMenu
+              hasAttachments={hasAttachments}
+              canReplyAll={canReplyAll}
+              starred={starred}
+              full={full}
+            />
+          </span>
         </div>
-      </div>
+        <div className="px-5 pb-3 pt-2">
+          <h1 className="text-balance text-lg font-semibold leading-snug tracking-tight">
+            {data.thread.subject || "(no subject)"}
+          </h1>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-muted-foreground">
+            <span>{plural(data.thread.message_count, "message")}</span>
+            {people.length > 0 ? (
+              <>
+                <span aria-hidden>·</span>
+                <span className="truncate">
+                  {people.slice(0, 4).join(", ")}
+                  {people.length > 4 ? ` and ${people.length - 4} more` : ""}
+                </span>
+              </>
+            ) : null}
+            {labels.map((label) => (
+              <LabelBadge key={label.id} label={label} />
+            ))}
+          </div>
+        </div>
+      </ModeFrame>
     </header>
   );
 }

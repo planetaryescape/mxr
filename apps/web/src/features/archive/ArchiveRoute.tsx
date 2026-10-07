@@ -11,6 +11,7 @@ import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import { modeGuideKey, useModeGuide, useRetireCard, type ModeGuide } from "@/features/modes/api";
 import { ModeCard } from "@/features/modes/ModeCard";
+import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
@@ -137,7 +138,7 @@ function ArchiveView({ onThreads }: { onThreads: (ids: string[]) => void }) {
 /** The mode's name, its job in one line, and how many records it holds. */
 function ArchiveHeader({ ledger, guide }: { ledger?: RecordLedger; guide?: ModeGuide }) {
   return (
-    <header className="shrink-0 border-b border-border px-5 pb-3 pt-4">
+    <ModeHeader width="wide">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h1 className="text-[17px] font-semibold tracking-tight text-foreground">Archive</h1>
         <p data-testid="mode-header" className="min-w-0 text-[12.5px] text-muted-foreground">
@@ -159,7 +160,7 @@ function ArchiveHeader({ ledger, guide }: { ledger?: RecordLedger; guide?: ModeG
           {ledger.first_run.line}
         </p>
       ) : null}
-    </header>
+    </ModeHeader>
   );
 }
 
@@ -352,7 +353,7 @@ function Ledger({
 
   const showSideCard = !singlePane && !params.threadId && cardRecord;
   return (
-    <div className="flex min-h-0 flex-1">
+    <ModeFrame width="wide" className="flex min-h-0 flex-1">
       <div ref={listRef} className="@container min-h-0 min-w-0 flex-1 overflow-y-auto pb-6">
         {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
         <form
@@ -563,7 +564,7 @@ function Ledger({
           onClose={() => setFacetsOpen(false)}
         />
       ) : null}
-    </div>
+    </ModeFrame>
   );
 }
 

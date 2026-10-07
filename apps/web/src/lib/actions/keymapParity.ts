@@ -375,7 +375,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "place",
     // prettier-ignore
-    keys: ["!", "#", "B", "E", "F", "I", "L", "O", "R", "U", "V", "W", "Z", "a", "b", "f", "l", "m", "r", "s", "t", "v", "x", "y", "i a", "i m", "i d", "i A", "i M", "i D"],
+    keys: ["!", "#", "B", "E", "F", "I", "L", "O", "R", "T", "U", "V", "W", "Z", "a", "b", "f", "l", "m", "r", "s", "t", "v", "x", "y", "i a", "i m", "i d", "i A", "i M", "i D"],
     bound: "tui",
     why: "Web rows here are bundles, and mail keys work once one is open in the reader; the TUI lens acts on the message under the cursor",
   },
@@ -477,6 +477,12 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     keys: ["G", "g g", "H", "L", "M", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft", "ArrowRight"],
     bound: "tui",
     why: "The TUI lens shares the list's motions and pane keys, and Right opens the card; the web shows the card beside the ledger",
+  },
+  {
+    context: "archive",
+    keys: ["i a", "i m", "i d", "i A", "i M", "i D"],
+    bound: "tui",
+    why: "The TUI lens passes invite answers through; the web answers an invite from the reader",
   },
   {
     context: "archive",

@@ -252,6 +252,36 @@ test.describe("Messages: done here moves on", () => {
     await expect(page.getByTestId("conversation-subject")).toHaveCount(0);
   });
 
+  test("undo after moving on restores the person without pulling you back", async ({ page }) => {
+    await waitForPeople(page);
+    const data = await people(page);
+    const rows = [...data.your_turn, ...data.recent];
+    const at = rows.findIndex((row, index) => open(row).length === 1 && index < rows.length - 2);
+    test.skip(at < 0, "no row with one topic left and two rows after it");
+    const person = rows[at]!;
+    const next = rows[at + 1]!;
+    const topic = open(person)[0]!;
+    await openApp(
+      page,
+      `/messages?person=${encodeURIComponent(person.id)}&topic=${topic.thread_id}`,
+    );
+    await expect(page.getByTestId("conversation-subject")).toHaveText(topic.subject);
+    await page.keyboard.press("e");
+    await expect(page.getByTestId("person-name")).toHaveText(next.title);
+    // Somewhere else before the undo.
+    await page.keyboard.press("j");
+    await expect(personRow(page, next.id)).not.toHaveAttribute("aria-current", "true");
+    const movedTo = await page.getByTestId("person-name").textContent();
+    await page.keyboard.press("u");
+    const restored = toast(page, new RegExp(`^Restored: ${escape(person.title)}`));
+    await expect(restored).toBeVisible();
+    await expect(page.getByTestId("person-name")).toHaveText(movedTo!);
+    // Its Open goes back to the restored topic.
+    await restored.getByRole("button", { name: "Open" }).click();
+    await expect(page.getByTestId("person-name")).toHaveText(person.title);
+    await expect(currentTopic(page)).toContainText(topic.subject);
+  });
+
   test("a second e while the next topic loads sends one done for each topic", async ({ page }) => {
     await waitForPeople(page);
     const person = (await people(page)).your_turn.find((row) => open(row).length > 1);

@@ -275,4 +275,31 @@ describe("done here moves on", () => {
       "Done with Samir Patel.",
     );
   });
+
+  test("never opens a person whose own done is still on its way", () => {
+    const open = openThreads(samir, new Set(["launch"]));
+    const rows = cursorRows(list, false);
+    // Jon's only topic is being done: the next person is Iris.
+    expect(
+      afterDone({
+        topics: page,
+        thread: "contract",
+        open,
+        rows,
+        person: samir.id,
+        hidden: new Set(["launch", "t-person:jon"]),
+      }),
+    ).toEqual({ kind: "person", row: iris });
+    // Nobody else left but people on their way out: nothing opens.
+    expect(
+      afterDone({
+        topics: page,
+        thread: "contract",
+        open,
+        rows,
+        person: samir.id,
+        hidden: new Set(["launch", "t-person:jon", "t-person:iris"]),
+      }),
+    ).toEqual({ kind: "none" });
+  });
 });

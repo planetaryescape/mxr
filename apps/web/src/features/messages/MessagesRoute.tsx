@@ -25,6 +25,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useSplitPane } from "@/hooks/useSplitPane";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useScopeController } from "@/lib/keys/controllers";
 
 import {
@@ -298,6 +299,18 @@ function MessagesBody({
     [conversation],
   );
 
+  // Where the page is now, read when an undo lands (after any later move).
+  const here = useRef({ mounted: true, person: search.person, topic: search.topic });
+  here.current.person = search.person;
+  here.current.topic = search.topic;
+  useEffect(() => {
+    const current = here.current;
+    current.mounted = true;
+    return () => {
+      current.mounted = false;
+    };
+  }, []);
+
   // Done here moves on at once, as the reader's archive does: to the
   // person's next topic still in Messages, else the next person. While a
   // topic's page is still loading, `e` waits: the page on screen is the
@@ -312,22 +325,56 @@ function MessagesBody({
       open: stillOpen,
       rows,
       person: selectedId,
+      hidden: hiddenDone,
     });
     const what =
       next.kind === "topic" ? { subject: conversation.subject } : { person: page.row.title };
     const from = selectedId;
+    // Where the move leaves the page: undo goes back only from there.
+    const landed =
+      next.kind === "topic"
+        ? { person: from, topic: next.topic.thread_id }
+        : next.kind === "person"
+          ? { person: next.row.id, topic: undefined }
+          : { person: undefined, topic: undefined };
     if (next.kind === "topic") advanceTo(from, next.topic.thread_id);
     else if (next.kind === "person") advanceTo(next.row.id);
     else clearSelection();
+    const account = useUiPrefs.getState().accountScope;
+    const label = "subject" in what ? what.subject : what.person;
     void markModeDone("messages", [thread], {
       message: (outcomes) => doneLine(what, doneToast(outcomes), next),
-      onUndone: () => advanceTo(from, thread),
+      onUndone: () => {
+        const now = here.current;
+        const stayed =
+          now.mounted &&
+          useUiPrefs.getState().accountScope === account &&
+          now.person === landed.person &&
+          now.topic === landed.topic;
+        if (stayed) {
+          advanceTo(from, thread);
+          return;
+        }
+        // They moved on: the undo puts it back without pulling them away.
+        toast.info(`Restored: ${label}`, {
+          action: {
+            label: "Open",
+            onClick: () => {
+              if (useUiPrefs.getState().accountScope !== account) {
+                useUiPrefs.getState().setAccountScope(account);
+              }
+              void navigate({ to: "/messages", search: { person: from, topic: thread } });
+            },
+          },
+        });
+      },
     });
   }, [
     advanceTo,
     clearSelection,
     conversation,
     hiddenDone,
+    navigate,
     page,
     person.isPlaceholderData,
     rows,

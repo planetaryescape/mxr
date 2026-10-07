@@ -246,7 +246,9 @@ export type DoneNext =
 /**
  * After done here on `thread`: the person's next topic still in Messages,
  * else the next person in the list (the previous one at the end), else
- * nothing. `rows` is the list as the cursor walks it.
+ * nothing. `rows` is the list as the cursor walks it; `hidden` holds the
+ * threads whose done is on its way, so a person whose last topic is going
+ * is never the one opened next.
  */
 export function afterDone({
   topics,
@@ -254,12 +256,14 @@ export function afterDone({
   open,
   rows,
   person,
+  hidden = new Set(),
 }: {
   topics: readonly MessagesTopic[];
   thread: string;
   open: ReadonlySet<string>;
   rows: readonly MessagesRow[];
   person: string;
+  hidden?: ReadonlySet<string>;
 }): DoneNext {
   const ids = topics.map((topic) => topic.thread_id);
   const nextThread =
@@ -268,8 +272,14 @@ export function afterDone({
   const topic = topics.find((candidate) => candidate.thread_id === nextThread);
   if (topic) return { kind: "topic", topic };
   const rowIds = rows.map((row) => row.id);
+  const going = new Set(
+    rows
+      .filter((row) => row.topics.length > 0 && openThreads(row, hidden).size === 0)
+      .map((row) => row.id),
+  );
   const nextRow =
-    nextAfterRemoval(rowIds, person, () => true) ?? rowIds.find((id) => id !== person);
+    nextAfterRemoval(rowIds, person, (id) => !going.has(id)) ??
+    rowIds.find((id) => id !== person && !going.has(id));
   const row = rows.find((candidate) => candidate.id === nextRow);
   return row ? { kind: "person", row } : { kind: "none" };
 }

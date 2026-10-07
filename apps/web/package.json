@@ -94,5 +94,8 @@
     "vite": "^7.3.2",
     "vite-plugin-pwa": "^1.3.0",
     "vitest": "^4.0.8"
+  },
+  "overrides": {
+    "tinypool": "^2.2.0"
   }
 }

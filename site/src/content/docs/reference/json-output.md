@@ -477,7 +477,7 @@ Successful sends return:
 `layout` (`compact` or `letter`). `trimmed` also has `footer` (a disclaimer
 or unsubscribe footer), and `only_quoted` is true when a message was nothing
 but quoted text. `mxr messages ack THREAD --dry-run --format json` returns
-the exact `text`, `from`, `to`, `subject`, `built_from`,
+the exact `text` and `html` parts, `from`, `to`, `subject`, `built_from`,
 `countdown_seconds`, `preview_token` and `preview_expires_at`;
 `sent_message_id` is set only after a real send.
 

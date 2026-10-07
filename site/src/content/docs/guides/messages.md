@@ -96,8 +96,12 @@ emoji reaction. Because it sends mail on one key, mxr guards it:
 - What goes out is exactly what you saw. If someone writes again, or
   anything about the reply changes during the countdown, nothing is sent
   and you are asked to look again. A preview is good for one minute.
-- It never sends twice for the same message. Once you've written after
-  their message, there is nothing left to acknowledge.
+- It never sends twice for the same message, even when a send fails half
+  way: if the provider might have taken it, mxr says so and won't try
+  again, so check Sent. Once you've written after their message, there is
+  nothing left to acknowledge.
+- It works only on a conversation in Messages. A thread you were only
+  copied on, or one sent to a crowd, is in Updates, and Got it refuses it.
 
 ## Keys
 

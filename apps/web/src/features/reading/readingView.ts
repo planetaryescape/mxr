@@ -5,6 +5,7 @@
  * so the rules are tested on their own.
  */
 
+import type { UnsubscribePurgeResponse } from "@/features/mailbox/api";
 import type {
   ReadingBand,
   ReadingEdition,
@@ -100,6 +101,41 @@ export function unsubscribeMethodLine(method: ReadingUnsubscribe): string {
     default:
       return "No unsubscribe method: mxr can only let go of its issues here.";
   }
+}
+
+/** A finished unsubscribe dry run, ready to commit. */
+export interface UnsubscribePreview {
+  /** How the daemon would unsubscribe now, from its own preview. */
+  method: ReadingUnsubscribe;
+  token: string;
+  count: number;
+}
+
+/** The daemon's `UnsubscribeMethod` as Reading names it. */
+function purgeMethod(method: unknown): ReadingUnsubscribe {
+  if (method && typeof method === "object") {
+    if ("OneClick" in method) return "one_click";
+    if ("HttpLink" in method || "BodyLink" in method) return "link";
+    if ("Mailto" in method) return "mailto";
+  }
+  return "none";
+}
+
+/**
+ * The preview the Unsubscribe button commits, or null while it loads, after
+ * it failed, or when it gave no token or no method: then nothing can be
+ * sent.
+ */
+export function unsubscribePreview(query: {
+  status: "pending" | "error" | "success";
+  data: UnsubscribePurgeResponse | undefined;
+}): UnsubscribePreview | null {
+  const result = query.status === "success" && query.data?.ok ? query.data.result : undefined;
+  const token = result?.preview_token;
+  if (!result || !token) return null;
+  const method = purgeMethod(result.method);
+  if (method === "none") return null;
+  return { method, token, count: result.message_count };
 }
 
 /** What `h` saves from a text selection, or null when nothing is selected. */

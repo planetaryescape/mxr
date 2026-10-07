@@ -11,6 +11,7 @@ import {
   scrollProgress,
   shownLinks,
   unsubscribeMethodLine,
+  unsubscribePreview,
   visibleBands,
 } from "./readingView";
 
@@ -74,8 +75,14 @@ describe("digest links", () => {
 
 describe("the cursor order", () => {
   test("goes item by item with each digest's shown links after it", () => {
-    const digest = item("d", "t2", { shape: "digest", links: [link(1), link(2), link(3), link(4), link(5)] });
-    const bands = [band("since_last_visit", [item("e", "t1"), digest]), band("fading", [item("f", "t3")])];
+    const digest = item("d", "t2", {
+      shape: "digest",
+      links: [link(1), link(2), link(3), link(4), link(5)],
+    });
+    const bands = [
+      band("since_last_visit", [item("e", "t1"), digest]),
+      band("fading", [item("f", "t3")]),
+    ];
     const keys = editionEntries(bands, new Set()).map((entry) => entry.key);
     expect(keys).toEqual(["e:0", "d:0", "m1:1", "m1:2", "m1:3", "m1:4", "f:0"]);
     const opened = editionEntries(bands, new Set(["d:0"])).map((entry) => entry.key);
@@ -97,7 +104,10 @@ describe("let go of all", () => {
       band("since_last_visit", [item("e", "t1"), item("h", "t1")]),
       band("fading", [item("f", "t3")]),
     ];
-    expect(letGoAllPlan(bands)).toEqual({ threadIds: ["t1", "t3"], titles: ["Title e", "Title f"] });
+    expect(letGoAllPlan(bands)).toEqual({
+      threadIds: ["t1", "t3"],
+      titles: ["Title e", "Title f"],
+    });
   });
 });
 
@@ -136,5 +146,41 @@ describe("unsubscribe", () => {
     expect(unsubscribeMethodLine("link")).toMatch(/page/);
     expect(unsubscribeMethodLine("mailto")).toMatch(/email/);
     expect(unsubscribeMethodLine("none")).toMatch(/No unsubscribe method/);
+  });
+
+  const result = (method: unknown, token: string | null = "tok") => ({
+    ok: true,
+    result: {
+      address: "digest@growth.example",
+      status: "preview",
+      method,
+      message_count: 11,
+      archived_count: 0,
+      preview_token: token,
+    },
+  });
+
+  test("takes the method from the daemon's preview, not the edition", () => {
+    const preview = unsubscribePreview({
+      status: "success",
+      data: result({ Mailto: { address: "x@y" } }),
+    });
+    expect(preview).toEqual({ method: "mailto", token: "tok", count: 11 });
+    expect(
+      unsubscribePreview({ status: "success", data: result({ OneClick: { url: "u" } }) })?.method,
+    ).toBe("one_click");
+    expect(
+      unsubscribePreview({ status: "success", data: result({ BodyLink: { url: "u" } }) })?.method,
+    ).toBe("link");
+  });
+
+  test("is not ready while loading, after a failure, without a token or a method", () => {
+    expect(unsubscribePreview({ status: "pending", data: undefined })).toBeNull();
+    expect(unsubscribePreview({ status: "error", data: undefined })).toBeNull();
+    expect(
+      unsubscribePreview({ status: "success", data: result({ OneClick: { url: "u" } }, null) }),
+    ).toBeNull();
+    expect(unsubscribePreview({ status: "success", data: result("None") })).toBeNull();
+    expect(unsubscribePreview({ status: "success", data: { ok: false } })).toBeNull();
   });
 });

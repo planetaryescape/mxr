@@ -7495,6 +7495,12 @@ export interface components {
             /** @enum {string} */
             cmd: "UnsubscribePurge";
             dry_run?: boolean;
+            /**
+             * @description From the dry run. When given, the purge acts on exactly the mail
+             *     that preview listed, with the method it showed, once; mail that
+             *     arrived since is left alone.
+             */
+            preview_token?: string | null;
         } | {
             /** @enum {string} */
             cmd: "Snooze";
@@ -10441,6 +10447,8 @@ export interface components {
             message_ids?: components["schemas"]["MessageId"][];
             method: components["schemas"]["UnsubscribeMethod"];
             mutation_id?: string | null;
+            /** @description A dry run's token: pass it back to commit exactly this preview. */
+            preview_token?: string | null;
             query: string;
             status: components["schemas"]["UnsubscribePurgeStatusData"];
         };

@@ -17,7 +17,7 @@ import { doneModeRequest } from "@/features/modes/modeDone";
 import { plural } from "@/lib/format";
 
 import type { ReadingSource } from "./api";
-import { unsubscribeMethodLine } from "./readingView";
+import { unsubscribeMethodLine, unsubscribePreview } from "./readingView";
 import { letGo, refreshReading } from "./readingVerbs";
 
 const IRREVERSIBLE = "This can't be undone from mxr; you'd resubscribe on their site.";
@@ -44,15 +44,19 @@ export function ReadingUnsubscribeDialog({
       }),
     staleTime: 0,
   });
-  const count = preview.data?.result?.message_count;
-  const noMethod = source.unsubscribe === "none";
+  // Only a finished preview with a token and a method can be committed,
+  // and the method shown is the one in that preview.
+  const ready = unsubscribePreview(preview);
+  const count = ready?.count ?? preview.data?.result?.message_count;
 
   async function commit() {
+    if (!ready) return;
     setBusy(true);
     try {
       const answer = await unsubscribeAndClearSender({
         address: source.sender_email,
         accountId: source.account_id,
+        previewToken: ready.token,
       });
       const result = answer.result;
       if (result?.error) {
@@ -89,7 +93,13 @@ export function ReadingUnsubscribeDialog({
           </DialogDescription>
         </DialogHeader>
         <ul className="grid gap-1.5 text-[13px] text-foreground/90">
-          <li data-testid="unsubscribe-method">{unsubscribeMethodLine(source.unsubscribe)}</li>
+          <li data-testid="unsubscribe-method">
+            {preview.isLoading
+              ? "Checking how to unsubscribe…"
+              : preview.isError
+                ? `Couldn't check: ${preview.error instanceof Error ? preview.error.message : String(preview.error)}`
+                : unsubscribeMethodLine(ready?.method ?? "none")}
+          </li>
           <li data-testid="unsubscribe-count">
             {preview.isLoading ? (
               <span className="inline-flex items-center gap-1.5 text-muted-foreground">
@@ -109,7 +119,7 @@ export function ReadingUnsubscribeDialog({
           <Button variant="outline" size="sm" onClick={onClose}>
             Keep it
           </Button>
-          <Button size="sm" onClick={() => void commit()} disabled={busy || noMethod}>
+          <Button size="sm" onClick={() => void commit()} disabled={busy || !ready}>
             {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
             Unsubscribe
           </Button>

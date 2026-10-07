@@ -330,6 +330,8 @@ export interface UnsubscribePurgeResponse {
     archived_count: number;
     mutation_id?: string | null;
     error?: string | null;
+    /** A dry run's token: commit exactly that preview with it. */
+    preview_token?: string | null;
   };
 }
 
@@ -338,6 +340,7 @@ export function unsubscribeAndClearSender(input: {
   accountId?: string;
   dryRun?: boolean;
   archiveOnNoMethod?: boolean;
+  previewToken?: string;
 }): Promise<UnsubscribePurgeResponse> {
   return apiFetch<UnsubscribePurgeResponse>("/api/v1/mail/actions/unsubscribe-purge", {
     method: "POST",
@@ -346,6 +349,7 @@ export function unsubscribeAndClearSender(input: {
       account_id: input.accountId,
       dry_run: input.dryRun ?? false,
       archive_on_no_method: input.archiveOnNoMethod ?? false,
+      preview_token: input.previewToken,
     },
   });
 }

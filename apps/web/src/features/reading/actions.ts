@@ -63,7 +63,8 @@ export const readingActions: Action[] = [
     shortLabel: "Email",
   }),
   key("reading", "reading.move-sender", "moveSender", "This sender here: move to…", "K", {
-    description: "People, Reading, Paper trail, Screened out or automatic, for their future mail too",
+    description:
+      "People, Reading, Paper trail, Screened out or automatic, for their future mail too",
   }),
   key("reading", "reading.later-shelf", "laterShelf", "Open Later", "B", {
     shortLabel: "Later shelf",

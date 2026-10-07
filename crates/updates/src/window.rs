@@ -104,30 +104,38 @@ static ENDS: Lazy<Regex> = Lazy::new(|| {
         .expect("valid ends regex")
 });
 
-/// What kind of windowed update `text` (subject first, then the first
-/// lines of the body) is, if any. A code wins over a sign-in alert, so a
-/// "sign-in code" expires in minutes.
-pub fn kind_of(text: &str) -> Option<WindowKind> {
-    if CODE.is_match(text) {
-        Some(WindowKind::Code)
-    } else if VERIFY.is_match(text) {
-        Some(WindowKind::VerifyLink)
-    } else if SIGN_IN.is_match(text) {
+/// What kind of windowed update a message is. A sign-in alert wins over
+/// a code it mentions, so it keeps its two days; a code counts only when
+/// the subject itself is one.
+pub fn kind_of(subject: &str, body: &str) -> Option<WindowKind> {
+    let text = format!("{subject}\n{body}");
+    if SIGN_IN.is_match(&text) {
         Some(WindowKind::SignIn)
-    } else if OFFER.is_match(text) {
+    } else if CODE.is_match(subject) {
+        Some(WindowKind::Code)
+    } else if VERIFY.is_match(&text) {
+        Some(WindowKind::VerifyLink)
+    } else if OFFER.is_match(&text) {
         Some(WindowKind::Offer)
     } else {
         None
     }
 }
 
-/// The window `text` implies for mail that arrived at `arrived`, in the
-/// user's zone `tz` for "ends Sunday".
-pub fn window<Tz: TimeZone>(text: &str, arrived: DateTime<Utc>, tz: &Tz) -> Option<Window> {
-    let kind = kind_of(text)?;
+/// The window a message with `subject` and the first lines of its `body`
+/// implies for mail that arrived at `arrived`, in the user's zone `tz` for
+/// "ends Sunday".
+pub fn window<Tz: TimeZone>(
+    subject: &str,
+    body: &str,
+    arrived: DateTime<Utc>,
+    tz: &Tz,
+) -> Option<Window> {
+    let kind = kind_of(subject, body)?;
+    let text = format!("{subject}\n{body}");
     let stated = match kind {
-        WindowKind::Code | WindowKind::VerifyLink => lifetime(text, arrived),
-        WindowKind::Offer => ends(text, arrived, tz).or_else(|| lifetime(text, arrived)),
+        WindowKind::Code | WindowKind::VerifyLink => lifetime(&text, arrived),
+        WindowKind::Offer => ends(&text, arrived, tz).or_else(|| lifetime(&text, arrived)),
         WindowKind::SignIn => None,
     };
     Some(match stated {
@@ -210,12 +218,13 @@ mod tests {
 
     #[test]
     fn codes_last_their_stated_lifetime_else_ten_minutes() {
-        let code = window("Your verification code is 482913", at(), &utc()).unwrap();
+        let code = window("Your verification code is 482913", "", at(), &utc()).unwrap();
         assert_eq!(code.kind, WindowKind::Code);
         assert_eq!(code.until, at() + Duration::minutes(10));
         assert_eq!(code.source, "default");
         let stated = window(
             "Your login code: 1234. It expires in 15 minutes.",
+            "",
             at(),
             &utc(),
         )
@@ -223,30 +232,49 @@ mod tests {
         assert_eq!(stated.until, at() + Duration::minutes(15));
         assert_eq!(stated.source, "rule");
         // A sign-in code is a code, not a sign-in alert.
-        assert_eq!(kind_of("Your sign-in code"), Some(WindowKind::Code));
+        assert_eq!(kind_of("Your sign-in code", ""), Some(WindowKind::Code));
+    }
+
+    #[test]
+    fn a_sign_in_alert_mentioning_a_code_keeps_its_two_days() {
+        // The alert names a security code in its body: still a sign-in.
+        let alert = window(
+            "New sign-in to your account",
+            "If this wasn't you, your security code is below. It expires in 10 minutes.",
+            at(),
+            &utc(),
+        )
+        .unwrap();
+        assert_eq!(alert.kind, WindowKind::SignIn);
+        assert_eq!(alert.until, at() + Duration::days(2));
+        // A code only in the body is not a code: the subject must say so.
+        assert_eq!(
+            kind_of("Your account", "Your verification code is 1234"),
+            None
+        );
     }
 
     #[test]
     fn sign_in_alerts_last_two_days_and_offers_their_end() {
-        let alert = window("New sign-in from Chrome on Windows", at(), &utc()).unwrap();
+        let alert = window("New sign-in from Chrome on Windows", "", at(), &utc()).unwrap();
         assert_eq!(alert.kind, WindowKind::SignIn);
         assert_eq!(alert.until, at() + Duration::days(2));
-        let sale = window("Our autumn sale ends Sunday", at(), &utc()).unwrap();
+        let sale = window("Our autumn sale ends Sunday", "", at(), &utc()).unwrap();
         assert_eq!(sale.kind, WindowKind::Offer);
         assert_eq!(
             sale.until,
             Utc.with_ymd_and_hms(2026, 10, 11, 23, 59, 59).unwrap()
         );
-        let tonight = window("20% off ends tonight", at(), &utc()).unwrap();
+        let tonight = window("20% off ends tonight", "", at(), &utc()).unwrap();
         assert_eq!(
             tonight.until,
             Utc.with_ymd_and_hms(2026, 10, 7, 23, 59, 59).unwrap()
         );
-        let plain = window("Flash sale on now", at(), &utc()).unwrap();
+        let plain = window("Flash sale on now", "", at(), &utc()).unwrap();
         assert_eq!(plain.until, at() + Duration::days(7));
-        let verify = window("Please confirm your email address", at(), &utc()).unwrap();
+        let verify = window("Please confirm your email address", "", at(), &utc()).unwrap();
         assert_eq!(verify.until, at() + Duration::days(3));
-        assert!(window("Your week: 3 runs", at(), &utc()).is_none());
+        assert!(window("Your week: 3 runs", "", at(), &utc()).is_none());
         for kind in [
             WindowKind::Code,
             WindowKind::VerifyLink,

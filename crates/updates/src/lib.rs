@@ -14,6 +14,7 @@
 //! the clock into stable sets. The daemon reads the store and the clock and
 //! hands plain data in.
 
+pub mod auth;
 pub mod cuts;
 pub mod fact;
 pub mod numbers;

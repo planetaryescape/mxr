@@ -270,7 +270,12 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
         Some(line) => format!("{cleaned}\n{line}"),
         None => cleaned.clone(),
     };
-    let window = window(&rule_text, input.date, tz);
+    let window = window(
+        &cleaned,
+        body_line.as_deref().unwrap_or_default(),
+        input.date,
+        tz,
+    );
     let needs_you = if PAYMENT_FAILED.is_match(&rule_text) {
         Some(NeedsYou::PaymentFailed)
     } else if window

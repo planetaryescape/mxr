@@ -25,12 +25,13 @@ use super::places::{placed_inbox, Placed};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Local, Utc};
+use mxr_config::AgentProfileConfig;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{Envelope, UnsubscribeMethod};
 use mxr_protocol::{
     reading_copy, MailKindData, ModeKindData, ReadingBandData, ReadingBandGroupData,
     ReadingEditionData, ReadingEmptyData, ReadingItemData, ReadingItemKindData, ReadingLinkData,
-    ReadingShapeData, ResponseData, SenderKindData,
+    ReadingShapeData, Request, ResponseData, SenderKindData,
 };
 use mxr_reading::edition::{self, Band, Rankable, Visit};
 use mxr_reading::extract::EXTRACTOR_VERSION;
@@ -710,6 +711,105 @@ pub(super) async fn get_edition(
         "reading edition built"
     );
     Ok(ResponseData::ReadingEdition { edition })
+}
+
+/// Serve a Reading request. `dispatch` calls this boxed, once, for every
+/// Reading variant.
+pub(super) async fn handle(
+    state: &AppState,
+    scoped_profile: Option<&AgentProfileConfig>,
+    req: &Request,
+) -> HandlerResult {
+    match req {
+        Request::GetReadingEdition {
+            account_id,
+            mark_visit,
+        } => {
+            let accounts = accounts(state, scoped_profile, account_id.as_ref()).await?;
+            get_edition(state, &accounts, *mark_visit).await
+        }
+        Request::GetReadingItem { item_key } => Box::pin(get_item(state, item_key)).await,
+        Request::SetReadingLater {
+            item_keys,
+            later,
+            dry_run,
+        } => Box::pin(set_later(state, item_keys, *later, *dry_run)).await,
+        Request::RecordReadingEngagement {
+            item_key,
+            opened,
+            dwell_ms,
+            progress,
+        } => {
+            Box::pin(record_engagement(
+                state,
+                item_key,
+                mxr_store::ReadingEngagementReport {
+                    opened: *opened,
+                    dwell_ms: *dwell_ms,
+                    progress: *progress,
+                },
+            ))
+            .await
+        }
+        Request::FetchArticle { item_key, refresh } => {
+            Box::pin(fetch_article(state, item_key, *refresh)).await
+        }
+        Request::SaveHighlight {
+            item_key,
+            quote,
+            note,
+            view,
+        } => {
+            Box::pin(save_highlight(
+                state,
+                item_key,
+                quote,
+                note.as_deref(),
+                view.as_deref(),
+            ))
+            .await
+        }
+        Request::ExportReadingHighlights { account_id } => {
+            let accounts = accounts(state, scoped_profile, account_id.as_ref()).await?;
+            export_highlights(state, &accounts).await
+        }
+        Request::SetReadingSource {
+            account_id,
+            sender_email,
+            original_layout,
+            dismiss_unsubscribe_offer,
+        } => {
+            Box::pin(set_source(
+                state,
+                account_id,
+                sender_email,
+                *original_layout,
+                *dismiss_unsubscribe_offer,
+            ))
+            .await
+        }
+        _ => Err(HandlerError::from(format!(
+            "not a Reading request: {}",
+            super::request_kind(req)
+        ))),
+    }
+}
+
+/// The accounts a Reading request covers: the one it names, else every
+/// enabled account, cut to a scoped profile's allowed accounts.
+async fn accounts(
+    state: &AppState,
+    scoped_profile: Option<&AgentProfileConfig>,
+    account_id: Option<&AccountId>,
+) -> Result<Vec<AccountId>, HandlerError> {
+    match (account_id, scoped_profile) {
+        // A named account already passed the allowlist.
+        (Some(account_id), _) => Ok(vec![account_id.clone()]),
+        (None, Some(profile)) => super::account_scope::allowed_accounts(state, profile)
+            .await
+            .map_err(HandlerError::from),
+        (None, None) => super::places::scoped_accounts(state, None).await,
+    }
 }
 
 /// After a sync: extract the new Reading mail and expire what faded, so

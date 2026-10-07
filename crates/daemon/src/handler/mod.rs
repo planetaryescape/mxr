@@ -83,7 +83,7 @@ mod user_voice;
 mod whois;
 
 use crate::state::AppState;
-use mxr_config::{AgentProfileConfig, DestructiveAction, MxrConfig, SafetyPolicy};
+use mxr_config::{DestructiveAction, MxrConfig, SafetyPolicy};
 use mxr_core::provider::MailSyncProvider;
 #[cfg(test)]
 use mxr_core::types::UnsubscribeMethod;
@@ -1465,80 +1465,18 @@ async fn dispatch(
         } => {
             modes::get_membership(state, message_id.as_ref(), thread_id.as_ref(), thread_ids).await
         }
-        Request::GetReadingEdition {
-            account_id,
-            mark_visit,
-        } => {
-            // Boxed whole: the account lookup's future would otherwise
-            // grow `dispatch`'s, which overflows a debug build's stack.
-            Box::pin(async {
-                let accounts = reading_accounts(state, scoped_profile, account_id.as_ref()).await?;
-                reading::get_edition(state, &accounts, *mark_visit).await
-            })
-            .await
-        }
-        Request::GetReadingItem { item_key } => Box::pin(reading::get_item(state, item_key)).await,
-        Request::SetReadingLater {
-            item_keys,
-            later,
-            dry_run,
-        } => Box::pin(reading::set_later(state, item_keys, *later, *dry_run)).await,
-        Request::RecordReadingEngagement {
-            item_key,
-            opened,
-            dwell_ms,
-            progress,
-        } => {
-            Box::pin(reading::record_engagement(
-                state,
-                item_key,
-                mxr_store::ReadingEngagementReport {
-                    opened: *opened,
-                    dwell_ms: *dwell_ms,
-                    progress: *progress,
-                },
-            ))
-            .await
-        }
-        Request::FetchArticle { item_key, refresh } => {
-            Box::pin(reading::fetch_article(state, item_key, *refresh)).await
-        }
-        Request::SaveHighlight {
-            item_key,
-            quote,
-            note,
-            view,
-        } => {
-            Box::pin(reading::save_highlight(
-                state,
-                item_key,
-                quote,
-                note.as_deref(),
-                view.as_deref(),
-            ))
-            .await
-        }
-        Request::ExportReadingHighlights { account_id } => {
-            Box::pin(async {
-                let accounts = reading_accounts(state, scoped_profile, account_id.as_ref()).await?;
-                reading::export_highlights(state, &accounts).await
-            })
-            .await
-        }
-        Request::SetReadingSource {
-            account_id,
-            sender_email,
-            original_layout,
-            dismiss_unsubscribe_offer,
-        } => {
-            Box::pin(reading::set_source(
-                state,
-                account_id,
-                sender_email,
-                *original_layout,
-                *dismiss_unsubscribe_offer,
-            ))
-            .await
+        // One boxed call for all of Reading: its arms inline make
+        // `dispatch`'s poll frame big enough to overflow a debug build's
+        // worker stack on deep paths such as a mutation.
+        Request::GetReadingEdition { .. }
+        | Request::GetReadingItem { .. }
+        | Request::SetReadingLater { .. }
+        | Request::RecordReadingEngagement { .. }
+        | Request::FetchArticle { .. }
+        | Request::SaveHighlight { .. }
+        | Request::ExportReadingHighlights { .. }
+        | Request::SetReadingSource { .. } => {
+            Box::pin(reading::handle(state, scoped_profile, req)).await
         }
         Request::SetModeDone {
             thread_ids,
@@ -1771,23 +1709,6 @@ async fn dispatch(
             );
             error.into_response()
         }
-    }
-}
-
-/// The accounts a Reading request covers: the one it names, else every
-/// enabled account, cut to a scoped profile's allowed accounts.
-async fn reading_accounts(
-    state: &AppState,
-    scoped_profile: Option<&AgentProfileConfig>,
-    account_id: Option<&mxr_core::AccountId>,
-) -> Result<Vec<mxr_core::AccountId>, HandlerError> {
-    match (account_id, scoped_profile) {
-        // A named account already passed the allowlist.
-        (Some(account_id), _) => Ok(vec![account_id.clone()]),
-        (None, Some(profile)) => account_scope::allowed_accounts(state, profile)
-            .await
-            .map_err(HandlerError::from),
-        (None, None) => places::scoped_accounts(state, None).await,
     }
 }
 

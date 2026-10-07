@@ -94,23 +94,37 @@ pub fn is_public_ip(ip: IpAddr) -> bool {
             let unique_local = segments[0] & 0xfe00 == 0xfc00;
             let link_local = segments[0] & 0xffc0 == 0xfe80;
             let documentation = segments[0] == 0x2001 && segments[1] == 0x0db8;
-            // NAT64 and the old IPv4-compatible form embed an IPv4 address.
-            let nat64 = segments[..6] == [0x64, 0xff9b, 0, 0, 0, 0];
-            let embedded = Ipv4Addr::new(
-                (segments[6] >> 8) as u8,
-                segments[6] as u8,
-                (segments[7] >> 8) as u8,
-                segments[7] as u8,
-            );
-            let compatible = segments[..6] == [0, 0, 0, 0, 0, 0];
+            // RFC 8215 local-use NAT64 translates into whatever network the
+            // operator chose, so nothing behind it counts as public.
+            let local_nat64 = segments[..3] == [0x64, 0xff9b, 1];
+            // Teredo hides the client's IPv4 address; never trust it.
+            let teredo = segments[0] == 0x2001 && segments[1] == 0;
             !(v6.is_loopback()
                 || v6.is_unspecified()
                 || v6.is_multicast()
                 || unique_local
                 || link_local
                 || documentation
-                || ((nat64 || compatible) && !is_public_v4(embedded)))
+                || local_nat64
+                || teredo
+                || embedded_v4(&segments).is_some_and(|v4| !is_public_v4(v4)))
         }
+    }
+}
+
+/// The IPv4 address an IPv6 address carries: the well-known NAT64 prefix
+/// and the old IPv4-compatible form in the low 32 bits, 6to4 in bits 16 to
+/// 48.
+fn embedded_v4(segments: &[u16; 8]) -> Option<Ipv4Addr> {
+    let v4 = |high: u16, low: u16| {
+        Ipv4Addr::new((high >> 8) as u8, high as u8, (low >> 8) as u8, low as u8)
+    };
+    if segments[..6] == [0x64, 0xff9b, 0, 0, 0, 0] || segments[..6] == [0, 0, 0, 0, 0, 0] {
+        Some(v4(segments[6], segments[7]))
+    } else if segments[0] == 0x2002 {
+        Some(v4(segments[1], segments[2]))
+    } else {
+        None
     }
 }
 
@@ -336,6 +350,16 @@ mod tests {
             "::ffff:127.0.0.1",
             "64:ff9b::a00:1",
             "2001:db8::1",
+            // RFC 8215 local-use NAT64, whatever it embeds.
+            "64:ff9b:1::5db8:d822",
+            "64:ff9b:1:abcd::1",
+            // 6to4 carrying a private, loopback or link-local address.
+            "2002:a00:1::1",
+            "2002:7f00:1::1",
+            "2002:a9fe:a9fe::1",
+            "2002:c0a8:101::1",
+            // Teredo: the client address is obfuscated, so never trusted.
+            "2001:0:4136:e378:8000:63bf:3fff:fdd2",
         ] {
             let ip: IpAddr = ip.parse().expect(ip);
             assert!(!is_public_ip(ip), "{ip} should be private");
@@ -345,6 +369,7 @@ mod tests {
             "1.1.1.1",
             "2606:4700:4700::1111",
             "64:ff9b::5db8:d822",
+            "2002:5db8:d822::1",
         ] {
             let ip: IpAddr = ip.parse().expect(ip);
             assert!(is_public_ip(ip), "{ip} should be public");

@@ -585,7 +585,12 @@ fn classify(walked: Walked, headline: String, subject: &str) -> Extraction {
         if !matches!(p.kind, ParagraphKind::Text | ParagraphKind::Quote) {
             return None;
         }
-        let text = GREETING.replace(&p.text, "");
+        let stripped = GREETING.replace(&p.text, "");
+        let text = if stripped == p.text {
+            stripped.into_owned()
+        } else {
+            crate::headline::capitalize_first(&stripped)
+        };
         (word_count(&text) >= STANDFIRST_MIN_WORDS && !URL_IN_TEXT.is_match(&text))
             .then(|| clip(&text, STANDFIRST_MAX_CHARS))
     });

@@ -19,8 +19,11 @@ static LEADING_NUMBER: Lazy<Regex> = Lazy::new(|| {
     )
 });
 /// "This week in Rust: ", "Today in Tech - ".
-static LEADING_ROUNDUP: Lazy<Regex> =
-    Lazy::new(|| regex(r"(?i)^\s*(?:this week|today|this month) in [^:|\-–—]{1,30}[:|\-–—]\s+"));
+static LEADING_ROUNDUP: Lazy<Regex> = Lazy::new(|| {
+    regex(
+        r"(?i)^\s*(?:(?:this week|today|this month) in [^:|\-–—]{1,30}|new (?:post|essay|article|episode|issue|video)|now live|just published)\s*[:|\-–—]\s+",
+    )
+});
 
 /// Pictographs, dingbats and the joiners that glue them together.
 fn is_emoji(c: char) -> bool {
@@ -59,6 +62,12 @@ pub fn clean_headline(subject: &str, source: Option<&str>) -> String {
         }
     }
     let text = collapse_spaces(&text);
+    // Only a sentence that lost its prefix gets a capital: "iPhone" stays.
+    let text = if text == original {
+        text
+    } else {
+        capitalize_first(&text)
+    };
     if text.chars().filter(|c| c.is_alphanumeric()).count() < 4 {
         let fallback = collapse_spaces(trim_decoration(&original));
         return if fallback.is_empty() {
@@ -68,6 +77,14 @@ pub fn clean_headline(subject: &str, source: Option<&str>) -> String {
         };
     }
     text
+}
+
+/// What was left after a prefix came off starts a sentence.
+pub(crate) fn capitalize_first(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
 }
 
 /// "Platform Weekly: Shipping a sync engine" and "Shipping a sync engine |
@@ -105,7 +122,9 @@ mod tests {
             ("Platform Weekly: Shipping a sync engine in 2026", Some("Platform Weekly"), "Shipping a sync engine in 2026"),
             ("Shipping a sync engine in 2026 | Platform Weekly", Some("Platform Weekly"), "Shipping a sync engine in 2026"),
             ("🚀 Local-first mail is having a moment 🎉", None, "Local-first mail is having a moment"),
-            ("This week in Rust: async closures land", None, "async closures land"),
+            ("This week in Rust: async closures land", None, "Async closures land"),
+            ("New post: Shipping a sync engine in 2026", None, "Shipping a sync engine in 2026"),
+            ("Local-first Links #41: six things worth your time", Some("Local-first Links"), "Six things worth your time"),
         ];
         for (subject, source, want) in cases {
             assert_eq!(clean_headline(subject, source), want, "{subject}");
@@ -125,6 +144,7 @@ mod tests {
             "Why sync engines need tombstones",
             "The 5-minute guide to WAL mode",
             "Rust 1.95: what changed",
+            "iPhone 18 review",
         ] {
             assert_eq!(clean_headline(subject, Some("Some Source")), subject);
         }

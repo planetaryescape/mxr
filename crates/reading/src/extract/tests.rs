@@ -89,7 +89,7 @@ fn a_substack_link_roundup_is_a_digest_of_tracked_links() {
     assert!(got
         .standfirst
         .as_deref()
-        .is_some_and(|s| s.starts_with("a short one this week")));
+        .is_some_and(|s| s.starts_with("A short one this week")));
 }
 
 #[test]

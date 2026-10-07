@@ -36,7 +36,7 @@ const WEEKDAYS: &str = r"(?:mon|tue(?:s)?|wed(?:nes)?|thu(?:r(?:s)?)?|fri|sat(?:
 
 /// One date expression. Kept in one place so every trigger reads the same
 /// dates.
-pub(crate) static DATE_EXPR: Lazy<String> = Lazy::new(|| {
+pub static DATE_EXPR: Lazy<String> = Lazy::new(|| {
     format!(
         r"(?:(?:{WEEKDAYS}),?\s+)?(?:\d{{1,2}}(?:st|nd|rd|th)?\s+(?:of\s+)?(?:{MONTHS})\.?(?:,?\s+\d{{4}})?|(?:{MONTHS})\.?\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,?\s+\d{{4}})?|\d{{4}}-\d{{2}}-\d{{2}}|\d{{1,2}}[/.]\d{{1,2}}[/.]\d{{2,4}}|today|tomorrow|{WEEKDAYS})\b"
     )

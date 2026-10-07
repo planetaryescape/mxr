@@ -61,7 +61,7 @@ impl Fx {
         };
         RecordFieldValue {
             field: field.to_string(),
-            source_key: source.0.as_str().to_string(),
+            source_key: source.0.as_str(),
             message_id: Some(source.0.clone()),
             source: kind.to_string(),
             rank,
@@ -118,9 +118,30 @@ async fn three_emails_about_one_order_are_one_record_and_schema_beats_rule() {
             at(0),
             vec![
                 Fx::value("issuer", &confirmation, "schema", Some("Dell"), None, at(0)),
-                Fx::value("amount", &confirmation, "schema", Some("GBP"), Some(124_900), at(0)),
-                Fx::value("issued_at", &confirmation, "schema", None, Some(at(0).timestamp()), at(0)),
-                Fx::value("reference", &confirmation, "schema", Some("402-118"), None, at(0)),
+                Fx::value(
+                    "amount",
+                    &confirmation,
+                    "schema",
+                    Some("GBP"),
+                    Some(124_900),
+                    at(0),
+                ),
+                Fx::value(
+                    "issued_at",
+                    &confirmation,
+                    "schema",
+                    None,
+                    Some(at(0).timestamp()),
+                    at(0),
+                ),
+                Fx::value(
+                    "reference",
+                    &confirmation,
+                    "schema",
+                    Some("402-118"),
+                    None,
+                    at(0),
+                ),
             ],
         ))
         .await
@@ -135,7 +156,14 @@ async fn three_emails_about_one_order_are_one_record_and_schema_beats_rule() {
             &shipped,
             "shipped",
             at(2),
-            vec![Fx::value("amount", &shipped, "rule", Some("GBP"), Some(999), at(2))],
+            vec![Fx::value(
+                "amount",
+                &shipped,
+                "rule",
+                Some("GBP"),
+                Some(999),
+                at(2),
+            )],
         ))
         .await
         .unwrap();
@@ -146,7 +174,14 @@ async fn three_emails_about_one_order_are_one_record_and_schema_beats_rule() {
             &delivered,
             "delivered",
             at(4),
-            vec![Fx::value("delivered_at", &delivered, "rule", None, Some(at(4).timestamp()), at(4))],
+            vec![Fx::value(
+                "delivered_at",
+                &delivered,
+                "rule",
+                None,
+                Some(at(4).timestamp()),
+                at(4),
+            )],
         ))
         .await
         .unwrap();
@@ -165,7 +200,11 @@ async fn three_emails_about_one_order_are_one_record_and_schema_beats_rule() {
         .await
         .unwrap();
     assert_eq!(sources.len(), 3);
-    let all = fx.store.list_archive_records(&RecordQuery::default()).await.unwrap();
+    let all = fx
+        .store
+        .list_archive_records(&RecordQuery::default())
+        .await
+        .unwrap();
     assert_eq!(all.len(), 1);
 }
 
@@ -179,11 +218,25 @@ async fn the_user_wins_forever_and_confirming_checks_the_record() {
             &source,
             "receipt",
             at(0),
-            vec![Fx::value("amount", &source, "rule", Some("GBP"), Some(500), at(0))],
+            vec![Fx::value(
+                "amount",
+                &source,
+                "rule",
+                Some("GBP"),
+                Some(500),
+                at(0),
+            )],
         ))
         .await
         .unwrap();
-    assert!(!fx.store.get_archive_record("r1").await.unwrap().unwrap().checked);
+    assert!(
+        !fx.store
+            .get_archive_record("r1")
+            .await
+            .unwrap()
+            .unwrap()
+            .checked
+    );
 
     assert!(fx
         .store
@@ -205,7 +258,14 @@ async fn the_user_wins_forever_and_confirming_checks_the_record() {
             &source,
             "receipt",
             at(9),
-            vec![Fx::value("amount", &source, "rule", Some("GBP"), Some(900), at(9))],
+            vec![Fx::value(
+                "amount",
+                &source,
+                "rule",
+                Some("GBP"),
+                Some(900),
+                at(9),
+            )],
         ))
         .await
         .unwrap();
@@ -258,7 +318,14 @@ async fn deleting_a_source_recomputes_fields_and_the_last_source_deletes_the_rec
             &confirmation,
             "confirmation",
             at(0),
-            vec![Fx::value("amount", &confirmation, "schema", Some("GBP"), Some(124_900), at(0))],
+            vec![Fx::value(
+                "amount",
+                &confirmation,
+                "schema",
+                Some("GBP"),
+                Some(124_900),
+                at(0),
+            )],
         ))
         .await
         .unwrap();
@@ -268,7 +335,14 @@ async fn deleting_a_source_recomputes_fields_and_the_last_source_deletes_the_rec
             &shipped,
             "shipped",
             at(2),
-            vec![Fx::value("amount", &shipped, "rule", Some("GBP"), Some(999), at(2))],
+            vec![Fx::value(
+                "amount",
+                &shipped,
+                "rule",
+                Some("GBP"),
+                Some(999),
+                at(2),
+            )],
         ))
         .await
         .unwrap();
@@ -297,7 +371,11 @@ async fn deleting_a_source_recomputes_fields_and_the_last_source_deletes_the_rec
         .await
         .unwrap();
     let record = fx.store.get_archive_record("r1").await.unwrap().unwrap();
-    assert_eq!(record.amount_minor, Some(999), "recomputed from what is left");
+    assert_eq!(
+        record.amount_minor,
+        Some(999),
+        "recomputed from what is left"
+    );
     assert!(!record.checked);
     assert_eq!(record.last_message_at, Some(at(2)));
 
@@ -306,12 +384,7 @@ async fn deleting_a_source_recomputes_fields_and_the_last_source_deletes_the_rec
         .await
         .unwrap();
     assert!(fx.store.get_archive_record("r1").await.unwrap().is_none());
-    assert!(fx
-        .store
-        .list_record_groups(None)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(fx.store.list_record_groups(None).await.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -325,8 +398,22 @@ async fn filters_select_by_kind_year_amount_and_pdf() {
             "receipt",
             at(0),
             vec![
-                Fx::value("amount", &source, "schema", Some("GBP"), Some(124_900), at(0)),
-                Fx::value("issued_at", &source, "schema", None, Some(at(0).timestamp()), at(0)),
+                Fx::value(
+                    "amount",
+                    &source,
+                    "schema",
+                    Some("GBP"),
+                    Some(124_900),
+                    at(0),
+                ),
+                Fx::value(
+                    "issued_at",
+                    &source,
+                    "schema",
+                    None,
+                    Some(at(0).timestamp()),
+                    at(0),
+                ),
             ],
         ))
         .await
@@ -339,22 +426,38 @@ async fn filters_select_by_kind_year_amount_and_pdf() {
         min_amount_minor: Some(100_000),
         ..RecordQuery::default()
     };
-    assert_eq!(fx.store.list_archive_records(&query).await.unwrap().len(), 1);
+    assert_eq!(
+        fx.store.list_archive_records(&query).await.unwrap().len(),
+        1
+    );
     let query = RecordQuery {
         from: Some(year(2026)),
         ..RecordQuery::default()
     };
-    assert!(fx.store.list_archive_records(&query).await.unwrap().is_empty());
+    assert!(fx
+        .store
+        .list_archive_records(&query)
+        .await
+        .unwrap()
+        .is_empty());
     let query = RecordQuery {
         has_pdf: Some(true),
         ..RecordQuery::default()
     };
-    assert!(fx.store.list_archive_records(&query).await.unwrap().is_empty());
+    assert!(fx
+        .store
+        .list_archive_records(&query)
+        .await
+        .unwrap()
+        .is_empty());
     let query = RecordQuery {
         checked: Some(true),
         ..RecordQuery::default()
     };
-    assert_eq!(fx.store.list_archive_records(&query).await.unwrap().len(), 1);
+    assert_eq!(
+        fx.store.list_archive_records(&query).await.unwrap().len(),
+        1
+    );
 }
 
 #[tokio::test]
@@ -372,6 +475,12 @@ async fn undoing_a_tick_off_unfiles_what_the_to_do_made() {
         ..Fx::value("title", &source, "rule", Some("Council tax"), None, at(0))
     }];
     fx.store.file_record(&filing).await.unwrap();
-    assert_eq!(fx.store.unfile_todo_record(&fx.account, "t1").await.unwrap(), 1);
+    assert_eq!(
+        fx.store
+            .unfile_todo_record(&fx.account, "t1")
+            .await
+            .unwrap(),
+        1
+    );
     assert!(fx.store.get_archive_record("r1").await.unwrap().is_none());
 }

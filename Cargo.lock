@@ -4245,6 +4245,7 @@ dependencies = [
  "mxr-provider-outlook",
  "mxr-provider-smtp",
  "mxr-reader",
+ "mxr-records",
  "mxr-relationship",
  "mxr-rules",
  "mxr-safety",
@@ -4678,6 +4679,27 @@ dependencies = [
  "tracing",
  "url",
  "which",
+]
+
+[[package]]
+name = "mxr-records"
+version = "0.6.53"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "csv",
+ "mxr-core",
+ "mxr-reader",
+ "mxr-store",
+ "mxr-todo",
+ "once_cell",
+ "psl",
+ "regex",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

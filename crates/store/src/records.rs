@@ -243,17 +243,30 @@ pub struct RecordFiling {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecordFiled {
-    Inserted { id: String },
-    Updated { id: String },
+    Inserted {
+        id: String,
+    },
+    Updated {
+        id: String,
+    },
+    /// Already filed with these links and values.
+    Unchanged {
+        id: String,
+    },
     /// Dismissed as not a record earlier: the correction stands and the
     /// row is not touched.
-    Dismissed { id: String },
+    Dismissed {
+        id: String,
+    },
 }
 
 impl RecordFiled {
     pub fn id(&self) -> &str {
         match self {
-            Self::Inserted { id } | Self::Updated { id } | Self::Dismissed { id } => id,
+            Self::Inserted { id }
+            | Self::Updated { id }
+            | Self::Unchanged { id }
+            | Self::Dismissed { id } => id,
         }
     }
 }
@@ -305,7 +318,8 @@ pub struct RecordPdfToFetch {
     pub size_bytes: i64,
 }
 
-const RECORD_COLUMNS: &str = "id, account_id, dedup_key, kind, issuer, issuer_key, title, reference,
+const RECORD_COLUMNS: &str =
+    "id, account_id, dedup_key, kind, issuer, issuer_key, title, reference,
     amount_minor, currency, issued_at, span_start, span_end, place, delivered_at, return_by,
     warranty_until, valid_until, checked, group_id, origin, reason, thread_id, last_message_at,
     rules_version, dismissed_at, created_at, updated_at";
@@ -550,8 +564,10 @@ impl super::Store {
         tx.commit().await?;
         Ok(if inserted {
             RecordFiled::Inserted { id: record_id }
-        } else {
+        } else if changed {
             RecordFiled::Updated { id: record_id }
+        } else {
+            RecordFiled::Unchanged { id: record_id }
         })
     }
 
@@ -570,7 +586,7 @@ impl super::Store {
         &self,
         ids: &[String],
     ) -> Result<Vec<ArchiveRecord>, sqlx::Error> {
-                fetch_by_ids(
+        fetch_by_ids(
             self.reader(),
             &format!("SELECT {RECORD_COLUMNS} FROM records WHERE id IN ({{}})"),
             ids,
@@ -657,7 +673,7 @@ impl super::Store {
                 return Ok(Vec::new());
             }
             conditions.push(format!("account_id IN ({})", in_list(accounts.len())));
-            binds.extend(accounts.iter().map(|a| Bind::Text(a.as_str().to_string())));
+            binds.extend(accounts.iter().map(|a| Bind::Text(a.as_str())));
         }
         if !query.kinds.is_empty() {
             conditions.push(format!("kind IN ({})", in_list(query.kinds.len())));
@@ -1027,7 +1043,7 @@ impl super::Store {
         account_ids: Option<&[AccountId]>,
     ) -> Result<Vec<RecordGroup>, sqlx::Error> {
         let (filter, ids): (String, Vec<String>) = match account_ids {
-            Some(ids) if ids.is_empty() => return Ok(Vec::new()),
+            Some([]) => return Ok(Vec::new()),
             Some(ids) => (
                 format!("WHERE account_id IN ({})", in_list(ids.len())),
                 ids.iter().map(AccountId::as_str).collect(),
@@ -1070,10 +1086,12 @@ impl super::Store {
         now: DateTime<Utc>,
     ) -> Result<(), sqlx::Error> {
         let mut tx = self.writer().begin().await?;
-        sqlx::query("UPDATE records SET group_id = NULL WHERE account_id = ? AND group_id IS NOT NULL")
-            .bind(account_id.as_str())
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "UPDATE records SET group_id = NULL WHERE account_id = ? AND group_id IS NOT NULL",
+        )
+        .bind(account_id.as_str())
+        .execute(&mut *tx)
+        .await?;
         let mut kept = Vec::new();
         for (group, members) in groups {
             let id: String = sqlx::query_scalar(
@@ -1379,7 +1397,7 @@ impl super::Store {
         account_ids: Option<&[AccountId]>,
     ) -> Result<Vec<(String, i64)>, sqlx::Error> {
         let (filter, ids): (String, Vec<String>) = match account_ids {
-            Some(ids) if ids.is_empty() => return Ok(Vec::new()),
+            Some([]) => return Ok(Vec::new()),
             Some(ids) => (
                 format!("AND account_id IN ({})", in_list(ids.len())),
                 ids.iter().map(AccountId::as_str).collect(),

@@ -25,6 +25,7 @@ ALLOW = {
     "mxr-outbound": {"mxr-core"},
     "mxr-protocol": {"mxr-core"},
     "mxr-reader": set(),
+    "mxr-records": {"mxr-core", "mxr-reader", "mxr-store", "mxr-todo"},
     "mxr-relationship": {"mxr-core", "mxr-llm", "mxr-reader", "mxr-store"},
     "mxr-rules": {"mxr-core"},
     "mxr-safety": {"mxr-core", "mxr-reader", "mxr-relationship"},

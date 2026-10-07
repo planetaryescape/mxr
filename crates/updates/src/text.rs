@@ -106,7 +106,7 @@ pub fn link_domain(url: &str) -> Option<String> {
     if host.is_empty() {
         return None;
     }
-    Some(psl::domain_str(&host).map_or(host.clone(), str::to_string))
+    Some(psl::domain_str(&host).map_or_else(|| host.clone(), str::to_string))
 }
 
 #[cfg(test)]

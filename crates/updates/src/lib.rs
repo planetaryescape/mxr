@@ -1,3 +1,10 @@
+#![cfg_attr(
+    test,
+    expect(
+        clippy::unwrap_used,
+        reason = "unit tests unwrap to keep fixture failures direct"
+    )
+)]
 //! Updates as a briefing by source (blueprint 22, phase 4).
 //!
 //! Everything here is code, no model: a message becomes a source, a

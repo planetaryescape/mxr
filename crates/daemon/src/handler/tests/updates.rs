@@ -8,7 +8,7 @@ use super::desk::{request, Fixture, ME};
 use super::*;
 use crate::handler::updates::{self, LetGo};
 use chrono::{DateTime, Duration, FixedOffset, Utc};
-use mxr_core::id::{DeliveryId, ThreadId};
+use mxr_core::id::{DeliveryId, MessageId, ThreadId};
 use mxr_core::types::{Envelope, MessageDirection};
 use mxr_protocol::{
     RailStatusData, UpdateSectionData, UpdateSourceSettingData, UpdatesDigestData, UpdatesLetGoData,
@@ -195,9 +195,9 @@ async fn let_go_acts_on_exactly_the_previewed_cut() {
     let preview = let_go(&fx, now, None, true).await.unwrap();
     assert!(preview.dry_run);
     let mut previewed = preview.message_ids.clone();
-    previewed.sort_by_key(|id| id.as_str());
+    previewed.sort_by_key(MessageId::as_str);
     let mut expected = vec![in_cut.id.clone(), other.id.clone()];
-    expected.sort_by_key(|id| id.as_str());
+    expected.sort_by_key(MessageId::as_str);
     assert_eq!(previewed, expected);
     assert!(
         preview
@@ -285,7 +285,7 @@ async fn a_new_sign_in_breaks_through_once_and_shows_already_in_to_do() {
         .await
         .unwrap();
     assert_eq!(made, 1);
-    let again = updates::scan(&fx.state, &[alert.id.clone()], now)
+    let again = updates::scan(&fx.state, std::slice::from_ref(&alert.id), now)
         .await
         .unwrap();
     assert_eq!(again, 0, "claimed by its dedup key");

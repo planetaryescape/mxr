@@ -952,7 +952,7 @@ where
     };
     let since_count = since_scored.len();
     let (mut since_lines, _, _) = build_lines(since_scored, &since_ctx);
-    since_lines.sort_by(|a, b| b.latest_at.cmp(&a.latest_at));
+    since_lines.sort_by_key(|line| std::cmp::Reverse(line.latest_at));
     let since_sources: HashSet<(&AccountId, &str)> = since_lines
         .iter()
         .map(|line| (&line.account_id, line.source_key.as_str()))

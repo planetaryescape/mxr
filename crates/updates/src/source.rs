@@ -26,7 +26,7 @@ pub fn email_domain(email: &str) -> Option<String> {
     if host.is_empty() {
         return None;
     }
-    Some(psl::domain_str(&host).map_or(host.clone(), str::to_string))
+    Some(psl::domain_str(&host).map_or_else(|| host.clone(), str::to_string))
 }
 
 /// The stream a message belongs to.

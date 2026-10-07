@@ -17,7 +17,7 @@ use super::updates_digest::{self, DigestInputs, Scope};
 use super::{mode_done, HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Local, TimeZone, Utc};
-use mxr_core::id::{AccountId, MessageId};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::MessageFlags;
 use mxr_protocol::{
     ModeKindData, ResponseData, SenderKindData, UpdateSourceChangeData, UpdateSourceSettingData,
@@ -233,7 +233,7 @@ where
                 .filter(|d| &d.account_id == account)
                 .filter_map(|d| d.thread_id.clone()),
         );
-        threads.sort_unstable_by(|a, b| a.as_str().cmp(&b.as_str()));
+        threads.sort_unstable_by_key(ThreadId::as_str);
         threads.dedup();
         for chunk in threads.chunks(500) {
             todos.extend(state.store.open_todos_for_threads(account, chunk).await?);
@@ -600,6 +600,36 @@ pub(super) fn parse_setting(value: &str) -> Option<UpdateSourceSettingData> {
     UpdateSourceSettingData::parse(value)
 }
 
+/// Derive and cache the facts the digest will read: Updates' inbox mail
+/// and its senders' history. Returns whether it finished; a failure is
+/// logged and tried again on the next tick.
+pub(crate) async fn warm(state: &AppState) -> bool {
+    let started = std::time::Instant::now();
+    let result = async {
+        let accounts = scoped_accounts(state, None).await?;
+        let placed = placed_updates(state, &accounts).await?;
+        let placed = without_let_go(state, &accounts, placed).await?;
+        let items = items_for(state, placed, &Local).await?;
+        histories(state, &items, &Local).await?;
+        Ok::<usize, HandlerError>(items.len())
+    }
+    .await;
+    match result {
+        Ok(items) => {
+            tracing::info!(
+                items,
+                elapsed_ms = started.elapsed().as_secs_f64() * 1000.0,
+                "updates facts warmed"
+            );
+            true
+        }
+        Err(error) => {
+            tracing::warn!(%error, "could not warm updates facts");
+            false
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // On arrival
 // ---------------------------------------------------------------------------
@@ -746,7 +776,7 @@ async fn break_through(
 
 struct BreakthroughRow<'a> {
     account_id: &'a AccountId,
-    thread_id: Option<&'a mxr_core::id::ThreadId>,
+    thread_id: Option<&'a ThreadId>,
     message_id: Option<&'a MessageId>,
     date: DateTime<Utc>,
     title: &'a str,

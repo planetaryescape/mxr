@@ -364,11 +364,11 @@ mod tests {
             rules_version: 1,
         };
         store
-            .upsert_update_facts(&[row.clone()], now)
+            .upsert_update_facts(std::slice::from_ref(&row), now)
             .await
             .unwrap();
         let got = store
-            .update_facts_for(&[envelope.id.clone()])
+            .update_facts_for(std::slice::from_ref(&envelope.id))
             .await
             .unwrap();
         assert_eq!(
@@ -386,7 +386,7 @@ mod tests {
         assert_eq!(history.len(), 1);
 
         store
-            .delete_messages_and_derived(&account.id, &[envelope.provider_id.clone()])
+            .delete_messages_and_derived(&account.id, std::slice::from_ref(&envelope.provider_id))
             .await
             .unwrap();
         assert!(store

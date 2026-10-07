@@ -85,15 +85,18 @@ function message(text: string, extra: Partial<ConversationMessage> = {}): Conver
 
 describe("bands and the cursor", () => {
   test("bands keep the daemon's order and drop empty ones", () => {
-    const view = bands(
-      data({ your_turn: [row("samir")], quiet: [row("leo")], quiet_total: 12 }),
-    );
+    const view = bands(data({ your_turn: [row("samir")], quiet: [row("leo")], quiet_total: 12 }));
     expect(view.map((band) => band.band)).toEqual(["your_turn", "quiet"]);
     expect(view[1]?.more).toBe(11);
   });
 
   test("the cursor walks Your turn then Recent, and Quiet only when open", () => {
-    const d = data({ your_turn: [row("a")], pinned: [row("p")], recent: [row("b")], quiet: [row("c")] });
+    const d = data({
+      your_turn: [row("a")],
+      pinned: [row("p")],
+      recent: [row("b")],
+      quiet: [row("c")],
+    });
     expect(cursorRows(d, false).map((r) => r.id)).toEqual(["a", "b"]);
     expect(cursorRows(d, true).map((r) => r.id)).toEqual(["a", "b", "c"]);
   });
@@ -123,9 +126,9 @@ describe("labels", () => {
     expect(topicLabel(topic("t", { with: ["Ruth"], subject: "Pricing copy" }))).toBe(
       "with Ruth: Pricing copy",
     );
-    expect(topicStateLabel(topic("t", { state: "your_turn", last_at: "2026-10-01T23:00:00Z" }), NOW)).toBe(
-      "your turn · 16h",
-    );
+    expect(
+      topicStateLabel(topic("t", { state: "your_turn", last_at: "2026-10-01T23:00:00Z" }), NOW),
+    ).toBe("your turn · 16h");
   });
 
   test("[ and ] step through topics without wrapping", () => {
@@ -146,8 +149,11 @@ describe("labels", () => {
 
 describe("length decides the shape", () => {
   test("a letter leads with the paragraph holding the ask", () => {
-    const text = "Thanks for the draft.\n\nTwo things changed.\n\nCan you reply with the next step?";
-    const lead = letterLead(message(text, { ask_quote: "Can you reply with the next step?", paragraphs: 3 }));
+    const text =
+      "Thanks for the draft.\n\nTwo things changed.\n\nCan you reply with the next step?";
+    const lead = letterLead(
+      message(text, { ask_quote: "Can you reply with the next step?", paragraphs: 3 }),
+    );
     expect(lead).toEqual({ lead: "Can you reply with the next step?", hidden: 2 });
     expect(letterLead(message(text, { paragraphs: 3 })).lead).toBe("Thanks for the draft.");
   });

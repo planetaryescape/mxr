@@ -11,8 +11,7 @@ export const Route = createFileRoute("/messages")({
     person: optionalString(search.person),
     topic: optionalString(search.topic),
     // `lane=waiting` was Waiting on in the early version: it is turn=theirs.
-    turn:
-      optionalEnum(search.turn, TURNS) ?? (search.lane === "waiting" ? "theirs" : undefined),
+    turn: optionalEnum(search.turn, TURNS) ?? (search.lane === "waiting" ? "theirs" : undefined),
   }),
   component: Messages,
 });

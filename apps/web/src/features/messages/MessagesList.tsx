@@ -51,7 +51,10 @@ export function MessagesList({
       ) : null}
       {data.pinned.length > 0 ? (
         <section aria-labelledby="band-pinned" data-testid="band-pinned" className="mt-3">
-          <h2 id="band-pinned" className="px-5 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <h2
+            id="band-pinned"
+            className="px-5 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+          >
             Pinned
           </h2>
           <ul className="flex flex-wrap gap-2 px-4">
@@ -71,7 +74,10 @@ export function MessagesList({
                     {row.title.split(/\s+/)[0]}
                   </span>
                   {row.your_turn ? (
-                    <span aria-hidden className="absolute right-1 top-1 size-2 rounded-full bg-primary" />
+                    <span
+                      aria-hidden
+                      className="absolute right-1 top-1 size-2 rounded-full bg-primary"
+                    />
                   ) : null}
                 </button>
               </li>
@@ -105,19 +111,23 @@ export function MessagesList({
             aria-expanded={quietOpen}
             className="flex w-full items-center gap-1 px-5 py-1 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
           >
-            {quietOpen ? <ChevronDown className="size-3" aria-hidden /> : <ChevronRight className="size-3" aria-hidden />}
+            {quietOpen ? (
+              <ChevronDown className="size-3" aria-hidden />
+            ) : (
+              <ChevronRight className="size-3" aria-hidden />
+            )}
             Quiet ({data.quiet_total})
           </button>
           {quietOpen ? (
             <ul className="grid grid-cols-[minmax(0,1fr)]">
               {data.quiet.map((row) => (
                 <PersonRow
-              key={row.id}
-              row={row}
-              modes={modesOf(row)}
-              selected={row.id === selectedId}
-              onSelect={onSelect}
-            />
+                  key={row.id}
+                  row={row}
+                  modes={modesOf(row)}
+                  selected={row.id === selectedId}
+                  onSelect={onSelect}
+                />
               ))}
             </ul>
           ) : null}
@@ -140,7 +150,10 @@ function Band({
 }) {
   return (
     <section aria-labelledby={id} data-testid={testId} className="mt-1">
-      <h2 id={id} className="px-5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <h2
+        id={id}
+        className="px-5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+      >
         {title}
       </h2>
       <ul className="grid grid-cols-[minmax(0,1fr)]">{children}</ul>
@@ -190,20 +203,37 @@ function PersonRow({
         <Face title={row.title} group={row.kind === "group"} />
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
-            <span data-testid="row-title" className={cn("min-w-0 flex-1 truncate text-[13.5px]", row.your_turn ? "font-semibold" : "font-medium")}>
+            <span
+              data-testid="row-title"
+              className={cn(
+                "min-w-0 flex-1 truncate text-[13.5px]",
+                row.your_turn ? "font-semibold" : "font-medium",
+              )}
+            >
               {row.title}
             </span>
-            <span className="shrink-0 text-[12px] tabular-nums text-muted-foreground">{rowTime(row)}</span>
+            <span className="shrink-0 text-[12px] tabular-nums text-muted-foreground">
+              {rowTime(row)}
+            </span>
             {row.your_turn ? (
-              <span aria-label="Your turn" className="size-2 shrink-0 self-center rounded-full bg-primary" />
+              <span
+                aria-label="Your turn"
+                className="size-2 shrink-0 self-center rounded-full bg-primary"
+              />
             ) : null}
           </span>
-          {subject ? <span className="block truncate text-[12.5px] text-muted-foreground">{subject}</span> : null}
+          {subject ? (
+            <span className="block truncate text-[12.5px] text-muted-foreground">{subject}</span>
+          ) : null}
           {preview ? (
             <span
               data-testid="row-preview"
               data-kind={preview.kind}
-              title={preview.kind === "ask" && preview.model ? `The ask, from a summary by ${preview.model}` : undefined}
+              title={
+                preview.kind === "ask" && preview.model
+                  ? `The ask, from a summary by ${preview.model}`
+                  : undefined
+              }
               className="mt-0.5 line-clamp-2 text-[12.5px] text-muted-foreground"
             >
               {preview.kind === "ask" ? `“${preview.text}”` : preview.text}

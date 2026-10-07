@@ -60,9 +60,15 @@ export const messagesActions: Action[] = [
     shortLabel: "As sent",
     aliases: ["v"],
   }),
-  key("messages.send-next", "sendNext", "Send, then the next person whose turn it is", "Mod+Enter", {
-    shortLabel: "Send, next",
-  }),
+  key(
+    "messages.send-next",
+    "sendNext",
+    "Send, then the next person whose turn it is",
+    "Mod+Enter",
+    {
+      shortLabel: "Send, next",
+    },
+  ),
   key("messages.escape", "escape", "Close the note, or back to the people", "Escape", {
     hideInPalette: true,
   }),

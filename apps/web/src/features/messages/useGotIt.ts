@@ -41,27 +41,24 @@ export function useGotIt(onSent?: (plan: AckPlan) => void) {
     setPending(null);
   }, []);
 
-  const send = useCallback(
-    async (plan: AckPlan) => {
-      const registered = cancelRef.current;
-      if (registered) useUndo.getState().clearPendingSendCancel(registered);
-      cancelRef.current = null;
-      setPending(null);
-      try {
-        await ack(plan.thread_id, false, plan.text);
-        const to = plan.to[0]?.name ?? plan.to[0]?.email ?? "them";
-        toast.success(`Got it sent to ${to}.`);
-        onSentRef.current?.(plan);
-      } catch (error) {
-        toast.error("Couldn't send Got it", {
-          description: error instanceof Error ? error.message : String(error),
-        });
-      } finally {
-        await refreshMessages();
-      }
-    },
-    [],
-  );
+  const send = useCallback(async (plan: AckPlan) => {
+    const registered = cancelRef.current;
+    if (registered) useUndo.getState().clearPendingSendCancel(registered);
+    cancelRef.current = null;
+    setPending(null);
+    try {
+      await ack(plan.thread_id, false, plan.text);
+      const to = plan.to[0]?.name ?? plan.to[0]?.email ?? "them";
+      toast.success(`Got it sent to ${to}.`);
+      onSentRef.current?.(plan);
+    } catch (error) {
+      toast.error("Couldn't send Got it", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      await refreshMessages();
+    }
+  }, []);
 
   const start = useCallback(
     async (threadId: string) => {

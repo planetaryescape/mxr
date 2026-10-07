@@ -63,7 +63,10 @@ export function PersonPane(props: PersonPaneProps) {
           <h2 data-testid="person-name" className="min-w-0 truncate text-[17px] font-semibold">
             {row.title}
           </h2>
-          <p data-testid="person-header-line" className="ml-auto shrink-0 text-[12.5px] text-muted-foreground">
+          <p
+            data-testid="person-header-line"
+            className="ml-auto shrink-0 text-[12.5px] text-muted-foreground"
+          >
             {page.header_line}
           </p>
         </div>
@@ -95,7 +98,10 @@ export function PersonPane(props: PersonPaneProps) {
                 >
                   <span className="min-w-0 flex-1 truncate">
                     {topic.state === "your_turn" ? (
-                      <span aria-hidden className="mr-1.5 inline-block size-1.5 rounded-full bg-primary align-middle" />
+                      <span
+                        aria-hidden
+                        className="mr-1.5 inline-block size-1.5 rounded-full bg-primary align-middle"
+                      />
                     ) : null}
                     {topicLabel(topic)}
                   </span>
@@ -239,14 +245,21 @@ function MergeLine({ suggestion }: { suggestion: MergeSuggestion }) {
     }
   };
   return (
-    <p data-testid="merge-suggestion" className="mt-2 flex flex-wrap items-baseline gap-x-2 text-[12.5px] text-muted-foreground">
+    <p
+      data-testid="merge-suggestion"
+      className="mt-2 flex flex-wrap items-baseline gap-x-2 text-[12.5px] text-muted-foreground"
+    >
       <span>
         Same person? {suggestion.name} ({suggestion.addresses.length} addresses)
       </span>
       {preview ? (
         <>
           <span className="text-foreground">{preview}</span>
-          <button type="button" onClick={() => void run(false)} className="text-foreground underline">
+          <button
+            type="button"
+            onClick={() => void run(false)}
+            className="text-foreground underline"
+          >
             Merge
           </button>
           <button type="button" onClick={() => setPreview(null)} className="hover:text-foreground">

@@ -303,7 +303,11 @@ function MessagesBody({
     open: () => selectedId && select(selectedId, { open: true }),
     personPage: () => {
       setPageOpen(true);
-      document.querySelector<HTMLElement>('[data-testid="person-page"] [data-testid="topic"][aria-current="true"]')?.focus();
+      document
+        .querySelector<HTMLElement>(
+          '[data-testid="person-page"] [data-testid="topic"][aria-current="true"]',
+        )
+        ?.focus();
     },
     reply: () => openReply(replyAll),
     replyAll: () => openReply(true),
@@ -337,7 +341,11 @@ function MessagesBody({
     <div className="flex min-h-0 flex-1">
       <div
         ref={listRef}
-        className={pageOpen ? "hidden min-h-0 md:flex md:w-[22rem] md:shrink-0 md:flex-col md:border-r md:border-border" : "flex min-h-0 w-full flex-col md:w-[22rem] md:shrink-0 md:border-r md:border-border"}
+        className={
+          pageOpen
+            ? "hidden min-h-0 md:flex md:w-[22rem] md:shrink-0 md:flex-col md:border-r md:border-border"
+            : "flex min-h-0 w-full flex-col md:w-[22rem] md:shrink-0 md:border-r md:border-border"
+        }
       >
         <MessagesHeader guide={guide} turn={search.turn} />
         <div className="min-h-0 flex-1 overflow-y-auto pb-6">
@@ -346,7 +354,11 @@ function MessagesBody({
             <div data-testid="messages-empty" className="mx-5 mt-4">
               <p className="text-[14px] text-foreground">{data.empty_state}</p>
               {(data.lapsed ?? []).map((lapsed) => (
-                <p key={lapsed.person.id} data-testid="lapsed-line" className="mt-1 text-[13px] text-muted-foreground">
+                <p
+                  key={lapsed.person.id}
+                  data-testid="lapsed-line"
+                  className="mt-1 text-[13px] text-muted-foreground"
+                >
                   {lapsed.line}
                 </p>
               ))}
@@ -363,7 +375,11 @@ function MessagesBody({
           {guide ? <KeyLine guide={guide} /> : null}
         </div>
       </div>
-      <div className={pageOpen ? "flex min-h-0 min-w-0 flex-1" : "hidden min-h-0 min-w-0 flex-1 md:flex"}>
+      <div
+        className={
+          pageOpen ? "flex min-h-0 min-w-0 flex-1" : "hidden min-h-0 min-w-0 flex-1 md:flex"
+        }
+      >
         {page ? (
           <PersonPane
             page={page}
@@ -383,11 +399,19 @@ function MessagesBody({
             onTodo={() => void makeTodo()}
           />
         ) : person.isError ? (
-          <Centered icon={<RefreshCw className="size-6" />} title="Couldn't open this person" body={person.error.message} />
+          <Centered
+            icon={<RefreshCw className="size-6" />}
+            title="Couldn't open this person"
+            body={person.error.message}
+          />
         ) : selectedId ? (
           <div className="flex-1" aria-busy="true" />
         ) : (
-          <Centered icon={<ChevronRight className="size-6" />} title="Nobody here yet" body={guide?.never_had_any} />
+          <Centered
+            icon={<ChevronRight className="size-6" />}
+            title="Nobody here yet"
+            body={guide?.never_had_any}
+          />
         )}
       </div>
     </div>

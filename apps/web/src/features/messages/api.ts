@@ -45,9 +45,7 @@ export async function fetchMessages(
   account: string | null,
   turn: MessagesTurn | null,
 ): Promise<MessagesData> {
-  const answer = await apiFetch<ListResponse>(
-    `/api/v1/mail/people${query({ account, turn })}`,
-  );
+  const answer = await apiFetch<ListResponse>(`/api/v1/mail/people${query({ account, turn })}`);
   return answer.messages;
 }
 

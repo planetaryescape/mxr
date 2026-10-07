@@ -83,7 +83,9 @@ export function dayLabel(at: string, now: Date = new Date()): string {
 
 /** The time a row shows: how long your turn has waited, else when it moved. */
 export function rowTime(row: MessagesRow, now: Date = new Date()): string {
-  return row.your_turn && row.turn_since ? waitLabel(row.turn_since, now) : dayLabel(row.last_at, now);
+  return row.your_turn && row.turn_since
+    ? waitLabel(row.turn_since, now)
+    : dayLabel(row.last_at, now);
 }
 
 /** "AB" from "Ari Bell", "S" from "samir@…": the face in Pinned and rows. */

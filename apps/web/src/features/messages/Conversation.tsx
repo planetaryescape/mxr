@@ -85,7 +85,8 @@ function MessageItem({
       className={cn("flex flex-col", compact && mine ? "items-end" : "items-start")}
     >
       <p className="mb-1 text-[12px] text-muted-foreground">
-        <span className="font-medium text-foreground/90">{who(message)}</span> · {when(message.date)}
+        <span className="font-medium text-foreground/90">{who(message)}</span> ·{" "}
+        {when(message.date)}
       </p>
       {asSent ? (
         <AsSent threadId={threadId} messageId={message.message_id} />

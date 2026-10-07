@@ -24,7 +24,7 @@ use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::{Address, Envelope, MessageBody, MessageFlags, UnsubscribeMethod};
 
 /// Messages `updates_demo_messages` returns.
-pub(super) const UPDATES_DEMO_MESSAGE_COUNT: usize = 20;
+pub(super) const UPDATES_DEMO_MESSAGE_COUNT: usize = 18;
 
 fn thread(account_id: &AccountId, name: &str) -> ThreadId {
     ThreadId::from_scoped_provider_id(account_id, "fake", &format!("demo-updates-{name}"))
@@ -169,26 +169,6 @@ pub(super) fn updates_demo_messages(
                 before(24 * 6),
             )),
             "vercel-old",
-        ),
-        (
-            read(message(
-                google.clone(),
-                self_addr,
-                "Your Google Account storage summary",
-                "You're using 41% of your 100 GB of Google Account storage.",
-                before(24 * 20),
-            )),
-            "google-prior",
-        ),
-        (
-            read(message(
-                stripe.clone(),
-                self_addr,
-                "Payout of R 3,980.00 is on its way",
-                "Your payout of R 3,980.00 to your bank account ending 4417 is on its way.",
-                before(24 * 14),
-            )),
-            "stripe-prior",
         ),
         (
             message(

@@ -6,6 +6,12 @@
 //!   Messages leaves the to-do open and the email in the inbox.
 //! * Noor Haddad writes for the first time: her row on Now asks once
 //!   where her mail belongs (D117).
+//! * Sam's lettings newsletter carries List-Unsubscribe, but it is
+//!   addressed to you by someone you've written to, so it reaches Messages
+//!   (D119's never-bury rule).
+//! * Sam copies you on a note to the boiler engineer: he's someone you
+//!   write to, but you were only copied, so the rules disagree and Now asks
+//!   where it goes ("Not sure").
 
 use super::{build_demo_msg, DemoMessage};
 use chrono::{DateTime, Duration, Utc};
@@ -13,7 +19,7 @@ use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::{Address, Envelope, MessageBody, MessageFlags, UnsubscribeMethod};
 
 /// Messages `modes_demo_messages` returns.
-pub(super) const MODES_DEMO_MESSAGE_COUNT: usize = 3;
+pub(super) const MODES_DEMO_MESSAGE_COUNT: usize = 5;
 
 fn thread(account_id: &AccountId, name: &str) -> ThreadId {
     ThreadId::from_scoped_provider_id(account_id, "fake", &format!("demo-modes-{name}"))
@@ -84,7 +90,7 @@ pub(super) fn modes_demo_messages(
 
     push(
         message(
-            sam,
+            sam.clone(),
             self_addr.clone(),
             "Re: Lease renewal",
             format!(
@@ -105,6 +111,31 @@ pub(super) fn modes_demo_messages(
         ),
         &thread(account_id, "noor"),
     );
+
+    let mut newsletter = message(
+        sam.clone(),
+        self_addr.clone(),
+        "Okafor Lettings: tenant news for October",
+        "Hi Alex,\n\nThis month: the bins move to Tuesdays, and the hallway carpets are cleaned on the 20th.\n\nSam".to_string(),
+        now - Duration::minutes(40),
+    );
+    newsletter.unsubscribe = UnsubscribeMethod::OneClick {
+        url: "https://okafor-lettings.example/unsubscribe".to_string(),
+    };
+    push(newsletter, &thread(account_id, "lettings-news"));
+
+    let mut copied = message(
+        sam,
+        Address {
+            name: Some("HeatRight Boilers".to_string()),
+            email: "visits@heatright.example".to_string(),
+        },
+        "Boiler service at the flat",
+        "Hi,\n\nThursday morning works for the service. Alex is copied so they know you're coming.\n\nSam".to_string(),
+        now - Duration::minutes(20),
+    );
+    copied.cc = vec![self_addr.clone()];
+    push(copied, &thread(account_id, "boiler"));
 
     built
 }

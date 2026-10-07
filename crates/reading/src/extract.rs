@@ -611,7 +611,7 @@ fn classify(walked: Walked, headline: String, subject: &str) -> Extraction {
             continue;
         }
         let title_words = word_count(&anchor.text);
-        if title_words < 2 || title_words > 30 || (title_words < 3 && !anchor.in_heading) {
+        if !(2..=30).contains(&title_words) || (title_words < 3 && !anchor.in_heading) {
             continue;
         }
         let paragraph = &paragraphs[anchor.paragraph];

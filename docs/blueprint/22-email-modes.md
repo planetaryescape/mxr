@@ -10,7 +10,7 @@ runway, Updates shows a briefing by source, Reading shows readable items,
 and Archive shows records. None of them shows a list of subject lines.
 
 Code references are at `3da0c119` (v0.6.47) unless marked. Settled choices
-are D107 to D118 in [15-decision-log.md](15-decision-log.md); D112 amends
+are D107 to D119 in [15-decision-log.md](15-decision-log.md); D112 amends
 D110's digest cadence. Rubric v3 in `docs/web-app-experience-rubric.md`
 grades the work.
 
@@ -28,7 +28,9 @@ email in many modes, handoff, navigation, archive on last done, Screener),
 [relevance-and-backfill.md](../research/email-modes/relevance-and-backfill.md)
 (relevancy windows and the first run),
 [teaching-in-place.md](../research/email-modes/teaching-in-place.md)
-(teaching the model without a tour)
+(teaching the model without a tour),
+[trust-and-completeness.md](../research/email-modes/trust-and-completeness.md)
+(showing that sorting hid nothing)
 and [chatgpt-sign-in.md](../research/chatgpt-sign-in.md) (the cloud
 credential). Where a note and this plan disagree, this plan wins and says
 why below.
@@ -259,6 +261,226 @@ for the smart tier and GPT-6.1 Sol (GPT-6 Astra available in config) for
   link is deferred until a design survives review:
   [one-click-pay-link.md](../issues/one-click-pay-link.md).
 - **Badges count work only:** Now, and To do's Now band.
+
+## Sorting shows its work, so nothing feels hidden
+
+BK, 2026-10-07: "since it reorders emails, I'm always thinking: am I
+missing some important email? So from time to time I find myself jumping
+to the inbox tab just to see emails in order of arrival." In Inbox he
+reads nothing: he checks that the newest message arrived a few minutes
+ago. The research is
+[trust-and-completeness.md](../research/email-modes/trust-and-completeness.md);
+settled as D119.
+
+Every sorting inbox drew this fear. After one miss in Gmail's Promotions
+tab a user checks it "regularly and meticulously"; Priority Inbox users
+kept sweeping "Everything else"; people check spam folders where Gmail
+puts wanted mail under 0.05% of the time. What helped was showing where
+mail went and letting people fix it there (Outlook's notice of mail sent
+to Other, SaneBox's digest), and duplicating rather than hiding the mail
+that matters (Apple Mail copies time-sensitive mail into Primary). Lee
+and See (2004) call this designing for appropriate trust: show the
+automation's purpose, process and past performance.
+
+BK's check is a reasonable one, and mxr should answer it where the user
+already is. Three signals, in this order, each one step deeper than the
+last:
+
+1. **Mail is arriving.** The status bar on every page: "Latest mail 5m ago
+   · synced 30s ago", a warning when sync fails, and a popover of the last
+   five arrivals with the mode each went to (`GetFreshness`, being built
+   on `feat/freshness-indicator`). This is the check BK makes in Inbox
+   today.
+2. **Every arrival is accounted for.** One line on Now whose counts sum to
+   what arrived, each count opening those emails in arrival order.
+3. **Some mail is never sorted away.** Four rules, stated in the app, that
+   no other rule or model overrides.
+
+Inbox mode chips, the "Not sure" line and the track record support these
+three and are not separate places to look.
+
+### The arrivals line on Now sums to what arrived
+
+```text
+Since 08:12, 50 emails arrived: 8 Messages, 10 Updates, 31 Reading,
+1 in Spam. 2 also in To do, 1 in Archive.
+```
+
+- **Window.** Since the user last opened Now (`mode_views`), with the
+  start of the day as the floor and 24 hours as the ceiling. The time
+  shown is a clock time, never "since your last visit".
+- **Unit.** Emails, not threads or people. On BK's mail the last seven
+  days had 435 live arrivals in 423 threads and no thread split across
+  two base modes, so counting emails loses nothing and matches the
+  freshness popover.
+- **Each count is a link** to Inbox filtered to that mode and window,
+  newest first, with exactly that many rows. The proof that nothing is
+  hidden is one click from the claim, and it is the arrival-order view
+  BK goes to Inbox for.
+- **Placement is stored when mail arrives.** Membership stays computed
+  (D097), but it reads today's inbox, so archived mail falls out of every
+  mode: 242 of BK's 435 arrivals in seven days had left the inbox. Sync
+  writes one `arrivals` row per inbound message (account, message, first
+  seen at, mode, rule, `now_mode` after a correction). The ledger, the
+  freshness popover and the track record read it. Arrivals use first-seen
+  time, never the `Date:` header (five messages in BK's store are dated
+  more than a day ahead).
+- **Quiet.** One muted line under Now's headline, no badge, no colour, no
+  animation. A count of zero is left out. When the window has had no
+  mail, the line reads "Nothing new since 08:12. Latest mail 2h ago."
+
+### The arrivals reconciliation rule
+
+For a window W, every inbound message first seen in W is counted exactly
+once:
+
+```text
+arrived(W) = messages + updates + reading + screened_out + spam + sorting
+also(W)    = to_do + archive        -- shown, never added
+```
+
+- **Primary mode** comes from the sender rules and the thread shape:
+  Person to Messages, Person in a copied or crowd thread to Updates, List
+  to Reading, Automated to Updates. A never-bury rule (below) can raise
+  it, never lower it.
+- **No base mode.** Delivery mail counts in Updates, where trackers
+  live, with Archive as an "also" once a record is filed; an invite counts in To do when it made an RSVP row, else
+  Updates; a screened-out sender counts as "screened out"; provider spam
+  as "in Spam". Measured on BK's mail: 21 delivery emails in seven days,
+  each also with an Archive record. Today's membership code puts them in
+  no mode.
+- **Snoozed** mail counts in its mode. Mail a provider filter archived on
+  arrival counts in its mode too.
+- **Sorting.** An email the rules haven't reached yet is "2 still
+  sorting". When this stays above zero for more than one sync, the
+  freshness line shows it, because it means the pipeline is stuck.
+- **A failure is visible, not smoothed.** If the parts ever fail to sum,
+  the line shows the difference ("1 not placed, open it") and `mxr modes
+  arrivals --format json` reports it, rather than rounding to a tidy
+  total.
+- To do and Archive are aspects: "2 also in To do" names them without
+  double counting.
+
+Measured, counts only: the last 24 hours had 50 arrivals: 1 in Spam, 8
+Messages, 10 Updates, 31 Reading; 2 also in To do and 1 in Archive. Seven days
+had 461: 26 in Spam, 54 Messages, 236 Updates (21 of them deliveries),
+145 Reading, 22 also in To do and 37 also in Archive. Both sum.
+
+### Four kinds of mail are never sorted away
+
+The rules are shown under the arrivals line's `?` and in `mxr modes
+explain`, in these words:
+
+> People you've written to always reach Messages. Sign-in alerts and
+> failed payments always reach Now. Anything with a due date reaches To
+> do.
+
+| Rule | What it overrides | Where it goes | Measured, BK, 7 days |
+|---|---|---|---:|
+| N1. From an address you've written to, with you in To or Bcc | List-Unsubscribe, List-Id, list-sender and no-reply rules | Messages | 21 arrivals; 3 had gone to Reading |
+| N2. A security alert: new sign-in, password or two-step change, account recovery | Updates' batching | Now's Updates card, as a line that stays until opened | 12 by subject (an upper bound); all in Updates, none in To do |
+| N3. A failed payment | Updates | To do, surfacing at once (`payment_failed`, `crates/todo/src/detect.rs`) | 2 by subject or to-do; both already to-dos |
+| N4. A dated deadline | Reading and Updates | To do on its runway | 13 by subject or due date; 6 already to-dos |
+
+- Only the user's own sender decision (`K`) overrides N1. A first-time
+  sender is not covered and keeps the new-sender question.
+- N1 does not cover threads you were only copied on. Those go to Updates
+  and onto the "Not sure" line (4 in seven days).
+- N2 to N4 still obey relevancy windows (D115): a sign-in alert leaves
+  Now after two days, and a one-time code or verify link is never an N2
+  line. Reach is guaranteed; staleness rules still apply.
+- Now's cap of three per section still holds. An N-rule item beyond the
+  cap is named in the "and 2 more" line, never dropped.
+- N2 needs a detector that doesn't exist yet. Until it ships, the "?"
+  copy names only the rules that are true in code.
+
+### Inbox shows where each email went
+
+Inbox stays the everything view in arrival order. Each row gains the mode
+name as quiet text beside the time ("Reading", "Updates"), and focus or
+hover adds the reason: "Reading · has List-Unsubscribe", "Updates ·
+no-reply sender". `K` changes the sender's mode from the row, and `X`
+moves just this email. The chip uses the stored arrival placement, so an
+archived email still says where it went. A row in no mode says so in
+words: "In Spam" or "Screened out".
+
+The rules behind BK's last seven days, as reasons: no-reply sender 187,
+has List-Unsubscribe 134, from a person 58, automated sender 23, delivery
+21, newsletter domain 11, automated domain 1.
+
+### Uncertain placements are rule conflicts, and Now asks about at most three
+
+No placement carries a confidence score: every rule is deterministic, and
+the model tier (phase 7) is not built. A placement is uncertain when two
+signals disagree:
+
+| Conflict | Example | Now shows it as |
+|---|---|---|
+| U1. Someone you've written to, only copied | A colleague copied you on a thread you never wrote in | "Not sure" |
+| U2. The fast-tier model disagrees with the rule (phase 7) | Rules say Reading, the model says it asks you something | "Not sure" |
+| U3. First-time person | Already the new-sender question (D104) | not duplicated |
+
+High-volume rules are not uncertain by definition. No-reply without list
+headers (187 a week) and List-Unsubscribe alone (134) are ordinary mail,
+and asking about them would make the line noise. A model's stated
+confidence is not used as a threshold (see "Each model task gets the tool
+that fits it"); disagreement is.
+
+```text
+Not sure: Maya Ortiz copied you on "Q4 plan". Updates for now.  m Messages · e fine
+```
+
+At most three a day on Now; the rest stay in their mode with a "not sure"
+mark. When one conflict type produces more than one a day for a week, the
+rule is changed rather than asking more.
+
+### The track record waits for corrections to be counted
+
+"Last week mxr sorted 435. You moved 2, both to Messages." This reassures
+only if the second number can be non-zero. Today it can't: there is no
+per-email correction, `screener_decisions` overwrites without the earlier
+value, To do and mode requests are not in the activity log, and BK's
+store has 0 sender decisions and 0 dismissed to-dos. It ships after `X`
+and the `arrivals.now_mode` column, as one line in the arrivals line's
+drill-down and on Monday's Now, never as a badge. It counts moves, not
+misses the user never noticed, and says so in `?`: "Counts the emails you
+moved. Mail you never opened isn't checked."
+
+### Clear means accounted for, not seen
+
+When Now is clear, the line merges into the end state: "Clear. All 50
+emails since 08:12 are accounted for." It never says "you've seen
+everything": the 31 Reading emails were sorted, not read.
+
+### Copy
+
+| Surface | Copy |
+|---|---|
+| Arrivals line | "Since 08:12, 50 emails arrived: 8 Messages, 10 Updates, 31 Reading, 1 in Spam. 2 also in To do, 1 in Archive." |
+| Nothing new | "Nothing new since 08:12. Latest mail 2h ago." |
+| Still sorting | "2 still sorting." |
+| Not summing | "1 not placed. Open it." |
+| Clear | "Clear. All 50 emails since 08:12 are accounted for." |
+| Never-bury, in `?` | "People you've written to always reach Messages. Sign-in alerts and failed payments always reach Now. Anything with a due date reaches To do." |
+| Inbox chip | "Reading · has List-Unsubscribe" |
+| Not sure | "Not sure: Maya Ortiz copied you on "Q4 plan". Updates for now." |
+| Track record | "Last week mxr sorted 435. You moved 2, both to Messages." |
+| Track record, in `?` | "Counts the emails you moved. Mail you never opened isn't checked." |
+
+### Rubric v3 X14
+
+**Sorting shows its work.** Now's arrivals line sums to every inbound
+email first seen in its window, each count opens exactly that many emails
+in arrival order, and To do and Archive are shown as "also", never added.
+Every Inbox row names its mode, including archived mail. The four
+never-bury rules hold, and the "?" copy names only rules that exist in
+code. "Not sure" shows at most three a day. Checked by a property test
+over generated arrivals (the sum, and each count against its list), N-rule
+tests in `handler/tests/modes.rs`, and on BK's mail, counts only: the
+24-hour and 7-day sums, N-rule hits, and "Not sure" per day for a week,
+recorded in the rubric. The outcome check is BK's: in `docs/dogfooding-log.md`
+he notes each time he opens Inbox to check for missing mail, and that
+count falls over two weeks.
 
 ## Now shows at most ten things in four fixed sections
 

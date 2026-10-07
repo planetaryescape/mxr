@@ -182,3 +182,11 @@ fn a_mobile_footer_is_a_signature() {
     assert_eq!(out.text, "On my way.");
     assert!(out.trimmed.signature);
 }
+
+#[test]
+fn text_with_nothing_removed_keeps_its_own_spacing() {
+    let text = "Line one   \n\n\n\nLine two\n  indented";
+    let out = new_text(Some(text), None, &[]);
+    assert!(!out.trimmed.any());
+    assert_eq!(out.text, text);
+}

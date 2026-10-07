@@ -156,6 +156,15 @@ pub fn new_text(
             only_quoted: true,
         };
     }
+    if !trimmed.any() {
+        // Nothing was removed, so nothing is altered: the text keeps its
+        // own spacing (only the blank edges go).
+        return NewText {
+            text: raw.trim_matches(|c: char| c == '\n' || c == '\r').trim_end().to_string(),
+            trimmed,
+            only_quoted: false,
+        };
+    }
     NewText {
         text: body,
         trimmed,

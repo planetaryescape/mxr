@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.53"
+    "version": "0.6.57"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -859,6 +859,50 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/freshness": {
+      "get": {
+        "tags": [],
+        "summary": "Freshness: the newest mail received, each account's sync health and the last arrivals with their modes",
+        "operationId": "mail_freshness",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account: the freshest mail and the worst sync state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Arrivals to return; default 5, at most 50",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `Freshness` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -4374,6 +4418,67 @@
           "runtime_only"
         ]
       },
+      "AccountFreshnessData": {
+        "type": "object",
+        "description": "One account's freshness.",
+        "required": [
+          "account_id",
+          "account_name",
+          "label",
+          "health"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "account_name": {
+            "type": "string"
+          },
+          "health": {
+            "$ref": "#/components/schemas/SyncHealthData",
+            "description": "As of `generated_at`. A client ticking forward turns `ok` into\n`stale` itself (`effective_health`)."
+          },
+          "label": {
+            "type": "string",
+            "description": "How the account is named in a warning: \"Gmail\" or \"Outlook\" when it\nis the only account, else the account's own name, so two Gmail\naccounts never read the same."
+          },
+          "last_sync_attempt_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_sync_error": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SyncErrorData"
+              }
+            ]
+          },
+          "last_sync_ok_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "newest_message_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The newest message received in any mailbox, whatever its mode."
+          },
+          "sync_in_progress": {
+            "type": "boolean"
+          }
+        }
+      },
       "AccountId": {
         "type": "string",
         "format": "uuid"
@@ -5227,7 +5332,7 @@
           },
           "key": {
             "type": "string",
-            "description": "Group key \u2014 depends on `group_by`: action token, ISO date, source,\ntarget kind, or hour-of-day string `00`..`23`."
+            "description": "Group key — depends on `group_by`: action token, ISO date, source,\ntarget kind, or hour-of-day string `00`..`23`."
           }
         }
       },
@@ -5426,6 +5531,52 @@
           },
           "requested_mode": {
             "$ref": "#/components/schemas/ArchiveAskMode"
+          }
+        }
+      },
+      "ArrivalData": {
+        "type": "object",
+        "description": "One message that arrived, with the modes its conversation went to.",
+        "required": [
+          "account_id",
+          "message_id",
+          "thread_id",
+          "from",
+          "subject",
+          "received_at",
+          "in_inbox",
+          "modes"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "from": {
+            "$ref": "#/components/schemas/Address"
+          },
+          "in_inbox": {
+            "type": "boolean",
+            "description": "The message is in the provider's inbox."
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "modes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModeMembershipData"
+            },
+            "description": "The mode its sender's rule sent it to (the sender decision, list\nheaders, the address), with its one-word `tag`. Empty when it\narrived out of the inbox or from someone screened out."
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
           }
         }
       },
@@ -5855,7 +6006,7 @@
           },
           "is_update": {
             "type": "boolean",
-            "description": "Derived: true when the daemon has seen a prior REQUEST with the same\nUID and a lower SEQUENCE \u2014 i.e. this is a rescheduled / amended\ninvite."
+            "description": "Derived: true when the daemon has seen a prior REQUEST with the same\nUID and a lower SEQUENCE — i.e. this is a rescheduled / amended\ninvite."
           },
           "location": {
             "type": [
@@ -6043,7 +6194,7 @@
       },
       "ClientKind": {
         "type": "string",
-        "description": "Originating client for an IPC request. Carried on the envelope so the\ndaemon's activity recorder can tag rows with the surface that produced\nthem. Legacy clients (pre-source-field) decode as `Cli` \u2014 the most\nrealistic guess for scripts hand-rolled against the socket.",
+        "description": "Originating client for an IPC request. Carried on the envelope so the\ndaemon's activity recorder can tag rows with the surface that produced\nthem. Legacy clients (pre-source-field) decode as `Cli` — the most\nrealistic guess for scripts hand-rolled against the socket.",
         "enum": [
           "human",
           "tui",
@@ -6146,7 +6297,7 @@
         "properties": {
           "label": {
             "type": "string",
-            "description": "\"Reply to Samir \u00b7 Contract renewal\"."
+            "description": "\"Reply to Samir · Contract renewal\"."
           },
           "reply_all": {
             "type": "boolean",
@@ -6811,7 +6962,7 @@
           },
           {
             "type": "object",
-            "description": "This client's event stream lagged and the daemon dropped\n`skipped` broadcast events before it could deliver them (the\nper-client channel filled during a burst, e.g. a large bulk\nmutation or initial backfill). The client's cached views may now\nbe stale, so it should do a full resync. Sent point-to-point to\nthe affected client only \u2014 never broadcast.",
+            "description": "This client's event stream lagged and the daemon dropped\n`skipped` broadcast events before it could deliver them (the\nper-client channel filled during a burst, e.g. a large bulk\nmutation or initial backfill). The client's cached views may now\nbe stale, so it should do a full resync. Sent point-to-point to\nthe affected client only — never broadcast.",
             "required": [
               "skipped",
               "event"
@@ -8224,7 +8375,7 @@
           "placeholders": {
             "type": "integer",
             "format": "int32",
-            "description": "`[[?: \u2026]]` gaps the model left for the user.",
+            "description": "`[[?: …]]` gaps the model left for the user.",
             "minimum": 0
           },
           "reply_message_id": {
@@ -8976,7 +9127,7 @@
           },
           "search": {
             "$ref": "#/components/schemas/FeatureHealth",
-            "description": "Lexical (tantivy) search. `Degraded` once the index worker has stopped:\nsearch stays dead for the rest of the daemon's life, and nothing else\nreports it. Defaulted so a daemon older than this field still\ndeserializes \u2014 such a daemon had no way to report the failure, which is\nindistinguishable from healthy on the wire."
+            "description": "Lexical (tantivy) search. `Degraded` once the index worker has stopped:\nsearch stays dead for the rest of the daemon's life, and nothing else\nreports it. Defaulted so a daemon older than this field still\ndeserializes — such a daemon had no way to report the failure, which is\nindistinguishable from healthy on the wire."
           },
           "semantic": {
             "$ref": "#/components/schemas/FeatureHealth"
@@ -9010,6 +9161,60 @@
           },
           "subject": {
             "type": "string"
+          }
+        }
+      },
+      "FreshnessData": {
+        "type": "object",
+        "description": "Returned by `Request::GetFreshness`.",
+        "required": [
+          "generated_at",
+          "stale_after_secs",
+          "accounts",
+          "arrivals"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountFreshnessData"
+            }
+          },
+          "arrivals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArrivalData"
+            },
+            "description": "Newest first."
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "newest_message_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The newest message received in scope, any mailbox, any mode."
+          },
+          "stale_after_secs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "An account whose last good sync is older than this is stale.",
+            "minimum": 0
+          },
+          "worst_account_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AccountId",
+                "description": "The account in the worst sync state: the one the scope's line is\nabout."
+              }
+            ]
           }
         }
       },
@@ -9368,7 +9573,7 @@
               },
               {
                 "$ref": "#/components/schemas/Role",
-                "description": "Well-known semantic role this label/folder plays in the provider's\nmailbox model (Inbox, Sent, Drafts, \u2026). Derived from IMAP SPECIAL-USE\nattributes (RFC 6154) or Gmail system labels at mapping time, and\nsurfaced to clients so they can render the right icon/affordance\nwithout re-parsing names. `None` for user-defined labels/folders.\nMatches MSP \u00a72.3 Folder.role."
+                "description": "Well-known semantic role this label/folder plays in the provider's\nmailbox model (Inbox, Sent, Drafts, …). Derived from IMAP SPECIAL-USE\nattributes (RFC 6154) or Gmail system labels at mapping time, and\nsurfaced to clients so they can render the right icon/affordance\nwithout re-parsing names. `None` for user-defined labels/folders.\nMatches MSP §2.3 Folder.role."
               }
             ]
           },
@@ -10623,7 +10828,7 @@
         "properties": {
           "also_in": {
             "type": "string",
-            "description": "The line other modes show: \"Also in To do: Sign the lease, act by\nMon 13 Oct \u00b7 due Wed 15 Oct\"."
+            "description": "The line other modes show: \"Also in To do: Sign the lease, act by\nMon 13 Oct · due Wed 15 Oct\"."
           },
           "early": {
             "type": "boolean",
@@ -10643,6 +10848,13 @@
           "reason": {
             "type": "string",
             "description": "\"Here because: Sam wrote to you and you've written to them (rule).\""
+          },
+          "tag": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The reason in one word, for a one-line arrival: \"person\",\n\"automated\", \"newsletter\", \"copied\", \"task\", \"record\"."
           },
           "todo_ids": {
             "type": "array",
@@ -11378,7 +11590,7 @@
           },
           "why": {
             "type": "string",
-            "description": "\"From To do: act by Wed 7 Oct \u00b7 due Fri 9 Oct.\""
+            "description": "\"From To do: act by Wed 7 Oct · due Fri 9 Oct.\""
           }
         }
       },
@@ -11594,7 +11806,7 @@
           },
           "header_line": {
             "type": "string",
-            "description": "\"close \u00b7 usually 47m\"."
+            "description": "\"close · usually 47m\"."
           },
           "merge_suggestions": {
             "type": "array",
@@ -12052,7 +12264,7 @@
           },
           "display": {
             "type": "string",
-            "description": "\"\u00a31,249.00\"."
+            "description": "\"£1,249.00\"."
           },
           "minor": {
             "type": "integer",
@@ -12240,7 +12452,7 @@
               "string",
               "null"
             ],
-            "description": "\"Return by 2 Apr (passed) \u00b7 Warranty to 3 Mar 2027\"."
+            "description": "\"Return by 2 Apr (passed) · Warranty to 3 Mar 2027\"."
           },
           "dismissed": {
             "type": "boolean"
@@ -12378,7 +12590,7 @@
               "string",
               "null"
             ],
-            "description": "An order's stages in one line: \"ordered \u00b7 shipped \u00b7 delivered 7 Mar\"."
+            "description": "An order's stages in one line: \"ordered · shipped · delivered 7 Mar\"."
           },
           "thread_id": {
             "oneOf": [
@@ -12490,7 +12702,7 @@
         "oneOf": [
           {
             "type": "object",
-            "description": "Your value for a field: text, an amount (\"\u00a312.50\", \"12.50 EUR\") or a\ndate (\"3 March 2025\", \"2025-03-03\"). It wins over every extracted\nvalue, now and on every re-run.",
+            "description": "Your value for a field: text, an amount (\"£12.50\", \"12.50 EUR\") or a\ndate (\"3 March 2025\", \"2025-03-03\"). It wins over every extracted\nvalue, now and on every re-run.",
             "required": [
               "field",
               "value",
@@ -12654,7 +12866,7 @@
           },
           "summary": {
             "type": "string",
-            "description": "\"142 records, \u00a318,204.11 and \u20ac612.00. 9 have an unchecked amount or\ndate; 31 have no PDF.\""
+            "description": "\"142 records, £18,204.11 and €612.00. 9 have an unchecked amount or\ndate; 31 have no PDF.\""
           },
           "totals": {
             "type": "array",
@@ -12849,7 +13061,7 @@
           },
           "value": {
             "type": "string",
-            "description": "As shown: \"\u00a31,249.00\", \"3 Mar 2025\", \"K7QX2M\"."
+            "description": "As shown: \"£1,249.00\", \"3 Mar 2025\", \"K7QX2M\"."
           }
         }
       },
@@ -13175,7 +13387,7 @@
           },
           "label": {
             "type": "string",
-            "description": "\"Lisbon, June 2025 \u00b7 in 3 days\", \"Return XPS 14 laptop by Wed\"."
+            "description": "\"Lisbon, June 2025 · in 3 days\", \"Return XPS 14 laptop by Wed\"."
           },
           "record_id": {
             "type": "string"
@@ -13199,7 +13411,7 @@
           },
           "label": {
             "type": "string",
-            "description": "\"2025 \u00b7 March\"."
+            "description": "\"2025 · March\"."
           },
           "month": {
             "type": "string",
@@ -13719,7 +13931,7 @@
           },
           {
             "type": "object",
-            "description": "Build (without sending) the iCal REPLY for an invite \u2014 used by the\n\"respond with comment\" compose path so the SPA / TUI receive the same\n`CalendarInviteResponsePreview` the auto-send path uses internally.",
+            "description": "Build (without sending) the iCal REPLY for an invite — used by the\n\"respond with comment\" compose path so the SPA / TUI receive the same\n`CalendarInviteResponsePreview` the auto-send path uses internally.",
             "required": [
               "message_id",
               "action",
@@ -15642,6 +15854,40 @@
           },
           {
             "type": "object",
+            "description": "Is the local copy current: the newest message received in any\nmailbox, each account's sync health (last good sync, last error\nwith its kind and retry time) and the last `limit` arrivals with\nthe modes they went to. Omit `account_id` for every account: the\nfreshest mail and the worst sync state. Local reads only. Returns\n`ResponseData::Freshness`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetFreshness"
+                ]
+              },
+              "limit": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "Arrivals to return: default 5, at most 50.",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "message_id",
               "flags",
@@ -16025,7 +16271,7 @@
           },
           {
             "type": "object",
-            "description": "Toggle the reply-later flag on a message. Local-only metadata \u2014\nnever roundtrips to the provider. Setting a flag that is already\nset refreshes the timestamp, surfacing the message to the top of\nthe queue.",
+            "description": "Toggle the reply-later flag on a message. Local-only metadata —\nnever roundtrips to the provider. Setting a flag that is already\nset refreshes the timestamp, surfacing the message to the top of\nthe queue.",
             "required": [
               "message_id",
               "flag",
@@ -16962,7 +17208,7 @@
           },
           {
             "type": "object",
-            "description": "Generate an LLM draft \u2014 a new message, a reply from compose, or a\nreply from the reader \u2014 grounded on the conversation (when any) plus\nthe recipient relationship/voice profile. The tone and length are\ninferred from how the user writes to this person unless `register` /\n`length_hint` override them. The result is never auto-sent.\n\nModes (resolved by the daemon):\n- `thread_id` set \u2192 reply to that thread.\n- `source_message_id` set \u2192 reply to the thread containing it.\n- neither \u2192 a brand-new message (requires `to`).\n\n`account_id` is required for a new message and derived from the thread\notherwise.",
+            "description": "Generate an LLM draft — a new message, a reply from compose, or a\nreply from the reader — grounded on the conversation (when any) plus\nthe recipient relationship/voice profile. The tone and length are\ninferred from how the user writes to this person unless `register` /\n`length_hint` override them. The result is never auto-sent.\n\nModes (resolved by the daemon):\n- `thread_id` set → reply to that thread.\n- `source_message_id` set → reply to the thread containing it.\n- neither → a brand-new message (requires `to`).\n\n`account_id` is required for a new message and derived from the thread\notherwise.",
             "required": [
               "instruction",
               "cmd"
@@ -17537,7 +17783,7 @@
           },
           {
             "type": "object",
-            "description": "Fetch a single decision-log row by id. Returns\n`ResponseData::DecisionDetail` with `Option<DecisionLogEntryData>`\n\u2014 `None` means the id is unknown (not an error).",
+            "description": "Fetch a single decision-log row by id. Returns\n`ResponseData::DecisionDetail` with `Option<DecisionLogEntryData>`\n— `None` means the id is unknown (not an error).",
             "required": [
               "id",
               "cmd"
@@ -17883,7 +18129,7 @@
           },
           {
             "type": "object",
-            "description": "In-band authentication handshake for token-bearing transports\n(phase 5, transport adapters). Raw framed IPC carries no headers, so a\ntransport with no implicit peer identity (`PeerAuth::TokenRequired`,\ne.g. the TCP-loopback adapter) authenticates by sending this as the\nFIRST request on the connection. The serve core gates every other\nrequest on that connection behind a successful `Authenticate`, replying\n`IpcErrorKind::Auth` until then. On transports that DO carry implicit\ntrust (UDS peer creds, in-process, stdio) the handshake is a harmless\nno-op that returns [`ResponseData::Authenticated`]. Additive only \u2014 no\n`IPC_PROTOCOL_VERSION` bump: old clients never emit it, and the only\ntransport that requires it (TCP) is itself new.",
+            "description": "In-band authentication handshake for token-bearing transports\n(phase 5, transport adapters). Raw framed IPC carries no headers, so a\ntransport with no implicit peer identity (`PeerAuth::TokenRequired`,\ne.g. the TCP-loopback adapter) authenticates by sending this as the\nFIRST request on the connection. The serve core gates every other\nrequest on that connection behind a successful `Authenticate`, replying\n`IpcErrorKind::Auth` until then. On transports that DO carry implicit\ntrust (UDS peer creds, in-process, stdio) the handshake is a harmless\nno-op that returns [`ResponseData::Authenticated`]. Additive only — no\n`IPC_PROTOCOL_VERSION` bump: old clients never emit it, and the only\ntransport that requires it (TCP) is itself new.",
             "required": [
               "token",
               "cmd"
@@ -18015,7 +18261,7 @@
           },
           {
             "type": "object",
-            "description": "Tombstone rows (set `redacted=1`, clear `context_json`). Either\n`ids` is non-empty OR `filter` is `Some` \u2014 not both, not neither.",
+            "description": "Tombstone rows (set `redacted=1`, clear `context_json`). Either\n`ids` is non-empty OR `filter` is `Some` — not both, not neither.",
             "required": [
               "ids",
               "dry_run",
@@ -20043,6 +20289,25 @@
           },
           {
             "type": "object",
+            "description": "Returned by `Request::GetFreshness`.",
+            "required": [
+              "freshness",
+              "kind"
+            ],
+            "properties": {
+              "freshness": {
+                "$ref": "#/components/schemas/FreshnessData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Freshness"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "count",
               "kind"
@@ -21880,7 +22145,7 @@
           },
           {
             "type": "object",
-            "description": "Returned by `Request::GetDecision`. `None` when the id is\nunknown \u2014 CLI surfaces that as \"not found\", not as an error.",
+            "description": "Returned by `Request::GetDecision`. `None` when the id is\nunknown — CLI surfaces that as \"not found\", not as an error.",
             "required": [
               "kind"
             ],
@@ -22152,7 +22417,7 @@
           },
           {
             "type": "object",
-            "description": "Returned by `Request::CountActivity`. (Distinct from the\n`Count { count: u32 }` variant returned by the mail `Count`\nrequest \u2014 different scale, different consumer.)",
+            "description": "Returned by `Request::CountActivity`. (Distinct from the\n`Count { count: u32 }` variant returned by the mail `Count`\nrequest — different scale, different consumer.)",
             "required": [
               "count",
               "kind"
@@ -23359,7 +23624,7 @@
       },
       "Role": {
         "type": "string",
-        "description": "Well-known role for a `Label`/folder, mirroring MSP \u00a72.3. The set\ncovers the roles every consumer-mail provider exposes; provider-specific\nroles outside this set are represented as `None` so clients fall back\nto generic styling. New variants land additively under\n`#[non_exhaustive]` to keep wire compatibility cheap.",
+        "description": "Well-known role for a `Label`/folder, mirroring MSP §2.3. The set\ncovers the roles every consumer-mail provider exposes; provider-specific\nroles outside this set are represented as `None` so clients fall back\nto generic styling. New variants land additively under\n`#[non_exhaustive]` to keep wire compatibility cheap.",
         "enum": [
           "inbox",
           "sent",
@@ -24950,9 +25215,63 @@
           }
         }
       },
+      "SyncErrorData": {
+        "type": "object",
+        "description": "The last sync failure of one account.",
+        "required": [
+          "kind",
+          "message"
+        ],
+        "properties": {
+          "consecutive_failures": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SyncErrorKindData"
+          },
+          "message": {
+            "type": "string",
+            "description": "The provider's own words, for the details view."
+          },
+          "retry_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the daemon will try again, when it has scheduled a retry."
+          }
+        }
+      },
+      "SyncErrorKindData": {
+        "type": "string",
+        "description": "What kind of failure stopped the last sync.",
+        "enum": [
+          "rate_limited",
+          "auth",
+          "offline",
+          "provider",
+          "store",
+          "unknown"
+        ]
+      },
+      "SyncHealthData": {
+        "type": "string",
+        "description": "How an account's sync is doing, least worrying first: the \"All\naccounts\" scope shows the last one in this order.",
+        "enum": [
+          "ok",
+          "syncing",
+          "never",
+          "stale",
+          "paused",
+          "failing"
+        ]
+      },
       "SyncProgressData": {
         "type": "object",
-        "description": "How far the sync pass running for an account has got.\n\n`current` counts messages committed so far in this backfill run, carrying\nacross provider pages. `total` is the denominator when the provider can\nsay how much is left \u2014 the fake provider knows its dataset exactly, Gmail\nand IMAP cannot count what remains without paying for it, so it stays\nabsent for them.",
+        "description": "How far the sync pass running for an account has got.\n\n`current` counts messages committed so far in this backfill run, carrying\nacross provider pages. `total` is the denominator when the provider can\nsay how much is left — the fake provider knows its dataset exactly, Gmail\nand IMAP cannot count what remains without paying for it, so it stays\nabsent for them.",
         "required": [
           "current",
           "message"
@@ -25732,7 +26051,7 @@
           },
           "display": {
             "type": "string",
-            "description": "\"\u00a3142.00\"."
+            "description": "\"£142.00\"."
           },
           "minor": {
             "type": "integer",
@@ -26219,7 +26538,7 @@
           },
           "when_label": {
             "type": "string",
-            "description": "\"act by Wed 7 Oct \u00b7 due Fri 9 Oct\", \"was due Fri 9 Oct\", \"shows up\nMon 12 Oct\", \"no date\"."
+            "description": "\"act by Wed 7 Oct · due Fri 9 Oct\", \"was due Fri 9 Oct\", \"shows up\nMon 12 Oct\", \"no date\"."
           },
           "why": {
             "type": "string",
@@ -27064,7 +27383,7 @@
           "list_share_of_inbound_pct": {
             "type": "number",
             "format": "double",
-            "description": "0.0\u2013100.0; share of inbound messages that came via a list_id."
+            "description": "0.0–100.0; share of inbound messages that came via a list_id."
           },
           "top_list": {
             "oneOf": [
@@ -27331,7 +27650,7 @@
               "string",
               "null"
             ],
-            "description": "Day name and message count for the busiest day-of-week (Mon\u2013Sun)."
+            "description": "Day name and message count for the busiest day-of-week (Mon–Sun)."
           },
           "busiest_day_of_week_count": {
             "type": "integer",
@@ -27349,7 +27668,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "Hour 0\u201323 (UTC) and message count for the busiest hour-of-day.",
+            "description": "Hour 0–23 (UTC) and message count for the busiest hour-of-day.",
             "minimum": 0
           },
           "day_of_week_distribution": {
@@ -27359,7 +27678,7 @@
               "format": "int32",
               "minimum": 0
             },
-            "description": "Per-day-of-week message counts. Index 0 = Monday \u2026 6 = Sunday.\n`#[serde(default)]` keeps older daemons compatible."
+            "description": "Per-day-of-week message counts. Index 0 = Monday … 6 = Sunday.\n`#[serde(default)]` keeps older daemons compatible."
           },
           "hour_distribution": {
             "type": "array",

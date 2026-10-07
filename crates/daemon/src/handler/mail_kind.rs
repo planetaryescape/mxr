@@ -473,6 +473,10 @@ pub(super) const fn rule_tag(rule: KindRuleData) -> &'static str {
         KindRuleData::NewsletterAddress | KindRuleData::NewsletterDomain => "newsletter",
         KindRuleData::ListId | KindRuleData::ListUnsubscribe | KindRuleData::ListSender => "list",
         KindRuleData::NoReplyAddress => "no-reply",
+        KindRuleData::TransactionAlert => "bank alert",
+        KindRuleData::RoleAddress => "role address",
+        KindRuleData::BulkSender => "bulk sender",
+        KindRuleData::TemplatedSender => "templated",
         KindRuleData::Person => "person",
         KindRuleData::Copied => "copied",
     }

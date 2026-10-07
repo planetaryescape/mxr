@@ -1096,7 +1096,7 @@ async fn a_welcome_sent_through_a_bulk_service_is_not_a_new_person() {
     let welcome = mail(
         &fx,
         &thread,
-        "team.lead@club.example",
+        "maya.chen@club.example",
         "Welcome to the Club",
         Duration::hours(2),
     )

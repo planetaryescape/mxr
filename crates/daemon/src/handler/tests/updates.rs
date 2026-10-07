@@ -705,3 +705,55 @@ async fn updates_is_built_on_the_rail_with_no_badge() {
         Some("Notifications gathered twice a day. Read the digest, then let go.")
     );
 }
+
+#[tokio::test]
+async fn undo_puts_a_let_go_digest_back_line_for_line() {
+    let fx = Fixture::new().await;
+    let (cut, now) = clock();
+    for (from, subject, hours) in [
+        (
+            "no-reply@strava.com",
+            "Your week in running: 21.3 km over 3 runs",
+            3,
+        ),
+        ("notifications@vercel.com", "Deployment succeeded", 2),
+        (
+            "no-reply@accounts.google.com",
+            "Security alert: New sign-in from Chrome on Windows",
+            1,
+        ),
+    ] {
+        update(
+            &fx,
+            &ThreadId::new(),
+            from,
+            subject,
+            cut - Duration::hours(hours),
+        )
+        .await;
+    }
+    let before = digest(&fx, now).await;
+    let before_lines: Vec<String> = all_lines(&before)
+        .iter()
+        .map(|l| l.source_key.clone())
+        .collect();
+    let preview = let_go(&fx, now, None, true).await.unwrap();
+    let run = let_go(&fx, now, Some(&preview.selection_token), false)
+        .await
+        .unwrap();
+    assert!(all_lines(&digest(&fx, now).await).is_empty());
+    let undone = request(
+        &fx,
+        Request::UndoMutation {
+            mutation_id: run.mutation_id.clone().expect("an undo id"),
+        },
+    )
+    .await;
+    let _ = undone;
+    let after = digest(&fx, now).await;
+    let after_lines: Vec<String> = all_lines(&after)
+        .iter()
+        .map(|l| l.source_key.clone())
+        .collect();
+    assert_eq!(after_lines, before_lines);
+}

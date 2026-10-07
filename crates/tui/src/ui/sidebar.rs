@@ -75,7 +75,7 @@ pub struct SidebarView<'a> {
     /// Messages, an early version on the desk lens.
     pub messages_active: bool,
     pub todo_active: bool,
-    /// Updates, an early version on Paper trail.
+    /// Updates, the briefing.
     pub updates_active: bool,
     pub reading_active: bool,
     pub archive_active: bool,

@@ -62,16 +62,11 @@ fn each_rail_key_opens_its_mode() {
         ('h', MailboxView::Now),
         ('m', MailboxView::People),
         ('x', MailboxView::Todo),
-        (
-            'u',
-            MailboxView::Place(mxr_protocol::MailPlaceData::PaperTrail),
-        ),
+        ('u', MailboxView::Updates),
         ('r', MailboxView::Reading),
         ('e', MailboxView::ArchiveMode),
-        (
-            'p',
-            MailboxView::Place(mxr_protocol::MailPlaceData::PaperTrail),
-        ),
+        // Paper trail became Updates.
+        ('p', MailboxView::Updates),
     ] {
         chord(&mut app, key);
         assert_eq!(app.mailbox.mailbox_view, view, "g {key}");
@@ -202,6 +197,28 @@ fn e_on_a_due_row_is_done_in_to_do_for_its_thread() {
     ));
 }
 
+/// The daemon's dry run of letting go of a digest.
+pub(super) fn let_go_preview(threads: &[ThreadId]) -> mxr_protocol::UpdatesLetGoData {
+    mxr_protocol::UpdatesLetGoData {
+        dry_run: true,
+        cut_at: chrono::Utc::now(),
+        line: format!("Let go of {} updates from 2 sources.", threads.len()),
+        message_count: u32::try_from(threads.len()).unwrap(),
+        source_count: 2,
+        hidden_count: 0,
+        in_todo_count: 0,
+        thread_ids: threads.to_vec(),
+        message_ids: threads.iter().map(|_| MessageId::new()).collect(),
+        selection_token: "token-1".into(),
+        items: threads
+            .iter()
+            .map(|thread| outcome(thread.clone(), ModeKindData::Updates, "Done."))
+            .collect(),
+        mutation_id: None,
+        undo_unavailable: false,
+    }
+}
+
 #[test]
 fn a_letting_go_of_the_digest_is_previewed_and_commits_what_was_previewed() {
     let mut app = now_app(true);
@@ -221,28 +238,19 @@ fn a_letting_go_of_the_digest_is_previewed_and_commits_what_was_previewed() {
         queued(&app).is_empty(),
         "nothing changes before the preview"
     );
-    let asked = app
-        .mailbox
-        .now_page
-        .pending_digest_preview
-        .take()
-        .expect("asks the daemon for a dry run");
-    assert_eq!(asked, card_threads);
-    app.show_now_digest_preview(
-        asked,
-        card_threads
-            .iter()
-            .map(|thread| outcome(thread.clone(), ModeKindData::Updates, "Done."))
-            .collect(),
+    assert!(
+        std::mem::take(&mut app.mailbox.now_page.pending_digest_preview),
+        "asks the daemon for a dry run"
     );
-    assert!(app.mailbox.now_page.digest_preview.is_some());
+    let preview = let_go_preview(&card_threads);
+    app.show_now_digest_preview(preview.clone());
     let rendered = render_to_string(100, 30, |frame| app.draw(frame));
     assert!(rendered.contains("Let go of this digest"), "{rendered}");
     press(&mut app, KeyCode::Enter);
     assert!(matches!(
         queued(&app).as_slice(),
-        [Request::SetModeDone { thread_ids, mode: ModeKindData::Updates, dry_run: false, .. }]
-            if thread_ids == &card_threads
+        [Request::LetGoDigest { selection_token: Some(token), cut: Some(cut), dry_run: false, .. }]
+            if token == "token-1" && *cut == preview.cut_at
     ));
     assert!(app.mailbox.now_page.now.as_ref().unwrap().updates.is_none());
 }
@@ -250,11 +258,7 @@ fn a_letting_go_of_the_digest_is_previewed_and_commits_what_was_previewed() {
 #[test]
 fn esc_keeps_the_digest() {
     let mut app = now_app(true);
-    let threads = vec![ThreadId::new()];
-    app.show_now_digest_preview(
-        threads.clone(),
-        vec![outcome(threads[0].clone(), ModeKindData::Updates, "Done.")],
-    );
+    app.show_now_digest_preview(let_go_preview(&[ThreadId::new()]));
     press(&mut app, KeyCode::Esc);
     assert!(app.mailbox.now_page.digest_preview.is_none());
     assert!(queued(&app).is_empty());
@@ -391,15 +395,15 @@ fn enter_opens_each_row_in_its_own_mode() {
     press(&mut app, KeyCode::Enter);
     assert_eq!(
         app.mailbox.mailbox_view,
-        MailboxView::Place(mxr_protocol::MailPlaceData::PaperTrail),
+        MailboxView::Updates,
         "the Updates card opens Updates"
     );
 }
 
 #[test]
-fn e_in_updates_is_done_in_updates() {
+fn e_in_paper_trail_is_done_in_updates() {
     let mut app = App::new();
-    chord(&mut app, 'u');
+    app.apply(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail));
     let thread = ThreadId::new();
     let fetched = crate::app::PlacePageState {
         place: Some(mxr_protocol::MailPlaceData::PaperTrail),

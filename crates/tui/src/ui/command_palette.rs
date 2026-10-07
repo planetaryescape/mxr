@@ -490,7 +490,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         PaletteCommand {
             label: "Updates".into(),
             shortcut: "gu".into(),
-            action: Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail),
+            action: Action::OpenUpdates,
             category: "Navigation".into(),
         },
         PaletteCommand {

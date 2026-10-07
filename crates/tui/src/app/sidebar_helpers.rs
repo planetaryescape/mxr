@@ -133,8 +133,7 @@ impl App {
             now_badge: self.rail_entry("now").and_then(|entry| entry.badge),
             messages_active: self.mailbox.mailbox_view == MailboxView::People,
             todo_active: self.mailbox.mailbox_view == MailboxView::Todo,
-            updates_active: self.mailbox.mailbox_view
-                == MailboxView::Place(mxr_protocol::MailPlaceData::PaperTrail),
+            updates_active: self.mailbox.mailbox_view == MailboxView::Updates,
             reading_active: self.mailbox.mailbox_view == MailboxView::Reading,
             archive_active: self.mailbox.mailbox_view == MailboxView::ArchiveMode,
             early_modes: self.early_modes(),
@@ -175,7 +174,7 @@ impl App {
                 .filter(|entry| entry.status == mxr_protocol::RailStatusData::Early)
                 .map(|entry| entry.id.clone())
                 .collect(),
-            None => ["messages", "updates"]
+            None => ["messages"]
                 .into_iter()
                 .map(String::from)
                 .collect(),
@@ -322,9 +321,7 @@ impl App {
             Some(SidebarItem::Messages | SidebarItem::Waiting) => Some(Action::OpenMessages),
             Some(SidebarItem::Todo) => Some(Action::OpenTodo),
             Some(SidebarItem::Reading) => Some(Action::OpenReading),
-            Some(SidebarItem::Updates) => {
-                Some(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail))
-            }
+            Some(SidebarItem::Updates) => Some(Action::OpenUpdates),
             Some(SidebarItem::ArchiveMode) => Some(Action::OpenArchiveMode),
             Some(SidebarItem::Inbox) => Some(Action::GoToInbox),
             Some(SidebarItem::Screener) => Some(Action::OpenScreenerQueue),

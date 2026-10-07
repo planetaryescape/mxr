@@ -44,6 +44,9 @@ impl App {
         if self.mailbox.mailbox_view == MailboxView::Reading {
             return self.mailbox.reading_page.row_count();
         }
+        if self.mailbox.mailbox_view == MailboxView::Updates {
+            return self.mailbox.updates_page.row_count();
+        }
         if self.mailbox.mailbox_view == MailboxView::ArchiveMode {
             return self.mailbox.records_page.row_count();
         }
@@ -161,6 +164,7 @@ impl App {
             || self.messages_list_focused()
             || self.records_list_focused()
             || self.reading_lens_focused()
+            || self.updates_list_focused()
         {
             return None;
         }

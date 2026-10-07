@@ -15,9 +15,9 @@ fn g_view_chord(second: char) -> Option<Action> {
         'q' => Some(Action::OpenReplyQueue),
         'o' => Some(Action::OpenOwedReplies),
         'v' => Some(Action::OpenCalendarInvites),
-        // Updates, an early version on Paper trail. Subscriptions moved
-        // under More with no chord.
-        'u' => Some(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail)),
+        // Updates, the briefing. Subscriptions moved under More with no
+        // chord.
+        'u' => Some(Action::OpenUpdates),
         'S' => Some(Action::OpenScreenerQueue),
         'x' => Some(Action::OpenTodo),
         'm' => Some(Action::OpenMessages),
@@ -181,7 +181,8 @@ impl InputHandler {
                 KeyModifiers::NONE,
             ) => {
                 self.state = KeyState::Normal;
-                Some(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail))
+                // Paper trail became Updates (blueprint 22's key map).
+                Some(Action::OpenUpdates)
             }
             // g h: Now, the front page. `g d` stays Drafts.
             (
@@ -461,7 +462,7 @@ mod tests {
         let _ = input.handle_key(key(KeyCode::Char('g')));
         assert_eq!(
             input.handle_key(key(KeyCode::Char('p'))),
-            Some(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail))
+            Some(Action::OpenUpdates)
         );
     }
 
@@ -471,11 +472,7 @@ mod tests {
             ('q', KeyModifiers::NONE, Action::OpenReplyQueue),
             ('o', KeyModifiers::NONE, Action::OpenOwedReplies),
             ('v', KeyModifiers::NONE, Action::OpenCalendarInvites),
-            (
-                'u',
-                KeyModifiers::NONE,
-                Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail),
-            ),
+            ('u', KeyModifiers::NONE, Action::OpenUpdates),
             ('m', KeyModifiers::NONE, Action::OpenMessages),
             ('e', KeyModifiers::NONE, Action::OpenArchiveMode),
             ('S', KeyModifiers::SHIFT, Action::OpenScreenerQueue),

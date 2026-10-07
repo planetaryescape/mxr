@@ -1724,29 +1724,37 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if let Some(thread_ids) = app.mailbox.now_page.pending_digest_preview.take() {
+        if std::mem::take(&mut app.mailbox.now_page.pending_digest_preview) {
+            let cut = app
+                .mailbox
+                .now_page
+                .now
+                .as_ref()
+                .and_then(|now| now.updates.as_ref())
+                .map(|card| card.since);
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
-                let resp = ipc_call(
-                    &bg,
-                    Request::SetModeDone {
-                        thread_ids: thread_ids.clone(),
-                        mode: mxr_protocol::ModeKindData::Updates,
-                        dry_run: true,
-                        todo_ids: Vec::new(),
-                        sender: None,
-                    },
-                )
-                .await;
-                let result = match resp {
-                    Ok(Response::Ok {
-                        data: ResponseData::ModeDone { items, .. },
-                    }) => Ok(items),
-                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response to SetModeDone".into())),
-                };
-                AsyncResult::NowDigestPreview(thread_ids, result)
+                AsyncResult::NowDigestPreview(preview_let_go(&bg, cut).await)
+            });
+        }
+
+        if std::mem::take(&mut app.mailbox.updates_page.pending_refresh) {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                AsyncResult::Updates(fetch_updates(&bg).await.map(Box::new))
+            });
+        }
+
+        if std::mem::take(&mut app.mailbox.updates_page.pending_let_go_preview) {
+            let cut = app
+                .mailbox
+                .updates_page
+                .digest
+                .as_ref()
+                .map(|digest| digest.cut.at);
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                AsyncResult::UpdatesLetGoPreview(preview_let_go(&bg, cut).await)
             });
         }
 
@@ -2388,6 +2396,43 @@ pub async fn run() -> anyhow::Result<()> {
                             let _ = result_tx_inner.send(AsyncResult::UndoCaptured(undo));
                         }
                         effect
+                    }
+                    Ok(Response::Ok {
+                        data: ResponseData::UpdatesLetGo { result },
+                    }) if !result.dry_run => {
+                        let (effect, undo) = updates_let_go_outcome(&result);
+                        if let Some(undo) = undo {
+                            let _ = result_tx_inner.send(AsyncResult::UndoCaptured(undo));
+                        }
+                        effect
+                    }
+                    Ok(Response::Ok {
+                        data: ResponseData::UpdateSource { change },
+                    }) => {
+                        // A user's tuning offers undo; the undo itself does not.
+                        let undoing = matches!(
+                            &effect,
+                            app::MutationEffect::ModeDone(message) if !message.is_empty()
+                        );
+                        if !undoing {
+                            let _ =
+                                result_tx_inner.send(AsyncResult::UndoCaptured(app::PendingUndo {
+                                    action: app::UndoAction::UpdateSource {
+                                        account_id: change.account_id.clone(),
+                                        source_key: change.source_key.clone(),
+                                        prior: change.prior,
+                                    },
+                                    verb_past: "Tuned".into(),
+                                    count: 1,
+                                    applied_at: std::time::Instant::now(),
+                                }));
+                        }
+                        let copy = crate::ui::sanitize::one_line(&change.copy);
+                        Ok(app::MutationEffect::ModeDone(if undoing {
+                            copy
+                        } else {
+                            format!("{copy} u to undo")
+                        }))
                     }
                     Ok(Response::Ok {
                         data:
@@ -3554,10 +3599,14 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Rail(Err(e)) => {
                             tracing::debug!(error = %e, "rail fetch failed");
                         }
-                        AsyncResult::NowDigestPreview(thread_ids, Ok(items)) => {
-                            app.show_now_digest_preview(thread_ids, items);
+                        AsyncResult::NowDigestPreview(Ok(preview)) => {
+                            app.show_now_digest_preview(preview);
                         }
-                        AsyncResult::NowDigestPreview(_, Err(e)) => {
+                        AsyncResult::UpdatesLetGoPreview(Ok(preview)) => {
+                            app.show_updates_let_go_preview(preview);
+                        }
+                        AsyncResult::NowDigestPreview(Err(e))
+                        | AsyncResult::UpdatesLetGoPreview(Err(e)) => {
                             app.status_message = Some(format!("Couldn't preview: {e}"));
                         }
                         AsyncResult::ReadingEdition(Ok(loaded)) => {
@@ -3593,6 +3642,13 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::ReadingOriginal(Ok(text)) => app.set_reading_original(text),
                         AsyncResult::ReadingOriginal(Err(e)) => {
                             app.status_message = Some(format!("Couldn't read the email: {e}"));
+                        }
+                        AsyncResult::Updates(Ok(loaded)) => {
+                            let (digest, guide) = *loaded;
+                            app.set_updates_digest(digest, guide);
+                        }
+                        AsyncResult::Updates(Err(e)) => {
+                            app.status_message = Some(format!("Couldn't load Updates: {e}"));
                         }
                         AsyncResult::TodoRunway(Ok((runway, guide))) => {
                             app.set_todo_runway(runway, guide);
@@ -4113,6 +4169,119 @@ async fn fetch_messages(
         _ => None,
     };
     Ok((messages, guide))
+}
+
+/// What letting go of a digest did: the daemon's line, undo, or why it
+/// refused (the cut changed since the preview).
+pub(crate) fn updates_let_go_outcome(
+    result: &mxr_protocol::UpdatesLetGoData,
+) -> (
+    Result<app::MutationEffect, MxrError>,
+    Option<app::PendingUndo>,
+) {
+    let done = result
+        .items
+        .iter()
+        .filter(|item| item.error.is_none())
+        .count();
+    if done == 0 && !result.items.is_empty() {
+        let error = result
+            .items
+            .iter()
+            .find_map(|item| item.error.as_deref())
+            .unwrap_or("nothing changed");
+        return (Err(MxrError::Ipc(format!("Not let go: {error}"))), None);
+    }
+    let undo = result
+        .mutation_id
+        .clone()
+        .map(|daemon_mutation_id| app::PendingUndo {
+            action: app::UndoAction::Mutations(vec![daemon_mutation_id]),
+            verb_past: "Let go".into(),
+            count: result.message_count,
+            applied_at: std::time::Instant::now(),
+        });
+    let mut copy = crate::ui::sanitize::one_line(&result.line);
+    if undo.is_some() {
+        copy.push_str(" u to undo");
+    } else if result.undo_unavailable {
+        copy.push_str(" Its undo couldn't be saved.");
+    }
+    (Ok(app::MutationEffect::ModeDone(copy)), undo)
+}
+
+/// The daemon's dry run of letting go of the digest at `cut`.
+async fn preview_let_go(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    cut: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<mxr_protocol::UpdatesLetGoData, MxrError> {
+    let resp = ipc_call(
+        bg,
+        Request::LetGoDigest {
+            account_id: None,
+            cut,
+            source_key: None,
+            selection_token: None,
+            dry_run: true,
+        },
+    )
+    .await;
+    match resp {
+        Ok(Response::Ok {
+            data: ResponseData::UpdatesLetGo { result },
+        }) => Ok(result),
+        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+        Err(e) => Err(e),
+        _ => Err(MxrError::Ipc("unexpected response to LetGoDigest".into())),
+    }
+}
+
+/// The Updates digest (marking Updates seen) and its guide, together.
+async fn fetch_updates(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+) -> Result<
+    (
+        mxr_protocol::UpdatesDigestData,
+        Option<mxr_protocol::ModeGuideData>,
+    ),
+    MxrError,
+> {
+    let (digest, guide) = tokio::join!(
+        ipc_call(
+            bg,
+            Request::GetUpdatesDigest {
+                account_id: None,
+                cut: None,
+                mark_seen: true,
+                expired: false,
+            },
+        ),
+        ipc_call(
+            bg,
+            Request::GetModeGuide {
+                mode: Some(crate::app::UPDATES_MODE.into()),
+            },
+        ),
+    );
+    let digest = match digest {
+        Ok(Response::Ok {
+            data: ResponseData::UpdatesDigest { digest },
+        }) => digest,
+        Ok(Response::Error { message, .. }) => return Err(MxrError::Ipc(message)),
+        Err(e) => return Err(e),
+        _ => {
+            return Err(MxrError::Ipc(
+                "unexpected response to GetUpdatesDigest".into(),
+            ))
+        }
+    };
+    let guide = match guide {
+        Ok(Response::Ok {
+            data: ResponseData::ModeGuides { mut guides },
+        }) if !guides.is_empty() => Some(guides.remove(0)),
+        _ => None,
+    };
+    Ok((digest, guide))
 }
 
 /// Now and its guide, fetched together so the header, the card and the

@@ -56,6 +56,9 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             if app.mailbox.mailbox_view == crate::app::MailboxView::Todo {
                 app.refresh_todo();
             }
+            if app.mailbox.mailbox_view == crate::app::MailboxView::Updates {
+                app.refresh_updates();
+            }
             if app.mailbox.mailbox_view == crate::app::MailboxView::Now {
                 app.refresh_now();
             } else {

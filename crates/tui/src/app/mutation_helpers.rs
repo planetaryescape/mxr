@@ -259,6 +259,7 @@ impl App {
                 match self.mailbox.mailbox_view {
                     MailboxView::Now => self.refresh_now(),
                     MailboxView::People => self.refresh_messages(),
+                    MailboxView::Updates => self.refresh_updates(),
                     MailboxView::Desk | MailboxView::Place(_) => self.refresh_places(),
                     MailboxView::Reading => self.refresh_reading(),
                     _ => {}
@@ -308,6 +309,7 @@ impl App {
             MutationEffect::ModeDone(msg) => {
                 self.refresh_now();
                 self.refresh_messages();
+                self.refresh_updates();
                 self.refresh_places();
                 if self.mailbox.mailbox_view == MailboxView::Todo {
                     self.refresh_todo();

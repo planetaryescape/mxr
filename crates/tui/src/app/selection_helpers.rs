@@ -123,6 +123,7 @@ impl App {
                 | MailboxView::Now
                 | MailboxView::People
                 | MailboxView::Reading
+                | MailboxView::Updates
                 | MailboxView::ArchiveMode
         ) {
             return None;

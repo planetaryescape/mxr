@@ -110,6 +110,27 @@ pub enum Action {
     /// A digit on a new sender's row: answer its one question with that
     /// choice (`SetSenderKind`).
     NowAnswerSender(usize),
+    /// Open Updates (`g u`): the twice-daily briefing by source
+    /// (`Request::GetUpdatesDigest`).
+    OpenUpdates,
+    /// Enter on Updates: open the email, or unfold the quieter sources.
+    UpdatesOpen,
+    /// `o` on Updates: open the email itself.
+    UpdatesOpenEmail,
+    /// `A` on Updates: preview letting go of the digest, or confirm it.
+    UpdatesLetGoAll,
+    /// `e` on Updates: let go of this source.
+    UpdatesLetGoSource,
+    /// `t` on Updates: this needs me, a to-do from the line.
+    UpdatesNeedsMe,
+    /// `K` on Updates: tune this source.
+    UpdatesTune,
+    /// A digit in the tune menu: set that setting.
+    UpdatesTuneChoice(usize),
+    /// `L` on Updates: open the line's link.
+    UpdatesOpenLink,
+    /// Esc on Updates: close a menu or retire the first-encounter card.
+    UpdatesClose,
     /// Open Reading or Paper trail (`Request::ListPlace`).
     OpenPlace(mxr_protocol::MailPlaceData),
     /// Pin or unpin the message under the cursor in a place.

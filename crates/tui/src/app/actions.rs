@@ -175,6 +175,16 @@ impl App {
             | Action::MessagesPersonPage
             | Action::MessagesAsSent
             | Action::MessagesBack => self.apply_messages_action(action),
+            Action::OpenUpdates
+            | Action::UpdatesOpen
+            | Action::UpdatesOpenEmail
+            | Action::UpdatesLetGoAll
+            | Action::UpdatesLetGoSource
+            | Action::UpdatesNeedsMe
+            | Action::UpdatesTune
+            | Action::UpdatesTuneChoice(_)
+            | Action::UpdatesOpenLink
+            | Action::UpdatesClose => self.apply_updates_action(action),
             Action::OpenMailboxScreen
             | Action::OpenSearchScreen
             | Action::OpenGlobalSearch

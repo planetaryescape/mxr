@@ -47,6 +47,7 @@ struct RuntimeTasks {
     snooze_loop: ParkingMutex<Option<JoinHandle<()>>>,
     auto_reminders_loop: ParkingMutex<Option<JoinHandle<()>>>,
     todo_loop: ParkingMutex<Option<JoinHandle<()>>>,
+    records_loop: ParkingMutex<Option<JoinHandle<()>>>,
     scheduled_sends_loop: ParkingMutex<Option<JoinHandle<()>>>,
     reply_pair_reconciler: ParkingMutex<Option<JoinHandle<()>>>,
     contacts_refresher: ParkingMutex<Option<JoinHandle<()>>>,
@@ -98,6 +99,10 @@ impl RuntimeTasks {
 
     fn set_todo_loop(&self, handle: JoinHandle<()>) {
         *self.todo_loop.lock() = Some(handle);
+    }
+
+    fn set_records_loop(&self, handle: JoinHandle<()>) {
+        *self.records_loop.lock() = Some(handle);
     }
 
     fn set_scheduled_sends_loop(&self, handle: JoinHandle<()>) {
@@ -155,6 +160,7 @@ impl RuntimeTasks {
             "auto_reminders_loop",
         ));
         handles.extend(Self::take_named(&self.todo_loop, "todo_loop"));
+        handles.extend(Self::take_named(&self.records_loop, "records_loop"));
         handles.extend(Self::take_named(
             &self.scheduled_sends_loop,
             "scheduled_sends_loop",
@@ -1541,6 +1547,10 @@ impl AppState {
 
     pub fn register_todo_loop(&self, handle: JoinHandle<()>) {
         self.runtime_tasks.set_todo_loop(handle);
+    }
+
+    pub fn register_records_loop(&self, handle: JoinHandle<()>) {
+        self.runtime_tasks.set_records_loop(handle);
     }
 
     pub fn register_scheduled_sends_loop(&self, handle: JoinHandle<()>) {

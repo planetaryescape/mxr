@@ -34,6 +34,7 @@ pub struct MxrConfig {
     pub todo: TodoConfig,
     pub modes: ModesConfig,
     pub messages: MessagesConfig,
+    pub records: RecordsConfig,
 }
 
 /// Package/delivery tracking. Detection is local-first; the optional LLM
@@ -68,6 +69,34 @@ impl Default for TodoConfig {
         Self {
             enabled: true,
             catchup_days: 14,
+        }
+    }
+}
+
+/// Archive: records built from mail. Detection is rules and schema.org
+/// only, and local.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RecordsConfig {
+    /// File records from new mail and read history newest first.
+    pub enabled: bool,
+    /// Download the PDFs of record emails ahead of time, so they open
+    /// offline and their text is searchable. Off: a PDF downloads when you
+    /// open it, as every other attachment does.
+    pub pdf_prefetch: bool,
+    /// The most disk record PDFs may take, in megabytes.
+    pub pdf_budget_mb: u64,
+    /// PDFs larger than this, in megabytes, are left until you open them.
+    pub pdf_max_file_mb: u64,
+}
+
+impl Default for RecordsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            pdf_prefetch: true,
+            pdf_budget_mb: 512,
+            pdf_max_file_mb: 15,
         }
     }
 }

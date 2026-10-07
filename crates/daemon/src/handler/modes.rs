@@ -8,8 +8,8 @@
 //! - Updates and Reading: inbox mail the sender classifier puts in Paper
 //!   trail or Reading, read through `places::placed_inbox`, so each mode
 //!   and its early view never disagree.
-//! - Archive: automated mail that is a record (`mode_rules`). Archive
-//!   never keeps a thread in the provider's inbox.
+//! - Archive: threads a record was filed from (`records`). Archive never
+//!   keeps a thread in the provider's inbox.
 //!
 //! minus each mode's done mark (`mode_done`, the desk's watermark).
 
@@ -24,7 +24,7 @@ use super::desk_lanes::{
 use super::desk_timers::DeskTimers;
 use super::mail_kind::{self, KindSignals};
 use super::mode_rules::{
-    mark_covers, membership, merge_marks, messages_membership, quiet_membership, record_evidence,
+    mark_covers, membership, merge_marks, messages_membership, quiet_membership,
     screener_question,
 };
 use super::places::{placed_inbox, scoped_accounts, Placed};
@@ -38,7 +38,7 @@ use mxr_protocol::{
     mode_guide, rail_copy, DeskRowData, ModeKindData, RailData, RailEntryData, RailLinkData,
     RailStatusData, ResponseData, SenderKindData, ThreadModesData,
 };
-use mxr_store::{DeskDismissal, DeskMessage, ScreenerDisposition, TodoRecord};
+use mxr_store::{ArchiveRecord, DeskDismissal, DeskMessage, ScreenerDisposition, TodoRecord};
 use std::collections::{HashMap, HashSet};
 
 /// The most threads one membership request may name.
@@ -54,10 +54,13 @@ pub(super) const fn mark_name(mode: ModeKindData) -> Option<&'static str> {
     }
 }
 
-/// Built in its researched shape (To do, Messages) or an early version on
-/// an existing view (the rest, for now).
+/// Built in its researched shape (To do, Messages, Archive) or an early
+/// version on an existing view (the rest, for now).
 const fn is_early(mode: ModeKindData) -> bool {
-    !matches!(mode, ModeKindData::Todo | ModeKindData::Messages)
+    !matches!(
+        mode,
+        ModeKindData::Todo | ModeKindData::Messages | ModeKindData::Archive
+    )
 }
 
 /// The threads the desk's Done or done-in-Messages put away, as one map
@@ -166,6 +169,10 @@ pub(super) async fn place_threads(
         }
     }
     let marks = store.mode_done_for_threads(account_id, thread_ids).await?;
+    let mut records: HashMap<ThreadId, ArchiveRecord> = HashMap::new();
+    for (thread, record) in store.archive_records_for_threads(thread_ids).await? {
+        records.entry(thread).or_insert(record);
+    }
     // Who you have ever written to, among the senders a new-sender
     // question could be about: the lanes above only saw these threads.
     let mut maybe_new: Vec<String> = messages
@@ -201,6 +208,7 @@ pub(super) async fn place_threads(
             row: rows.get(&thread_id),
             put_away: dismissed.get(&thread_id),
             todos: &thread_todos,
+            record: records.get(&thread_id),
             marks: &marks,
             senders: &senders,
             written_to: &written_to,
@@ -231,6 +239,8 @@ struct PlaceInputs<'a> {
     /// Messages' own put-away mark: the desk's Done or done in Messages.
     put_away: Option<&'a DeskDismissal>,
     todos: &'a [TodoRecord],
+    /// The record filed from this thread, if any.
+    record: Option<&'a ArchiveRecord>,
     marks: &'a HashMap<(ThreadId, String), DeskDismissal>,
     senders: &'a Senders,
     /// Senders you have ever written to, anywhere in the account.
@@ -338,19 +348,25 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         ));
     }
 
-    // Archive: a record stays filed whatever happens in the inbox.
-    if let Some((message, evidence)) = thread.iter().filter(inbound).find_map(|message| {
-        let automated = mail_kind::classify(&signals(message, inputs.senders)).kind
-            == mail_kind::SenderKind::Automated;
-        automated
-            .then(|| record_evidence(&message.from.email, &message.subject))
+    // Archive: a record filed from the thread stays whatever happens in
+    // the inbox.
+    if let Some(record) = inputs.record {
+        let what = [record.issuer.as_deref(), record.title.as_deref()]
+            .into_iter()
             .flatten()
-            .map(|evidence| (message, evidence))
-    }) {
+            .collect::<Vec<_>>()
+            .join(", ");
         modes.push(membership(
             ModeKindData::Archive,
-            format!("Here because: looks like a record, {evidence} (rule)."),
-            format!("Also in Archive: {}", clean_subject(&message.subject)),
+            format!(
+                "Here because: {} ({}).",
+                record.reason,
+                if record.checked { "checked" } else { "unchecked" }
+            ),
+            format!(
+                "Also in Archive: {}",
+                if what.is_empty() { record.kind.clone() } else { what }
+            ),
             is_early(ModeKindData::Archive),
         ));
     }
@@ -625,8 +641,7 @@ const fn early_note(mode: ModeKindData) -> Option<&'static str> {
         ModeKindData::Reading => {
             Some("Early version: newsletters and lists in your inbox by sender.")
         }
-        ModeKindData::Archive => Some("Early version: search, with receipts and records marked."),
-        ModeKindData::Todo | ModeKindData::Messages => None,
+        ModeKindData::Todo | ModeKindData::Messages | ModeKindData::Archive => None,
     }
 }
 

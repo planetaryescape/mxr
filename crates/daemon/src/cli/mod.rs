@@ -715,6 +715,19 @@ pub enum Command {
         #[arg(long, global = true)]
         format: Option<OutputFormat>,
     },
+    #[command(
+        about = mxr_protocol::archive_copy::HEADER,
+        long_about = RECORDS_LONG_ABOUT
+    )]
+    Records {
+        #[command(subcommand)]
+        action: Option<RecordsAction>,
+        /// Limit to one account; the default covers every account.
+        #[arg(long, global = true)]
+        account: Option<String>,
+        #[arg(long, global = true)]
+        format: Option<OutputFormat>,
+    },
     /// How each mode explains itself: its job, empty states, card and keys
     Modes {
         #[command(subcommand)]
@@ -2286,6 +2299,146 @@ pub enum ModesAction {
         #[arg(long, value_name = "ACCOUNT_ID")]
         account: Option<String>,
         /// Show what done would change without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+const RECORDS_LONG_ABOUT: &str = "Receipts, orders, bookings and documents. Ask for what you need.
+
+Archive keeps records built from your mail: one per order, trip or bill, not one per email. An order's confirmation, dispatch and delivery are one record; bookings whose dates overlap form a trip; a run of bills from one issuer is a series. Records are filed from schema.org markup (checked) and from labelled lines in the email (amounts and dates unchecked until you confirm them), from to-dos you tick off, from delivered parcels and by hand. Every field says where it came from. Filing in Archive never archives anything in your mail provider.
+
+With no subcommand, prints the ledger: one row per record, grouped by month with counts and totals, newest first.";
+
+/// Filters shared by `mxr records list` and `mxr records export`.
+#[derive(Debug, Clone, Default, clap::Args)]
+pub struct RecordFilterArgs {
+    /// Only these kinds: receipt, order, booking, invoice, statement,
+    /// ticket, contract, warranty, account. Repeat or comma-separate.
+    #[arg(long, value_delimiter = ',')]
+    pub kind: Vec<String>,
+    /// Only records from this issuer (the issuer page).
+    #[arg(long)]
+    pub issuer: Option<String>,
+    /// Only this year, by the transaction's date.
+    #[arg(long)]
+    pub year: Option<i32>,
+    /// At least this amount, like 100 or 99.50.
+    #[arg(long)]
+    pub min: Option<String>,
+    /// At most this amount.
+    #[arg(long)]
+    pub max: Option<String>,
+    /// Only records with a PDF.
+    #[arg(long, conflicts_with = "no_pdf")]
+    pub has_pdf: bool,
+    /// Only records without a PDF.
+    #[arg(long)]
+    pub no_pdf: bool,
+    /// Only records with an amount or date nobody has confirmed.
+    #[arg(long, conflicts_with = "checked")]
+    pub unchecked: bool,
+    /// Only records whose amounts and dates are all confirmed.
+    #[arg(long)]
+    pub checked: bool,
+    /// Only one trip or series, by its id.
+    #[arg(long)]
+    pub group: Option<String>,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum RecordsAction {
+    /// The ledger (the default): records by month, newest first.
+    List {
+        #[command(flatten)]
+        filter: RecordFilterArgs,
+        #[arg(long, default_value_t = 200)]
+        limit: u32,
+        #[arg(long, default_value_t = 0)]
+        offset: u32,
+    },
+    /// One record with every field and where it came from.
+    Show { record_id: String },
+    /// Ask for a field: "lisbon booking ref", "dell receipt 2025". Falls
+    /// back to `mxr ask` over all mail only when no record matches.
+    #[command(visible_alias = "find")]
+    Ask {
+        query: String,
+        /// Don't fall back to `mxr ask` when no record matches.
+        #[arg(long)]
+        no_fallback: bool,
+    },
+    /// Fix a field (field=value), confirm one (--confirm), confirm the
+    /// whole card (--confirm-all) or go back to the extracted value
+    /// (--clear). Your value wins on every re-run.
+    Fix {
+        record_id: String,
+        #[arg(value_name = "FIELD=VALUE", conflicts_with_all = ["confirm", "confirm_all", "clear"])]
+        edit: Option<String>,
+        #[arg(long, value_name = "FIELD")]
+        confirm: Option<String>,
+        #[arg(long)]
+        confirm_all: bool,
+        #[arg(long, value_name = "FIELD")]
+        clear: Option<String>,
+        /// With issuer=NAME: name this sender's issuer on every record, now
+        /// and later.
+        #[arg(long)]
+        sender: bool,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Not a record: take records out of Archive. The emails are untouched
+    /// and they are never filed again.
+    Dismiss {
+        #[arg(value_name = "RECORD_ID", required = true)]
+        record_ids: Vec<String>,
+        /// Bring dismissed records back.
+        #[arg(long)]
+        restore: bool,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// File an email as a record yourself.
+    File {
+        message_id: String,
+        /// receipt, order, booking, invoice, statement, ticket, contract,
+        /// warranty or account; the detector's reading otherwise.
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Always or never file mail from this email's sender.
+    Sender {
+        message_id: String,
+        #[arg(long, conflicts_with_all = ["never", "clear"])]
+        always: bool,
+        #[arg(long, conflicts_with = "clear")]
+        never: bool,
+        /// Let the rules decide again.
+        #[arg(long)]
+        clear: bool,
+        /// The kind "always" files as.
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Export records as CSV: --dry-run shows the row count, totals,
+    /// unchecked rows and missing PDFs first.
+    Export {
+        /// CSV is the export format; the flag is accepted for scripts.
+        #[arg(long)]
+        csv: bool,
+        #[command(flatten)]
+        filter: RecordFilterArgs,
+        /// Write the CSV here instead of standard output.
+        #[arg(long, value_name = "FILE")]
+        out: Option<std::path::PathBuf>,
+        /// Copy each record's PDF into this folder.
+        #[arg(long, value_name = "DIR")]
+        pdfs: Option<std::path::PathBuf>,
         #[arg(long)]
         dry_run: bool,
     },

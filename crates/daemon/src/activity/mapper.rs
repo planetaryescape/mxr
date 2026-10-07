@@ -806,6 +806,19 @@ pub fn map_request(
                 "signature default config is not in the activity catalog"
             );
         }
+        Request::ListRecords { .. }
+        | Request::GetRecord { .. }
+        | Request::AnswerFromRecords { .. }
+        | Request::SetRecordField { .. }
+        | Request::DismissRecord { .. }
+        | Request::FileRecord { .. }
+        | Request::SetRecordSender { .. }
+        | Request::ExportRecords { .. } => {
+            // Records carry amounts, references and account numbers; until
+            // the catalog has an ids-and-counts shape for them, none is
+            // recorded.
+            skip_activity!("records", "Archive requests are not in the activity catalog yet");
+        }
         Request::GetTodoRunway { .. }
         | Request::ListTodos { .. }
         | Request::GetTodo { .. }

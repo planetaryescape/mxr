@@ -116,7 +116,7 @@ pub use people::{NamedCorrespondent, PersonFacts, PersonLink, PersonMerge};
 pub use places::PlaceMessage;
 pub use pool::Store;
 pub use records::{
-    ArchiveRecord, RecordDocument, RecordFieldValue, RecordFiled, RecordFiling, RecordGroup,
+    ArchiveRecord, RecordDocument, RecordFieldEdit, RecordFieldValue, RecordFiled, RecordFiling, RecordGroup,
     RecordLink, RecordPdfToFetch, RecordQuery, RecordRun, RecordSenderRule, RecordSource,
     RECORD_CHECKED_FIELDS,
 };

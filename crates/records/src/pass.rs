@@ -438,7 +438,11 @@ where
 }
 
 pub fn new_record_id() -> String {
-    uuid::Uuid::new_v4().to_string()
+    format!("rec_{}", uuid::Uuid::new_v4().simple())
+}
+
+fn new_group_id() -> String {
+    format!("grp_{}", uuid::Uuid::new_v4().simple())
 }
 
 /// The plan for filing one message by hand, as `kind` when given.
@@ -759,7 +763,7 @@ pub async fn regroup(
         .map(|plan| {
             (
                 RecordGroup {
-                    id: new_record_id(),
+                    id: new_group_id(),
                     account_id: account_id.clone(),
                     kind: plan.kind.as_str().to_string(),
                     group_key: plan.key,

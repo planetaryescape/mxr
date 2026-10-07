@@ -306,6 +306,9 @@ fn plan_one(
     } else {
         (Vec::new(), 0)
     };
+    let files_record = ticked
+        .iter()
+        .any(|todo| super::records::todo_files_record(&todo.kind));
     Plan {
         thread_id: data.thread_id.clone(),
         account_id: Some(data.account_id.clone()),
@@ -318,10 +321,11 @@ fn plan_one(
         },
         left_in_inbox: last && !archive_on_last_done && !live_in_inbox.is_empty(),
         filed: mode == ModeKindData::Todo
-            && data
+            && (data
                 .modes
                 .iter()
-                .any(|entry| entry.mode == ModeKindData::Archive),
+                .any(|entry| entry.mode == ModeKindData::Archive)
+                || files_record),
         still_in,
         archive,
         unread,
@@ -471,6 +475,7 @@ async fn put_away(
             }
         }
         ticked_any |= !plan.todos.is_empty();
+        super::records::file_ticked_todos(state, &plan.todos).await;
     }
     if ticked_any {
         super::mode_guide::retire(state, ModeKindData::Todo.id()).await?;

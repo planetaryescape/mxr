@@ -368,7 +368,16 @@ pub(super) async fn set_state(
         if to == TodoState::Done && !changed_ids.is_empty() {
             super::mode_guide::retire(state, MODE).await?;
         }
-        state.store.get_todos(&changed_ids).await?
+        let changed = state.store.get_todos(&changed_ids).await?;
+        // A ticked-off bill is a record in Archive; reopening it unfiles
+        // what the tick-off filed.
+        match to {
+            TodoState::Done => {
+                super::records::file_ticked_todos(state, &changed).await;
+            }
+            _ => super::records::unfile_todos(state, &changed).await,
+        }
+        changed
     };
     Ok(change(dry_run, verb, done_word, &changed, unchanged, now))
 }

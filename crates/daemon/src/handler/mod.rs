@@ -55,6 +55,7 @@ mod owed;
 pub(crate) mod places;
 mod platform;
 mod promises;
+pub(crate) mod records;
 mod relationship_profile;
 pub(crate) mod reply_later;
 mod rules;
@@ -371,6 +372,12 @@ pub fn request_lane(req: &Request) -> IpcLane {
         // LLM-bearing operations: variable latency, can hold permits for
         // many seconds while awaiting inference.
         Request::ArchiveAsk { .. }
+        | Request::AnswerFromRecords { fallback: true, .. }
+        | Request::ExportRecords {
+            attachments_dir: Some(_),
+            dry_run: false,
+            ..
+        }
         | Request::CheckDraftSafety { .. }
         | Request::DraftCompose { .. }
         | Request::DraftRefine { .. }
@@ -1337,6 +1344,56 @@ async fn dispatch(
             decision,
             dry_run,
         } => todos::set_catchup(state, account_id.as_ref(), decision, *dry_run).await,
+        Request::ListRecords {
+            account_id,
+            filter,
+            limit,
+            offset,
+        } => records::list_records(state, account_id.as_ref(), filter, *limit, *offset).await,
+        Request::GetRecord { record_id } => records::get_record(state, record_id).await,
+        Request::AnswerFromRecords {
+            query,
+            account_id,
+            fallback,
+            limit,
+        } => records::answer_query(state, query, account_id.as_ref(), *fallback, *limit).await,
+        Request::SetRecordField {
+            record_id,
+            edit,
+            apply_to_sender,
+            dry_run,
+        } => records::set_field(state, record_id, edit, *apply_to_sender, *dry_run).await,
+        Request::DismissRecord {
+            record_ids,
+            restore,
+            dry_run,
+        } => records::dismiss(state, record_ids, *restore, *dry_run).await,
+        Request::FileRecord {
+            message_id,
+            kind,
+            dry_run,
+        } => records::file(state, message_id, *kind, *dry_run).await,
+        Request::SetRecordSender {
+            message_id,
+            verdict,
+            kind,
+            dry_run,
+        } => records::set_sender(state, message_id, verdict.as_deref(), *kind, *dry_run).await,
+        Request::ExportRecords {
+            account_id,
+            filter,
+            attachments_dir,
+            dry_run,
+        } => {
+            records::export_records(
+                state,
+                account_id.as_ref(),
+                filter,
+                attachments_dir.as_deref(),
+                *dry_run,
+            )
+            .await
+        }
         Request::GetModeGuide { mode } => mode_guide::get(state, mode.as_deref()).await,
         Request::SetModeGuideSeen { mode, seen } => mode_guide::set_seen(state, mode, *seen).await,
         Request::GetNow { account_id } => now::get_now(state, account_id.as_ref()).await,
@@ -1850,6 +1907,15 @@ async fn request_account_scope(
             account_id: None, ..
         }
         | Request::GetTodoCatchup { account_id: None }
+        | Request::ListRecords {
+            account_id: None, ..
+        }
+        | Request::AnswerFromRecords {
+            account_id: None, ..
+        }
+        | Request::ExportRecords {
+            account_id: None, ..
+        }
         | Request::GetNow { account_id: None }
         | Request::GetRail { account_id: None }
         | Request::ListMessages {
@@ -1904,9 +1970,21 @@ async fn request_account_scope(
             ..
         }
         | Request::RecordPromise { message_id, .. }
-        | Request::CreateTodo { message_id, .. } => {
+        | Request::CreateTodo { message_id, .. }
+        | Request::FileRecord { message_id, .. }
+        | Request::SetRecordSender { message_id, .. } => {
             envelope_account_scope(state, std::slice::from_ref(message_id)).await
         }
+        Request::GetRecord { record_id } | Request::SetRecordField { record_id, .. } => {
+            records::record_accounts(state, std::slice::from_ref(record_id))
+                .await
+                .map(RequestAccountScope::Accounts)
+                .map_err(|error| error.to_string())
+        }
+        Request::DismissRecord { record_ids, .. } => records::record_accounts(state, record_ids)
+            .await
+            .map(RequestAccountScope::Accounts)
+            .map_err(|error| error.to_string()),
         Request::GetTodo { todo_id }
         | Request::ScheduleTodo { todo_id, .. }
         | Request::UpdateTodo { todo_id, .. } => {
@@ -2209,6 +2287,10 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetTodo { .. }
         | Request::GetTodoCatchup { .. }
         | Request::GetModeGuide { .. }
+        | Request::ListRecords { .. }
+        | Request::GetRecord { .. }
+        | Request::AnswerFromRecords { .. }
+        | Request::ExportRecords { .. }
         | Request::GetNow { .. }
         | Request::GetRail { .. }
         | Request::GetModeMembership { .. }
@@ -2378,6 +2460,10 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::CreateTodo { .. }
         | Request::SetTodoCatchup { .. }
         | Request::SetModeGuideSeen { .. }
+        | Request::SetRecordField { .. }
+        | Request::DismissRecord { .. }
+        | Request::FileRecord { .. }
+        | Request::SetRecordSender { .. }
         | Request::RebuildUserVoice { .. }
         | Request::SetScreenerDecision { .. }
         | Request::ClearScreenerDecision { .. }
@@ -2611,6 +2697,14 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SetTodoCatchup { .. } => "set_todo_catchup",
         Request::GetModeGuide { .. } => "get_mode_guide",
         Request::SetModeGuideSeen { .. } => "set_mode_guide_seen",
+        Request::ListRecords { .. } => "list_records",
+        Request::GetRecord { .. } => "get_record",
+        Request::AnswerFromRecords { .. } => "answer_from_records",
+        Request::SetRecordField { .. } => "set_record_field",
+        Request::DismissRecord { .. } => "dismiss_record",
+        Request::FileRecord { .. } => "file_record",
+        Request::SetRecordSender { .. } => "set_record_sender",
+        Request::ExportRecords { .. } => "export_records",
         Request::GetRecipientBriefing { .. } => "get_recipient_briefing",
         Request::SuggestCollaborators { .. } => "suggest_collaborators",
         Request::FindExpert { .. } => "find_expert",

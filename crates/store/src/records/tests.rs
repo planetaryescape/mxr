@@ -238,17 +238,38 @@ async fn the_user_wins_forever_and_confirming_checks_the_record() {
             .checked
     );
 
-    assert!(fx
+    let confirm = RecordFieldEdit::Confirm {
+        field: "amount".into(),
+    };
+    // The dry run shows the outcome and writes nothing.
+    let (preview, _) = fx
         .store
-        .set_archive_record_user_field("r1", "amount", None, at(1))
+        .edit_archive_record("r1", &confirm, at(1), false)
         .await
-        .unwrap());
+        .unwrap()
+        .unwrap();
+    assert!(preview.checked);
+    assert!(!fx.store.get_archive_record("r1").await.unwrap().unwrap().checked);
+    fx.store
+        .edit_archive_record("r1", &confirm, at(1), true)
+        .await
+        .unwrap()
+        .unwrap();
     let record = fx.store.get_archive_record("r1").await.unwrap().unwrap();
     assert!(record.checked);
     assert_eq!(record.amount_minor, Some(500));
 
     fx.store
-        .set_archive_record_user_field("r1", "amount", Some((Some("GBP".into()), Some(700))), at(2))
+        .edit_archive_record(
+            "r1",
+            &RecordFieldEdit::Set {
+                field: "amount".into(),
+                value_text: Some("GBP".into()),
+                value_int: Some(700),
+            },
+            at(2),
+            true,
+        )
         .await
         .unwrap();
     // A re-run of the detector with a fresh observation never beats the user.

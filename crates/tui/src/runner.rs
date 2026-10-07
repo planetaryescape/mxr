@@ -3054,6 +3054,7 @@ pub async fn run() -> anyhow::Result<()> {
                                         total_messages,
                                         sync_statuses,
                                         degraded,
+                                        freshness: None,
                                     });
                                 }
                                 Response::Ok {

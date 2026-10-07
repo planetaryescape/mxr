@@ -366,6 +366,9 @@ pub(crate) struct StatusSnapshot {
     /// `total_messages` and `sync_statuses` carry no reading at all. Showing
     /// them as fact prints "0 messages" for a store that is merely busy.
     pub(crate) degraded: bool,
+    /// Fetched alongside the status; `None` when that request failed or
+    /// was not made, which keeps the last reading.
+    pub(crate) freshness: Option<mxr_protocol::FreshnessData>,
 }
 
 pub(crate) struct UnsubscribeResultData {

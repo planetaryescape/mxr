@@ -14,6 +14,9 @@ pub struct StatusBarState {
     pub starred_count: usize,
     pub body_status: Option<String>,
     pub sync_status: Option<String>,
+    /// The sync words are a warning (failing, paused or stale sync): drawn
+    /// in the warning colour so they stand out from the counts.
+    pub sync_warning: bool,
     pub feature_health_status: Option<String>,
     pub status_message: Option<String>,
     pub pending_mutation_count: usize,
@@ -35,55 +38,72 @@ pub fn draw(
 ) {
     let sync_part = state.sync_status.as_deref().unwrap_or("not synced");
 
-    let status = if state
+    let status: Vec<Span<'static>> = if state
         .status_message
         .as_deref()
         .is_some_and(|message| message.starts_with("Error:"))
     {
-        state.status_message.clone().unwrap_or_default()
+        vec![Span::raw(state.status_message.clone().unwrap_or_default())]
     } else if state.pending_mutation_count > 0 {
         let message = state
             .pending_mutation_status
             .as_deref()
             .or(state.status_message.as_deref())
             .unwrap_or("Working...");
-        format!("{} {}", pending_progress_prefix(state), message)
+        vec![Span::raw(format!(
+            "{} {}",
+            pending_progress_prefix(state),
+            message
+        ))]
     } else if let Some(msg) = state.status_message.as_deref() {
-        msg.to_string()
+        vec![Span::raw(msg.to_string())]
     } else {
-        let mut status = format!(
-            "={} [Msgs:{} New:{} Starred:{}]= {}",
+        let counts = format!(
+            "={} [Msgs:{} New:{} Starred:{}]= ",
             state.mailbox_name,
             state
                 .total_count
                 .map_or_else(|| "?".to_string(), |count| count.to_string()),
             state.unread_count,
             state.starred_count,
-            sync_part
         );
+        let sync = if state.sync_warning {
+            Span::styled(
+                format!("! {sync_part}"),
+                Style::default()
+                    .fg(theme.warning)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else {
+            Span::raw(sync_part.to_string())
+        };
+        let mut tail = String::new();
         if let Some(body_status) = state.body_status.as_deref() {
-            status.push_str(" | ");
-            status.push_str(body_status);
+            tail.push_str(" | ");
+            tail.push_str(body_status);
         }
         if let Some(feature_health_status) = state.feature_health_status.as_deref() {
-            status.push_str(" | ");
-            status.push_str(feature_health_status);
+            tail.push_str(" | ");
+            tail.push_str(feature_health_status);
         }
-        status
+        vec![Span::raw(counts), sync, Span::raw(tail)]
     };
 
     // Prepend an animated spinner while background work is in flight so
     // the user can tell the daemon is busy even without a pane-local
     // loading indicator.
     let line = match spinner.filter(|_| state.busy) {
-        Some(spinner) => Line::from(vec![
-            Throbber::default()
-                .throbber_set(BRAILLE_SIX)
-                .throbber_style(Style::default().fg(theme.accent))
-                .to_symbol_span(spinner),
-            Span::raw(" "),
-            Span::raw(status),
-        ]),
+        Some(spinner) => {
+            let mut spans = vec![
+                Throbber::default()
+                    .throbber_set(BRAILLE_SIX)
+                    .throbber_style(Style::default().fg(theme.accent))
+                    .to_symbol_span(spinner),
+                Span::raw(" "),
+            ];
+            spans.extend(status);
+            Line::from(spans)
+        }
         None => Line::from(status),
     };
 
@@ -154,6 +174,7 @@ mod tests {
             starred_count: 0,
             body_status: None,
             sync_status: None,
+            sync_warning: false,
             feature_health_status: None,
             status_message: None,
             pending_mutation_count: pending,
@@ -172,5 +193,53 @@ mod tests {
     #[test]
     fn single_pending_mutation_keeps_pending_prefix() {
         assert_eq!(pending_progress_prefix(&state(1, 1)), "[pending:1]");
+    }
+
+    fn rendered(state: &StatusBarState) -> ratatui::buffer::Buffer {
+        let theme = crate::theme::Theme::default();
+        let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(110, 1)).unwrap();
+        terminal
+            .draw(|frame| draw(frame, frame.area(), state, None, &theme))
+            .unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    fn text(buffer: &ratatui::buffer::Buffer) -> String {
+        buffer
+            .content()
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect()
+    }
+
+    #[test]
+    fn the_bar_shows_the_newest_mail_and_sync_calmly_when_all_is_well() {
+        let mut calm = state(0, 0);
+        calm.busy = false;
+        calm.sync_status = Some("Latest mail 5m ago · synced 1m ago".into());
+        let buffer = rendered(&calm);
+        assert!(
+            text(&buffer).contains("Latest mail 5m ago · synced 1m ago"),
+            "{}",
+            text(&buffer)
+        );
+        assert!(!text(&buffer).contains('!'));
+    }
+
+    #[test]
+    fn a_sync_warning_is_marked_and_drawn_in_the_warning_colour() {
+        let theme = crate::theme::Theme::default();
+        let mut warning = state(0, 0);
+        warning.busy = false;
+        warning.sync_status =
+            Some("Latest mail 2h ago · Gmail paused: rate limited, retrying 09:50".into());
+        warning.sync_warning = true;
+        let buffer = rendered(&warning);
+        let line = text(&buffer);
+        let at = line
+            .find("! Latest mail 2h ago · Gmail paused: rate limited, retrying 09:50")
+            .unwrap_or_else(|| panic!("warning missing: {line}"));
+        let column = u16::try_from(line[..at].chars().count()).unwrap();
+        assert_eq!(buffer[(column, 0)].fg, theme.warning);
     }
 }

@@ -423,7 +423,17 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         // Every client calls status as the daemon version handshake and the
         // MCP status tool depends on it; `scope_response` cuts its account
         // rows down to the allowed accounts.
-        Request::GetStatus
+        // Freshness across every account is the status bar's poll:
+        // `scope_response` keeps only the allowed accounts' sync health and
+        // arrivals. Naming an account scopes it like any other request.
+        Request::GetFreshness {
+            account_id: Some(account_id),
+            ..
+        } => account(account_id),
+        Request::GetFreshness {
+            account_id: None, ..
+        }
+        | Request::GetStatus
         | Request::Ping
         | Request::Authenticate { .. }
         | Request::GetLlmStatus
@@ -828,6 +838,27 @@ pub(super) async fn scope_response(
                 feature_health,
                 degraded,
             })
+        }
+        ResponseData::Freshness { mut freshness } => {
+            let mut accounts = Vec::new();
+            for account in freshness.accounts {
+                if account_id_allowed(state, profile, &account.account_id).await? {
+                    accounts.push(account);
+                }
+            }
+            freshness
+                .arrivals
+                .retain(|arrival| accounts.iter().any(|a| a.account_id == arrival.account_id));
+            freshness.newest_message_at = accounts
+                .iter()
+                .filter_map(|account| account.newest_message_at)
+                .max();
+            freshness.worst_account_id = accounts
+                .iter()
+                .max_by_key(|account| account.health)
+                .map(|account| account.account_id.clone());
+            freshness.accounts = accounts;
+            Ok(ResponseData::Freshness { freshness })
         }
         ResponseData::Thread {
             thread,

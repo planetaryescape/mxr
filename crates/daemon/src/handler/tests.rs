@@ -685,6 +685,7 @@ mod body_and_invites;
 mod deferral;
 mod desk;
 mod desk_done;
+mod freshness;
 mod html_drafts;
 mod messages;
 mod messages_report;

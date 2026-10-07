@@ -72,14 +72,14 @@ describe("useDaemonEventInvalidation", () => {
     vi.clearAllMocks();
   });
 
-  test("SyncError surfaces the error and records it on the connection store", () => {
+  test("SyncError stops the spinner and refreshes without a toast per retry", () => {
     const { emit, invalidatedKeys } = setup();
     emit({ type: "SyncError", account_id: "acct-1", error: "imap handshake failed" });
 
-    expect(toastMock.error).toHaveBeenCalledWith("Sync failed: imap handshake failed");
-    const store = useConnectionStore.getState();
-    expect(store.errorMessage).toBe("imap handshake failed");
-    expect(store.lastErrorAt).toBeGreaterThan(0);
+    // Freshness owns the failure: it toasts once when the account's health
+    // changes, not on every retry of an account that is already failing.
+    expect(toastMock.error).not.toHaveBeenCalled();
+    expect(useConnectionStore.getState().errorMessage).toBeUndefined();
     expect(invalidatedKeys()).toContain(JSON.stringify(["shell"]));
   });
 

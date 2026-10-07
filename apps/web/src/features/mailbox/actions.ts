@@ -21,6 +21,8 @@ export async function syncNow(): Promise<void> {
     await apiFetch<unknown>("/api/v1/mail/sync", { method: "POST", body: {} });
     toast.success("Sync started", { description: "Progress shows in the status bar" });
   } catch (error) {
+    // Nothing is running: let the next "Sync now" through.
+    useConnectionStore.getState().setState({ syncProgress: undefined });
     toast.error("Sync failed to start", {
       description: error instanceof Error ? error.message : String(error),
     });

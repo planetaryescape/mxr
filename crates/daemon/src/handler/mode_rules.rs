@@ -131,6 +131,7 @@ pub(super) fn messages_membership(row: &DeskRowData, early: bool) -> ModeMembers
         format!("Here because: {summary}, {} (rule).", row.reason),
         format!("Also in Messages: {summary}"),
         early,
+        PERSON_TAG,
     )
 }
 
@@ -154,15 +155,21 @@ pub(super) fn quiet_membership(
         ),
         format!("Also in Messages: quiet, from {who}"),
         early,
+        PERSON_TAG,
     )
 }
 
-/// One membership line, with the mode's name and key filled in.
+/// Messages holds person mail: its reason in one word.
+const PERSON_TAG: &str = "person";
+
+/// One membership line, with the mode's name and key filled in. `tag` is
+/// the reason in one word, for an arrival's line ("→ Updates · automated").
 pub(super) fn membership(
     mode: ModeKindData,
     reason: String,
     also_in: String,
     early: bool,
+    tag: &str,
 ) -> ModeMembershipData {
     ModeMembershipData {
         mode,
@@ -172,6 +179,7 @@ pub(super) fn membership(
         also_in,
         early,
         todo_ids: Vec::new(),
+        tag: Some(tag.to_string()),
     }
 }
 

@@ -921,6 +921,18 @@ pub enum Command {
         format: Option<OutputFormat>,
         #[arg(long)]
         watch: bool,
+        /// Show how fresh the local mail is instead: when the newest message
+        /// arrived, each account's sync health, and the last arrivals with
+        /// the modes they went to.
+        #[arg(long, conflicts_with = "watch")]
+        freshness: bool,
+        /// With --freshness: one account (name, email or id). Default: every
+        /// account, showing the freshest mail and the worst sync state.
+        #[arg(long, requires = "freshness")]
+        account: Option<String>,
+        /// With --freshness: how many arrivals to list (default 5, at most 50).
+        #[arg(long, requires = "freshness")]
+        limit: Option<u32>,
     },
     /// Start or reopen the local HTTP/WebSocket bridge and open the web app in
     /// the default browser. Runs detached by default; use `mxr web stop` to

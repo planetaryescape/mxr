@@ -10,6 +10,7 @@
 mod chime_routes;
 mod chrome;
 mod envelope_list;
+mod freshness_routes;
 mod insight_routes;
 mod legacy;
 mod mailbox_threads;

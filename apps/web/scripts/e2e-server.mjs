@@ -61,6 +61,7 @@ function prepareRuntime() {
   mkdirSync(join(runtimeDir, "config"), { recursive: true });
   mkdirSync(join(runtimeDir, "data"), { recursive: true });
   mkdirSync(join(runtimeDir, "run"), { recursive: true });
+  mkdirSync(join(runtimeDir, "spool"), { recursive: true });
   mkdirSync(dirname(statePath), { recursive: true });
 
   const tokenPath = join(runtimeDir, "config", "bridge-token");
@@ -109,6 +110,9 @@ function startDaemon() {
       // outbound (the desk's owed and waiting lanes need it). That makes it
       // the personal demo profile, which keeps 55% of this count: 120.
       MXR_FAKE_MESSAGE_COUNT: "218",
+      // Specs drop messages and sync failures here (crates/provider-fake
+      // spool.rs); e2e/helpers/spool.ts writes them.
+      MXR_FAKE_SPOOL_DIR: join(runtimeDir, "spool"),
     },
     stdio: ["ignore", "pipe", "pipe"],
   })

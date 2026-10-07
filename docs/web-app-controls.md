@@ -16,6 +16,7 @@ gains or loses a control, so this page and the app can't drift apart.
 | Search mail | Top bar | Frequency: search is how people find mail. Shows `/`. |
 | Compose | Top bar | Frequency, and the only way in for someone who doesn't know `c`. |
 | Sync now | Status bar | Discoverability: shows sync state and progress; the one manual sync. |
+| Latest mail (freshness) | Status bar; topbar on a phone | Frequency: the quick "is my mail current?" glance from any page. Opens the last arrivals and where each went. A failing or stale sync adds a warning link to the account's sync details. |
 | all keys (`?`) | Status bar | Discoverability: the way into every key. |
 | Key hint strip | Status bar | Discoverability: the current view's five most useful keys (not buttons). |
 

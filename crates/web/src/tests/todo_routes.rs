@@ -281,3 +281,34 @@ async fn got_it_with_only_a_thread_id_is_a_preview_and_a_send_carries_its_token(
         Request::AckMessage { dry_run: false, preview_token: Some(token), .. } if token == "1.abc"
     ));
 }
+
+#[tokio::test]
+async fn freshness_route_forwards_its_scope_and_limit() {
+    let (_temp, addr, seen) = serve_recording().await;
+    let client = reqwest::Client::new();
+    let account = AccountId::new();
+    for url in [
+        format!("http://{addr}/api/v1/mail/freshness"),
+        format!("http://{addr}/api/v1/mail/freshness?account={account}&limit=12"),
+    ] {
+        let response = client
+            .get(url)
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+    }
+    let seen = seen.lock().unwrap();
+    assert!(matches!(
+        &seen[0],
+        Request::GetFreshness {
+            account_id: None,
+            limit: None
+        }
+    ));
+    assert!(matches!(
+        &seen[1],
+        Request::GetFreshness { account_id: Some(id), limit: Some(12) } if *id == account
+    ));
+}

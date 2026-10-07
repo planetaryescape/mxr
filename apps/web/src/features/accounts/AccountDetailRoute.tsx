@@ -48,6 +48,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AccountSyncDetails } from "@/features/freshness/AccountSyncHealth";
 
 export function AccountDetailRoute() {
   const { key } = useParams({ from: "/accounts/$key" });
@@ -306,6 +307,13 @@ function AccountDetail({ keyParam }: { keyParam: string }) {
           </div>
         </PageSection>
       ) : null}
+
+      <PageSection title="Sync">
+        <AccountSyncDetails
+          accountId={account.account_id}
+          onSignIn={isOauthAccount(account) ? () => reauth.mutate() : undefined}
+        />
+      </PageSection>
 
       <PageSection title="Connection">
         <FactList

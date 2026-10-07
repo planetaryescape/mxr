@@ -804,9 +804,19 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::sync_cmd::run(account, status, wait, wait_timeout_secs, format).await?;
         }
-        Some(Command::Status { format, watch }) => {
+        Some(Command::Status {
+            format,
+            watch,
+            freshness,
+            account,
+            limit,
+        }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::status::run(format, watch).await?;
+            if freshness {
+                commands::freshness::run(account.as_deref(), limit, format).await?;
+            } else {
+                commands::status::run(format, watch).await?;
+            }
         }
         Some(Command::Web {
             action,

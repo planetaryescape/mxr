@@ -705,7 +705,9 @@ async fn wait_for_demo_sync(
             // error from an attempt newer than the snapshot counts; the account
             // may have been carrying an old one before we asked for anything.
             let attempted_since = status.last_attempt_at != before.last_attempt_at;
-            if let Some(error) = status.last_error.as_deref() {
+            // A failing account's error stays while its retry runs, so only an
+            // account that has stopped syncing has failed.
+            if let (Some(error), false) = (status.last_error.as_deref(), status.sync_in_progress) {
                 if attempted_since || status.last_error != before.last_error {
                     anyhow::bail!("demo sync failed: {error}");
                 }

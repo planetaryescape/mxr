@@ -1,0 +1,284 @@
+//! The newest arrivals of one account, for freshness (`GetFreshness`):
+//! "is the local copy current?" is answered by when the newest message
+//! came in, whatever mailbox or mode it went to.
+
+use crate::{decode_id, decode_timestamp, trace_query};
+use chrono::{DateTime, Utc};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
+use mxr_core::types::{Address, MessageFlags};
+use sqlx::Row;
+use std::time::Instant;
+
+/// One message that came in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Arrival {
+    pub id: MessageId,
+    pub account_id: AccountId,
+    pub thread_id: ThreadId,
+    /// `inbound` or `unknown`: outbound mail never arrives.
+    pub direction: String,
+    /// When it arrived: the earlier of its Date header and when mxr
+    /// stored it.
+    pub date: DateTime<Utc>,
+    pub from: Address,
+    pub subject: String,
+}
+
+/// Rows read past `limit` by Date header, so an arrival whose header ran
+/// ahead (and so sorts early) can still be put in its place by the time
+/// mxr stored it.
+const REORDER_SLACK: u32 = 20;
+
+impl super::Store {
+    /// The newest messages of `account_id` that arrived rather than were
+    /// sent, newest first, at most `limit`.
+    ///
+    /// Any mailbox counts, archived included, except Trash and Spam: mail
+    /// there says nothing about whether new mail is reaching you, and the
+    /// popover that lists these opens each one. Drafts are yours, not an
+    /// arrival, and so is mail of unknown direction from one of the
+    /// account's own addresses.
+    ///
+    /// An arrival's time is the earlier of its Date header and when mxr
+    /// stored it: a sender's clock running ahead cannot make it the newest
+    /// mail for hours. A header more than a day ahead is skipped outright,
+    /// as the desk skips it.
+    pub async fn latest_arrivals(
+        &self,
+        account_id: &AccountId,
+        limit: u32,
+    ) -> Result<Vec<Arrival>, sqlx::Error> {
+        let started_at = Instant::now();
+        let hidden_flags =
+            i64::from((MessageFlags::TRASH | MessageFlags::SPAM | MessageFlags::DRAFT).bits());
+        let future_cutoff = Utc::now().timestamp() + 86_400;
+        // `idx_messages_account_date` walks the account newest first, so the
+        // filters only see rows until enough of them pass.
+        let rows = sqlx::query(
+            "SELECT m.id, m.account_id, m.thread_id, m.direction, m.date, m.stored_at,
+                    m.from_name, m.from_email, m.subject
+             FROM messages m
+             WHERE m.account_id = ?1
+               AND m.date <= ?2
+               AND (m.flags & ?3) = 0
+               AND m.direction != 'outbound'
+               AND NOT (
+                   m.direction = 'unknown'
+                   AND (
+                       lower(m.from_email) IN (
+                           SELECT lower(email) FROM account_addresses WHERE account_id = ?1
+                       )
+                       OR lower(m.from_email) = (SELECT lower(email) FROM accounts WHERE id = ?1)
+                   )
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
+                   WHERE ml.message_id = m.id AND l.provider_id IN ('TRASH', 'SPAM', 'DRAFT')
+               )
+             ORDER BY m.date DESC, m.rowid DESC
+             LIMIT ?4",
+        )
+        .bind(account_id.as_str())
+        .bind(future_cutoff)
+        .bind(hidden_flags)
+        .bind(i64::from(limit.saturating_add(REORDER_SLACK)))
+        .fetch_all(self.reader())
+        .await?;
+        let mut arrivals = rows
+            .into_iter()
+            .map(|row| {
+                let date = decode_timestamp(row.try_get("date")?)?;
+                let stored_at = row
+                    .try_get::<Option<i64>, _>("stored_at")?
+                    .map(decode_timestamp)
+                    .transpose()?;
+                Ok(Arrival {
+                    id: decode_id(row.try_get::<&str, _>("id")?)?,
+                    account_id: decode_id(row.try_get::<&str, _>("account_id")?)?,
+                    thread_id: decode_id(row.try_get::<&str, _>("thread_id")?)?,
+                    direction: row.try_get("direction")?,
+                    date: stored_at.map_or(date, |stored| date.min(stored)),
+                    from: Address {
+                        name: row.try_get("from_name")?,
+                        email: row.try_get("from_email")?,
+                    },
+                    subject: row.try_get("subject")?,
+                })
+            })
+            .collect::<Result<Vec<_>, sqlx::Error>>()?;
+        // Stable, so equal times keep storage order.
+        arrivals.sort_by_key(|arrival| std::cmp::Reverse(arrival.date));
+        arrivals.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
+        trace_query("arrivals.latest", started_at, arrivals.len());
+        Ok(arrivals)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::test_fixtures::*;
+    use crate::Store;
+    use chrono::{Duration, Utc};
+    use mxr_core::id::*;
+    use mxr_core::types::{MessageDirection, MessageFlags};
+
+    async fn put(
+        store: &Store,
+        account: &AccountId,
+        from: &str,
+        minutes_ago: i64,
+        direction: MessageDirection,
+        flags: MessageFlags,
+    ) -> MessageId {
+        let mut envelope = TestEnvelopeBuilder::new()
+            .account_id(account.clone())
+            .build();
+        envelope.provider_id = format!("p-{}", envelope.id);
+        envelope.thread_id = ThreadId::new();
+        envelope.from.email = from.into();
+        envelope.date = Utc::now() - Duration::minutes(minutes_ago);
+        envelope.flags = flags;
+        store
+            .upsert_envelope_with_direction(&envelope, direction)
+            .await
+            .unwrap();
+        envelope.id
+    }
+
+    #[tokio::test]
+    async fn arrivals_are_received_mail_newest_first_skipping_trash_spam_and_sent() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let id = &account.id;
+        let old = put(
+            &store,
+            id,
+            "a@x.com",
+            60,
+            MessageDirection::Inbound,
+            MessageFlags::empty(),
+        )
+        .await;
+        let newest = put(
+            &store,
+            id,
+            "b@x.com",
+            2,
+            MessageDirection::Unknown,
+            MessageFlags::READ,
+        )
+        .await;
+        put(
+            &store,
+            id,
+            "me@x.com",
+            1,
+            MessageDirection::Outbound,
+            MessageFlags::empty(),
+        )
+        .await;
+        put(
+            &store,
+            id,
+            "spam@x.com",
+            0,
+            MessageDirection::Inbound,
+            MessageFlags::SPAM,
+        )
+        .await;
+        put(
+            &store,
+            id,
+            "gone@x.com",
+            0,
+            MessageDirection::Inbound,
+            MessageFlags::TRASH,
+        )
+        .await;
+        // A bad Date header a week ahead is not the newest mail.
+        put(
+            &store,
+            id,
+            "clock@x.com",
+            -7 * 24 * 60,
+            MessageDirection::Inbound,
+            MessageFlags::empty(),
+        )
+        .await;
+
+        let arrivals = store.latest_arrivals(id, 10).await.unwrap();
+        let ids: Vec<_> = arrivals.iter().map(|a| a.id.clone()).collect();
+        assert_eq!(ids, vec![newest, old]);
+        assert_eq!(store.latest_arrivals(id, 1).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_date_header_ahead_of_the_clock_arrives_when_mxr_stored_it() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let id = &account.id;
+        // The sender's clock is three hours fast; mxr stored it just now.
+        let ahead = put(
+            &store,
+            id,
+            "fast@x.com",
+            -180,
+            MessageDirection::Inbound,
+            MessageFlags::empty(),
+        )
+        .await;
+        let arrivals = store.latest_arrivals(id, 5).await.unwrap();
+        assert_eq!(arrivals[0].id, ahead);
+        let skew = (arrivals[0].date - Utc::now()).num_seconds();
+        assert!(
+            skew <= 5,
+            "arrival time follows the store, not the header: {skew}s ahead"
+        );
+    }
+
+    #[tokio::test]
+    async fn your_own_mail_never_crowds_out_an_arrival() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let id = &account.id;
+        store
+            .add_account_address(id, "alias@example.com", false)
+            .await
+            .unwrap();
+        let arrival = put(
+            &store,
+            id,
+            "friend@x.com",
+            120,
+            MessageDirection::Inbound,
+            MessageFlags::empty(),
+        )
+        .await;
+        // Thirty newer messages of unknown direction from your own
+        // addresses: sent mail synced before the address table knew them.
+        for minutes in 0..30 {
+            let own = if minutes % 2 == 0 {
+                "TEST@example.com"
+            } else {
+                "alias@example.com"
+            };
+            put(
+                &store,
+                id,
+                own,
+                minutes,
+                MessageDirection::Unknown,
+                MessageFlags::empty(),
+            )
+            .await;
+        }
+        let arrivals = store.latest_arrivals(id, 5).await.unwrap();
+        assert_eq!(
+            arrivals.iter().map(|a| a.id.clone()).collect::<Vec<_>>(),
+            vec![arrival]
+        );
+    }
+}

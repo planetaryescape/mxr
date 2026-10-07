@@ -16,6 +16,7 @@ import { fetchAccounts } from "@/features/accounts/api";
 import { initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import { SyncHealthDot } from "@/features/freshness/AccountSyncHealth";
 
 /**
  * Scopes every mail view to one account, or all of them. Unlike the TUI,
@@ -99,6 +100,7 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
                 {row.email}
               </span>
             </span>
+            <SyncHealthDot accountId={row.account_id} />
             {scope === row.account_id || (scope === null && rows.length === 1) ? (
               <Check className="size-3.5 text-primary" />
             ) : null}

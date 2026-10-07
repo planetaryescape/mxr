@@ -46,17 +46,11 @@ export function useDaemonEventInvalidation(): void {
             void invalidateMailQueries(qc);
             break;
           case "SyncError":
-            // A background sync failed. Stop any sync-progress spinner,
-            // surface the reason, and record it on the connection store
-            // so the status pill can reflect the failure.
+            // A sync failed. Stop any sync-progress spinner. The failure
+            // itself shows through freshness (the status bar, the pill and
+            // the accounts), which toasts only when an account's health
+            // changes, never on every retry of a failing account.
             clearSyncProgressSoon();
-            if (isSyncErrorEvent(event)) {
-              useConnectionStore.getState().setState({
-                lastErrorAt: Date.now(),
-                errorMessage: event.error,
-              });
-              toast.error(`Sync failed: ${event.error}`);
-            }
             void qc.invalidateQueries({ queryKey: shellKey });
             break;
           case "ReminderTriggered":
@@ -91,11 +85,19 @@ export function useDaemonEventInvalidation(): void {
   );
 }
 
+/**
+ * A sync that has said nothing for this long has ended without telling us
+ * (a dropped frame, a daemon restart): stop showing it as running, or every
+ * later "Sync now" is refused as already running.
+ */
+const SYNC_PROGRESS_STALE_MS = 60_000;
+
 function setSyncProgress(syncProgress: SyncProgress): void {
-  if (clearSyncProgressHandle) {
-    clearTimeout(clearSyncProgressHandle);
+  if (clearSyncProgressHandle) clearTimeout(clearSyncProgressHandle);
+  clearSyncProgressHandle = setTimeout(() => {
+    useConnectionStore.getState().setState({ syncProgress: undefined });
     clearSyncProgressHandle = undefined;
-  }
+  }, SYNC_PROGRESS_STALE_MS);
   useConnectionStore.getState().setState({ syncProgress });
 }
 
@@ -116,12 +118,6 @@ function isSyncOperationEvent(event: unknown): event is {
   if (typeof event !== "object" || event === null) return false;
   const candidate = event as Record<string, unknown>;
   return candidate.operation === "sync";
-}
-
-function isSyncErrorEvent(event: unknown): event is { account_id: string; error: string } {
-  if (typeof event !== "object" || event === null) return false;
-  const candidate = event as Record<string, unknown>;
-  return typeof candidate.error === "string";
 }
 
 function isReconciliationFailedEvent(

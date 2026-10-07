@@ -37,6 +37,7 @@ mod draft_refine;
 mod draft_voice;
 mod error;
 mod expert;
+mod freshness;
 mod helpers;
 mod humanizer;
 mod mail_kind;
@@ -1399,6 +1400,9 @@ async fn dispatch(
         Request::SetModeGuideSeen { mode, seen } => mode_guide::set_seen(state, mode, *seen).await,
         Request::GetNow { account_id } => now::get_now(state, account_id.as_ref()).await,
         Request::GetRail { account_id } => modes::get_rail(state, account_id.as_ref()).await,
+        Request::GetFreshness { account_id, limit } => {
+            freshness::get_freshness(state, account_id.as_ref(), *limit).await
+        }
         Request::ListMessages {
             account_id,
             turn,
@@ -1907,6 +1911,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ExportRecords { .. }
         | Request::GetNow { .. }
         | Request::GetRail { .. }
+        | Request::GetFreshness { .. }
         | Request::GetModeMembership { .. }
         | Request::ListMessages { .. }
         | Request::GetPerson { .. }
@@ -2296,6 +2301,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SetTodoState { .. } => "set_todo_state",
         Request::GetNow { .. } => "get_now",
         Request::GetRail { .. } => "get_rail",
+        Request::GetFreshness { .. } => "get_freshness",
         Request::GetModeMembership { .. } => "get_mode_membership",
         Request::ListMessages { .. } => "list_messages",
         Request::GetPerson { .. } => "get_person",
@@ -2395,6 +2401,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::GetTodoCatchup { account_id }
         | Request::GetNow { account_id }
         | Request::GetRail { account_id }
+        | Request::GetFreshness { account_id, .. }
         | Request::ListMessages { account_id, .. }
         | Request::GetPerson { account_id, .. }
         | Request::ListMergeSuggestions { account_id }

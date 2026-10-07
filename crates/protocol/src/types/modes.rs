@@ -115,6 +115,10 @@ pub struct ModeMembershipData {
     /// To do: the open rows holding the thread.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub todo_ids: Vec<String>,
+    /// The reason in one word, for a one-line arrival: "person",
+    /// "automated", "newsletter", "copied", "task", "record".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
 }
 
 /// A first-time sender's one question, asked on their row in the mode

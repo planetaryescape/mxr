@@ -7,6 +7,9 @@ Show daemon status
 Usage: mxr status [OPTIONS]
 
 Options:
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
       --watch
-  -h, --help             Print help
+      --freshness          Show how fresh the local mail is instead: when the newest message arrived, each account's sync health, and the last arrivals with the modes they went to
+      --account <ACCOUNT>  With --freshness: one account (name, email or id). Default: every account, showing the freshest mail and the worst sync state
+      --limit <LIMIT>      With --freshness: how many arrivals to list (default 5, at most 50)
+  -h, --help               Print help

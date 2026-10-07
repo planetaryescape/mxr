@@ -201,7 +201,9 @@ pub fn app(config: WebServerConfig) -> Router {
             record_routes::extend_mail(messages_routes::extend_mail(mode_routes::extend_mail(
                 todo_routes::extend_mail(place_routes::extend_mail(promise_routes::extend_mail(
                     thread_context_routes::extend_mail(time_routes::extend_mail(
-                        insight_routes::extend_mail(routes_v6::extend_mail(mail_router())),
+                        insight_routes::extend_mail(freshness_routes::extend_mail(
+                            routes_v6::extend_mail(mail_router()),
+                        )),
                     )),
                 ))),
             ))),

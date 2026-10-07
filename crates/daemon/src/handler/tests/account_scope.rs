@@ -902,6 +902,61 @@ async fn status_shows_a_scoped_client_only_its_accounts() {
     assert_eq!(total_messages, own_count);
 }
 
+/// Freshness for every account stays allowed (it is the status bar's
+/// poll), but a scoped client sees only its own accounts' arrivals and sync
+/// health, never another account's senders or errors. Naming the other
+/// account is denied.
+#[tokio::test]
+async fn freshness_shows_a_scoped_client_only_its_accounts() {
+    let s = scoped().await;
+    s.fx.state
+        .store
+        .upsert_sync_runtime_status(
+            &s.other.account,
+            &mxr_store::SyncRuntimeStatusUpdate {
+                last_error: Some(Some("Provider error: oauth token revoked".into())),
+                failure_class: Some(Some("auth".into())),
+                consecutive_failures: Some(1),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let Response::Ok {
+        data: ResponseData::Freshness { freshness },
+    } = scoped_dispatch(
+        &s,
+        Request::GetFreshness {
+            account_id: None,
+            limit: None,
+        },
+    )
+    .await
+    else {
+        panic!("expected freshness")
+    };
+    assert!(freshness
+        .accounts
+        .iter()
+        .all(|account| account.account_id == s.own.account));
+    assert!(freshness
+        .accounts
+        .iter()
+        .all(|account| account.last_sync_error.is_none()));
+    assert!(!freshness.arrivals.is_empty());
+    assert!(freshness
+        .arrivals
+        .iter()
+        .all(|arrival| arrival.account_id == s.own.account));
+    assert_ne!(freshness.worst_account_id, Some(s.other.account.clone()));
+
+    assert_scoped(&s, |owned| Request::GetFreshness {
+        account_id: Some(owned.account.clone()),
+        limit: None,
+    })
+    .await;
+}
+
 /// Signatures bound to an excluded account are hidden; unbound ones and
 /// the agent's own stay. Snippets aren't tied to an account, so a scoped
 /// client gets none.

@@ -85,7 +85,7 @@ use utoipa::{
         mail_sender_kind, mail_todos_runway, mail_todos_create, mail_todos_in_state,
         mail_todo_get, mail_todos_state, mail_todo_schedule, mail_todo_edit,
         mail_todos_catchup_get, mail_todos_catchup_set, mail_mode_guide, mail_mode_card,
-        mail_now, mail_rail, mail_mode_membership_get, mail_mode_membership_post, mail_mode_done,
+        mail_now, mail_rail, mail_freshness, mail_mode_membership_get, mail_mode_membership_post, mail_mode_done,
         mail_people, mail_people_page, mail_people_ack, mail_people_merge, mail_people_split,
         mail_people_merge_suggestions,
         mail_records_ledger, mail_records_answer, mail_record_get, mail_record_field,
@@ -558,6 +558,22 @@ fn mail_now() {}
 )]
 #[allow(dead_code)]
 fn mail_rail() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/freshness",
+    summary = "Freshness: the newest mail received, each account's sync health and the last arrivals with their modes",
+    params(
+        ("account" = Option<String>, Query, description = "Account id; omitted covers every account: the freshest mail and the worst sync state"),
+        ("limit" = Option<u32>, Query, description = "Arrivals to return; default 5, at most 50"),
+    ),
+    responses(
+        (status = 200, description = "The `Freshness` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_freshness() {}
 
 #[utoipa::path(
     get,

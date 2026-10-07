@@ -872,6 +872,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/freshness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Freshness: the newest mail received, each account's sync health and the last arrivals with their modes */
+        get: operations["mail_freshness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/gists": {
         parameters: {
             query?: never;
@@ -3418,6 +3435,33 @@ export interface components {
         };
         /** @enum {string} */
         AccountEditModeData: "full" | "runtime_only";
+        /** @description One account's freshness. */
+        AccountFreshnessData: {
+            account_id: components["schemas"]["AccountId"];
+            account_name: string;
+            /**
+             * @description As of `generated_at`. A client ticking forward turns `ok` into
+             *     `stale` itself (`effective_health`).
+             */
+            health: components["schemas"]["SyncHealthData"];
+            /**
+             * @description How the account is named in a warning: "Gmail" or "Outlook" when it
+             *     is the only account, else the account's own name, so two Gmail
+             *     accounts never read the same.
+             */
+            label: string;
+            /** Format: date-time */
+            last_sync_attempt_at?: string | null;
+            last_sync_error?: null | components["schemas"]["SyncErrorData"];
+            /** Format: date-time */
+            last_sync_ok_at?: string | null;
+            /**
+             * Format: date-time
+             * @description The newest message received in any mailbox, whatever its mode.
+             */
+            newest_message_at?: string | null;
+            sync_in_progress?: boolean;
+        };
         /** Format: uuid */
         AccountId: string;
         AccountMutationResultData: {
@@ -3704,6 +3748,24 @@ export interface components {
             candidate_count: number;
             executed_mode: components["schemas"]["ArchiveAskMode"];
             requested_mode: components["schemas"]["ArchiveAskMode"];
+        };
+        /** @description One message that arrived, with the modes its conversation went to. */
+        ArrivalData: {
+            account_id: components["schemas"]["AccountId"];
+            from: components["schemas"]["Address"];
+            /** @description The message is in the provider's inbox. */
+            in_inbox: boolean;
+            message_id: components["schemas"]["MessageId"];
+            /**
+             * @description The mode its sender's rule sent it to (the sender decision, list
+             *     headers, the address), with its one-word `tag`. Empty when it
+             *     arrived out of the inbox or from someone screened out.
+             */
+            modes: components["schemas"]["ModeMembershipData"][];
+            /** Format: date-time */
+            received_at: string;
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
         };
         /** @enum {string} */
         AttachmentDisposition: "attachment" | "inline" | "unspecified";
@@ -4860,6 +4922,25 @@ export interface components {
             from: string;
             subject: string;
         };
+        /** @description Returned by `Request::GetFreshness`. */
+        FreshnessData: {
+            accounts: components["schemas"]["AccountFreshnessData"][];
+            /** @description Newest first. */
+            arrivals: components["schemas"]["ArrivalData"][];
+            /** Format: date-time */
+            generated_at: string;
+            /**
+             * Format: date-time
+             * @description The newest message received in scope, any mailbox, any mode.
+             */
+            newest_message_at?: string | null;
+            /**
+             * Format: int64
+             * @description An account whose last good sync is older than this is stale.
+             */
+            stale_after_secs: number;
+            worst_account_id?: null | components["schemas"]["AccountId"];
+        };
         /** @enum {string} */
         GistModelData: "available" | "disabled" | "blocked";
         /** @enum {string} */
@@ -5396,6 +5477,11 @@ export interface components {
             name: string;
             /** @description "Here because: Sam wrote to you and you've written to them (rule)." */
             reason: string;
+            /**
+             * @description The reason in one word, for a one-line arrival: "person",
+             *     "automated", "newsletter", "copied", "task", "record".
+             */
+            tag?: string | null;
             /** @description To do: the open rows holding the thread. */
             todo_ids?: string[];
         };
@@ -6810,6 +6896,15 @@ export interface components {
             /** @enum {string} */
             cmd: "GetSyncStatus";
         } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "GetFreshness";
+            /**
+             * Format: int32
+             * @description Arrivals to return: default 5, at most 50.
+             */
+            limit?: number | null;
+        } | {
             /** @enum {string} */
             cmd: "SetFlags";
             /** Format: int32 */
@@ -7784,6 +7879,10 @@ export interface components {
             /** @enum {string} */
             kind: "SyncStatus";
             sync: components["schemas"]["AccountSyncStatus"];
+        } | {
+            freshness: components["schemas"]["FreshnessData"];
+            /** @enum {string} */
+            kind: "Freshness";
         } | {
             /** Format: int32 */
             count: number;
@@ -9022,6 +9121,30 @@ export interface components {
             sender_email: string;
             sender_name?: string | null;
         };
+        /** @description The last sync failure of one account. */
+        SyncErrorData: {
+            /** Format: int32 */
+            consecutive_failures?: number;
+            kind: components["schemas"]["SyncErrorKindData"];
+            /** @description The provider's own words, for the details view. */
+            message: string;
+            /**
+             * Format: date-time
+             * @description When the daemon will try again, when it has scheduled a retry.
+             */
+            retry_at?: string | null;
+        };
+        /**
+         * @description What kind of failure stopped the last sync.
+         * @enum {string}
+         */
+        SyncErrorKindData: "rate_limited" | "auth" | "offline" | "provider" | "store" | "unknown";
+        /**
+         * @description How an account's sync is doing, least worrying first: the "All
+         *     accounts" scope shows the last one in this order.
+         * @enum {string}
+         */
+        SyncHealthData: "ok" | "syncing" | "never" | "stale" | "paused" | "failing";
         /**
          * @description How far the sync pass running for an account has got.
          *
@@ -11209,6 +11332,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_freshness: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account: the freshest mail and the worst sync state */
+                account?: string;
+                /** @description Arrivals to return; default 5, at most 50 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `Freshness` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

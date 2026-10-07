@@ -331,14 +331,26 @@ async fn execute_replaceable_request(
                             degraded,
                             ..
                         },
-                }) => Ok(StatusSnapshot {
-                    uptime_secs,
-                    daemon_pid,
-                    accounts,
-                    total_messages,
-                    sync_statuses,
-                    degraded,
-                }),
+                }) => {
+                    // The status bar's freshness rides on the status refresh:
+                    // the same triggers (sync done or failed, new mail) move
+                    // both.
+                    let freshness = match ipc_call(bg, crate::app::FRESHNESS_REQUEST).await {
+                        Ok(Response::Ok {
+                            data: ResponseData::Freshness { freshness },
+                        }) => Some(freshness),
+                        _ => None,
+                    };
+                    Ok(StatusSnapshot {
+                        uptime_secs,
+                        daemon_pid,
+                        accounts,
+                        total_messages,
+                        sync_statuses,
+                        degraded,
+                        freshness,
+                    })
+                }
                 Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response to GetStatus".into())),

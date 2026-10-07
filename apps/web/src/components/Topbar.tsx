@@ -6,9 +6,11 @@ import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { newMessageIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { fetchAdminStatus } from "@/features/diagnostics/api";
+import { FreshnessIndicator } from "@/features/freshness/FreshnessIndicator";
 import { lensesFromShell, resolveLens } from "@/features/mailbox/lenses";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
 import { fetchThread } from "@/features/mailbox/api";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { formatChord } from "@/lib/keys/chord";
 import { cn } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
@@ -127,6 +129,9 @@ function humanize(value: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/** Phones: no status bar (matches app.css). */
+const PHONE_QUERY = "(max-width: 639px)";
+
 export function Topbar() {
   const location = useRouterState({ select: (s) => s.location });
   const setSearchOpen = useModals((state) => state.setSearchPaletteOpen);
@@ -138,6 +143,8 @@ export function Topbar() {
     refetchOnWindowFocus: false,
   });
   const isDemo = Boolean((status as { is_demo?: boolean } | undefined)?.is_demo);
+  // Phones hide the status bar, so the freshness indicator moves up here.
+  const phone = useMediaQuery(PHONE_QUERY);
 
   return (
     <div className="flex w-full min-w-0 items-center gap-3">
@@ -182,6 +189,8 @@ export function Topbar() {
           </span>
         ) : null}
       </nav>
+
+      {phone ? <FreshnessIndicator compact /> : null}
 
       <Button
         type="button"

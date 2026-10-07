@@ -112,8 +112,10 @@ where
     };
     // The digest is all Now and the rail read of Updates' mail.
     let updates = std::mem::take(&mut inbox.updates);
-    let (digest, _, _) =
-        super::updates::digest_from(state, accounts, updates, &scope, now, tz).await?;
+    let (digest, _, _) = Box::pin(super::updates::digest_from(
+        state, accounts, updates, &scope, now, tz,
+    ))
+    .await?;
     Ok(NowSnapshot {
         owed: lane(DeskLaneKind::Owed),
         people_new: lane(DeskLaneKind::PeopleNew),

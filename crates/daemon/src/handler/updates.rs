@@ -344,7 +344,9 @@ where
         source_key: None,
         list_expired: expired,
     };
-    let (digest, _, _) = digest_from(state, &accounts, placed, &scope, now, tz).await?;
+    // Boxed: the digest's future is deep, and a debug build's request
+    // future overflowed a worker's stack without it.
+    let (digest, _, _) = Box::pin(digest_from(state, &accounts, placed, &scope, now, tz)).await?;
     if mark_seen {
         state
             .store
@@ -427,7 +429,8 @@ where
         source_key: source_key.map(str::to_string),
         list_expired: false,
     };
-    let (digest, items, selection) = digest_from(state, &accounts, placed, &scope, now, tz).await?;
+    let (digest, items, selection) =
+        Box::pin(digest_from(state, &accounts, placed, &scope, now, tz)).await?;
     // The run lets go of exactly what a preview listed: its token hashes
     // the cut and that message id set, and a run without one is refused.
     match selection_token.filter(|token| !token.is_empty()) {
@@ -461,7 +464,13 @@ where
         });
     }
     let chosen: HashSet<MessageId> = selection.message_ids.iter().cloned().collect();
-    let done = mode_done::let_go_updates(state, &selection.thread_ids, &chosen, dry_run).await?;
+    let done = Box::pin(mode_done::let_go_updates(
+        state,
+        &selection.thread_ids,
+        &chosen,
+        dry_run,
+    ))
+    .await?;
     let ResponseData::ModeDone {
         items: outcomes,
         mutation_id,

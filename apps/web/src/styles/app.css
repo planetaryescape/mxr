@@ -257,6 +257,55 @@
   font-variation-settings: var(--rec-mono);
 }
 
+/*
+ * Page frames. A page (or pane) is a size container; its header, teaching
+ * card and content each sit in a `.mode-frame` of the same width, so their
+ * edges line up at any screen size. Elements inside keep their own 20px
+ * inset (mx-5, or mx-2 + px-3 on rows). Frames fill main up to their cap
+ * and centre past it, so a wide screen gets even margins instead of an
+ * empty right half. A wide frame splits `.mode-columns` into two once the
+ * page is 1280px wide (a 1600px window with the sidebar open).
+ */
+.mode-page {
+  container: mode-page / inline-size;
+}
+
+.mode-frame {
+  width: 100%;
+  min-width: 0;
+  margin-inline: auto;
+  max-width: var(--frame-list);
+}
+
+.mode-frame[data-frame="reader"] {
+  max-width: var(--frame-reader);
+}
+
+.mode-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+/*
+ * A full-width band (a ruled one-liner under the reader's header) whose
+ * text lines up with the reader frame: the rule spans the pane, the text
+ * starts where the frame does.
+ */
+.reader-band {
+  padding-inline: calc(max(0px, (100% - var(--frame-reader)) / 2) + 1.25rem);
+}
+
+@container mode-page (min-width: 1280px) {
+  .mode-frame[data-frame="wide"] {
+    max-width: var(--frame-wide);
+  }
+  .mode-columns[data-split="true"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 2rem;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

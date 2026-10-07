@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { ModeFrame } from "@/components/ModeFrame";
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
@@ -420,7 +421,7 @@ export function ThreadReader({
         className="min-h-0 flex-1 overflow-y-auto outline-none"
         onFocus={() => setActivePane("reader")}
       >
-        <div className="mx-auto w-full max-w-[980px] pb-24">
+        <ModeFrame width="reader" className="pb-24">
           <ContextBlock
             context={context.data}
             gist={{
@@ -515,7 +516,7 @@ export function ThreadReader({
           />
           {/* ComposeHost portals the inline reply composer here. */}
           <div id="inline-composer-slot" className="px-5 pt-4 empty:hidden" />
-        </div>
+        </ModeFrame>
       </div>
       {headersFor ? (
         <HeadersDialog messageId={headersFor} onClose={() => setHeadersFor(null)} />

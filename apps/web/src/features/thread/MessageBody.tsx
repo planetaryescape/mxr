@@ -225,7 +225,7 @@ function renderHtmlDocument(
     stripDarkTextColors: theme === "dark",
   });
   const style = theme === "dark" ? darkEmailCss(palette) : originalEmailCss;
-  return `<!doctype html><html><head><base target="_blank"><meta http-equiv="Content-Security-Policy" content="${frameCsp(allowRemoteImages)}"><meta name="color-scheme" content="${theme === "dark" ? "dark" : "light"}"><style>${style}${askMarkCss(theme, palette)}${blockedImageCss(theme, palette)}</style></head><body>${sanitized}</body></html>`;
+  return `<!doctype html><html><head><base target="_blank"><meta http-equiv="Content-Security-Policy" content="${frameCsp(allowRemoteImages)}"><meta name="color-scheme" content="${theme === "dark" ? "dark" : "light"}"><style>${style}${MEASURE_CSS}${askMarkCss(theme, palette)}${blockedImageCss(theme, palette)}</style></head><body>${sanitized}</body></html>`;
 }
 
 /** A standalone copy for "Open original in a new tab" (TUI `O`). */
@@ -264,6 +264,15 @@ function askMarkCss(theme: EmailHtmlTheme, p: EmailPalette): string {
     theme === "dark" ? [p.askMark, p.askMarkRule] : [LIGHT_EMAIL.askMark, LIGHT_EMAIL.askMarkRule];
   return `mark[${ASK_MARK_ATTRIBUTE}]{background:${background};color:inherit;border-bottom:1px solid ${rule};border-radius:2px;padding:0 .1em;-webkit-box-decoration-break:clone;box-decoration-break:clone}a[${LINK_MARK_ATTRIBUTE}]{background:${background};outline:2px solid ${rule};outline-offset:2px;border-radius:2px}`;
 }
+
+/*
+ * A readable measure for running text. Prose outside tables (a plain HTML
+ * reply, Gmail's bare divs) stops at about 72 characters: 34em, because
+ * system-ui averages about 0.47em a character and its wide zero makes "ch"
+ * a poor unit here. Anything inside a table belongs to the email's own
+ * layout (600px templates) and keeps its width.
+ */
+const MEASURE_CSS = `:is(p,li,blockquote,pre,h1,h2,h3,h4,h5,h6),body>div:not(:has(table)){max-width:34em}table :is(p,li,blockquote,pre,h1,h2,h3,h4,h5,h6,div){max-width:none}`;
 
 const originalEmailCss = `html{color-scheme:light;background:#fff}body{box-sizing:border-box;max-width:860px;margin:0 auto;padding:20px 24px;font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;background:#fff;overflow-wrap:anywhere}*,*:before,*:after{box-sizing:border-box}table{max-width:100%;border-collapse:collapse}body>table{margin-left:auto;margin-right:auto}img{max-width:100%;height:auto}a[href]{color:#0369a1!important;text-decoration:underline!important;text-underline-offset:2px}a[href]:hover{color:#075985!important}`;
 

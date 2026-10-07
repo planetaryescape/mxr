@@ -3,6 +3,7 @@ import { RefreshCw, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
+import { ModeColumns, ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { Button } from "@/components/ui/button";
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { LowTide } from "@/features/low-tide/LowTide";
@@ -41,7 +42,10 @@ export function NowRoute() {
   const guide = useModeGuide("now");
   const phase = useDelayedPending(now.isLoading);
   return (
-    <section aria-label="Now" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+    <section
+      aria-label="Now"
+      className="mode-page flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+    >
       <NowHeader now={now.data} guide={guide.data} />
       {phase !== "ready" ? (
         <ListSkeleton quiet={phase === "quiet"} />
@@ -66,7 +70,7 @@ export function NowRoute() {
 /** "Now", its job in one line, and the day's headline. */
 function NowHeader({ now, guide }: { now?: Now; guide?: ModeGuide }) {
   return (
-    <header className="shrink-0 border-b border-border px-5 pb-3 pt-4">
+    <ModeHeader width="wide">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h1 className="text-[17px] font-semibold tracking-tight text-foreground">Now</h1>
         <p data-testid="mode-header" className="min-w-0 text-[12.5px] text-muted-foreground">
@@ -78,7 +82,7 @@ function NowHeader({ now, guide }: { now?: Now; guide?: ModeGuide }) {
           {now.headline}
         </p>
       ) : null}
-    </header>
+    </ModeHeader>
   );
 }
 
@@ -186,66 +190,79 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
 
   return (
     <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
-      {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
-      {!now.first_run.complete ? (
-        <p data-testid="now-first-run" className="mx-5 mt-3 text-[13px] text-muted-foreground">
-          Sorting your mail, newest first. Now fills in within a few minutes.
-        </p>
-      ) : null}
-      <div className="max-w-[64rem]">
-        {people.length > 0 ? (
-          <section aria-labelledby="now-people" data-testid="now-section-people">
-            <SectionHeading id="now-people" more={now.people.more_line} to="/messages">
-              People
-            </SectionHeading>
-            {now.people.overload_line ? (
-              <p data-testid="now-overload" className="mx-5 mb-1 text-[13px] text-foreground/90">
-                {now.people.overload_line}
-              </p>
+      <ModeFrame width="wide">
+        {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
+        {!now.first_run.complete ? (
+          <p data-testid="now-first-run" className="mx-5 mt-3 text-[13px] text-muted-foreground">
+            Sorting your mail, newest first. Now fills in within a few minutes.
+          </p>
+        ) : null}
+        <ModeColumns split={(people.length > 0 || due.length > 0) && Boolean(card || pick)}>
+          <div className="min-w-0">
+            {people.length > 0 ? (
+              <section aria-labelledby="now-people" data-testid="now-section-people">
+                <SectionHeading id="now-people" more={now.people.more_line} to="/messages">
+                  People
+                </SectionHeading>
+                {now.people.overload_line ? (
+                  <p
+                    data-testid="now-overload"
+                    className="mx-5 mb-1 text-[13px] text-foreground/90"
+                  >
+                    {now.people.overload_line}
+                  </p>
+                ) : null}
+                <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
+                  {people.map((item) => (
+                    <PersonRow
+                      key={item.key}
+                      item={item}
+                      modes={memberships?.get(item.threadId)}
+                      onReply={reply}
+                      {...rowState(item)}
+                    />
+                  ))}
+                </ul>
+              </section>
             ) : null}
-            <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
-              {people.map((item) => (
-                <PersonRow
-                  key={item.key}
-                  item={item}
-                  modes={memberships?.get(item.threadId)}
-                  onReply={reply}
-                  {...rowState(item)}
-                />
-              ))}
-            </ul>
-          </section>
-        ) : null}
-        {due.length > 0 ? (
-          <section aria-labelledby="now-due" data-testid="now-section-due">
-            <SectionHeading id="now-due" more={now.due_soon.more_line} to="/todo">
-              Due soon
-            </SectionHeading>
-            <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
-              {due.map((item) => (
-                <TodoRow
-                  key={item.key}
-                  item={item}
-                  modes={item.threadId ? memberships?.get(item.threadId) : undefined}
-                  {...rowState(item)}
-                />
-              ))}
-            </ul>
-          </section>
-        ) : null}
-        {card ? (
-          <UpdatesCard item={card} onLetGo={() => setLetGo(true)} {...rowState(card)} />
-        ) : null}
-        {pick ? (
-          <section aria-labelledby="now-reading" data-testid="now-section-reading">
-            <SectionHeading id="now-reading" to="/reading">
-              For tonight
-            </SectionHeading>
-            <ul className="grid grid-cols-[minmax(0,1fr)]">
-              <ReadingRow item={pick} modes={memberships?.get(pick.threadId)} {...rowState(pick)} />
-            </ul>
-          </section>
-        ) : null}
+            {due.length > 0 ? (
+              <section aria-labelledby="now-due" data-testid="now-section-due">
+                <SectionHeading id="now-due" more={now.due_soon.more_line} to="/todo">
+                  Due soon
+                </SectionHeading>
+                <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
+                  {due.map((item) => (
+                    <TodoRow
+                      key={item.key}
+                      item={item}
+                      modes={item.threadId ? memberships?.get(item.threadId) : undefined}
+                      {...rowState(item)}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+          </div>
+          <div className="min-w-0">
+            {card ? (
+              <UpdatesCard item={card} onLetGo={() => setLetGo(true)} {...rowState(card)} />
+            ) : null}
+            {pick ? (
+              <section aria-labelledby="now-reading" data-testid="now-section-reading">
+                <SectionHeading id="now-reading" to="/reading">
+                  For tonight
+                </SectionHeading>
+                <ul className="grid grid-cols-[minmax(0,1fr)]">
+                  <ReadingRow
+                    item={pick}
+                    modes={memberships?.get(pick.threadId)}
+                    {...rowState(pick)}
+                  />
+                </ul>
+              </section>
+            ) : null}
+          </div>
+        </ModeColumns>
         {now.not_now ? (
           <p data-testid="now-not-now" className="mx-5 mt-5 text-[12.5px] text-muted-foreground">
             <Link to="/reading" className="hover:text-foreground hover:underline">
@@ -254,7 +271,7 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
           </p>
         ) : null}
         {guide ? <KeyLine guide={guide} /> : null}
-      </div>
+      </ModeFrame>
       {now.updates ? (
         <LetGoDigestDialog card={now.updates} open={letGo} onOpenChange={setLetGo} />
       ) : null}

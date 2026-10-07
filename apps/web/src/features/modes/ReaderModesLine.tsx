@@ -35,7 +35,7 @@ export function ReaderModesLine({ threadId }: { threadId: string }) {
     <AlsoInLine
       modes={modes}
       here={modeOfPath(path)}
-      className="shrink-0 border-b border-border px-5 py-1.5"
+      className="reader-band shrink-0 border-b border-border py-1.5"
     />
   );
 }

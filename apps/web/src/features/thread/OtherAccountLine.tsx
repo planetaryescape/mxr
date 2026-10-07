@@ -22,7 +22,7 @@ export function OtherAccountLine({ accountId }: { accountId: string }) {
   return (
     <p
       data-testid="other-account-line"
-      className="border-b border-border px-5 py-1.5 text-2xs text-muted-foreground"
+      className="reader-band border-b border-border py-1.5 text-2xs text-muted-foreground"
     >
       In {name}, not the account you're viewing.
     </p>

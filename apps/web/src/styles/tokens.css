@@ -75,7 +75,23 @@
   --default-transition-duration: var(--motion-duration-fast);
   --default-transition-timing-function: var(--ease-out);
 
-  --reading-measure: 72ch;
+  /*
+   * About 70 characters of running text a line (Baymard: 50-75; WCAG 1.4.8:
+   * at most 80). A "ch" is the width of a zero, wider than the average
+   * letter, so 62ch holds about 70 characters of prose in Recursive.
+   */
+  --reading-measure: 62ch;
+  /*
+   * Page frames (components/ModeFrame.tsx): the one column a page's header,
+   * teaching card and content share, centred in whatever width main has.
+   * A list stops at 72rem so a row's date and actions stay within a short
+   * eye movement of its text; the reader keeps the 980px column it had
+   * (a 600px HTML email plus avatar gutter and card padding); a wide page
+   * (Now, Archive) grows to 112rem and splits into two columns.
+   */
+  --frame-list: 72rem;
+  --frame-reader: 61.25rem;
+  --frame-wide: 112rem;
 }
 
 /*

@@ -291,7 +291,7 @@ function Bundles({
       <ul
         ref={listRef}
         aria-label="Senders in Paper trail"
-        className="max-w-[64rem] py-1 [touch-action:pan-y_pinch-zoom]"
+        className="mode-frame py-1 [touch-action:pan-y_pinch-zoom]"
       >
         {items.map((item, position) => {
           if (item.type === "bundle") {
@@ -329,7 +329,7 @@ function Bundles({
         })}
       </ul>
       {place.hasMoreSenders ? (
-        <div className="max-w-[64rem] px-5 py-3">
+        <div className="mode-frame px-5 py-3">
           <Button
             variant="outline"
             size="sm"
@@ -342,7 +342,7 @@ function Bundles({
           </Button>
         </div>
       ) : null}
-      <p className="hidden max-w-[64rem] flex-wrap md:flex items-center gap-x-3 gap-y-1 px-5 py-3 text-[12px] text-muted-foreground">
+      <p className="hidden mode-frame flex-wrap md:flex items-center gap-x-3 gap-y-1 px-5 py-3 text-[12px] text-muted-foreground">
         <span className="inline-flex items-center gap-1">
           <KeyChip>Enter</KeyChip> open
         </span>

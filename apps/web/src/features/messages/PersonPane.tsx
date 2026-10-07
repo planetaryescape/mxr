@@ -3,6 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { KeyChip } from "@/components/KeyChip";
+import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { useComposeUi } from "@/features/compose/composeUiStore";
 import { AlsoInLine } from "@/features/modes/AlsoInLine";
 import { useThreadModes } from "@/features/modes/membership";
@@ -50,7 +51,7 @@ export function PersonPane(props: PersonPaneProps) {
       data-testid="person-page"
       className="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
     >
-      <header className="shrink-0 border-b border-border px-5 pb-3 pt-4">
+      <ModeHeader width="reader">
         <div className="flex items-baseline gap-3">
           <button
             type="button"
@@ -76,117 +77,125 @@ export function PersonPane(props: PersonPaneProps) {
         {(page.merge_suggestions ?? []).map((suggestion) => (
           <MergeLine key={suggestion.addresses.join(",")} suggestion={suggestion} />
         ))}
-      </header>
-      <nav aria-label="Topics" className="shrink-0 border-b border-border px-3 py-2">
-        <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Topics
-        </p>
-        <ul data-testid="topics" className="flex max-h-[28vh] flex-col gap-0.5 overflow-y-auto">
-          {page.topics.map((topic) => {
-            const active = topic.thread_id === selected;
-            return (
-              <li key={topic.thread_id}>
-                <button
-                  type="button"
-                  data-testid="topic"
-                  aria-current={active ? "true" : undefined}
-                  onClick={() => props.onTopic(topic.thread_id)}
-                  className={cn(
-                    "flex w-full items-baseline gap-3 rounded-md px-2 py-1 text-left text-[13px]",
-                    active ? "bg-accent text-foreground" : "text-foreground/85 hover:bg-accent/60",
-                  )}
-                >
-                  <span className="min-w-0 flex-1 truncate">
-                    {topic.state === "your_turn" ? (
-                      <span
-                        aria-hidden
-                        className="mr-1.5 inline-block size-1.5 rounded-full bg-primary align-middle"
-                      />
-                    ) : null}
-                    {topicLabel(topic)}
-                  </span>
-                  <span className="shrink-0 text-[12px] text-muted-foreground">
-                    {topicStateLabel(topic)}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        <p className="hidden px-2 pt-1 text-[11.5px] text-muted-foreground md:block">
-          <KeyChip className="h-4 px-1">[</KeyChip> <KeyChip className="h-4 px-1">]</KeyChip> step
-          through topics
-        </p>
+      </ModeHeader>
+      <nav aria-label="Topics" className="shrink-0 border-b border-border">
+        <ModeFrame width="reader" className="px-3 py-2">
+          <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Topics
+          </p>
+          <ul data-testid="topics" className="flex max-h-[28vh] flex-col gap-0.5 overflow-y-auto">
+            {page.topics.map((topic) => {
+              const active = topic.thread_id === selected;
+              return (
+                <li key={topic.thread_id}>
+                  <button
+                    type="button"
+                    data-testid="topic"
+                    aria-current={active ? "true" : undefined}
+                    onClick={() => props.onTopic(topic.thread_id)}
+                    className={cn(
+                      "flex w-full items-baseline gap-3 rounded-md px-2 py-1 text-left text-[13px]",
+                      active
+                        ? "bg-accent text-foreground"
+                        : "text-foreground/85 hover:bg-accent/60",
+                    )}
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      {topic.state === "your_turn" ? (
+                        <span
+                          aria-hidden
+                          className="mr-1.5 inline-block size-1.5 rounded-full bg-primary align-middle"
+                        />
+                      ) : null}
+                      {topicLabel(topic)}
+                    </span>
+                    <span className="shrink-0 text-[12px] text-muted-foreground">
+                      {topicStateLabel(topic)}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="hidden px-2 pt-1 text-[11.5px] text-muted-foreground md:block">
+            <KeyChip className="h-4 px-1">[</KeyChip> <KeyChip className="h-4 px-1">]</KeyChip> step
+            through topics
+          </p>
+        </ModeFrame>
       </nav>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {conversation ? (
-          <>
-            <h3 className="px-5 pt-4 text-[13px] font-medium text-muted-foreground">
-              {conversation.subject}
-            </h3>
-            <AlsoInLine modes={modes} here="messages" className="px-5 pt-1" />
-            <ConversationView
-              conversation={conversation}
-              asSent={props.asSent}
-              onToggleAsSent={props.onToggleAsSent}
-            />
-          </>
-        ) : (
-          <p className="px-5 py-6 text-[13px] text-muted-foreground">No conversation to show.</p>
-        )}
-        {/* ComposeHost portals the reply here, as it does in the reader. */}
-        <div id="inline-composer-slot" className="px-4 pb-4 empty:hidden" />
+        <ModeFrame width="reader">
+          {conversation ? (
+            <>
+              <h3 className="px-5 pt-4 text-[13px] font-medium text-muted-foreground">
+                {conversation.subject}
+              </h3>
+              <AlsoInLine modes={modes} here="messages" className="px-5 pt-1" />
+              <ConversationView
+                conversation={conversation}
+                asSent={props.asSent}
+                onToggleAsSent={props.onToggleAsSent}
+              />
+            </>
+          ) : (
+            <p className="px-5 py-6 text-[13px] text-muted-foreground">No conversation to show.</p>
+          )}
+          {/* ComposeHost portals the reply here, as it does in the reader. */}
+          <div id="inline-composer-slot" className="px-4 pb-4 empty:hidden" />
+        </ModeFrame>
       </div>
       {conversation ? (
         <footer className="shrink-0 border-t border-border pt-3">
-          {props.pending ? <GotItBar pending={props.pending} onUndo={props.onUndoGotIt} /> : null}
-          {!replying ? (
-            <div className="px-4">
-              <button
-                type="button"
-                data-testid="composer"
-                onClick={props.onReply}
-                className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface/60 px-4 py-2.5 text-left text-[13.5px] text-muted-foreground hover:border-border-strong"
-              >
-                <MessageSquareReply className="size-4 shrink-0" aria-hidden />
-                <span className="min-w-0 flex-1 truncate">{conversation.composer.label}</span>
-                <KeyChip className="shrink-0">r</KeyChip>
-              </button>
-            </div>
-          ) : null}
-          <div className="flex flex-wrap items-center gap-x-1 gap-y-1 px-3 pb-3 pt-2 text-[12.5px]">
-            <label className="mr-2 inline-flex items-center gap-1.5 px-1 text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={props.replyAll}
-                onChange={(event) => props.onReplyAllChange(event.target.checked)}
-                className="accent-primary"
+          <ModeFrame width="reader">
+            {props.pending ? <GotItBar pending={props.pending} onUndo={props.onUndoGotIt} /> : null}
+            {!replying ? (
+              <div className="px-4">
+                <button
+                  type="button"
+                  data-testid="composer"
+                  onClick={props.onReply}
+                  className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface/60 px-4 py-2.5 text-left text-[13.5px] text-muted-foreground hover:border-border-strong"
+                >
+                  <MessageSquareReply className="size-4 shrink-0" aria-hidden />
+                  <span className="min-w-0 flex-1 truncate">{conversation.composer.label}</span>
+                  <KeyChip className="shrink-0">r</KeyChip>
+                </button>
+              </div>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-x-1 gap-y-1 px-3 pb-3 pt-2 text-[12.5px]">
+              <label className="mr-2 inline-flex items-center gap-1.5 px-1 text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={props.replyAll}
+                  onChange={(event) => props.onReplyAllChange(event.target.checked)}
+                  className="accent-primary"
+                />
+                Reply all
+              </label>
+              <FooterButton
+                testId="got-it"
+                onClick={props.onGotIt}
+                disabled={props.ackLoading || props.pending !== null}
+                icon={<ThumbsUp className="size-3.5" aria-hidden />}
+                label="Got it"
+                chip="."
               />
-              Reply all
-            </label>
-            <FooterButton
-              testId="got-it"
-              onClick={props.onGotIt}
-              disabled={props.ackLoading || props.pending !== null}
-              icon={<ThumbsUp className="size-3.5" aria-hidden />}
-              label="Got it"
-              chip="."
-            />
-            <FooterButton
-              testId="done-here"
-              onClick={props.onDone}
-              icon={<Check className="size-3.5" aria-hidden />}
-              label="Done here"
-              chip="e"
-            />
-            <FooterButton
-              testId="make-todo"
-              onClick={props.onTodo}
-              icon={<ListTodo className="size-3.5" aria-hidden />}
-              label="To do"
-              chip="t"
-            />
-          </div>
+              <FooterButton
+                testId="done-here"
+                onClick={props.onDone}
+                icon={<Check className="size-3.5" aria-hidden />}
+                label="Done here"
+                chip="e"
+              />
+              <FooterButton
+                testId="make-todo"
+                onClick={props.onTodo}
+                icon={<ListTodo className="size-3.5" aria-hidden />}
+                label="To do"
+                chip="t"
+              />
+            </div>
+          </ModeFrame>
         </footer>
       ) : null}
     </section>

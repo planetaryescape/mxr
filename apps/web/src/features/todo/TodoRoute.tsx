@@ -11,6 +11,7 @@ import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
 import { useModeGuide, useRetireCard, type ModeGuide } from "@/features/modes/api";
 import { ModeCard } from "@/features/modes/ModeCard";
+import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
@@ -120,7 +121,7 @@ function Runway({
 /** The mode's name, its job in one line, and the day's headline. */
 function TodoHeader({ runway, guide }: { runway?: TodoRunway; guide?: ModeGuide }) {
   return (
-    <header className="shrink-0 border-b border-border px-5 pb-3 pt-4">
+    <ModeHeader>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h1 className="text-[17px] font-semibold tracking-tight text-foreground">To do</h1>
         <p data-testid="mode-header" className="min-w-0 text-[12.5px] text-muted-foreground">
@@ -134,7 +135,7 @@ function TodoHeader({ runway, guide }: { runway?: TodoRunway; guide?: ModeGuide 
           {runway.headline}
         </p>
       ) : null}
-    </header>
+    </ModeHeader>
   );
 }
 
@@ -347,93 +348,95 @@ function Bands({
 
   return (
     <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
-      {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
-      {runway.catchup_count > 0 ? (
-        <p data-testid="catchup-line" className="mx-5 mt-3 text-[13px] text-foreground/90">
-          Catch up: {plural(runway.catchup_count, "thing")} from before mxr sorted your mail might
-          still need you.{" "}
-          <Link
-            to="/todo"
-            search={{ view: "catchup" }}
-            className="underline decoration-border-strong underline-offset-4 hover:decoration-primary"
-          >
-            Keep or let go
-          </Link>{" "}
-          <KeyChip className="h-4 px-1">C</KeyChip>
-        </p>
-      ) : null}
-
-      <div className="max-w-[64rem]">
-        <BandHeading count={nowItems.length}>Now</BandHeading>
-        {nowItems.length > 0 ? (
-          <ul aria-label="Now" className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
-            {nowItems.map(row)}
-          </ul>
-        ) : (
-          <p data-testid="todo-empty" className="mx-5 py-2 text-[13px] text-muted-foreground">
-            {runway.empty_state ?? guide?.clear_for_now}
-          </p>
-        )}
-
-        {groups.length > 0 ? (
-          <>
-            <BandHeading>Coming up</BandHeading>
-            {groups.map((group) => (
-              <section key={group.label} aria-label={group.label} data-testid="coming-week">
-                <h3 className="mx-5 mt-2 text-[12px] text-muted-foreground">{group.label}</h3>
-                <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">{group.items.map(row)}</ul>
-              </section>
-            ))}
-          </>
-        ) : null}
-
-        <div className="mx-5 mt-5 flex flex-wrap gap-x-8 gap-y-2">
-          {runway.whenever.length > 0 ? (
-            <FoldLine
-              label="Whenever"
-              count={runway.whenever.length}
-              open={open.whenever}
-              onToggle={() => setOpen({ ...open, whenever: !open.whenever })}
-              testId="whenever-toggle"
-            />
-          ) : null}
-          {runway.done_this_week.length > 0 ? (
-            <FoldLine
-              label="Done this week"
-              count={runway.done_this_week.length}
-              open={open.done}
-              onToggle={() => setOpen({ ...open, done: !open.done })}
-              testId="done-toggle"
-            />
-          ) : null}
-        </div>
-        {wheneverItems.length > 0 ? (
-          <ul aria-label="Whenever" className="mt-1 grid grid-cols-[minmax(0,1fr)] gap-0.5">
-            {wheneverItems.map(row)}
-          </ul>
-        ) : null}
-        {doneItems.length > 0 ? (
-          <ul aria-label="Done this week" className="mt-1 grid grid-cols-[minmax(0,1fr)] gap-0.5">
-            {doneItems.map(row)}
-          </ul>
-        ) : null}
-
-        {expiredOnOpen > 0 ? (
-          <p data-testid="expired-line" className="mx-5 mt-5 text-[12.5px] text-muted-foreground">
-            {expiredOnOpen} expired since you last looked.{" "}
+      <ModeFrame>
+        {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
+        {runway.catchup_count > 0 ? (
+          <p data-testid="catchup-line" className="mx-5 mt-3 text-[13px] text-foreground/90">
+            Catch up: {plural(runway.catchup_count, "thing")} from before mxr sorted your mail might
+            still need you.{" "}
             <Link
               to="/todo"
-              search={{ view: "expired" }}
-              className="text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-primary"
+              search={{ view: "catchup" }}
+              className="underline decoration-border-strong underline-offset-4 hover:decoration-primary"
             >
-              See them
+              Keep or let go
             </Link>{" "}
-            <KeyChip className="h-4 px-1">E</KeyChip>
+            <KeyChip className="h-4 px-1">C</KeyChip>
           </p>
         ) : null}
 
-        {guide ? <KeyLine guide={guide} /> : null}
-      </div>
+        <div>
+          <BandHeading count={nowItems.length}>Now</BandHeading>
+          {nowItems.length > 0 ? (
+            <ul aria-label="Now" className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
+              {nowItems.map(row)}
+            </ul>
+          ) : (
+            <p data-testid="todo-empty" className="mx-5 py-2 text-[13px] text-muted-foreground">
+              {runway.empty_state ?? guide?.clear_for_now}
+            </p>
+          )}
+
+          {groups.length > 0 ? (
+            <>
+              <BandHeading>Coming up</BandHeading>
+              {groups.map((group) => (
+                <section key={group.label} aria-label={group.label} data-testid="coming-week">
+                  <h3 className="mx-5 mt-2 text-[12px] text-muted-foreground">{group.label}</h3>
+                  <ul className="grid grid-cols-[minmax(0,1fr)] gap-0.5">{group.items.map(row)}</ul>
+                </section>
+              ))}
+            </>
+          ) : null}
+
+          <div className="mx-5 mt-5 flex flex-wrap gap-x-8 gap-y-2">
+            {runway.whenever.length > 0 ? (
+              <FoldLine
+                label="Whenever"
+                count={runway.whenever.length}
+                open={open.whenever}
+                onToggle={() => setOpen({ ...open, whenever: !open.whenever })}
+                testId="whenever-toggle"
+              />
+            ) : null}
+            {runway.done_this_week.length > 0 ? (
+              <FoldLine
+                label="Done this week"
+                count={runway.done_this_week.length}
+                open={open.done}
+                onToggle={() => setOpen({ ...open, done: !open.done })}
+                testId="done-toggle"
+              />
+            ) : null}
+          </div>
+          {wheneverItems.length > 0 ? (
+            <ul aria-label="Whenever" className="mt-1 grid grid-cols-[minmax(0,1fr)] gap-0.5">
+              {wheneverItems.map(row)}
+            </ul>
+          ) : null}
+          {doneItems.length > 0 ? (
+            <ul aria-label="Done this week" className="mt-1 grid grid-cols-[minmax(0,1fr)] gap-0.5">
+              {doneItems.map(row)}
+            </ul>
+          ) : null}
+
+          {expiredOnOpen > 0 ? (
+            <p data-testid="expired-line" className="mx-5 mt-5 text-[12.5px] text-muted-foreground">
+              {expiredOnOpen} expired since you last looked.{" "}
+              <Link
+                to="/todo"
+                search={{ view: "expired" }}
+                className="text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-primary"
+              >
+                See them
+              </Link>{" "}
+              <KeyChip className="h-4 px-1">E</KeyChip>
+            </p>
+          ) : null}
+
+          {guide ? <KeyLine guide={guide} /> : null}
+        </div>
+      </ModeFrame>
     </div>
   );
 }

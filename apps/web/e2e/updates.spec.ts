@@ -110,7 +110,9 @@ test("a suggested to-do becomes one only when you add it", async ({ page }) => {
   await google.getByTestId("update-todo-suggestion").getByRole("button").click();
   await expect(google.getByTestId("update-in-todo")).toHaveText("already in To do");
 
+  // Added by hand with no date, it waits under Whenever.
   await openApp(page, "/todo");
+  await page.getByRole("button", { name: /^Whenever/ }).click();
   await expect(signIn.filter({ hasText: "accounts.google.com" })).toBeVisible();
 });
 

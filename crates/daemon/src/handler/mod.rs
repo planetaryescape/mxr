@@ -83,7 +83,7 @@ mod user_voice;
 mod whois;
 
 use crate::state::AppState;
-use mxr_config::{DestructiveAction, MxrConfig, SafetyPolicy};
+use mxr_config::{AgentProfileConfig, DestructiveAction, MxrConfig, SafetyPolicy};
 use mxr_core::provider::MailSyncProvider;
 #[cfg(test)]
 use mxr_core::types::UnsubscribeMethod;
@@ -520,6 +520,9 @@ async fn dispatch(
         return Response::error(message);
     }
 
+    // A scoped profile passed `enforce_client_profile`, so it exists.
+    let scoped_profile = account_scope::profile_name(source)
+        .and_then(|name| config.agent_surfaces.profiles.get(name));
     let result = match req {
         Request::ListEnvelopes {
             label_id,
@@ -1466,11 +1469,12 @@ async fn dispatch(
             account_id,
             mark_visit,
         } => {
-            Box::pin(reading::get_edition(
-                state,
-                account_id.as_ref(),
-                *mark_visit,
-            ))
+            // Boxed whole: the account lookup's future would otherwise
+            // grow `dispatch`'s, which overflows a debug build's stack.
+            Box::pin(async {
+                let accounts = reading_accounts(state, scoped_profile, account_id.as_ref()).await?;
+                reading::get_edition(state, &accounts, *mark_visit).await
+            })
             .await
         }
         Request::GetReadingItem { item_key } => Box::pin(reading::get_item(state, item_key)).await,
@@ -1515,7 +1519,11 @@ async fn dispatch(
             .await
         }
         Request::ExportReadingHighlights { account_id } => {
-            Box::pin(reading::export_highlights(state, account_id.as_ref())).await
+            Box::pin(async {
+                let accounts = reading_accounts(state, scoped_profile, account_id.as_ref()).await?;
+                reading::export_highlights(state, &accounts).await
+            })
+            .await
         }
         Request::SetReadingSource {
             account_id,
@@ -1734,9 +1742,6 @@ async fn dispatch(
         }
         Request::GetSyncStatus { account_id } => runtime::get_sync_status(state, account_id).await,
     };
-    // A scoped profile passed `enforce_client_profile`, so it exists.
-    let scoped_profile = account_scope::profile_name(source)
-        .and_then(|name| config.agent_surfaces.profiles.get(name));
     let result = match (result, scoped_profile) {
         (Ok(data), Some(profile)) => account_scope::scope_response(state, profile, data)
             .await
@@ -1766,6 +1771,23 @@ async fn dispatch(
             );
             error.into_response()
         }
+    }
+}
+
+/// The accounts a Reading request covers: the one it names, else every
+/// enabled account, cut to a scoped profile's allowed accounts.
+async fn reading_accounts(
+    state: &AppState,
+    scoped_profile: Option<&AgentProfileConfig>,
+    account_id: Option<&mxr_core::AccountId>,
+) -> Result<Vec<mxr_core::AccountId>, HandlerError> {
+    match (account_id, scoped_profile) {
+        // A named account already passed the allowlist.
+        (Some(account_id), _) => Ok(vec![account_id.clone()]),
+        (None, Some(profile)) => account_scope::allowed_accounts(state, profile)
+            .await
+            .map_err(HandlerError::from),
+        (None, None) => places::scoped_accounts(state, None).await,
     }
 }
 

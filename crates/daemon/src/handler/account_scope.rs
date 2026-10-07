@@ -157,8 +157,6 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::SetTodoCatchup { account_id, .. }
         | Request::GetNow { account_id }
         | Request::GetRail { account_id }
-        | Request::GetReadingEdition { account_id, .. }
-        | Request::ExportReadingHighlights { account_id }
         | Request::ListMessages { account_id, .. }
         | Request::ListMergeSuggestions { account_id }
         | Request::ListRecords { account_id, .. }
@@ -261,6 +259,14 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::Mutation { mutation, .. } | Request::StartMutationJob { mutation, .. } => {
             messages(mutation_messages(mutation))
         }
+        // With no account these read only the caller's accounts: dispatch
+        // narrows them with `allowed_accounts`, so Reading keeps working
+        // for a scoped agent instead of being denied.
+        Request::GetReadingEdition { account_id, .. }
+        | Request::ExportReadingHighlights { account_id } => match account_id {
+            Some(account_id) => account(account_id),
+            None => Targets(Vec::new()),
+        },
         Request::GetReadingItem { item_key }
         | Request::RecordReadingEngagement { item_key, .. }
         | Request::FetchArticle { item_key, .. }
@@ -775,6 +781,25 @@ async fn account_id_allowed(
         }
     }
     Ok(false)
+}
+
+/// The enabled accounts a scoped profile may see.
+pub(super) async fn allowed_accounts(
+    state: &AppState,
+    profile: &AgentProfileConfig,
+) -> Result<Vec<AccountId>, String> {
+    let mut allowed = Vec::new();
+    for account in state
+        .store
+        .list_accounts()
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        if account.enabled && account_id_allowed(state, profile, &account.id).await? {
+            allowed.push(account.id);
+        }
+    }
+    Ok(allowed)
 }
 
 fn account_token_allowed(profile: &AgentProfileConfig, token: &str) -> bool {

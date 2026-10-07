@@ -13,8 +13,8 @@ use mxr_core::types::{
     UnsubscribeMethod,
 };
 use mxr_protocol::{
-    ModeKindData, ReadingBandData, ReadingEditionData, ReadingItemData, ReadingShapeData, Request,
-    ResponseData,
+    ClientKind, IpcMessage, IpcPayload, ModeKindData, ReadingBandData, ReadingEditionData,
+    ReadingItemData, ReadingShapeData, Request, Response, ResponseData,
 };
 use mxr_store::{ReadingEngagementReport, ReadingVisitRow};
 
@@ -42,11 +42,23 @@ async fn issue(
     html: &str,
     sent: DateTime<Utc>,
 ) -> (MessageId, ThreadId) {
+    issue_in(fx, &fx.account, from, subject, html, sent).await
+}
+
+/// One newsletter issue in `account`'s inbox.
+async fn issue_in(
+    fx: &Fixture,
+    account: &mxr_core::AccountId,
+    from: (&str, &str),
+    subject: &str,
+    html: &str,
+    sent: DateTime<Utc>,
+) -> (MessageId, ThreadId) {
     let id = MessageId::new();
     let thread = ThreadId::new();
     let envelope = Envelope {
         id: id.clone(),
-        account_id: fx.account.clone(),
+        account_id: account.clone(),
         provider_id: format!("reading-{id}"),
         thread_id: thread.clone(),
         message_id_header: Some(format!("<{id}@example.com>")),
@@ -766,4 +778,211 @@ async fn a_digest_link_keeps_its_later_state_when_re_extraction_reorders_the_lin
     assert!(links[0].on_later);
     assert!(links[1..].iter().all(|link| !link.on_later));
     assert_eq!(edition.later[0].title, "SQLite 3.51 release notes");
+}
+
+/// Send `req` as an MCP client whose profile allows only the fixture's
+/// account.
+async fn as_scoped_agent(fx: &Fixture, req: Request) -> Response {
+    let msg = IpcMessage {
+        id: 7,
+        source: ClientKind::Mcp,
+        payload: IpcPayload::Request(req),
+    };
+    match crate::handler::handle_request(&fx.state, &msg)
+        .await
+        .payload
+    {
+        IpcPayload::Response(response) => response,
+        other => panic!("expected a response, got {other:?}"),
+    }
+}
+
+fn denied(response: Response) {
+    match response {
+        Response::Error { message, .. } => {
+            assert!(message.contains("account allowlist"), "{message}");
+        }
+        other => panic!("expected a denial, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_scoped_agent_never_sees_another_accounts_items_highlights_or_later_count() {
+    let fx = Fixture::new().await;
+    let now = Utc::now();
+    let other = mxr_core::Account {
+        id: mxr_core::AccountId::new(),
+        name: "Other".into(),
+        email: "other@example.com".into(),
+        sync_backend: None,
+        send_backend: None,
+        enabled: true,
+    };
+    fx.state
+        .store
+        .insert_account(&other)
+        .await
+        .expect("account");
+    let (mine, _) = issue(&fx, WEEKLY, "Mine", &essay(200), now).await;
+    let (theirs, _) = issue_in(
+        &fx,
+        &other.id,
+        ("Their Digest", "digest@theirs.example"),
+        "Theirs",
+        &essay(200),
+        now,
+    )
+    .await;
+    // Both accounts have a highlight and an item on Later, made by an
+    // unscoped client.
+    for id in [&mine, &theirs] {
+        request(
+            &fx,
+            Request::SaveHighlight {
+                item_key: format!("{id}:0"),
+                quote: "A delete is the absence of a row".to_string(),
+                note: None,
+                view: None,
+            },
+        )
+        .await;
+        request(
+            &fx,
+            Request::SetReadingLater {
+                item_keys: vec![format!("{id}:0")],
+                later: true,
+                dry_run: false,
+            },
+        )
+        .await;
+    }
+
+    let mut config = fx.state.config_snapshot();
+    config.agent_surfaces.profiles.insert(
+        "mcp".into(),
+        mxr_config::AgentProfileConfig {
+            safety_policy: mxr_config::SafetyPolicy::Full,
+            allowed_accounts: vec![fx.account.as_str()],
+            allow_send: true,
+            allow_destructive: true,
+            allowed_destructive_actions: vec![],
+        },
+    );
+    fx.state.set_config_for_test(config).await;
+
+    // The edition with no account is the agent's accounts' edition.
+    let Response::Ok {
+        data: ResponseData::ReadingEdition { edition },
+    } = as_scoped_agent(
+        &fx,
+        Request::GetReadingEdition {
+            account_id: None,
+            mark_visit: true,
+        },
+    )
+    .await
+    else {
+        panic!("a scoped agent still gets an edition");
+    };
+    let items: Vec<&ReadingItemData> = edition
+        .bands
+        .iter()
+        .flat_map(|group| group.items.iter())
+        .chain(edition.later.iter())
+        .collect();
+    assert!(!items.is_empty(), "the agent's own items show");
+    assert!(
+        items.iter().all(|item| item.account_id == fx.account),
+        "another account's item showed: {:?}",
+        titles(&items)
+    );
+    assert_eq!(edition.later_count, 1, "only the agent's Later is counted");
+    assert!(edition
+        .sources
+        .iter()
+        .all(|source| source.account_id == fx.account));
+    assert_eq!(
+        fx.state
+            .store
+            .reading_visit(&other.id)
+            .await
+            .expect("visit"),
+        ReadingVisitRow::default(),
+        "the agent's visit isn't recorded on another account"
+    );
+    denied(
+        as_scoped_agent(
+            &fx,
+            Request::GetReadingEdition {
+                account_id: Some(other.id.clone()),
+                mark_visit: false,
+            },
+        )
+        .await,
+    );
+
+    // Highlights with no account are the agent's highlights.
+    let Response::Ok {
+        data:
+            ResponseData::ReadingHighlights {
+                highlights,
+                markdown,
+            },
+    } = as_scoped_agent(&fx, Request::ExportReadingHighlights { account_id: None }).await
+    else {
+        panic!("a scoped agent still exports its highlights");
+    };
+    assert_eq!(highlights.len(), 1);
+    assert_eq!(highlights[0].account_id, fx.account);
+    assert!(!markdown.contains("Theirs"), "{markdown}");
+
+    // Another account's item, by key, is denied for every item request.
+    let key = format!("{theirs}:0");
+    for req in [
+        Request::GetReadingItem {
+            item_key: key.clone(),
+        },
+        Request::SetReadingLater {
+            item_keys: vec![format!("{mine}:0"), key.clone()],
+            later: false,
+            dry_run: true,
+        },
+        Request::RecordReadingEngagement {
+            item_key: key.clone(),
+            opened: true,
+            dwell_ms: 0,
+            progress: 0.0,
+        },
+        Request::FetchArticle {
+            item_key: key.clone(),
+            refresh: false,
+        },
+        Request::SaveHighlight {
+            item_key: key.clone(),
+            quote: "x".to_string(),
+            note: None,
+            view: None,
+        },
+        Request::SetReadingSource {
+            account_id: other.id.clone(),
+            sender_email: "digest@theirs.example".to_string(),
+            original_layout: Some(true),
+            dismiss_unsubscribe_offer: false,
+        },
+    ] {
+        denied(as_scoped_agent(&fx, req).await);
+    }
+    let Response::Ok {
+        data: ResponseData::ReadingItem { item },
+    } = as_scoped_agent(
+        &fx,
+        Request::GetReadingItem {
+            item_key: format!("{mine}:0"),
+        },
+    )
+    .await
+    else {
+        panic!("the agent's own item opens");
+    };
+    assert_eq!(item.item.account_id, fx.account);
 }

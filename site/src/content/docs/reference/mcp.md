@@ -33,6 +33,11 @@ allow_send = false
 allow_destructive = false
 ```
 
+With `allowed_accounts` set, a request for another account is denied. The
+Reading edition and highlights export with no account cover only the allowed
+accounts, so `mxr_reading_edition` and `mxr_reading_highlights` work without
+naming one.
+
 Use a narrow profile by default. Set `safety_policy = "full"`,
 `allow_send = true`, or `allow_destructive = true` only for a client session
 where the human approval loop is explicit.

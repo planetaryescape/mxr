@@ -360,9 +360,10 @@ pub(in crate::handler) async fn save_highlight(
 
 pub(in crate::handler) async fn export_highlights(
     state: &AppState,
-    account_id: Option<&AccountId>,
+    accounts: &[AccountId],
 ) -> HandlerResult {
-    let rows = state.store.reading_highlights(account_id).await?;
+    let mut rows = state.store.reading_highlights(None).await?;
+    rows.retain(|row| accounts.contains(&row.account_id));
     let mut ids: Vec<MessageId> = rows.iter().map(|row| row.message_id.clone()).collect();
     ids.sort_by_key(MessageId::as_str);
     ids.dedup();

@@ -21,7 +21,7 @@ pub(super) use item::{
     export_highlights, get_item, record_engagement, save_highlight, set_later, set_source,
 };
 
-use super::places::{placed_inbox, scoped_accounts, Placed};
+use super::places::{placed_inbox, Placed};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Local, Utc};
@@ -661,13 +661,12 @@ pub(super) async fn expire(
 
 pub(super) async fn get_edition(
     state: &AppState,
-    account_id: Option<&AccountId>,
+    accounts: &[AccountId],
     mark_visit: bool,
 ) -> HandlerResult {
     let started = std::time::Instant::now();
     let now = Utc::now();
-    let accounts = scoped_accounts(state, account_id).await?;
-    let mut visits = load_visits(state, &accounts).await?;
+    let mut visits = load_visits(state, accounts).await?;
     // Opening Reading is a visit, unless activity is off or paused: one
     // privacy switch for everything Reading learns about you.
     let tracking = state.activity.is_enabled() && !state.activity.pause_status().0;
@@ -700,7 +699,7 @@ pub(super) async fn get_edition(
     let Plan {
         mut edition,
         expired,
-    } = plan(state, &accounts, &visits, now).await?;
+    } = plan(state, accounts, &visits, now).await?;
     edition.expired_now = expire(state, &expired).await?;
     tracing::debug!(
         accounts = accounts.len(),

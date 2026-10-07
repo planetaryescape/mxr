@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.56](https://github.com/planetaryescape/mxr/compare/v0.6.55...v0.6.56) (2026-10-07)
+
+
+### Bug Fixes
+
+* use wide screens with one shared page frame ([#297](https://github.com/planetaryescape/mxr/issues/297)) ([5a15b00](https://github.com/planetaryescape/mxr/commit/5a15b001babf0d9171ede32d10858a3f0611915d))
+
+
+### Documentation
+
+* sorting shows its work, so nothing feels hidden ([#296](https://github.com/planetaryescape/mxr/issues/296)) ([735e60b](https://github.com/planetaryescape/mxr/commit/735e60b574d6294ccabb456857fad4f59b55a87d))
+
 ## [0.6.55](https://github.com/planetaryescape/mxr/compare/v0.6.54...v0.6.55) (2026-10-07)
 
 

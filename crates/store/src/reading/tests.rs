@@ -101,7 +101,7 @@ async fn items_are_replaced_per_message_and_go_with_it() {
         .is_empty());
     assert!(fx
         .store
-        .reading_later(&[fx.account.clone()])
+        .reading_later(std::slice::from_ref(&fx.account))
         .await
         .expect("later")
         .is_empty());
@@ -122,7 +122,7 @@ async fn later_is_set_once_kept_on_a_second_press_and_cleared() {
         .expect("keep");
     let later = fx
         .store
-        .reading_later(&[fx.account.clone()])
+        .reading_later(std::slice::from_ref(&fx.account))
         .await
         .expect("list");
     assert_eq!(later.len(), 1);
@@ -140,7 +140,7 @@ async fn later_is_set_once_kept_on_a_second_press_and_cleared() {
         .expect("noop"));
     assert!(fx
         .store
-        .reading_later(&[fx.account.clone()])
+        .reading_later(std::slice::from_ref(&fx.account))
         .await
         .expect("list")
         .is_empty());

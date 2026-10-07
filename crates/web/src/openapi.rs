@@ -89,7 +89,10 @@ use utoipa::{
         mail_people, mail_people_page, mail_people_ack, mail_people_merge, mail_people_split,
         mail_people_merge_suggestions,
         mail_records_ledger, mail_records_answer, mail_record_get, mail_record_field,
-        mail_records_dismiss, mail_records_file, mail_records_sender, mail_records_export
+        mail_records_dismiss, mail_records_file, mail_records_sender, mail_records_export,
+        mail_reading_edition, mail_reading_item, mail_reading_later, mail_reading_engagement,
+        mail_reading_article, mail_reading_highlights_get, mail_reading_highlights_post,
+        mail_reading_sources
     ),
     components(schemas(
         Request,
@@ -119,6 +122,11 @@ use utoipa::{
         crate::record_routes::RecordFileBody,
         crate::record_routes::RecordSenderBody,
         crate::record_routes::RecordExportBody,
+        crate::reading_routes::ReadingLaterBody,
+        crate::reading_routes::ReadingEngagementBody,
+        crate::reading_routes::ReadingArticleBody,
+        crate::reading_routes::ReadingHighlightBody,
+        crate::reading_routes::ReadingSourceBody,
     )),
     modifiers(&BearerSecurity),
     security(("bearer" = []))
@@ -836,6 +844,115 @@ fn mail_records_sender() {}
 )]
 #[allow(dead_code)]
 fn mail_records_export() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/reading",
+    summary = "Reading's edition: bands since your last visit, earlier and fading, ranked by what you read, with Later and the sources",
+    params(
+        ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
+        ("mark_visit" = Option<bool>, Query, description = "Record that Reading was opened"),
+    ),
+    responses(
+        (status = 200, description = "The `ReadingEdition` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_reading_edition() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/reading/items/{item_key}",
+    summary = "One Reading item for the reader: text, saved article, highlights and minutes left. Never fetches",
+    params(("item_key" = String, Path, description = "`<message id>:<index>`, URL-encoded")),
+    responses(
+        (status = 200, description = "The `ReadingItem` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_reading_item() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/reading/later",
+    summary = "Put Reading items on Later or take them off (dry_run previews)",
+    request_body = crate::reading_routes::ReadingLaterBody,
+    responses(
+        (status = 200, description = "The `ReadingLater` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_reading_later() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/reading/engagement",
+    summary = "Local reading engagement (opened, time, progress); not written with MXR_ACTIVITY=off",
+    request_body = crate::reading_routes::ReadingEngagementBody,
+    responses(
+        (status = 200, description = "The `ReadingEngagement` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_reading_engagement() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/reading/items/{item_key}/article",
+    summary = "Fetch and save the article a Reading item links to, contacting its site; private addresses are refused",
+    params(("item_key" = String, Path, description = "`<message id>:<index>`, URL-encoded")),
+    request_body = crate::reading_routes::ReadingArticleBody,
+    responses(
+        (status = 200, description = "The `ReadingArticle` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_reading_article() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/reading/highlights",
+    summary = "Every Reading highlight, with the same as one Markdown document",
+    params(("account" = Option<String>, Query, description = "Account id; omitted covers every account")),
+    responses(
+        (status = 200, description = "The `ReadingHighlights` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_reading_highlights_get() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/reading/highlights",
+    summary = "Save a passage from a Reading item, with an optional note",
+    request_body = crate::reading_routes::ReadingHighlightBody,
+    responses(
+        (status = 200, description = "The `ReadingHighlight` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_reading_highlights_post() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/reading/sources",
+    summary = "Per-source Reading settings: the sender's own layout, or no more unsubscribe offers",
+    request_body = crate::reading_routes::ReadingSourceBody,
+    responses(
+        (status = 200, description = "The `ReadingSource` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_reading_sources() {}
+
 
 #[utoipa::path(
     post,

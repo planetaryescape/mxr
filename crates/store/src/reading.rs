@@ -1,4 +1,4 @@
-//! Reading's storage (`065_reading.sql`): the extraction cache, what you
+//! Reading's storage (`066_reading.sql`): the extraction cache, what you
 //! did with each item (Later, engagement), fetched articles, highlights,
 //! per-source choices and the visit that bounds "Since you were last here".
 //!

@@ -886,12 +886,29 @@ async fn scope_thread(
             summary,
         });
     }
+    rebuild_thread(&mut thread, &kept)?;
+    // A cached summary was written over every message, the hidden ones too.
+    Ok(ResponseData::Thread {
+        thread,
+        messages: kept,
+        summary: None,
+    })
+}
+
+/// Rebuild a thread's aggregate fields from the messages a scoped client
+/// may see, so nothing of a hidden message shows through: the store
+/// aggregates a shared thread id over every account's messages.
+fn rebuild_thread(thread: &mut Thread, kept: &[Envelope]) -> Result<(), String> {
     let Some(latest) = kept.iter().max_by_key(|message| message.date) else {
         return Err(format!("Thread not found: {}", thread.id));
     };
     thread.account_id = latest.account_id.clone();
     thread.snippet = latest.snippet.clone();
     thread.latest_date = latest.date;
+    // The store takes `MIN(subject)`; do the same over what's kept.
+    if let Some(subject) = kept.iter().map(|message| &message.subject).min() {
+        thread.subject = subject.clone();
+    }
     thread.message_ids = kept.iter().map(|message| message.id.clone()).collect();
     thread.message_count = u32::try_from(kept.len()).unwrap_or(u32::MAX);
     thread.unread_count = u32::try_from(
@@ -901,17 +918,12 @@ async fn scope_thread(
     )
     .unwrap_or(u32::MAX);
     thread.participants = Vec::new();
-    for message in &kept {
+    for message in kept {
         if !thread.participants.contains(&message.from) {
             thread.participants.push(message.from.clone());
         }
     }
-    // A cached summary was written over every message, the hidden ones too.
-    Ok(ResponseData::Thread {
-        thread,
-        messages: kept,
-        summary: None,
-    })
+    Ok(())
 }
 
 /// Cut a daemon event down to what a scoped profile may see, or drop it.

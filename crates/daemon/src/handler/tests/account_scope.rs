@@ -952,3 +952,84 @@ async fn signatures_bound_elsewhere_are_hidden_and_snippets_denied() {
         assert_denied(&s, &req).await;
     }
 }
+
+/// A thread id holding the agent's message and another account's, whose
+/// subject sorts first so the aggregate thread row takes it.
+async fn share_thread(s: &Scoped) -> ThreadId {
+    let shared = ThreadId::new();
+    for (account, tag, subject, sender) in [
+        (
+            &s.own.account,
+            "own",
+            "Shared conversation",
+            "friend@example.com",
+        ),
+        (
+            &s.other.account,
+            "foreign",
+            "Aaa their secret",
+            "secret@foreign.example",
+        ),
+    ] {
+        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account.clone())
+            .thread_id(shared.clone())
+            .provider_id(format!("scope-share-{tag}"))
+            .subject(subject)
+            .sender_address(tag, sender)
+            .snippet(format!("snippet {tag}"))
+            .date(Utc::now())
+            .build();
+        s.fx.state
+            .store
+            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+            .await
+            .unwrap();
+    }
+    shared
+}
+
+fn assert_only_own_part(thread: &mxr_core::types::Thread, s: &Scoped) {
+    assert_eq!(thread.subject, "Shared conversation");
+    assert_eq!(thread.account_id, s.own.account);
+    assert_eq!(thread.message_count, 1);
+    assert_eq!(thread.message_ids.len(), 1);
+    assert_eq!(thread.snippet, "snippet own");
+    assert!(
+        thread
+            .participants
+            .iter()
+            .all(|participant| participant.email != "secret@foreign.example"),
+        "{:?}",
+        thread.participants
+    );
+}
+
+/// The subject comes from the kept messages, not the aggregate that may
+/// have taken it from a hidden one.
+#[tokio::test]
+async fn a_scoped_thread_takes_its_subject_from_the_kept_messages() {
+    let s = scoped().await;
+    let shared = share_thread(&s).await;
+    let store = &s.fx.state.store;
+    let thread = store.get_thread(&shared).await.unwrap().unwrap();
+    assert_eq!(
+        thread.subject, "Aaa their secret",
+        "fixture: aggregate subject"
+    );
+    let messages = store.get_thread_envelopes(&shared).await.unwrap();
+    let ResponseData::Thread { thread, .. } = super::super::account_scope::scope_response(
+        &s.fx.state,
+        &scoped_profile(&s),
+        ResponseData::Thread {
+            thread,
+            messages,
+            summary: None,
+        },
+    )
+    .await
+    .unwrap() else {
+        panic!("expected a thread")
+    };
+    assert_only_own_part(&thread, &s);
+}

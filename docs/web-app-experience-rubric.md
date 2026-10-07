@@ -171,6 +171,7 @@ recipe ships only when it is at least as good as today's chunking.
 | X11 | **Docs and READMEs match what ships.** Each phase updates the site pages and repo docs on its Docs line in 22 in the same release; no page describes a mode behaviour that hasn't shipped, and planned parts are marked planned. | The phase's Docs line checked off page by page; `npm run build` in `site/` passes; each new claim names the code it was checked against. |
 | X12 | **Stale items never show, and the first run doesn't flood.** No item past its `relevant_until` appears in Now, To do's Now band or an Updates cut, on a moved clock or on real mail; a to-do the user made or edited never expires; expiry is one "N expired since you last looked" line with restore, never a badge, and never archives at the provider. On BK's real mail the first run puts at most 10 to-dos in To do's Now band and at most 25 in the catch-up batch, and a re-run after a rule change surfaces nothing already surfaced or expired. | `handler/tests/first_run.rs` and `handler/tests/now.rs` with a moved clock; `relevance_window` table tests; first-run counts on BK's mail (surfaced, catch-up, expired at birth per kind) recorded below. |
 | X13 | **The app teaches itself in place, with no tour.** Every mode has its header line (under 12 words, naming its job and verb), both empty states, a first-encounter card that shows once and retires on dismiss or on the mode's verb, a why line on every item, `?` leading with the mode, and keys shown with their verbs, all with the copy in [22](blueprint/22-email-modes.md). A new user can say what each mode is for after one visit. No multi-step tour, chained coach marks, tips feed or feature notification exists. | `mode_guide` table test and `e2e/teaching.spec.ts`; the five-second check: at least three people who have not used mxr open each mode once in `mxr demo` for up to 30 seconds with no explanation, then, with the screen hidden, say what it is for and what they would do with a row. A mode passes when at least two of three name its job and main verb. Results recorded below and in `docs/dogfooding-log.md`. |
+| X14 | **Sorting shows its work.** Now's arrivals line sums to every inbound email first seen in its window (Messages, Updates, Reading, screened out, Spam, still sorting), shows To do and Archive as "also" and never adds them, and each count opens exactly that many emails in arrival order. Every Inbox row names the mode its email went to, archived mail included. The four never-bury rules hold, and the `?` copy names only rules that exist in code. "Not sure" shows at most three a day and only for rule conflicts. Nothing says "seen" about mail nobody opened. Copy is in [22](blueprint/22-email-modes.md). | A property test over generated arrivals (the sum, and each count against its list); never-bury tests in `handler/tests/modes.rs`; on BK's mail, counts only: the 24-hour and 7-day sums, never-bury hits, and "Not sure" per day for a week, recorded below. BK notes in `docs/dogfooding-log.md` each time he opens Inbox to check for missing mail; the count falls over two weeks. |
 
 ### Carried over from v2
 
@@ -210,6 +211,14 @@ Five-second check (X13), per mode:
 | Date | Version | People | Mode | Job named | Verb named | Words people used |
 |---|---|---:|---|---:|---:|---|
 | | | | | | | |
+
+Arrivals line (X14), counts only. The first row is the baseline before
+the feature, from a read-only copy, by `Date:` header:
+
+| Date | Version | Window | Arrived | Messages | Updates | Reading | Spam | Also To do | Also Archive | Sums | Never-bury hits | Not sure | Inbox checks |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|
+| 2026-10-07 | v0.6.55 | 24 hours | 50 | 8 | 10 | 31 | 1 | 2 | 1 | yes | N1 3, N2 1, N3 1, N4 2 | 0 | |
+| 2026-10-07 | v0.6.55 | 7 days | 461 | 54 | 236 | 145 | 26 | 22 | 37 | yes | N1 21, N2 12, N3 2, N4 13 | 4 | |
 
 Retrieval eval, top-5 hit rate per mode:
 

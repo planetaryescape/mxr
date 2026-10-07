@@ -24,9 +24,12 @@ pub fn todo_demo_promise_provider_id() -> String {
 }
 
 fn reading_demo_provider_id(position: usize) -> String {
+    // Reading's mail comes after every other seeded mode's.
     let first = DELIVERY_DEMO_MESSAGE_COUNT
         + todo_demo::TODO_DEMO_MESSAGE_COUNT
-        + modes_demo::MODES_DEMO_MESSAGE_COUNT;
+        + modes_demo::MODES_DEMO_MESSAGE_COUNT
+        + messages_demo::MESSAGES_DEMO_MESSAGE_COUNT
+        + records_demo::RECORDS_DEMO_MESSAGE_COUNT;
     format!("demo-msg-{}", first + position + 1)
 }
 
@@ -2082,6 +2085,25 @@ fn push_msg(
             metadata: Default::default(),
         },
     );
+}
+
+#[cfg(test)]
+mod reading_demo_ids {
+    use super::*;
+
+    #[test]
+    fn the_reading_demo_ids_point_at_reading_mail() {
+        let account = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
+        let stream = DemoFixtureStream::new(&account, 2000);
+        let (envelope, _) = stream
+            .find(&reading_demo_later_provider_id())
+            .expect("the later digest");
+        assert_eq!(envelope.from.email, "links@links.demo.mxr.local");
+        for id in reading_demo_finished_provider_ids() {
+            let (envelope, _) = stream.find(&id).expect("a finished essay");
+            assert_eq!(envelope.from.email, "essays@longreads.demo.mxr.local");
+        }
+    }
 }
 
 #[cfg(test)]

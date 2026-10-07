@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use mxr_protocol::{HintData, ModeGuideData, Request};
 
 use super::*;
-use crate::app::state::{NowRow, ReadingRow};
+use crate::app::state::{NowRow, ReadingRow, UpdatesRow};
 
 /// Where the cursor is, as far as hints care: the page, the row, and the
 /// part of the page that has the keys.
@@ -127,6 +127,35 @@ impl App {
                     alone: false,
                 }
             }
+            MailboxView::Updates => {
+                let page = &self.mailbox.updates_page;
+                if page.let_go_preview.is_some() || page.tune.is_some() {
+                    return none;
+                }
+                let rows = page.rows();
+                let line = |i: usize| match rows.get(i) {
+                    Some(UpdatesRow::Line(line)) => Some(*line),
+                    _ => None,
+                };
+                let first_suggestion = (0..rows.len()).find(|&i| {
+                    line(i).is_some_and(|line| {
+                        line.todo_suggestion.is_some() && line.in_todo.is_none()
+                    })
+                });
+                let mut ids = Vec::new();
+                if first_suggestion == Some(at) {
+                    ids.push("updates.suggestion");
+                }
+                if at == 0 && line(0).is_some() {
+                    ids.push("updates.source");
+                    ids.push("updates.let_go");
+                }
+                Candidates {
+                    guide: page.guide.as_ref(),
+                    ids,
+                    alone: rows.len() == 1,
+                }
+            }
             MailboxView::ArchiveMode => {
                 let page = &self.mailbox.records_page;
                 let ids = if page.card.is_some() {
@@ -222,8 +251,13 @@ impl App {
             ),
             "updates.let_go" => matches!(
                 action,
-                Action::NowLetGoDigest | Action::NowDone | Action::NowOpen
+                Action::NowLetGoDigest
+                    | Action::NowDone
+                    | Action::NowOpen
+                    | Action::UpdatesLetGoAll
             ),
+            "updates.suggestion" => matches!(action, Action::UpdatesNeedsMe),
+            "updates.source" => matches!(action, Action::UpdatesLetGoSource),
             "todo.runway" => matches!(action, Action::TodoPrimary),
             "todo.catchup" => matches!(action, Action::TodoOpenCatchup),
             "messages.topics" => matches!(

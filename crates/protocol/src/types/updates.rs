@@ -18,7 +18,7 @@ pub mod updates_copy {
     pub const NEVER_HAD_ANY: &str = "Notifications from services and apps land here and are gathered into a digest at 08:00 and 16:30. Anything that needs you, like a failed payment, shows first with a suggested to-do.";
     /// Filled by code: "Nothing new since 08:00. Next digest at 16:30."
     pub const CLEAR_FOR_NOW: &str = "Nothing new since {cut}. Next digest at {next}.";
-    pub const CARD: &str = "Updates gathers notifications into a digest at 08:00 and 16:30, one line per source, like your bank or GitHub, with what changed first. Anything that needs you sits at the top with a suggested to-do that t adds, so you can read this and let it go.";
+    pub const ABOUT: &str = "Updates gathers notifications into a digest at 08:00 and 16:30, one line per source, like your bank or GitHub, with what changed first. Anything that needs you sits at the top with a suggested to-do that t adds, so you can read this and let it go.";
     pub const LANDS_HERE: &str = "Notifications from services and apps: builds, parcels, sign-in alerts, statements, reports and receipts.";
     pub const WHY: &str = "Here because: {evidence} ({source}). In the {cut} digest.";
     pub const FIRST_RUN_LINE: &str = "Notifications, twice a day";

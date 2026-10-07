@@ -13,7 +13,7 @@ use mxr_protocol::{
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-use super::now_lens::{card_lines, marker, section, Body};
+use super::now_lens::{marker, section, Body};
 use crate::app::{ActivePane, UpdatesPageState, UpdatesRow, UpdatesTuneMenu};
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
@@ -165,11 +165,6 @@ fn body_for(
     if !digest.headline.is_empty() {
         for line in wrap(&one_line(&digest.headline), width.saturating_sub(4)) {
             body.text(line, secondary);
-        }
-    }
-    if view.page.card_visible() {
-        if let Some(guide) = &view.page.guide {
-            card_lines(&mut body, guide, width, theme);
         }
     }
     if let Some(empty) = &digest.empty_state {
@@ -652,7 +647,7 @@ pub(crate) mod tests {
     }
 
     fn seen_guide() -> mxr_protocol::ModeGuideData {
-        UPDATES_GUIDE.to_data(Some(Utc.with_ymd_and_hms(2026, 10, 1, 0, 0, 0).unwrap()))
+        UPDATES_GUIDE.to_data(|_| Some(Utc.with_ymd_and_hms(2026, 10, 1, 0, 0, 0).unwrap()))
     }
 
     #[test]
@@ -676,27 +671,12 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn updates_lens_first_card_at_three_widths() {
-        let page = UpdatesPageState {
-            digest: Some(populated()),
-            guide: Some(UPDATES_GUIDE.to_data(None)),
-            ..Default::default()
-        };
-        for width in [60, 80, 120] {
-            let rendered = render(&page, width);
-            assert!(rendered.contains("Esc close"), "{rendered}");
-            insta::assert_snapshot!(format!("updates_lens_first_card_{width}"), rendered);
-        }
-    }
-
-    #[test]
     fn updates_lens_clear_at_three_widths() {
         let page = UpdatesPageState {
             digest: Some(clear()),
-            guide: Some(UPDATES_GUIDE.to_data(None)),
+            guide: Some(UPDATES_GUIDE.to_data(|_| None)),
             ..Default::default()
         };
-        assert!(!page.card_visible(), "no card on an empty digest");
         for width in [60, 80, 120] {
             let rendered = render(&page, width);
             assert!(rendered.contains("Nothing new since 08:00"), "{rendered}");

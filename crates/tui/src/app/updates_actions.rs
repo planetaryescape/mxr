@@ -145,7 +145,6 @@ impl App {
                 None => page.clear_digest(),
             }
             self.clamp_updates_selection();
-            self.retire_updates_card();
             let (account_id, source_key) = source.unzip();
             self.queue_mutation(
                 Request::LetGoDigest {
@@ -304,35 +303,7 @@ impl App {
             self.status_message = Some("Kept the digest".into());
             return;
         }
-        if page.card_visible() {
-            self.retire_updates_card();
-        }
-    }
-
-    /// Retire Updates' first-encounter card here and in every other client.
-    fn retire_updates_card(&mut self) {
-        if !self.mailbox.updates_page.card_visible() {
-            return;
-        }
-        self.mailbox.updates_page.card_closed = true;
-        let id = self.queue_best_effort_mutation(
-            Request::SetModeGuideSeen {
-                mode: UPDATES_MODE.into(),
-                seen: true,
-            },
-            MutationEffect::StatusOnly(String::new()),
-            String::new(),
-        );
-        self.mailbox.updates_page.card_close_mutation = Some(id);
-    }
-
-    /// The daemon didn't store the closed card: show it again.
-    pub(crate) fn reopen_updates_card_after_failure(&mut self, failed: crate::app::MutationId) {
-        let page = &mut self.mailbox.updates_page;
-        if page.card_close_mutation == Some(failed) {
-            page.card_close_mutation = None;
-            page.card_closed = false;
-        }
+        self.dismiss_active_hint();
     }
 
     /// Key handling for the Updates lens.

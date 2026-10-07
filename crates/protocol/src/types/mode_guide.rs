@@ -367,16 +367,25 @@ pub const UPDATES_GUIDE: ModeGuideCopy = ModeGuideCopy {
     add_one: "",
     clear_for_now: updates_copy::CLEAR_FOR_NOW,
     lands_here: updates_copy::LANDS_HERE,
-    card: updates_copy::CARD,
-    card_keys: &[
-        ("A", "let go of digest"),
-        ("e", "let go of this source"),
-        ("t", "this needs me"),
-        ("K", "tune a source"),
-    ],
+    about: updates_copy::ABOUT,
     why_template: updates_copy::WHY,
     keys: UPDATES_KEYS,
     first_run_line: updates_copy::FIRST_RUN_LINE,
+    hints: &[
+        HintCopy {
+            id: "updates.suggestion",
+            anchor: "The first suggested to-do in Needs a look",
+            text: "Nothing becomes a to-do on its own; t adds this one to To do.",
+            key: ("t", "this needs me"),
+        },
+        HintCopy {
+            id: "updates.source",
+            anchor: "The first source line",
+            text: "e lets go of this source only; the rest of the digest stays.",
+            key: ("e", "let go of this source"),
+        },
+        LET_GO_DIGEST_HINT,
+    ],
 };
 
 /// Reading's keys, per the blueprint's one key map.

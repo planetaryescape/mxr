@@ -53,6 +53,7 @@ Commands:
   snippets            Manage compose snippets (`;name` expansions)
   todo                Things email asked you to do, ordered by when to act.
   records             Receipts, orders, bookings and documents. Ask for what you need.
+  updates             Notifications gathered twice a day. Read the digest, then let go.
   modes               How each mode explains itself: its job, empty states, keys and hints
   deliveries          Track packages and deliveries detected in your mail
   signatures          Manage outgoing compose signatures

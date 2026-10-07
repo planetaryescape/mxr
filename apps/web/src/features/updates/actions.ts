@@ -55,7 +55,7 @@ export const updatesActions: Action[] = [
     shortLabel: "Email",
     icon: Mail,
   }),
-  key("updates.close-card", "closeCard", "Close the note about Updates", "Escape", {
+  key("updates.close-hint", "closeHint", "Dismiss the hint", "Escape", {
     hideInPalette: true,
   }),
 ];

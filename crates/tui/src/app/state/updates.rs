@@ -31,9 +31,6 @@ pub struct UpdatesTuneMenu {
 pub struct UpdatesPageState {
     pub digest: Option<UpdatesDigestData>,
     pub guide: Option<ModeGuideData>,
-    /// Closed here before the daemon answered, so it never flickers back.
-    pub card_closed: bool,
-    pub card_close_mutation: Option<crate::app::MutationId>,
     /// Ask the runtime for the digest and its guide.
     pub pending_refresh: bool,
     pub routine_open: bool,
@@ -74,18 +71,6 @@ impl UpdatesPageState {
 
     pub fn row_count(&self) -> usize {
         self.rows().len()
-    }
-
-    /// The first-encounter card shows at the top once the digest has
-    /// lines, until it is closed here or retired anywhere.
-    pub fn card_visible(&self) -> bool {
-        !self.card_closed
-            && self.guide.as_ref().is_some_and(|guide| !guide.card_seen)
-            && self.digest.as_ref().is_some_and(|digest| {
-                !(digest.needs_a_look.is_empty()
-                    && digest.changed.is_empty()
-                    && digest.routine.is_empty())
-            })
     }
 
     /// Take a source's lines off the page before the daemon answers.

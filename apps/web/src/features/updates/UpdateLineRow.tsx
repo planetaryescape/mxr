@@ -1,5 +1,5 @@
 import { AlertCircle, Diamond } from "lucide-react";
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -70,6 +70,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   onTune,
   onOpenEmail,
   onTuneTo,
+  hint,
 }: {
   line: UpdateLine;
   index: number;
@@ -80,6 +81,8 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   onTune: (line: UpdateLine) => void;
   onOpenEmail: (line: UpdateLine) => void;
   onTuneTo: (line: UpdateLine, setting: SuggestedSetting) => void;
+  /** A hint anchored under this line's actions. */
+  hint?: ReactNode;
 }) {
   const leaving = useUpdatesHidden((s) => s.leaving.has(line.id));
   const hide = useUpdatesHidden((s) => s.hide);
@@ -214,6 +217,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
               </Button>
             ) : null}
           </p>
+          {hint}
         </div>
       </div>
     </li>

@@ -486,7 +486,6 @@ where
         .count();
     if !dry_run {
         record_streaks(state, &items, &selection, digest.cut.at, now).await;
-        super::mode_guide::retire(state, MODE).await?;
     }
     Ok(UpdatesLetGoData {
         dry_run,

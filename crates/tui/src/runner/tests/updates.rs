@@ -36,7 +36,7 @@ fn updates_app() -> App {
         "opening Updates fetches the digest, its guide and the rail"
     );
     let seen = chrono::Utc::now();
-    app.set_updates_digest(populated(), Some(UPDATES_GUIDE.to_data(Some(seen))));
+    app.set_updates_digest(populated(), Some(UPDATES_GUIDE.to_data(|_| Some(seen))));
     app
 }
 
@@ -212,15 +212,26 @@ fn enter_unfolds_the_quieter_sources_and_o_opens_the_email() {
 }
 
 #[test]
-fn the_card_retires_on_esc_and_the_lens_reads_the_daemons_guide() {
+fn a_hint_shows_on_the_first_line_after_a_key_and_esc_dismisses_it_everywhere() {
     let mut app = updates_app();
-    app.mailbox.updates_page.guide = Some(UPDATES_GUIDE.to_data(None));
-    assert!(app.mailbox.updates_page.card_visible());
+    app.mailbox.updates_page.guide = Some(UPDATES_GUIDE.to_data(|_| None));
+    app.mailbox.selected_index = 0;
+    assert!(app.active_hint().is_none(), "nothing on arrival");
+    app.note_key_for_hints();
+    let id = app
+        .active_hint()
+        .expect("a hint on the first line")
+        .id
+        .clone();
+    assert!(
+        ["updates.suggestion", "updates.source"].contains(&id.as_str()),
+        "{id}"
+    );
     press(&mut app, KeyCode::Esc);
-    assert!(!app.mailbox.updates_page.card_visible());
+    assert!(app.active_hint().is_none());
     assert!(matches!(
         queued(&app).as_slice(),
-        [Request::SetModeGuideSeen { mode, seen: true }] if mode == "updates"
+        [Request::SetHintSeen { hint, seen: true }] if *hint == id
     ));
     assert_eq!(
         app.help_mode_guide().map(|guide| guide.mode.as_str()),

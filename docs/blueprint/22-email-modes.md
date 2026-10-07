@@ -1026,7 +1026,9 @@ test checks it). A hint shared by two modes has one id and one seen state.
 |---|---|---|---|
 | `now.from_mode` | Now | The first row's why line ("From To do: …") | "Each row comes from a mode; Enter opens it there." |
 | `done_here` | Now, Messages | The toast after the first `e` on a conversation (TUI: the status line) | "Done here (e) only clears this mode; it stays in To do until done there." |
-| `updates.let_go` | Now (Updates once it ships) | The first "Let go of this digest" button; in the TUI, the Updates card row | "A lets go of this digest only; new mail arrives in the next one." |
+| `updates.let_go` | Now, Updates | The first "Let go of this digest" button; in the TUI, the Updates card row on Now and the first line in Updates | "A lets go of this digest only; new mail arrives in the next one." |
+| `updates.suggestion` | Updates | The first suggested to-do in Needs a look | "Nothing becomes a to-do on its own; t adds this one to To do." |
+| `updates.source` | Updates | The first source line | "e lets go of this source only; the rest of the digest stays." |
 | `todo.runway` | To do | The first runway bar | "The bar fills from when this showed up to when it's due; Enter does what the button says." |
 | `todo.catchup` | To do | The catch-up line (TUI: the first row, under it) | "These came in before mxr sorted your mail. C goes through them: keep or let go of each." |
 | `messages.topics` | Messages | A person's topic list, when it has more than one topic | "Every conversation with this person, yours to answer first; ] and [ step through them." |
@@ -1036,8 +1038,6 @@ test checks it). A hint shared by two modes has one id and one seen state.
 | `reading.fading` | Reading | The first Fading band (TUI: its first item) | "These go within a day; b keeps one on Later, which never fades." |
 | `reading.link` | Reading | The first link under a digest | "Each link is its own item; L fetches its article, and only then does mxr contact that site." |
 
-Updates adds its own hints in the phase that ships it, at the analogous
-first-use point (a digest's let go).
 
 The topics hint says "yours to answer first" because the daemon orders a
 person's topics by state, your turn first, then by recency
@@ -1103,12 +1103,13 @@ and its key line is no longer shown on its own.
   gathered into a digest at 08:00 and 16:30. Anything that needs you, like
   a failed payment, shows first with a suggested to-do."
 - Clear for now: "Nothing new since 08:00. Next digest at 16:30."
-- Card: "Updates gathers notifications into a digest at 08:00 and 16:30,
-  one line per source, like your bank or GitHub, with what changed first. Anything that needs you
-  sits at the top with a suggested to-do that t adds, so you can read
+- About (`?` and `mxr modes explain updates`): "Updates gathers
+  notifications into a digest at 08:00 and 16:30, one line per source,
+  like your bank or GitHub, with what changed first. Anything that needs
+  you sits at the top with a suggested to-do that t adds, so you can read
   this and let it go."
-  Keys: `A` let go of digest · `e` let go of this source · `t` this needs
-  me · `K` tune a source
+- Hints: `updates.suggestion`, `updates.source` and the shared
+  `updates.let_go` (see the hint table).
 - Why line: "Here because: automated sender, not a person (rule). In the
   16:30 digest."
 

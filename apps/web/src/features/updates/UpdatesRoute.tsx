@@ -6,8 +6,9 @@ import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
-import { useModeGuide, useRetireCard, type ModeGuide } from "@/features/modes/api";
-import { ModeCard } from "@/features/modes/ModeCard";
+import { AnchoredHint } from "@/features/hints/AnchoredHint";
+import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
+import { useModeGuide, type ModeGuide } from "@/features/modes/api";
 import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
@@ -94,7 +95,6 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
   const params = useParams({ strict: false }) as { threadId?: string };
   const activePane = useMailboxPane((s) => s.activePane);
   const hidden = useUpdatesHidden((s) => s.hidden);
-  const retire = useRetireCard("updates");
   const [routineOpen, setRoutineOpen] = useState(false);
   const [cursorId, setCursorId] = useState<string | null>(null);
   const [letGoOpen, setLetGoOpen] = useState(false);
@@ -116,12 +116,33 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
   }, [index]);
 
   const hasLines = rows.length > 0;
-  const cardShown = Boolean(guide && !guide.card_seen && hasLines);
-  const { mutate: retireMutate } = retire;
-  const cardSeen = guide?.card_seen ?? true;
-  const retireCard = useCallback(() => {
-    if (!cardSeen) retireMutate();
-  }, [cardSeen, retireMutate]);
+  // One hint under the first suggested to-do, one under the first line,
+  // and the digest's let go under its button.
+  const firstSuggestion = rows.find((row) => row.line.todo_suggestion && !row.line.in_todo)?.line;
+  const firstLine = rows[0]?.line;
+  const alone = rows.length === 1;
+  const suggestionHint = useHint("updates", "updates.suggestion", {
+    ready: Boolean(firstSuggestion),
+    alone,
+  });
+  const sourceHint = useHint("updates", "updates.source", {
+    ready: Boolean(firstLine && canLetGoSource(firstLine)),
+    alone,
+  });
+  const letGoHint = useHint("updates", "updates.let_go", { ready: Boolean(digest.let_go_line) });
+  const closeHint = useActiveHintDismiss();
+  const hintFor = (line: UpdateLine) => {
+    const shown =
+      line.id === firstSuggestion?.id && suggestionHint.hint
+        ? suggestionHint
+        : line.id === firstLine?.id && sourceHint.hint
+          ? sourceHint
+          : null;
+    return shown?.hint ? <AnchoredHint hint={shown.hint} onDismiss={shown.dismiss} /> : null;
+  };
+  const { dismiss: dismissSuggestionHint } = suggestionHint;
+  const { dismiss: dismissSourceHint } = sourceHint;
+  const { dismiss: dismissLetGoHint } = letGoHint;
 
   const select = useCallback((line: UpdateLine) => setCursorId(line.id), []);
   const openEmail = useCallback(
@@ -130,12 +151,22 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
     },
     [nav],
   );
-  const letGoLine = useCallback((line: UpdateLine) => {
-    if (!canLetGoSource(line)) return;
-    setLetGoLineOf(line);
-    setLetGoOpen(true);
-  }, []);
-  const needs = useCallback((line: UpdateLine) => void needsMe(line), []);
+  const letGoLine = useCallback(
+    (line: UpdateLine) => {
+      if (!canLetGoSource(line)) return;
+      dismissSourceHint();
+      setLetGoLineOf(line);
+      setLetGoOpen(true);
+    },
+    [dismissSourceHint],
+  );
+  const needs = useCallback(
+    (line: UpdateLine) => {
+      dismissSuggestionHint();
+      void needsMe(line);
+    },
+    [dismissSuggestionHint],
+  );
   const tune = useCallback((line: UpdateLine) => {
     if (canTune(line)) setTuning(line);
   }, []);
@@ -144,8 +175,6 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
     [],
   );
   const commitLetGoAll = (selectionToken: string) => {
-    // Letting go of the digest is the mode's main verb: the card is spent.
-    retireCard();
     if (letGoLineOf) {
       void letGoSource(letGoLineOf, digest.cut.at, selectionToken);
       // With an email open, done moves on: the next source's email opens.
@@ -181,6 +210,7 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
     expand: quieter.sources > 0 ? () => setRoutineOpen(true) : undefined,
     letGoAll: digest.let_go_line
       ? () => {
+          dismissLetGoHint();
           setLetGoLineOf(null);
           setLetGoOpen(true);
         }
@@ -193,7 +223,7 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
       if (link) window.open(link.url, "_blank", "noopener,noreferrer");
     },
     openEmail: () => current && openEmail(current),
-    closeCard: cardShown ? retireCard : undefined,
+    closeHint,
   });
 
   const section = (name: UpdateSection) => {
@@ -220,6 +250,7 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
               onTune={tune}
               onOpenEmail={openEmail}
               onTuneTo={tuneTo}
+              hint={hintFor(row.line)}
             />
           ))}
         </ul>
@@ -230,7 +261,6 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
   return (
     <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-6">
       <ModeFrame>
-        {cardShown && guide ? <ModeCard guide={guide} onClose={retireCard} /> : null}
         <div className="mx-5 mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
           <p data-testid="updates-cut" className="min-w-0 text-[13px] text-foreground/90">
             {cutLine(digest)}
@@ -242,6 +272,7 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
               className="ml-auto hidden md:inline-flex"
               data-testid="updates-let-go-all"
               onClick={() => {
+                dismissLetGoHint();
                 setLetGoLineOf(null);
                 setLetGoOpen(true);
               }}
@@ -250,6 +281,9 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
             </Button>
           ) : null}
         </div>
+        {letGoHint.hint ? (
+          <AnchoredHint className="mx-5" hint={letGoHint.hint} onDismiss={dismissLetGoHint} />
+        ) : null}
         {digest.headline ? (
           <p data-testid="updates-headline" className="mx-5 mt-1 text-balance text-[15px]">
             {digest.headline}

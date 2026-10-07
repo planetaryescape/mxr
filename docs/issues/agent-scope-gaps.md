@@ -111,11 +111,25 @@ through `handle_request`.
 - `allowed_accounts` matches by account email and config key as well as id,
   so two accounts sharing an email are allowed together.
 
-## Review of 0421b70f: more leaks
+## Review of 0421b70f: four more leaks
 
-A review of the first fix found paths it didn't close. Each is fixed
+A review of the first fix found four paths it didn't close. Each is fixed
 in its own commit with a test that failed first.
 
+- **Events (high).** `serve_client_connection` forwarded every daemon event
+  to every connection, so a scoped client received other accounts'
+  `NewMessages` envelopes, `ThreadGistReady` gists and sync results. A
+  connection is now profiled from the first request it sends as `agent` or
+  `mcp`, and stays profiled. Its events go through `scope_event`:
+  `NewMessages` keeps only allowed envelopes (and its `total` becomes what
+  the client can see), label counts keep only allowed accounts' labels,
+  message and thread events are resolved to their accounts, and events with
+  no attributable account (operations without an account,
+  `MutationReconciliationFailed`) are dropped. `EventsLagged` passes. A
+  connection that never sends a request, like the web event socket or
+  `mxr events`, is never profiled and gets every event; the MCP server opens
+  one connection per request and ignores events, so it was not exposed to
+  the model this way.
 - **Shared thread ids (high).** Legacy Gmail thread ids aren't
   account-scoped, so one id can hold two accounts' messages. Resolution used
   `get_threads_batch`, which reports one account per id, while thread loads

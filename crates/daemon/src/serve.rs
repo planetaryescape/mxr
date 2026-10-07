@@ -257,6 +257,11 @@ pub(crate) async fn serve_client_connection<S>(
     // Connection-scoped auth state. Token transports start unauthenticated and
     // gate every request; every other transport starts trusted.
     let mut auth = ConnectionAuth::new(&peer, auth_token);
+    // Once any request on this connection comes from a profiled client
+    // (agent, MCP), its events are cut to that profile's accounts for the
+    // rest of the connection. A connection that never sends (the web event
+    // socket, `mxr events`) is never profiled.
+    let mut event_profile: Option<&'static str> = None;
 
     loop {
         tokio::select! {
@@ -337,6 +342,9 @@ pub(crate) async fn serve_client_connection<S>(
                         }
                     }
                     Some(Ok(ipc_msg)) => {
+                        if let Some(name) = crate::handler::account_scope::profile_name(ipc_msg.source) {
+                            event_profile = Some(name);
+                        }
                         let permit_wait_started = std::time::Instant::now();
                         // Route the request to its lane semaphore before
                         // spawning. Slow operations (LLM inference,
@@ -402,6 +410,13 @@ pub(crate) async fn serve_client_connection<S>(
             event = event_rx.recv(), if accept_requests && can_send && !shutdown_requested && auth.is_authenticated() => {
                 match event {
                     Ok(event_msg) => {
+                        let event_msg = match event_profile {
+                            Some(name) => match scope_event_frame(&state, name, event_msg).await {
+                                Some(event_msg) => event_msg,
+                                None => continue,
+                            },
+                            None => event_msg,
+                        };
                         match send_frame(&mut sink, event_msg).await {
                             FrameSend::Sent => {}
                             // An event whose payload will not fit a frame is
@@ -457,6 +472,47 @@ pub(crate) async fn serve_client_connection<S>(
     }
 
     tracing::debug!("Client disconnected");
+}
+
+/// An event frame cut to what the named profile may see, or `None` to drop
+/// it. A missing profile allows no account, and a failed lookup drops the
+/// event rather than send it unchecked.
+async fn scope_event_frame(
+    state: &AppState,
+    profile_name: &str,
+    event_msg: IpcMessage,
+) -> Option<IpcMessage> {
+    let IpcMessage {
+        id,
+        source,
+        payload,
+    } = event_msg;
+    let IpcPayload::Event(event) = payload else {
+        return Some(IpcMessage {
+            id,
+            source,
+            payload,
+        });
+    };
+    let profile = state
+        .config_snapshot()
+        .agent_surfaces
+        .profiles
+        .get(profile_name)
+        .cloned()
+        .unwrap_or_default();
+    match crate::handler::account_scope::scope_event(state, &profile, event).await {
+        Ok(Some(event)) => Some(IpcMessage {
+            id,
+            source,
+            payload: IpcPayload::Event(event),
+        }),
+        Ok(None) => None,
+        Err(error) => {
+            tracing::warn!(%error, profile = profile_name, "dropped a daemon event the profile scope could not resolve");
+            None
+        }
+    }
 }
 
 pub(crate) async fn drain_connection_tasks(connections: &mut JoinSet<()>, timeout: Duration) {

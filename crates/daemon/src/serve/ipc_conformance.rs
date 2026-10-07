@@ -1668,3 +1668,134 @@ run_on_all_transports! {
     scenario_12_handler_panic_recovers,
     scenario_13_shutdown_closes_connections,
 }
+
+/// A connection that has identified itself as a scoped client (here MCP,
+/// allowed only the default account) gets only its own accounts' events.
+mod scoped_events {
+    use super::*;
+    use mxr_core::id::ThreadId;
+    use mxr_core::types::MessageDirection;
+    use mxr_protocol::{ThreadGistData, ThreadGistStatusData};
+
+    fn gist(thread_id: &ThreadId, text: &str) -> DaemonEvent {
+        DaemonEvent::ThreadGistReady {
+            gist: ThreadGistData {
+                thread_id: thread_id.clone(),
+                status: ThreadGistStatusData::Ready,
+                gist: Some(text.into()),
+                ask: None,
+                provenance: None,
+                reason: None,
+                generated_at: None,
+                from_cache: false,
+                newest_message_id: None,
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn a_scoped_client_never_receives_another_accounts_mail_or_gists() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let own = state.default_account_id();
+        let other = AccountId::new();
+        state
+            .store
+            .insert_account(&crate::test_fixtures::test_account_with_id(other.clone()))
+            .await
+            .unwrap();
+        let mut config = state.config_snapshot();
+        config.agent_surfaces.profiles.insert(
+            "mcp".into(),
+            mxr_config::AgentProfileConfig {
+                allowed_accounts: vec![own.as_str()],
+                ..Default::default()
+            },
+        );
+        state.set_config_for_test(config).await;
+        let envelope = |account: &AccountId, tag: &str| {
+            crate::test_fixtures::TestEnvelopeBuilder::new()
+                .account_id(account.clone())
+                .thread_id(ThreadId::new())
+                .provider_id(format!("event-{tag}"))
+                .subject(format!("subject {tag}"))
+                .build()
+        };
+        let own_mail = envelope(&own, "own");
+        let other_mail = envelope(&other, "other");
+        for mail in [&own_mail, &other_mail] {
+            state
+                .store
+                .upsert_envelope_with_direction(mail, MessageDirection::Inbound)
+                .await
+                .unwrap();
+        }
+
+        let (hot, bulk) = lanes();
+        let h = DuplexHarness::start().await;
+        let mut served = serve(&h, state.clone(), hot, bulk).await;
+        served
+            .client
+            .send(IpcMessage {
+                id: 1,
+                source: ClientKind::Mcp,
+                payload: IpcPayload::Request(Request::Ping),
+            })
+            .await
+            .unwrap();
+        served.recv_response(1).await;
+
+        let emit = |event| crate::chimes::emit_daemon_event(&state, event);
+        emit(DaemonEvent::NewMessages {
+            envelopes: vec![other_mail.clone()],
+            total: 1,
+        });
+        emit(gist(&other_mail.thread_id, "their secret"));
+        emit(DaemonEvent::SyncCompleted {
+            account_id: other.clone(),
+            messages_synced: 1,
+        });
+        emit(DaemonEvent::NewMessages {
+            envelopes: vec![other_mail.clone(), own_mail.clone()],
+            total: 2,
+        });
+        emit(gist(&own_mail.thread_id, "ours"));
+
+        let IpcPayload::Event(DaemonEvent::NewMessages { envelopes, total }) =
+            served.recv().await.payload
+        else {
+            panic!("the first event delivered should be the own-account mail")
+        };
+        assert_eq!(total, 1);
+        assert_eq!(envelopes.len(), 1);
+        assert_eq!(envelopes[0].id, own_mail.id);
+        let IpcPayload::Event(DaemonEvent::ThreadGistReady { gist }) = served.recv().await.payload
+        else {
+            panic!("expected the own-account gist next")
+        };
+        assert_eq!(gist.gist.as_deref(), Some("ours"));
+
+        finish(&state, served).await;
+    }
+
+    /// A connection that never identifies itself (the web event socket,
+    /// `mxr events`) is not profiled and still gets every event.
+    #[tokio::test]
+    async fn an_unidentified_event_only_connection_still_receives_events() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let (hot, bulk) = lanes();
+        let h = DuplexHarness::start().await;
+        let mut served = serve(&h, state.clone(), hot, bulk).await;
+        crate::chimes::emit_daemon_event(
+            &state,
+            DaemonEvent::SyncCompleted {
+                account_id: AccountId::new(),
+                messages_synced: 0,
+            },
+        );
+        assert!(matches!(
+            served.recv().await.payload,
+            IpcPayload::Event(DaemonEvent::SyncCompleted { .. })
+        ));
+        finish(&state, served).await;
+    }
+}

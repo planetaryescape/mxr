@@ -13,8 +13,8 @@ use mxr_core::id::{AccountId, DeliveryId, DraftId, LabelId, MessageId, ThreadId}
 use mxr_core::types::Draft;
 use mxr_core::types::{Envelope, MessageFlags, Thread};
 use mxr_protocol::{
-    AuthSessionId, ClientKind, JobData, MutationCommand, PromiseSourceData, Request, ResponseData,
-    ThreadSummaryData,
+    AuthSessionId, ClientKind, DaemonEvent, JobData, MutationCommand, PromiseSourceData, Request,
+    ResponseData, ThreadSummaryData,
 };
 use mxr_store::SignatureScope;
 use std::sync::Arc;
@@ -911,5 +911,98 @@ async fn scope_thread(
         thread,
         messages: kept,
         summary: None,
+    })
+}
+
+/// Cut a daemon event down to what a scoped profile may see, or drop it.
+/// Events that concern no account (daemon health, lag) pass; events whose
+/// account can't be worked out are dropped.
+pub(crate) async fn scope_event(
+    state: &AppState,
+    profile: &AgentProfileConfig,
+    event: DaemonEvent,
+) -> Result<Option<DaemonEvent>, String> {
+    let keep_if = |allowed: bool, event| if allowed { Some(event) } else { None };
+    Ok(match event {
+        DaemonEvent::SyncCompleted { ref account_id, .. }
+        | DaemonEvent::SyncError { ref account_id, .. } => {
+            let allowed = account_id_allowed(state, profile, account_id).await?;
+            keep_if(allowed, event)
+        }
+        DaemonEvent::NewMessages { envelopes, .. } => {
+            let mut kept = Vec::with_capacity(envelopes.len());
+            for envelope in envelopes {
+                if account_id_allowed(state, profile, &envelope.account_id).await? {
+                    kept.push(envelope);
+                }
+            }
+            // The full count would tell how much mail other accounts got,
+            // so a scoped client's total is what it can see.
+            (!kept.is_empty()).then_some(DaemonEvent::NewMessages {
+                total: kept.len(),
+                envelopes: kept,
+            })
+        }
+        DaemonEvent::MessageUnsnoozed { ref message_id }
+        | DaemonEvent::ReminderTriggered {
+            sent_message_id: ref message_id,
+        }
+        | DaemonEvent::ReplyLaterReturned { ref message_id } => {
+            let account_id = message_account(state, message_id).await?;
+            let allowed = account_id_allowed(state, profile, &account_id).await?;
+            keep_if(allowed, event)
+        }
+        DaemonEvent::LabelCountsUpdated { counts } => {
+            let mut allowed_labels = Vec::new();
+            for account in state
+                .store
+                .list_accounts()
+                .await
+                .map_err(|e| e.to_string())?
+            {
+                if account_id_allowed(state, profile, &account.id).await? {
+                    allowed_labels.extend(
+                        state
+                            .store
+                            .list_labels_by_account(&account.id)
+                            .await
+                            .map_err(|e| e.to_string())?
+                            .into_iter()
+                            .map(|label| label.id),
+                    );
+                }
+            }
+            let counts: Vec<_> = counts
+                .into_iter()
+                .filter(|count| allowed_labels.contains(&count.label_id))
+                .collect();
+            (!counts.is_empty()).then_some(DaemonEvent::LabelCountsUpdated { counts })
+        }
+        DaemonEvent::OperationStarted { ref account_id, .. }
+        | DaemonEvent::OperationProgress { ref account_id, .. }
+        | DaemonEvent::OperationCompleted { ref account_id, .. }
+        | DaemonEvent::OperationFailed { ref account_id, .. }
+        | DaemonEvent::OperationCancelled { ref account_id, .. } => {
+            let allowed = match account_id {
+                Some(account_id) => account_id_allowed(state, profile, account_id).await?,
+                // An operation over every account, or one that didn't say.
+                None => false,
+            };
+            keep_if(allowed, event)
+        }
+        // Its summary can name another account's messages, and nothing
+        // ties it to an account.
+        DaemonEvent::MutationReconciliationFailed { .. } => None,
+        DaemonEvent::EventsLagged { .. } => Some(event),
+        DaemonEvent::ThreadGistReady { ref gist } => {
+            let mut allowed = true;
+            for account_id in thread_accounts(state, std::slice::from_ref(&gist.thread_id)).await? {
+                if !account_id_allowed(state, profile, &account_id).await? {
+                    allowed = false;
+                    break;
+                }
+            }
+            keep_if(allowed, event)
+        }
     })
 }

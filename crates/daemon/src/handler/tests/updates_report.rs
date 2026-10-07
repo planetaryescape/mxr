@@ -120,32 +120,30 @@ async fn updates_report() {
         preview.in_todo_count
     );
 
-    // Breakthroughs the last two days of mail would make, counted without
-    // writing: needs-you facts inside their window and not yet claimed.
+    // Breakthroughs the last two days would make under the full gate, run
+    // on the copy: counts by kind, before and after the trust check.
     let rows: Vec<(String,)> =
         sqlx::query_as("SELECT id FROM messages WHERE date >= ?1 AND direction != 'outbound'")
             .bind((at - chrono::Duration::days(2)).timestamp())
             .fetch_all(state.store.reader())
             .await
             .unwrap();
-    let mut placed = Vec::new();
-    for (id,) in rows {
-        let id: mxr_core::id::MessageId = id.parse().unwrap();
-        if let Some(message) = state.store.place_message(&id).await.unwrap() {
-            placed.push(message);
+    let ids: Vec<mxr_core::id::MessageId> = rows.iter().map(|(id,)| id.parse().unwrap()).collect();
+    let mut candidates = 0usize;
+    for id in &ids {
+        if let Some(message) = state.store.place_message(id).await.unwrap() {
+            let facts = updates::facts_for(&state, &[&message], &Local)
+                .await
+                .unwrap();
+            if facts.get(id).is_some_and(|fact| fact.needs_you.is_some()) {
+                candidates += 1;
+            }
         }
     }
-    let refs: Vec<&mxr_store::PlaceMessage> = placed.iter().collect();
-    let facts = updates::facts_for(&state, &refs, &Local).await.unwrap();
-    let mut breakthroughs: std::collections::BTreeMap<&str, usize> =
-        std::collections::BTreeMap::new();
-    for fact in facts.values() {
-        let open = fact.window.as_ref().is_none_or(|w| w.until >= at);
-        if let (Some(needs), true) = (fact.needs_you, open) {
-            *breakthroughs.entry(needs.as_str()).or_default() += 1;
-        }
-    }
-    println!("Breakthroughs from the last two days (rules, before claims): {breakthroughs:?}");
+    let made = updates::scan(&state, &ids, at).await.unwrap();
+    println!(
+        "Breakthroughs from the last two days: {candidates} needs-you alerts by rule, {made} sent to To do after the gate"
+    );
 
     let quiet = state
         .store

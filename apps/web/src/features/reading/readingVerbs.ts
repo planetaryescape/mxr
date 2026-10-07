@@ -91,12 +91,21 @@ export async function putOnLater(
     }
     claim.settle(
       offerUndo(
+        "reading-later",
         answer.copy,
         `reading-later-${itemKey}`,
         async () => {
-          await setLater([itemKey], false);
-          await refreshReading();
-          return true;
+          if (refuseWhileDaemonDown("undo")) return false;
+          try {
+            await setLater([itemKey], false);
+            toast.success("Undone");
+            return true;
+          } catch (error) {
+            toast.error("Undo failed", { description: errorText(error) });
+            return false;
+          } finally {
+            await refreshReading();
+          }
         },
         claim.run,
       ),

@@ -140,6 +140,19 @@ describe("h", () => {
   });
 });
 
+/** A daemon unsubscribe preview with this method and token. */
+const purgePreview = (method: unknown, token: string | null = "tok") => ({
+  ok: true,
+  result: {
+    address: "digest@growth.example",
+    status: "preview",
+    method,
+    message_count: 11,
+    archived_count: 0,
+    preview_token: token,
+  },
+});
+
 describe("unsubscribe", () => {
   test("says how the sender is told", () => {
     expect(unsubscribeMethodLine("one_click")).toMatch(/told directly/);
@@ -148,29 +161,19 @@ describe("unsubscribe", () => {
     expect(unsubscribeMethodLine("none")).toMatch(/No unsubscribe method/);
   });
 
-  const result = (method: unknown, token: string | null = "tok") => ({
-    ok: true,
-    result: {
-      address: "digest@growth.example",
-      status: "preview",
-      method,
-      message_count: 11,
-      archived_count: 0,
-      preview_token: token,
-    },
-  });
-
   test("takes the method from the daemon's preview, not the edition", () => {
     const preview = unsubscribePreview({
       status: "success",
-      data: result({ Mailto: { address: "x@y" } }),
+      data: purgePreview({ Mailto: { address: "x@y" } }),
     });
     expect(preview).toEqual({ method: "mailto", token: "tok", count: 11 });
     expect(
-      unsubscribePreview({ status: "success", data: result({ OneClick: { url: "u" } }) })?.method,
+      unsubscribePreview({ status: "success", data: purgePreview({ OneClick: { url: "u" } }) })
+        ?.method,
     ).toBe("one_click");
     expect(
-      unsubscribePreview({ status: "success", data: result({ BodyLink: { url: "u" } }) })?.method,
+      unsubscribePreview({ status: "success", data: purgePreview({ BodyLink: { url: "u" } }) })
+        ?.method,
     ).toBe("link");
   });
 
@@ -178,9 +181,12 @@ describe("unsubscribe", () => {
     expect(unsubscribePreview({ status: "pending", data: undefined })).toBeNull();
     expect(unsubscribePreview({ status: "error", data: undefined })).toBeNull();
     expect(
-      unsubscribePreview({ status: "success", data: result({ OneClick: { url: "u" } }, null) }),
+      unsubscribePreview({
+        status: "success",
+        data: purgePreview({ OneClick: { url: "u" } }, null),
+      }),
     ).toBeNull();
-    expect(unsubscribePreview({ status: "success", data: result("None") })).toBeNull();
+    expect(unsubscribePreview({ status: "success", data: purgePreview("None") })).toBeNull();
     expect(unsubscribePreview({ status: "success", data: { ok: false } })).toBeNull();
   });
 });

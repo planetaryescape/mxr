@@ -339,9 +339,15 @@ fn plan_one(
         .filter(|held| {
             *held != mode
                 || (mode == ModeKindData::Todo && !still_open.is_empty())
+                // Archiving needs every inbox message to be in this
+                // preview: one an earlier let go saw but you put back in
+                // the inbox is yours again, never archived behind you.
                 || exact.is_some_and(|exact| {
                     placement.messages.iter().any(|m| {
-                        m.in_inbox && !m.trashed && m.direction != "outbound" && !exact.covers(m)
+                        m.in_inbox
+                            && !m.trashed
+                            && m.direction != "outbound"
+                            && !exact.ids.contains(&m.id)
                     })
                 })
         })

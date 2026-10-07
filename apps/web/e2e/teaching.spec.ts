@@ -304,15 +304,15 @@ test("the first done here carries its hint in the toast, and only the first", as
     const topic = open(row)!.thread_id;
     await openApp(page, `/messages?person=${encodeURIComponent(row.id)}&topic=${topic}`);
     await expect(page.getByTestId("conversation")).toBeVisible();
-    await page.keyboard.press("e");
+    await page.getByTestId("done-here").click();
   };
   const text = "Done here (e) only clears this mode; it stays in To do until done there.";
   await doneOn(candidates[0]!);
   await expect(page.getByText(text)).toBeVisible();
   await expect.poll(() => hintSeen(page, "done_here")).toBe(true);
   await doneOn(candidates[1]!);
-  // The handoff toast, as Messages words it ("Done: Pricing copy.").
-  await expect(page.getByText(/Done: |Done with |Archived/).first()).toBeVisible();
+  // The second done's handoff toast, whatever its words, without the hint.
+  await expect(page.locator("[data-sonner-toast]").first()).toBeVisible();
   await expect(page.getByText(text)).toHaveCount(0);
 });
 

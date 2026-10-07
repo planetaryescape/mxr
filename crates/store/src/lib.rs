@@ -59,6 +59,7 @@ mod owed_replies;
 mod people;
 mod places;
 mod pool;
+mod records;
 mod relationship_watchlist;
 mod reply_pairs;
 mod rules;
@@ -114,6 +115,11 @@ pub use owed_replies::OwedReplyRow;
 pub use people::{NamedCorrespondent, PersonFacts, PersonLink, PersonMerge};
 pub use places::PlaceMessage;
 pub use pool::Store;
+pub use records::{
+    ArchiveRecord, RecordDocument, RecordFieldValue, RecordFiled, RecordFiling, RecordGroup,
+    RecordLink, RecordPdfToFetch, RecordQuery, RecordRun, RecordSenderRule, RecordSource,
+    RECORD_CHECKED_FIELDS,
+};
 pub use relationship_watchlist::{CadenceDriftRow, RelationshipWatchEntry};
 pub use rules::{row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecordInput};
 pub use scheduled_sends::PendingScheduledSend;

@@ -47,6 +47,14 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
         MessageDeletionRule::ClearedWithMessages,
     ),
     ("deliveries", MessageDeletionRule::ClearedWithMessages),
+    // Field and message rows cascade; the record goes with its last source.
+    ("records", MessageDeletionRule::ClearedWithMessages),
+    (
+        "record_runs",
+        MessageDeletionRule::KeptNoText(
+            "the records first run's newest-first position: an id and a date, never text",
+        ),
+    ),
     ("desk_dismissals", MessageDeletionRule::ClearedWithMessages),
     ("mode_done", MessageDeletionRule::ClearedWithMessages),
     ("event_log", MessageDeletionRule::ClearedWithMessages),
@@ -236,6 +244,12 @@ impl super::Store {
             "CREATE TEMP TABLE mxr_deleting_deliveries AS
                SELECT DISTINCT delivery_id AS id FROM delivery_messages
                WHERE message_id IN (SELECT id FROM temp.mxr_deleting)",
+            "CREATE TEMP TABLE mxr_deleting_records AS
+               SELECT DISTINCT record_id AS id FROM record_messages
+               WHERE message_id IN (SELECT id FROM temp.mxr_deleting)
+               UNION
+               SELECT DISTINCT record_id FROM record_fields
+               WHERE message_id IN (SELECT id FROM temp.mxr_deleting)",
             "CREATE TEMP TABLE mxr_deleting_decisions AS
                SELECT DISTINCT decision_id AS id FROM decision_evidence
                WHERE message_id IN (SELECT id FROM temp.mxr_deleting)",
@@ -249,6 +263,23 @@ impl super::Store {
                  AND NOT EXISTS (
                      SELECT 1 FROM delivery_messages
                      WHERE delivery_messages.delivery_id = deliveries.id)",
+            // A record goes with its last source email. One that keeps a
+            // source has its fields recomputed from the candidates left: the
+            // deleted email's cascaded away with it.
+            "DELETE FROM records
+               WHERE id IN (SELECT id FROM temp.mxr_deleting_records)
+                 AND NOT EXISTS (
+                     SELECT 1 FROM record_messages
+                     WHERE record_messages.record_id = records.id)",
+            "CREATE TEMP TABLE IF NOT EXISTS mxr_records (id TEXT PRIMARY KEY)",
+            "INSERT OR IGNORE INTO temp.mxr_records (id)
+               SELECT id FROM records WHERE id IN (SELECT id FROM temp.mxr_deleting_records)",
+            crate::records::RECOMPUTE_SQL,
+            "DELETE FROM temp.mxr_records",
+            // A trip or series with no record left has nothing to name.
+            "DELETE FROM record_groups
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM records WHERE records.group_id = record_groups.id)",
             // A decision survives while any of its evidence is still here;
             // the message delete cascaded the rows of the evidence that went.
             "DELETE FROM decision_log
@@ -268,6 +299,7 @@ impl super::Store {
             "DROP TABLE temp.mxr_deleting_people",
             "DROP TABLE temp.mxr_deleting_deliveries",
             "DROP TABLE temp.mxr_deleting_decisions",
+            "DROP TABLE temp.mxr_deleting_records",
         ] {
             let query = sqlx::query(statement);
             let query = if statement.contains("?1") {

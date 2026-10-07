@@ -1023,6 +1023,13 @@ const MIGRATIONS: &[Migration] = &[
         name: "messages",
         kind: MigrationKind::Sql(include_str!("../migrations/064_messages.sql")),
     },
+    // Archive: records built from mail, with a value per field per source.
+    // 64 and 65 belong to the Updates and Reading phases.
+    Migration {
+        version: 66,
+        name: "records",
+        kind: MigrationKind::Sql(include_str!("../migrations/066_records.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

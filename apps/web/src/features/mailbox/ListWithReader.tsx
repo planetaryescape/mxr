@@ -181,10 +181,10 @@ export function ListWithReader({
 
   return (
     <ReaderNavContext.Provider value={nav}>
-      <ResizablePanelGroup className="min-h-0 min-w-0 flex-1" {...pane.groupProps}>
+      <ResizablePanelGroup className="relative min-h-0 min-w-0 flex-1" {...pane.groupProps}>
         <ResizablePanel
           id="list-pane"
-          hidden={hideList}
+          data-parked={hideList || undefined}
           {...pane.sidePanelProps}
           className="flex min-h-0 flex-col"
         >
@@ -306,18 +306,23 @@ export function ListWithReader({
             {footer}
           </section>
         </ResizablePanel>
-        {split ? (
-          <ResizableHandle aria-label={`Resize ${title} list`} {...pane.handleProps} />
-        ) : null}
-        {threadOpen ? (
-          <ResizablePanel
-            id="reader-pane"
-            {...pane.otherPanelProps}
-            className="flex min-h-0 min-w-0"
-          >
-            <Outlet />
-          </ResizablePanel>
-        ) : null}
+        {/* The handle and reader stay mounted, parked off screen while
+            unused (app.css): registering either with the library on open
+            reads layout mid-commit, which pushed opening a conversation
+            past the speed gate. */}
+        <ResizableHandle
+          aria-label={`Resize ${title} list`}
+          data-parked={!split || undefined}
+          {...pane.handleProps}
+        />
+        <ResizablePanel
+          id="reader-pane"
+          data-parked={!threadOpen || undefined}
+          {...pane.otherPanelProps}
+          className="flex min-h-0 min-w-0"
+        >
+          {threadOpen ? <Outlet /> : null}
+        </ResizablePanel>
       </ResizablePanelGroup>
     </ReaderNavContext.Provider>
   );

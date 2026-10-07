@@ -81,7 +81,10 @@ function ResizableHandle({
       data-slot="resizable-handle"
       elementRef={handle}
       className={cn(
-        "group/handle relative z-10 flex w-px cursor-col-resize items-center justify-center bg-border outline-none",
+        // -mr-px: the rule overlays the next pane instead of taking a pixel
+        // of the row, so the panes' widths add up to the group's (the
+        // library sizes panes against their sum).
+        "group/handle relative z-10 -mr-px flex w-px cursor-col-resize items-center justify-center bg-border outline-none",
         "after:absolute after:inset-y-0 after:left-1/2 after:w-2 after:-translate-x-1/2",
         "focus-visible:ring-2 focus-visible:ring-ring",
         className,

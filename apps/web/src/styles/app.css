@@ -193,6 +193,26 @@
   cursor: col-resize !important;
 }
 
+/*
+ * A split's pane or handle that isn't in use stays mounted (registering one
+ * with the panel library on open is slow) but parked: out of the flex row,
+ * invisible, unfocusable and out of the accessibility tree. Not
+ * display:none: the library gives a zero-size element a resize hit area
+ * at the top of the window. Off screen, that area can't be reached; left
+ * at 100% keeps the parked element after the visible pane when the
+ * library orders panes by their position.
+ */
+[data-slot="resizable-panel"][data-parked],
+[data-slot="resizable-handle"][data-parked] {
+  position: absolute;
+  top: -10000px;
+  left: 100%;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
 .app-shell-sidebar {
   flex: 1 1 auto;
   border-right: 1px solid var(--sidebar-border);

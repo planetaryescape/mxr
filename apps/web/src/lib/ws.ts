@@ -138,28 +138,21 @@ class DaemonEventClient {
 
   private onMessage = (ev: MessageEvent): void => {
     if (typeof ev.data !== "string") return;
-    let parsed: Record<string, unknown> | undefined;
-    try {
-      parsed = JSON.parse(ev.data) as Record<string, unknown>;
-    } catch {
-      return;
-    }
-    if (!parsed || typeof parsed !== "object") return;
-    if (!("type" in parsed) && typeof parsed.error === "string") {
+    const frame = parseFrame(ev.data);
+    if (frame.kind === "ignore") return;
+    if (frame.kind === "bridge-error") {
       // The bridge couldn't reach the daemon; the close follows.
       this.setStatus({
         state: "reconnecting",
-        errorMessage: parsed.error,
+        errorMessage: frame.error,
         lastErrorAt: Date.now(),
       });
       return;
     }
-    if (!("type" in parsed) && typeof parsed.event === "string") parsed.type = parsed.event;
-    if (!("type" in parsed)) return;
     this.setStatus({ state: "connected", lastEventAt: Date.now() });
     for (const handler of this.handlers) {
       try {
-        handler(parsed as DaemonEvent);
+        handler(frame.event);
       } catch (err) {
         console.error("[mxr/ws] event handler threw", err);
       }
@@ -246,6 +239,35 @@ class DaemonEventClient {
       listener(this.status);
     }
   }
+}
+
+export type Frame =
+  | { kind: "event"; event: DaemonEvent }
+  | { kind: "bridge-error"; error: string }
+  | { kind: "ignore" };
+
+/**
+ * Sort one WebSocket frame. Daemon events name themselves in `event` (or
+ * `type`); the bridge's "can't reach the daemon" frame is a bare
+ * `{ "error": … }`. `SyncError` and `OperationFailed` also carry an
+ * `error`, so only a frame that names no event is the bridge's: reading
+ * them as one dropped every sync failure and flickered the pill.
+ */
+export function parseFrame(data: string): Frame {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return { kind: "ignore" };
+  }
+  if (!parsed || typeof parsed !== "object") return { kind: "ignore" };
+  const frame = parsed as Record<string, unknown>;
+  const named = "type" in frame || "event" in frame;
+  if (!named && typeof frame.error === "string")
+    return { kind: "bridge-error", error: frame.error };
+  if (!("type" in frame) && typeof frame.event === "string") frame.type = frame.event;
+  if (typeof frame.type !== "string") return { kind: "ignore" };
+  return { kind: "event", event: frame as DaemonEvent };
 }
 
 export const daemonEvents = new DaemonEventClient();

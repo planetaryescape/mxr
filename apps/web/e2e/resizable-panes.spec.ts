@@ -225,6 +225,37 @@ test("Archive's record card resizes beside the ledger", async ({ page }) => {
 test.describe("at 390px", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
+  test("a reply drafted on a phone survives going back to the people and reopening", async ({
+    page,
+  }) => {
+    await openApp(page, "/messages");
+    const row = page.locator("[data-row-id]").first();
+    await row.click();
+    await page
+      .getByRole("button", { name: /^Reply to / })
+      .first()
+      .click();
+    const composer = page.locator("#inline-composer-slot [data-compose-surface]");
+    const body = composer.locator(".cm-content");
+    await expect(body).toBeVisible();
+    await body.click();
+    await page.keyboard.press("i");
+    await page.keyboard.type("drafted on the bus");
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("button", { name: "Back to the people" }).click();
+    await expect(row).toBeVisible();
+    await row.click();
+
+    await expect(body).toBeVisible();
+    await expect(body).toContainText("drafted on the bus");
+    await body.click();
+    await page.keyboard.press("A");
+    await page.keyboard.type(", still here");
+    await page.keyboard.press("Escape");
+    await expect(body).toContainText("drafted on the bus, still here");
+  });
+
   test("no split shows a handle", async ({ page }) => {
     for (const path of ["/messages", "/m/inbox", "/todo", "/updates", "/archive"]) {
       await openApp(page, path);

@@ -122,6 +122,7 @@ impl App {
                 .min(self.mailbox.messages_page.item_count().saturating_sub(1));
         }
         self.sync_messages_page();
+        self.guard_messages_ack();
     }
 
     /// The runtime fetched a person's page.
@@ -129,6 +130,7 @@ impl App {
         let state = &mut self.mailbox.messages_page;
         state.page_for = Some(row_id);
         state.page = Some(page);
+        self.guard_messages_ack();
     }
 
     /// Ask for the selected row's page when it isn't the one on screen.
@@ -224,12 +226,24 @@ impl App {
             return;
         };
         self.retire_messages_card();
-        self.mailbox.messages_page.pending_ack_preview = Some(topic.thread_id);
+        let page = &mut self.mailbox.messages_page;
+        page.ack = None;
+        page.ack_requested = Some(topic.thread_id.clone());
+        page.pending_ack_preview = Some(topic.thread_id);
         self.status_message = Some("Preparing got it…".into());
     }
 
-    /// The daemon's preview of Got it: show it and start the countdown.
+    /// The daemon's preview of Got it: show it and start the countdown,
+    /// but only for the thread `.` asked about and only while the lens is
+    /// still on it. A preview that comes back after you left, undid it or
+    /// moved on is dropped.
     pub(crate) fn show_messages_ack(&mut self, plan: AckPlanData, now: std::time::Instant) {
+        let asked = self.mailbox.messages_page.ack_requested.take();
+        if asked.as_ref() != Some(&plan.thread_id)
+            || !self.messages_ack_still_wanted(&plan.thread_id)
+        {
+            return;
+        }
         self.status_message = None;
         let to = plan
             .to
@@ -254,6 +268,12 @@ impl App {
         let Some(ack) = self.mailbox.messages_page.ack.take() else {
             return;
         };
+        // Sends only if you are still looking at the conversation it
+        // answers: any other path away from it has already cancelled it,
+        // and this check catches one that didn't.
+        if !self.messages_ack_still_wanted(&ack.plan.thread_id) {
+            return;
+        }
         self.mailbox.messages_page.mark_done(&ack.plan.thread_id);
         self.queue_mutation(
             Request::AckMessage {
@@ -271,8 +291,47 @@ impl App {
     }
 
     fn cancel_messages_ack(&mut self) {
-        if self.mailbox.messages_page.ack.take().is_some() {
+        let page = &mut self.mailbox.messages_page;
+        let waiting = page.ack_requested.take().is_some();
+        if page.ack.take().is_some() || waiting {
             self.push_toast(Toast::info("Got it not sent"));
+        }
+    }
+
+    /// Whether a Got it for `thread_id` may still start or send: the app
+    /// is running, the Messages lens has the keys, and the conversation on
+    /// it (including one about to load) is that thread.
+    fn messages_ack_still_wanted(&self, thread_id: &ThreadId) -> bool {
+        if self.should_quit || !self.messages_list_focused() {
+            return false;
+        }
+        let page = &self.mailbox.messages_page;
+        let Some(row) = self.selected_messages_row() else {
+            return false;
+        };
+        if let Some((row_id, topic)) = &page.pending_person {
+            if *row_id != row.id || topic.as_ref().is_some_and(|t| t != thread_id) {
+                return false;
+            }
+        }
+        self.selected_messages_topic()
+            .is_some_and(|topic| &topic.thread_id == thread_id)
+    }
+
+    /// Cancel a Got it, waiting or counting down, once the lens has left
+    /// its conversation: another mode, screen or pane, another person or
+    /// topic, or quitting.
+    pub(crate) fn guard_messages_ack(&mut self) {
+        let page = &self.mailbox.messages_page;
+        let thread = page
+            .ack
+            .as_ref()
+            .map(|ack| ack.plan.thread_id.clone())
+            .or_else(|| page.ack_requested.clone());
+        if let Some(thread) = thread {
+            if !self.messages_ack_still_wanted(&thread) {
+                self.cancel_messages_ack();
+            }
         }
     }
 
@@ -422,7 +481,8 @@ impl App {
     pub(super) fn messages_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let plain = key.modifiers == KeyModifiers::NONE;
         let shifted = plain_or_shift(key.modifiers);
-        if self.mailbox.messages_page.ack.is_some() {
+        let page = &self.mailbox.messages_page;
+        if page.ack.is_some() || page.ack_requested.is_some() {
             match key.code {
                 KeyCode::Char('u') if plain => return Some(Action::MessagesCancelAck),
                 KeyCode::Esc => return Some(Action::MessagesCancelAck),
@@ -436,6 +496,7 @@ impl App {
                     self.mailbox.messages_page.focus = MessagesFocus::List;
                 } else {
                     self.mailbox.active_pane = ActivePane::Sidebar;
+                    self.guard_messages_ack();
                 }
                 return None;
             }

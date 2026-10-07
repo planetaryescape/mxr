@@ -56,6 +56,9 @@ pub struct MessagesPageState {
     pub pending_person: Option<(String, Option<ThreadId>)>,
     /// Ask the daemon for a Got it preview on this thread.
     pub pending_ack_preview: Option<ThreadId>,
+    /// The thread `.` asked a preview for: only its preview may start a
+    /// countdown, and only while the lens is still on it.
+    pub ack_requested: Option<ThreadId>,
     pub ack: Option<AckCountdown>,
 }
 

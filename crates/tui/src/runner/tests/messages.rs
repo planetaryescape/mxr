@@ -249,3 +249,163 @@ fn r_replies_to_the_open_topic_and_help_leads_with_messages() {
         Some("messages")
     );
 }
+
+/// `.` pressed and its preview shown: a Got it counting down from `start`.
+fn counting_down(app: &mut App, start: std::time::Instant) -> AckPlanData {
+    press(app, KeyCode::Char('.'));
+    assert!(app
+        .mailbox
+        .messages_page
+        .pending_ack_preview
+        .take()
+        .is_some());
+    let preview = plan(app);
+    app.show_messages_ack(preview.clone(), start);
+    assert!(
+        app.mailbox.messages_page.ack.is_some(),
+        "the countdown runs"
+    );
+    preview
+}
+
+fn after_send_at(start: std::time::Instant) -> std::time::Instant {
+    start + std::time::Duration::from_secs(10)
+}
+
+#[test]
+fn the_send_carries_the_previews_token() {
+    let mut app = messages_app(true);
+    let start = std::time::Instant::now();
+    let preview = counting_down(&mut app, start);
+    app.tick_messages_ack(after_send_at(start));
+    assert!(matches!(
+        queued(&app).as_slice(),
+        [Request::AckMessage { preview_token: Some(token), .. }]
+            if Some(token) == preview.preview_token.as_ref()
+    ));
+}
+
+#[test]
+fn going_to_another_mode_mid_countdown_sends_nothing() {
+    let mut app = messages_app(true);
+    let start = std::time::Instant::now();
+    counting_down(&mut app, start);
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+    press(&mut app, KeyCode::Char('h'));
+    assert_eq!(app.mailbox.mailbox_view, MailboxView::Now);
+    assert!(
+        app.mailbox.messages_page.ack.is_none(),
+        "leaving cancels it"
+    );
+    app.tick_messages_ack(after_send_at(start));
+    assert!(queued(&app).is_empty());
+}
+
+#[test]
+fn the_sidebar_taking_focus_mid_countdown_sends_nothing() {
+    let mut app = messages_app(true);
+    let start = std::time::Instant::now();
+    counting_down(&mut app, start);
+    press(&mut app, KeyCode::Char('h'));
+    assert_eq!(app.mailbox.active_pane, ActivePane::Sidebar);
+    app.tick_messages_ack(after_send_at(start));
+    assert!(queued(&app).is_empty());
+    assert!(app.mailbox.messages_page.ack.is_none());
+}
+
+#[test]
+fn another_screen_mid_countdown_sends_nothing() {
+    let mut app = messages_app(true);
+    let start = std::time::Instant::now();
+    counting_down(&mut app, start);
+    app.apply(Action::OpenTab2);
+    assert_ne!(app.screen, Screen::Mailbox);
+    app.tick_messages_ack(after_send_at(start));
+    assert!(queued(&app).is_empty());
+}
+
+#[test]
+fn moving_to_another_person_mid_countdown_sends_nothing() {
+    let mut app = messages_app(true);
+    let start = std::time::Instant::now();
+    counting_down(&mut app, start);
+    press(&mut app, KeyCode::Char('j'));
+    assert!(app.mailbox.messages_page.ack.is_none());
+    app.tick_messages_ack(after_send_at(start));
+    assert!(queued(&app).is_empty());
+}
+
+#[test]
+fn switching_topic_mid_countdown_sends_nothing() {
+    let mut app = messages_app(true);
+    let start = std::time::Instant::now();
+    counting_down(&mut app, start);
+    press(&mut app, KeyCode::Char(']'));
+    assert!(app.mailbox.messages_page.ack.is_none());
+    app.tick_messages_ack(after_send_at(start));
+    assert!(queued(&app).is_empty());
+}
+
+#[test]
+fn quitting_mid_countdown_sends_nothing() {
+    let mut app = messages_app(true);
+    let start = std::time::Instant::now();
+    counting_down(&mut app, start);
+    app.should_quit = true;
+    app.tick_messages_ack(after_send_at(start));
+    assert!(queued(&app).is_empty());
+}
+
+#[test]
+fn a_late_preview_after_leaving_registers_nothing() {
+    let mut app = messages_app(true);
+    press(&mut app, KeyCode::Char('.'));
+    assert!(app
+        .mailbox
+        .messages_page
+        .pending_ack_preview
+        .take()
+        .is_some());
+    let preview = plan(&app);
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+    press(&mut app, KeyCode::Char('h'));
+    let start = std::time::Instant::now();
+    app.show_messages_ack(preview, start);
+    assert!(
+        app.mailbox.messages_page.ack.is_none(),
+        "the late preview is dropped"
+    );
+    app.tick_messages_ack(after_send_at(start));
+    assert!(queued(&app).is_empty());
+}
+
+#[test]
+fn a_late_preview_after_undo_or_for_another_thread_registers_nothing() {
+    let mut app = messages_app(true);
+    press(&mut app, KeyCode::Char('.'));
+    app.mailbox.messages_page.pending_ack_preview = None;
+    press(&mut app, KeyCode::Esc);
+    app.show_messages_ack(plan(&app), std::time::Instant::now());
+    assert!(
+        app.mailbox.messages_page.ack.is_none(),
+        "Esc before the preview came back cancels it"
+    );
+
+    let mut app = messages_app(true);
+    press(&mut app, KeyCode::Char('.'));
+    app.mailbox.messages_page.pending_ack_preview = None;
+    let mut other = plan(&app);
+    other.thread_id = ThreadId::new();
+    app.show_messages_ack(other, std::time::Instant::now());
+    assert!(
+        app.mailbox.messages_page.ack.is_none(),
+        "not the thread that asked"
+    );
+}
+
+#[test]
+fn a_preview_nobody_asked_for_registers_nothing() {
+    let mut app = messages_app(true);
+    app.show_messages_ack(plan(&app), std::time::Instant::now());
+    assert!(app.mailbox.messages_page.ack.is_none());
+}

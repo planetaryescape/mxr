@@ -337,8 +337,10 @@ impl App {
                 self.apply_modal_action(action);
             }
         }
-        // The person page follows the cursor in Messages.
+        // The person page follows the cursor in Messages, and a Got it
+        // never outlives the conversation it answers.
         self.sync_messages_page();
+        self.guard_messages_ack();
     }
 
     #[cfg(debug_assertions)]

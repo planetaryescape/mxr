@@ -113,7 +113,7 @@ mxr search "from:sarah@example.com after:2026-04-23" --format json | jq '.result
   <div class="narrative">
     <h3>Your synced mail stays available.</h3>
     <p>Open mxr on a plane with the wifi off. Read a thread, search the archive, and write the replies you owe. Opening a message is a SQLite read, and a draft saves straight to disk. When you reconnect, mxr pulls in new mail and you can send the drafts you wrote offline.</p>
-    <p>Years of messages and labels stay indexed locally. Attachment names, types, and sizes are part of the local record. mxr downloads an attachment into its cache when you open it.</p>
+    <p>Years of messages and labels stay indexed locally. Attachment names, types, and sizes are part of the local record. mxr downloads an attachment into its cache when you open it, except the PDFs of receipts, orders, bookings and bills <a href="/guides/archive/">Archive</a> files, which it fetches ahead of time within a 512 MB budget so they open offline too.</p>
   </div>
 
   <div class="terminal-log" aria-label="Example session: reading and drafting on a plane, sending on landing">

@@ -9,6 +9,16 @@ Years of mail accumulate facts: prices agreed, deadlines slipped, vendors picked
 `mxr ask` is **synthesis above search** — every answer cites retrieved messages, or returns "not enough evidence". `mxr decisions` is **a queryable ledger** built from threads that contain explicit decisions ("we agreed on Postgres"), keyed by stable id and source hash so rebuilds are idempotent.
 :::
 
+## Records answer first, `mxr ask` answers the rest
+
+[Archive](/guides/archive/)'s answer box (`mxr records ask`, `/` in Archive)
+looks for the answer in record fields first, with no model: "lisbon booking
+ref" returns the booking reference from the record. Only when no record
+matches every word does it fall back to `mxr ask` over all your mail, and
+it says so: "No record matches "boiler warranty". Searching all mail
+instead." Use `mxr ask` directly for questions records can't answer, such
+as what someone decided.
+
 ## Conversational archive query — `mxr ask`
 
 ```bash

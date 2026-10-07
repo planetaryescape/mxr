@@ -168,8 +168,7 @@ To open on the inbox instead, set **Settings > Appearance > Home** to
 
 The sidebar is the rail: Now, Messages, To do, Updates, Reading, Archive,
 then Inbox, each with its `g` key. Messages, Updates and Reading say "early"
-because they are built on the desk, Paper trail and the Reading place, and
-Archive says its records are coming. Only Now carries a badge (people whose
+because they are built on the desk, Paper trail and the Reading place. Only Now carries a badge (people whose
 turn it is and things to act on); To do and Messages show a quiet count.
 Screener, Reply queue, Waiting on, Snoozed and Subscriptions, the folders
 (Starred, Sent, Drafts, All Mail, Spam, Trash) and the rarer lists (Owed
@@ -185,6 +184,23 @@ mail belongs.
 On a phone the sidebar gives way to five tabs at the bottom: Now, Messages,
 To do, Reading and Find. Find holds search, Archive and the Inbox; Updates
 opens from the card on Now.
+
+## Archive
+
+**Archive** (`g e`) opens on its answer box: type what you remember, like
+"lisbon booking ref", and the answer card shows the field, where it came
+from and whether it is checked, with `y` to copy it, `Enter` for the PDF and
+`o` for the email. When no record matches, the card says so and shows what
+`mxr ask` found in all your mail. Below are the "Coming up" strip, kind
+chips (Receipts, Orders, Trips, Bills, Documents), filters (`g f`) and the
+ledger by month with totals. Select a record for its card on the right: every
+field with its source on hover, an open dot on unchecked amounts and dates,
+its documents and the emails it came from. `,` fixes a field, `v` marks the
+card checked, `X` says it isn't a record, `p` opens the issuer's page, `[` and
+`]` step through years and `E` exports a CSV after its preview. On any
+conversation, `T` files it in Archive after showing the card. On a phone,
+Archive is under **Find**, and a record's card opens full screen.
+See [Archive](/guides/archive/).
 
 ## Reading and triage
 

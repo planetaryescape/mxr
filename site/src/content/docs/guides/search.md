@@ -7,6 +7,18 @@ description: Use search as the primary navigation model in mxr.
 
 mxr treats search as navigation, not a bolt-on filter. Search results drive the TUI mail list, saved searches, exports, and batch mutations.
 
+## Ask Archive for a receipt or a reference
+
+Search returns emails. When what you want is a fact from a receipt, order
+or booking (a booking reference, what you paid, the invoice PDF), ask
+[Archive](/guides/archive/) instead: it answers with the field from the
+record, one row per order rather than one per email, and searches all mail
+only when no record matches.
+
+```bash
+mxr records ask "dell receipt"
+```
+
 ## Common patterns
 
 ```bash
@@ -204,5 +216,6 @@ newer_than:7d' --format json` and `mxr summarize` for any thread with
 
 - [Labels and saved searches](/guides/labels-and-saved-searches/)
 - [Semantic search](/guides/semantic-search/)
+- [Archive](/guides/archive/): the answer box over records
 - [Recipes — fzf / jq](/guides/recipes/)
 - [CLI — `mxr search`](/reference/cli/search/)

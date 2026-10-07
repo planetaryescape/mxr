@@ -63,7 +63,7 @@ export const SAME_ACTION: Record<string, string[]> = {
   "nav.reply-queue": ["OpenReplyQueue"],
   "nav.owed": ["OpenOwedReplies"],
   "nav.invites": ["OpenCalendarInvites"],
-  "nav.reading": ["OpenPlace(Reading)"],
+  "nav.reading": ["OpenReading"],
   "nav.screener": ["OpenScreenerQueue"],
   "nav.tab-mail": ["OpenTab1"],
   "nav.search-page": ["OpenTab2"],
@@ -505,6 +505,25 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     why: "Compose works everywhere on the web; the TUI lens keeps c free",
   },
   // Reading.
+  {
+    context: "reading",
+    // prettier-ignore
+    keys: ["G", "g g", "H", "M", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
+    bound: "tui",
+    why: "The TUI lens shares the list's motions and pane keys; the web edition moves with j and k",
+  },
+  {
+    context: "reading",
+    keys: ["i a", "i m", "i d", "i A", "i M", "i D"],
+    bound: "tui",
+    why: "The TUI lens passes invite answers through; the web answers an invite from the reader",
+  },
+  {
+    context: "reading",
+    keys: ["t"],
+    bound: "tui",
+    why: "The TUI makes a to-do from an item's email; on the web, open the email and press t there",
+  },
   {
     context: "reading",
     keys: ["Escape"],

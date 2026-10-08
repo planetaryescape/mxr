@@ -650,6 +650,49 @@ would write, from the same rows:
 ("Filed in Archive.") and `undo` says how to reverse it (`restore`,
 `dismiss`, `clear_fields` or `sender`, with `record_ids` and `fields`).
 
+## `mxr updates`
+
+`mxr updates --format json` prints the digest at the latest cut:
+
+```json
+{
+  "cut": { "at": "2026-10-06T15:30:00Z", "label": "16:30", "title": "Yesterday afternoon's digest",
+           "previous_at": "2026-10-06T07:00:00Z", "next_at": "2026-10-07T07:00:00Z",
+           "next_label": "08:00", "cuts": ["08:00", "16:30"] },
+  "headline": "8 need a look, 6 changed. 149 routine from 5 sources.",
+  "message_count": 171,
+  "source_count": 12,
+  "needs_a_look": [ { "source_name": "Google", "fact": "Security alert: New sign-in from Chrome on Windows",
+                      "signal": "needs_you", "count": 1, "time_label": "14:30",
+                      "todo_id": "todo_63be0b7c784d4adcb86d4c5b9e7c79b7", "in_todo": "already in To do" } ],
+  "changed": [ { "source_key": "strava.com", "fact": "Your week in running: 21.3 km over 3 runs",
+                 "numbers": [ { "raw": "21.3 km", "value": 21.3, "unit": "km" },
+                              { "raw": "3 runs", "value": 3.0, "unit": "run" } ],
+                 "delta": { "raw": "21.3 km", "previous_raw": "19.0 km", "change": 12.105263157894742,
+                            "text": "up 12% on last week" } } ],
+  "routine": [ { "source_key": "vercel.com", "fact": "Deployment succeeded for acme-web", "count": 4 } ],
+  "since": { "label": "arriving for 08:00", "message_count": 17, "source_count": 3, "lines": [] },
+  "selection_token": "cb3d3cd1e8b7ff66",
+  "let_go_line": "Let go of 213 updates from 13 sources, 42 of them not shown (tuned or expired); 6 also in To do stay there."
+}
+```
+
+From the 2,000-message demo; lines are trimmed here. Every line also carries `id`, `section`,
+`account_id`, `message_ids`, `thread_ids`, `latest_message_id`,
+`latest_at`, `why`, `setting`, `todo_title` and `provenance` (where each
+field came from: `rule`, `code` or `default`), and, where they apply,
+`link` (`url`, `domain`), `tracker` (`kind` of `parcel`, `build` or
+`incident`, with `state`, `outcome` and, for a parcel, `steps` and `step`)
+and `suggestion`. With `--expired`, `expired` lists updates past their
+window. `--format jsonl` prints one line per source line with `section` set
+to `needs_a_look`, `changed`, `routine`, `since` or `expired`. `--format ids`
+prints thread ids.
+
+`mxr updates let-go --format json` returns `dry_run`, `line`,
+`message_count`, `source_count`, `hidden_count`, `in_todo_count`,
+`thread_ids`, `message_ids`, `selection_token`, one `items` outcome per
+thread (as `mxr modes done`) and `mutation_id` for `mxr undo`.
+
 ## Common `jq` patterns
 
 ```bash

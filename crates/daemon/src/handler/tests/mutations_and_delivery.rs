@@ -831,6 +831,32 @@ async fn batch_archive_reindexes_every_message_in_search() {
     assert_eq!(lexical_hits(&state, "quarterlyreindex in:inbox").await, 0);
 }
 
+/// Undo reindexes its restored messages in one commit at the end, and
+/// search must still see every one of them back in the inbox.
+#[tokio::test]
+async fn undo_reindexes_every_restored_message_in_search() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let ids = indexed_inbox_messages(&state, "undoreindex", 3).await;
+    let result =
+        assert_mutation_succeeded(handle_request(&state, &archive_request(ids)).await.payload);
+    let mutation_id = result.mutation_id.expect("archive is undoable");
+    assert_eq!(lexical_hits(&state, "undoreindex in:inbox").await, 0);
+
+    let undo = IpcMessage {
+        id: 2,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::UndoMutation { mutation_id }),
+    };
+    match handle_request(&state, &undo).await.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack,
+        }) => {}
+        other => panic!("expected Ack; got {other:?}"),
+    }
+
+    assert_eq!(lexical_hits(&state, "undoreindex in:inbox").await, 3);
+}
+
 /// One message whose store read fails must not cost the rest of the batch
 /// their reindex, and must stay marked until a later reindex can read it:
 /// the search document count does not change, so the count-based startup

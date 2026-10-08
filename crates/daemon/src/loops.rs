@@ -1202,6 +1202,9 @@ async fn post_sync_fanout(
     if !initial_backfill_in_progress {
         Box::pin(crate::handler::reading::after_sync(&state, &account_id)).await;
     }
+
+    // Facts for new Updates mail, so the next digest reads them cached.
+    crate::handler::updates::scan_messages(&state, &upserted_message_ids).await;
 }
 
 /// Clears what the store delete cannot reach for mail the provider deleted,
@@ -2206,6 +2209,7 @@ pub async fn auto_reminders_loop(state: Arc<AppState>, mut shutdown_rx: watch::R
 pub async fn todo_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
     let mut fingerprints = std::collections::HashMap::new();
     let mut wait = Duration::from_secs(20);
+    let mut updates_warm = false;
     loop {
         tokio::select! {
             () = tokio::time::sleep(wait) => {}
@@ -2216,6 +2220,11 @@ pub async fn todo_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bo
                 }
                 continue;
             }
+        }
+        // Read Updates' mail into facts once after start, so the first
+        // digest (and Now's card) doesn't pay for a mailbox of them.
+        if !updates_warm {
+            updates_warm = crate::handler::updates::warm(&state).await;
         }
         wait = match crate::handler::todos::tick(&state, chrono::Utc::now(), &mut fingerprints)
             .await

@@ -69,6 +69,7 @@ daemon bearer token for `tcp://`. See [`transports`](#transports).
 [safety.recipients]
 [safety.tone]
 [deliveries]
+[updates]
 
 [accounts.work]
 ```
@@ -673,6 +674,26 @@ enabled = true
 ```bash
 mxr deliveries scan --since-days 30 --dry-run    # preview detection without writing
 mxr deliveries list                              # what's been found
+```
+
+## `updates`
+
+When the [Updates](/guides/updates/) digest is gathered each day, in your
+local time.
+
+```toml
+[updates]
+cuts = ["08:00", "16:30"]
+```
+
+- `cuts`: one to four `HH:MM` times, each once. Default `["08:00", "16:30"]`.
+  The digest holds what arrived by the latest cut; mail after it waits for
+  the next. An empty list, more than four times, a value that isn't
+  `HH:MM` or a time listed twice falls back to the default, and the daemon
+  logs a warning.
+
+```bash
+mxr updates --format json | jq '.cut'   # the cut in use, and every cut of the day
 ```
 
 ## Custom keybindings

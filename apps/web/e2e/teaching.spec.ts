@@ -375,3 +375,19 @@ test("Messages' empty states teach: never had any, and nobody waiting", async ({
   );
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+test("Updates' source hint sits under the first line after a key; Esc dismisses it", async ({
+  page,
+}) => {
+  await showHint(page, "updates.source");
+  await openApp(page, "/updates");
+  const first = page.getByTestId("update-line").first();
+  await expect(first).toBeVisible();
+  await expect(hints(page)).toHaveCount(0);
+  await page.keyboard.press("j");
+  await expect(first.getByTestId("hint")).toContainText("e lets go of this source only");
+  await expect(hints(page)).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(hints(page)).toHaveCount(0);
+  await expect.poll(() => hintSeen(page, "updates.source")).toBe(true);
+});

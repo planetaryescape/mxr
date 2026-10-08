@@ -504,27 +504,30 @@ test.describe("Now and Updates", () => {
     await expect(row(second)).toHaveAttribute("data-focused", "true", { timeout: 15_000 });
   });
 
-  test("done in Updates with a message open opens the next one, and u reopens it", async ({
+  test("done in Updates with a message open previews, then opens the next source's email", async ({
     page,
   }) => {
     await openApp(page, "/updates");
-    const messages = page.getByTestId("place-message");
-    const bundles = page.getByTestId("place-bundle");
-    await expect(messages.or(bundles).first()).toBeVisible({ timeout: 60_000 });
-    // Senders fold their messages; open the first few.
-    for (let index = 0; index < 3 && (await messages.count()) < 2; index += 1) {
-      // oxlint-disable-next-line no-await-in-loop
-      await bundles.nth(index).getByRole("button").first().click();
-    }
-    await expect(messages.nth(1)).toBeVisible();
-    await messages.first().click();
+    const lines = page.getByTestId("update-line");
+    await expect(lines.nth(1)).toBeVisible({ timeout: 60_000 });
+    // Open the first line's email; a source's let go previews first (Updates
+    // never lets go of a source unseen), then the next source's email opens.
+    const firstSource = (await lines.first().getByTestId("update-source").textContent())!.trim();
+    await lines.first().hover();
+    await page.keyboard.press("o");
     await expect(page).toHaveURL(/\/updates\/[^/]+$/);
     const openedUrl = page.url();
     await page.keyboard.press("h");
     await page.keyboard.press("e");
+    const preview = page.getByTestId("updates-let-go-dialog");
+    await expect(preview).toContainText("from 1 source");
+    await preview.getByTestId("updates-let-go-confirm").click();
     await expect(page).not.toHaveURL(openedUrl, { timeout: 15_000 });
     await expect(page).toHaveURL(/\/updates\/[^/]+$/);
+    // The let go's own toast, then u puts the source back.
+    await expect(page.locator("[data-sonner-toast]").first()).toContainText(/^Let go of \d+/);
     await page.keyboard.press("u");
-    await expect(page).toHaveURL(openedUrl, { timeout: 15_000 });
+    await expect(page.getByText(/^Undone$/)).toBeVisible({ timeout: 15_000 });
+    await expect(lines.filter({ hasText: firstSource })).toHaveCount(1, { timeout: 15_000 });
   });
 });

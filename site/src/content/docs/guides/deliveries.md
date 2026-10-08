@@ -56,6 +56,24 @@ mxr deliveries dismiss DELIVERY_ID    # hide a misfire; kept under --filter dism
 
 Both are single-row, non-destructive — the row and its provenance are retained.
 
+## A parcel with no news goes quiet and leaves the active list
+
+A parcel that stops sending news is not in transit forever. Seven days
+past its latest arrival date, or 14 days after its last event when it has
+no arrival date, it goes quiet: `--filter active` no longer lists it, and
+`--filter all` still does. Updates shows one "went quiet" line in the
+digest after it happens, then lets it go.
+
+## Parcels are trackers in Updates
+
+[Updates](/guides/updates/) shows each parcel as a tracker with its steps
+(ordered, shipped, out for delivery, delivered) and the arrival date. A
+parcel that moved since the last digest is under Changed; one that didn't
+is routine. A delivered parcel shows for a day, then leaves on its own. A
+delivery problem, a failed attempt or a return goes under Needs a look for
+a week and becomes a to-do as soon as it syncs ("Check delivery from
+Bookshop").
+
 ## Backfill existing mail
 
 Detection only sees new mail going forward. Catch up on what's already in your store, previewing first:

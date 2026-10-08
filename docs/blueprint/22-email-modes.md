@@ -80,7 +80,7 @@ new message brings the thread back to that mode only (now-and-handoff.md
 | Any mode | `e` | Done here; provider archive only when no other mode holds the thread | "Done in Messages. Still in To do (due Wed)." or "Done. Archived in Gmail." |
 | Messages, Updates, Reading, Archive | `t` | A to-do prefilled from the ask and due words, in a one-line inline editor | "Added to To do: Sign lease renewal, act by Mon 13. g x" |
 | To do | `e` | Tick off; the source's record is filed in Archive with no prompt | "Ticked off. Filed in Archive." |
-| Updates | on arrival | A `needs_you` signal (new sign-in, failed payment, delivery exception) goes to To do at once and stays in the next digest marked "already in To do" | none |
+| Updates | `t` | A `needs_you` signal (new sign-in, failed payment, delivery exception) leads Needs a look as a suggested to-do; `t` adds it and the digest marks it "already in To do". Nothing is added on arrival (see "Decisions made on BK's behalf") | "Added to To do: …" |
 | Any mode | `T` | Pass to another mode, from a menu | names the destination |
 
 The destination's rail count ticks up (120 ms) and the item carries "Just
@@ -708,7 +708,7 @@ The cut is a stable set, so let go acts on exactly what the preview listed.
 Leftovers fold into the next cut instead of stacking.
 
 **In and out.** Enters by an Automated base mode or a copied thread;
-`needs_you` breaks through to To do on arrival. Leaves by let go. Trackers
+`needs_you` leads Needs a look as a suggested to-do that `t` adds; nothing goes to To do on arrival. Leaves by let go. Trackers
 that end well leave on their own (a delivered parcel goes to Archive); bad
 endings move to Needs a look. After eight digests let go without opening
 a source, mxr asks once whether to mute it.
@@ -1026,7 +1026,9 @@ test checks it). A hint shared by two modes has one id and one seen state.
 |---|---|---|---|
 | `now.from_mode` | Now | The first row's why line ("From To do: …") | "Each row comes from a mode; Enter opens it there." |
 | `done_here` | Now, Messages | The toast after the first `e` on a conversation (TUI: the status line) | "Done here (e) only clears this mode; it stays in To do until done there." |
-| `updates.let_go` | Now (Updates once it ships) | The first "Let go of this digest" button; in the TUI, the Updates card row | "A lets go of this digest only; new mail arrives in the next one." |
+| `updates.let_go` | Now, Updates | The first "Let go of this digest" button; in the TUI, the Updates card row on Now and the first line in Updates | "A lets go of this digest only; new mail arrives in the next one." |
+| `updates.suggestion` | Updates | The first suggested to-do in Needs a look | "Nothing becomes a to-do on its own; t adds this one to To do." |
+| `updates.source` | Updates | The first source line | "e lets go of this source only; the rest of the digest stays." |
 | `todo.runway` | To do | The first runway bar | "The bar fills from when this showed up to when it's due; Enter does what the button says." |
 | `todo.catchup` | To do | The catch-up line (TUI: the first row, under it) | "These came in before mxr sorted your mail. C goes through them: keep or let go of each." |
 | `messages.topics` | Messages | A person's topic list, when it has more than one topic | "Every conversation with this person, yours to answer first; ] and [ step through them." |
@@ -1035,9 +1037,6 @@ test checks it). A hint shared by two modes has one id and one seen state.
 | `archive.answer` | Archive | The first answer to a question | "y copies what this answer found; Enter opens the document." |
 | `reading.fading` | Reading | The first Fading band (TUI: its first item) | "These go within a day; b keeps one on Later, which never fades." |
 | `reading.link` | Reading | The first link under a digest | "Each link is its own item; L fetches its article, and only then does mxr contact that site." |
-
-Updates adds its own hints in the phase that ships it, at the analogous
-first-use point (a digest's let go).
 
 The topics hint says "yours to answer first" because the daemon orders a
 person's topics by state, your turn first, then by recency
@@ -1101,13 +1100,15 @@ and its key line is no longer shown on its own.
 - Header: "Notifications gathered twice a day. Read the digest, then let go."
 - Never had any: "Notifications from services and apps land here and are
   gathered into a digest at 08:00 and 16:30. Anything that needs you, like
-  a failed payment, goes straight to To do."
+  a failed payment, shows first with a suggested to-do."
 - Clear for now: "Nothing new since 08:00. Next digest at 16:30."
-- Card: "Updates gathers notifications into a digest at 08:00 and 16:30,
-  one line per source, like your bank or GitHub, with what changed first. Anything that needs you
-  goes to To do at once, so you can read this and let it go."
-  Keys: `A` let go of digest · `e` let go of this source · `t` this needs
-  me · `K` tune a source
+- About (`?` and `mxr modes explain updates`): "Updates gathers
+  notifications into a digest at 08:00 and 16:30, one line per source,
+  like your bank or GitHub, with what changed first. Anything that needs
+  you sits at the top with a suggested to-do that t adds, so you can read
+  this and let it go."
+- Hints: `updates.suggestion`, `updates.source` and the shared
+  `updates.let_go` (see the hint table).
 - Why line: "Here because: automated sender, not a person (rule). In the
   16:30 digest."
 
@@ -1421,7 +1422,7 @@ email reopens it.
   or a `scheduled_for` date. It stays as "was due Fri" until the user
   acts, as Sunsama exempts edited recurring tasks from rollover removal.
 - **Updates.** A fact past its window drops out of any cut not yet shown
-  and never breaks through to To do; an OTP that syncs after its 10
+  and is never suggested as a to-do; an OTP that syncs after its 10
   minutes never surfaces. Trackers end as above.
 - **Now.** Hard rule: nothing past `relevant_until` enters Now, and
   `GetNow` filters on it in the daemon, so every client agrees.
@@ -1952,3 +1953,25 @@ rules above; D117 records them.
 - **Who takes the five-second check.** BK and two people new to mxr, during dogfooding. Until they have, the independent grader runs it on the demo mailbox.
 - **Sign in with ChatGPT SDK.** Not built. See
   `docs/extractable-crates/14-chatgpt-sign-in-sdk.md`.
+- **Updates leftovers and hidden mail (phase 4).** Anything not let go
+  folds into the next digest instead of stacking a second one. Letting go
+  of a digest takes the whole cut, including mail tuning hid (muted,
+  changes only) and mail past its window, and the preview says how many of
+  those it is, so nothing piles up out of sight in the inbox.
+- **Breakthroughs are suggestions, not tasks (phase 4).** A new sign-in, a
+  failed payment and a delivery problem lead Needs a look with a
+  highlighted suggested to-do and its reason; `t` turns one into a to-do,
+  and nothing is added on arrival. Two review rounds found ways to forge an
+  automatic one (a forged lower `Authentication-Results`, the alert
+  counting as its own prior mail, a borrowed display name on an
+  authenticated domain, UTC-day claims, backfill order, Outlook failing
+  silently), so automatic creation waits for a design that survives
+  review, as the pay link does:
+  [auto-breakthrough.md](../issues/auto-breakthrough.md). Needs a look
+  lines and `t` titles show the sending host beside the display name
+  ("Google (accounts.google.com)").
+- **The Updates fact chunk is deferred (phase 4).** Facts are cached in
+  `update_facts` but are not yet a semantic index recipe; search still
+  indexes Updates mail the way it indexes all mail.
+- **Updates' store is migration 065 (phase 4).** 064 is Messages'
+  `person_links`; versions apply by number, so phases can land in any order.

@@ -234,6 +234,17 @@ impl App {
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::People {
                             ui::messages_lens::draw(frame, chunks[1], &self.messages_view(), theme);
+                        } else if self.mailbox.mailbox_view == MailboxView::Updates {
+                            ui::updates_lens::draw(
+                                frame,
+                                chunks[1],
+                                &ui::updates_lens::UpdatesView {
+                                    page: &self.mailbox.updates_page,
+                                    selected_index: self.mailbox.selected_index,
+                                    active_pane: &self.mailbox.active_pane,
+                                },
+                                theme,
+                            );
                         } else if self.mailbox.mailbox_view == MailboxView::ArchiveMode {
                             ui::records_lens::draw(
                                 frame,
@@ -378,6 +389,17 @@ impl App {
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::People {
                             ui::messages_lens::draw(frame, chunks[1], &self.messages_view(), theme);
+                        } else if self.mailbox.mailbox_view == MailboxView::Updates {
+                            ui::updates_lens::draw(
+                                frame,
+                                chunks[1],
+                                &ui::updates_lens::UpdatesView {
+                                    page: &self.mailbox.updates_page,
+                                    selected_index: self.mailbox.selected_index,
+                                    active_pane: &self.mailbox.active_pane,
+                                },
+                                theme,
+                            );
                         } else if self.mailbox.mailbox_view == MailboxView::ArchiveMode {
                             ui::records_lens::draw(
                                 frame,

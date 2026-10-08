@@ -5,8 +5,8 @@
 
 use mxr_core::id::ThreadId;
 use mxr_protocol::{
-    ModeDoneOutcomeData, ModeGuideData, NowData, NowPersonData, NowReadingPickData, NowTodoData,
-    NowUpdatesCardData,
+    ModeGuideData, NowData, NowPersonData, NowReadingPickData, NowTodoData, NowUpdatesCardData,
+    UpdatesLetGoData,
 };
 
 /// One selectable row on Now, in the fixed section order.
@@ -24,18 +24,10 @@ impl NowRow<'_> {
         match self {
             Self::Person(person) => &person.why,
             Self::Todo(todo) => &todo.why,
-            Self::Updates(card) => &card.line,
+            Self::Updates(card) => &card.headline,
             Self::Reading(pick) => &pick.why,
         }
     }
-}
-
-/// "Let go of the digest" as the daemon previewed it: Enter lets go of
-/// exactly these threads in Updates.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NowDigestPreview {
-    pub thread_ids: Vec<ThreadId>,
-    pub items: Vec<ModeDoneOutcomeData>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -44,9 +36,10 @@ pub struct NowPageState {
     pub guide: Option<ModeGuideData>,
     /// Ask the runtime for Now and its guide.
     pub pending_refresh: bool,
-    /// Ask the daemon what letting go of these threads in Updates would do.
-    pub pending_digest_preview: Option<Vec<ThreadId>>,
-    pub digest_preview: Option<NowDigestPreview>,
+    /// Ask the daemon what letting go of the card's digest would do.
+    pub pending_digest_preview: bool,
+    /// Its dry run: Enter lets go of exactly this selection.
+    pub digest_preview: Option<UpdatesLetGoData>,
 }
 
 impl NowPageState {

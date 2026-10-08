@@ -734,6 +734,27 @@ pub enum Command {
         #[arg(long, global = true)]
         format: Option<OutputFormat>,
     },
+    #[command(
+        about = mxr_protocol::updates_copy::HEADER,
+        long_about = UPDATES_LONG_ABOUT
+    )]
+    Updates {
+        #[command(subcommand)]
+        action: Option<UpdatesAction>,
+        /// A past cut, as its time ("08:00") or RFC3339; the latest cut when
+        /// omitted.
+        #[arg(long, global = true)]
+        cut: Option<String>,
+        /// List every update past its relevancy window (one-time codes,
+        /// sign-in alerts, offers) instead of hiding them.
+        #[arg(long)]
+        expired: bool,
+        /// Limit to one account; the default covers every account.
+        #[arg(long, global = true)]
+        account: Option<String>,
+        #[arg(long, global = true)]
+        format: Option<OutputFormat>,
+    },
     /// How each mode explains itself: its job, empty states, keys and hints
     Modes {
         #[command(subcommand)]
@@ -2187,6 +2208,39 @@ pub enum TodoAction {
         #[arg(long, value_name = "TODO_ID", num_args = 1..)]
         undecide: Vec<String>,
         /// Show what would change without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+const UPDATES_LONG_ABOUT: &str = "Notifications gathered twice a day. Read the digest, then let go.
+
+Automated mail is gathered into a digest at fixed cuts, 08:00 and 16:30 by default (`updates.cuts` in config, one to four times). Each source is one line with its latest fact, the numbers it quotes and, where the previous message of the same kind quoted the same unit, the change, computed by code. Lines sort into Needs a look, Changed and Routine. Parcels, builds and incidents show where they are now. A new sign-in, a failed payment or a delivery problem leads Needs a look as a suggested to-do; nothing goes to To do until you add it. One-time codes, sign-in alerts and offers expire and never show past their window.
+
+With no subcommand, prints the latest digest and what arrived since.";
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum UpdatesAction {
+    /// Let go of the digest: every update in the cut leaves Updates, and
+    /// what no other mode holds is archived at your provider. Prints the
+    /// preview, then lets go of exactly that set; mail that arrives after
+    /// the cut stays. Prints an undo id for `mxr undo`.
+    LetGo {
+        /// Only this source, as the digest names it ("github.com/acme/api").
+        #[arg(long)]
+        source: Option<String>,
+        /// Show what would be let go without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Tune a source: every-digest, changes-only, muted or breakthrough
+    /// (every message at the top of Needs a look with a suggested to-do).
+    #[command(alias = "tune")]
+    Source {
+        /// A source key as the digest prints it, or an address it sends from.
+        source: String,
+        /// every-digest, changes-only, muted or breakthrough.
+        setting: String,
         #[arg(long)]
         dry_run: bool,
     },

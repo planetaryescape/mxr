@@ -7,8 +7,8 @@
 
 use super::desk::{compose_desk, desk_lane};
 use super::mode_rules::{
-    age_label, day_part, more_line, now_headline, overload_line, reading_fade, updates_card_since,
-    updates_line, EVENING_HOUR,
+    age_label, day_part, more_line, now_headline, overload_line, reading_fade, updates_line,
+    EVENING_HOUR,
 };
 use super::modes::{inbox_modes, place_threads, InboxModes};
 use super::places::{scoped_accounts, Placed};
@@ -21,7 +21,7 @@ use mxr_core::MessageFlags;
 use mxr_protocol::{
     now_copy, DeskLaneKind, DeskRowData, ModeKindData, NowData, NowDueData, NowPeopleData,
     NowPersonData, NowReadingPickData, NowTodoData, NowUpdateSourceData, NowUpdatesCardData,
-    ResponseData, ScreenerQuestionData, TodoData, TodoNextData, NOW_SECTION_CAP,
+    ResponseData, ScreenerQuestionData, TodoData, TodoNextData, UpdatesDigestData, NOW_SECTION_CAP,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -34,6 +34,8 @@ pub(super) struct NowSnapshot {
     pub due_now: Vec<TodoData>,
     pub next_surface: Option<TodoNextData>,
     pub inbox: InboxModes,
+    /// Updates' latest digest, for the card and the rail's count.
+    pub digest: UpdatesDigestData,
 }
 
 impl NowSnapshot {
@@ -103,13 +105,25 @@ where
     // Now puts them first, so its cap of three never hides one.
     let mut due_now = bands.now;
     due_now.sort_by_key(|todo| (!todo.overdue, todo.act_by_at.is_none(), todo.act_by_at));
+    let mut inbox = inbox_modes(state, accounts).await?;
+    let scope = super::updates_digest::Scope {
+        account_id: account_id.cloned(),
+        ..Default::default()
+    };
+    // The digest is all Now and the rail read of Updates' mail.
+    let updates = std::mem::take(&mut inbox.updates);
+    let (digest, _, _) = Box::pin(super::updates::digest_from(
+        state, accounts, updates, &scope, now, tz,
+    ))
+    .await?;
     Ok(NowSnapshot {
         owed: lane(DeskLaneKind::Owed),
         people_new: lane(DeskLaneKind::PeopleNew),
         waiting: lane(DeskLaneKind::Waiting),
         due_now,
         next_surface: bands.next_surface,
-        inbox: inbox_modes(state, accounts).await?,
+        inbox,
+        digest,
     })
 }
 
@@ -136,7 +150,7 @@ where
 
     let people = people_section(&snapshot, &asks, now);
     let due_soon = due_section(&snapshot);
-    let updates = updates_card(&snapshot.inbox.updates, updates_card_since(now, tz));
+    let updates = updates_card(&snapshot.digest);
     let evening = now.with_timezone(tz).hour() >= EVENING_HOUR;
     let reading = evening
         .then(|| reading_pick(&snapshot.inbox.reading, now))
@@ -278,66 +292,85 @@ fn due_section(snapshot: &NowSnapshot) -> NowDueData {
     }
 }
 
-/// One card, whatever the count: how many updates since `since`, from how
-/// many sources, and the busiest three. Older mail stays in Updates, off
-/// today's card.
-fn updates_card(updates: &[Placed], since: DateTime<Utc>) -> Option<NowUpdatesCardData> {
-    let updates: Vec<&Placed> = updates
+/// One card, whatever the count: the latest digest's headline, up to
+/// three lines that need a look or changed, and how much waits behind
+/// them. No card when the digest is empty.
+fn updates_card(digest: &UpdatesDigestData) -> Option<NowUpdatesCardData> {
+    let all: Vec<_> = digest
+        .needs_a_look
         .iter()
-        .filter(|item| item.message.date >= since)
+        .chain(&digest.changed)
+        .chain(&digest.routine)
         .collect();
-    if updates.is_empty() {
+    // Parcels on their way aren't a digest to read: once its mail is let
+    // go, the card leaves Now unless a tracker went wrong.
+    if all.is_empty() || (digest.message_count == 0 && digest.needs_a_look.is_empty()) {
         return None;
     }
-    // Keyed by sender; the newest message names the source.
-    let mut sources: HashMap<String, NowUpdateSourceData> = HashMap::new();
-    for item in &updates {
-        let key = item.message.from_email.to_ascii_lowercase();
-        let source = sources
-            .entry(key.clone())
-            .or_insert_with(|| NowUpdateSourceData {
-                sender_email: key,
-                sender_name: item
-                    .message
-                    .from_name
-                    .clone()
-                    .filter(|name| !name.trim().is_empty()),
-                count: 0,
-            });
-        source.count += 1;
+    let lines: Vec<_> = digest
+        .needs_a_look
+        .iter()
+        .chain(&digest.changed)
+        .take(NOW_SECTION_CAP)
+        .cloned()
+        .collect();
+    let routine: u32 = digest.routine.iter().map(|line| line.count).sum();
+    let other_lines = digest.needs_a_look.len() + digest.changed.len() - lines.len();
+    let more_line = match (other_lines, routine) {
+        (0, 0) => None,
+        (0, routine) => Some(format!("+{routine} routine")),
+        (more, 0) => Some(format!("+{more} more")),
+        (more, routine) => Some(format!("+{more} more, {routine} routine")),
+    };
+    // The busiest sources, for the one-line summary the card had before.
+    let mut ranked: Vec<NowUpdateSourceData> = Vec::new();
+    for line in &all {
+        if line.sender_email.is_empty() {
+            continue;
+        }
+        match ranked
+            .iter_mut()
+            .find(|s| s.sender_email == line.sender_email)
+        {
+            Some(source) => source.count += line.count,
+            None => ranked.push(NowUpdateSourceData {
+                sender_email: line.sender_email.clone(),
+                sender_name: Some(line.source_name.clone()),
+                count: line.count,
+            }),
+        }
     }
-    let mut ranked: Vec<NowUpdateSourceData> = sources.into_values().collect();
     ranked.sort_by(|a, b| {
         b.count
             .cmp(&a.count)
             .then_with(|| a.sender_email.cmp(&b.sender_email))
     });
-    let source_count = count(ranked.len());
     ranked.truncate(NOW_SECTION_CAP);
     let names: Vec<String> = ranked
         .iter()
-        .map(|source| {
-            source
-                .sender_name
-                .clone()
-                .unwrap_or_else(|| source.sender_email.clone())
-        })
+        .filter_map(|source| source.sender_name.clone())
         .collect();
-    let message_count = count(updates.len());
     let mut seen = HashSet::new();
-    let thread_ids = updates
+    let thread_ids = all
         .iter()
-        .map(|item| item.message.thread_id.clone())
+        .flat_map(|line| line.thread_ids.iter().cloned())
         .filter(|thread| seen.insert(thread.clone()))
         .collect();
     Some(NowUpdatesCardData {
-        line: updates_line(message_count, source_count, &names),
-        since,
+        line: updates_line(digest.message_count, digest.source_count, &names),
+        since: digest.cut.at,
         thread_ids,
-        message_count,
-        source_count,
+        message_count: digest.message_count,
+        source_count: digest.source_count,
         top_sources: ranked,
-        early: true,
+        early: false,
+        title: digest.cut.title.clone(),
+        cut_label: digest.cut.label.clone(),
+        headline: digest.headline.clone(),
+        lines,
+        more_line,
+        selection_token: digest.selection_token.clone(),
+        let_go_line: digest.let_go_line.clone(),
     })
 }
 

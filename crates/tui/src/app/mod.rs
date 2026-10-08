@@ -52,6 +52,7 @@ mod semantic_actions;
 mod sidebar_helpers;
 mod state;
 mod todo_actions;
+mod updates_actions;
 use crate::action::{Action, PatternKind, ScreenContext, UiContext};
 use crate::async_result::SearchResultData;
 use crate::client::Client;
@@ -91,6 +92,7 @@ pub use row_gists::{RowGist, RowGistState, RowGists};
 use state::PendingPreviewRead;
 pub use state::*;
 pub(crate) use todo_actions::TODO_MODE;
+pub(crate) use updates_actions::{TUNE_CHOICES, UPDATES_MODE};
 
 const PREVIEW_MARK_READ_DELAY: Duration = Duration::from_secs(5);
 pub const SEARCH_PAGE_SIZE: u32 = 200;
@@ -227,6 +229,12 @@ pub enum UndoAction {
     /// An Archive change, reversed as the daemon's `RecordUndoData` says:
     /// restore or dismiss records, or drop the fields you set.
     Records(mxr_protocol::RecordUndoData),
+    /// An Updates source tuned: set it back to what it was.
+    UpdateSource {
+        account_id: mxr_core::AccountId,
+        source_key: String,
+        prior: mxr_protocol::UpdateSourceSettingData,
+    },
 }
 
 /// Captured handle for a recent undoable mutation. The TUI uses this to

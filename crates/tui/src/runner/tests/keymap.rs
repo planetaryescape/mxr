@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 /// Mail contexts shared with the web app's shortcut scopes.
 const CONTEXTS: &[&str] = &[
     "list", "reader", "sidebar", "place", "screener", "todo", "now", "messages", "archive",
-    "reading",
+    "reading", "updates",
 ];
 
 /// A key a pane handles in place (scrolling, moving focus) without
@@ -117,6 +117,8 @@ const INLINE: &[InlineKey] = &[
     inline("archive", "ArrowLeft", "focus_sidebar", no_setup, pane),
     inline("reading", "h", "focus_sidebar", no_setup, pane),
     inline("reading", "ArrowLeft", "focus_sidebar", no_setup, pane),
+    inline("updates", "h", "focus_sidebar", no_setup, pane),
+    inline("updates", "ArrowLeft", "focus_sidebar", no_setup, pane),
     inline("sidebar", "j", "next_item", no_setup, sidebar_cursor),
     inline(
         "sidebar",
@@ -168,6 +170,7 @@ fn app_in(context: &str) -> App {
         "messages" => app.mailbox.mailbox_view = MailboxView::People,
         "archive" => app.mailbox.mailbox_view = MailboxView::ArchiveMode,
         "reading" => app.mailbox.mailbox_view = MailboxView::Reading,
+        "updates" => app.mailbox.mailbox_view = MailboxView::Updates,
         "screener" => app.modals.screener.visible = true,
         other => panic!("unknown context {other}"),
     }

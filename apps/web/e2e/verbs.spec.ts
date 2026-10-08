@@ -143,45 +143,12 @@ interface Bundle {
   messages: { message_id: string; pinned: boolean }[];
 }
 
-async function placeBundles(page: Page, slug: "reading" | "paper-trail"): Promise<Bundle[]> {
+async function placeBundles(page: Page, slug: "reading"): Promise<Bundle[]> {
   const place = await bridge<{ bundles: Bundle[] }>(
     page,
     `/api/v1/mail/places/${slug}?messages_per_bundle=50`,
   );
   return place.bundles;
-}
-
-/**
- * Run `body` with a sender that has several inbox messages placed in Paper
- * trail (the demo's automated senders have one each), then put it back.
- */
-async function withPaperTrailSender(
-  page: Page,
-  body: (sender: string) => Promise<void>,
-): Promise<void> {
-  // The demo has one account; any Reading bundle names it.
-  const [reading] = await placeBundles(page, "reading");
-  if (!reading) throw new Error("the demo has no Reading bundle to take the account from");
-  const sender = { account_id: reading.account_id, sender_email: "ari@fieldkit.example" };
-  await bridge(page, "/api/v1/mail/senders/kind", { ...sender, kind: "paper_trail" });
-  try {
-    await body(sender.sender_email);
-  } finally {
-    await bridge(page, "/api/v1/mail/senders/kind", { ...sender, kind: null });
-  }
-}
-
-async function bundleCount(page: Page, sender: string): Promise<number | undefined> {
-  const bundles = await placeBundles(page, "paper-trail");
-  return bundles.find((bundle) => bundle.sender_email === sender)?.message_count;
-}
-
-async function openBundle(page: Page, sender: string) {
-  await openApp(page, "/paper-trail");
-  const row = page.locator(`[data-testid='place-bundle'][data-sender='${sender}']`);
-  await row.getByRole("button").click();
-  await expect(row.getByRole("button")).toHaveAttribute("aria-expanded", "true");
-  return row;
 }
 
 function composer(page: Page) {
@@ -482,22 +449,6 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     expect(requests).toHaveLength(1);
   },
 
-  sweep: async (page) => {
-    await withPaperTrailSender(page, async (sender) => {
-      const total = (await bundleCount(page, sender))!;
-      expect(total).toBeGreaterThan(1);
-      await openBundle(page, sender);
-      await page.keyboard.press("S");
-      const dialog = page.getByTestId("sweep-dialog");
-      await expect(dialog).toContainText(`Archive ${total} message`);
-      await dialog.getByRole("button", { name: /^Archive/ }).click();
-      await expectToast(page, "sweep");
-      await expect.poll(() => bundleCount(page, sender), { timeout: 20_000 }).toBeUndefined();
-      await page.keyboard.press("u");
-      await expect.poll(() => bundleCount(page, sender), { timeout: 30_000 }).toBe(total);
-    });
-  },
-
   "desk-done": async (page) => {
     await openApp(page, "/desk");
     await expect(mailRows(page).first()).toBeVisible();
@@ -527,7 +478,7 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     const card = page.getByTestId("now-section-updates");
     await expect(card).toBeVisible();
     await page.keyboard.press("A");
-    const dialog = page.getByTestId("let-go-dialog");
+    const dialog = page.getByTestId("updates-let-go-dialog");
     await expect(dialog).toContainText(/^Let go of \d+ updates? from/);
     await dialog.getByRole("button", { name: "Let go", exact: true }).click();
     await expectToast(page, "digest-let-go");
@@ -615,20 +566,6 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     await dialog.getByRole("button", { name: "Save" }).click();
   }),
 
-  pin: async (page) => {
-    await withPaperTrailSender(page, async (sender) => {
-      await openBundle(page, sender);
-      const message = page.getByTestId("place-message").first();
-      await message.getByRole("button", { name: "Pin" }).click();
-      await expectToast(page, "pin");
-      await expect(message).toHaveAttribute("data-pinned", "true");
-      // Its undo is the same control again.
-      await message.getByRole("button", { name: "Unpin" }).click();
-      await expect(toast(page, /^Unpinned$/)).toBeVisible();
-      await expect(message).not.toHaveAttribute("data-pinned", "true");
-    });
-  },
-
   "reading-later": async (page) => {
     await openApp(page, "/reading");
     const item = page
@@ -673,12 +610,24 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
   },
 };
 
+/**
+ * Verbs in the table the web app no longer offers. Sweep and pin lived on
+ * Paper trail and the Reading place: Paper trail became Updates, which lets
+ * go per source and per digest, and Reading lets go per edition. The CLI
+ * keeps `mxr sweep`, `mxr pin` and `mxr unpin`.
+ */
+const NO_WEB_SURFACE: Partial<Record<Verb, string>> = {
+  sweep: "no web surface since Paper trail and the Reading place left",
+  pin: "no web surface since Paper trail and the Reading place left",
+};
+
 for (const [verb, entry] of Object.entries(VERB_FEEDBACK) as [
   Verb,
   (typeof VERB_FEEDBACK)[Verb],
 ][]) {
   const kind = entry.undo === "none" ? "confirms first (irreversible)" : `undoes (${entry.undo})`;
   test(`${verb}: says what it did in the table's words and ${kind}`, async ({ page }) => {
+    test.skip(Boolean(NO_WEB_SURFACE[verb]), NO_WEB_SURFACE[verb]);
     const journey = JOURNEYS[verb];
     expect(journey, `${verb} is in the verb table but has no journey here`).toBeDefined();
     if (entry.undo === "none") {

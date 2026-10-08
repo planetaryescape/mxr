@@ -11,7 +11,7 @@ use mxr_protocol::{NowData, NowPersonData, NowTodoData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-use crate::app::{ActivePane, NowDigestPreview, NowPageState};
+use crate::app::{ActivePane, NowPageState};
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
 
@@ -40,7 +40,7 @@ fn age_label(seconds: i64) -> String {
 }
 
 /// A section rule: "── People ───────────── and 8 more in Messages".
-fn section(
+pub(crate) fn section(
     title: &str,
     right: Option<&str>,
     width: usize,
@@ -64,24 +64,24 @@ fn section(
     ])
 }
 
-struct Body {
-    lines: Vec<Line<'static>>,
-    selected_line: usize,
+pub(crate) struct Body {
+    pub(crate) lines: Vec<Line<'static>>,
+    pub(crate) selected_line: usize,
 }
 
 impl Body {
-    fn text(&mut self, text: impl Into<String>, style: Style) {
+    pub(crate) fn text(&mut self, text: impl Into<String>, style: Style) {
         self.lines.push(Line::from(Span::styled(
             format!("  {}", text.into()),
             style,
         )));
     }
 
-    fn blank(&mut self) {
+    pub(crate) fn blank(&mut self) {
         self.lines.push(Line::from(""));
     }
 
-    fn select(&mut self, line: Line<'static>, selected: bool) {
+    pub(crate) fn select(&mut self, line: Line<'static>, selected: bool) {
         if selected {
             self.selected_line = self.lines.len();
             let spans = line
@@ -99,7 +99,7 @@ impl Body {
     }
 }
 
-fn marker(selected: bool) -> &'static str {
+pub(crate) fn marker(selected: bool) -> &'static str {
     if selected {
         "\u{258c} "
     } else {
@@ -264,22 +264,35 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
     if let Some(card) = &now.updates {
         body.blank();
         let title = match &view.updates_since {
-            Some(since) => format!("Updates since {since}"),
+            Some(cut) => format!("Updates {cut} digest"),
             None => "Updates".to_string(),
         };
-        let early = card.early.then_some("early version");
-        body.lines.push(section(&title, early, width, theme));
+        body.lines
+            .push(section(&title, card.more_line.as_deref(), width, theme));
         let selected = index == view.selected_index;
+        let headline = if card.headline.is_empty() {
+            &card.line
+        } else {
+            &card.headline
+        };
         body.select(
             Line::from(vec![
                 Span::raw(marker(selected)),
                 Span::styled(
-                    truncate(&one_line(&card.line), width.saturating_sub(4)),
+                    truncate(&one_line(headline), width.saturating_sub(4)),
                     Style::default().fg(theme.text_primary),
                 ),
             ]),
             selected,
         );
+        for line in &card.lines {
+            body.lines.push(super::updates_lens::line_row(
+                line,
+                false,
+                width.saturating_sub(2),
+                theme,
+            ));
+        }
         body.text("  \u{21b5} open  A let go of this digest", muted);
         index += 1;
     }
@@ -397,71 +410,9 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &NowView<'_>, theme: &crate::th
         footer_area,
     );
 
-    draw_digest_preview(frame, area, view.page.digest_preview.as_ref(), theme);
-}
-
-/// Letting go of the card as the daemon previewed it: Enter lets go of
-/// exactly these threads in Updates.
-fn draw_digest_preview(
-    frame: &mut Frame,
-    area: Rect,
-    preview: Option<&NowDigestPreview>,
-    theme: &crate::theme::Theme,
-) {
-    let Some(preview) = preview else {
-        return;
-    };
-    let popup = super::centered_rect(60, 40, area);
-    frame.render_widget(Clear, popup);
-    let block = Block::bordered()
-        .title(" Let go of this digest ")
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.warning))
-        .style(Style::default().bg(theme.modal_bg));
-    let inner = block.inner(popup);
-    frame.render_widget(block, popup);
-    let count = preview.thread_ids.len();
-    let stay = preview
-        .items
-        .iter()
-        .filter(|item| item.error.is_none() && !item.still_in.is_empty())
-        .count();
-    let archived = preview
-        .items
-        .iter()
-        .filter(|item| item.error.is_none() && item.archived > 0)
-        .count();
-    let provider = preview
-        .items
-        .first()
-        .map_or("the mail server", |item| item.provider.as_str());
-    let noun = if count == 1 {
-        "conversation"
-    } else {
-        "conversations"
-    };
-    let mut lines = vec![Line::from(Span::styled(
-        format!("{count} {noun} leave Updates."),
-        Style::default().fg(theme.text_primary),
-    ))];
-    if stay > 0 {
-        lines.push(Line::from(Span::styled(
-            format!("{stay} also in another mode stay there."),
-            Style::default().fg(theme.text_secondary),
-        )));
+    if let Some(preview) = &view.page.digest_preview {
+        super::updates_lens::draw_let_go_preview(frame, area, preview, theme);
     }
-    if archived > 0 {
-        lines.push(Line::from(Span::styled(
-            format!("{archived} archived in {provider}, since no other mode holds them."),
-            Style::default().fg(theme.text_secondary),
-        )));
-    }
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        "Enter let go  u undo after  Esc keep",
-        Style::default().fg(theme.text_muted),
-    )));
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
 #[cfg(test)]
@@ -566,7 +517,28 @@ pub(crate) mod tests {
                 line: "23 updates from 9 sources. Most from GitHub, Vercel and Stripe.".into(),
                 since: Utc::now(),
                 thread_ids: vec![ThreadId::new()],
-                early: true,
+                early: false,
+                title: "This morning's digest".into(),
+                cut_label: "08:00".into(),
+                headline: "1 needs a look, 2 changed. 23 routine from 9 sources.".into(),
+                lines: {
+                    use crate::ui::updates_lens::tests::line;
+                    use mxr_protocol::UpdateSectionData;
+                    let mut google = line(
+                        UpdateSectionData::NeedsALook,
+                        "Google",
+                        "New sign-in from Chrome on Windows",
+                        1,
+                    );
+                    google.in_todo = Some("already in To do".into());
+                    vec![
+                        google,
+                        line(UpdateSectionData::Changed, "Strava", "21.3 km over 3 runs", 1),
+                    ]
+                },
+                more_line: Some("+23 routine".into()),
+                selection_token: "token".into(),
+                let_go_line: Some("Let go of 26 updates from 12 sources.".into()),
             }),
             reading: None,
             not_now: Some("Not now: Reading 6 this week".into()),
@@ -626,7 +598,7 @@ pub(crate) mod tests {
             let rendered = render_at(&page, width, 0);
             let people = rendered.find("People").expect("People section");
             let due = rendered.find("Due soon").expect("Due soon section");
-            let updates = rendered.find("Updates since 08:00").expect("Updates card");
+            let updates = rendered.find("Updates 08:00 digest").expect("Updates card");
             assert!(
                 people < due && due < updates,
                 "{width}: fixed order\n{rendered}"
@@ -643,7 +615,9 @@ pub(crate) mod tests {
         let wide = render_at(&page, 120, 0);
         assert!(wide.contains("and 8 more in Messages"), "{wide}");
         assert!(wide.contains("and 2 more in To do"), "{wide}");
-        assert!(wide.contains("early version"), "{wide}");
+        assert!(!wide.contains("early version"), "{wide}");
+        assert!(wide.contains("+23 routine"), "{wide}");
+        assert!(wide.contains("(already in To do)"), "{wide}");
         assert!(
             wide.contains("From Messages: your turn with Maya Ortiz"),
             "{wide}"

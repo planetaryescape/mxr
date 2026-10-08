@@ -79,6 +79,8 @@ mod time;
 mod todo_view;
 pub(crate) mod todos;
 mod triage;
+pub(crate) mod updates;
+mod updates_digest;
 mod user_voice;
 mod whois;
 
@@ -1414,8 +1416,12 @@ async fn dispatch(
         }
         Request::GetModeGuide { mode } => mode_guide::get(state, mode.as_deref()).await,
         Request::SetHintSeen { hint, seen } => mode_guide::set_seen(state, hint, *seen).await,
-        Request::GetNow { account_id } => now::get_now(state, account_id.as_ref()).await,
-        Request::GetRail { account_id } => modes::get_rail(state, account_id.as_ref()).await,
+        // Boxed with the other mode requests below: their futures build the
+        // Updates digest, and inline they overflowed a debug worker's stack.
+        Request::GetNow { account_id } => Box::pin(now::get_now(state, account_id.as_ref())).await,
+        Request::GetRail { account_id } => {
+            Box::pin(modes::get_rail(state, account_id.as_ref())).await
+        }
         Request::GetFreshness { account_id, limit } => {
             freshness::get_freshness(state, account_id.as_ref(), *limit).await
         }
@@ -1485,7 +1491,7 @@ async fn dispatch(
             todo_ids,
             sender,
         } => {
-            mode_done::set_mode_done(
+            Box::pin(mode_done::set_mode_done(
                 state,
                 mode_done::DoneRequest {
                     thread_ids,
@@ -1494,9 +1500,47 @@ async fn dispatch(
                     todo_ids,
                     sender: sender.as_ref(),
                 },
-            )
+            ))
             .await
         }
+        Request::GetUpdatesDigest {
+            account_id,
+            cut,
+            mark_seen,
+            expired,
+        } => {
+            Box::pin(updates::get_digest(
+                state,
+                account_id.as_ref(),
+                *cut,
+                *mark_seen,
+                *expired,
+            ))
+            .await
+        }
+        Request::LetGoDigest {
+            account_id,
+            cut,
+            source_key,
+            selection_token,
+            dry_run,
+        } => {
+            Box::pin(updates::let_go(
+                state,
+                account_id.as_ref(),
+                *cut,
+                source_key.as_deref(),
+                selection_token.as_deref(),
+                *dry_run,
+            ))
+            .await
+        }
+        Request::SetUpdateSource {
+            account_id,
+            source,
+            setting,
+            dry_run,
+        } => updates::set_source(state, account_id.as_ref(), source, *setting, *dry_run).await,
         Request::GetRecipientBriefing {
             account_id,
             email,
@@ -1815,6 +1859,8 @@ fn request_destructive_action(req: &Request) -> Option<DestructiveAction> {
         Request::SweepPlace { dry_run: false, .. } => Some(DestructiveAction::Archive),
         // Done in the last mode holding a thread archives it at the provider.
         Request::SetModeDone { dry_run: false, .. } => Some(DestructiveAction::Archive),
+        // Letting go of a digest archives what no other mode holds.
+        Request::LetGoDigest { dry_run: false, .. } => Some(DestructiveAction::Archive),
         Request::RedactActivity { .. } => Some(DestructiveAction::RedactActivity),
         Request::PruneActivity { .. } => Some(DestructiveAction::PruneActivity),
         _ => None,
@@ -1949,6 +1995,7 @@ fn classify_request(req: &Request) -> RequestClass {
         }
         | Request::GetReadingItem { .. }
         | Request::ExportReadingHighlights { .. }
+        | Request::GetUpdatesDigest { .. }
         | Request::ListSignatures
         | Request::ListSignatureDefaults
         | Request::ResolveSignature { .. }
@@ -2088,6 +2135,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::RestoreDeskThreads { .. }
         | Request::ResolveDeskItems { .. }
         | Request::SetModeDone { .. }
+        | Request::LetGoDigest { .. }
+        | Request::SetUpdateSource { .. }
         | Request::DeferThreads { .. }
         | Request::SetSenderKind { .. }
         | Request::PinMessages { .. }
@@ -2359,6 +2408,9 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SaveHighlight { .. } => "save_highlight",
         Request::ExportReadingHighlights { .. } => "export_reading_highlights",
         Request::SetReadingSource { .. } => "set_reading_source",
+        Request::GetUpdatesDigest { .. } => "get_updates_digest",
+        Request::LetGoDigest { .. } => "let_go_digest",
+        Request::SetUpdateSource { .. } => "set_update_source",
         Request::ScheduleTodo { .. } => "schedule_todo",
         Request::UpdateTodo { .. } => "update_todo",
         Request::CreateTodo { .. } => "create_todo",
@@ -2456,6 +2508,9 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListMergeSuggestions { account_id }
         | Request::GetReadingEdition { account_id, .. }
         | Request::ExportReadingHighlights { account_id }
+        | Request::GetUpdatesDigest { account_id, .. }
+        | Request::LetGoDigest { account_id, .. }
+        | Request::SetUpdateSource { account_id, .. }
         | Request::SetTodoCatchup { account_id, .. }
         | Request::ListSenders { account_id, .. }
         | Request::ListStorageBreakdown { account_id, .. }

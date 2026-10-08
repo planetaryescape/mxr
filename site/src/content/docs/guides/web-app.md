@@ -167,8 +167,7 @@ To open on the inbox instead, set **Settings > Appearance > Home** to
 **Inbox**. The arrival-order inbox shows everything.
 
 The sidebar is the rail: Now, Messages, To do, Updates, Reading, Archive,
-then Inbox, each with its `g` key. Updates says "early" because it is built
-on Paper trail. Reading is the [edition](/guides/reading/), with no count on
+then Inbox, each with its `g` key. Reading is the [edition](/guides/reading/), with no count on
 the rail. Only Now carries a badge (people whose
 turn it is and things to act on); To do and Messages show a quiet count.
 Screener, Reply queue, Waiting on, Snoozed and Subscriptions, the folders
@@ -177,6 +176,13 @@ replies, Invites, Deliveries) sit under **More**. **Labels**, **Saved
 searches** and **Tools** have their own sections; More, Labels and Tools
 start folded. Unread mail still shows as bold rows, but no list carries an
 unread badge.
+
+Updates (`g u`) is the briefing: the latest digest in Needs a look,
+Changed and Routine, one line per source, with what arrived since the cut
+below it. `A` lets go of the digest after a preview, `e` lets go of one
+source, `t` makes a to-do from a line, `K` tunes the source, `L` opens the
+line's link and `o` the email. On a phone the sections stack and letting go
+sits at the bottom. See [Read Updates as a briefing](/guides/updates/).
 
 The reader names the other modes holding a conversation ("Also in To do:
 sign by Mon 5 Oct"), and a first-time person's row asks once where their

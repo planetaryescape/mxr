@@ -5,7 +5,7 @@
 
 use super::input::plain_or_shift;
 use super::*;
-use crate::app::state::{NowDigestPreview, NowRow};
+use crate::app::state::NowRow;
 use mxr_core::id::ThreadId;
 use mxr_protocol::{ModeDoneOutcomeData, ModeKindData, NowData};
 
@@ -139,7 +139,7 @@ impl App {
         }
     }
 
-    /// The Updates card's start in local time, for its section rule.
+    /// The Updates card's cut in local time, for its section rule.
     pub(crate) fn now_updates_since(&self) -> Option<String> {
         self.mailbox
             .now_page
@@ -147,10 +147,14 @@ impl App {
             .as_ref()
             .and_then(|now| now.updates.as_ref())
             .map(|card| {
-                card.since
-                    .with_timezone(&chrono::Local)
-                    .format("%H:%M")
-                    .to_string()
+                if card.cut_label.is_empty() {
+                    card.since
+                        .with_timezone(&chrono::Local)
+                        .format("%H:%M")
+                        .to_string()
+                } else {
+                    card.cut_label.clone()
+                }
             })
     }
 
@@ -181,9 +185,7 @@ impl App {
                 None => self.status_message = Some("This to-do has no email to open".into()),
             },
             NowTarget::Todo { .. } => self.apply(Action::OpenTodo),
-            NowTarget::Updates => {
-                self.apply(Action::OpenPlace(mxr_protocol::MailPlaceData::PaperTrail));
-            }
+            NowTarget::Updates => self.apply(Action::OpenUpdates),
         }
     }
 
@@ -271,12 +273,13 @@ impl App {
         )
     }
 
-    /// `A`: ask the daemon what letting go of the card's threads would do;
-    /// with that preview on screen, Enter lets go of exactly those.
+    /// `A`: ask the daemon what letting go of the card's digest would do;
+    /// with that preview on screen, Enter lets go of exactly that
+    /// selection, and refuses if the cut changed in between.
     fn now_let_go_digest(&mut self) {
         let page = &mut self.mailbox.now_page;
         if let Some(preview) = page.digest_preview.take() {
-            if preview.thread_ids.is_empty() {
+            if preview.message_ids.is_empty() {
                 return;
             }
             if let Some(now) = page.now.as_mut() {
@@ -287,47 +290,39 @@ impl App {
                 .selected_index
                 .min(self.mailbox.now_page.row_count().saturating_sub(1));
             self.queue_mutation(
-                Request::SetModeDone {
-                    thread_ids: preview.thread_ids,
-                    mode: ModeKindData::Updates,
+                Request::LetGoDigest {
+                    account_id: None,
+                    cut: Some(preview.cut_at),
+                    source_key: None,
+                    selection_token: Some(preview.selection_token),
                     dry_run: false,
-                    todo_ids: Vec::new(),
-                    sender: None,
                 },
-                MutationEffect::ModeDone("Let go of the digest".into()),
+                MutationEffect::ModeDone(String::new()),
                 "Letting go...".into(),
             );
             return;
         }
-        let Some(card) = page.now.as_ref().and_then(|now| now.updates.as_ref()) else {
+        if page
+            .now
+            .as_ref()
+            .and_then(|now| now.updates.as_ref())
+            .is_none()
+        {
             self.status_message = Some("No updates on Now to let go of".into());
             return;
-        };
-        if card.thread_ids.is_empty() {
-            return;
         }
-        page.pending_digest_preview = Some(card.thread_ids.clone());
+        page.pending_digest_preview = true;
         self.status_message = Some("Checking what letting go would change…".into());
     }
 
-    /// The daemon's dry run of letting go of the card.
-    pub(crate) fn show_now_digest_preview(
-        &mut self,
-        thread_ids: Vec<ThreadId>,
-        items: Vec<ModeDoneOutcomeData>,
-    ) {
+    /// The daemon's dry run of letting go of the card's digest.
+    pub(crate) fn show_now_digest_preview(&mut self, preview: mxr_protocol::UpdatesLetGoData) {
         self.status_message = None;
-        let thread_ids: Vec<ThreadId> = items
-            .iter()
-            .filter(|item| item.error.is_none())
-            .map(|item| item.thread_id.clone())
-            .filter(|thread| thread_ids.contains(thread))
-            .collect();
-        if thread_ids.is_empty() {
+        if preview.message_ids.is_empty() {
             self.push_toast(Toast::success("Nothing left to let go of"));
             return;
         }
-        self.mailbox.now_page.digest_preview = Some(NowDigestPreview { thread_ids, items });
+        self.mailbox.now_page.digest_preview = Some(preview);
     }
 
     /// A digit on a new sender's row answers its question with that choice.

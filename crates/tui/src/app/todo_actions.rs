@@ -74,6 +74,7 @@ impl App {
             MailboxView::People => self.mailbox.messages_page.guide.as_ref(),
             MailboxView::ArchiveMode => self.mailbox.records_page.guide.as_ref(),
             MailboxView::Reading => self.mailbox.reading_page.guide.as_ref(),
+            MailboxView::Updates => self.mailbox.updates_page.guide.as_ref(),
             _ => None,
         }
     }

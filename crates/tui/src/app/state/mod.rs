@@ -14,6 +14,7 @@ mod rules;
 mod search;
 mod toasts;
 mod todo;
+mod updates;
 
 pub(in crate::app) use accounts::AccountFormToggleField;
 pub use accounts::{AccountFormMode, AccountFormState, AccountsPageState, AccountsState};
@@ -50,7 +51,7 @@ pub use modals::{
     SnoozePanelState, SnoozePreset, StoredDraftOperation, ThreadSummaryModalState, UserError,
     UserErrorSeverity, WhoisModalState, SNOOZE_PRESETS, USER_ERROR_LOG_CAPACITY, WARN_STATUS_TTL,
 };
-pub use now::{NowDigestPreview, NowPageState, NowRow};
+pub use now::{NowPageState, NowRow};
 pub use reading::{
     ReadingConfirm, ReadingPageState, ReadingRow, ReadingUnsubscribeTarget, ReadingView,
     READING_LINKS_SHOWN,
@@ -65,3 +66,4 @@ pub use toasts::{Toast, ToastQueue, ToastSeverity, TOAST_DEFAULT_TTL, TOAST_MAX_
 pub use todo::{
     TodoListFetch, TodoOpen, TodoPageState, TodoPanel, TodoPromptKind, TodoPromptState,
 };
+pub use updates::{UpdatesPageState, UpdatesRow, UpdatesTuneMenu, ROUTINE_SHOWN};

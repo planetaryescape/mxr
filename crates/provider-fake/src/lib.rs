@@ -835,7 +835,8 @@ mod tests {
     #[test]
     fn demo_fixtures_exercise_links_html_attachments_and_colors() {
         let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
-        let (envelopes, bodies, labels) = fixtures::generate_demo_fixtures(&account_id, 150);
+        // Room past the seeded Reading and Updates mail for the generated threads.
+        let (envelopes, bodies, labels) = fixtures::generate_demo_fixtures(&account_id, 200);
         let html_with_links = bodies
             .values()
             .filter_map(|body| body.text_html.as_deref())
@@ -858,7 +859,7 @@ mod tests {
     #[test]
     fn demo_fixtures_include_spam_promotions_and_suspicious_inbox_mail() {
         let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
-        let (envelopes, _, labels) = fixtures::generate_demo_fixtures(&account_id, 190);
+        let (envelopes, _, labels) = fixtures::generate_demo_fixtures(&account_id, 220);
         let spam = envelopes
             .iter()
             .filter(|env| {

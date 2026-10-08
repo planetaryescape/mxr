@@ -139,7 +139,7 @@ export const navigationActions: Action[] = [
   {
     id: "nav.updates",
     label: "Go to Updates",
-    description: "Notifications and receipts from services, by sender",
+    description: "Notifications gathered twice a day: read the digest, then let go",
     group: "Navigate",
     icon: Bell,
     shortcut: "g u",

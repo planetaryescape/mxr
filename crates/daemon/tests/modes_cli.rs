@@ -25,6 +25,16 @@ fn modes_explain_prints_the_to_do_guide_and_hint_state_holds() {
         "modes_explain_todo",
         serde_json::to_string_pretty(&guides).unwrap()
     );
+    let updates = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["modes", "explain", "updates", "--format", "json"],
+    );
+    insta::assert_snapshot!(
+        "modes_explain_updates",
+        serde_json::to_string_pretty(&updates).unwrap()
+    );
 
     let closed = run_json(
         &instance,
@@ -48,7 +58,7 @@ fn modes_explain_prints_the_to_do_guide_and_hint_state_holds() {
         .collect();
     assert_eq!(
         modes,
-        ["now", "messages", "todo", "reading", "archive"],
+        ["now", "messages", "todo", "updates", "reading", "archive"],
         "every shipped mode, Now first"
     );
     assert_eq!(

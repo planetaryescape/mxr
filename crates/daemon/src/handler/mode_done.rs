@@ -142,7 +142,63 @@ pub(super) async fn set_mode_done(state: &AppState, request: DoneRequest<'_>) ->
     } else if thread_ids.is_empty() {
         return Err(HandlerError::InvalidRequest("no threads given".into()));
     }
-    let plans = plan(state, &thread_ids, mode, todo_ids, Utc::now()).await?;
+    let plans = plan(state, &thread_ids, mode, todo_ids, None, Utc::now()).await?;
+    finish(state, plans, dry_run).await
+}
+
+/// Let go of exactly these Updates messages and nothing else: each
+/// thread's mark covers them plus what its earlier mark saw, so another
+/// source's mail in the same thread, or mail after the cut, stays. A
+/// thread with inbox mail the mark doesn't cover is still held, so it is
+/// never archived at the provider.
+pub(super) async fn let_go_updates(
+    state: &AppState,
+    thread_ids: &[ThreadId],
+    ids: &HashSet<MessageId>,
+    dry_run: bool,
+) -> HandlerResult {
+    let mut prior = HashMap::new();
+    for (account, threads) in threads_by_account(state, thread_ids).await? {
+        for ((thread, mode), mark) in state
+            .store
+            .mode_done_for_threads(&account, &threads)
+            .await?
+        {
+            if Some(mode.as_str()) == mark_name(ModeKindData::Updates) {
+                prior.insert(thread, mark);
+            }
+        }
+    }
+    let exact = Exact { ids, prior };
+    let plans = plan(
+        state,
+        thread_ids,
+        ModeKindData::Updates,
+        &[],
+        Some(&exact),
+        Utc::now(),
+    )
+    .await?;
+    finish(state, plans, dry_run).await
+}
+
+/// The exact messages a let go covers, with each thread's earlier mark.
+struct Exact<'a> {
+    ids: &'a HashSet<MessageId>,
+    prior: HashMap<ThreadId, DeskDismissal>,
+}
+
+impl Exact<'_> {
+    fn covers(&self, message: &mxr_store::DeskMessage) -> bool {
+        self.ids.contains(&message.id)
+            || self
+                .prior
+                .get(&message.thread_id)
+                .is_some_and(|mark| mark.saw(message.date, &message.id))
+    }
+}
+
+async fn finish(state: &AppState, plans: Vec<Plan>, dry_run: bool) -> HandlerResult {
     if dry_run {
         return Ok(ResponseData::ModeDone {
             items: plans.iter().map(Plan::outcome).collect(),
@@ -151,7 +207,7 @@ pub(super) async fn set_mode_done(state: &AppState, request: DoneRequest<'_>) ->
             undo_unavailable: false,
         });
     }
-    run(state, plans).await
+    Box::pin(run(state, plans)).await
 }
 
 /// Every thread of one sender's that `mode` holds now, newest first: the
@@ -192,12 +248,13 @@ async fn plan(
     thread_ids: &[ThreadId],
     mode: ModeKindData,
     todo_ids: &[String],
+    exact: Option<&Exact<'_>>,
     now: DateTime<Utc>,
 ) -> Result<Vec<Plan>, HandlerError> {
     let archive_on_last_done = state.config_snapshot().modes.archive_on_last_done;
     let mut placed: HashMap<ThreadId, Placement> = HashMap::new();
     for (account, threads) in threads_by_account(state, thread_ids).await? {
-        for placement in place_threads(state, &account, &threads, now).await? {
+        for placement in Box::pin(place_threads(state, &account, &threads, now)).await? {
             placed.insert(placement.data.thread_id.clone(), placement);
         }
     }
@@ -211,7 +268,9 @@ async fn plan(
                 return Plan::failed(thread_id, mode, "this thread is already in the request");
             }
             match placed.get(thread_id) {
-                Some(placement) => plan_one(placement, mode, todo_ids, archive_on_last_done, now),
+                Some(placement) => {
+                    plan_one(placement, mode, todo_ids, exact, archive_on_last_done, now)
+                }
                 None => Plan::failed(thread_id, mode, "conversation not found"),
             }
         })
@@ -222,6 +281,7 @@ fn plan_one(
     placement: &Placement,
     mode: ModeKindData,
     todo_ids: &[String],
+    exact: Option<&Exact<'_>>,
     archive_on_last_done: bool,
     now: DateTime<Utc>,
 ) -> Plan {
@@ -257,7 +317,12 @@ fn plan_one(
     // The watermark of the messages this plan read: anything stored after
     // it brings the thread back to this mode.
     let mark = mark_name(mode)
-        .zip(DeskDismissal::through(&placement.messages))
+        .zip(DeskDismissal::through(
+            placement
+                .messages
+                .iter()
+                .filter(|m| exact.is_none_or(|exact| exact.covers(m))),
+        ))
         .map(|(name, through)| ModeDoneMark {
             account_id: data.account_id.clone(),
             thread_id: data.thread_id.clone(),
@@ -271,7 +336,21 @@ fn plan_one(
         .iter()
         .map(|entry| entry.mode)
         .filter(|held| held.holds_inbox())
-        .filter(|held| *held != mode || (mode == ModeKindData::Todo && !still_open.is_empty()))
+        .filter(|held| {
+            *held != mode
+                || (mode == ModeKindData::Todo && !still_open.is_empty())
+                // Archiving needs every inbox message to be in this
+                // preview: one an earlier let go saw but you put back in
+                // the inbox is yours again, never archived behind you.
+                || exact.is_some_and(|exact| {
+                    placement.messages.iter().any(|m| {
+                        m.in_inbox
+                            && !m.trashed
+                            && m.direction != "outbound"
+                            && !exact.ids.contains(&m.id)
+                    })
+                })
+        })
         .map(|held| StillIn {
             mode: held,
             detail: (held == ModeKindData::Todo)
@@ -352,7 +431,9 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
         let cmd = MutationCommand::ReadAndArchive {
             message_ids: archive_ids,
         };
-        match apply_mutation_batch(state, &cmd, &mutation_id, None).await {
+        // Boxed, as each deep step below is: done's future is large, and
+        // inline it overflowed a debug build's worker stack.
+        match Box::pin(apply_mutation_batch(state, &cmd, &mutation_id, None)).await {
             Ok(batch) => {
                 changed.extend(batch.changed.iter().map(|s| s.message_id.clone()));
                 snapshots.extend(batch.changed);
@@ -391,7 +472,7 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
     }
 
     let mut desk = DeskUndo::default();
-    if let Err(error) = put_away(state, &mut plans, &mut desk).await {
+    if let Err(error) = Box::pin(put_away(state, &mut plans, &mut desk)).await {
         tracing::warn!(%error, "mode done could not record its marks or to-dos");
         for plan in plans.iter_mut().filter(|plan| plan.error.is_none()) {
             plan.error = Some(format!("couldn't mark it done ({error}); run done again"));

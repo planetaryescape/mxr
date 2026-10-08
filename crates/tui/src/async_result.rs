@@ -75,10 +75,18 @@ pub(crate) enum AsyncResult {
     ),
     /// Got it's dry run: the exact text and its countdown.
     MessagesAck(Result<Box<mxr_protocol::AckPlanData>, MxrError>),
-    /// The dry run of letting go of Now's Updates card, for those threads.
-    NowDigestPreview(
-        Vec<mxr_core::id::ThreadId>,
-        Result<Vec<mxr_protocol::ModeDoneOutcomeData>, MxrError>,
+    /// The dry run of letting go of Now's Updates card.
+    NowDigestPreview(Result<mxr_protocol::UpdatesLetGoData, MxrError>),
+    /// The Updates digest and, when the daemon served it, its guide.
+    /// Boxed: the digest is large next to the other variants.
+    Updates(
+        Result<
+            Box<(
+                mxr_protocol::UpdatesDigestData,
+                Option<mxr_protocol::ModeGuideData>,
+            )>,
+            MxrError,
+        >,
     ),
     /// Reading's edition and, when the daemon served it, its guide.
     /// Boxed: the edition is large next to the other variants.
@@ -110,6 +118,8 @@ pub(crate) enum AsyncResult {
     ),
     /// An email's own text, cleaned, for `R`.
     ReadingOriginal(Result<String, MxrError>),
+    /// The dry run of letting go of the Updates digest.
+    UpdatesLetGoPreview(Result<mxr_protocol::UpdatesLetGoData, MxrError>),
     /// To do's runway and, when the daemon served it, its guide.
     TodoRunway(
         Result<

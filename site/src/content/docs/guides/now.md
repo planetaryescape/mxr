@@ -9,8 +9,9 @@ It shows at most ten things, in four sections that never change order:
 - **People**: whose turn it is with you, from Messages. Never the people you
   are waiting on.
 - **Due soon**: To do's Now band, overdue first, then by act-by date.
-- **Updates**: one card for the notifications since the last digest cut
-  (08:00 and 16:30), never more than two days back.
+- **Updates**: one card for the latest digest (cut at 08:00 and 16:30):
+  its headline, up to three lines that need a look or changed, and how much
+  routine waits behind them.
 - **For tonight**: from 17:00, one issue to read, from the newsletter you read
   most.
 
@@ -22,9 +23,8 @@ disappears, and when they all have, Now says "Clear." and when the next to-do
 surfaces. The caps live in the daemon, so the web app, the TUI and
 `mxr now` show the same ten things.
 
-Updates is an early version built on Paper trail, and Archive's records
-are not built yet. Each says "early version"
-where it shows. [Email modes](/guides/email-modes/) has
+Archive's records are not built yet, and say "early version"
+where they show. [Email modes](/guides/email-modes/) has
 the status of each mode.
 
 ## Open Now
@@ -51,8 +51,11 @@ PEOPLE  (and 11 more in Messages)
 DUE SOON
   Fix payment for Spotify  £11.99  act now
 
-UPDATES  (early version)
-  11 updates from 4 sources. Most from Account Verification, Build Watch and Pager Relay.
+UPDATES  16:30 digest  (+11 more, 149 routine)
+  8 need a look, 6 changed. 149 routine from 5 sources.
+  GitHub acme/api       Run failed: CI - main (9f8e7d6)
+  Google                Security alert: New sign-in from Chrome on Windows  (already in To do)
+  Stripe                Payout of R 4,210.00 failed: bank declined  (already in To do)
 
 Not now: Reading 5 this week
 ```
@@ -91,17 +94,17 @@ still holds.
 
 In To do, `e` ticks off that one to-do. Another to-do on the same email stays
 open, and the email stays in the inbox until the last one is ticked off. In
-Updates, `e` on a sender's row first shows how many of their conversations it
-covers, all of them, not just the ones on screen.
+Updates, `e` lets go of one source in the digest.
 
 ```bash
 mxr modes done THREAD_ID --mode todo --todo TODO_ID --dry-run
 mxr modes done --mode updates --sender notifications@github.com --account ACCOUNT_ID --dry-run
 ```
 
-`A` on the Updates card previews what letting go does ("Let go of 11 updates
-from 4 sources? 3 conversations leave your inbox. 1 conversation also in To
-do stays there.") and lets go only when you confirm.
+`A` on the Updates card previews what letting go of the digest does ("Let go
+of 11 updates from 4 sources; 1 also in To do stays there.") and lets go of
+exactly that set when you confirm. See
+[Updates](/guides/updates/#let-go-of-the-digest-in-one-key).
 
 ## See which other modes hold an email
 
@@ -138,7 +141,7 @@ The sidebar lists Now, the five modes and Inbox, with their keys:
 | Now | `g h` | The front page; its badge counts people whose turn it is and things to act on |
 | Messages | `g m` | People, built on the desk's lanes (early version) |
 | To do | `g x` | Things email asked you to do, by when to act |
-| Updates | `g u` | Notifications, built on Paper trail (early version). `g p` opens it too |
+| Updates | `g u` | Notifications as a briefing by source, twice a day. `g p` opens it too |
 | Reading | `g r` | Newsletters as an [edition](/guides/reading/), with a Later shelf. No count: nothing in it is owed |
 | Archive | `g e` | Records, which are coming; search finds receipts until then |
 | Inbox | `g i` | Everything, newest first |
@@ -431,7 +434,7 @@ and Now stays one key away (`g h`).
 ## When a conversation is not where you expect
 
 - **Not on the desk at all:** run `mxr why MESSAGE_ID`. A newsletter or
-  notification goes to Reading or Paper trail, and a screened-out sender
+  notification goes to Reading or Updates, and a screened-out sender
   never shows. To count a sender as a person, move them to People
   ([move a sender](/guides/reading-and-paper-trail/#move-a-sender-for-good)).
 - **Gone after you archived it:** You owe and New from people show only

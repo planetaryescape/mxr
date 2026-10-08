@@ -53,12 +53,16 @@ pub(super) const fn mark_name(mode: ModeKindData) -> Option<&'static str> {
     }
 }
 
-/// Built in its researched shape (To do, Messages, Archive) or an early
-/// version on an existing view (the rest, for now).
+/// Built in its researched shape (To do, Messages, Updates, Archive) or an
+/// early version on an existing view (the rest, for now).
 pub(super) const fn is_early(mode: ModeKindData) -> bool {
     !matches!(
         mode,
-        ModeKindData::Todo | ModeKindData::Messages | ModeKindData::Reading | ModeKindData::Archive
+        ModeKindData::Todo
+            | ModeKindData::Messages
+            | ModeKindData::Updates
+            | ModeKindData::Reading
+            | ModeKindData::Archive
     )
 }
 
@@ -648,11 +652,9 @@ pub(super) async fn without_done(
 /// note.
 const fn early_note(mode: ModeKindData) -> Option<&'static str> {
     match mode {
-        ModeKindData::Updates => {
-            Some("Early version: Paper trail, automated mail in your inbox by sender.")
-        }
         ModeKindData::Todo
         | ModeKindData::Messages
+        | ModeKindData::Updates
         | ModeKindData::Reading
         | ModeKindData::Archive => None,
     }
@@ -742,7 +744,10 @@ pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -
             ..mode_entry(ModeKindData::Messages, Some(snapshot.people_total()))
         },
         mode_entry(ModeKindData::Todo, count(snapshot.due_now.len())),
-        mode_entry(ModeKindData::Updates, count(snapshot.inbox.updates.len())),
+        mode_entry(
+            ModeKindData::Updates,
+            Some(snapshot.digest.message_count + snapshot.digest.since.message_count),
+        ),
         // Reading shows no count: nothing in it is owed (only Later counts,
         // inside the mode).
         mode_entry(ModeKindData::Reading, None),

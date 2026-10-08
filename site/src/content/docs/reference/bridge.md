@@ -241,6 +241,25 @@ curl -H "Authorization: Bearer $MXR_TOKEN" \
   "$MXR_BASE/api/v1/mail/records/answer?q=lisbon%20booking%20ref"
 ```
 
+### Updates
+
+The daemon builds the digest, its sections and the let-go selection. Pass
+the digest's `selection_token` to `/mail/updates/let-go`; the run refuses
+if the cut changed since.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/mail/updates` | The digest at the latest cut (`?account=`, `?cut=` RFC3339, `?mark_seen=true`, `?expired=true`) |
+| `POST` | `/mail/updates/let-go` | Let go of the cut, or one source in it (`{account_id?, cut?, source_key?, selection_token?, dry_run}`); returns the line, the threads and the undo `mutation_id` |
+| `POST` | `/mail/updates/sources` | Tune a source (`{account_id?, source, setting, dry_run}`, `setting` one of `every_digest`, `changes_only`, `muted`, `breakthrough`); returns the prior setting |
+
+```bash
+curl -X POST -H "Authorization: Bearer $MXR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"dry_run":true}' \
+  "$MXR_BASE/api/v1/mail/updates/let-go"
+```
+
 ### Reading
 
 The daemon cuts newsletters into items, bands and ranks them, and owns the

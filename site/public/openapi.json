@@ -3715,6 +3715,133 @@
         }
       }
     },
+    "/api/v1/mail/updates": {
+      "get": {
+        "tags": [],
+        "summary": "The Updates digest: one line per source in Needs a look, Changed and Routine, at the latest cut or a past one, plus what arrived since",
+        "operationId": "mail_updates_digest",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cut",
+            "in": "query",
+            "description": "A past cut, RFC3339; the latest when omitted",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mark_seen",
+            "in": "query",
+            "description": "Record that Updates was opened",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "expired",
+            "in": "query",
+            "description": "List every update past its window",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `UpdatesDigest` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/updates/let-go": {
+      "post": {
+        "tags": [],
+        "summary": "Let go of a digest or one of its sources: exactly the cut's updates leave Updates, archived only when no other mode holds them (dry_run previews; selection_token pins the run to the preview)",
+        "operationId": "mail_updates_let_go",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatesLetGoBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `UpdatesLetGo` variant, with the undo id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/updates/sources": {
+      "post": {
+        "tags": [],
+        "summary": "Tune an Updates source: every digest, changes only, muted or breakthrough (dry_run previews)",
+        "operationId": "mail_updates_source",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSourceBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `UpdateSource` variant, with the prior setting for undo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No source named"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/whois": {
       "get": {
         "tags": [],
@@ -11956,7 +12083,7 @@
       },
       "NowUpdatesCardData": {
         "type": "object",
-        "description": "The Updates card: one item, whatever the count. An early version: a\ncount and the busiest sources from automated mail in the inbox, until\nthe twice-daily digest ships.",
+        "description": "The Updates card: the latest digest as one item, whatever the count:\nits headline, up to three lines that need a look or changed, and how\nmuch routine waits behind them.",
         "required": [
           "message_count",
           "source_count",
@@ -11967,22 +12094,55 @@
           "early"
         ],
         "properties": {
+          "cut_label": {
+            "type": "string",
+            "description": "\"08:00\"."
+          },
           "early": {
             "type": "boolean"
+          },
+          "headline": {
+            "type": "string",
+            "description": "\"1 needs a look, 2 changed. 23 routine from 9 sources.\""
+          },
+          "let_go_line": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"Let go of 31 updates from 12 sources; 2 also in To do stay there.\""
           },
           "line": {
             "type": "string",
             "description": "\"23 updates from 9 sources. Most from GitHub, Vercel and Stripe.\""
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UpdateLineData"
+            },
+            "description": "Up to three lines: Needs a look first, then Changed."
           },
           "message_count": {
             "type": "integer",
             "format": "int32",
             "minimum": 0
           },
+          "more_line": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"+23 routine\", when routine or further lines wait in Updates."
+          },
+          "selection_token": {
+            "type": "string",
+            "description": "Pass to `LetGoDigest` so the card lets go of what it showed."
+          },
           "since": {
             "type": "string",
             "format": "date-time",
-            "description": "The card counts updates from here: the digest cut before the latest\none, never more than two days back."
+            "description": "The digest's cut: the card holds what arrived by then."
           },
           "source_count": {
             "type": "integer",
@@ -11994,7 +12154,11 @@
             "items": {
               "$ref": "#/components/schemas/ThreadId"
             },
-            "description": "The card's threads, newest first: what letting go of the digest\n(`SetModeDone` in Updates) acts on."
+            "description": "The card's threads, newest first. Letting go of the digest is\n`LetGoDigest` with `selection_token`."
+          },
+          "title": {
+            "type": "string",
+            "description": "\"This morning's digest\"."
           },
           "top_sources": {
             "type": "array",
@@ -21138,6 +21302,127 @@
           },
           {
             "type": "object",
+            "description": "The Updates briefing (blueprint 22, phase 4): everything that\narrived by the cut (`cut`, else the latest one) and wasn't let go,\none line per source in Needs a look, Changed and Routine, plus what\narrived since. Rules only; deltas are computed, never written by a\nmodel. `mark_seen` records that Updates was opened, so the expired\ncount starts again and the mute question counts as asked;\n`expired` lists every update past its window. Returns\n`ResponseData::UpdatesDigest`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetUpdatesDigest"
+                ]
+              },
+              "cut": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "expired": {
+                "type": "boolean"
+              },
+              "mark_seen": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Let go of a digest: every update in the cut leaves Updates, shown or\nhidden by tuning or expiry, and nothing that arrived after it. A\nthread no other mode holds is archived at the provider when\n`modes.archive_on_last_done` is on. `source_key` lets go of one\nsource only. `dry_run` returns the same selection; pass its\n`selection_token` back and the run refuses if the cut changed in\nbetween. Returns `ResponseData::UpdatesLetGo`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "LetGoDigest"
+                ]
+              },
+              "cut": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "selection_token": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source_key": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Tune a source: every digest, changes only, muted, or breakthrough\n(every message at the top of Needs a look with a suggested to-do). `source` is a source key\n(\"github.com/acme/api\") or a sender address. Returns\n`ResponseData::UpdateSource`.",
+            "required": [
+              "source",
+              "setting",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetUpdateSource"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "setting": {
+                "$ref": "#/components/schemas/UpdateSourceSettingData"
+              },
+              "source": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "A place (Reading or Paper trail): inbox mail of that kind grouped by\nsender, newest bundle first, each with the reason it is there.\n`account_id: None` covers every enabled account.",
             "required": [
               "place",
@@ -24541,6 +24826,63 @@
               },
               "now": {
                 "$ref": "#/components/schemas/NowData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetUpdatesDigest`.",
+            "required": [
+              "digest",
+              "kind"
+            ],
+            "properties": {
+              "digest": {
+                "$ref": "#/components/schemas/UpdatesDigestData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "UpdatesDigest"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::LetGoDigest`.",
+            "required": [
+              "result",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "UpdatesLetGo"
+                ]
+              },
+              "result": {
+                "$ref": "#/components/schemas/UpdatesLetGoData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::SetUpdateSource`.",
+            "required": [
+              "change",
+              "kind"
+            ],
+            "properties": {
+              "change": {
+                "$ref": "#/components/schemas/UpdateSourceChangeData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "UpdateSource"
+                ]
               }
             }
           },
@@ -28915,6 +29257,802 @@
           "archive_only",
           "failed"
         ]
+      },
+      "UpdateDeltaData": {
+        "type": "object",
+        "description": "A change computed by code against the previous message of the same\ntemplate, only when both numbers share a unit.",
+        "required": [
+          "raw",
+          "previous_raw",
+          "change",
+          "text",
+          "against"
+        ],
+        "properties": {
+          "against": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "change": {
+            "type": "number",
+            "format": "double",
+            "description": "Percent change; points for a percentage."
+          },
+          "previous_raw": {
+            "type": "string"
+          },
+          "raw": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string",
+            "description": "\"up 12% on last week\"."
+          }
+        }
+      },
+      "UpdateExpiredData": {
+        "type": "object",
+        "description": "An update whose window closed: it never shows in a cut.",
+        "required": [
+          "account_id",
+          "message_id",
+          "thread_id",
+          "source_name",
+          "fact",
+          "kind",
+          "expired_at"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "expired_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fact": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "\"one-time code\", \"sign-in alert\", \"offer\", \"verify link\"."
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "source_name": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
+      "UpdateLineData": {
+        "type": "object",
+        "description": "One line of the briefing: a source's latest fact per template, or one\ntracker.",
+        "required": [
+          "id",
+          "section",
+          "account_id",
+          "source_key",
+          "source_name",
+          "fact",
+          "fact_source",
+          "signal",
+          "count",
+          "latest_at",
+          "todo_title",
+          "why",
+          "setting"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages the line folds.",
+            "minimum": 0
+          },
+          "delta": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UpdateDeltaData"
+              }
+            ]
+          },
+          "fact": {
+            "type": "string",
+            "description": "The fact, written by rules from the subject or the body's first\nline: \"Run failed: CI - main\"."
+          },
+          "fact_message_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageId",
+                "description": "The message `fact` and `todo_title` came from, for `t`. In Changed\nit can be older than the newest."
+              }
+            ]
+          },
+          "fact_source": {
+            "type": "string",
+            "description": "\"subject\" or \"body\"."
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable within a digest: source, template or tracker."
+          },
+          "in_todo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`updates_copy::IN_TODO` when `todo_id` is set."
+          },
+          "latest_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "latest_message_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageId",
+                "description": "The newest message, for `o`."
+              }
+            ]
+          },
+          "latest_thread_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId"
+              }
+            ]
+          },
+          "link": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UpdateLinkData"
+              }
+            ]
+          },
+          "message_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageId"
+            }
+          },
+          "numbers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UpdateNumberData"
+            }
+          },
+          "provenance": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UpdateProvenanceData"
+            }
+          },
+          "section": {
+            "$ref": "#/components/schemas/UpdateSectionData"
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "setting": {
+            "$ref": "#/components/schemas/UpdateSourceSettingData"
+          },
+          "signal": {
+            "$ref": "#/components/schemas/UpdateSignalData"
+          },
+          "source_key": {
+            "type": "string"
+          },
+          "source_name": {
+            "type": "string",
+            "description": "\"GitHub acme/api\", \"Strava\"."
+          },
+          "suggestion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Asked once a month at most: \"You've let go of Strava 8 digests in a\nrow without opening it. Mute it, or changes only?\""
+          },
+          "thread_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadId"
+            }
+          },
+          "time_label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Only when the time is the fact (a sign-in, a failing build): \"06:12\"."
+          },
+          "todo_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The open to-do this line already went to."
+          },
+          "todo_suggestion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A sign-in alert, failed payment or delivery problem not yet in To\ndo: \"Suggested to-do: new sign-in alert (rule). t adds it.\" mxr\nnever adds it for you."
+          },
+          "todo_title": {
+            "type": "string",
+            "description": "What `t` prefills: \"Check new sign-in to Google\n(accounts.google.com)\", the sending host beside the display name."
+          },
+          "tracker": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UpdateTrackerData"
+              }
+            ]
+          },
+          "why": {
+            "type": "string",
+            "description": "\"Here because: automated sender, not a person (rule). In the 08:00\ndigest.\""
+          }
+        }
+      },
+      "UpdateLinkData": {
+        "type": "object",
+        "description": "The one place a line opens with `L`. Never a pay link.",
+        "required": [
+          "url",
+          "domain"
+        ],
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Shown before it opens: \"github.com\"."
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateNumberData": {
+        "type": "object",
+        "description": "A number as the message quoted it.",
+        "required": [
+          "raw",
+          "value",
+          "unit"
+        ],
+        "properties": {
+          "raw": {
+            "type": "string",
+            "description": "Verbatim: \"21.3 km\", \"R 4,210.00\"."
+          },
+          "unit": {
+            "type": "string",
+            "description": "\"km\", \"run\", \"%\" or an ISO currency code."
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "UpdateProvenanceData": {
+        "type": "object",
+        "description": "Where one field of a line came from.",
+        "required": [
+          "field",
+          "source",
+          "evidence"
+        ],
+        "properties": {
+          "evidence": {
+            "type": "string",
+            "description": "\"the subject\", \"21.3 km quoted from the body\", \"against 30 Sep\"."
+          },
+          "field": {
+            "type": "string",
+            "description": "\"fact\", \"numbers\", \"delta\", \"window\", \"state\", \"link\"."
+          },
+          "source": {
+            "type": "string",
+            "description": "\"rule\", \"schema\", \"code\" or \"default\"."
+          }
+        }
+      },
+      "UpdateSectionData": {
+        "type": "string",
+        "description": "Where a line sits in the briefing. Sections never reorder.",
+        "enum": [
+          "needs_a_look",
+          "changed",
+          "routine"
+        ]
+      },
+      "UpdateSignalData": {
+        "type": "string",
+        "enum": [
+          "routine",
+          "changed",
+          "new_source",
+          "anomaly",
+          "needs_you"
+        ]
+      },
+      "UpdateSourceBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/updates/sources`.",
+        "required": [
+          "source",
+          "setting"
+        ],
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "setting": {
+            "$ref": "#/components/schemas/UpdateSourceSettingData"
+          },
+          "source": {
+            "type": "string",
+            "description": "A source key as the digest names it, or a sender address."
+          }
+        }
+      },
+      "UpdateSourceChangeData": {
+        "type": "object",
+        "description": "Returned by `Request::SetUpdateSource`.",
+        "required": [
+          "dry_run",
+          "account_id",
+          "source_key",
+          "setting",
+          "prior",
+          "copy"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "copy": {
+            "type": "string",
+            "description": "\"Strava: only when something changes.\""
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "prior": {
+            "$ref": "#/components/schemas/UpdateSourceSettingData",
+            "description": "What it was, for undo."
+          },
+          "setting": {
+            "$ref": "#/components/schemas/UpdateSourceSettingData"
+          },
+          "source_key": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateSourceSettingData": {
+        "type": "string",
+        "description": "How a source is tuned with `K`.",
+        "enum": [
+          "every_digest",
+          "changes_only",
+          "muted",
+          "breakthrough"
+        ]
+      },
+      "UpdateTrackerData": {
+        "type": "object",
+        "description": "A thing with a state: a parcel, a build or an incident.",
+        "required": [
+          "kind",
+          "state",
+          "state_label",
+          "outcome"
+        ],
+        "properties": {
+          "delivery_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"Arriving by Thu 8 Oct · DHL · 3 emails\"."
+          },
+          "kind": {
+            "type": "string",
+            "description": "`parcel`, `build` or `incident`."
+          },
+          "outcome": {
+            "type": "string",
+            "description": "`good` (ended well), `bad` (ended badly), `progress`, or `quiet`\n(a parcel with no news for too long)."
+          },
+          "state": {
+            "type": "string",
+            "description": "As stored: \"out_for_delivery\", \"failed\", \"resolved\"."
+          },
+          "state_label": {
+            "type": "string",
+            "description": "\"out for delivery\"."
+          },
+          "step": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "A parcel's steps, \"ordered\" to \"delivered\", and where it is."
+          }
+        }
+      },
+      "UpdatesCutData": {
+        "type": "object",
+        "description": "The cut a digest shows.",
+        "required": [
+          "at",
+          "label",
+          "title",
+          "previous_at",
+          "next_at",
+          "next_label",
+          "cuts"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cuts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every cut of the day, from `updates.cuts`: [\"08:00\", \"16:30\"]."
+          },
+          "label": {
+            "type": "string",
+            "description": "\"08:00\" in your zone."
+          },
+          "next_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "next_label": {
+            "type": "string"
+          },
+          "previous_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "title": {
+            "type": "string",
+            "description": "\"This morning's digest\"."
+          }
+        }
+      },
+      "UpdatesDigestData": {
+        "type": "object",
+        "description": "Returned by `Request::GetUpdatesDigest`.",
+        "required": [
+          "generated_at",
+          "header",
+          "cut",
+          "headline",
+          "message_count",
+          "source_count",
+          "needs_a_look",
+          "changed",
+          "routine",
+          "since",
+          "expired_count",
+          "selection_token",
+          "source_total",
+          "muted_total"
+        ],
+        "properties": {
+          "changed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UpdateLineData"
+            }
+          },
+          "cut": {
+            "$ref": "#/components/schemas/UpdatesCutData"
+          },
+          "empty_state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when the digest is empty: the never-had-any or the clear line."
+          },
+          "expired": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UpdateExpiredData"
+            },
+            "description": "With `expired: true`: every expired update still in the mode."
+          },
+          "expired_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "expired_line": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"3 expired since you last looked.\""
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "header": {
+            "type": "string",
+            "description": "`updates_copy::HEADER`."
+          },
+          "headline": {
+            "type": "string",
+            "description": "\"2 changed, 1 needs a look. 23 routine from 9 sources.\" Empty when\nthe digest is."
+          },
+          "hidden_line": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"4 from muted sources, 2 from changes-only sources not shown.\""
+          },
+          "let_go_line": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What letting go of this digest would do: \"Let go of 31 updates from\n12 sources; 2 also in To do stay there.\""
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages in the digest that are shown.",
+            "minimum": 0
+          },
+          "muted_total": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "needs_a_look": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UpdateLineData"
+            }
+          },
+          "routine": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UpdateLineData"
+            }
+          },
+          "selection_token": {
+            "type": "string",
+            "description": "Pass back to `LetGoDigest` so it acts only on what was shown."
+          },
+          "since": {
+            "$ref": "#/components/schemas/UpdatesSinceData"
+          },
+          "source_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "source_total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Sources seen in this account's Updates, and how many are muted.",
+            "minimum": 0
+          }
+        }
+      },
+      "UpdatesLetGoBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/updates/let-go`.",
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omitted: every account."
+          },
+          "cut": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The cut the digest showed; the latest when omitted."
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "Preview only; nothing changes."
+          },
+          "selection_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "From the digest or the dry run: the run refuses if the cut changed."
+          },
+          "source_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One source only."
+          }
+        }
+      },
+      "UpdatesLetGoData": {
+        "type": "object",
+        "description": "Returned by `Request::LetGoDigest`.",
+        "required": [
+          "dry_run",
+          "cut_at",
+          "line",
+          "message_count",
+          "source_count",
+          "hidden_count",
+          "in_todo_count",
+          "thread_ids",
+          "message_ids",
+          "selection_token",
+          "items"
+        ],
+        "properties": {
+          "cut_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "hidden_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Of those, hidden from the digest by tuning or past their window.",
+            "minimum": 0
+          },
+          "in_todo_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Threads To do also holds: they stay in the inbox.",
+            "minimum": 0
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModeDoneOutcomeData"
+            },
+            "description": "One per thread, as `SetModeDone` reports it."
+          },
+          "line": {
+            "type": "string",
+            "description": "\"Let go of 31 updates from 12 sources; 2 also in To do stay there.\""
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "message_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageId"
+            }
+          },
+          "mutation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "selection_token": {
+            "type": "string"
+          },
+          "source_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "thread_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadId"
+            }
+          },
+          "undo_unavailable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "UpdatesSinceData": {
+        "type": "object",
+        "description": "What arrived after the cut: always current, quiet and uncounted.",
+        "required": [
+          "label",
+          "message_count",
+          "source_count",
+          "lines"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "\"arriving for 16:30\"."
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UpdateLineData"
+            },
+            "description": "One line per source, newest first."
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "source_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
       },
       "UserVoiceProfileData": {
         "type": "object",

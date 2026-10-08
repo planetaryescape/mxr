@@ -35,6 +35,7 @@ pub struct MxrConfig {
     pub modes: ModesConfig,
     pub messages: MessagesConfig,
     pub records: RecordsConfig,
+    pub updates: UpdatesConfig,
 }
 
 /// Package/delivery tracking. Detection is local-first; the optional LLM
@@ -136,6 +137,23 @@ impl Default for MessagesConfig {
         Self {
             large_thread_recipients: 10,
             recent_days: 30,
+        }
+    }
+}
+
+/// Updates' digest (blueprint 22, phase 4).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UpdatesConfig {
+    /// When the digest is gathered each day, local time: one to four
+    /// "HH:MM" times. A bad list falls back to the defaults with a warning.
+    pub cuts: Vec<String>,
+}
+
+impl Default for UpdatesConfig {
+    fn default() -> Self {
+        Self {
+            cuts: vec!["08:00".to_string(), "16:30".to_string()],
         }
     }
 }

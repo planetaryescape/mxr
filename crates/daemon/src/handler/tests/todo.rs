@@ -1075,7 +1075,7 @@ async fn the_mode_guide_serves_to_do_copy_from_one_table() {
     };
     assert_eq!(
         guides.iter().map(|g| g.mode.as_str()).collect::<Vec<_>>(),
-        vec!["now", "messages", "todo", "reading", "archive"]
+        vec!["now", "messages", "todo", "updates", "reading", "archive"]
     );
     let refused = handle_request(
         &fx.state,
@@ -1083,16 +1083,16 @@ async fn the_mode_guide_serves_to_do_copy_from_one_table() {
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetModeGuide {
-                mode: Some("updates".to_string()),
+                mode: Some("paper trail".to_string()),
             }),
         },
     )
     .await;
     let IpcPayload::Response(Response::Error { message, .. }) = refused.payload else {
-        panic!("an unshipped mode is refused")
+        panic!("a mode that doesn't exist is refused")
     };
     assert!(
-        message.contains("Modes so far: now, messages, todo"),
+        message.contains("Modes so far: now, messages, todo, updates, reading"),
         "{message}"
     );
 }

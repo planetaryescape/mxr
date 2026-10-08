@@ -100,7 +100,8 @@ async fn now_caps_each_section_at_three_and_says_how_many_more() {
             &thread,
             &format!("notifications@{source}.example"),
             "Build passed",
-            Duration::hours(1),
+            // Before the latest cut, whatever the time: in the digest.
+            Duration::hours(20),
         )
         .await;
     }
@@ -127,7 +128,7 @@ async fn now_caps_each_section_at_three_and_says_how_many_more() {
     assert_eq!(card.message_count, 4);
     assert_eq!(card.source_count, 4);
     assert_eq!(card.top_sources.len(), 3, "the card names three sources");
-    assert!(card.early);
+    assert!(!card.early);
     assert!(data.item_count <= 10);
     assert_eq!(
         data.item_count as usize,
@@ -304,51 +305,55 @@ async fn overdue_to_dos_lead_due_soon_so_the_cap_never_cuts_them() {
 }
 
 #[tokio::test]
-async fn the_updates_card_covers_the_latest_cut_and_never_more_than_two_days() {
+async fn the_updates_card_is_the_latest_cut_with_what_needs_a_look_first() {
     let fx = Fixture::new().await;
     let at = today_at(18);
-    // Since 08:00 today (the cut before the 16:30 one): on the card.
-    for (source, age) in [("one", 1), ("two", 6)] {
+    // 12:00 and a month back, both before the 16:30 cut: in the digest,
+    // the older one carried over. 17:00 waits for the next cut.
+    let mut in_cut = Vec::new();
+    for (source, age, subject) in [
+        ("one", Duration::hours(6), "Build passed"),
+        ("two", Duration::days(30), "Build passed"),
+        ("three", Duration::hours(1), "Build passed"),
+        ("four", Duration::hours(7), "Payment failed: card declined"),
+    ] {
         let thread = ThreadId::new();
         let mut note = mail(
             &fx,
             &thread,
             &format!("notifications@{source}.example"),
-            "Build passed",
-            Duration::hours(age),
+            subject,
+            age,
         )
         .await;
-        note.date = at - Duration::hours(age);
+        note.date = at - age;
         fx.store_envelope(&note, MessageDirection::Inbound).await;
+        if source != "three" {
+            in_cut.push(note.id);
+        }
     }
-    // Months old and still in the inbox: never on today's card.
-    let thread = ThreadId::new();
-    let mut old = mail(
-        &fx,
-        &thread,
-        "notifications@old.example",
-        "Build passed",
-        Duration::days(90),
-    )
-    .await;
-    old.date = at - Duration::days(90);
-    fx.store_envelope(&old, MessageDirection::Inbound).await;
 
     let card = now_at(&fx, at).await.updates.expect("a card");
-    assert_eq!(card.message_count, 2);
-    assert_eq!(card.source_count, 2);
-    assert_eq!(card.since, today_at(8));
-    assert_eq!(
-        card.thread_ids.len(),
-        2,
-        "letting go acts on the card's threads"
+    assert_eq!(card.since, at - Duration::minutes(90), "the 16:30 cut");
+    assert_eq!(card.cut_label, "16:30");
+    assert_eq!(card.message_count, 3);
+    assert_eq!(card.source_count, 3);
+    assert!(!card.early);
+    assert!(!card.selection_token.is_empty());
+    // Needs a look leads, and the card shows at most three lines.
+    assert!(card.lines.len() <= 3);
+    assert!(
+        card.lines[0].fact.contains("Payment failed"),
+        "{:?}",
+        card.lines
     );
-
-    // In the morning the card reaches back to yesterday's 16:30 cut, but
-    // never past two days.
-    let morning = now_at(&fx, today_at(9)).await;
-    let since = morning.updates.map(|card| card.since);
-    assert!(since.is_none_or(|since| since >= today_at(9) - Duration::days(2)));
+    assert!(card.headline.contains("needs a look"), "{}", card.headline);
+    let shown: Vec<_> = card
+        .lines
+        .iter()
+        .flat_map(|line| &line.message_ids)
+        .collect();
+    assert!(shown.iter().all(|id| in_cut.contains(*id)));
 }
 
 #[tokio::test]

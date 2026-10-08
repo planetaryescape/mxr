@@ -192,6 +192,23 @@ impl App {
                             );
                         }
                         UndoAction::Records(undo) => self.undo_records(undo, status),
+                        // Tuning a source back is the undo; it offers none.
+                        UndoAction::UpdateSource {
+                            account_id,
+                            source_key,
+                            prior,
+                        } => {
+                            self.queue_mutation(
+                                Request::SetUpdateSource {
+                                    account_id: Some(account_id),
+                                    source: source_key,
+                                    setting: prior,
+                                    dry_run: false,
+                                },
+                                MutationEffect::ModeDone("Source set back".into()),
+                                status,
+                            );
+                        }
                         // Setting the previous kind again is the undo; its
                         // own answer offers no further undo.
                         UndoAction::SenderKind {

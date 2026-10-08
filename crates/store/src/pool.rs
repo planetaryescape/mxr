@@ -1024,12 +1024,17 @@ const MIGRATIONS: &[Migration] = &[
         kind: MigrationKind::Sql(include_str!("../migrations/064_messages.sql")),
     },
     Migration {
+        version: 65,
+        name: "updates",
+        kind: MigrationKind::Sql(include_str!("../migrations/065_updates.sql")),
+    },
+    Migration {
         version: 66,
         name: "reading",
         kind: MigrationKind::Sql(include_str!("../migrations/066_reading.sql")),
     },
     // Archive: records built from mail, with a value per field per source.
-    // 64 to 66 belong to the Messages, Updates and Reading phases.
+    // 66 belongs to the Reading phase.
     Migration {
         version: 67,
         name: "records",

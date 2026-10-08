@@ -1,0 +1,84 @@
+---
+source: crates/daemon/tests/modes_cli.rs
+expression: "serde_json::to_string_pretty(&updates).unwrap()"
+---
+[
+  {
+    "about": "Updates gathers notifications into a digest at 08:00 and 16:30, one line per source, like your bank or GitHub, with what changed first. Anything that needs you sits at the top with a suggested to-do that t adds, so you can read this and let it go.",
+    "add_one": "",
+    "clear_for_now": "Nothing new since {cut}. Next digest at {next}.",
+    "first_run_line": "Notifications, twice a day",
+    "header": "Notifications gathered twice a day. Read the digest, then let go.",
+    "hints": [
+      {
+        "anchor": "The first suggested to-do in Needs a look",
+        "id": "updates.suggestion",
+        "key": {
+          "key": "t",
+          "verb": "this needs me"
+        },
+        "seen": false,
+        "text": "Nothing becomes a to-do on its own; t adds this one to To do."
+      },
+      {
+        "anchor": "The first source line",
+        "id": "updates.source",
+        "key": {
+          "key": "e",
+          "verb": "let go of this source"
+        },
+        "seen": false,
+        "text": "e lets go of this source only; the rest of the digest stays."
+      },
+      {
+        "anchor": "The first \"Let go of this digest\" button",
+        "id": "updates.let_go",
+        "key": {
+          "key": "A",
+          "verb": "let go of digest"
+        },
+        "seen": false,
+        "text": "A lets go of this digest only; new mail arrives in the next one."
+      }
+    ],
+    "keys": [
+      {
+        "key": "A",
+        "verb": "let go of digest"
+      },
+      {
+        "key": "e",
+        "verb": "let go of this source"
+      },
+      {
+        "key": "t",
+        "verb": "this needs me"
+      },
+      {
+        "key": "K",
+        "verb": "tune a source"
+      },
+      {
+        "key": "L",
+        "verb": "open the link"
+      },
+      {
+        "key": "o",
+        "verb": "open the email"
+      },
+      {
+        "key": "u",
+        "verb": "undo"
+      },
+      {
+        "key": "?",
+        "verb": "what is this"
+      }
+    ],
+    "lands_here": "Notifications from services and apps: builds, parcels, sign-in alerts, statements, reports and receipts.",
+    "mode": "updates",
+    "name": "Updates",
+    "never_had_any": "Notifications from services and apps land here and are gathered into a digest at 08:00 and 16:30. Anything that needs you, like a failed payment, shows first with a suggested to-do.",
+    "why_template": "Here because: {evidence} ({source}). In the {cut} digest."
+  }
+]

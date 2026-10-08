@@ -157,6 +157,9 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::SetTodoCatchup { account_id, .. }
         | Request::GetNow { account_id }
         | Request::GetRail { account_id }
+        | Request::GetUpdatesDigest { account_id, .. }
+        | Request::LetGoDigest { account_id, .. }
+        | Request::SetUpdateSource { account_id, .. }
         | Request::ListMessages { account_id, .. }
         | Request::ListMergeSuggestions { account_id }
         | Request::ListRecords { account_id, .. }

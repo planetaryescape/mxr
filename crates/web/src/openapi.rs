@@ -92,7 +92,8 @@ use utoipa::{
         mail_records_dismiss, mail_records_file, mail_records_sender, mail_records_export,
         mail_reading_edition, mail_reading_item, mail_reading_later, mail_reading_engagement,
         mail_reading_article, mail_reading_highlights_get, mail_reading_highlights_post,
-        mail_reading_sources
+        mail_reading_sources,
+        mail_updates_digest, mail_updates_let_go, mail_updates_source
     ),
     components(schemas(
         Request,
@@ -127,6 +128,8 @@ use utoipa::{
         crate::reading_routes::ReadingArticleBody,
         crate::reading_routes::ReadingHighlightBody,
         crate::reading_routes::ReadingSourceBody,
+        crate::updates_routes::UpdatesLetGoBody,
+        crate::updates_routes::UpdateSourceBody,
     )),
     modifiers(&BearerSecurity),
     security(("bearer" = []))
@@ -952,6 +955,51 @@ fn mail_reading_highlights_post() {}
 )]
 #[allow(dead_code)]
 fn mail_reading_sources() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/updates",
+    summary = "The Updates digest: one line per source in Needs a look, Changed and Routine, at the latest cut or a past one, plus what arrived since",
+    params(
+        ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
+        ("cut" = Option<String>, Query, description = "A past cut, RFC3339; the latest when omitted"),
+        ("mark_seen" = Option<bool>, Query, description = "Record that Updates was opened"),
+        ("expired" = Option<bool>, Query, description = "List every update past its window"),
+    ),
+    responses(
+        (status = 200, description = "The `UpdatesDigest` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_updates_digest() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/updates/let-go",
+    summary = "Let go of a digest or one of its sources: exactly the cut's updates leave Updates, archived only when no other mode holds them (dry_run previews; selection_token pins the run to the preview)",
+    request_body = crate::updates_routes::UpdatesLetGoBody,
+    responses(
+        (status = 200, description = "The `UpdatesLetGo` variant, with the undo id", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_updates_let_go() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/updates/sources",
+    summary = "Tune an Updates source: every digest, changes only, muted or breakthrough (dry_run previews)",
+    request_body = crate::updates_routes::UpdateSourceBody,
+    responses(
+        (status = 200, description = "The `UpdateSource` variant, with the prior setting for undo", body = ResponseData),
+        (status = 400, description = "No source named"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_updates_source() {}
 
 #[utoipa::path(
     post,

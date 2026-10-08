@@ -142,10 +142,8 @@ test("the rail lists Now, the modes, then Inbox, and their keys open them", asyn
     /^Archive/,
     /^Inbox/,
   ]);
-  // Early modes say so.
-  await expect(
-    rail.getByRole("link", { name: /^Updates/ }).getByTestId("rail-early"),
-  ).toBeVisible();
+  // Every mode is built now, so none says "early".
+  await expect(rail.getByTestId("rail-early")).toHaveCount(0);
   for (const [key, url] of [
     ["m", /\/messages$/],
     ["x", /\/todo$/],
@@ -205,21 +203,11 @@ test("the people numbers on Now check against each other", async ({ page }) => {
   }
 });
 
-test("done on a sender's row in Updates previews all of their conversations", async ({ page }) => {
-  await openApp(page, "/updates");
-  // The cursor starts on the first sender's row.
-  await expect(page.getByTestId("place-bundle").first()).toBeVisible();
-  await page.keyboard.press("e");
-  const dialog = page.getByTestId("sender-done-dialog");
-  await expect(dialog).toContainText(/^Done with \d+ conversations? from /);
-  await dialog.getByRole("button", { name: "Cancel" }).click();
-  await expect(dialog).toHaveCount(0);
-});
-
 test("Paper trail's old address opens Updates", async ({ page }) => {
   await openApp(page, "/paper-trail");
   await expect(page).toHaveURL(/\/updates$/);
-  await expect(page.getByTestId("early-mode-note")).toContainText("early version");
+  await expect(page.getByTestId("updates-cut")).toBeVisible();
+  await expect(page.getByTestId("early-mode-note")).toHaveCount(0);
 });
 
 test("? on Now leads with what Now is for", async ({ page }) => {

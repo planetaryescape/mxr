@@ -89,6 +89,7 @@ mod todo_first_run;
 mod todos;
 mod triage;
 mod undo;
+mod updates;
 mod user_activity;
 mod user_voice_profile;
 mod voice_samples;
@@ -146,6 +147,7 @@ pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 pub use sync_upsert::SyncUpsert;
 pub use todo_first_run::{PromiseForTodo, TodoRun, TodoScanRow};
 pub use todos::{TodoCatchup, TodoRecord, TodoState, TodoUpsert};
+pub use updates::{SourceLetGo, UpdateFactRow, UpdateSourceRow};
 pub use voice_samples::{MyReplySample, MySentSample};
 
 /// Bind parameters per `IN (...)` query. SQLite's default limit is 32,766;

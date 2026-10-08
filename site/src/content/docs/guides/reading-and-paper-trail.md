@@ -24,6 +24,11 @@ Receipts, orders, bookings and bills that mxr recognises are also filed
 as records in [Archive](/guides/archive/), which keeps them after you sweep
 their emails and answers with the field you need, like an order number.
 
+Notifications now have their own mode. [Updates](/guides/updates/) reads
+the same automated mail as a briefing: one line per source, what changed
+first, gathered at 08:00 and 16:30 and let go in one key. Paper trail stays
+as the plain list by sender. `mxr paper-trail` and `mxr sweep` work as before.
+
 Both places are views over the inbox. Archiving a message takes it out, and
 undo puts it back. Deliveries and calendar invites have their own pages, so
 they are in neither. Neither place carries a count in the sidebar; the

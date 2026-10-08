@@ -1928,6 +1928,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/records/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Subscriptions: receipts and invoices at a steady cadence, with next charge, yearly cost, price changes, status and totals per currency */
+        get: operations["mail_records_subscriptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/records/{record_id}": {
         parameters: {
             query?: never;
@@ -7194,7 +7211,12 @@ export interface components {
             /** Format: date-time */
             at: string;
             group_id?: string | null;
-            /** @description trip | booking | ticket | return_window | warranty */
+            /**
+             * @description trip | booking | ticket | return_window | warranty, or a
+             *     subscription's price_change | missed_charge | renewal_approaching
+             *     (then `group_id` is the subscription's id and `record_id` its
+             *     newest charge).
+             */
             kind: string;
             /** @description "Lisbon, June 2025 · in 3 days", "Return XPS 14 laptop by Wed". */
             label: string;
@@ -7210,6 +7232,18 @@ export interface components {
             month: string;
             /** @description One total per currency, largest first. Never converted. */
             totals: components["schemas"]["RecordAmountData"][];
+        };
+        RecordPriceChangeData: {
+            /**
+             * Format: date-time
+             * @description The first charge at the new price.
+             */
+            date: string;
+            from: components["schemas"]["RecordAmountData"];
+            /** @description "£10.99 to £12.99 on 10 May 2025". */
+            label: string;
+            record_id: string;
+            to: components["schemas"]["RecordAmountData"];
         };
         RecordPromiseRequest: {
             /** @description Return what would be stored without writing it. */
@@ -7246,6 +7280,122 @@ export interface components {
             stage: string;
             subject: string;
             thread_id?: null | components["schemas"]["ThreadId"];
+        };
+        /**
+         * @description One charge of a subscription: a record, or a receipt and an invoice
+         *     for the same payment.
+         */
+        RecordSubscriptionChargeData: {
+            amount?: null | components["schemas"]["RecordAmountData"];
+            /** @description Its amount and date came from schema.org or you. */
+            checked: boolean;
+            /** Format: date-time */
+            date: string;
+            record_ids: string[];
+        };
+        /** @description One subscription: the row and, with its history, the card. */
+        RecordSubscriptionData: {
+            account_id: components["schemas"]["AccountId"];
+            amount?: null | components["schemas"]["RecordAmountData"];
+            /** @description weekly | monthly | quarterly | yearly */
+            cadence: string;
+            /** @description "Monthly". */
+            cadence_label: string;
+            /** Format: int32 */
+            charge_count: number;
+            /** @description Oldest first. */
+            charges: components["schemas"]["RecordSubscriptionChargeData"][];
+            /** @description Three charges or more. A yearly one seen twice is not yet. */
+            confirmed: boolean;
+            /**
+             * @description Every field with where it came from: issuer, product, cadence,
+             *     amount, yearly_cost, start, last_charge, next_expected, status.
+             */
+            fields: components["schemas"]["RecordFieldData"][];
+            /** @description `sub_…`: stable while its first charge stays. */
+            id: string;
+            issuer: string;
+            /** Format: date-time */
+            last_charge: string;
+            message_id?: null | components["schemas"]["MessageId"];
+            /**
+             * Format: date-time
+             * @description Not set once it has ended.
+             */
+            next_expected?: string | null;
+            /**
+             * Format: int32
+             * @description The issuer's receipts and invoices that are not part of any
+             *     subscription.
+             */
+            one_offs: number;
+            /** @description Oldest first. */
+            price_changes?: components["schemas"]["RecordPriceChangeData"][];
+            /** @description "Premium", when the receipts name it. */
+            product?: string | null;
+            /** @description The newest charge's record, for "open the record". */
+            record_id: string;
+            /** Format: date-time */
+            start: string;
+            /** @description active | overdue | ended */
+            status: string;
+            /**
+             * @description "6 charges about a month apart since Jan 2025", "Expected around
+             *     3 May 2025; no charge since 3 Apr 2025", "Cancellation email on
+             *     20 Mar 2025".
+             */
+            status_reason: string;
+            thread_id?: null | components["schemas"]["ThreadId"];
+            /** @description "Spotify Premium", or the issuer alone. */
+            title: string;
+            /**
+             * @description "Here because: 6 receipts from Spotify about a month apart
+             *     (worked out from your records)."
+             */
+            why: string;
+            yearly_cost?: null | components["schemas"]["RecordAmountData"];
+        };
+        /**
+         * @description Something about a subscription worth a look: a price change on the
+         *     newest charge, an expected charge that didn't come, or a yearly
+         *     subscription's next charge within its lead time. A suggestion only;
+         *     nothing here is ever filed as a to-do.
+         */
+        RecordSubscriptionSignalData: {
+            /** Format: date-time */
+            at: string;
+            /** @description price_change | missed_charge | renewal_approaching */
+            kind: string;
+            /**
+             * @description "Netflix went up from £10.99 to £12.99 on 10 May",
+             *     "No Spotify Premium charge since 3 Apr; expected around 3 May",
+             *     "Admiral renews around 24 Oct".
+             */
+            label: string;
+            /** @description The newest charge's record. */
+            record_id: string;
+            subscription_id: string;
+        };
+        /** @description What the live subscriptions cost in one currency. Never converted. */
+        RecordSubscriptionTotalData: {
+            currency: string;
+            /** @description The year over twelve. */
+            per_month: components["schemas"]["RecordAmountData"];
+            per_year: components["schemas"]["RecordAmountData"];
+        };
+        /** @description Returned in `ResponseData::RecordSubscriptions`. */
+        RecordSubscriptionsData: {
+            empty_state?: string | null;
+            /** Format: int32 */
+            ended: number;
+            header: string;
+            /** Format: int32 */
+            live: number;
+            signals?: components["schemas"]["RecordSubscriptionSignalData"][];
+            /** @description Live ones first (active and overdue), then ended, each by issuer. */
+            subscriptions: components["schemas"]["RecordSubscriptionData"][];
+            /** @description Over the live ones, per currency, largest first. */
+            totals: components["schemas"]["RecordSubscriptionTotalData"][];
         };
         /** @description How `u` reverses a record change. */
         RecordUndoData: {
@@ -8592,6 +8742,10 @@ export interface components {
             /** Format: int32 */
             offset?: number;
         } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "ListRecordSubscriptions";
+        } | {
             /** @enum {string} */
             cmd: "GetRecord";
             record_id: string;
@@ -9524,6 +9678,10 @@ export interface components {
             /** @enum {string} */
             kind: "RecordLedger";
             ledger: components["schemas"]["RecordLedgerData"];
+        } | {
+            /** @enum {string} */
+            kind: "RecordSubscriptions";
+            subscriptions: components["schemas"]["RecordSubscriptionsData"];
         } | {
             /** @enum {string} */
             kind: "Record";
@@ -14724,6 +14882,43 @@ export interface operations {
                 };
             };
             /** @description Invalid message id or verdict */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_records_subscriptions: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `RecordSubscriptions` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Bad account id */
             400: {
                 headers: {
                     [name: string]: unknown;

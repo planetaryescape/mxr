@@ -83,7 +83,6 @@ test("keys move through subscriptions, p opens the issuer, Esc goes back to the 
 }) => {
   await waitForSubscriptions(page);
   await openSubscriptions(page);
-  await page.keyboard.press("Escape");
   const first = page.getByTestId("subscription-row").first();
   await row(page, "Headspace").click();
   await expect(row(page, "Headspace")).toHaveAttribute("aria-current", "true");

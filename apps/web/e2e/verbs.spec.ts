@@ -301,6 +301,7 @@ const modeMove: Journey = async (page) => {
 
 interface UpdateLineAnswer {
   account_id: string;
+  id: string;
   source_key: string;
   sender_email?: string | null;
   latest_message_id?: string | null;
@@ -319,8 +320,8 @@ async function updateLines(page: Page): Promise<UpdateLineAnswer[]> {
   return [...digest.needs_a_look, ...digest.changed, ...digest.routine];
 }
 
-function updateLine(page: Page, sourceKey: string) {
-  return page.locator(`[data-testid='update-line'][data-source='${sourceKey}']`);
+function updateLine(page: Page, lineId: string) {
+  return page.locator(`[data-testid='update-line'][data-line-id=${JSON.stringify(lineId)}]`);
 }
 
 const JOURNEYS: Partial<Record<Verb, Journey>> = {
@@ -554,7 +555,7 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     }
     if (!target) throw new Error("the demo has no Updates sender with mail to sweep");
     await openApp(page, "/updates");
-    await updateLine(page, target.source_key).getByRole("button", { name: "Sweep sender" }).click();
+    await updateLine(page, target.id).getByRole("button", { name: "Sweep sender" }).click();
     const dialog = page.getByTestId("sweep-dialog");
     await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: /^Archive \d/ }).click();
@@ -573,7 +574,7 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     await unpin();
     try {
       await openApp(page, "/updates");
-      const line = updateLine(page, target.source_key);
+      const line = updateLine(page, target.id);
       await line.getByRole("button", { name: "Pin", exact: true }).click();
       await expectToast(page, "pin");
       await expect(line.getByRole("button", { name: "Unpin", exact: true })).toBeVisible();

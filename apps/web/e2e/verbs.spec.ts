@@ -299,6 +299,30 @@ const modeMove: Journey = async (page) => {
   await expect(chip).toHaveText(before);
 };
 
+interface UpdateLineAnswer {
+  account_id: string;
+  source_key: string;
+  sender_email?: string | null;
+  latest_message_id?: string | null;
+  tracker?: { kind: string } | null;
+}
+
+/** The lines of the demo's Updates digest, as the bridge answers them. */
+async function updateLines(page: Page): Promise<UpdateLineAnswer[]> {
+  const { digest } = await bridge<{
+    digest: {
+      needs_a_look: UpdateLineAnswer[];
+      changed: UpdateLineAnswer[];
+      routine: UpdateLineAnswer[];
+    };
+  }>(page, "/api/v1/mail/updates");
+  return [...digest.needs_a_look, ...digest.changed, ...digest.routine];
+}
+
+function updateLine(page: Page, sourceKey: string) {
+  return page.locator(`[data-testid='update-line'][data-source='${sourceKey}']`);
+}
+
 const JOURNEYS: Partial<Record<Verb, Journey>> = {
   "mode-move": modeMove,
   archive: rowVerb("archive", ["e"], { leaves: true }),
@@ -511,6 +535,54 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     await expect(row).toBeVisible();
   },
 
+  sweep: async (page) => {
+    // The first Updates sender whose dry run finds mail to archive.
+    let target: UpdateLineAnswer | undefined;
+    for (const line of await updateLines(page)) {
+      if (!line.sender_email || line.tracker?.kind === "parcel") continue;
+      const preview = await bridge<{ preview: { count: number } }>(
+        page,
+        "/api/v1/mail/places/paper-trail/sweep",
+        { account_id: line.account_id, sender_email: line.sender_email, dry_run: true },
+      );
+      if (preview.preview.count > 0) {
+        target = line;
+        break;
+      }
+    }
+    if (!target) throw new Error("the demo has no Updates sender with mail to sweep");
+    await openApp(page, "/updates");
+    await updateLine(page, target.source_key).getByRole("button", { name: "Sweep sender" }).click();
+    const dialog = page.getByTestId("sweep-dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: /^Archive \d/ }).click();
+    await expectToast(page, "sweep");
+    await page.keyboard.press("u");
+    await expectUndone(page);
+  },
+
+  pin: async (page) => {
+    const target = (await updateLines(page)).find((line) => line.latest_message_id);
+    const messageId = target?.latest_message_id;
+    if (!target || !messageId) throw new Error("the demo has no Updates line with an email");
+    // Start unpinned: pinning an email that is already pinned has nothing to undo.
+    const unpin = () =>
+      bridge(page, "/api/v1/mail/messages/pin", { message_ids: [messageId], pinned: false });
+    await unpin();
+    try {
+      await openApp(page, "/updates");
+      const line = updateLine(page, target.source_key);
+      await line.getByRole("button", { name: "Pin", exact: true }).click();
+      await expectToast(page, "pin");
+      await expect(line.getByRole("button", { name: "Unpin", exact: true })).toBeVisible();
+      await page.keyboard.press("u");
+      await expectUndone(page);
+      await expect(line.getByRole("button", { name: "Pin", exact: true })).toBeVisible();
+    } finally {
+      await unpin();
+    }
+  },
+
   "digest-let-go": async (page) => {
     await openApp(page, "/now");
     const card = page.getByTestId("now-section-updates");
@@ -648,24 +720,12 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
   },
 };
 
-/**
- * Verbs in the table the web app no longer offers. Sweep and pin lived on
- * Paper trail and the Reading place: Paper trail became Updates, which lets
- * go per source and per digest, and Reading lets go per edition. The CLI
- * keeps `mxr sweep`, `mxr pin` and `mxr unpin`.
- */
-const NO_WEB_SURFACE: Partial<Record<Verb, string>> = {
-  sweep: "no web surface since Paper trail and the Reading place left",
-  pin: "no web surface since Paper trail and the Reading place left",
-};
-
 for (const [verb, entry] of Object.entries(VERB_FEEDBACK) as [
   Verb,
   (typeof VERB_FEEDBACK)[Verb],
 ][]) {
   const kind = entry.undo === "none" ? "confirms first (irreversible)" : `undoes (${entry.undo})`;
   test(`${verb}: says what it did in the table's words and ${kind}`, async ({ page }) => {
-    test.skip(Boolean(NO_WEB_SURFACE[verb]), NO_WEB_SURFACE[verb]);
     const journey = JOURNEYS[verb];
     expect(journey, `${verb} is in the verb table but has no journey here`).toBeDefined();
     if (entry.undo === "none") {

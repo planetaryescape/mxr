@@ -269,8 +269,8 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     confirm: "Always: the dialog names the sender and how they are asked.",
   },
   sweep: {
-    actions: ["place.sweep-bundle", "place.sweep-all"],
-    alsoFrom: `the Sweep buttons and the Reading feed`,
+    actions: ["place.sweep-bundle", "place.sweep-all", "updates.sweep"],
+    alsoFrom: `the Sweep buttons in Reading and on an Updates line`,
     optimistic: "The daemon's dry run shows the count first; then the swept mail leaves.",
     pastTense: "Archived",
     tone: "info",
@@ -310,8 +310,8 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     confirm: "Previews the daemon's dry run: how many updates and which stay in To do",
   },
   pin: {
-    actions: ["place.pin"],
-    alsoFrom: "the pin button on a Reading issue",
+    actions: ["place.pin", "updates.pin"],
+    alsoFrom: "the pin button on a Reading issue or an Updates line",
     optimistic: "The pin fills at once.",
     pastTense: "Pinned",
     tone: "info",

@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Put a move back exactly as it was. Undoing twice changes nothing
+
+Usage: mxr corrections undo [OPTIONS] <ID>
+
+Arguments:
+  <ID>
+
+Options:
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --limit <LIMIT>      [default: 50]
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

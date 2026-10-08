@@ -607,6 +607,10 @@ pub enum Command {
     /// Move one email to a mode (X), or with --sender all of its sender's
     /// mail (K). To do and Archive add the email there. Undo with `mxr
     /// corrections undo <id>`.
+    ///
+    /// Named `reclassify`, not `move`: `move` already means moving a
+    /// message to a label/folder.
+    #[command(name = "reclassify")]
     Move {
         /// The email's message id.
         message_id: String,

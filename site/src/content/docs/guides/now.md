@@ -122,9 +122,9 @@ after it wins for that one email. Inbox rows name the mode each email went
 to, with the reason on hover or focus: "→ Updates · automated sender".
 
 ```bash
-mxr move MESSAGE_ID reading --dry-run
-mxr move MESSAGE_ID reading
-mxr move MESSAGE_ID updates --sender
+mxr reclassify MESSAGE_ID reading --dry-run
+mxr reclassify MESSAGE_ID reading
+mxr reclassify MESSAGE_ID updates --sender
 mxr corrections            # every move, newest first
 mxr corrections undo 12
 ```

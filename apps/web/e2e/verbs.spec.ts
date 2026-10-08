@@ -540,6 +540,8 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     let target: UpdateLineAnswer | undefined;
     for (const line of await updateLines(page)) {
       if (!line.sender_email || line.tracker?.kind === "parcel") continue;
+      // Keep digest order; stop as soon as the first sender has mail to sweep.
+      // oxlint-disable-next-line no-await-in-loop
       const preview = await bridge<{ preview: { count: number } }>(
         page,
         "/api/v1/mail/places/paper-trail/sweep",

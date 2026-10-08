@@ -813,7 +813,7 @@ pub(crate) mod tests {
             );
             insta::assert_snapshot!(format!("now_lens_arrivals_{width}"), rendered);
         }
-        let wide = render_at(&with_line, 120, 1);
+        let wide = render_at(&with_line, 120, 0);
         assert!(wide.contains("Since 08:12: 50 arrived."), "{wide}");
         assert!(wide.contains("2 emails I wasn't sure about"), "{wide}");
         assert!(wide.contains("Maya Ortiz copied you on \"Q0 plan\""), "{wide}");

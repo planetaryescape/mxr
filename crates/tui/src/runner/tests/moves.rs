@@ -188,6 +188,7 @@ fn shift_in_the_menu_and_k_move_the_sender_to_a_mode_a_sender_can_live_in() {
     );
 
     let mut app = inbox_app();
+    let selected = app.selected_envelope().unwrap().id.clone();
     press(&mut app, KeyCode::Char('K'));
     let menu = app.mailbox.trust.move_menu.as_ref().expect("K opens the sender menu");
     assert!(menu.sender_only);

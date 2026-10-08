@@ -42,7 +42,7 @@ describe("moving an email", () => {
       method: "POST",
       body: { mode: "reading", sender: false, dry_run: false },
     });
-    const [message, options] = toastMock.success.mock.calls[0]!;
+    const [message, options] = toastMock.info.mock.calls[0]!;
     expect(message).toBe("Moved to Reading. Always for this sender? (K)");
     expect(options?.description).toMatch(/^X moves just this email/);
     expect(options?.action?.label).toBe("Undo");
@@ -54,7 +54,7 @@ describe("moving an email", () => {
     fetchMock.mockResolvedValue(moved());
     await performMove({ messageId: "msg-1", mode: "reading" });
     await performMove({ messageId: "msg-1", mode: "reading" });
-    expect(toastMock.success.mock.calls[1]![1]?.description).toBe("Press u to undo");
+    expect(toastMock.info.mock.calls[1]![1]?.description).toBe("Press u to undo");
   });
 
   test("u undoes the newest move through the daemon", async () => {
@@ -103,7 +103,7 @@ describe("moving an email", () => {
       moved({ copy: "Already in Reading.", correction_id: null, ask_sender: null, hint: null }),
     );
     await performMove({ messageId: "msg-1", mode: "reading" });
-    expect(toastMock.success).toHaveBeenCalledWith("Already in Reading.", { id: "move-msg-1" });
+    expect(toastMock.info).toHaveBeenCalledWith("Already in Reading.", { id: "move-msg-1" });
     expect(useUndo.getState().lastUndo).toBeNull();
   });
 

@@ -12,6 +12,7 @@ import { create } from "zustand";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { invalidateMailQueries } from "@/features/mail-actions/mailQueryInvalidation";
 import { claimUndo } from "@/features/mail-actions/mailUndo";
+import { toneFor } from "@/features/mail-actions/verbFeedback";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { useUndo } from "@/state/undoStore";
 
@@ -116,9 +117,10 @@ export function announceMove(
   const id = toastId(outcome);
   const correctionId = outcome.correction_id;
   const newest = useUndo.getState().lastUndo === claim;
+  const show = toast[toneFor("mode-move")];
   if (correctionId === null || correctionId === undefined) {
     if (newest) useUndo.getState().recordNoUndo();
-    toast.success(outcome.copy, { id });
+    show(outcome.copy, { id });
     return null;
   }
   const undo = async () => {
@@ -138,7 +140,7 @@ export function announceMove(
   const clearAsk = () => {
     if (useSenderAsk.getState().pending === outcome) useSenderAsk.getState().set(null);
   };
-  toast.success(ask ? `${outcome.copy} ${ask}` : outcome.copy, {
+  show(ask ? `${outcome.copy} ${ask}` : outcome.copy, {
     id,
     duration: ask ? 15_000 : 60_000,
     description: hint ?? "Press u to undo",

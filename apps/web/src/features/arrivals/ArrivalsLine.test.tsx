@@ -146,3 +146,28 @@ describe("Not sure", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 });
+
+describe("Not sure: failures and the last answer", () => {
+  const one = () =>
+    arrivals({ not_sure: [notSure()], not_sure_line: "1 email I wasn't sure about." });
+
+  test("a move that fails brings the question back", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("daemon said no"));
+    render(<ArrivalsView arrivals={one()} nowWaiting />);
+    fireEvent.keyDown(screen.getByTestId("not-sure-row"), { key: "m" });
+    expect(screen.queryByTestId("not-sure-row")).toBeNull();
+    expect(await screen.findByTestId("not-sure-row")).toBeVisible();
+    expect(screen.queryByTestId("not-sure-sender-ask")).toBeNull();
+  });
+
+  test("the sender question survives the refetch that empties the list", async () => {
+    fetchMock.mockResolvedValueOnce({ kind: "MessageMoved", outcome: outcome({ to: "messages" }) });
+    const view = render(<ArrivalsView arrivals={one()} nowWaiting />);
+    fireEvent.keyDown(screen.getByTestId("not-sure-row"), { key: "m" });
+    // The answer refreshes the line: no questions left.
+    view.rerender(<ArrivalsView arrivals={arrivals({ not_sure: [] })} nowWaiting />);
+    expect(await screen.findByTestId("not-sure-sender-ask")).toHaveTextContent(
+      "Always for Maya Ortiz?",
+    );
+  });
+});

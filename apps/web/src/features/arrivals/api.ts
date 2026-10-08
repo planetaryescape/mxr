@@ -30,10 +30,16 @@ export const ARRIVAL_MODES_KEY = ["arrival-modes"] as const;
 /** The most emails one chip request may name (the daemon's cap). */
 export const ARRIVAL_MODES_MAX = 200;
 
-export async function fetchArrivals(account: string | null, markSeen: boolean): Promise<Arrivals> {
+export async function fetchArrivals(
+  account: string | null,
+  markSeen: boolean,
+  since?: string,
+): Promise<Arrivals> {
   const params = new URLSearchParams();
   if (account) params.set("account", account);
   if (markSeen) params.set("mark_seen", "true");
+  // The visit already open keeps the window it opened with.
+  else if (since) params.set("since", since);
   const query = params.size > 0 ? `?${params}` : "";
   const answer = await apiFetch<ArrivalsResponse>(`/api/v1/mail/arrivals${query}`);
   return answer.arrivals;
@@ -42,17 +48,22 @@ export async function fetchArrivals(account: string | null, markSeen: boolean): 
 /**
  * The line on Now. The first fetch of each visit starts the visit
  * (`mark_seen`), so the window runs from the visit before; refetches while
- * Now stays open leave it alone.
+ * Now stays open name that window back to the daemon (`since`) and so never
+ * move it.
  */
 export function useArrivalsQuery() {
   const account = useUiPrefs((s) => s.accountScope);
   const visiting = useRef(true);
+  const openVisit = useRef<{ account: string | null; since: string } | null>(null);
   return useQuery({
     queryKey: [...ARRIVALS_KEY, "line", account ?? "all"],
-    queryFn: () => {
+    queryFn: async () => {
       const markSeen = visiting.current;
       visiting.current = false;
-      return fetchArrivals(account, markSeen);
+      const held = openVisit.current?.account === account ? openVisit.current.since : undefined;
+      const arrivals = await fetchArrivals(account, markSeen, held);
+      if (markSeen || held === undefined) openVisit.current = { account, since: arrivals.since };
+      return arrivals;
     },
     // Every mount is a visit, so it always asks.
     refetchOnMount: "always",

@@ -35,13 +35,13 @@ export function ArrivalsView({
           {arrivals.track_record}
         </p>
       ) : null}
-      {arrivals.not_sure && arrivals.not_sure.length > 0 ? (
-        <NotSureSection
-          questions={arrivals.not_sure}
-          heading={arrivals.not_sure_line ?? undefined}
-          hint={arrivals.not_sure_hint ?? undefined}
-        />
-      ) : null}
+      {/* Always mounted: answering the last question refetches an empty
+          list, and "Always for this sender?" lives in this component. */}
+      <NotSureSection
+        questions={arrivals.not_sure ?? []}
+        heading={arrivals.not_sure_line ?? undefined}
+        hint={arrivals.not_sure_hint ?? undefined}
+      />
     </div>
   );
 }

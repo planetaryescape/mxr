@@ -42,8 +42,18 @@ export function NotSureSection({
       { messageId: question.message_id, mode, source: "not_sure" },
       { askInToast: false },
     ).then((outcome) => {
+      // A move that failed (the toast says why) answered nothing: the
+      // question comes back.
+      if (!outcome) {
+        setAnswered((current) => {
+          const next = new Set(current);
+          next.delete(question.message_id);
+          return next;
+        });
+        return;
+      }
       // Keeping it where it was moved nothing, so there is nothing to repeat.
-      const moved = outcome && outcome.correction_id != null && outcome.from !== outcome.to;
+      const moved = outcome.correction_id != null && outcome.from !== outcome.to;
       if (moved && SENDER_MODES.includes(mode)) {
         setAsk({ question, mode });
       }

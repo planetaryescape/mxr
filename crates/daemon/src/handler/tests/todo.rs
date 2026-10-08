@@ -1083,16 +1083,16 @@ async fn the_mode_guide_serves_to_do_copy_from_one_table() {
             id: 1,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::GetModeGuide {
-                mode: Some("reading".to_string()),
+                mode: Some("paper trail".to_string()),
             }),
         },
     )
     .await;
     let IpcPayload::Response(Response::Error { message, .. }) = refused.payload else {
-        panic!("an unshipped mode is refused")
+        panic!("a mode that doesn't exist is refused")
     };
     assert!(
-        message.contains("Modes so far: now, messages, todo, updates"),
+        message.contains("Modes so far: now, messages, todo, updates, reading"),
         "{message}"
     );
 }

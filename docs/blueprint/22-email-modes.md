@@ -1038,7 +1038,6 @@ test checks it). A hint shared by two modes has one id and one seen state.
 | `reading.fading` | Reading | The first Fading band (TUI: its first item) | "These go within a day; b keeps one on Later, which never fades." |
 | `reading.link` | Reading | The first link under a digest | "Each link is its own item; L fetches its article, and only then does mxr contact that site." |
 
-
 The topics hint says "yours to answer first" because the daemon orders a
 person's topics by state, your turn first, then by recency
 (`messages_view::sort_topics`), not newest first.

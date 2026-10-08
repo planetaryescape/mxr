@@ -2564,6 +2564,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The Updates digest: one line per source in Needs a look, Changed and Routine, at the latest cut or a past one, plus what arrived since */
+        get: operations["mail_updates_digest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/updates/let-go": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Let go of a digest or one of its sources: exactly the cut's updates leave Updates, archived only when no other mode holds them (dry_run previews; selection_token pins the run to the preview) */
+        post: operations["mail_updates_let_go"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/updates/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tune an Updates source: every digest, changes only, muted or breakthrough (dry_run previews) */
+        post: operations["mail_updates_source"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/whois": {
         parameters: {
             query?: never;
@@ -5850,29 +5901,42 @@ export interface components {
             sender_name?: string | null;
         };
         /**
-         * @description The Updates card: one item, whatever the count. An early version: a
-         *     count and the busiest sources from automated mail in the inbox, until
-         *     the twice-daily digest ships.
+         * @description The Updates card: the latest digest as one item, whatever the count:
+         *     its headline, up to three lines that need a look or changed, and how
+         *     much routine waits behind them.
          */
         NowUpdatesCardData: {
+            /** @description "08:00". */
+            cut_label?: string;
             early: boolean;
+            /** @description "1 needs a look, 2 changed. 23 routine from 9 sources." */
+            headline?: string;
+            /** @description "Let go of 31 updates from 12 sources; 2 also in To do stay there." */
+            let_go_line?: string | null;
             /** @description "23 updates from 9 sources. Most from GitHub, Vercel and Stripe." */
             line: string;
+            /** @description Up to three lines: Needs a look first, then Changed. */
+            lines?: components["schemas"]["UpdateLineData"][];
             /** Format: int32 */
             message_count: number;
+            /** @description "+23 routine", when routine or further lines wait in Updates. */
+            more_line?: string | null;
+            /** @description Pass to `LetGoDigest` so the card lets go of what it showed. */
+            selection_token?: string;
             /**
              * Format: date-time
-             * @description The card counts updates from here: the digest cut before the latest
-             *     one, never more than two days back.
+             * @description The digest's cut: the card holds what arrived by then.
              */
             since: string;
             /** Format: int32 */
             source_count: number;
             /**
-             * @description The card's threads, newest first: what letting go of the digest
-             *     (`SetModeDone` in Updates) acts on.
+             * @description The card's threads, newest first. Letting go of the digest is
+             *     `LetGoDigest` with `selection_token`.
              */
             thread_ids: components["schemas"]["ThreadId"][];
+            /** @description "This morning's digest". */
+            title?: string;
             /** @description The busiest three sources. */
             top_sources: components["schemas"]["NowUpdateSourceData"][];
         };
@@ -8296,6 +8360,30 @@ export interface components {
         } | {
             account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
+            cmd: "GetUpdatesDigest";
+            /** Format: date-time */
+            cut?: string | null;
+            expired?: boolean;
+            mark_seen?: boolean;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "LetGoDigest";
+            /** Format: date-time */
+            cut?: string | null;
+            dry_run?: boolean;
+            selection_token?: string | null;
+            source_key?: string | null;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "SetUpdateSource";
+            dry_run?: boolean;
+            setting: components["schemas"]["UpdateSourceSettingData"];
+            source: string;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
             cmd: "ListPlace";
             /**
              * Format: int32
@@ -9039,6 +9127,18 @@ export interface components {
             /** @enum {string} */
             kind: "Now";
             now: components["schemas"]["NowData"];
+        } | {
+            digest: components["schemas"]["UpdatesDigestData"];
+            /** @enum {string} */
+            kind: "UpdatesDigest";
+        } | {
+            /** @enum {string} */
+            kind: "UpdatesLetGo";
+            result: components["schemas"]["UpdatesLetGoData"];
+        } | {
+            change: components["schemas"]["UpdateSourceChangeData"];
+            /** @enum {string} */
+            kind: "UpdateSource";
         } | {
             /** @enum {string} */
             kind: "Rail";
@@ -10454,6 +10554,298 @@ export interface components {
         };
         /** @enum {string} */
         UnsubscribePurgeStatusData: "preview" | "unsubscribed" | "no_method" | "archive_only" | "failed";
+        /**
+         * @description A change computed by code against the previous message of the same
+         *     template, only when both numbers share a unit.
+         */
+        UpdateDeltaData: {
+            /** Format: date-time */
+            against: string;
+            /**
+             * Format: double
+             * @description Percent change; points for a percentage.
+             */
+            change: number;
+            previous_raw: string;
+            raw: string;
+            /** @description "up 12% on last week". */
+            text: string;
+        };
+        /** @description An update whose window closed: it never shows in a cut. */
+        UpdateExpiredData: {
+            account_id: components["schemas"]["AccountId"];
+            /** Format: date-time */
+            expired_at: string;
+            fact: string;
+            /** @description "one-time code", "sign-in alert", "offer", "verify link". */
+            kind: string;
+            message_id: components["schemas"]["MessageId"];
+            source_name: string;
+            thread_id: components["schemas"]["ThreadId"];
+        };
+        /**
+         * @description One line of the briefing: a source's latest fact per template, or one
+         *     tracker.
+         */
+        UpdateLineData: {
+            account_id: components["schemas"]["AccountId"];
+            /**
+             * Format: int32
+             * @description Messages the line folds.
+             */
+            count: number;
+            delta?: null | components["schemas"]["UpdateDeltaData"];
+            /**
+             * @description The fact, written by rules from the subject or the body's first
+             *     line: "Run failed: CI - main".
+             */
+            fact: string;
+            fact_message_id?: null | components["schemas"]["MessageId"];
+            /** @description "subject" or "body". */
+            fact_source: string;
+            /** @description Stable within a digest: source, template or tracker. */
+            id: string;
+            /** @description `updates_copy::IN_TODO` when `todo_id` is set. */
+            in_todo?: string | null;
+            /** Format: date-time */
+            latest_at: string;
+            latest_message_id?: null | components["schemas"]["MessageId"];
+            latest_thread_id?: null | components["schemas"]["ThreadId"];
+            link?: null | components["schemas"]["UpdateLinkData"];
+            message_ids?: components["schemas"]["MessageId"][];
+            numbers?: components["schemas"]["UpdateNumberData"][];
+            provenance?: components["schemas"]["UpdateProvenanceData"][];
+            section: components["schemas"]["UpdateSectionData"];
+            sender_email?: string;
+            setting: components["schemas"]["UpdateSourceSettingData"];
+            signal: components["schemas"]["UpdateSignalData"];
+            source_key: string;
+            /** @description "GitHub acme/api", "Strava". */
+            source_name: string;
+            /**
+             * @description Asked once a month at most: "You've let go of Strava 8 digests in a
+             *     row without opening it. Mute it, or changes only?"
+             */
+            suggestion?: string | null;
+            thread_ids?: components["schemas"]["ThreadId"][];
+            /** @description Only when the time is the fact (a sign-in, a failing build): "06:12". */
+            time_label?: string | null;
+            /** @description The open to-do this line already went to. */
+            todo_id?: string | null;
+            /**
+             * @description A sign-in alert, failed payment or delivery problem not yet in To
+             *     do: "Suggested to-do: new sign-in alert (rule). t adds it." mxr
+             *     never adds it for you.
+             */
+            todo_suggestion?: string | null;
+            /**
+             * @description What `t` prefills: "Check new sign-in to Google
+             *     (accounts.google.com)", the sending host beside the display name.
+             */
+            todo_title: string;
+            tracker?: null | components["schemas"]["UpdateTrackerData"];
+            /**
+             * @description "Here because: automated sender, not a person (rule). In the 08:00
+             *     digest."
+             */
+            why: string;
+        };
+        /** @description The one place a line opens with `L`. Never a pay link. */
+        UpdateLinkData: {
+            /** @description Shown before it opens: "github.com". */
+            domain: string;
+            url: string;
+        };
+        /** @description A number as the message quoted it. */
+        UpdateNumberData: {
+            /** @description Verbatim: "21.3 km", "R 4,210.00". */
+            raw: string;
+            /** @description "km", "run", "%" or an ISO currency code. */
+            unit: string;
+            /** Format: double */
+            value: number;
+        };
+        /** @description Where one field of a line came from. */
+        UpdateProvenanceData: {
+            /** @description "the subject", "21.3 km quoted from the body", "against 30 Sep". */
+            evidence: string;
+            /** @description "fact", "numbers", "delta", "window", "state", "link". */
+            field: string;
+            /** @description "rule", "schema", "code" or "default". */
+            source: string;
+        };
+        /**
+         * @description Where a line sits in the briefing. Sections never reorder.
+         * @enum {string}
+         */
+        UpdateSectionData: "needs_a_look" | "changed" | "routine";
+        /** @enum {string} */
+        UpdateSignalData: "routine" | "changed" | "new_source" | "anomaly" | "needs_you";
+        /** @description Body of `POST /api/v1/mail/updates/sources`. */
+        UpdateSourceBody: {
+            account_id?: string | null;
+            dry_run?: boolean;
+            setting: components["schemas"]["UpdateSourceSettingData"];
+            /** @description A source key as the digest names it, or a sender address. */
+            source: string;
+        };
+        /** @description Returned by `Request::SetUpdateSource`. */
+        UpdateSourceChangeData: {
+            account_id: components["schemas"]["AccountId"];
+            /** @description "Strava: only when something changes." */
+            copy: string;
+            dry_run: boolean;
+            /** @description What it was, for undo. */
+            prior: components["schemas"]["UpdateSourceSettingData"];
+            setting: components["schemas"]["UpdateSourceSettingData"];
+            source_key: string;
+        };
+        /**
+         * @description How a source is tuned with `K`.
+         * @enum {string}
+         */
+        UpdateSourceSettingData: "every_digest" | "changes_only" | "muted" | "breakthrough";
+        /** @description A thing with a state: a parcel, a build or an incident. */
+        UpdateTrackerData: {
+            delivery_id?: string | null;
+            /** @description "Arriving by Thu 8 Oct · DHL · 3 emails". */
+            detail?: string | null;
+            /** @description `parcel`, `build` or `incident`. */
+            kind: string;
+            /**
+             * @description `good` (ended well), `bad` (ended badly), `progress`, or `quiet`
+             *     (a parcel with no news for too long).
+             */
+            outcome: string;
+            /** @description As stored: "out_for_delivery", "failed", "resolved". */
+            state: string;
+            /** @description "out for delivery". */
+            state_label: string;
+            /** Format: int32 */
+            step?: number | null;
+            /** @description A parcel's steps, "ordered" to "delivered", and where it is. */
+            steps?: string[];
+        };
+        /** @description The cut a digest shows. */
+        UpdatesCutData: {
+            /** Format: date-time */
+            at: string;
+            /** @description Every cut of the day, from `updates.cuts`: ["08:00", "16:30"]. */
+            cuts: string[];
+            /** @description "08:00" in your zone. */
+            label: string;
+            /** Format: date-time */
+            next_at: string;
+            next_label: string;
+            /** Format: date-time */
+            previous_at: string;
+            /** @description "This morning's digest". */
+            title: string;
+        };
+        /** @description Returned by `Request::GetUpdatesDigest`. */
+        UpdatesDigestData: {
+            changed: components["schemas"]["UpdateLineData"][];
+            cut: components["schemas"]["UpdatesCutData"];
+            /** @description Set when the digest is empty: the never-had-any or the clear line. */
+            empty_state?: string | null;
+            /** @description With `expired: true`: every expired update still in the mode. */
+            expired?: components["schemas"]["UpdateExpiredData"][];
+            /** Format: int32 */
+            expired_count: number;
+            /** @description "3 expired since you last looked." */
+            expired_line?: string | null;
+            /** Format: date-time */
+            generated_at: string;
+            /** @description `updates_copy::HEADER`. */
+            header: string;
+            /**
+             * @description "2 changed, 1 needs a look. 23 routine from 9 sources." Empty when
+             *     the digest is.
+             */
+            headline: string;
+            /** @description "4 from muted sources, 2 from changes-only sources not shown." */
+            hidden_line?: string | null;
+            /**
+             * @description What letting go of this digest would do: "Let go of 31 updates from
+             *     12 sources; 2 also in To do stay there."
+             */
+            let_go_line?: string | null;
+            /**
+             * Format: int32
+             * @description Messages in the digest that are shown.
+             */
+            message_count: number;
+            /** Format: int32 */
+            muted_total: number;
+            needs_a_look: components["schemas"]["UpdateLineData"][];
+            routine: components["schemas"]["UpdateLineData"][];
+            /** @description Pass back to `LetGoDigest` so it acts only on what was shown. */
+            selection_token: string;
+            since: components["schemas"]["UpdatesSinceData"];
+            /** Format: int32 */
+            source_count: number;
+            /**
+             * Format: int32
+             * @description Sources seen in this account's Updates, and how many are muted.
+             */
+            source_total: number;
+        };
+        /** @description Body of `POST /api/v1/mail/updates/let-go`. */
+        UpdatesLetGoBody: {
+            /** @description Omitted: every account. */
+            account_id?: string | null;
+            /**
+             * Format: date-time
+             * @description The cut the digest showed; the latest when omitted.
+             */
+            cut?: string | null;
+            /** @description Preview only; nothing changes. */
+            dry_run?: boolean;
+            /** @description From the digest or the dry run: the run refuses if the cut changed. */
+            selection_token?: string | null;
+            /** @description One source only. */
+            source_key?: string | null;
+        };
+        /** @description Returned by `Request::LetGoDigest`. */
+        UpdatesLetGoData: {
+            /** Format: date-time */
+            cut_at: string;
+            dry_run: boolean;
+            /**
+             * Format: int32
+             * @description Of those, hidden from the digest by tuning or past their window.
+             */
+            hidden_count: number;
+            /**
+             * Format: int32
+             * @description Threads To do also holds: they stay in the inbox.
+             */
+            in_todo_count: number;
+            /** @description One per thread, as `SetModeDone` reports it. */
+            items: components["schemas"]["ModeDoneOutcomeData"][];
+            /** @description "Let go of 31 updates from 12 sources; 2 also in To do stay there." */
+            line: string;
+            /** Format: int32 */
+            message_count: number;
+            message_ids: components["schemas"]["MessageId"][];
+            mutation_id?: string | null;
+            selection_token: string;
+            /** Format: int32 */
+            source_count: number;
+            thread_ids: components["schemas"]["ThreadId"][];
+            undo_unavailable?: boolean;
+        };
+        /** @description What arrived after the cut: always current, quiet and uncounted. */
+        UpdatesSinceData: {
+            /** @description "arriving for 16:30". */
+            label: string;
+            /** @description One line per source, newest first. */
+            lines: components["schemas"]["UpdateLineData"][];
+            /** Format: int32 */
+            message_count: number;
+            /** Format: int32 */
+            source_count: number;
+        };
         UserVoiceProfileData: {
             account_id: components["schemas"]["AccountId"];
             /** Format: double */
@@ -15093,6 +15485,111 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ResponseData"];
                 };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_updates_digest: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description A past cut, RFC3339; the latest when omitted */
+                cut?: string;
+                /** @description Record that Updates was opened */
+                mark_seen?: boolean;
+                /** @description List every update past its window */
+                expired?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `UpdatesDigest` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_updates_let_go: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatesLetGoBody"];
+            };
+        };
+        responses: {
+            /** @description The `UpdatesLetGo` variant, with the undo id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_updates_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSourceBody"];
+            };
+        };
+        responses: {
+            /** @description The `UpdateSource` variant, with the prior setting for undo */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description No source named */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Missing or invalid bridge token */
             401: {

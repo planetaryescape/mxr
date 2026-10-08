@@ -556,7 +556,8 @@ mod tests {
         assert_eq!(mode_guide("messages").map(|g| g.mode), Some("messages"));
         assert_eq!(mode_guide("Archive").map(|g| g.mode), Some("archive"));
         assert_eq!(mode_guide("Updates").map(|g| g.mode), Some("updates"));
-        assert!(mode_guide("reading").is_none());
+        assert_eq!(mode_guide("Reading").map(|g| g.mode), Some("reading"));
+        assert!(mode_guide("paper trail").is_none());
     }
 
     #[test]

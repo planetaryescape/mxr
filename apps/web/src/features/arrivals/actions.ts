@@ -20,7 +20,7 @@ export const arrivalActions: Action[] = [
     shortcut: "X",
     group: "Triage",
     icon: Shuffle,
-    scopes: ["now", "messages", "list", "reader", "place"],
+    scopes: ["now", "messages", "list", "reader", "place", "updates", "reading"],
   },
   {
     id: "modes.move-sender",

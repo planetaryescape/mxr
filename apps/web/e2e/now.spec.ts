@@ -104,8 +104,10 @@ test("e in Messages leaves the to-do open, says where it still is, and u undoes 
   // Messages names the other mode holding the thread.
   await expect(sam.getByTestId("also-in")).toContainText("Also in To do:");
   await page.keyboard.press("e");
-  // What was done, what opened next, then where the thread still is.
-  const toast = page.locator("[data-sonner-toast]").filter({ hasText: /^Done (with|: )/ });
+  // What was done, what opened next, then where the thread still is. Once
+  // contacts refresh, Sam has a second thread in Messages (the demo's
+  // never-bury newsletter), so the toast names the thread, not the person.
+  const toast = page.locator("[data-sonner-toast]").filter({ hasText: /^Done( with|:) / });
   await expect(toast).toContainText("Still in To do");
   // The to-do is still open, and the thread is out of Messages only.
   const after = await modesOf(page, thread);
@@ -273,6 +275,10 @@ test.describe("on a phone", () => {
     await page.getByRole("link", { name: "Now" }).click();
     const card = page.getByTestId("now-section-updates");
     await expect(card).toBeVisible();
+    // The arrivals line pushes the card to the foot of a phone. Pressing a
+    // row selects it and scrolls it fully into view, which moves the link
+    // between mouse down and up and loses the click: bring it in first.
+    await card.evaluate((element) => element.scrollIntoView({ block: "center" }));
     await card.getByRole("link", { name: /Open/ }).click();
     await expect(page).toHaveURL(/\/updates$/);
   });

@@ -7,6 +7,8 @@
 import type { PlaceBundle, PlaceMessage } from "@/features/places/api";
 import type { NowItem } from "@/features/now/nowItems";
 import { bundleSender } from "@/features/places/placeCopy";
+import type { EditionEntry } from "@/features/reading/readingView";
+import type { UpdateLine } from "@/features/updates/api";
 
 import { answerPendingSenderAsk, openMovePicker, type MoveSubject } from "./moves";
 
@@ -47,6 +49,23 @@ export function placeMoveSubject(bundle: PlaceBundle, message?: PlaceMessage): M
     messageId: email.message_id,
     label: email.subject || "(no subject)",
     senderLabel: bundleSender(bundle),
+  };
+}
+
+/** An Updates line stands for its newest email; `K` stays "tune this source". */
+export function updateMoveSubject(line: UpdateLine): MoveSubject | null {
+  const messageId = line.latest_message_id ?? line.fact_message_id;
+  if (!messageId) return null;
+  return { messageId, label: line.source_name, senderLabel: line.source_name };
+}
+
+/** A Reading item, or the issue a digest link came from. */
+export function readingMoveSubject(entry: EditionEntry): MoveSubject | null {
+  const item = entry.kind === "item" ? entry.item : entry.parent;
+  return {
+    messageId: item.message_id,
+    label: entry.kind === "item" ? item.title : entry.link.title,
+    senderLabel: item.source || item.sender_email,
   };
 }
 

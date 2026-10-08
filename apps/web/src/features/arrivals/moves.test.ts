@@ -18,7 +18,7 @@ interface ToastOptions {
 const toastMock = vi.hoisted(() => ({
   success: vi.fn<(message: string, options?: ToastOptions) => void>(),
   error: vi.fn<(...args: unknown[]) => void>(),
-  info: vi.fn<(...args: unknown[]) => void>(),
+  info: vi.fn<(message: string, options?: ToastOptions) => void>(),
   dismiss: vi.fn<(...args: unknown[]) => void>(),
 }));
 vi.mock("sonner", () => ({ toast: toastMock }));

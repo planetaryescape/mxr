@@ -27,7 +27,7 @@ use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
     arrivals_copy, ArrivalBucketData, ArrivalCountData, ArrivalItemData, ArrivalListData,
     ArrivalsData, CorrectionData, DaemonEvent, KindRuleData, ModeKindData, MoveChoiceData,
-    MoveOutcomeData, NotSureData, ResponseData, SenderKindData,
+    MoveOutcomeData, NotSureData, Request, ResponseData, SenderKindData,
 };
 use mxr_store::{
     ArrivalPlacement, ArrivalRow, Correction, DeskMessage, NewCorrection, ScreenerDisposition,
@@ -352,6 +352,52 @@ where
 /// counts.
 fn until_of(now: DateTime<Utc>) -> DateTime<Utc> {
     now + Duration::seconds(1)
+}
+
+/// Serve an arrivals request. `dispatch` calls this boxed, once, for every
+/// arrivals variant, so none of their futures sit in its poll frame.
+pub(super) async fn handle(state: &AppState, req: &Request) -> HandlerResult {
+    match req {
+        Request::GetArrivals {
+            account_id,
+            mark_seen,
+        } => get_arrivals(state, account_id.as_ref(), *mark_seen).await,
+        Request::ListArrivals {
+            account_id,
+            bucket,
+            since,
+            until,
+            limit,
+        } => list_arrivals(state, account_id.as_ref(), *bucket, *since, *until, *limit).await,
+        Request::GetArrivalModes { message_ids } => get_arrival_modes(state, message_ids).await,
+        Request::MoveMessage {
+            message_id,
+            mode,
+            sender,
+            dry_run,
+            source,
+        } => {
+            Box::pin(move_message(
+                state,
+                MoveRequest {
+                    message_id,
+                    mode: *mode,
+                    sender: *sender,
+                    dry_run: *dry_run,
+                    source: source.as_deref(),
+                },
+            ))
+            .await
+        }
+        Request::UndoMove { correction_id } => Box::pin(undo_move(state, *correction_id)).await,
+        Request::ListCorrections { account_id, limit } => {
+            list_corrections(state, account_id.as_ref(), *limit).await
+        }
+        _ => Err(HandlerError::from(format!(
+            "not an arrivals request: {}",
+            super::request_kind(req)
+        ))),
+    }
 }
 
 pub(super) async fn get_arrivals(

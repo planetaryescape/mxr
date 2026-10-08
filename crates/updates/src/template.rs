@@ -110,7 +110,7 @@ static MASKS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
 });
 
 /// The subject with everything that varies between two messages of the
-/// same kind masked, lowercased: "your week: <n> runs, <n> km".
+/// same kind masked, lowercased: `"your week: <n> runs, <n> km"`.
 pub fn template_key(subject: &str) -> String {
     let mut text = PREFIX.replace(subject, "").to_string();
     loop {

@@ -328,18 +328,20 @@ jobs:
           cd artifacts
           sha256sum -c ./*.sha256
 
-      - uses: softprops/action-gh-release@v3.0.3
-        if: needs.build-binaries.result == 'success'
-        with:
-          body_path: CHANGELOG_RELEASE.md
-          files: artifacts/*
-          generate_release_notes: false
-
-      - uses: softprops/action-gh-release@v3.0.3
-        if: needs.build-binaries.result == 'skipped'
-        with:
-          body_path: CHANGELOG_RELEASE.md
-          generate_release_notes: false
+      # release-please creates the release as a draft (release-please-config.json),
+      # so nothing is visible or Latest until the last command of this script,
+      # after every asset is uploaded and size-checked. A failed run leaves a
+      # draft; re-running it finishes the job (docs/blueprint/17-release-pipeline.md).
+      - name: Upload assets, then publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_ARTIFACTS: ${{ needs.build-binaries.result == 'success' }}
+        run: |
+          if [ "${HAS_ARTIFACTS}" = "true" ]; then
+            bash ./scripts/publish_github_release.sh "${GITHUB_REF_NAME}" CHANGELOG_RELEASE.md artifacts
+          else
+            bash ./scripts/publish_github_release.sh "${GITHUB_REF_NAME}" CHANGELOG_RELEASE.md
+          fi
 
   # Docs auto-deploy to Vercel on push (mxr-mail.vercel.app)
 

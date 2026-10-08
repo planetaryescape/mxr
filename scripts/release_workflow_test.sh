@@ -47,4 +47,19 @@ if grep -Fq 'exit 1' <<<"$notary_block"; then
     exit 1
 fi
 
+# A release must stay a draft until its assets are attached: release-please makes
+# the draft and release.yml publishes it only via the upload-then-publish script.
+if ! grep -Fq '"draft": true' release-please-config.json || ! grep -Fq '"force-tag-creation": true' release-please-config.json; then
+    echo "release-please must create releases as drafts and still create the tag." >&2
+    exit 1
+fi
+if grep -Fq 'softprops/action-gh-release' "$workflow"; then
+    echo "Release workflow must publish through scripts/publish_github_release.sh, not an action that publishes before assets exist." >&2
+    exit 1
+fi
+if ! grep -Fq 'scripts/publish_github_release.sh' "$workflow"; then
+    echo "Release workflow must publish through scripts/publish_github_release.sh." >&2
+    exit 1
+fi
+
 echo "release_workflow_test: ok"

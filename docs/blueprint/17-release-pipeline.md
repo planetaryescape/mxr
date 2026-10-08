@@ -3,7 +3,7 @@
 > This document covers the full CI/CD pipeline: PR checks, release automation, scoped binary builds, Homebrew, changelog generation, and docs build checks.
 
 > **Current state note (v1 launch)**
-> The live release flow is: pushes to `main` run `release-please`, merged release PRs create `vX.Y.Z` tags, and tag pushes run [.github/workflows/release.yml](../../.github/workflows/release.yml). Artifact builds are scoped by [scripts/release_change_scope.sh](../../scripts/release_change_scope.sh): CLI-affecting tags build macOS Apple Silicon and Linux x86_64 archives, create the GitHub Release, and update the `planetaryescape/homebrew-mxr` tap; docs-only or version-only tags create the GitHub Release/changelog but skip binary artifacts and Homebrew. Supported Cargo installs are `cargo install --git ...` and `cargo install --path .`; crates.io publication is no longer part of the current release model. The web app is embedded into the CLI release binary. The docs site is built in CI and deployed by Vercel on pushes to `main`, not by the release workflow. macOS signing and notarization are optional for v1; when Apple secrets are absent, the workflow ships unsigned macOS binaries and users may see Gatekeeper friction. Read the checked-in workflows as the source of truth; the sections below include historical design context and earlier release-shape examples.
+> The live release flow is: pushes to `main` run `release-please`, merged release PRs create the `vX.Y.Z` tag and a draft GitHub Release, and tag pushes run [.github/workflows/release.yml](../../.github/workflows/release.yml). Artifact builds are scoped by [scripts/release_change_scope.sh](../../scripts/release_change_scope.sh): CLI-affecting tags build macOS Apple Silicon and Linux x86_64 archives, upload them to that draft, publish it as Latest, and update the `planetaryescape/homebrew-mxr` tap; docs-only or version-only tags publish the GitHub Release/changelog (not marked Latest) but skip binary artifacts and Homebrew. Supported Cargo installs are `cargo install --git ...` and `cargo install --path .`; crates.io publication is no longer part of the current release model. The web app is embedded into the CLI release binary. The docs site is built in CI and deployed by Vercel on pushes to `main`, not by the release workflow. macOS signing and notarization are optional for v1; when Apple secrets are absent, the workflow ships unsigned macOS binaries and users may see Gatekeeper friction. Read the checked-in workflows as the source of truth; the sections below include historical design context and earlier release-shape examples.
 
 ---
 
@@ -56,9 +56,25 @@ Releases are triggered by a `v{version}` tag, and the tag comes from release-ple
 
 `release-please.yml` only runs the release-please job when `scripts/release_change_scope.sh` finds artifact-affecting changes since the last tag, or when the pushed commit is a merged release PR. A run of `feat:` commits that only touch docs therefore produces no release PR. The job uses `RELEASE_PLEASE_TOKEN`, a PAT, so the tag push fires `release.yml`; tags created with the default `GITHUB_TOKEN` do not trigger other workflows. If that PAT expires, the `release-please.yml` run on `main` fails and the release PR stops updating; the change PR itself stays green, so this is easy to miss. If a tag ever exists without a `release.yml` run, dispatch `release.yml` on the existing tag instead of re-tagging.
 
-The tag always creates or updates a GitHub Release. When the scoped diff affects CLI artifacts, the same workflow also builds binaries and updates Homebrew.
+release-please creates the GitHub Release as a draft (`"draft": true` in `release-please-config.json`). A draft has no tag on GitHub until it is published, so the config also sets `"force-tag-creation": true`: release-please pushes the tag itself with the PAT (which starts `release.yml`) and leaves the release unpublished. `releases/latest`, `install.sh` and the Homebrew tap only ever see a release after `release.yml` publishes it.
 
-For docs-only or version-only tags, `scripts/release_change_scope.sh` sets `cli_changed=false` and `has_artifacts=false`. Those tags still get a GitHub Release and changelog, but they do not build tarballs or update the Homebrew tap.
+The last step of the `github-release` job runs [scripts/publish_github_release.sh](../../scripts/publish_github_release.sh). It finds the draft for the tag (creating one with `gh release create --draft --verify-tag` if release-please has not), refreshes the notes, runs `gh release upload --clobber`, checks that every archive and `.sha256` is attached with the right size, and only then runs `gh release edit --draft=false --latest`. The job only starts after `release-smoke` and `build-binaries` pass, and `homebrew` needs `github-release`, so the tap is updated only for a published release.
+
+When the scoped diff affects CLI artifacts, the same workflow also builds binaries and updates Homebrew.
+
+For docs-only or version-only tags, `scripts/release_change_scope.sh` sets `cli_changed=false` and `has_artifacts=false`. Those tags still get a GitHub Release and changelog, but they do not build tarballs or update the Homebrew tap. They are published with `--latest=false`, so `releases/latest` keeps pointing at the newest release that has tarballs.
+
+### What a failed release run leaves behind
+
+| Failure | State left | Recovery |
+| --- | --- | --- |
+| `plan`, `release-smoke` or a `build-binaries` leg fails | Tag and draft release exist; no assets; not visible, not Latest. The previous release stays Latest. | Fix forward, then re-run the failed jobs (`gh run rerun <id> --failed`). If the cause is in the code, ship a fix as the next version (release-please opens the next PR); the stale draft can be deleted with `gh release delete vX.Y.Z` (never `--cleanup-tag`: tags are release-please's). |
+| Upload or the asset check in `github-release` fails | Draft with zero or some assets; not visible. | Re-run the failed job. Upload uses `--clobber` and only ever touches a draft, so it converges. |
+| `gh release edit --draft=false` fails | Draft with all assets. | Re-run the failed job. |
+| `homebrew` fails | Release is published with all assets and Latest; tap is stale. | Re-run the failed `homebrew` job. It only reads the artifacts and the published release. |
+| A full workflow re-run after a successful publish | Nothing changes: the script sees a published release, confirms its assets and exits. A published release that is missing assets is never modified; ship a new version. | None needed. |
+
+If no `release.yml` run exists for a tag, dispatch it on the existing tag (`gh workflow run release.yml --ref vX.Y.Z`); the script reuses the draft.
 
 ### Pre-release checklist
 
@@ -609,14 +625,16 @@ the tag (for example `v0.5.47`) matches `workspace.package.version` in
 3. release-please.yml opens or updates the release PR (version bump in
    Cargo.toml, Cargo.lock, manifest, CHANGELOG.md)
 4. Developer merges the release PR (gh pr merge --squash --admin)
-5. release-please pushes vX.Y.Z using RELEASE_PLEASE_TOKEN (no manual tag,
-   version bump or changelog step)
+5. release-please pushes vX.Y.Z using RELEASE_PLEASE_TOKEN and creates the
+   GitHub Release as a draft (no manual tag, version bump or changelog step)
 6. Tag push triggers release.yml:
    a. Verify tag version matches Cargo.toml version
    b. If CLI artifacts changed, build Linux x86_64 and macOS Apple Silicon binaries
    c. Generate SHA256 checksums
-   d. Create GitHub Release with binaries, checksums, and changelog
-   e. If CLI artifacts changed, update Homebrew formula
+   d. Upload binaries and checksums to the draft release, verify them,
+      then publish it as Latest with the changelog (the only moment it
+      becomes visible)
+   e. If CLI artifacts changed, update Homebrew formula (after publication)
 7. Done. Users can now:
    - cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
    - brew install planetaryescape/mxr/mxr

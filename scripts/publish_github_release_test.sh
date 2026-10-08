@@ -21,6 +21,7 @@ case "$1 $2" in
     [[ -f "$FAKE/lookup_error" ]] && { echo "HTTP 502" >&2; exit 1; }
     [[ "$state" == absent ]] && { echo "release not found" >&2; exit 1; }
     if [[ "$*" == *isDraft* ]]; then [[ "$state" == draft ]] && echo true || echo false
+    elif [[ -f "$FAKE/asset_lookup_error" ]]; then echo "HTTP 502" >&2; exit 1
     else for f in "$FAKE"/assets/*; do [[ -e "$f" ]] && echo "$(basename "$f") $(cat "$f")"; done; true; fi ;;
   "release create") echo draft > "$FAKE/state" ;;
   "release edit")
@@ -42,6 +43,7 @@ case "$1 $2" in
       cp "$a" "$FAKE/content/$n"
     done ;;
   "release download")
+    [[ -f "$FAKE/download_error" ]] && { echo "HTTP 502" >&2; exit 1; }
     while [[ $# -gt 0 ]]; do [[ "$1" == --dir ]] && dir="$2"; shift; done
     cp "$FAKE"/content/*.sha256 "$dir"/ ;;
   *) echo "unexpected gh call: $*" >&2; exit 1 ;;
@@ -112,6 +114,14 @@ setup published
 publish_same; printf 'xyz' > "$FAKE/content/mxr-v1-linux.tar.gz.sha256"
 ! run "$work/art" >/dev/null 2>&1 || fail "checksum mismatch on published release did not fail"
 ! grep -Eq 'release (edit|upload|create)' "$FAKE/log" || fail "checksum mismatch: mutated"
+
+# 6c. published rerun where the asset lookup or the checksum download fails: must fail, never report success.
+for flag in asset_lookup_error download_error; do
+  setup published; publish_same; touch "$FAKE/$flag"
+  out="$(PATH="$work/bin:$PATH" bash "$script" v1 "$work/notes.md" "$work/art" 2>&1)" && fail "$flag: script succeeded"
+  grep -q 'nothing to do' <<<"$out" && fail "$flag: reported success"
+  ! grep -Eq 'release (edit|upload|create)' "$FAKE/log" || fail "$flag: mutated"
+done
 
 # 7. already published but incomplete: fail, no mutation.
 setup published

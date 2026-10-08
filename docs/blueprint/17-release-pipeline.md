@@ -66,6 +66,8 @@ For docs-only or version-only tags, `scripts/release_change_scope.sh` sets `cli_
 
 ### What a failed release run leaves behind
 
+A run that fails before publication leaves a draft. A re-run on an already published release is different: it writes nothing and fails on purpose when its rebuilt checksums differ from the published ones (or when the asset or checksum lookup fails), leaving the published release untouched and Homebrew not updated.
+
 | Failure | State left | Recovery |
 | --- | --- | --- |
 | `plan`, `release-smoke` or a `build-binaries` leg fails | Tag and draft release exist; no assets; not visible, not Latest. The previous release stays Latest. | Fix forward, then re-run the failed jobs (`gh run rerun <id> --failed`). If the cause is in the code, ship a fix as the next version (release-please opens the next PR); the stale draft can be deleted with `gh release delete vX.Y.Z` (never `--cleanup-tag`: tags are release-please's). |

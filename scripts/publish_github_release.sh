@@ -41,10 +41,15 @@ fi
 
 file_size() { wc -c < "$1" | tr -d ' '; }
 
+# Both verify_* functions run under `if !`, which disables `set -e` inside
+# them, so every command here checks its own status.
 # Fails with a message naming each asset that is missing or the wrong size.
 verify_assets() {
   local remote missing=0 f name size
-  remote="$(gh release view "$tag" --json assets --jq '.assets[] | "\(.name) \(.size)"')"
+  remote="$(gh release view "$tag" --json assets --jq '.assets[] | "\(.name) \(.size)"')" || {
+    echo "could not list assets of $tag" >&2
+    return 1
+  }
   for f in "${assets[@]}"; do
     name="$(basename "$f")"
     size="$(file_size "$f")"
@@ -59,11 +64,16 @@ verify_assets() {
 # Compares the published .sha256 contents with this run's local ones.
 verify_published_checksums() {
   local dl bad=0 f name
-  dl="$(mktemp -d)"
-  gh release download "$tag" --pattern '*.sha256' --dir "$dl"
+  dl="$(mktemp -d)" || return 1
+  if ! gh release download "$tag" --pattern '*.sha256' --dir "$dl"; then
+    echo "could not download published checksums of $tag" >&2
+    rm -rf "$dl"
+    return 1
+  fi
   for f in "${assets[@]}"; do
     name="$(basename "$f")"
     [[ "$name" == *.sha256 ]] || continue
+    # cmp -s also fails when the published file is absent, which is a mismatch.
     if ! cmp -s "$f" "$dl/$name"; then
       echo "checksum differs from the published $name" >&2
       bad=1

@@ -102,6 +102,13 @@ export function AppShell() {
     retry: false,
     staleTime: 60_000,
   });
+  const noAccounts = accounts.data?.accounts.length === 0;
+  const [keepOnboardingFrame, setKeepOnboardingFrame] = useState(false);
+  if (path === "/onboarding" && noAccounts && !keepOnboardingFrame) {
+    setKeepOnboardingFrame(true);
+  } else if (path !== "/onboarding" && !noAccounts && keepOnboardingFrame) {
+    setKeepOnboardingFrame(false);
+  }
 
   useEffect(() => {
     // A target with a query string ("/focus?from=...") goes by href, which
@@ -142,6 +149,29 @@ export function AppShell() {
   const mountDialogs = useOnceTrue(mailDialog);
   const mountHelp = useOnceTrue(helpOpen);
   const mountPromises = useOnceTrue(promiseOffered);
+
+  // With no account, every mail action fails ("No runtime account
+  // configured"), so the shell offers only the way to add one. Hooks stay
+  // above this return; the help dialog still opens on `?`.
+  // Keep this frame until onboarding navigates away: saving the first account
+  // refetches the list before step 4 has finished.
+  if (noAccounts || (keepOnboardingFrame && path === "/onboarding")) {
+    return (
+      <div className="flex h-dvh min-h-0 flex-col bg-background">
+        <header className="flex h-12 shrink-0 items-center border-b border-border px-6">
+          <span className="font-mono text-sm font-semibold">mxr</span>
+        </header>
+        <main id="main" className="flex min-h-0 flex-1 flex-col">
+          <ErrorBoundary resetKey={path}>
+            <Outlet />
+          </ErrorBoundary>
+        </main>
+        <Suspense fallback={null}>
+          {mountHelp ? <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} /> : null}
+        </Suspense>
+      </div>
+    );
+  }
 
   return (
     <>

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Check, CheckCircle2, Mail, Server } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -265,16 +265,22 @@ export function OnboardingRoute() {
             />
             <Text
               label="Email"
+              autoComplete="email"
               value={imap.email}
               onChange={(nextEmail) => setImap({ ...imap, email: nextEmail })}
             />
+          </div>
+          <fieldset className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
+            <legend className="col-span-full mb-1 text-xs font-medium">Incoming mail (IMAP)</legend>
             <Text
               label="IMAP host"
+              hint="Usually imap.yourprovider.com"
               value={imap.imapHost}
               onChange={(imapHost) => setImap({ ...imap, imapHost })}
             />
             <NumberField
               label="IMAP port"
+              hint="Usually 993"
               value={imap.imapPort}
               onChange={(imapPort) => setImap({ ...imap, imapPort })}
             />
@@ -283,28 +289,38 @@ export function OnboardingRoute() {
               value={imap.imapMaxConnections}
               onChange={(imapMaxConnections) => setImap({ ...imap, imapMaxConnections })}
             />
+          </fieldset>
+          <fieldset className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
+            <legend className="col-span-full mb-1 text-xs font-medium">Outgoing mail (SMTP)</legend>
             <Text
               label="SMTP host"
+              hint="Usually smtp.yourprovider.com"
               value={imap.smtpHost}
               onChange={(smtpHost) => setImap({ ...imap, smtpHost })}
             />
             <NumberField
               label="SMTP port"
+              hint="Usually 587"
               value={imap.smtpPort}
               onChange={(smtpPort) => setImap({ ...imap, smtpPort })}
             />
+          </fieldset>
+          <fieldset className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
+            <legend className="col-span-full mb-1 text-xs font-medium">Sign in</legend>
             <Text
               label="Username"
+              autoComplete="username"
               value={imap.username}
               onChange={(username) => setImap({ ...imap, username })}
             />
             <Text
               label="Password"
               type="password"
+              autoComplete="current-password"
               value={imap.password}
               onChange={(password) => setImap({ ...imap, password })}
             />
-          </div>
+          </fieldset>
           <div className="mt-4 flex gap-2">
             <Button
               size="sm"
@@ -445,21 +461,41 @@ const providerTiles = [
   },
 ];
 
+// The label must name its input, or a screen reader announces "edit text"
+// with no hint of which field it is.
 function Text({
   label,
   value,
   onChange,
   type = "text",
+  autoComplete,
+  hint,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
+  autoComplete?: string;
+  hint?: string;
 }) {
+  const id = useId();
+  const hintId = `${id}-hint`;
   return (
     <div className="space-y-1">
-      <Label>{label}</Label>
-      <Input type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        type={type}
+        value={value}
+        autoComplete={autoComplete}
+        aria-describedby={hint ? hintId : undefined}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {hint ? (
+        <p id={hintId} className="text-2xs text-muted-foreground">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -468,19 +504,31 @@ function NumberField({
   label,
   value,
   onChange,
+  hint,
 }: {
   label: string;
   value: number;
   onChange: (value: number) => void;
+  hint?: string;
 }) {
+  const id = useId();
+  const hintId = `${id}-hint`;
   return (
     <div className="space-y-1">
-      <Label>{label}</Label>
+      <Label htmlFor={id}>{label}</Label>
       <Input
+        id={id}
         type="number"
+        inputMode="numeric"
         value={value}
+        aria-describedby={hint ? hintId : undefined}
         onChange={(event) => onChange(Number(event.target.value))}
       />
+      {hint ? (
+        <p id={hintId} className="text-2xs text-muted-foreground">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -73,6 +73,9 @@ function threadIdInPath(parts: string[]): string | undefined {
 
 function useBreadcrumb(path: string, search: string): Crumb[] {
   const shell = useShellQuery();
+  // Every real route is a child of the root, so a root-only match list means
+  // no route matched and the path is just noise in the crumb.
+  const unmatched = useRouterState({ select: (s) => s.matches.length <= 1 });
   const parts = path
     .split("/")
     .filter(Boolean)
@@ -84,6 +87,7 @@ function useBreadcrumb(path: string, search: string): Crumb[] {
     queryFn: () => fetchThread(openThreadId ?? ""),
     enabled: false,
   });
+  if (unmatched) return [{ label: "Not found" }];
   const subject = thread.data?.thread.subject || "Conversation";
   if (parts[0] === "m") {
     const lenses = lensesFromShell(shell.data);

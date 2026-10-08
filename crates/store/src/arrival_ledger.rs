@@ -440,10 +440,11 @@ impl super::Store {
 
     /// Undoing a sender move lets the email moves it overrode stand again.
     pub async fn restore_superseded_moves(&self, correction_id: i64) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query("UPDATE arrivals SET superseded_by = NULL WHERE superseded_by = ?1")
-            .bind(correction_id)
-            .execute(self.writer())
-            .await?;
+        let result =
+            sqlx::query("UPDATE arrivals SET superseded_by = NULL WHERE superseded_by = ?1")
+                .bind(correction_id)
+                .execute(self.writer())
+                .await?;
         Ok(result.rows_affected())
     }
 

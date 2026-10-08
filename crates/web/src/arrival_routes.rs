@@ -76,9 +76,7 @@ async fn list_arrivals(
     let bucket = parse_bucket(query.bucket.as_deref())?;
     if let (Some(since), Some(until)) = (query.since, query.until) {
         if until <= since {
-            return Err(BridgeError::BadRequest(
-                "until must be after since".into(),
-            ));
+            return Err(BridgeError::BadRequest("until must be after since".into()));
         }
     }
     let response = dispatch(

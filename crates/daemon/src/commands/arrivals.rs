@@ -345,9 +345,8 @@ fn render_corrections(
             out
         }
         OutputFormat::Csv => {
-            let mut out = String::from(
-                "id,created_at,scope,message_id,sender,from,to,rule,source,undone\n",
-            );
+            let mut out =
+                String::from("id,created_at,scope,message_id,sender,from,to,rule,source,undone\n");
             for c in corrections {
                 let _ = writeln!(
                     out,
@@ -387,7 +386,11 @@ fn render_corrections(
                     c.from_mode,
                     c.to_mode,
                     c.source,
-                    if c.undone_at.is_some() { ", undone" } else { "" }
+                    if c.undone_at.is_some() {
+                        ", undone"
+                    } else {
+                        ""
+                    }
                 );
             }
             out

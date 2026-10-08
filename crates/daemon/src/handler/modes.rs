@@ -403,7 +403,8 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
 /// The thread's shape, by the rule the lanes and Messages use.
 fn shape_of(inputs: &PlaceInputs<'_>) -> Shape {
     let person_sender = |m: &DeskMessage| {
-        mail_kind::classify(&signals(m, inputs.senders, inputs.is_self)).kind == mail_kind::SenderKind::Person
+        mail_kind::classify(&signals(m, inputs.senders, inputs.is_self)).kind
+            == mail_kind::SenderKind::Person
     };
     let human =
         |email: &str| human_address(email, &inputs.senders.contacts, &inputs.senders.screener);
@@ -434,7 +435,8 @@ fn quiet<'a>(inputs: &PlaceInputs<'a>) -> Option<&'a DeskMessage> {
         .iter()
         .filter(|m| m.in_inbox && !m.trashed && !is_outbound(m, inputs.is_self))
         .filter(|m| {
-            mail_kind::classify(&signals(m, inputs.senders, inputs.is_self)).kind == mail_kind::SenderKind::Person
+            mail_kind::classify(&signals(m, inputs.senders, inputs.is_self)).kind
+                == mail_kind::SenderKind::Person
         })
         .max_by_key(|m| (m.date, m.seq))
 }

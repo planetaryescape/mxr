@@ -120,10 +120,7 @@ async fn arrival_routes_forward_their_requests() {
             ..
         } if source == "not_sure"
     ));
-    assert!(matches!(
-        &seen[6],
-        Request::UndoMove { correction_id: 42 }
-    ));
+    assert!(matches!(&seen[6], Request::UndoMove { correction_id: 42 }));
     assert!(matches!(
         &seen[7],
         Request::ListCorrections {

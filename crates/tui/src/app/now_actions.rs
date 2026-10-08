@@ -215,8 +215,9 @@ impl App {
             // answered with a mode's key.
             NowTarget::Arrivals => {}
             NowTarget::NotSure { .. } => {
-                self.status_message =
-                    Some("Answer with m Messages, x To do, u Updates, r Reading or e Archive".into());
+                self.status_message = Some(
+                    "Answer with m Messages, x To do, u Updates, r Reading or e Archive".into(),
+                );
             }
             NowTarget::Person { thread_id, .. } => {
                 self.queue_mode_done(ModeKindData::Messages, thread_id);
@@ -399,8 +400,9 @@ impl App {
         // `g` letter, before e, u and r mean done, undo and reply.
         if plain && matches!(self.selected_now_row(), Some(NowRow::NotSure(_))) {
             if let KeyCode::Char(c) = key.code {
-                if let Some((_, mode)) =
-                    crate::app::MOVE_CHOICES.iter().find(|(letter, _)| *letter == c)
+                if let Some((_, mode)) = crate::app::MOVE_CHOICES
+                    .iter()
+                    .find(|(letter, _)| *letter == c)
                 {
                     return Some(Action::NowAnswerNotSure(*mode));
                 }

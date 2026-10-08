@@ -48,12 +48,30 @@ async fn mail(
 }
 
 async fn inbound(fx: &Fixture, from: &str, list: bool) -> Envelope {
-    mail(fx, &ThreadId::new(), from, &[ME], &[], list, Duration::minutes(5)).await
+    mail(
+        fx,
+        &ThreadId::new(),
+        from,
+        &[ME],
+        &[],
+        list,
+        Duration::minutes(5),
+    )
+    .await
 }
 
 /// You once wrote to `email`, so the contacts table knows it.
 async fn wrote_to(fx: &Fixture, email: &str) {
-    mail(fx, &ThreadId::new(), ME, &[email], &[], false, Duration::days(20)).await;
+    mail(
+        fx,
+        &ThreadId::new(),
+        ME,
+        &[email],
+        &[],
+        false,
+        Duration::days(20),
+    )
+    .await;
     fx.state.store.refresh_contacts().await.unwrap();
 }
 
@@ -65,7 +83,9 @@ async fn line(fx: &Fixture) -> ArrivalsData {
         .set_mode_viewed("arrivals:since", now - Duration::hours(1))
         .await
         .unwrap();
-    arrivals_at(&fx.state, None, false, now, &Utc).await.unwrap()
+    arrivals_at(&fx.state, None, false, now, &Utc)
+        .await
+        .unwrap()
 }
 
 fn count(line: &ArrivalsData, bucket: ArrivalBucketData) -> u32 {
@@ -228,17 +248,36 @@ async fn the_line_sums_with_spam_aspects_and_mail_archived_after_it_arrived() {
         for c in &line.counts {
             assert_eq!(list(&fx, line, c.bucket).await.len() as u32, c.count);
         }
-        assert_eq!(list(&fx, line, ArrivalBucketData::Todo).await, vec![person.id.clone()]);
+        assert_eq!(
+            list(&fx, line, ArrivalBucketData::Todo).await,
+            vec![person.id.clone()]
+        );
     }
-    assert!(after.line.starts_with(&format!("Since {}: 4 arrived. ", after.since_label)));
-    assert!(after.line.contains("1 Messages · 1 Updates · 1 Reading · 1 spam."));
+    assert!(after
+        .line
+        .starts_with(&format!("Since {}: 4 arrived. ", after.since_label)));
+    assert!(after
+        .line
+        .contains("1 Messages · 1 Updates · 1 Reading · 1 spam."));
     assert!(after.line.ends_with("Also 1 in To do."));
     assert_eq!(
         after.clear_line.as_deref(),
-        Some(format!("Clear. All 4 emails since {} are accounted for.", after.since_label).as_str())
+        Some(
+            format!(
+                "Clear. All 4 emails since {} are accounted for.",
+                after.since_label
+            )
+            .as_str()
+        )
     );
-    assert_eq!(list(&fx, &after, ArrivalBucketData::Reading).await, vec![newsletter.id]);
-    assert_eq!(list(&fx, &after, ArrivalBucketData::Updates).await, vec![receipt.id]);
+    assert_eq!(
+        list(&fx, &after, ArrivalBucketData::Reading).await,
+        vec![newsletter.id]
+    );
+    assert_eq!(
+        list(&fx, &after, ArrivalBucketData::Updates).await,
+        vec![receipt.id]
+    );
 }
 
 #[tokio::test]
@@ -267,7 +306,9 @@ async fn the_window_runs_from_the_visit_before_and_a_quick_return_keeps_it() {
     let tz = Utc;
     let morning = Utc.with_ymd_and_hms(2026, 10, 7, 8, 12, 0).unwrap();
     // Never opened: the start of today.
-    let first = arrivals_at(&fx.state, None, true, morning, &tz).await.unwrap();
+    let first = arrivals_at(&fx.state, None, true, morning, &tz)
+        .await
+        .unwrap();
     assert_eq!(first.since_label, "00:00");
     // The next visit counts from 08:12.
     let noon = morning + Duration::hours(4);
@@ -281,13 +322,19 @@ async fn the_window_runs_from_the_visit_before_and_a_quick_return_keeps_it() {
     assert_eq!(again.since_label, "08:12");
     // Never more than 24 hours back.
     let days_later = noon + Duration::days(3);
-    let late = arrivals_at(&fx.state, None, true, days_later, &tz).await.unwrap();
+    let late = arrivals_at(&fx.state, None, true, days_later, &tz)
+        .await
+        .unwrap();
     assert_eq!(late.since, days_later - Duration::hours(24));
     // Reading without marking (the CLI, MCP) never moves the window.
     let peek = arrivals_at(&fx.state, None, false, days_later + Duration::hours(1), &tz)
         .await
         .unwrap();
-    assert_eq!(peek.since, late.since.max(days_later + Duration::hours(1) - Duration::hours(24)));
+    assert_eq!(
+        peek.since,
+        late.since
+            .max(days_later + Duration::hours(1) - Duration::hours(24))
+    );
 }
 
 #[tokio::test]
@@ -310,10 +357,16 @@ async fn list_mail_addressed_to_you_from_someone_you_wrote_to_reaches_messages()
     .await;
 
     let line = line(&fx).await;
-    assert_eq!(list(&fx, &line, ArrivalBucketData::Messages).await, vec![known.id.clone()]);
+    assert_eq!(
+        list(&fx, &line, ArrivalBucketData::Messages).await,
+        vec![known.id.clone()]
+    );
     let reading = list(&fx, &line, ArrivalBucketData::Reading).await;
     assert_eq!(reading, vec![stranger.id.clone()]);
-    assert_eq!(list(&fx, &line, ArrivalBucketData::Updates).await, vec![copied.id.clone()]);
+    assert_eq!(
+        list(&fx, &line, ArrivalBucketData::Updates).await,
+        vec![copied.id.clone()]
+    );
     let (_, known_chip) = chip(&fx, &known.id).await;
     assert_eq!(
         known_chip,
@@ -366,7 +419,10 @@ async fn a_move_takes_effect_everywhere_at_once_and_undo_puts_it_back() {
     let correction = moved.correction_id.expect("a correction to undo");
     let mut changed = false;
     while let Ok(message) = events.try_recv() {
-        changed |= matches!(message.payload, IpcPayload::Event(DaemonEvent::ModesChanged { .. }));
+        changed |= matches!(
+            message.payload,
+            IpcPayload::Event(DaemonEvent::ModesChanged { .. })
+        );
     }
     assert!(changed, "every client is told");
 
@@ -384,7 +440,11 @@ async fn a_move_takes_effect_everywhere_at_once_and_undo_puts_it_back() {
             "→ Messages · you moved this email".to_string()
         )
     );
-    assert!(after.track_record.as_deref().unwrap().ends_with("you moved 1."));
+    assert!(after
+        .track_record
+        .as_deref()
+        .unwrap()
+        .ends_with("you moved 1."));
 
     assert_eq!(undo(&fx, correction).await, "Moved back to Reading.");
     assert_eq!(undo(&fx, correction).await, "Already undone.");
@@ -478,7 +538,11 @@ async fn to_do_and_archive_add_the_email_there_and_undo_takes_it_back() {
     assert!(todo.ask_sender.is_none());
     let todo_id = todo.aspect_id.clone().expect("the to-do made");
     let after = line(&fx).await;
-    assert_eq!(count(&after, ArrivalBucketData::Updates), 1, "To do is an aspect");
+    assert_eq!(
+        count(&after, ArrivalBucketData::Updates),
+        1,
+        "To do is an aspect"
+    );
     assert_eq!(after.also[0].bucket, ArrivalBucketData::Todo);
     undo(&fx, todo.correction_id.unwrap()).await;
     let row = fx.state.store.get_todo(&todo_id).await.unwrap().unwrap();
@@ -508,7 +572,10 @@ async fn a_dry_run_changes_nothing_and_a_sender_move_needs_a_kind_mode() {
     };
     assert_eq!(preview.copy, "Would move to Updates.");
     assert!(preview.correction_id.is_none());
-    assert_eq!(chip(&fx, &newsletter.id).await.0, ArrivalBucketData::Reading);
+    assert_eq!(
+        chip(&fx, &newsletter.id).await.0,
+        ArrivalBucketData::Reading
+    );
 
     let msg = IpcMessage {
         id: 3,
@@ -531,9 +598,15 @@ async fn a_dry_run_changes_nothing_and_a_sender_move_needs_a_kind_mode() {
     let second = move_to(&fx, &newsletter.id, ModeKindData::Messages, false).await;
     assert_eq!(second.from, ArrivalBucketData::Updates);
     undo(&fx, second.correction_id.unwrap()).await;
-    assert_eq!(chip(&fx, &newsletter.id).await.0, ArrivalBucketData::Updates);
+    assert_eq!(
+        chip(&fx, &newsletter.id).await.0,
+        ArrivalBucketData::Updates
+    );
     undo(&fx, first.correction_id.unwrap()).await;
-    assert_eq!(chip(&fx, &newsletter.id).await.0, ArrivalBucketData::Reading);
+    assert_eq!(
+        chip(&fx, &newsletter.id).await.0,
+        ArrivalBucketData::Reading
+    );
 }
 
 #[tokio::test]
@@ -578,15 +651,27 @@ async fn not_sure_asks_at_most_three_a_day_by_the_local_day() {
     // Place them first.
     arrivals_at(&fx.state, None, false, now, &tz).await.unwrap();
     let asked = arrivals_at(&fx.state, None, false, now, &tz).await.unwrap();
-    let shown: Vec<MessageId> = asked.not_sure.iter().map(|q| q.message_id.clone()).collect();
-    assert_eq!(shown, ids[1..4].to_vec(), "today's first three, in arrival order");
+    let shown: Vec<MessageId> = asked
+        .not_sure
+        .iter()
+        .map(|q| q.message_id.clone())
+        .collect();
+    assert_eq!(
+        shown,
+        ids[1..4].to_vec(),
+        "today's first three, in arrival order"
+    );
 
     // Answering one never pulls the fourth in.
     let kept = move_with(&fx, &ids[1], ModeKindData::Updates, false, Some("not_sure")).await;
     assert_eq!(kept.copy, "Kept in Updates.");
     assert!(kept.correction_id.is_some(), "keeping it is an answer");
     let after = arrivals_at(&fx.state, None, false, now, &tz).await.unwrap();
-    let shown: Vec<MessageId> = after.not_sure.iter().map(|q| q.message_id.clone()).collect();
+    let shown: Vec<MessageId> = after
+        .not_sure
+        .iter()
+        .map(|q| q.message_id.clone())
+        .collect();
     assert_eq!(shown, ids[2..4].to_vec());
     assert_eq!(
         after.not_sure_line.as_deref(),
@@ -669,7 +754,13 @@ async fn each_account_counts_its_own_mail() {
     };
     fx.state.store.insert_account(&other).await.unwrap();
     let mut envelope = fx
-        .message(&ThreadId::new(), "lead@work.example", ME, Duration::minutes(2), None)
+        .message(
+            &ThreadId::new(),
+            "lead@work.example",
+            ME,
+            Duration::minutes(2),
+            None,
+        )
         .await;
     envelope.account_id = other.id.clone();
     envelope.id = MessageId::new();

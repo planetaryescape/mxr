@@ -534,7 +534,6 @@ pub(super) const fn rule_tag(rule: KindRuleData) -> &'static str {
 /// Why mail from someone you've written to is in Messages (N1).
 pub(super) const WRITTEN_TO_REASON: &str = "addressed to you by someone you've written to";
 
-
 /// Why a person's mail is in Updates: the thread's shape, not the sender.
 pub(super) const COPIED_REASON: &str = "copied to you, or sent to a crowd, and not your turn";
 

@@ -207,7 +207,13 @@ mod tests {
                 &crate::theme::Theme::default(),
             );
         });
-        for line in ["m  Messages", "x  To do", "u  Updates", "r  Reading", "e  Archive"] {
+        for line in [
+            "m  Messages",
+            "x  To do",
+            "u  Updates",
+            "r  Reading",
+            "e  Archive",
+        ] {
             assert!(rendered.contains(line), "{line}\n{rendered}");
         }
         let sender = MoveMenu {

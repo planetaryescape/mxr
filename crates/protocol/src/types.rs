@@ -1849,7 +1849,9 @@ pub enum Request {
     /// Where each email went when it arrived and where it is now, for
     /// Inbox's mode chips. At most 200; emails older than the ledger are
     /// left out. Returns `ResponseData::ArrivalModes`.
-    GetArrivalModes { message_ids: Vec<MessageId> },
+    GetArrivalModes {
+        message_ids: Vec<MessageId>,
+    },
     /// Move one email to a mode (`X`), or with `sender` set the sender's
     /// mode for all their mail (`K`). Messages, Updates and Reading move
     /// it; To do and Archive add it there (a to-do, a record). Takes effect
@@ -1868,7 +1870,9 @@ pub enum Request {
     },
     /// Put a move back exactly as it was. Undoing twice changes nothing.
     /// Returns `ResponseData::MoveUndone`.
-    UndoMove { correction_id: i64 },
+    UndoMove {
+        correction_id: i64,
+    },
     /// Every move, sender mode and Not-sure answer, newest first. Returns
     /// `ResponseData::Corrections`.
     ListCorrections {

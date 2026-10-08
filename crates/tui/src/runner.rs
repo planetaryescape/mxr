@@ -4534,10 +4534,14 @@ fn spawn_trust_fetches(
         let bg = bg.clone();
         let _ = submit_task(queued, async move {
             AsyncResult::ArrivalModes(
-                trust_call(&bg, Request::GetArrivalModes { message_ids }, |data| match data {
-                    ResponseData::ArrivalModes { items } => Some(items),
-                    _ => None,
-                })
+                trust_call(
+                    &bg,
+                    Request::GetArrivalModes { message_ids },
+                    |data| match data {
+                        ResponseData::ArrivalModes { items } => Some(items),
+                        _ => None,
+                    },
+                )
                 .await,
             )
         });

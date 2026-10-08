@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use mxr_client::{ClientError, IpcConnection};
 use mxr_core::{id::MessageId, AccountId, Draft, DraftId, ThreadId};
 use mxr_protocol::{
-    ArrivalBucketData, ClientKind, ModeKindData, MutationCommand, RecordFilterData,
-    RecordKindData, Request, Response, ResponseData,
+    ArrivalBucketData, ClientKind, ModeKindData, MutationCommand, RecordFilterData, RecordKindData,
+    Request, Response, ResponseData,
 };
 use rmcp::{
     handler::server::{

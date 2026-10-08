@@ -816,12 +816,18 @@ pub(crate) mod tests {
         let wide = render_at(&with_line, 120, 0);
         assert!(wide.contains("Since 08:12: 50 arrived."), "{wide}");
         assert!(wide.contains("2 emails I wasn't sure about"), "{wide}");
-        assert!(wide.contains("Maya Ortiz copied you on \"Q0 plan\""), "{wide}");
+        assert!(
+            wide.contains("Maya Ortiz copied you on \"Q0 plan\""),
+            "{wide}"
+        );
         assert!(
             wide.contains("Last week mxr sorted 310 emails; you moved 2."),
             "{wide}"
         );
-        assert!(wide.contains("Every email since then"), "the footer explains the line");
+        assert!(
+            wide.contains("Every email since then"),
+            "the footer explains the line"
+        );
     }
 
     #[test]

@@ -6,8 +6,8 @@
 //! The lane rules live in `desk_lanes.rs`.
 
 use super::desk_lanes::{
-    apply_pace, clean_subject, dedupe_by_precedence, is_outbound, sort_lane,
-    thread_lanes, thread_starred, waiting_set_aside, AccountInputs, PaceDirection, WaitingAside,
+    apply_pace, clean_subject, dedupe_by_precedence, is_outbound, sort_lane, thread_lanes,
+    thread_starred, waiting_set_aside, AccountInputs, PaceDirection, WaitingAside,
     DESK_WINDOW_DAYS, DUE_AHEAD_DAYS,
 };
 use super::desk_timers::DeskTimers;

@@ -9,8 +9,8 @@ use crate::app::NowRow;
 use crate::ui::now_lens::tests::{page, populated};
 use chrono::Utc;
 use mxr_protocol::{
-    ArrivalBucketData, ArrivalCountData, ArrivalItemData, ArrivalsData, DaemonEvent,
-    ModeKindData, MoveChoiceData, MoveOutcomeData, NotSureData,
+    ArrivalBucketData, ArrivalCountData, ArrivalItemData, ArrivalsData, DaemonEvent, ModeKindData,
+    MoveChoiceData, MoveOutcomeData, NotSureData,
 };
 
 fn press(app: &mut App, code: KeyCode) {
@@ -163,7 +163,12 @@ fn x_opens_the_move_menu_and_one_key_moves_this_email() {
         let mut app = inbox_app();
         let selected = app.selected_envelope().unwrap().id.clone();
         press(&mut app, KeyCode::Char('X'));
-        let menu = app.mailbox.trust.move_menu.as_ref().expect("X opens the menu");
+        let menu = app
+            .mailbox
+            .trust
+            .move_menu
+            .as_ref()
+            .expect("X opens the menu");
         assert_eq!(menu.message_id, selected);
         assert!(!menu.sender_only);
         press(&mut app, KeyCode::Char(key));
@@ -190,7 +195,12 @@ fn shift_in_the_menu_and_k_move_the_sender_to_a_mode_a_sender_can_live_in() {
     let mut app = inbox_app();
     let selected = app.selected_envelope().unwrap().id.clone();
     press(&mut app, KeyCode::Char('K'));
-    let menu = app.mailbox.trust.move_menu.as_ref().expect("K opens the sender menu");
+    let menu = app
+        .mailbox
+        .trust
+        .move_menu
+        .as_ref()
+        .expect("K opens the sender menu");
     assert!(menu.sender_only);
     // To do and Archive hold one email, never a sender.
     press(&mut app, KeyCode::Char('x'));
@@ -220,7 +230,11 @@ fn x_works_in_the_reader_and_on_now_rows() {
     let focused = app.mailbox.viewed_thread_messages[1].id.clone();
     press(&mut app, KeyCode::Char('X'));
     assert_eq!(
-        app.mailbox.trust.move_menu.as_ref().map(|m| m.message_id.clone()),
+        app.mailbox
+            .trust
+            .move_menu
+            .as_ref()
+            .map(|m| m.message_id.clone()),
         Some(focused),
         "the reader moves the message in focus"
     );
@@ -236,7 +250,11 @@ fn x_works_in_the_reader_and_on_now_rows() {
         .clone();
     press(&mut app, KeyCode::Char('X'));
     assert_eq!(
-        app.mailbox.trust.move_menu.as_ref().map(|m| m.message_id.clone()),
+        app.mailbox
+            .trust
+            .move_menu
+            .as_ref()
+            .map(|m| m.message_id.clone()),
         Some(person)
     );
 }
@@ -261,10 +279,19 @@ fn u_after_a_move_undoes_it_with_its_correction_id() {
 fn after_a_move_k_says_always_for_this_sender_at_once() {
     let mut app = inbox_app();
     let message = MessageId::new();
-    app.after_move(&outcome(message.clone(), ModeKindData::Reading, true), false);
-    assert!(app.mailbox.trust.move_hint_shown, "the first move teaches X and K");
+    app.after_move(
+        &outcome(message.clone(), ModeKindData::Reading, true),
+        false,
+    );
+    assert!(
+        app.mailbox.trust.move_hint_shown,
+        "the first move teaches X and K"
+    );
     press(&mut app, KeyCode::Char('K'));
-    assert!(app.mailbox.trust.move_menu.is_none(), "no menu: K answered yes");
+    assert!(
+        app.mailbox.trust.move_menu.is_none(),
+        "no menu: K answered yes"
+    );
     assert_eq!(
         queued(&app).iter().filter_map(moved).collect::<Vec<_>>(),
         vec![(message, ModeKindData::Reading, true, None)]
@@ -272,7 +299,10 @@ fn after_a_move_k_says_always_for_this_sender_at_once() {
 
     // Any other key lets the question go; a later K opens the menu.
     let mut app = inbox_app();
-    app.after_move(&outcome(MessageId::new(), ModeKindData::Reading, true), false);
+    app.after_move(
+        &outcome(MessageId::new(), ModeKindData::Reading, true),
+        false,
+    );
     press(&mut app, KeyCode::Char('j'));
     press(&mut app, KeyCode::Char('K'));
     assert!(app.mailbox.trust.move_menu.is_some());
@@ -283,7 +313,10 @@ fn after_a_move_k_says_always_for_this_sender_at_once() {
 fn the_move_toast_is_the_daemons_copy_and_its_question() {
     let message = MessageId::new();
     assert_eq!(
-        crate::app::move_status(&outcome(message.clone(), ModeKindData::Reading, true), false),
+        crate::app::move_status(
+            &outcome(message.clone(), ModeKindData::Reading, true),
+            false
+        ),
         "Moved to Reading.  Always for this sender? (K)"
     );
     assert_eq!(
@@ -314,10 +347,21 @@ fn a_not_sure_question_takes_one_key_then_asks_about_the_sender_once() {
     press(&mut app, KeyCode::Char('u'));
     assert_eq!(
         queued(&app).iter().filter_map(moved).collect::<Vec<_>>(),
-        vec![(first.clone(), ModeKindData::Updates, false, Some("not_sure"))]
+        vec![(
+            first.clone(),
+            ModeKindData::Updates,
+            false,
+            Some("not_sure")
+        )]
     );
     assert_eq!(
-        app.mailbox.now_page.arrivals.as_ref().unwrap().not_sure.len(),
+        app.mailbox
+            .now_page
+            .arrivals
+            .as_ref()
+            .unwrap()
+            .not_sure
+            .len(),
         1,
         "the answer leaves Now at once"
     );
@@ -351,8 +395,16 @@ fn enter_on_the_arrivals_line_lists_the_emails_behind_it() {
     app.mailbox.selected_index = 0;
     press(&mut app, KeyCode::Enter);
     let line = app.mailbox.now_page.arrivals.clone().unwrap();
-    let fetch = app.mailbox.trust.pending_list.clone().expect("asks for the list");
-    assert_eq!((fetch.since, fetch.until, fetch.bucket), (line.since, line.until, None));
+    let fetch = app
+        .mailbox
+        .trust
+        .pending_list
+        .clone()
+        .expect("asks for the list");
+    assert_eq!(
+        (fetch.since, fetch.until, fetch.bucket),
+        (line.since, line.until, None)
+    );
     assert!(app.mailbox.trust.arrivals_list.is_some());
 
     // Tab walks the line's counts, then its "also"s.
@@ -394,19 +446,31 @@ fn enter_on_the_arrivals_line_lists_the_emails_behind_it() {
     // X there moves the listed email.
     press(&mut app, KeyCode::Char('X'));
     assert_eq!(
-        app.mailbox.trust.move_menu.as_ref().map(|m| m.message_id.clone()),
+        app.mailbox
+            .trust
+            .move_menu
+            .as_ref()
+            .map(|m| m.message_id.clone()),
         Some(item.message_id)
     );
     press(&mut app, KeyCode::Esc);
     press(&mut app, KeyCode::Esc);
-    assert!(app.mailbox.trust.arrivals_list.is_none(), "Esc closes the list");
+    assert!(
+        app.mailbox.trust.arrivals_list.is_none(),
+        "Esc closes the list"
+    );
 }
 
 #[test]
 fn inbox_rows_carry_their_mode_and_a_move_anywhere_refreshes_them() {
     let mut app = inbox_app();
     app.request_visible_chips();
-    let asked = app.mailbox.trust.pending_chips.clone().expect("asks for the chips");
+    let asked = app
+        .mailbox
+        .trust
+        .pending_chips
+        .clone()
+        .expect("asks for the chips");
     assert_eq!(asked.len(), 3);
     let first = asked[0].clone();
     app.mailbox.trust.set_chips(vec![ArrivalItemData {
@@ -429,13 +493,16 @@ fn inbox_rows_carry_their_mode_and_a_move_anywhere_refreshes_them() {
         also_archive: false,
     }]);
     let rows = app.mail_list_rows();
-    let row = rows.iter().find(|row| row.representative.id == first).unwrap();
+    let row = rows
+        .iter()
+        .find(|row| row.representative.id == first)
+        .unwrap();
     assert_eq!(row.mode_chip, Some("Reading"));
 
-    handle_daemon_event(
-        &mut app,
-        DaemonEvent::ModesChanged { account_id: None },
+    handle_daemon_event(&mut app, DaemonEvent::ModesChanged { account_id: None });
+    assert!(
+        app.mailbox.trust.chips.is_empty(),
+        "another client moved mail"
     );
-    assert!(app.mailbox.trust.chips.is_empty(), "another client moved mail");
     assert!(app.mailbox.now_page.pending_refresh);
 }

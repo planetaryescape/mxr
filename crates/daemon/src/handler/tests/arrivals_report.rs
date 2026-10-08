@@ -57,7 +57,10 @@ async fn arrivals_report() {
     for account in &accounts {
         placed += arrivals::place_pending(&state, account).await.unwrap();
     }
-    println!("placing the backfill: {placed} rows in {:.0} ms", ms(started));
+    println!(
+        "placing the backfill: {placed} rows in {:.0} ms",
+        ms(started)
+    );
 
     let now = Utc::now();
     for (label, hours) in [("24h", 24), ("7d", 24 * 7)] {
@@ -96,13 +99,16 @@ async fn arrivals_report() {
             let started = Instant::now();
             let (_, total) = state
                 .store
-                .list_arrivals(&accounts, since, now + Duration::seconds(1), Some(bucket), 50)
+                .list_arrivals(
+                    &accounts,
+                    since,
+                    now + Duration::seconds(1),
+                    Some(bucket),
+                    50,
+                )
                 .await
                 .unwrap();
-            println!(
-                "  list {bucket}: {total} (count {n}) {:.0} ms",
-                ms(started)
-            );
+            println!("  list {bucket}: {total} (count {n}) {:.0} ms", ms(started));
             assert_eq!(total, *n, "{bucket}");
         }
         let rules: Vec<(String, i64)> = sqlx::query_as(
@@ -159,12 +165,11 @@ async fn arrivals_report() {
     println!("  track record: {:?}", line.track_record);
 
     // Inbox chips for a page of rows.
-    let ids: Vec<String> = sqlx::query_scalar(
-        "SELECT message_id FROM arrivals ORDER BY first_seen_at DESC LIMIT 200",
-    )
-    .fetch_all(state.store.reader())
-    .await
-    .unwrap();
+    let ids: Vec<String> =
+        sqlx::query_scalar("SELECT message_id FROM arrivals ORDER BY first_seen_at DESC LIMIT 200")
+            .fetch_all(state.store.reader())
+            .await
+            .unwrap();
     let ids: Vec<MessageId> = ids.iter().map(|id| id.parse().unwrap()).collect();
     let started = Instant::now();
     let chips = state.store.arrivals_by_ids(&ids).await.unwrap();

@@ -22,6 +22,8 @@ const MAIL_QUERY_ROOTS = new Set([
   "reading",
   "arrivals",
   "arrival-modes",
+  // Updates is a briefing of mail: a sweep or let go must drop its lines.
+  "updates",
 ]);
 
 /**

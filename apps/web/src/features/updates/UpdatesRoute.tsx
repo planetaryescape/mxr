@@ -26,12 +26,22 @@ import {
   openableLink,
   SECTION_TITLE,
   canLetGoSource,
+  canPinSource,
+  canSweepSource,
   canTune,
   type SuggestedSetting,
 } from "./digestView";
 import { LetGoAllDialog, TuneDialog } from "./UpdatesDialogs";
 import { UpdateLineRow } from "./UpdateLineRow";
-import { letGo, letGoSource, needsMe, tuneSource, useUpdatesHidden } from "./updatesVerbs";
+import {
+  letGo,
+  letGoSource,
+  needsMe,
+  sweepSource,
+  togglePinSource,
+  tuneSource,
+  useUpdatesHidden,
+} from "./updatesVerbs";
 
 /**
  * Updates: notifications as a briefing by source, gathered at fixed cuts
@@ -171,6 +181,12 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
   const tune = useCallback((line: UpdateLine) => {
     if (canTune(line)) setTuning(line);
   }, []);
+  const sweep = useCallback((line: UpdateLine) => {
+    if (canSweepSource(line)) sweepSource(line);
+  }, []);
+  const pin = useCallback((line: UpdateLine) => {
+    if (canPinSource(line)) void togglePinSource(line);
+  }, []);
   const tuneTo = useCallback(
     (line: UpdateLine, setting: SuggestedSetting) => void tuneSource(line, setting),
     [],
@@ -219,6 +235,8 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
     letGoSource: () => current && letGoLine(current),
     needsMe: () => current && !current.in_todo && needs(current),
     tune: () => current && tune(current),
+    sweep: () => current && sweep(current),
+    pin: () => current && pin(current),
     link: () => {
       const link = current && openableLink(current);
       if (link) window.open(link.url, "_blank", "noopener,noreferrer");
@@ -253,6 +271,8 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
               onTune={tune}
               onOpenEmail={openEmail}
               onTuneTo={tuneTo}
+              onSweep={sweep}
+              onPin={pin}
               hint={hintFor(row.line)}
             />
           ))}

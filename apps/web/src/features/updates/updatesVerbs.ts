@@ -8,10 +8,12 @@
 import { toast } from "sonner";
 import { create } from "zustand";
 
+import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { claimUndo, offerUndo, performUndo } from "@/features/mail-actions/mailUndo";
 import { soundFor } from "@/features/mail-actions/verbFeedback";
 import { refreshModes } from "@/features/modes/modeDone";
 import { NOW_KEY } from "@/features/now/api";
+import { pinMessages } from "@/features/places/api";
 import { playSound } from "@/features/sound/player";
 import { makeTodo } from "@/features/todo/todoVerbs";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
@@ -206,4 +208,94 @@ export async function tuneSource(line: UpdateLine, setting: UpdateSetting): Prom
   } finally {
     await refreshUpdates();
   }
+}
+
+interface UpdatesPinsState {
+  /** Lines whose latest email this page pinned or unpinned, by line id. */
+  pinned: ReadonlySet<string>;
+  setPinned: (lineId: string, pinned: boolean) => void;
+}
+
+/**
+ * The digest does not say which emails are pinned, so the label starts as
+ * "Pin" and follows what this page has been told. Pinning twice is harmless.
+ */
+export const useUpdatesPins = create<UpdatesPinsState>((set) => ({
+  pinned: new Set(),
+  setPinned: (lineId, pinned) =>
+    set((s) => {
+      const next = new Set(s.pinned);
+      if (pinned) next.add(lineId);
+      else next.delete(lineId);
+      return { pinned: next };
+    }),
+}));
+
+/**
+ * `S`: sweep the line's sender out of Paper trail, after the same dry run
+ * the place sweeps show. Confirming runs the sweep and its undo as in the
+ * places, and the sender's line leaves Updates on the refetch.
+ */
+export function sweepSource(line: UpdateLine): void {
+  if (!line.sender_email) return;
+  openMailDialog({
+    kind: "sweep",
+    scope: { place: "paper_trail", accountId: line.account_id, senderEmail: line.sender_email },
+    senderLabel: line.source_name,
+  });
+}
+
+/**
+ * `p`: pin the line's latest email, or unpin it. A sweep of the sender then
+ * leaves that email in place. Undo is the same toggle back.
+ */
+export async function setSourcePin(line: UpdateLine, pinned: boolean): Promise<void> {
+  const messageId = line.latest_message_id;
+  if (!messageId) return;
+  if (refuseWhileDaemonDown(pinned ? "pin it" : "unpin it")) return;
+  const claim = claimUndo();
+  const setPinned = useUpdatesPins.getState().setPinned;
+  try {
+    const result = await pinMessages([messageId], pinned);
+    setPinned(line.id, pinned);
+    // Nothing changed (already pinned, or not pinned to begin with): the
+    // toggle back would reverse a state this change never made.
+    const changed = result.changed > 0;
+    const reverse = !changed
+      ? null
+      : async () => {
+          try {
+            await pinMessages([messageId], !pinned);
+            setPinned(line.id, !pinned);
+            toast.success("Undone");
+            return true;
+          } catch (error) {
+            toast.error("Undo failed", { description: errorText(error) });
+            return false;
+          }
+        };
+    claim.settle(
+      offerUndo(
+        "pin",
+        !changed && pinned
+          ? "Already pinned: a sweep leaves it here"
+          : !changed
+            ? "Already unpinned"
+            : pinned
+              ? "Pinned: a sweep leaves it here"
+              : "Unpinned",
+        `updates-pin-${line.id}`,
+        reverse,
+        claim.run,
+      ),
+    );
+  } catch (error) {
+    claim.settle(null);
+    toast.error(pinned ? "Couldn't pin" : "Couldn't unpin", { description: errorText(error) });
+  }
+}
+
+/** `p` as a toggle, from the label the line shows. */
+export function togglePinSource(line: UpdateLine): Promise<void> {
+  return setSourcePin(line, !useUpdatesPins.getState().pinned.has(line.id));
 }

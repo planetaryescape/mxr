@@ -89,6 +89,16 @@ export function canTune(line: UpdateLine): boolean {
   return !isParcel(line);
 }
 
+/** `S` sweeps the sender's mail out of Paper trail; a parcel has no sender's mail to sweep. */
+export function canSweepSource(line: UpdateLine): boolean {
+  return !isParcel(line) && Boolean(line.sender_email);
+}
+
+/** `p` pins the source's latest email, which a sweep of its sender leaves in place. */
+export function canPinSource(line: UpdateLine): boolean {
+  return Boolean(line.latest_message_id);
+}
+
 /**
  * `L` opens the line's one link. The daemon never sends one on a line
  * that needs you (a sign-in, a failed payment); checked again here so a

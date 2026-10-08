@@ -538,6 +538,12 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     bound: "web",
     why: "Compose works everywhere on the web; the TUI lens keeps c free",
   },
+  {
+    context: "updates",
+    keys: ["p", "S"],
+    bound: "web",
+    why: "Pin and sweep a source's sender are web-only for now; the TUI's Updates lens has no pin or sweep yet",
+  },
   // Reading.
   {
     context: "reading",

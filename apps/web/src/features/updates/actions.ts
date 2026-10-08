@@ -5,7 +5,7 @@
  * while it has focus. `g u` opens Updates from anywhere.
  */
 
-import { BellOff, Check, ExternalLink, ListPlus, Mail } from "lucide-react";
+import { Archive, BellOff, Check, ExternalLink, ListPlus, Mail, Pin } from "lucide-react";
 
 import type { Action, CommandAction } from "@/lib/actions/types";
 
@@ -54,6 +54,15 @@ export const updatesActions: Action[] = [
   key("updates.open-email", "openEmail", "Open the email", "o", {
     shortLabel: "Email",
     icon: Mail,
+  }),
+  key("updates.pin", "pin", "Pin or unpin this source's latest email", "p", {
+    shortLabel: "Pin",
+    icon: Pin,
+  }),
+  key("updates.sweep", "sweep", "Sweep this sender out of Updates…", "S", {
+    shortLabel: "Sweep sender",
+    icon: Archive,
+    tuiNote: "Previews the daemon's dry run first; undo afterwards",
   }),
   key("updates.close-hint", "closeHint", "Dismiss the hint", "Escape", {
     hideInPalette: true,

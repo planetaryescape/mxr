@@ -7,13 +7,15 @@ import { cn } from "@/lib/utils";
 import type { UpdateLine } from "./api";
 import {
   canLetGoSource,
+  canPinSource,
+  canSweepSource,
   canTune,
   openableLink,
   trackerStatus,
   trackStep,
   type SuggestedSetting,
 } from "./digestView";
-import { useUpdatesHidden } from "./updatesVerbs";
+import { useUpdatesHidden, useUpdatesPins } from "./updatesVerbs";
 
 /** A parcel's steps as dots on a line, the current one filled. */
 function Track({ line }: { line: UpdateLine }) {
@@ -70,6 +72,8 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   onTune,
   onOpenEmail,
   onTuneTo,
+  onSweep,
+  onPin,
   hint,
 }: {
   line: UpdateLine;
@@ -81,11 +85,14 @@ export const UpdateLineRow = memo(function UpdateLineRow({
   onTune: (line: UpdateLine) => void;
   onOpenEmail: (line: UpdateLine) => void;
   onTuneTo: (line: UpdateLine, setting: SuggestedSetting) => void;
+  onSweep: (line: UpdateLine) => void;
+  onPin: (line: UpdateLine) => void;
   /** A hint anchored under this line's actions. */
   hint?: ReactNode;
 }) {
   const leaving = useUpdatesHidden((s) => s.leaving.has(line.id));
   const hide = useUpdatesHidden((s) => s.hide);
+  const pinned = useUpdatesPins((s) => s.pinned.has(line.id));
   const link = openableLink(line);
   const detail = line.tracker?.detail;
   const status = trackerStatus(line);
@@ -187,6 +194,16 @@ export const UpdateLineRow = memo(function UpdateLineRow({
             ) : line.latest_message_id ? (
               <Button size="sm" variant="outline" onClick={() => onNeedsMe(line)}>
                 This needs me
+              </Button>
+            ) : null}
+            {canPinSource(line) ? (
+              <Button size="sm" variant="ghost" aria-pressed={pinned} onClick={() => onPin(line)}>
+                {pinned ? "Unpin" : "Pin"}
+              </Button>
+            ) : null}
+            {canSweepSource(line) ? (
+              <Button size="sm" variant="ghost" onClick={() => onSweep(line)}>
+                Sweep sender
               </Button>
             ) : null}
             {canLetGoSource(line) ? (

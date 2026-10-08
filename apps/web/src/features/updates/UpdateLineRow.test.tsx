@@ -13,6 +13,8 @@ function renderLine(line: UpdateLine) {
     onTune: vi.fn<(line: UpdateLine) => void>(),
     onOpenEmail: vi.fn<(line: UpdateLine) => void>(),
     onTuneTo: vi.fn<(line: UpdateLine, setting: "muted" | "changes_only") => void>(),
+    onSweep: vi.fn<(line: UpdateLine) => void>(),
+    onPin: vi.fn<(line: UpdateLine) => void>(),
   };
   render(
     <ul>
@@ -91,6 +93,35 @@ describe("UpdateLineRow", () => {
     expect(row).toHaveTextContent("Arriving by Thu 8 Oct · DHL");
     expect(view.queryByRole("button", { name: "Let go" })).toBeNull();
     expect(view.queryByRole("button", { name: "Tune" })).toBeNull();
+  });
+
+  test("a source's sender can be swept and its latest email pinned", () => {
+    const { row, handlers } = renderLine(lineFixture());
+    const view = within(row);
+    fireEvent.click(view.getByRole("button", { name: "Sweep sender" }));
+    expect(handlers.onSweep).toHaveBeenCalledTimes(1);
+    fireEvent.click(view.getByRole("button", { name: "Pin" }));
+    expect(handlers.onPin).toHaveBeenCalledTimes(1);
+  });
+
+  test("a parcel has no sender's mail to sweep", () => {
+    const { row } = renderLine(
+      lineFixture({
+        sender_email: undefined,
+        latest_message_id: undefined,
+        tracker: {
+          kind: "parcel",
+          state: "shipped",
+          state_label: "shipped",
+          outcome: "progress",
+          steps: ["ordered", "shipped"],
+          step: 1,
+          detail: "DHL",
+        },
+      }),
+    );
+    expect(within(row).queryByRole("button", { name: "Sweep sender" })).toBeNull();
+    expect(within(row).queryByRole("button", { name: "Pin" })).toBeNull();
   });
 
   test("the mute question offers its two answers", () => {

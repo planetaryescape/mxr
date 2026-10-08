@@ -325,6 +325,37 @@ fn topic_strip(
     .collect()
 }
 
+/// Paragraphs: blocks of consecutive non-blank lines, whatever the break
+/// is written as (`\n\n`, or a raw message's own `\r\n\r\n`). A naive
+/// split on the literal two bytes `"\n\n"` never finds a break inside
+/// `"\r\n\r\n"` and folds the whole letter into one paragraph, which
+/// misreports "+N paragraphs" and can leave a long letter unfolded with
+/// nothing to cut. Matches the daemon's own count (`paragraphs` in
+/// `crates/daemon/src/handler/messages.rs`), so the two never disagree on
+/// the same message.
+fn paragraph_blocks(text: &str) -> Vec<&str> {
+    let mut blocks = Vec::new();
+    let mut block_start: Option<usize> = None;
+    let mut pos = 0usize;
+    while pos < text.len() {
+        let rest = &text[pos..];
+        let line_len = rest.find('\n').map_or(rest.len(), |at| at + 1);
+        let blank = rest[..line_len].trim().is_empty();
+        if blank {
+            if let Some(start) = block_start.take() {
+                blocks.push(text[start..pos].trim_end_matches(['\n', '\r']));
+            }
+        } else if block_start.is_none() {
+            block_start = Some(pos);
+        }
+        pos += line_len;
+    }
+    if let Some(start) = block_start {
+        blocks.push(text[start..].trim_end_matches(['\n', '\r']));
+    }
+    blocks
+}
+
 fn message_lines(
     body: &mut Body,
     message: &ConversationMessageData,
@@ -345,10 +376,7 @@ fn message_lines(
             .replacen(quote.as_str(), &format!("\u{bb}{quote}\u{ab}"), 1),
         None => message.text.clone(),
     };
-    let paragraphs: Vec<&str> = text
-        .split("\n\n")
-        .filter(|p| !p.trim().is_empty())
-        .collect();
+    let paragraphs: Vec<&str> = paragraph_blocks(&text);
     let compact = message.layout == MessageLayoutData::Compact;
     let mine_right = compact && message.from_me;
     let text_width = if compact {

@@ -393,3 +393,24 @@ fn mail_text_cannot_reach_the_terminal_as_control_sequences() {
     assert!(!rendered.contains('\u{1b}'));
     assert!(!rendered.contains('\u{202e}'));
 }
+
+#[test]
+fn paragraph_blocks_finds_a_crlf_break_a_naive_split_misses() {
+    // A message `new_text` returned with its own line endings kept (see
+    // `crates/reader/src/new_text.rs`): a naive `split("\n\n")` never
+    // finds "\n\n" inside "\r\n\r\n" and folds this into one paragraph.
+    assert_eq!(
+        paragraph_blocks("Senior Software Engineer at throxy.\r\n\r\nJack"),
+        vec!["Senior Software Engineer at throxy.", "Jack"]
+    );
+}
+
+#[test]
+fn paragraph_blocks_treats_a_run_of_blank_lines_as_one_break() {
+    assert_eq!(paragraph_blocks("a\n\n\n\nb"), vec!["a", "b"]);
+}
+
+#[test]
+fn paragraph_blocks_keeps_single_newlines_in_one_paragraph() {
+    assert_eq!(paragraph_blocks("a\nb\nc"), vec!["a\nb\nc"]);
+}

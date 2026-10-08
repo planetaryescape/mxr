@@ -5,7 +5,7 @@
  */
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 
 import { apiFetch } from "@/api/client";
 import { useUiPrefs } from "@/state/uiPrefsStore";
@@ -110,7 +110,12 @@ export async function fetchArrivalModes(messageIds: readonly string[]): Promise<
 
 /** Inbox chips for the rows on screen, keyed by message id. */
 export function useArrivalModes(messageIds: readonly string[]) {
-  const sorted = [...new Set(messageIds)].toSorted();
+  // messageIds is stable across renders that don't change the visible
+  // range (MailboxList memoizes it); without this, the list's host
+  // component re-renders on every keystroke (cursor moves, stars,
+  // archives), and a fresh array here would make TanStack Query re-hash
+  // the key every time instead of only when the ids actually change.
+  const sorted = useMemo(() => [...new Set(messageIds)].toSorted(), [messageIds]);
   return useQuery({
     queryKey: [...ARRIVAL_MODES_KEY, sorted],
     queryFn: async () => {

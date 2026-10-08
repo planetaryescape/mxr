@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { mailList, mailRows, openList, pressSequence } from "./helpers/mail";
-import { readE2EState } from "./helpers/state";
+import { openApp, readE2EState } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -10,7 +10,8 @@ function query(page: { url: () => string }): string {
 }
 
 test("operator chips show each token and removing one rewrites the query", async ({ page }) => {
-  await openList(page, "/search?q=canary%20is:unread");
+  // A zero-result search still exercises chip rendering and query rewriting.
+  await openApp(page, "/search?q=canary%20is:unread");
   const chip = page.getByRole("button", { name: /^Remove is:\s?unread/ });
   await expect(chip).toBeVisible();
   await expect(page.getByRole("button", { name: /^Remove canary/ })).toBeVisible();

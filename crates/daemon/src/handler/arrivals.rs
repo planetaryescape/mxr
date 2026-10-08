@@ -306,7 +306,10 @@ pub(super) fn start_of_day<Tz: TimeZone>(now: DateTime<Utc>, tz: &Tz) -> DateTim
 
 /// The line's window: since the visit to Now before this one, never more
 /// than 24 hours back; the start of today when Now was never opened.
-/// `mark_seen` starts a new visit.
+/// `mark_seen` starts a new visit. A read that doesn't mark shows the
+/// window Now would open with at this moment: once the last visit has
+/// lapsed that is since the visit itself, not the stale window it opened
+/// with, so the CLI, MCP and an open Now agree.
 async fn window<Tz: TimeZone>(
     state: &AppState,
     account_id: Option<&AccountId>,
@@ -315,17 +318,21 @@ async fn window<Tz: TimeZone>(
     tz: &Tz,
 ) -> Result<DateTime<Utc>, HandlerError> {
     let (visit_key, since_key) = window_keys(account_id);
-    if mark_seen {
-        let last_visit = state.store.mode_last_viewed(&visit_key).await?;
-        let new_visit = last_visit.is_none_or(|at| (now - at).num_seconds() >= SAME_VISIT_SECS);
-        if new_visit {
-            if let Some(last_visit) = last_visit {
-                state.store.set_mode_viewed(&since_key, last_visit).await?;
-            }
-            state.store.set_mode_viewed(&visit_key, now).await?;
+    let last_visit = state.store.mode_last_viewed(&visit_key).await?;
+    let lapsed = last_visit.is_some_and(|at| (now - at).num_seconds() >= SAME_VISIT_SECS);
+    if mark_seen && (last_visit.is_none() || lapsed) {
+        if let Some(last_visit) = last_visit {
+            state.store.set_mode_viewed(&since_key, last_visit).await?;
         }
+        state.store.set_mode_viewed(&visit_key, now).await?;
     }
-    let since = match state.store.mode_last_viewed(&since_key).await? {
+    let stored = state.store.mode_last_viewed(&since_key).await?;
+    let since = match (mark_seen, lapsed, last_visit, stored) {
+        // Not marking, but a mark would start a visit now.
+        (false, true, Some(last_visit), _) => Some(last_visit),
+        (_, _, _, stored) => stored,
+    };
+    let since = match since {
         Some(since) => since.max(now - Duration::hours(24)),
         None => start_of_day(now, tz),
     };

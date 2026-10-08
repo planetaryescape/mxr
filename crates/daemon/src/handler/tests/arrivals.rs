@@ -326,15 +326,33 @@ async fn the_window_runs_from_the_visit_before_and_a_quick_return_keeps_it() {
         .await
         .unwrap();
     assert_eq!(late.since, days_later - Duration::hours(24));
-    // Reading without marking (the CLI, MCP) never moves the window.
-    let peek = arrivals_at(&fx.state, None, false, days_later + Duration::hours(1), &tz)
+    // Reading without marking (the CLI, MCP) starts no visit, and shows the
+    // window an open Now would show then: within the visit's minute the
+    // one it opened with, once it has lapsed the visit itself, so the
+    // line never reads smaller after the click than before it.
+    let within = arrivals_at(
+        &fx.state,
+        None,
+        false,
+        days_later + Duration::seconds(30),
+        &tz,
+    )
+    .await
+    .unwrap();
+    // Still the visit's own window, clamped to 24 hours before now.
+    assert_eq!(
+        within.since,
+        days_later + Duration::seconds(30) - Duration::hours(24)
+    );
+    let lapsed_at = days_later + Duration::hours(1);
+    let peek = arrivals_at(&fx.state, None, false, lapsed_at, &tz)
         .await
         .unwrap();
-    assert_eq!(
-        peek.since,
-        late.since
-            .max(days_later + Duration::hours(1) - Duration::hours(24))
-    );
+    assert_eq!(peek.since, days_later);
+    let opened = arrivals_at(&fx.state, None, true, lapsed_at, &tz)
+        .await
+        .unwrap();
+    assert_eq!(opened.since, peek.since);
 }
 
 #[tokio::test]

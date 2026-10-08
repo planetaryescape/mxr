@@ -5,6 +5,9 @@ on:
     branches:
       - main
   pull_request:
+    # ready_for_review isn't a default type: without it, marking a draft ready
+    # doesn't start the full suite that drafts skip.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 concurrency:

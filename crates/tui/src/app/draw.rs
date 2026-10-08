@@ -680,6 +680,14 @@ impl App {
             self.mailbox.sender_kind_menu.as_ref(),
             theme,
         );
+        // Moves (D119): the arrivals list, and the menu above it.
+        ui::move_menu::draw_arrivals_list(
+            frame,
+            area,
+            self.mailbox.trust.arrivals_list.as_ref(),
+            theme,
+        );
+        ui::move_menu::draw_move_menu(frame, area, self.mailbox.trust.move_menu.as_ref(), theme);
 
         // Saved-search form overlay (above sidebar/mail list, below modals)
         ui::saved_search_form::draw(frame, area, self.modals.saved_search_form.as_ref(), theme);

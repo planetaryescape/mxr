@@ -6,6 +6,7 @@
 
 import { create } from "zustand";
 
+import type { MoveSubject } from "@/features/arrivals/moves";
 import type { RecordData, RecordFilter } from "@/features/archive/api";
 import type { MailKind, SweepScope } from "@/features/places/api";
 import type { Todo } from "@/features/todo/api";
@@ -48,6 +49,8 @@ export type MailDialog =
       senderLabel: string;
       current?: MailKind;
     }
+  /** Move one email (`X`) or its sender's mail (`K`) to a mode. */
+  | { kind: "move-to-mode"; subject: MoveSubject; sender: boolean }
   /** To do: show a row on your own day (`Z`). */
   | { kind: "todo-schedule"; todo: Todo }
   /** To do: correct a row's fields (`,`). */

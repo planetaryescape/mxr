@@ -1643,11 +1643,35 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         if std::mem::take(&mut app.mailbox.now_page.pending_refresh) {
+            let now_bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                AsyncResult::Now(fetch_now(&now_bg).await.map(Box::new))
+            });
+            // The arrivals line beside it; only opening Now starts a visit.
+            let mark_seen = std::mem::take(&mut app.mailbox.now_page.pending_mark_seen);
+            // Refreshes while Now stays open keep the window the visit opened with.
+            let open_since = app.mailbox.now_page.arrivals.as_ref().map(|a| a.since);
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
-                AsyncResult::Now(fetch_now(&bg).await.map(Box::new))
+                AsyncResult::Arrivals(
+                    trust_call(
+                        &bg,
+                        Request::GetArrivals {
+                            account_id: None,
+                            mark_seen,
+                            since: open_since,
+                        },
+                        |data| match data {
+                            ResponseData::Arrivals { arrivals } => Some(Box::new(arrivals)),
+                            _ => None,
+                        },
+                    )
+                    .await,
+                )
             });
         }
+
+        spawn_trust_fetches(&mut app, &bg, &queued);
 
         if std::mem::take(&mut app.mailbox.messages_page.pending_refresh) {
             let bg = bg.clone();
@@ -2261,6 +2285,10 @@ pub async fn run() -> anyhow::Result<()> {
             let result_tx_inner = result_tx.clone();
             let _ = submit_task(&queued, async move {
                 let verb = mutation_verb_past(&req);
+                let move_not_sure = matches!(
+                    &req,
+                    Request::MoveMessage { source: Some(source), .. } if source == "not_sure"
+                );
                 let undo_id = match &req {
                     Request::UndoMutation { mutation_id } => Some(mutation_id.clone()),
                     _ => None,
@@ -2382,6 +2410,28 @@ pub async fn run() -> anyhow::Result<()> {
                             | ResponseData::DeskThreadsRestored { .. }
                             | ResponseData::MessagesPinned { .. },
                     }) => Ok(effect),
+                    Ok(Response::Ok {
+                        data: ResponseData::MessageMoved { outcome },
+                    }) => {
+                        // `u` puts the move back exactly; the toast is the
+                        // daemon's copy and its sender question.
+                        if let Some(correction_id) = outcome.correction_id {
+                            let _ =
+                                result_tx_inner.send(AsyncResult::UndoCaptured(app::PendingUndo {
+                                    action: app::UndoAction::Move(correction_id),
+                                    verb_past: "Moved".into(),
+                                    count: 1,
+                                    applied_at: std::time::Instant::now(),
+                                }));
+                        }
+                        let status = app::move_status(&outcome, move_not_sure);
+                        let _ = result_tx_inner
+                            .send(AsyncResult::Moved(Box::new(outcome), move_not_sure));
+                        Ok(app::MutationEffect::ModeDone(status))
+                    }
+                    Ok(Response::Ok {
+                        data: ResponseData::MoveUndone { copy, .. },
+                    }) => Ok(app::MutationEffect::ModeDone(copy)),
                     Ok(Response::Ok {
                         data:
                             ResponseData::ModeDone {
@@ -3577,6 +3627,29 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Now(Err(e)) => {
                             app.status_message = Some(format!("Couldn't load Now: {e}"));
                         }
+                        AsyncResult::Arrivals(Ok(arrivals)) => app.set_arrivals(*arrivals),
+                        // Now still works without its line.
+                        AsyncResult::Arrivals(Err(e)) => {
+                            tracing::warn!(error = %e, "arrivals line unavailable");
+                        }
+                        AsyncResult::ArrivalsList(fetch, Ok(list)) => {
+                            app.set_arrivals_list(&fetch, *list);
+                        }
+                        AsyncResult::ArrivalsList(_, Err(e)) => {
+                            app.status_message = Some(format!("Couldn't list them: {e}"));
+                        }
+                        AsyncResult::ArrivalModes(result) => {
+                            app.mailbox.trust.chips_in_flight = false;
+                            match result {
+                                Ok(items) => app.mailbox.trust.set_chips(items),
+                                // Asked ids stay asked: a failing daemon is
+                                // not asked again every frame.
+                                Err(e) => tracing::warn!(error = %e, "mode chips unavailable"),
+                            }
+                        }
+                        AsyncResult::Moved(outcome, not_sure) => {
+                            app.after_move(&outcome, not_sure);
+                        }
                         AsyncResult::Messages(Ok(loaded)) => {
                             let (messages, guide) = *loaded;
                             app.set_messages(messages, guide);
@@ -4414,6 +4487,70 @@ fn change_data(data: ResponseData) -> Option<Box<mxr_protocol::RecordChangeData>
 const RECORDS_ANSWER_LIST_LIMIT: u32 = 200;
 
 /// Starts whatever the Archive lens asked the runtime for.
+/// One daemon request for the trust rung, its answer picked out by
+/// `pick`.
+async fn trust_call<T>(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    request: Request,
+    pick: impl FnOnce(ResponseData) -> Option<T>,
+) -> Result<T, MxrError> {
+    match ipc_call(bg, request).await {
+        Ok(Response::Ok { data }) => {
+            pick(data).ok_or_else(|| MxrError::Ipc("unexpected response from the daemon".into()))
+        }
+        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+        Err(e) => Err(e),
+    }
+}
+
+/// The arrivals list a count opened, and Inbox's mode chips for the rows
+/// on screen.
+fn spawn_trust_fetches(
+    app: &mut App,
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    queued: &mpsc::UnboundedSender<crate::runtime::AsyncResultTask>,
+) {
+    if let Some(fetch) = app.mailbox.trust.pending_list.take() {
+        let bg = bg.clone();
+        let _ = submit_task(queued, async move {
+            let result = trust_call(
+                &bg,
+                Request::ListArrivals {
+                    account_id: None,
+                    bucket: fetch.bucket,
+                    since: Some(fetch.since),
+                    until: Some(fetch.until),
+                    limit: 200,
+                },
+                |data| match data {
+                    ResponseData::ArrivalList { list } => Some(Box::new(list)),
+                    _ => None,
+                },
+            )
+            .await;
+            AsyncResult::ArrivalsList(fetch, result)
+        });
+    }
+    app.request_visible_chips();
+    if let Some(message_ids) = app.mailbox.trust.pending_chips.take() {
+        app.mailbox.trust.chips_in_flight = true;
+        let bg = bg.clone();
+        let _ = submit_task(queued, async move {
+            AsyncResult::ArrivalModes(
+                trust_call(
+                    &bg,
+                    Request::GetArrivalModes { message_ids },
+                    |data| match data {
+                        ResponseData::ArrivalModes { items } => Some(items),
+                        _ => None,
+                    },
+                )
+                .await,
+            )
+        });
+    }
+}
+
 fn spawn_records_fetches(
     app: &mut App,
     bg: &mpsc::UnboundedSender<IpcRequest>,

@@ -340,6 +340,7 @@ impl App {
             KeyCode::Char('t') if plain => Some(Action::UpdatesNeedsMe),
             KeyCode::Char('A') if shifted => Some(Action::UpdatesLetGoAll),
             KeyCode::Char('K') if shifted => Some(Action::UpdatesTune),
+            KeyCode::Char('X') if shifted => Some(Action::OpenMoveMenu),
             KeyCode::Char('L') if shifted => Some(Action::UpdatesOpenLink),
             KeyCode::Char('u') if plain => Some(Action::UndoLastMutation),
             _ => None,

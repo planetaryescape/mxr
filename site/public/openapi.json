@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.57"
+    "version": "0.6.58"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -259,6 +259,166 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/arrivals": {
+      "get": {
+        "tags": [],
+        "summary": "Now's arrivals line: every email first seen since Now was last opened, counted once by where it went, with Not-sure questions and the track record",
+        "operationId": "mail_arrivals",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mark_seen",
+            "in": "query",
+            "description": "True when Now opens: starts a visit",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "The window start the open visit was answered; a refetch that doesn't mark keeps it",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `Arrivals` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/arrivals/list": {
+      "get": {
+        "tags": [],
+        "summary": "The emails behind one count of the arrivals line, newest first, exactly as many as the count",
+        "operationId": "mail_arrivals_list",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "description": "messages, todo, updates, reading, archive, screened_out, spam or sorting; omitted lists every arrival",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "RFC 3339; defaults to the line's window",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "description": "RFC 3339; defaults to now",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 100",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `ArrivalList` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown bucket, or until not after since"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/arrivals/modes": {
+      "post": {
+        "tags": [],
+        "summary": "Where each of up to 200 emails went and where it is now, for Inbox's mode chips",
+        "operationId": "mail_arrivals_modes",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArrivalModesBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ArrivalModes` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No ids, more than 200, or a bad id"
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -594,6 +754,50 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/corrections": {
+      "get": {
+        "tags": [],
+        "summary": "Every move, sender mode and Not-sure answer, newest first",
+        "operationId": "mail_corrections",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 50",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `Corrections` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -1248,6 +1452,52 @@
         }
       }
     },
+    "/api/v1/mail/messages/{message_id}/move": {
+      "post": {
+        "tags": [],
+        "summary": "Move one email to a mode (X), or with sender set the sender's mode (K); To do and Archive add it there (dry_run previews)",
+        "operationId": "mail_message_move",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "description": "The email",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `MessageMoved` variant, with the correction id undo takes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown mode or bad id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/modes/guide": {
       "get": {
         "tags": [],
@@ -1398,6 +1648,40 @@
           },
           "400": {
             "description": "Unknown mode or no threads"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/moves/{correction_id}/undo": {
+      "post": {
+        "tags": [],
+        "summary": "Put a move back exactly as it was; undoing twice changes nothing",
+        "operationId": "mail_move_undo",
+        "parameters": [
+          {
+            "name": "correction_id",
+            "in": "path",
+            "description": "From the move's outcome",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `MoveUndone` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -5969,6 +6253,43 @@
           }
         }
       },
+      "ArrivalBucketData": {
+        "type": "string",
+        "description": "Where an arrival is counted: a mode, or one of the buckets that make\nthe counts sum.",
+        "enum": [
+          "messages",
+          "todo",
+          "updates",
+          "reading",
+          "archive",
+          "screened_out",
+          "spam",
+          "sorting"
+        ]
+      },
+      "ArrivalCountData": {
+        "type": "object",
+        "description": "One count on the line, and what opening it lists.",
+        "required": [
+          "bucket",
+          "count",
+          "label"
+        ],
+        "properties": {
+          "bucket": {
+            "$ref": "#/components/schemas/ArrivalBucketData"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "label": {
+            "type": "string",
+            "description": "\"8 Messages\"."
+          }
+        }
+      },
       "ArrivalData": {
         "type": "object",
         "description": "One message that arrived, with the modes its conversation went to.",
@@ -6012,6 +6333,249 @@
           },
           "thread_id": {
             "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
+      "ArrivalItemData": {
+        "type": "object",
+        "description": "One email in an arrivals list.",
+        "required": [
+          "account_id",
+          "message_id",
+          "thread_id",
+          "sender_email",
+          "subject",
+          "date",
+          "first_seen_at",
+          "arrived_in",
+          "bucket",
+          "chip"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "also_archive": {
+            "type": "boolean"
+          },
+          "also_todo": {
+            "type": "boolean"
+          },
+          "arrived_in": {
+            "$ref": "#/components/schemas/ArrivalBucketData",
+            "description": "Where it went when it arrived."
+          },
+          "bucket": {
+            "$ref": "#/components/schemas/ArrivalBucketData",
+            "description": "Where it is now, after any correction."
+          },
+          "chip": {
+            "type": "string",
+            "description": "The chip: \"→ Updates · automated sender\"."
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "first_seen_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "moved": {
+            "type": "boolean",
+            "description": "Moved by you, this email only."
+          },
+          "not_sure": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"has List-Unsubscribe\"."
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "sender_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "unread": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ArrivalListData": {
+        "type": "object",
+        "description": "Returned by `Request::ListArrivals`.",
+        "required": [
+          "since",
+          "until",
+          "total",
+          "items"
+        ],
+        "properties": {
+          "bucket": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ArrivalBucketData"
+              }
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArrivalItemData"
+            }
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many match in all; `items` is the newest page.",
+            "minimum": 0
+          },
+          "until": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ArrivalModesBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/arrivals/modes`.",
+        "required": [
+          "message_ids"
+        ],
+        "properties": {
+          "message_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "At most 200, answered in this order."
+          }
+        }
+      },
+      "ArrivalsData": {
+        "type": "object",
+        "description": "Returned by `Request::GetArrivals`: the line on Now.",
+        "required": [
+          "generated_at",
+          "since",
+          "until",
+          "since_label",
+          "total",
+          "counts",
+          "line",
+          "never_bury"
+        ],
+        "properties": {
+          "also": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArrivalCountData"
+            },
+            "description": "To do and Archive, shown as \"also\" and never added."
+          },
+          "clear_line": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When nothing on Now waits: \"Clear. All 50 emails since 08:12 are\naccounted for.\" Absent when nothing arrived."
+          },
+          "counts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArrivalCountData"
+            },
+            "description": "Non-zero counts in the line's order. They sum to `total`."
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "latest_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "line": {
+            "type": "string",
+            "description": "\"Since 08:12: 50 arrived. 8 Messages · 10 Updates · 31 Reading · 1\nspam. Also 2 in To do.\" or \"Nothing new since 08:12. Latest mail 2h\nago.\""
+          },
+          "never_bury": {
+            "type": "string",
+            "description": "The never-bury rules that are live, for the line's `?`."
+          },
+          "not_sure": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotSureData"
+            },
+            "description": "At most three a day."
+          },
+          "not_sure_hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The hint the first Not-sure item carries until the user has seen it."
+          },
+          "not_sure_line": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"2 emails I wasn't sure about. Where should these go?\""
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The window: since Now was last opened, at most 24 hours back; the\nstart of today when Now was never opened."
+          },
+          "since_label": {
+            "type": "string",
+            "description": "\"08:12\", or \"Tue 22:10\" for an earlier day."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Every inbound email first seen in the window, each counted once.",
+            "minimum": 0
+          },
+          "track_record": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"Last week mxr sorted 310 emails; you moved 2.\" Only once a move\nexists."
+          },
+          "until": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -7041,6 +7605,73 @@
           }
         }
       },
+      "CorrectionData": {
+        "type": "object",
+        "description": "One stored correction.",
+        "required": [
+          "id",
+          "account_id",
+          "scope",
+          "sender_email",
+          "from_mode",
+          "to_mode",
+          "source",
+          "created_at"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "from_mode": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "message_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            ]
+          },
+          "rule": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "description": "`email` or `sender`."
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "description": "`move`, `sender` or `not_sure`."
+          },
+          "to_mode": {
+            "type": "string"
+          },
+          "undone_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
       "DaemonEvent": {
         "oneOf": [
           {
@@ -7451,6 +8082,31 @@
               },
               "message_id": {
                 "$ref": "#/components/schemas/MessageId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Where mail sits changed: an email or a sender was moved, a move was\nundone, or new arrivals were placed. Clients refetch their modes,\nNow and Inbox's chips.",
+            "required": [
+              "event"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "event": {
+                "type": "string",
+                "enum": [
+                  "ModesChanged"
+                ]
               }
             }
           }
@@ -10015,7 +10671,9 @@
           "templated_sender",
           "list_sender",
           "person",
-          "copied"
+          "copied",
+          "written_to",
+          "moved"
         ]
       },
       "Label": {
@@ -11328,6 +11986,129 @@
           }
         }
       },
+      "MoveBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/messages/{message_id}/move`.",
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "mode": {
+            "type": "string",
+            "description": "messages, todo, updates, reading or archive."
+          },
+          "sender": {
+            "type": "boolean",
+            "description": "Set the sender's mode for all their mail (`K`)."
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`not_sure` when answering Now's question."
+          }
+        }
+      },
+      "MoveChoiceData": {
+        "type": "object",
+        "description": "One destination of a move, with its key in the picker.",
+        "required": [
+          "mode",
+          "label",
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "\"m\", \"x\", \"u\", \"r\", \"e\": the mode's jump letter."
+          },
+          "label": {
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ModeKindData"
+          }
+        }
+      },
+      "MoveOutcomeData": {
+        "type": "object",
+        "description": "What a move did, or with `dry_run` would do.",
+        "required": [
+          "account_id",
+          "message_id",
+          "thread_id",
+          "sender_email",
+          "from",
+          "to",
+          "sender",
+          "dry_run",
+          "copy"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "ask_sender": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"Always for this sender? (K)\": asked once after a per-email move to\nMessages, Updates or Reading."
+          },
+          "aspect_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "To do and Archive add the email there: the to-do or record made."
+          },
+          "copy": {
+            "type": "string",
+            "description": "\"Moved to Reading.\" / \"All mail from maya@example.com goes to\nReading.\" / \"Would move to Reading.\""
+          },
+          "correction_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Undo with `Request::UndoMove`. Absent for a dry run or a move that\nchanged nothing."
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "from": {
+            "$ref": "#/components/schemas/ArrivalBucketData"
+          },
+          "hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The hint the first move's toast carries until the user has seen it."
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "sender": {
+            "type": "boolean",
+            "description": "The sender's mode was set, for this and all their mail."
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "to": {
+            "$ref": "#/components/schemas/ModeKindData"
+          }
+        }
+      },
       "MutationCommand": {
         "oneOf": [
           {
@@ -11608,6 +12389,58 @@
           "undo_unavailable": {
             "type": "boolean",
             "description": "True when an undoable mutation succeeded but persisting its undo\nentry failed, so `mutation_id` is `None` even though undo was\nexpected. Lets clients distinguish \"no undo by design\" from \"undo\nwas lost\" and warn the user instead of silently dropping it."
+          }
+        }
+      },
+      "NotSureData": {
+        "type": "object",
+        "description": "An email Now asks about: two placement rules disagreed (D119's U1:\nsomeone you've written to only copied you).",
+        "required": [
+          "account_id",
+          "message_id",
+          "thread_id",
+          "sender_email",
+          "subject",
+          "mode",
+          "line",
+          "choices"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MoveChoiceData"
+            },
+            "description": "The answers, one key each: Messages, To do, Updates, Reading,\nArchive."
+          },
+          "line": {
+            "type": "string",
+            "description": "\"Maya Ortiz copied you on \"Q4 plan\". Updates for now.\""
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ModeKindData",
+            "description": "Where it is for now."
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "sender_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
           }
         }
       },
@@ -20563,6 +21396,202 @@
           },
           {
             "type": "object",
+            "description": "Now's arrivals line (D119): every inbound email first seen since Now\nwas last opened (at most 24 hours back), counted once by where it\nwent, plus \"Not sure\" questions and the weekly track record.\n`mark_seen` starts a visit: the window then runs from the visit\nbefore. `since` is the window start of the visit a client already\nhas open (the `since` it was answered): a read that doesn't mark\nthen keeps that window instead of working one out again, so a Now\nthat stays open polls the same window all visit. Returns\n`ResponseData::Arrivals`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetArrivals"
+                ]
+              },
+              "mark_seen": {
+                "type": "boolean"
+              },
+              "since": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The emails behind one count of the arrivals line, newest first:\nexactly as many as the count. `since`/`until` default to the line's\nwindow; `bucket` omitted lists every arrival. Returns\n`ResponseData::ArrivalList`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "bucket": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ArrivalBucketData"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListArrivals"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "since": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "until": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Where each email went when it arrived and where it is now, for\nInbox's mode chips. At most 200; emails older than the ledger are\nleft out. Returns `ResponseData::ArrivalModes`.",
+            "required": [
+              "message_ids",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetArrivalModes"
+                ]
+              },
+              "message_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MessageId"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Move one email to a mode (`X`), or with `sender` set the sender's\nmode for all their mail (`K`). Messages, Updates and Reading move\nit; To do and Archive add it there (a to-do, a record). Takes effect\nin every client at once and is stored as a correction. `source:\n\"not_sure\"` answers a Not-sure question. Returns\n`ResponseData::MessageMoved` with the id `UndoMove` takes.",
+            "required": [
+              "message_id",
+              "mode",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "MoveMessage"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "mode": {
+                "$ref": "#/components/schemas/ModeKindData"
+              },
+              "sender": {
+                "type": "boolean"
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Put a move back exactly as it was. Undoing twice changes nothing.\nReturns `ResponseData::MoveUndone`.",
+            "required": [
+              "correction_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UndoMove"
+                ]
+              },
+              "correction_id": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Every move, sender mode and Not-sure answer, newest first. Returns\n`ResponseData::Corrections`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListCorrections"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Done here: the thread leaves `mode` until a new message arrives\n(To do ticks its open rows off). When no other mode holds the\nthread and `modes.archive_on_last_done` is on, it is archived at\nthe provider too. Each outcome carries the handoff copy. `dry_run`\nreturns the same plan without changing anything; the real run\nreturns one `mutation_id` for `UndoMutation`. Archive has no done.\nIn To do, `todo_ids` ticks off only those rows; To do lets go of a\nthread only once none of its to-dos is open. `sender` adds every\nthread of that sender's in the mode (Updates or Reading), resolved\nhere so the preview and the run cover the same set. Returns\n`ResponseData::ModeDone`.",
             "required": [
               "mode",
@@ -24882,6 +25911,132 @@
                 "type": "string",
                 "enum": [
                   "UpdateSource"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetArrivals`.",
+            "required": [
+              "arrivals",
+              "kind"
+            ],
+            "properties": {
+              "arrivals": {
+                "$ref": "#/components/schemas/ArrivalsData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Arrivals"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ListArrivals`.",
+            "required": [
+              "list",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ArrivalList"
+                ]
+              },
+              "list": {
+                "$ref": "#/components/schemas/ArrivalListData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetArrivalModes`, one per email the ledger\nhas, in request order.",
+            "required": [
+              "items",
+              "kind"
+            ],
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ArrivalItemData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ArrivalModes"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::MoveMessage`.",
+            "required": [
+              "outcome",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "MessageMoved"
+                ]
+              },
+              "outcome": {
+                "$ref": "#/components/schemas/MoveOutcomeData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::UndoMove`.",
+            "required": [
+              "correction_id",
+              "copy",
+              "kind"
+            ],
+            "properties": {
+              "copy": {
+                "type": "string",
+                "description": "\"Moved back to Reading.\" or \"Already undone.\""
+              },
+              "correction_id": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "MoveUndone"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ListCorrections`.",
+            "required": [
+              "corrections",
+              "kind"
+            ],
+            "properties": {
+              "corrections": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CorrectionData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Corrections"
                 ]
               }
             }

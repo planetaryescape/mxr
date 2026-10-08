@@ -131,6 +131,29 @@ pub enum Action {
     UpdatesOpenLink,
     /// Esc on Updates: close a menu or retire the first-encounter card.
     UpdatesClose,
+    /// `X`: "Move to…" for the selected email: one key per mode
+    /// (`MoveMessage`), Shift for the sender's mode.
+    OpenMoveMenu,
+    /// `K` where it is free (the mail list, Now, Messages): the sender's
+    /// mode, for this and all their mail. While a move's "Always for this
+    /// sender?" shows, it answers yes at once.
+    OpenSenderMoveMenu,
+    /// A choice in the move menu: this email, or with `sender` the
+    /// sender's mode.
+    MoveEmailTo {
+        mode: mxr_protocol::ModeKindData,
+        sender: bool,
+    },
+    /// m, x, u, r or e on a Not-sure question on Now: where it goes.
+    NowAnswerNotSure(mxr_protocol::ModeKindData),
+    /// y or n to "Always for this sender?" after a Not-sure answer.
+    AnswerAlwaysForSender(bool),
+    /// Enter on Now's arrivals line: the emails behind it.
+    OpenArrivals,
+    /// Tab in the arrivals list: the next count's emails.
+    ArrivalsNextBucket,
+    /// Esc in the arrivals list.
+    CloseArrivals,
     /// Open Reading or Paper trail (`Request::ListPlace`).
     OpenPlace(mxr_protocol::MailPlaceData),
     /// Pin or unpin the message under the cursor in a place.

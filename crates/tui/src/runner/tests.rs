@@ -148,6 +148,7 @@ mod input_and_compose;
 mod keymap;
 mod mailbox_views;
 mod messages;
+mod moves;
 mod mutations_and_bulk;
 mod now;
 mod places;

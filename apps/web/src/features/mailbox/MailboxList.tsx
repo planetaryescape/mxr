@@ -15,6 +15,7 @@ import { BulkActionBar } from "./BulkActionBar";
 import { MailboxRow, RowActionChip, type RowAction, type RowQuickAction } from "./MailboxRow";
 import { rowKey } from "./rowKey";
 import type { MessageGroupView, MessageRowView } from "./types";
+import { ModeChipScope } from "@/features/arrivals/ModeChip";
 import { requestRowGists, useGistEpoch } from "@/features/gists/rowGists";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { performMailAction } from "@/features/mail-actions/mailMutations";
@@ -71,6 +72,8 @@ export interface MailboxListProps {
    * what it asks), shown in place of the snippet as each one lands.
    */
   rowGists?: boolean;
+  /** Name the mode each row's email went to (Inbox, D119). */
+  modeChips?: boolean;
 }
 
 export interface RowRenderState {
@@ -159,6 +162,7 @@ export function MailboxList({
   interceptVerb,
   swipeActions,
   rowGists = false,
+  modeChips = false,
 }: MailboxListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const density = useUiPrefs((s) => s.density);
@@ -264,6 +268,17 @@ export function MailboxList({
     }, GIST_REQUEST_DELAY_MS);
     return () => window.clearTimeout(handle);
   }, [flat, gistEpoch, overscanStart, rowGists, visibleEnd, visibleStart]);
+
+  // Inbox's mode chips, for the rows on screen: one request per range.
+  const chipIds = useMemo(
+    () =>
+      modeChips
+        ? flat
+            .slice(overscanStart, Math.max(overscanStart, visibleEnd) + 1)
+            .flatMap((item) => (item.kind === "row" ? [item.row.id] : []))
+        : [],
+    [flat, modeChips, overscanStart, visibleEnd],
+  );
 
   useEffect(() => {
     const last = virtualItems.at(-1);
@@ -589,60 +604,62 @@ export function MailboxList({
         onMouseDown={() => setActivePane("mailbox")}
       >
         <SwipeLayer ref={swipeLayerRef} />
-        {/* Rows stop at the page frame on a wide screen; the scrollbar stays at the edge. */}
-        <div
-          className="@container mode-frame"
-          style={{ height: virtualizer.getTotalSize(), position: "relative" }}
-        >
-          {virtualItems.map((virtualItem) => {
-            const item = flat[virtualItem.index];
-            if (!item) return null;
-            return (
-              <div
-                key={virtualItem.key}
-                data-index={virtualItem.index}
-                ref={virtualizer.measureElement}
-                className="absolute left-0 top-0 w-full"
-                style={{ transform: `translateY(${virtualItem.start}px)` }}
-              >
-                {item.kind === "header" ? (
-                  <GroupHeader group={item.group} airy={airyHeaders} />
-                ) : renderRow ? (
-                  renderRow(item.row, {
-                    domId: domId(item.row),
-                    focused:
-                      listFocused &&
-                      focusedRow !== undefined &&
-                      rowKey(focusedRow) === rowKey(item.row),
-                    open: item.row.thread_id === activeThreadId,
-                    selected: !readOnly && selectedIds.has(rowKey(item.row)),
-                    onOpen: handleOpen,
-                  })
-                ) : (
-                  <MailboxRow
-                    row={item.row}
-                    domId={domId(item.row)}
-                    selected={!readOnly && selectedIds.has(rowKey(item.row))}
-                    focused={
-                      listFocused &&
-                      focusedRow !== undefined &&
-                      rowKey(focusedRow) === rowKey(item.row)
-                    }
-                    open={item.row.thread_id === activeThreadId}
-                    selecting={selecting}
-                    readOnly={readOnly}
-                    onOpen={handleOpen}
-                    onToggleSelection={onToggleSelection}
-                    onQuickAction={onQuickAction}
-                    trailingAction={
-                      rowAction ? <RowActionChip action={rowAction} row={item.row} /> : undefined
-                    }
-                  />
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <ModeChipScope enabled={modeChips} messageIds={chipIds}>
+          {/* Rows stop at the page frame on a wide screen; the scrollbar stays at the edge. */}
+          <div
+            className="@container mode-frame"
+            style={{ height: virtualizer.getTotalSize(), position: "relative" }}
+          >
+            {virtualItems.map((virtualItem) => {
+              const item = flat[virtualItem.index];
+              if (!item) return null;
+              return (
+                <div
+                  key={virtualItem.key}
+                  data-index={virtualItem.index}
+                  ref={virtualizer.measureElement}
+                  className="absolute left-0 top-0 w-full"
+                  style={{ transform: `translateY(${virtualItem.start}px)` }}
+                >
+                  {item.kind === "header" ? (
+                    <GroupHeader group={item.group} airy={airyHeaders} />
+                  ) : renderRow ? (
+                    renderRow(item.row, {
+                      domId: domId(item.row),
+                      focused:
+                        listFocused &&
+                        focusedRow !== undefined &&
+                        rowKey(focusedRow) === rowKey(item.row),
+                      open: item.row.thread_id === activeThreadId,
+                      selected: !readOnly && selectedIds.has(rowKey(item.row)),
+                      onOpen: handleOpen,
+                    })
+                  ) : (
+                    <MailboxRow
+                      row={item.row}
+                      domId={domId(item.row)}
+                      selected={!readOnly && selectedIds.has(rowKey(item.row))}
+                      focused={
+                        listFocused &&
+                        focusedRow !== undefined &&
+                        rowKey(focusedRow) === rowKey(item.row)
+                      }
+                      open={item.row.thread_id === activeThreadId}
+                      selecting={selecting}
+                      readOnly={readOnly}
+                      onOpen={handleOpen}
+                      onToggleSelection={onToggleSelection}
+                      onQuickAction={onQuickAction}
+                      trailingAction={
+                        rowAction ? <RowActionChip action={rowAction} row={item.row} /> : undefined
+                      }
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </ModeChipScope>
         {hasMore || loadingMore ? (
           <div className="px-4 py-3 text-center font-mono text-2xs text-muted-foreground">
             {loadingMore ? "Loading more…" : ""}

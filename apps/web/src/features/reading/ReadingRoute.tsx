@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { moveCommands, readingMoveSubject } from "@/features/arrivals/moveSubjects";
 import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { Bookmark, Newspaper, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -368,6 +369,8 @@ function Bands({
       void rememberLayout(item.account_id, item.sender_email, true).then(() => read(item.item_key));
     },
     letGoAll: () => view !== "later" && openLetGoAll(edition, setDialog),
+    // `K` stays "move sender to a kind"; only the email moves from here.
+    moveToMode: moveCommands(() => (current ? readingMoveSubject(current) : null)).moveToMode,
     openEmail: () => {
       const item = itemOf(current);
       if (!item) return;

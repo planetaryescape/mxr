@@ -19,6 +19,7 @@ use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_util::codec::Framed;
 
+mod arrival_routes;
 mod compose_and_scheduling;
 mod place_routes;
 mod record_routes;

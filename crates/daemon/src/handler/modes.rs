@@ -32,7 +32,6 @@ use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Local, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_core::types::UnsubscribeMethod;
 use mxr_protocol::{
     mode_guide, rail_copy, DeskRowData, ModeKindData, RailData, RailEntryData, RailLinkData,
     RailStatusData, ResponseData, SenderKindData, ThreadModesData,
@@ -93,22 +92,12 @@ pub(super) struct Placement {
 
 /// The kind signals for one desk message, as the desk and places build
 /// them.
-pub(super) fn signals<'a>(message: &'a DeskMessage, senders: &Senders) -> KindSignals<'a> {
-    let key = message.from.email.to_ascii_lowercase();
-    KindSignals {
-        email: &message.from.email,
-        subject: &message.subject,
-        has_list_id: message.list_id.is_some(),
-        has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
-        is_delivery: message.is_delivery,
-        is_invite: message.is_invite,
-        list_sender: senders
-            .contacts
-            .get(&key)
-            .is_some_and(|contact| contact.is_list_sender),
-        sender: mail_kind::SenderFacts::of(senders.contacts.get(&key)),
-        decision: senders.screener.get(&key).copied(),
-    }
+pub(super) fn signals<'a>(
+    message: &'a DeskMessage,
+    senders: &Senders,
+    is_self: &dyn Fn(&str) -> bool,
+) -> KindSignals<'a> {
+    senders.signals(message, is_self)
 }
 
 /// Place `thread_ids` of one account in their modes at `now`. Threads
@@ -158,6 +147,7 @@ pub(super) async fn place_threads(
         dismissed: &dismissed,
         timers: &timers,
         is_self: &is_self,
+        moves: &senders.moves,
         shape: super::conversation_shape::shape_config(state),
         now,
     });
@@ -313,7 +303,7 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         if !message.in_inbox || message.snoozed || message.is_delivery || message.is_invite {
             continue;
         }
-        let kind = mail_kind::classify(&signals(message, inputs.senders))
+        let kind = mail_kind::classify(&signals(message, inputs.senders, inputs.is_self))
             .kind
             .to_data();
         by_kind.entry(kind).or_default().push(message);
@@ -339,7 +329,7 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         let Some(latest) = held.iter().max_by_key(|m| (m.date, m.seq)) else {
             continue;
         };
-        let described = mail_kind::describe(&signals(latest, inputs.senders));
+        let described = mail_kind::describe(&signals(latest, inputs.senders, inputs.is_self));
         let source = if described.corrected { "you" } else { "rule" };
         let sender = latest
             .from
@@ -413,16 +403,19 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
 /// The thread's shape, by the rule the lanes and Messages use.
 fn shape_of(inputs: &PlaceInputs<'_>) -> Shape {
     let person_sender = |m: &DeskMessage| {
-        mail_kind::classify(&signals(m, inputs.senders)).kind == mail_kind::SenderKind::Person
+        mail_kind::classify(&signals(m, inputs.senders, inputs.is_self)).kind
+            == mail_kind::SenderKind::Person
     };
     let human =
         |email: &str| human_address(email, &inputs.senders.contacts, &inputs.senders.screener);
+    let kept = |m: &DeskMessage| inputs.senders.kept_in_messages(m, inputs.is_self);
     conversation_shape(
         inputs.thread,
         &ShapeInputs {
             is_self: inputs.is_self,
             person_sender: &person_sender,
             human_address: &human,
+            kept_in_messages: &kept,
             config: inputs.shape,
         },
     )
@@ -441,7 +434,8 @@ fn quiet<'a>(inputs: &PlaceInputs<'a>) -> Option<&'a DeskMessage> {
         .iter()
         .filter(|m| m.in_inbox && !m.trashed && !is_outbound(m, inputs.is_self))
         .filter(|m| {
-            mail_kind::classify(&signals(m, inputs.senders)).kind == mail_kind::SenderKind::Person
+            mail_kind::classify(&signals(m, inputs.senders, inputs.is_self)).kind
+                == mail_kind::SenderKind::Person
         })
         .max_by_key(|m| (m.date, m.seq))
 }
@@ -474,7 +468,7 @@ fn new_sender(inputs: &PlaceInputs<'_>) -> Option<mxr_protocol::ScreenerQuestion
     }
     // Only a person is asked about. A machine's mail goes to its mode
     // silently, and its row's why line says which rule put it there.
-    let kind = mail_kind::classify(&signals(latest, inputs.senders)).kind;
+    let kind = mail_kind::classify(&signals(latest, inputs.senders, inputs.is_self)).kind;
     if kind != mail_kind::SenderKind::Person {
         return None;
     }

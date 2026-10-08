@@ -55,6 +55,17 @@ pub(crate) enum AsyncResult {
     /// Boxed: Now is large next to the other variants.
     Now(Result<Box<(mxr_protocol::NowData, Option<mxr_protocol::ModeGuideData>)>, MxrError>),
     Rail(Result<mxr_protocol::RailData, MxrError>),
+    /// Now's arrivals line, Not-sure questions and track record.
+    Arrivals(Result<Box<mxr_protocol::ArrivalsData>, MxrError>),
+    /// The emails behind one count of the line.
+    ArrivalsList(
+        crate::app::ArrivalsListFetch,
+        Result<Box<mxr_protocol::ArrivalListData>, MxrError>,
+    ),
+    /// Inbox's mode chips for the rows asked about.
+    ArrivalModes(Result<Vec<mxr_protocol::ArrivalItemData>, MxrError>),
+    /// A move landed; whether it answered a Not-sure question.
+    Moved(Box<mxr_protocol::MoveOutcomeData>, bool),
     /// Messages' bands and, when the daemon served it, its guide.
     Messages(
         Result<

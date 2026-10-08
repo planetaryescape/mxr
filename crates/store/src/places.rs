@@ -11,7 +11,7 @@
 use crate::{decode_id, decode_json, decode_timestamp, encode_json, trace_query};
 use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_core::types::{MessageFlags, UnsubscribeMethod};
+use mxr_core::types::{Address, MessageFlags, UnsubscribeMethod};
 use sqlx::Row;
 use std::time::Instant;
 
@@ -29,6 +29,9 @@ pub struct PlaceMessage {
     pub flags: MessageFlags,
     pub from_email: String,
     pub from_name: Option<String>,
+    /// For "addressed to you, or only copied" (D119's never-bury rule).
+    pub to: Vec<Address>,
+    pub cc: Vec<Address>,
     pub subject: String,
     pub snippet: String,
     pub list_id: Option<String>,
@@ -209,7 +212,8 @@ fn hidden_flags() -> i64 {
 /// flag mask.
 const PLACE_COLUMNS: &str = r#"
     m.rowid AS seq, m.id, m.account_id, m.thread_id, m.direction, m.date, m.flags,
-    m.from_email, m.from_name, m.subject, m.snippet, m.list_id, m.unsubscribe_method,
+    m.from_email, m.from_name, m.to_addrs, m.cc_addrs, m.subject, m.snippet, m.list_id,
+    m.unsubscribe_method,
     EXISTS (SELECT 1 FROM delivery_messages dm WHERE dm.message_id = m.id) AS is_delivery,
     EXISTS (SELECT 1 FROM calendar_invites ci WHERE ci.message_id = m.id) AS is_invite,
     EXISTS (SELECT 1 FROM message_pins p WHERE p.message_id = m.id) AS pinned,
@@ -266,6 +270,8 @@ fn decode_place_message(row: &sqlx::sqlite::SqliteRow) -> Result<PlaceMessage, s
         flags: MessageFlags::from_bits_truncate(row.try_get::<i64, _>("flags")? as u32),
         from_email: row.try_get("from_email")?,
         from_name: row.try_get("from_name")?,
+        to: decode_json(row.try_get::<&str, _>("to_addrs")?)?,
+        cc: decode_json(row.try_get::<&str, _>("cc_addrs")?)?,
         subject: row.try_get("subject")?,
         snippet: row.try_get("snippet")?,
         list_id: row.try_get("list_id")?,

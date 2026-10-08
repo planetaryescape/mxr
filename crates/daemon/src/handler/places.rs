@@ -43,6 +43,10 @@ const fn place_kind(place: MailPlaceData) -> SenderKindData {
 pub(super) struct AccountKinds {
     decisions: HashMap<String, ScreenerDisposition>,
     contacts: HashMap<String, DeskContact>,
+    /// Senders you have written to, for the never-bury rule.
+    written_to: HashSet<String>,
+    /// Emails the user moved (`X`) whose move is in force.
+    moves: HashMap<MessageId, mail_kind::SenderKind>,
     addresses: Arc<mxr_core::types::InMemoryAccountAddressLookup>,
     account_id: AccountId,
     account_email: Option<String>,
@@ -69,7 +73,7 @@ impl AccountKinds {
             .into_iter()
             .collect();
         lowered.sort_unstable();
-        let mut contacts = store
+        let mut contacts: HashMap<String, DeskContact> = store
             .desk_contacts(account_id, &lowered)
             .await?
             .into_iter()
@@ -82,6 +86,17 @@ impl AccountKinds {
             senders.iter().map(String::as_str),
         )
         .await?;
+        let written_to = contacts
+            .values()
+            .filter(|contact| contact.total_outbound > 0)
+            .map(|contact| contact.email.to_ascii_lowercase())
+            .collect();
+        let moves = store
+            .arrival_moves_in_force(account_id)
+            .await?
+            .into_iter()
+            .filter_map(|(id, mode)| Some((id, mail_kind::kind_for_stored_mode(&mode)?)))
+            .collect();
         let account_email = store
             .get_account(account_id)
             .await?
@@ -89,6 +104,8 @@ impl AccountKinds {
         Ok(Self {
             decisions,
             contacts,
+            written_to,
+            moves,
             addresses: state.account_addresses.clone(),
             account_id: account_id.clone(),
             account_email,
@@ -118,6 +135,13 @@ impl AccountKinds {
                 .is_some_and(|contact| contact.is_list_sender),
             sender: mail_kind::SenderFacts::of(self.contacts.get(&key)),
             decision: self.decisions.get(&key).copied(),
+            written_to: self.written_to.contains(&key),
+            addressed: super::desk_lanes::addressed_to_you(
+                &message.to,
+                &message.cc,
+                &|email: &str| self.is_self(email),
+            ),
+            moved: self.moves.get(&message.id).copied(),
         }
     }
 
@@ -251,10 +275,12 @@ async fn copied_threads(
     let human = |email: &str| {
         super::conversation_shape::human_address(email, &senders.contacts, &senders.screener)
     };
+    let kept = |m: &mxr_store::DeskMessage| senders.kept_in_messages(m, &is_self);
     let inputs = super::conversation_shape::ShapeInputs {
         is_self: &is_self,
         person_sender: &person_sender,
         human_address: &human,
+        kept_in_messages: &kept,
         config,
     };
     Ok(messages
@@ -453,6 +479,41 @@ pub(super) async fn set_sender_kind(
             "sender email cannot be empty".to_string(),
         ));
     }
+    let applied = apply_sender_kind(state, account_id, &sender_email, kind, None).await?;
+    let previous = applied.previous;
+    // The decision is the move; logging and re-placing it is bookkeeping a
+    // failure of which must not report the move as failed.
+    if let Err(error) =
+        super::arrivals::after_sender_kind(state, account_id, &sender_email, applied, kind).await
+    {
+        tracing::warn!(%error, "arrivals: recording a sender's mode failed");
+    }
+    Ok(ResponseData::SenderKindSet {
+        account_id: account_id.clone(),
+        sender_email,
+        sender_kind: kind,
+        previous,
+    })
+}
+
+/// What a sender's decision was before `apply_sender_kind` replaced it.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct AppliedKind {
+    pub previous: Option<SenderKindData>,
+    pub previous_decided_at: Option<chrono::DateTime<Utc>>,
+}
+
+/// Store a sender's kind (`None`: back to automatic) and return what it
+/// replaced. `decided_at` dates the decision (undo puts the original date
+/// back); `None` is now. `sender_email` is lowercased already.
+pub(super) async fn apply_sender_kind(
+    state: &AppState,
+    account_id: &AccountId,
+    sender_email: &str,
+    kind: Option<SenderKindData>,
+    decided_at: Option<chrono::DateTime<Utc>>,
+) -> Result<AppliedKind, HandlerError> {
+    let sender_email = sender_email.to_string();
     let _change = state.sweep_gate.change([account_id]).await;
     let store = &state.store;
     let existing = store
@@ -461,6 +522,7 @@ pub(super) async fn set_sender_kind(
     let previous = existing
         .as_ref()
         .and_then(|decision| mail_kind::kind_for(decision.disposition));
+    let previous_decided_at = existing.as_ref().map(|decision| decision.decided_at);
     match kind {
         Some(kind) => {
             store
@@ -471,7 +533,7 @@ pub(super) async fn set_sender_kind(
                     // A routing label chosen in the screener survives a
                     // change of kind.
                     route_label: existing.and_then(|decision| decision.route_label),
-                    decided_at: Utc::now(),
+                    decided_at: decided_at.unwrap_or_else(Utc::now),
                 })
                 .await?;
         }
@@ -481,11 +543,9 @@ pub(super) async fn set_sender_kind(
                 .await?;
         }
     }
-    Ok(ResponseData::SenderKindSet {
-        account_id: account_id.clone(),
-        sender_email,
-        sender_kind: kind,
+    Ok(AppliedKind {
         previous,
+        previous_decided_at,
     })
 }
 

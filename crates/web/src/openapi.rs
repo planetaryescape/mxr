@@ -93,7 +93,9 @@ use utoipa::{
         mail_reading_edition, mail_reading_item, mail_reading_later, mail_reading_engagement,
         mail_reading_article, mail_reading_highlights_get, mail_reading_highlights_post,
         mail_reading_sources,
-        mail_updates_digest, mail_updates_let_go, mail_updates_source
+        mail_updates_digest, mail_updates_let_go, mail_updates_source,
+        mail_arrivals, mail_arrivals_list, mail_arrivals_modes, mail_message_move,
+        mail_move_undo, mail_corrections
     ),
     components(schemas(
         Request,
@@ -130,6 +132,8 @@ use utoipa::{
         crate::reading_routes::ReadingSourceBody,
         crate::updates_routes::UpdatesLetGoBody,
         crate::updates_routes::UpdateSourceBody,
+        crate::arrival_routes::ArrivalModesBody,
+        crate::arrival_routes::MoveBody,
     )),
     modifiers(&BearerSecurity),
     security(("bearer" = []))
@@ -543,6 +547,101 @@ fn mail_mode_guide() {}
 )]
 #[allow(dead_code)]
 fn mail_hint_seen() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/arrivals",
+    summary = "Now's arrivals line: every email first seen since Now was last opened, counted once by where it went, with Not-sure questions and the track record",
+    params(
+        ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
+        ("mark_seen" = Option<bool>, Query, description = "True when Now opens: starts a visit"),
+        ("since" = Option<String>, Query, description = "The window start the open visit was answered; a refetch that doesn't mark keeps it")
+    ),
+    responses(
+        (status = 200, description = "The `Arrivals` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_arrivals() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/arrivals/list",
+    summary = "The emails behind one count of the arrivals line, newest first, exactly as many as the count",
+    params(
+        ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
+        ("bucket" = Option<String>, Query, description = "messages, todo, updates, reading, archive, screened_out, spam or sorting; omitted lists every arrival"),
+        ("since" = Option<String>, Query, description = "RFC 3339; defaults to the line's window"),
+        ("until" = Option<String>, Query, description = "RFC 3339; defaults to now"),
+        ("limit" = Option<u32>, Query, description = "Default 100")
+    ),
+    responses(
+        (status = 200, description = "The `ArrivalList` variant", body = ResponseData),
+        (status = 400, description = "Unknown bucket, or until not after since"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_arrivals_list() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/arrivals/modes",
+    summary = "Where each of up to 200 emails went and where it is now, for Inbox's mode chips",
+    request_body = crate::arrival_routes::ArrivalModesBody,
+    responses(
+        (status = 200, description = "The `ArrivalModes` variant", body = ResponseData),
+        (status = 400, description = "No ids, more than 200, or a bad id"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_arrivals_modes() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/messages/{message_id}/move",
+    summary = "Move one email to a mode (X), or with sender set the sender's mode (K); To do and Archive add it there (dry_run previews)",
+    params(("message_id" = String, Path, description = "The email")),
+    request_body = crate::arrival_routes::MoveBody,
+    responses(
+        (status = 200, description = "The `MessageMoved` variant, with the correction id undo takes", body = ResponseData),
+        (status = 400, description = "Unknown mode or bad id"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_message_move() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/moves/{correction_id}/undo",
+    summary = "Put a move back exactly as it was; undoing twice changes nothing",
+    params(("correction_id" = i64, Path, description = "From the move's outcome")),
+    responses(
+        (status = 200, description = "The `MoveUndone` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_move_undo() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/corrections",
+    summary = "Every move, sender mode and Not-sure answer, newest first",
+    params(
+        ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
+        ("limit" = Option<u32>, Query, description = "Default 50")
+    ),
+    responses(
+        (status = 200, description = "The `Corrections` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_corrections() {}
 
 #[utoipa::path(
     get,

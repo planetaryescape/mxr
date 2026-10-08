@@ -27,6 +27,7 @@ pub(crate) const FRESHNESS_REQUEST: Request = Request::GetFreshness {
 mod message_actions;
 mod messages_actions;
 mod modal_actions;
+mod move_actions;
 mod mutation_actions;
 mod mutation_helpers;
 pub mod mutation_snapshot;
@@ -77,6 +78,7 @@ pub(in crate::app) use crate::ui::label_picker::LabelPickerMode;
 pub use focus_run::FocusRun;
 pub(crate) use mailbox_helpers::auto_summary_eligible;
 pub(crate) use messages_actions::MESSAGES_MODE;
+pub(crate) use move_actions::{chip_label, move_status, sender_mode, MOVE_CHOICES};
 pub use mutation_snapshot::{
     MutationId, MutationIdGenerator, MutationSnapshot, MutationSnapshotStore, QueuedMutation,
     TRANSIENT_MUTATION_MAX_RETRIES,
@@ -235,6 +237,9 @@ pub enum UndoAction {
         source_key: String,
         prior: mxr_protocol::UpdateSourceSettingData,
     },
+    /// A move of an email or a sender (`MoveMessage`): put back exactly
+    /// as it was (`UndoMove`).
+    Move(i64),
 }
 
 /// Captured handle for a recent undoable mutation. The TUI uses this to

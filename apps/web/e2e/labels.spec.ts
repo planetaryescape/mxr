@@ -93,9 +93,15 @@ test("v moves the conversation to another label and out of Inbox", async ({ page
     .click();
   await expect(page.getByRole("heading", { level: 1, name: "Travel" })).toBeVisible();
   const movedSubject = stableRowName(subject).split(", ").at(-1)!;
-  await expect(
-    mailList(page).locator(`[role="option"][aria-label*="${movedSubject}"]`).first(),
-  ).toBeVisible();
+  const movedRow = mailList(page).locator(`[role="option"][aria-label*="${movedSubject}"]`).first();
+  await expect(movedRow).toBeVisible();
+
+  // Specs share one daemon and one mailbox: put the conversation back in
+  // Inbox, or whoever is third in Inbox (verbs' Noor, in some orders) is
+  // gone from Messages for every spec after this one.
+  await mailList(page).focus();
+  await page.keyboard.press("u");
+  await expect(movedRow).toHaveCount(0);
 });
 
 test("u undoes a move", async ({ page }) => {

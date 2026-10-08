@@ -2,7 +2,8 @@ use async_trait::async_trait;
 use mxr_client::{ClientError, IpcConnection};
 use mxr_core::{id::MessageId, AccountId, Draft, DraftId, ThreadId};
 use mxr_protocol::{
-    ClientKind, MutationCommand, RecordFilterData, RecordKindData, Request, Response, ResponseData,
+    ArrivalBucketData, ClientKind, ModeKindData, MutationCommand, RecordFilterData, RecordKindData,
+    Request, Response, ResponseData,
 };
 use rmcp::{
     handler::server::{
@@ -357,6 +358,102 @@ impl MxrMcpServer {
             filter,
             attachments_dir: None,
             dry_run: true,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_arrivals",
+        description = "Where every email that arrived went: every inbound email first seen since the user last opened Now (at most 24 hours back), counted once by the mode it is in (messages, updates, reading, screened_out, spam, sorting), summing to the total, with To do and Archive as 'also'. Also the day's 'Not sure' questions (rule conflicts, at most three) and the weekly track record once the user has moved mail. Reading it never starts a visit to Now. Read-only."
+    )]
+    pub async fn arrivals(
+        &self,
+        Parameters(input): Parameters<ArrivalsInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::GetArrivals {
+            account_id: parse_optional_id(input.account_id)?,
+            mark_seen: false,
+            since: None,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_arrivals_list",
+        description = "The emails behind one count of the arrivals line, newest first: exactly as many as the count. bucket: messages, todo, updates, reading, archive, screened_out, spam or sorting (omitted: every arrival). since/until (RFC 3339) default to the line's window. Each item says where it arrived, where it is now and why. Read-only."
+    )]
+    pub async fn arrivals_list(
+        &self,
+        Parameters(input): Parameters<ArrivalsListInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let bucket = input
+            .bucket
+            .as_deref()
+            .map(|raw| {
+                ArrivalBucketData::parse(raw).ok_or_else(|| {
+                    ErrorData::invalid_params(format!("unknown bucket `{raw}`"), None)
+                })
+            })
+            .transpose()?;
+        let time = |raw: Option<String>| {
+            raw.as_deref()
+                .map(|raw| {
+                    chrono::DateTime::parse_from_rfc3339(raw)
+                        .map(|at| at.with_timezone(&chrono::Utc))
+                        .map_err(|error| {
+                            ErrorData::invalid_params(format!("`{raw}`: {error}"), None)
+                        })
+                })
+                .transpose()
+        };
+        self.daemon_json(Request::ListArrivals {
+            account_id: parse_optional_id(input.account_id)?,
+            bucket,
+            since: time(input.since)?,
+            until: time(input.until)?,
+            limit: input.limit.unwrap_or(100).min(1000),
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_move",
+        description = "Move one email to a mode (messages, todo, updates, reading, archive), or with sender=true send all of its sender's mail to messages, updates or reading. To do and Archive add the email there (a to-do, a record). Without confirm=true it only previews what would move. The move is stored as the user's correction and is undone with `mxr corrections undo <correction_id>`. Only move mail the user asked you to move."
+    )]
+    pub async fn move_message(
+        &self,
+        Parameters(input): Parameters<MoveInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let mode = ModeKindData::parse(&input.mode).ok_or_else(|| {
+            ErrorData::invalid_params(
+                format!(
+                    "unknown mode `{}`; use messages, todo, updates, reading or archive",
+                    input.mode
+                ),
+                None,
+            )
+        })?;
+        self.daemon_json(Request::MoveMessage {
+            message_id: parse_id(&input.message_id)?,
+            mode,
+            sender: input.sender.unwrap_or(false),
+            dry_run: !input.confirm.unwrap_or(false),
+            source: None,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_corrections",
+        description = "Every move the user made: per-email moves, sender modes and 'Not sure' answers, newest first, with from and to modes, the rule that had placed the mail, and whether it was undone. Read-only."
+    )]
+    pub async fn corrections(
+        &self,
+        Parameters(input): Parameters<CorrectionsInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::ListCorrections {
+            account_id: parse_optional_id(input.account_id)?,
+            limit: input.limit.unwrap_or(50).min(1000),
         })
         .await
     }
@@ -1028,6 +1125,50 @@ pub struct SweepPreviewInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct ArrivalsInput {
+    #[serde(default)]
+    pub account_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ArrivalsListInput {
+    #[serde(default)]
+    pub account_id: Option<String>,
+    /// messages, todo, updates, reading, archive, screened_out, spam or
+    /// sorting. Omitted: every arrival.
+    #[serde(default)]
+    pub bucket: Option<String>,
+    /// RFC 3339; defaults to the arrivals line's window.
+    #[serde(default)]
+    pub since: Option<String>,
+    #[serde(default)]
+    pub until: Option<String>,
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct MoveInput {
+    pub message_id: String,
+    /// messages, todo, updates, reading or archive.
+    pub mode: String,
+    /// The sender's mode for all their mail (messages, updates, reading).
+    #[serde(default)]
+    pub sender: Option<bool>,
+    /// Move. Without it, only the preview is returned.
+    #[serde(default)]
+    pub confirm: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CorrectionsInput {
+    #[serde(default)]
+    pub account_id: Option<String>,
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct MessagesInput {
     #[serde(default)]
     pub account_id: Option<String>,
@@ -1262,6 +1403,10 @@ mod tests {
         assert!(names.contains(&"mxr_reading_item"));
         assert!(names.contains(&"mxr_reading_later"));
         assert!(names.contains(&"mxr_reading_highlights"));
+        assert!(names.contains(&"mxr_arrivals"));
+        assert!(names.contains(&"mxr_arrivals_list"));
+        assert!(names.contains(&"mxr_move"));
+        assert!(names.contains(&"mxr_corrections"));
 
         drop(client);
         server_task.abort();
@@ -1300,6 +1445,85 @@ mod tests {
         assert!(matches!(
             &requests[0],
             Request::AckMessage { dry_run: true, .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_move_only_previews_unless_confirmed() {
+        let requester = Arc::new(FakeRequester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
+        let message = MessageId::new();
+        for confirm in [None, Some(true)] {
+            server
+                .move_message(Parameters(MoveInput {
+                    message_id: message.as_str(),
+                    mode: "reading".into(),
+                    sender: None,
+                    confirm,
+                }))
+                .await
+                .expect("tool result");
+        }
+        let bad = server
+            .move_message(Parameters(MoveInput {
+                message_id: message.as_str(),
+                mode: "now".into(),
+                sender: None,
+                confirm: Some(true),
+            }))
+            .await;
+        assert!(bad.is_err(), "Now is not a mode");
+        let requests = requester.requests.lock().expect("requests lock");
+        assert_eq!(requests.len(), 2);
+        assert!(matches!(
+            &requests[0],
+            Request::MoveMessage {
+                dry_run: true,
+                mode: ModeKindData::Reading,
+                sender: false,
+                ..
+            }
+        ));
+        assert!(matches!(
+            &requests[1],
+            Request::MoveMessage { dry_run: false, .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn the_arrivals_line_never_starts_a_visit_to_now() {
+        let requester = Arc::new(FakeRequester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
+        server
+            .arrivals(Parameters(ArrivalsInput { account_id: None }))
+            .await
+            .expect("tool result");
+        server
+            .arrivals_list(Parameters(ArrivalsListInput {
+                account_id: None,
+                bucket: Some("reading".into()),
+                since: Some("2026-10-07T08:12:00Z".into()),
+                until: None,
+                limit: None,
+            }))
+            .await
+            .expect("tool result");
+        let requests = requester.requests.lock().expect("requests lock");
+        assert!(matches!(
+            &requests[0],
+            Request::GetArrivals {
+                mark_seen: false,
+                ..
+            }
+        ));
+        assert!(matches!(
+            &requests[1],
+            Request::ListArrivals {
+                bucket: Some(ArrivalBucketData::Reading),
+                since: Some(_),
+                limit: 100,
+                ..
+            }
         ));
     }
 

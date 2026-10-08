@@ -33,6 +33,7 @@ pub fn event_matches_type(event: &DaemonEvent, event_type: Option<&str>) -> bool
         ),
         "mutation" => matches!(event, DaemonEvent::MutationReconciliationFailed { .. }),
         "gist" => matches!(event, DaemonEvent::ThreadGistReady { .. }),
+        "modes" => matches!(event, DaemonEvent::ModesChanged { .. }),
         "error" => matches!(
             event,
             DaemonEvent::SyncError { .. }
@@ -135,6 +136,12 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
                 "gist ready thread={} asks={}",
                 gist.thread_id,
                 gist.ask.is_some()
+            ),
+            DaemonEvent::ModesChanged { account_id } => format!(
+                "modes changed account={}",
+                account_id
+                    .as_ref()
+                    .map_or_else(|| "all".to_string(), ToString::to_string)
             ),
         },
     })

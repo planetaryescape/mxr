@@ -174,6 +174,7 @@ async fn messages_report() {
                 dismissed: &dismissed,
                 timers: &timers,
                 is_self: &is_self,
+                moves: &senders.moves,
                 shape: crate::handler::conversation_shape::shape_config(&state),
                 now: at,
             };

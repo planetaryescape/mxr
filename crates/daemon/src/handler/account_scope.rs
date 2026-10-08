@@ -61,6 +61,8 @@ enum ScopeTarget<'a> {
     Delivery(&'a DeliveryId),
     Commitment(&'a str),
     Decision(&'a str),
+    /// A move or Not-sure correction, by its row id.
+    MoveCorrection(i64),
     Undo(&'a str),
     Job(&'a str),
 }
@@ -156,6 +158,9 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::GetTodoCatchup { account_id }
         | Request::SetTodoCatchup { account_id, .. }
         | Request::GetNow { account_id }
+        | Request::GetArrivals { account_id, .. }
+        | Request::ListArrivals { account_id, .. }
+        | Request::ListCorrections { account_id, .. }
         | Request::GetRail { account_id }
         | Request::GetUpdatesDigest { account_id, .. }
         | Request::LetGoDigest { account_id, .. }
@@ -249,7 +254,8 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::CreateTodo { message_id, .. }
         | Request::FileRecord { message_id, .. }
         | Request::SetRecordSender { message_id, .. }
-        | Request::GetMessageKind { message_id } => Targets(vec![T::Message(message_id)]),
+        | Request::GetMessageKind { message_id }
+        | Request::MoveMessage { message_id, .. } => Targets(vec![T::Message(message_id)]),
         Request::SetAutoReminder {
             sent_message_id, ..
         }
@@ -258,7 +264,8 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         }
         Request::ListEnvelopesByIds { message_ids }
         | Request::ListBodies { message_ids }
-        | Request::PinMessages { message_ids, .. } => messages(message_ids),
+        | Request::PinMessages { message_ids, .. }
+        | Request::GetArrivalModes { message_ids } => messages(message_ids),
         Request::Mutation { mutation, .. } | Request::StartMutationJob { mutation, .. } => {
             messages(mutation_messages(mutation))
         }
@@ -381,6 +388,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
             Targets(vec![T::Commitment(commitment_id)])
         }
         Request::GetDecision { id } => Targets(vec![T::Decision(id)]),
+        Request::UndoMove { correction_id } => Targets(vec![T::MoveCorrection(*correction_id)]),
         Request::UndoMutation { mutation_id } => Targets(vec![T::Undo(mutation_id)]),
         Request::GetJob { job_id } => Targets(vec![T::Job(job_id)]),
 
@@ -581,6 +589,15 @@ async fn resolve_targets(
                     .map_err(|e| e.to_string())?
                     .ok_or_else(|| format!("Decision not found: {id}"))?;
                 resolved.push(decision.account_id);
+            }
+            T::MoveCorrection(id) => {
+                let correction = state
+                    .store
+                    .get_correction(*id)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| format!("Correction not found: {id}"))?;
+                resolved.push(correction.fields.account_id);
             }
             T::Undo(mutation_id) => {
                 resolve_undo(state, mutation_id, &mut resolved, &mut todo_ids).await?;
@@ -1123,7 +1140,8 @@ pub(crate) async fn scope_event(
         | DaemonEvent::OperationProgress { ref account_id, .. }
         | DaemonEvent::OperationCompleted { ref account_id, .. }
         | DaemonEvent::OperationFailed { ref account_id, .. }
-        | DaemonEvent::OperationCancelled { ref account_id, .. } => {
+        | DaemonEvent::OperationCancelled { ref account_id, .. }
+        | DaemonEvent::ModesChanged { ref account_id } => {
             let allowed = match account_id {
                 Some(account_id) => account_id_allowed(state, profile, account_id).await?,
                 // An operation over every account, or one that didn't say.

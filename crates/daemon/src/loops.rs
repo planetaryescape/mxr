@@ -1205,6 +1205,12 @@ async fn post_sync_fanout(
 
     // Facts for new Updates mail, so the next digest reads them cached.
     crate::handler::updates::scan_messages(&state, &upserted_message_ids).await;
+
+    // Where each new arrival went (D119). Last, so a delivery or a record
+    // found above is placed as one.
+    if let Err(error) = crate::handler::arrivals::place_pending(&state, &account_id).await {
+        tracing::warn!(account = %account_id, %error, "placing arrivals failed");
+    }
 }
 
 /// Clears what the store delete cannot reach for mail the provider deleted,

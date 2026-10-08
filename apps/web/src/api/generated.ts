@@ -293,6 +293,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/arrivals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Now's arrivals line: every email first seen since Now was last opened, counted once by where it went, with Not-sure questions and the track record */
+        get: operations["mail_arrivals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/arrivals/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The emails behind one count of the arrivals line, newest first, exactly as many as the count */
+        get: operations["mail_arrivals_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/arrivals/modes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Where each of up to 200 emails went and where it is now, for Inbox's mode chips */
+        post: operations["mail_arrivals_modes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/attachments/download": {
         parameters: {
             query?: never;
@@ -609,6 +660,23 @@ export interface paths {
         };
         /** Find experts who answered similar questions */
         get: operations["mail_contacts_expert"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every move, sender mode and Not-sure answer, newest first */
+        get: operations["mail_corrections"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1178,6 +1246,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/messages/{message_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move one email to a mode (X), or with sender set the sender's mode (K); To do and Archive add it there (dry_run previews) */
+        post: operations["mail_message_move"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/modes/guide": {
         parameters: {
             query?: never;
@@ -1224,6 +1309,23 @@ export interface paths {
         put?: never;
         /** Done here: threads, a sender's threads or named to-dos leave one mode, archived only when no other mode holds them (dry_run previews) */
         post: operations["mail_mode_done"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/moves/{correction_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Put a move back exactly as it was; undoing twice changes nothing */
+        post: operations["mail_move_undo"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3920,6 +4022,20 @@ export interface components {
             executed_mode: components["schemas"]["ArchiveAskMode"];
             requested_mode: components["schemas"]["ArchiveAskMode"];
         };
+        /**
+         * @description Where an arrival is counted: a mode, or one of the buckets that make
+         *     the counts sum.
+         * @enum {string}
+         */
+        ArrivalBucketData: "messages" | "todo" | "updates" | "reading" | "archive" | "screened_out" | "spam" | "sorting";
+        /** @description One count on the line, and what opening it lists. */
+        ArrivalCountData: {
+            bucket: components["schemas"]["ArrivalBucketData"];
+            /** Format: int32 */
+            count: number;
+            /** @description "8 Messages". */
+            label: string;
+        };
         /** @description One message that arrived, with the modes its conversation went to. */
         ArrivalData: {
             account_id: components["schemas"]["AccountId"];
@@ -3937,6 +4053,102 @@ export interface components {
             received_at: string;
             subject: string;
             thread_id: components["schemas"]["ThreadId"];
+        };
+        /** @description One email in an arrivals list. */
+        ArrivalItemData: {
+            account_id: components["schemas"]["AccountId"];
+            also_archive?: boolean;
+            also_todo?: boolean;
+            /** @description Where it went when it arrived. */
+            arrived_in: components["schemas"]["ArrivalBucketData"];
+            /** @description Where it is now, after any correction. */
+            bucket: components["schemas"]["ArrivalBucketData"];
+            /** @description The chip: "→ Updates · automated sender". */
+            chip: string;
+            /** Format: date-time */
+            date: string;
+            /** Format: date-time */
+            first_seen_at: string;
+            message_id: components["schemas"]["MessageId"];
+            /** @description Moved by you, this email only. */
+            moved?: boolean;
+            not_sure?: boolean;
+            /** @description "has List-Unsubscribe". */
+            reason?: string | null;
+            sender_email: string;
+            sender_name?: string | null;
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
+            unread?: boolean;
+        };
+        /** @description Returned by `Request::ListArrivals`. */
+        ArrivalListData: {
+            bucket?: null | components["schemas"]["ArrivalBucketData"];
+            items: components["schemas"]["ArrivalItemData"][];
+            /** Format: date-time */
+            since: string;
+            /**
+             * Format: int32
+             * @description How many match in all; `items` is the newest page.
+             */
+            total: number;
+            /** Format: date-time */
+            until: string;
+        };
+        /** @description Body of `POST /api/v1/mail/arrivals/modes`. */
+        ArrivalModesBody: {
+            /** @description At most 200, answered in this order. */
+            message_ids: string[];
+        };
+        /** @description Returned by `Request::GetArrivals`: the line on Now. */
+        ArrivalsData: {
+            /** @description To do and Archive, shown as "also" and never added. */
+            also?: components["schemas"]["ArrivalCountData"][];
+            /**
+             * @description When nothing on Now waits: "Clear. All 50 emails since 08:12 are
+             *     accounted for." Absent when nothing arrived.
+             */
+            clear_line?: string | null;
+            /** @description Non-zero counts in the line's order. They sum to `total`. */
+            counts: components["schemas"]["ArrivalCountData"][];
+            /** Format: date-time */
+            generated_at: string;
+            /** Format: date-time */
+            latest_at?: string | null;
+            /**
+             * @description "Since 08:12: 50 arrived. 8 Messages · 10 Updates · 31 Reading · 1
+             *     spam. Also 2 in To do." or "Nothing new since 08:12. Latest mail 2h
+             *     ago."
+             */
+            line: string;
+            /** @description The never-bury rules that are live, for the line's `?`. */
+            never_bury: string;
+            /** @description At most three a day. */
+            not_sure?: components["schemas"]["NotSureData"][];
+            /** @description The hint the first Not-sure item carries until the user has seen it. */
+            not_sure_hint?: string | null;
+            /** @description "2 emails I wasn't sure about. Where should these go?" */
+            not_sure_line?: string | null;
+            /**
+             * Format: date-time
+             * @description The window: since Now was last opened, at most 24 hours back; the
+             *     start of today when Now was never opened.
+             */
+            since: string;
+            /** @description "08:12", or "Tue 22:10" for an earlier day. */
+            since_label: string;
+            /**
+             * Format: int32
+             * @description Every inbound email first seen in the window, each counted once.
+             */
+            total: number;
+            /**
+             * @description "Last week mxr sorted 310 emails; you moved 2." Only once a move
+             *     exists.
+             */
+            track_record?: string | null;
+            /** Format: date-time */
+            until: string;
         };
         /** @enum {string} */
         AttachmentDisposition: "attachment" | "inline" | "unspecified";
@@ -4239,6 +4451,25 @@ export interface components {
              */
             trimmed_label?: string | null;
         };
+        /** @description One stored correction. */
+        CorrectionData: {
+            account_id: components["schemas"]["AccountId"];
+            /** Format: date-time */
+            created_at: string;
+            from_mode: string;
+            /** Format: int64 */
+            id: number;
+            message_id?: null | components["schemas"]["MessageId"];
+            rule?: string | null;
+            /** @description `email` or `sender`. */
+            scope: string;
+            sender_email: string;
+            /** @description `move`, `sender` or `not_sure`. */
+            source: string;
+            to_mode: string;
+            /** Format: date-time */
+            undone_at?: string | null;
+        };
         DaemonEvent: {
             account_id: components["schemas"]["AccountId"];
             /** @enum {string} */
@@ -4340,6 +4571,10 @@ export interface components {
             /** @enum {string} */
             event: "ReplyLaterReturned";
             message_id: components["schemas"]["MessageId"];
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            event: "ModesChanged";
         };
         /** @enum {string} */
         DaemonHealthClass: "healthy" | "degraded" | "restart_required" | "repair_required";
@@ -5226,7 +5461,7 @@ export interface components {
          *     means the user moved the sender; everything else is automatic.
          * @enum {string}
          */
-        KindRuleData: "decision" | "delivery" | "invite" | "automated_address" | "automated_domain" | "newsletter_address" | "newsletter_domain" | "list_id" | "list_unsubscribe" | "no_reply_address" | "transaction_alert" | "role_address" | "bulk_sender" | "templated_sender" | "list_sender" | "person" | "copied";
+        KindRuleData: "decision" | "delivery" | "invite" | "automated_address" | "automated_domain" | "newsletter_address" | "newsletter_domain" | "list_id" | "list_unsubscribe" | "no_reply_address" | "transaction_alert" | "role_address" | "bulk_sender" | "templated_sender" | "list_sender" | "person" | "copied" | "written_to" | "moved";
         Label: {
             account_id: components["schemas"]["AccountId"];
             color?: string | null;
@@ -5679,6 +5914,55 @@ export interface components {
             /** @description To do: the open rows holding the thread. */
             todo_ids?: string[];
         };
+        /** @description Body of `POST /api/v1/mail/messages/{message_id}/move`. */
+        MoveBody: {
+            dry_run?: boolean;
+            /** @description messages, todo, updates, reading or archive. */
+            mode: string;
+            /** @description Set the sender's mode for all their mail (`K`). */
+            sender?: boolean;
+            /** @description `not_sure` when answering Now's question. */
+            source?: string | null;
+        };
+        /** @description One destination of a move, with its key in the picker. */
+        MoveChoiceData: {
+            /** @description "m", "x", "u", "r", "e": the mode's jump letter. */
+            key: string;
+            label: string;
+            mode: components["schemas"]["ModeKindData"];
+        };
+        /** @description What a move did, or with `dry_run` would do. */
+        MoveOutcomeData: {
+            account_id: components["schemas"]["AccountId"];
+            /**
+             * @description "Always for this sender? (K)": asked once after a per-email move to
+             *     Messages, Updates or Reading.
+             */
+            ask_sender?: string | null;
+            /** @description To do and Archive add the email there: the to-do or record made. */
+            aspect_id?: string | null;
+            /**
+             * @description "Moved to Reading." / "All mail from maya@example.com goes to
+             *     Reading." / "Would move to Reading."
+             */
+            copy: string;
+            /**
+             * Format: int64
+             * @description Undo with `Request::UndoMove`. Absent for a dry run or a move that
+             *     changed nothing.
+             */
+            correction_id?: number | null;
+            dry_run: boolean;
+            from: components["schemas"]["ArrivalBucketData"];
+            /** @description The hint the first move's toast carries until the user has seen it. */
+            hint?: string | null;
+            message_id: components["schemas"]["MessageId"];
+            /** @description The sender's mode was set, for this and all their mail. */
+            sender: boolean;
+            sender_email: string;
+            thread_id: components["schemas"]["ThreadId"];
+            to: components["schemas"]["ModeKindData"];
+        };
         /** @description Mutation commands for modifying messages. */
         MutationCommand: {
             message_ids: components["schemas"]["MessageId"][];
@@ -5751,6 +6035,27 @@ export interface components {
              *     was lost" and warn the user instead of silently dropping it.
              */
             undo_unavailable?: boolean;
+        };
+        /**
+         * @description An email Now asks about: two placement rules disagreed (D119's U1:
+         *     someone you've written to only copied you).
+         */
+        NotSureData: {
+            account_id: components["schemas"]["AccountId"];
+            /**
+             * @description The answers, one key each: Messages, To do, Updates, Reading,
+             *     Archive.
+             */
+            choices: components["schemas"]["MoveChoiceData"][];
+            /** @description "Maya Ortiz copied you on "Q4 plan". Updates for now." */
+            line: string;
+            message_id: components["schemas"]["MessageId"];
+            /** @description Where it is for now. */
+            mode: components["schemas"]["ModeKindData"];
+            sender_email: string;
+            sender_name?: string | null;
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
         };
         /** @enum {string} */
         NotificationChimeEventData: "new_mail" | "sent" | "archived" | "trashed" | "spam" | "snoozed" | "unsnoozed" | "reminder" | "error";
@@ -8192,6 +8497,47 @@ export interface components {
             thread_id?: null | components["schemas"]["ThreadId"];
             thread_ids?: components["schemas"]["ThreadId"][];
         } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "GetArrivals";
+            mark_seen?: boolean;
+            /** Format: date-time */
+            since?: string | null;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            bucket?: null | components["schemas"]["ArrivalBucketData"];
+            /** @enum {string} */
+            cmd: "ListArrivals";
+            /** Format: int32 */
+            limit?: number;
+            /** Format: date-time */
+            since?: string | null;
+            /** Format: date-time */
+            until?: string | null;
+        } | {
+            /** @enum {string} */
+            cmd: "GetArrivalModes";
+            message_ids: components["schemas"]["MessageId"][];
+        } | {
+            /** @enum {string} */
+            cmd: "MoveMessage";
+            dry_run?: boolean;
+            message_id: components["schemas"]["MessageId"];
+            mode: components["schemas"]["ModeKindData"];
+            sender?: boolean;
+            source?: string | null;
+        } | {
+            /** @enum {string} */
+            cmd: "UndoMove";
+            /** Format: int64 */
+            correction_id: number;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "ListCorrections";
+            /** Format: int32 */
+            limit?: number;
+        } | {
             /** @enum {string} */
             cmd: "SetModeDone";
             dry_run?: boolean;
@@ -9139,6 +9485,33 @@ export interface components {
             change: components["schemas"]["UpdateSourceChangeData"];
             /** @enum {string} */
             kind: "UpdateSource";
+        } | {
+            arrivals: components["schemas"]["ArrivalsData"];
+            /** @enum {string} */
+            kind: "Arrivals";
+        } | {
+            /** @enum {string} */
+            kind: "ArrivalList";
+            list: components["schemas"]["ArrivalListData"];
+        } | {
+            items: components["schemas"]["ArrivalItemData"][];
+            /** @enum {string} */
+            kind: "ArrivalModes";
+        } | {
+            /** @enum {string} */
+            kind: "MessageMoved";
+            outcome: components["schemas"]["MoveOutcomeData"];
+        } | {
+            /** @description "Moved back to Reading." or "Already undone." */
+            copy: string;
+            /** Format: int64 */
+            correction_id: number;
+            /** @enum {string} */
+            kind: "MoveUndone";
+        } | {
+            corrections: components["schemas"]["CorrectionData"][];
+            /** @enum {string} */
+            kind: "Corrections";
         } | {
             /** @enum {string} */
             kind: "Rail";
@@ -11452,6 +11825,123 @@ export interface operations {
             };
         };
     };
+    mail_arrivals: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description True when Now opens: starts a visit */
+                mark_seen?: boolean;
+                /** @description The window start the open visit was answered; a refetch that doesn't mark keeps it */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `Arrivals` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_arrivals_list: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description messages, todo, updates, reading, archive, screened_out, spam or sorting; omitted lists every arrival */
+                bucket?: string;
+                /** @description RFC 3339; defaults to the line's window */
+                since?: string;
+                /** @description RFC 3339; defaults to now */
+                until?: string;
+                /** @description Default 100 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `ArrivalList` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Unknown bucket, or until not after since */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_arrivals_modes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArrivalModesBody"];
+            };
+        };
+        responses: {
+            /** @description The `ArrivalModes` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description No ids, more than 200, or a bad id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     attachment_download: {
         parameters: {
             query?: never;
@@ -11961,6 +12451,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_corrections: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description Default 50 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `Corrections` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {
@@ -12862,6 +13384,47 @@ export interface operations {
             };
         };
     };
+    mail_message_move: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The email */
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveBody"];
+            };
+        };
+        responses: {
+            /** @description The `MessageMoved` variant, with the correction id undo takes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Unknown mode or bad id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     mail_mode_guide: {
         parameters: {
             query?: {
@@ -13000,6 +13563,36 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_move_undo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description From the move's outcome */
+                correction_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `MoveUndone` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

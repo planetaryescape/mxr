@@ -1,0 +1,32 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Move one email to a mode (X), or with --sender all of its sender's mail (K). To do and Archive add the email there. Undo with `mxr corrections undo <id>`.
+
+Named `reclassify`, not `move`: `move` already means moving a message to a label/folder.
+
+Usage: mxr reclassify [OPTIONS] <MESSAGE_ID> <MODE>
+
+Arguments:
+  <MESSAGE_ID>
+          The email's message id
+
+  <MODE>
+          messages, todo, updates, reading or archive
+
+Options:
+      --sender
+          Set the sender's mode for this and all their mail (Messages, Updates or Reading)
+
+      --dry-run
+          Say what would move, and change nothing
+
+      --not-sure
+          Answer a "Not sure" question from Now; keeping the email where it is counts as an answer
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

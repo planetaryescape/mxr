@@ -1,0 +1,25 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Where every email that arrived went, counted once each.
+
+The same line as Now: every inbound email first seen since Now was last opened (at most 24 hours back), counted by the mode it is in. The counts sum to the total; To do and Archive are "also" and never added. `mxr arrivals list --mode reading` lists the emails behind a count. Reading the line here never starts a visit to Now.
+
+People you've written to always reach Messages when the mail is addressed to you, whatever list it came through.
+
+Usage: mxr arrivals [OPTIONS] [COMMAND]
+
+Commands:
+  list  The emails behind one count, newest first: exactly as many as the count. Defaults to the line's window
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+      --account <ACCOUNT>
+          Limit to one account; the default covers every account
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

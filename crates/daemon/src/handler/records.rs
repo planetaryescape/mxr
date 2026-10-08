@@ -1603,6 +1603,10 @@ pub(super) async fn dismiss(
     ))
 }
 
+/// How a filing says the email was already in Archive; Move reads it to
+/// know nothing was made.
+pub(super) const ALREADY_FILED: &str = "Already in Archive";
+
 pub(super) async fn file(
     state: &AppState,
     message_id: &MessageId,
@@ -1638,7 +1642,7 @@ pub(super) async fn file(
         ),
         (true, false, true) => format!("Would file in Archive: {}.", describe(&data)),
         (false, _, true) => archive_copy::FILED.to_string(),
-        (_, _, false) => format!("Already in Archive: {}.", describe(&data)),
+        (_, _, false) => format!("{ALREADY_FILED}: {}.", describe(&data)),
     };
     let undo = (!dry_run && new_here).then(|| RecordUndoData {
         kind: "dismiss".to_string(),

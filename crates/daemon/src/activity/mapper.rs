@@ -840,7 +840,13 @@ pub fn map_request(
         | Request::SetModeDone { .. }
         | Request::GetUpdatesDigest { .. }
         | Request::LetGoDigest { .. }
-        | Request::SetUpdateSource { .. } => {
+        | Request::SetUpdateSource { .. }
+        | Request::GetArrivals { .. }
+        | Request::ListArrivals { .. }
+        | Request::GetArrivalModes { .. }
+        | Request::MoveMessage { .. }
+        | Request::UndoMove { .. }
+        | Request::ListCorrections { .. } => {
             skip_activity!(
                 "modes",
                 "Now, the rail and per-mode done are not in the activity catalog yet"

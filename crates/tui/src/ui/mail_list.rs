@@ -265,7 +265,8 @@ fn build_row<'a>(
     let participation_chip = thread_participation_chip(row, view.mode);
     let chip_budget = participation_chip
         .as_ref()
-        .map_or(0, |s| s.chars().count() + 1);
+        .map_or(0, |s| s.chars().count() + 1)
+        + row.mode_chip.map_or(0, |mode| mode.chars().count() + 2);
     // Remaining width goes to trailing snippet after " · "; format_subject_line
     // allocates subject first, then snippet when there's room.
     let (subject_text, snippet_preview) = format_subject_line(
@@ -281,6 +282,13 @@ fn build_row<'a>(
         subject_chunks.push(Span::styled(
             format!(" {chip}"),
             Style::default().fg(theme.accent_dim),
+        ));
+    }
+    // Where the email went, quietly: no colour of its own.
+    if let Some(mode) = row.mode_chip {
+        subject_chunks.push(Span::styled(
+            format!("  {mode}"),
+            Style::default().fg(row_muted_fg),
         ));
     }
     let subject_cell = if let Some(snippet) = snippet_preview {
@@ -728,6 +736,7 @@ mod tests {
             triage_verdict: None,
             reply_later: false,
             pending_mutation: false,
+            mode_chip: None,
         }
     }
 

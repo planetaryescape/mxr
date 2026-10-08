@@ -77,6 +77,12 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
         ),
     ),
     (
+        "mode_corrections",
+        MessageDeletionRule::KeptUserMade(
+            "the user's own moves: ids, a sender address and mode names, never text",
+        ),
+    ),
+    (
         "drafts",
         MessageDeletionRule::KeptUserMade(
             "the user's own writing; `message_id_header` is the draft's own header",

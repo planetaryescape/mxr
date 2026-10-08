@@ -234,6 +234,8 @@ export const SAME_ACTION: Record<string, string[]> = {
   "reading.open-email": ["ReadingOpenEmail"],
   "reading.later-shelf": ["ReadingLaterShelf"],
   "reading.move-sender": ["OpenSenderKindMenu"],
+  "modes.move": ["OpenMoveMenu"],
+  "modes.move-sender": ["OpenSenderMoveMenu"],
 };
 
 export interface KeymapDifference {
@@ -354,7 +356,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   },
   {
     context: "reader",
-    keys: ["Q", "X", "[", "]", "g H"],
+    keys: ["Q", ";", "[", "]", "g H"],
     bound: "web",
     why: "Web reader features: quoted text, collapse all, archive and step, raw headers",
   },

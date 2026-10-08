@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { ModeColumns, ModeFrame, ModeHeader } from "@/components/ModeFrame";
+import { ArrivalsSection } from "@/features/arrivals/ArrivalsLine";
+import { moveCommands, nowMoveSubject } from "@/features/arrivals/moveSubjects";
 import { Button } from "@/components/ui/button";
 import { replyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import { LowTide } from "@/features/low-tide/LowTide";
@@ -50,6 +52,11 @@ export function NowRoute() {
       className="mode-page flex min-h-0 min-w-0 flex-1 flex-col bg-background"
     >
       <NowHeader now={now.data} guide={guide.data} />
+      {now.data ? (
+        <ModeFrame width="wide">
+          <ArrivalsSection nowWaiting={now.data.item_count > 0} />
+        </ModeFrame>
+      ) : null}
       {phase !== "ready" ? (
         <ListSkeleton quiet={phase === "quiet"} />
       ) : now.isError ? (
@@ -190,6 +197,7 @@ function NowBody({ now, guide }: { now: Now; guide?: ModeGuide }) {
     reply: () => current && reply(current),
     letGoDigest: now.updates ? letGoDigest : undefined,
     closeHint,
+    ...moveCommands(() => (current ? nowMoveSubject(current) : null)),
   });
 
   if (items.length === 0) {

@@ -70,6 +70,7 @@ impl App {
                     triage_verdict: None,
                     reply_later: false,
                     pending_mutation: false,
+                    mode_chip: None,
                 })
                 .collect(),
             MailListMode::Threads => {
@@ -96,6 +97,7 @@ impl App {
                             triage_verdict: None,
                             reply_later: false,
                             pending_mutation: false,
+                            mode_chip: None,
                         }
                     });
                     entry.message_count += 1;
@@ -218,6 +220,12 @@ impl App {
             }
         } else {
             format!("All Mail {list_name} ({list_count})")
+        };
+        // Where the selected email went and why (D119): "→ Updates ·
+        // automated sender".
+        let base = match self.selected_mode_chip() {
+            Some(chip) => format!("{base} · {}", crate::ui::sanitize::one_line(chip)),
+            None => base,
         };
         // Slice 5.1 (C2.6 cont): when the focused thread qualifies as
         // dormant, append a discoverable hint to the title.

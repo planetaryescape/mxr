@@ -34,6 +34,13 @@ async function people(page: Page) {
   return (await bridge<MessagesAnswer>(page, "/api/v1/mail/people")).messages;
 }
 
+/** Each person's band, to compare before and after a test's undo. */
+async function bandsByPerson(page: Page): Promise<Record<string, string>> {
+  const data = await people(page);
+  const rows = [...data.your_turn, ...data.pinned, ...data.recent, ...data.quiet];
+  return Object.fromEntries(rows.map((row) => [row.id, row.band]));
+}
+
 const open = (row: Row) => row.topics.filter((topic) => topic.state !== "done");
 
 async function waitForPeople(page: Page) {
@@ -47,8 +54,8 @@ async function waitForPeople(page: Page) {
  * can undo them all at the end. `u` reverses only the newest.
  */
 interface Tracked {
-  ids: string[];
-  reading: Promise<void>[];
+  /** One per request, in the order the page sent them. */
+  pending: Promise<string | null>[];
 }
 
 /** Mode done answers `{ mutation_id }`; mail mutations `{ result: { mutation_id } }`. */
@@ -67,27 +74,27 @@ async function mutationId(response: Response | null): Promise<string | null> {
 }
 
 function trackMutations(page: Page): Tracked {
-  const tracked: Tracked = { ids: [], reading: [] };
+  const tracked: Tracked = { pending: [] };
   // From the request, so one still on its way when the test ends is waited for.
   page.on("request", (request) => {
     if (request.method() !== "POST") return;
     if (!/\/modes\/[a-z]+\/done$|\/mutations\/(archive|trash)$/.test(request.url())) return;
-    tracked.reading.push(
+    tracked.pending.push(
       request
         .response()
         .then(mutationId)
-        .then((id) => {
-          if (id) tracked.ids.push(id);
-        })
-        .catch(() => undefined),
+        .catch(() => null),
     );
   });
   return tracked;
 }
 
 async function undoAll(page: Page, tracked: Tracked) {
-  await Promise.all(tracked.reading);
-  for (const id of tracked.ids.toReversed()) {
+  // In request order, not the order the answers came back: the daemon takes
+  // overlapping requests in any order, and undoing in the wrong order leaves
+  // an earlier state behind.
+  const ids = (await Promise.all(tracked.pending)).filter((id): id is string => id !== null);
+  for (const id of ids.toReversed()) {
     // One already undone from the page answers with an error; that's fine.
     // oxlint-disable-next-line no-await-in-loop
     await page.request
@@ -114,11 +121,19 @@ const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 test.describe("Messages: done here moves on", () => {
   let mutations: Tracked;
-  test.beforeEach(({ page }) => {
+  let bandsBefore: Record<string, string>;
+  test.beforeEach(async ({ page }) => {
     mutations = trackMutations(page);
+    bandsBefore = await bandsByPerson(page);
   });
   test.afterEach(async ({ page }) => {
     await undoAll(page, mutations);
+    // These tests mark people done; later specs rely on everyone being back
+    // where they were, so the test that leaves somebody behind is the one
+    // that fails.
+    await expect
+      .poll(() => bandsByPerson(page), { timeout: 10_000, message: "everyone is back in their band" })
+      .toEqual(bandsBefore);
   });
 
   test("a person with topics left stays open on the next one, and u reopens the done one", async ({
@@ -464,7 +479,7 @@ test.describe("Inbox: the reader after archive", () => {
       message_ids: messages.map((message) => message.id),
     });
     const archived = idOf(result);
-    if (archived) mutations.ids.push(archived);
+    if (archived) mutations.pending.push(Promise.resolve(archived));
     // This page hears about it the way it hears about any outside change:
     // a sync finishing refetches the lists.
     await bridge(page, "/api/v1/mail/sync", {});

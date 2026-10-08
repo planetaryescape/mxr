@@ -20,6 +20,8 @@ const MAIL_QUERY_ROOTS = new Set([
   "now",
   "mode-membership",
   "reading",
+  "arrivals",
+  "arrival-modes",
 ]);
 
 /**

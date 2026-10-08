@@ -14,6 +14,7 @@ import { Route as AccountsRouteImport } from './routes/accounts'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as ArchiveRouteImport } from './routes/archive'
+import { Route as ArrivalsRouteImport } from './routes/arrivals'
 import { Route as DeliveriesRouteImport } from './routes/deliveries'
 import { Route as DeskRouteImport } from './routes/desk'
 import { Route as DevRouteImport } from './routes/dev'
@@ -86,6 +87,11 @@ const AnalyticsRoute = AnalyticsRouteImport.update({
 const ArchiveRoute = ArchiveRouteImport.update({
   id: '/archive',
   path: '/archive',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ArrivalsRoute = ArrivalsRouteImport.update({
+  id: '/arrivals',
+  path: '/arrivals',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeliveriesRoute = DeliveriesRouteImport.update({
@@ -335,6 +341,7 @@ export interface FileRoutesByFullPath {
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
   '/archive': typeof ArchiveRouteWithChildren
+  '/arrivals': typeof ArrivalsRoute
   '/deliveries': typeof DeliveriesRoute
   '/desk': typeof DeskRouteWithChildren
   '/dev': typeof DevRoute
@@ -390,6 +397,7 @@ export interface FileRoutesByTo {
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
   '/archive': typeof ArchiveRouteWithChildren
+  '/arrivals': typeof ArrivalsRoute
   '/deliveries': typeof DeliveriesRoute
   '/desk': typeof DeskRouteWithChildren
   '/dev': typeof DevRoute
@@ -446,6 +454,7 @@ export interface FileRoutesById {
   '/activity': typeof ActivityRoute
   '/analytics': typeof AnalyticsRouteWithChildren
   '/archive': typeof ArchiveRouteWithChildren
+  '/arrivals': typeof ArrivalsRoute
   '/deliveries': typeof DeliveriesRoute
   '/desk': typeof DeskRouteWithChildren
   '/dev': typeof DevRoute
@@ -503,6 +512,7 @@ export interface FileRouteTypes {
     | '/activity'
     | '/analytics'
     | '/archive'
+    | '/arrivals'
     | '/deliveries'
     | '/desk'
     | '/dev'
@@ -558,6 +568,7 @@ export interface FileRouteTypes {
     | '/activity'
     | '/analytics'
     | '/archive'
+    | '/arrivals'
     | '/deliveries'
     | '/desk'
     | '/dev'
@@ -613,6 +624,7 @@ export interface FileRouteTypes {
     | '/activity'
     | '/analytics'
     | '/archive'
+    | '/arrivals'
     | '/deliveries'
     | '/desk'
     | '/dev'
@@ -669,6 +681,7 @@ export interface RootRouteChildren {
   ActivityRoute: typeof ActivityRoute
   AnalyticsRoute: typeof AnalyticsRouteWithChildren
   ArchiveRoute: typeof ArchiveRouteWithChildren
+  ArrivalsRoute: typeof ArrivalsRoute
   DeliveriesRoute: typeof DeliveriesRoute
   DeskRoute: typeof DeskRouteWithChildren
   DevRoute: typeof DevRoute
@@ -736,6 +749,13 @@ declare module '@tanstack/react-router' {
       path: '/archive'
       fullPath: '/archive'
       preLoaderRoute: typeof ArchiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/arrivals': {
+      id: '/arrivals'
+      path: '/arrivals'
+      fullPath: '/arrivals'
+      preLoaderRoute: typeof ArrivalsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/deliveries': {
@@ -1276,6 +1296,7 @@ const rootRouteChildren: RootRouteChildren = {
   ActivityRoute: ActivityRoute,
   AnalyticsRoute: AnalyticsRouteWithChildren,
   ArchiveRoute: ArchiveRouteWithChildren,
+  ArrivalsRoute: ArrivalsRoute,
   DeliveriesRoute: DeliveriesRoute,
   DeskRoute: DeskRouteWithChildren,
   DevRoute: DevRoute,

@@ -6,6 +6,7 @@ import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { Centered, ListSkeleton } from "@/features/mailbox/MailViewParts";
 import { useReaderNav } from "@/features/mailbox/readerNav";
+import { moveCommands, updateMoveSubject } from "@/features/arrivals/moveSubjects";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
@@ -223,6 +224,8 @@ function Digest({ digest, guide }: { digest: UpdatesDigest; guide?: ModeGuide })
       if (link) window.open(link.url, "_blank", "noopener,noreferrer");
     },
     openEmail: () => current && openEmail(current),
+    // `K` stays "tune this source"; only the email moves from here.
+    moveToMode: moveCommands(() => (current ? updateMoveSubject(current) : null)).moveToMode,
     closeHint,
   });
 

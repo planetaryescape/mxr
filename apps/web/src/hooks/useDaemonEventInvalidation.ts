@@ -22,6 +22,8 @@ export function useDaemonEventInvalidation(): void {
         switch (event.type) {
           case "NewMessages":
           case "MessageUnsnoozed":
+          // A move in any client: every mode, Now's line and Inbox's chips.
+          case "ModesChanged":
             void invalidateMailQueries(qc);
             break;
           case "LabelCountsUpdated":

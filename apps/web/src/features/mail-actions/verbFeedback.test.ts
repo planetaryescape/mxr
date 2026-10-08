@@ -45,6 +45,8 @@ const STATE_CHANGING = [
   "archive.dismiss",
   "archive.edit",
   "archive.check",
+  "modes.move",
+  "modes.move-sender",
 ];
 
 describe("verb feedback table", () => {

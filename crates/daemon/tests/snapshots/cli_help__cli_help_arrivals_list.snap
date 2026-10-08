@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+The emails behind one count, newest first: exactly as many as the count. Defaults to the line's window
+
+Usage: mxr arrivals list [OPTIONS]
+
+Options:
+      --mode <MODE>        messages, todo, updates, reading, archive, screened_out, spam or sorting. Omitted: every arrival
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --since <SINCE>      RFC 3339; the default is the line's window
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+      --until <UNTIL>
+      --limit <LIMIT>      [default: 100]
+  -h, --help               Print help

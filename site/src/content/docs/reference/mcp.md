@@ -58,6 +58,10 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_messages`: people as rows in four bands, with topics and what they asked
 - `mxr_person`: one person's page, each message as its new text with `trimmed` flags
 - `mxr_got_it`: previews the acknowledgement and returns a `preview_token`; sends only with `confirm=true`, the previewed text as `expect_text` and that token, within a minute
+- `mxr_arrivals`: where every email that arrived since Now was last opened went, counted once each
+- `mxr_arrivals_list`: the emails behind one of those counts
+- `mxr_move`: previews moving one email (or with `sender = true`, a sender) to a mode; moves only with `confirm = true`
+- `mxr_corrections`: every move, sender mode and Not-sure answer
 - `mxr_records`
 - `mxr_records_ask`
 - `mxr_records_export_preview`
@@ -117,6 +121,14 @@ fetches the linked article, which tells that site the user clicked, so it
 also needs `confirm = true`. `mxr_reading_later` puts items on Later or
 takes them off (`dry_run = true` previews). `mxr_reading_highlights` returns
 every highlight and the same as Markdown.
+`mxr_arrivals` returns Now's arrivals line: every inbound email first seen
+since the user last opened Now (at most 24 hours back), counted once by the
+mode it is in, Spam and screened-out senders included, so the counts sum to
+`total`; To do and Archive are in `also`. Reading it never moves the
+window. `mxr_arrivals_list` lists the emails behind one count (`bucket`,
+with `since` and `until` defaulting to the line's window). `mxr_move` is a
+correction the user sees in every client, so move only mail the user asked
+you to move; it is undone with `mxr corrections undo <correction_id>`.
 `mxr_mutate` requires `confirm = true` and should be called only after
 `mxr_mutation_preview`. `mxr_send_draft` requires `confirm = true`; the daemon
 can still reject the request if the `mcp` profile disallows sends or the draft

@@ -22,6 +22,7 @@ pub mod label_picker;
 pub mod mail_list;
 pub mod message_view;
 pub mod messages_lens;
+pub mod move_menu;
 pub mod now_lens;
 pub mod owed_lens;
 pub mod place_lens;

@@ -2,6 +2,7 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use serde::{Deserialize, Serialize};
 
+mod arrivals;
 mod desk;
 mod draft_provenance;
 mod freshness;
@@ -17,6 +18,7 @@ mod records;
 mod thread_context;
 mod todos;
 mod updates;
+pub use arrivals::*;
 pub use desk::*;
 pub use draft_provenance::*;
 pub use freshness::*;
@@ -100,6 +102,14 @@ fn default_todo_limit() -> u32 {
 }
 
 fn default_messages_limit() -> u32 {
+    50
+}
+
+fn default_arrivals_limit() -> u32 {
+    100
+}
+
+fn default_corrections_limit() -> u32 {
     50
 }
 
@@ -1809,6 +1819,74 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         thread_ids: Vec<ThreadId>,
     },
+    /// Now's arrivals line (D119): every inbound email first seen since Now
+    /// was last opened (at most 24 hours back), counted once by where it
+    /// went, plus "Not sure" questions and the weekly track record.
+    /// `mark_seen` starts a visit: the window then runs from the visit
+    /// before. `since` is the window start of the visit a client already
+    /// has open (the `since` it was answered): a read that doesn't mark
+    /// then keeps that window instead of working one out again, so a Now
+    /// that stays open polls the same window all visit. Returns
+    /// `ResponseData::Arrivals`.
+    GetArrivals {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default)]
+        mark_seen: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        since: Option<chrono::DateTime<chrono::Utc>>,
+    },
+    /// The emails behind one count of the arrivals line, newest first:
+    /// exactly as many as the count. `since`/`until` default to the line's
+    /// window; `bucket` omitted lists every arrival. Returns
+    /// `ResponseData::ArrivalList`.
+    ListArrivals {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bucket: Option<ArrivalBucketData>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        since: Option<chrono::DateTime<chrono::Utc>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        until: Option<chrono::DateTime<chrono::Utc>>,
+        #[serde(default = "default_arrivals_limit")]
+        limit: u32,
+    },
+    /// Where each email went when it arrived and where it is now, for
+    /// Inbox's mode chips. At most 200; emails older than the ledger are
+    /// left out. Returns `ResponseData::ArrivalModes`.
+    GetArrivalModes {
+        message_ids: Vec<MessageId>,
+    },
+    /// Move one email to a mode (`X`), or with `sender` set the sender's
+    /// mode for all their mail (`K`). Messages, Updates and Reading move
+    /// it; To do and Archive add it there (a to-do, a record). Takes effect
+    /// in every client at once and is stored as a correction. `source:
+    /// "not_sure"` answers a Not-sure question. Returns
+    /// `ResponseData::MessageMoved` with the id `UndoMove` takes.
+    MoveMessage {
+        message_id: MessageId,
+        mode: ModeKindData,
+        #[serde(default)]
+        sender: bool,
+        #[serde(default)]
+        dry_run: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<String>,
+    },
+    /// Put a move back exactly as it was. Undoing twice changes nothing.
+    /// Returns `ResponseData::MoveUndone`.
+    UndoMove {
+        correction_id: i64,
+    },
+    /// Every move, sender mode and Not-sure answer, newest first. Returns
+    /// `ResponseData::Corrections`.
+    ListCorrections {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default = "default_corrections_limit")]
+        limit: u32,
+    },
     /// Done here: the thread leaves `mode` until a new message arrives
     /// (To do ticks its open rows off). When no other mode holds the
     /// thread and `modes.archive_on_last_done` is on, it is archived at
@@ -2384,6 +2462,12 @@ impl Request {
             | Self::GetRail { .. }
             | Self::GetModeMembership { .. }
             | Self::SetModeDone { .. }
+            | Self::GetArrivals { .. }
+            | Self::ListArrivals { .. }
+            | Self::GetArrivalModes { .. }
+            | Self::MoveMessage { .. }
+            | Self::UndoMove { .. }
+            | Self::ListCorrections { .. }
             | Self::ListMessages { .. }
             | Self::GetPerson { .. }
             | Self::AckMessage { .. }
@@ -3412,6 +3496,33 @@ pub enum ResponseData {
     UpdateSource {
         change: UpdateSourceChangeData,
     },
+    /// Returned by `Request::GetArrivals`.
+    Arrivals {
+        arrivals: ArrivalsData,
+    },
+    /// Returned by `Request::ListArrivals`.
+    ArrivalList {
+        list: ArrivalListData,
+    },
+    /// Returned by `Request::GetArrivalModes`, one per email the ledger
+    /// has, in request order.
+    ArrivalModes {
+        items: Vec<ArrivalItemData>,
+    },
+    /// Returned by `Request::MoveMessage`.
+    MessageMoved {
+        outcome: MoveOutcomeData,
+    },
+    /// Returned by `Request::UndoMove`.
+    MoveUndone {
+        correction_id: i64,
+        /// "Moved back to Reading." or "Already undone."
+        copy: String,
+    },
+    /// Returned by `Request::ListCorrections`.
+    Corrections {
+        corrections: Vec<CorrectionData>,
+    },
     /// Returned by `Request::GetRail`.
     Rail {
         rail: RailData,
@@ -3699,6 +3810,12 @@ impl ResponseData {
             | Self::TodoCatchup { .. }
             | Self::ModeGuides { .. }
             | Self::Now { .. }
+            | Self::Arrivals { .. }
+            | Self::ArrivalList { .. }
+            | Self::ArrivalModes { .. }
+            | Self::MessageMoved { .. }
+            | Self::MoveUndone { .. }
+            | Self::Corrections { .. }
             | Self::Rail { .. }
             | Self::ModeMembership { .. }
             | Self::ModeDone { .. }
@@ -4706,6 +4823,13 @@ pub enum DaemonEvent {
     ReplyLaterReturned {
         message_id: MessageId,
     },
+    /// Where mail sits changed: an email or a sender was moved, a move was
+    /// undone, or new arrivals were placed. Clients refetch their modes,
+    /// Now and Inbox's chips.
+    ModesChanged {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+    },
 }
 
 impl DaemonEvent {
@@ -4725,7 +4849,8 @@ impl DaemonEvent {
             Self::MutationReconciliationFailed { .. }
             | Self::EventsLagged { .. }
             | Self::ThreadGistReady { .. }
-            | Self::ReplyLaterReturned { .. } => IpcCategory::CoreMail,
+            | Self::ReplyLaterReturned { .. }
+            | Self::ModesChanged { .. } => IpcCategory::CoreMail,
         }
     }
 }

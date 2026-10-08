@@ -198,6 +198,12 @@ draws them. Done here previews with `dry_run: true` and returns one
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/mail/now` | Now: People, Due soon, the Updates card and the evening Reading pick (`?account=`) |
+| `GET` | `/mail/arrivals` | Now's arrivals line: every email first seen since Now was last opened, counted once by where it went, with Not-sure questions and the track record (`?account=&mark_seen=`; `mark_seen=true` when Now opens starts a visit) |
+| `GET` | `/mail/arrivals/list` | The emails behind one count, newest first (`?bucket=reading&since=&until=&limit=100&account=`); `since` and `until` default to the line's window |
+| `POST` | `/mail/arrivals/modes` | Where each of up to 200 emails went and where it is now, for Inbox's chips (`{message_ids}`) |
+| `POST` | `/mail/messages/{message_id}/move` | Move one email to a mode, or with `sender` set the sender's mode (`{mode, sender?, dry_run?, source?}`; `source: "not_sure"` answers Now's question); returns the `correction_id` undo takes |
+| `POST` | `/mail/moves/{correction_id}/undo` | Put a move back exactly as it was; undoing twice changes nothing |
+| `GET` | `/mail/corrections` | Every move, sender mode and Not-sure answer, newest first (`?account=&limit=50`) |
 | `GET` | `/mail/people` | Messages: people in four bands with their topics (`?turn=mine\|theirs&limit=&account=`) |
 | `GET` | `/mail/people/page` | A person's page with the selected topic as new text (`?person=&topic=`) |
 | `POST` | `/mail/people/ack` | Got it: `{thread_id}` previews (dry run by default) and returns a `preview_token`; a send needs `dry_run: false`, the token (within a minute) and the previewed `expect_text`, and is refused if anything changed or it was already acknowledged |

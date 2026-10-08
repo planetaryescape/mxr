@@ -209,6 +209,14 @@ impl App {
                                 status,
                             );
                         }
+                        // The daemon puts the move back and says where to.
+                        UndoAction::Move(correction_id) => {
+                            self.queue_mutation(
+                                Request::UndoMove { correction_id },
+                                MutationEffect::ModeDone(String::new()),
+                                status,
+                            );
+                        }
                         // Setting the previous kind again is the undo; its
                         // own answer offers no further undo.
                         UndoAction::SenderKind {

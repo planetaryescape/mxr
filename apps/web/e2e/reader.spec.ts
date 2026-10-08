@@ -46,7 +46,7 @@ test("a long thread folds read messages, expands on o/X, and blocks remote image
   await page.keyboard.press("o");
   await expect(messages.nth(3)).not.toHaveAttribute("data-collapsed", "true");
 
-  await page.keyboard.press("X");
+  await page.keyboard.press(";");
   for (let index = 0; index < 5; index += 1) {
     await expect(messages.nth(index)).not.toHaveAttribute("data-collapsed", "true");
   }

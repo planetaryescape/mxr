@@ -5,7 +5,7 @@
 //! directly. `desk.rs` fetches the inputs and assembles the response.
 
 use chrono::{DateTime, Duration, Utc};
-use mxr_core::id::{AccountId, ThreadId};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::UnsubscribeMethod;
 use mxr_protocol::{DeskElsewhereData, DeskLaneKind, DeskRowData};
 use mxr_store::{DeskContact, DeskDismissal, DeskMessage, ScreenerDisposition};
@@ -120,6 +120,8 @@ pub(super) struct AccountInputs<'a> {
     /// Times you set: reply later, and "bring it back if nobody replies".
     pub timers: &'a DeskTimers,
     pub is_self: &'a dyn Fn(&str) -> bool,
+    /// Emails the user moved (`X`), with the kind each move gave.
+    pub moves: &'a HashMap<MessageId, SenderKind>,
     /// The thread shape thresholds: a copied thread is nobody's turn.
     pub shape: ShapeConfig,
     pub now: DateTime<Utc>,
@@ -181,7 +183,13 @@ impl AccountInputs<'_> {
     /// never disagree about a message.
     pub(super) fn sender_kind(&self, message: &DeskMessage) -> SenderKind {
         let email = &message.from.email;
-        sender_kind(message, self.contact(email), self.decision(email))
+        sender_kind(
+            message,
+            self.contact(email),
+            self.decision(email),
+            self.moves.get(&message.id).copied(),
+            self.is_self,
+        )
     }
 
     /// A person other than you wrote it: an answer. An auto-responder or a
@@ -194,12 +202,23 @@ impl AccountInputs<'_> {
     pub(super) fn shape(&self, thread: &[DeskMessage]) -> Shape {
         let person_sender = |m: &DeskMessage| self.sender_kind(m) == SenderKind::Person;
         let human_address = |email: &str| self.human_address(email);
+        let kept = |m: &DeskMessage| {
+            let email = &m.from.email;
+            mail_kind::kept_in_messages(&desk_signals(
+                m,
+                self.contact(email),
+                self.decision(email),
+                self.moves.get(&m.id).copied(),
+                self.is_self,
+            ))
+        };
         conversation_shape(
             thread,
             &ShapeInputs {
                 is_self: self.is_self,
                 person_sender: &person_sender,
                 human_address: &human_address,
+                kept_in_messages: &kept,
                 config: self.shape,
             },
         )
@@ -218,13 +237,27 @@ impl AccountInputs<'_> {
 }
 
 /// The shared classifier (`mail_kind`) for one desk message, given what the
-/// store knows about its sender.
+/// store knows about its sender and whether the user moved it.
 pub(super) fn sender_kind(
     message: &DeskMessage,
     contact: Option<&DeskContact>,
     decision: Option<ScreenerDisposition>,
+    moved: Option<SenderKind>,
+    is_self: &dyn Fn(&str) -> bool,
 ) -> SenderKind {
-    mail_kind::classify(&KindSignals {
+    mail_kind::classify(&desk_signals(message, contact, decision, moved, is_self)).kind
+}
+
+/// The kind signals for one desk message. "Written to" comes from the
+/// contacts table, the same everywhere a message is classified.
+pub(super) fn desk_signals<'a>(
+    message: &'a DeskMessage,
+    contact: Option<&DeskContact>,
+    decision: Option<ScreenerDisposition>,
+    moved: Option<SenderKind>,
+    is_self: &dyn Fn(&str) -> bool,
+) -> KindSignals<'a> {
+    KindSignals {
         email: &message.from.email,
         subject: &message.subject,
         has_list_id: message.list_id.is_some(),
@@ -234,8 +267,21 @@ pub(super) fn sender_kind(
         list_sender: contact.is_some_and(|c| c.is_list_sender),
         sender: mail_kind::SenderFacts::of(contact),
         decision,
-    })
-    .kind
+        written_to: contact.is_some_and(|c| c.total_outbound > 0),
+        addressed: addressed_to_you(&message.to, &message.cc, is_self),
+        moved,
+    }
+}
+
+/// You are in To, or in neither To nor Cc (Bcc, or an alias mxr doesn't
+/// know): addressed. Only Cc without To is "only copied", the same
+/// positive evidence the shape rule asks for.
+pub(super) fn addressed_to_you(
+    to: &[mxr_core::types::Address],
+    cc: &[mxr_core::types::Address],
+    is_self: &dyn Fn(&str) -> bool,
+) -> bool {
+    to.iter().any(|a| is_self(&a.email)) || !cc.iter().any(|a| is_self(&a.email))
 }
 
 /// A desk row before the usual pace is known.
@@ -801,6 +847,7 @@ mod tests {
         let dismissed = HashMap::new();
         let timers = DeskTimers::default();
         let is_self = |email: &str| email.eq_ignore_ascii_case(ME);
+        let moves = HashMap::new();
         thread_lanes(&AccountInputs {
             account_id: &account,
             messages,
@@ -809,6 +856,7 @@ mod tests {
             dismissed: &dismissed,
             timers: &timers,
             is_self: &is_self,
+            moves: &moves,
             shape: ShapeConfig::default(),
             now: now(),
         })

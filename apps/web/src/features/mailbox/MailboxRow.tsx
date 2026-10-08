@@ -205,7 +205,7 @@ export const MailboxRow = memo(function MailboxRow({
             />
           ) : null}
         </span>
-        <span className="truncate text-[length:var(--mail-row-meta-size)] text-muted-foreground [[data-density=compact]_&]:hidden @2xl:[[data-density=compact]_&]:inline">
+        <span className="truncate text-[length:var(--mail-row-meta-size)] text-fg-2 [[data-density=compact]_&]:hidden @2xl:[[data-density=compact]_&]:inline">
           <span className="hidden @2xl:inline" aria-hidden>
             ·{" "}
           </span>

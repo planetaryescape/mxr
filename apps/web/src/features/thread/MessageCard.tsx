@@ -104,7 +104,7 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
           >
             {name}
           </span>
-          <span className="truncate text-[13px] text-muted-foreground">{message.snippet}</span>
+          <span className="truncate text-[13px] text-fg-2">{message.snippet}</span>
           <time
             dateTime={message.date}
             title={message.date_full}

@@ -256,7 +256,7 @@ export function RecordCard({
           <KeyChip className="h-4 px-1">p</KeyChip>
         </button>
       ) : null}
-      <p data-testid="record-why" className="text-[12.5px] text-muted-foreground">
+      <p data-testid="record-why" className="text-[12.5px] text-fg-2">
         {record.why}
       </p>
     </article>

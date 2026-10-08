@@ -149,7 +149,7 @@ export const ReadingItemCard = memo(function ReadingItemCard({
           <KeyChip className="h-4 px-1">D</KeyChip>
         </p>
       ) : null}
-      <p data-testid="why-here" className="mt-1.5 text-[12px] text-muted-foreground">
+      <p data-testid="why-here" className="mt-1.5 text-[12px] text-fg-2">
         {item.why}
       </p>
       {lead ? (

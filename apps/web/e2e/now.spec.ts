@@ -142,13 +142,8 @@ test("the rail lists Now, the modes, then Inbox, and their keys open them", asyn
     /^Archive/,
     /^Inbox/,
   ]);
-  // Early modes say so; Updates is built.
-  await expect(
-    rail.getByRole("link", { name: /^Reading/ }).getByTestId("rail-early"),
-  ).toBeVisible();
-  await expect(rail.getByRole("link", { name: /^Updates/ }).getByTestId("rail-early")).toHaveCount(
-    0,
-  );
+  // Every mode is built now, so none says "early".
+  await expect(rail.getByTestId("rail-early")).toHaveCount(0);
   for (const [key, url] of [
     ["m", /\/messages$/],
     ["x", /\/todo$/],

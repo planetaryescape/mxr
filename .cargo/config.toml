@@ -1,4 +1,5 @@
 [build]
+jobs = 4
 # Isolate CLI cargo from rust-analyzer's flycheck. RA holds a long-
 # running lock on the workspace `target/` while it watches for file
 # changes; if a CLI `cargo test` lands on the same lockfile, it
@@ -13,6 +14,9 @@
 target-dir = "target-cli"
 
 [env]
+RAYON_NUM_THREADS = "4"
+NEXTEST_TEST_THREADS = "4"
+RUST_TEST_THREADS = "4"
 SQLX_OFFLINE = "true"
 # clap-derive parses generate large stack frames in debug builds; the
 # CLI surface has 60+ subcommand variants and the default 2MB test

@@ -177,6 +177,8 @@ fn is_ordinal(word: &str) -> bool {
 /// A subject that says a subscription has been cancelled or has ended.
 /// Threats ("will be cancelled unless") and failed payments are not
 /// endings: the charge may still come.
+/// Negation only suppresses an ending in the same sentence; confirmations
+/// can mention what will never renew.
 static CANCELLED: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?i)\b(?:subscription|membership|plan|trial)\b[^.]{0,40}\b(?:has been |was |is )?(?:cancell?ed|ended|has ended|terminated)\b|\bcancell?ation (?:confirmed|confirmation|complete)\b|\byou(?:'ve| have) cancell?ed\b|\bsorry to see you go\b|\bwe'?ve cancell?ed your\b",
@@ -186,7 +188,7 @@ static CANCELLED: Lazy<Regex> = Lazy::new(|| {
 
 static NOT_AN_ENDING: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r"(?i)\bwill be\b|\bunless\b|\bfail|\bdeclin|\bupdate your payment\b|\baction required\b|\babout to\b|\bsoon\b|\breminder\b|\bundo\b|\bbooking\b|\breservation\b|\border\b",
+        r"(?i)\bwill be\b|\bunless\b|\b(?:not|never)\b[^.]{0,40}\b(?:cancell?ed|ended|terminated)\b|\bfail|\bdeclin|\bupdate your payment\b|\baction required\b|\babout to\b|\bsoon\b|\breminder\b|\bundo\b|\bbooking\b|\breservation\b|\border\b",
     )
     .expect("valid not-an-ending regex")
 });
@@ -221,12 +223,19 @@ mod tests {
         assert!(is_cancellation("Your subscription has been cancelled"));
         assert!(is_cancellation("Your Premium membership has ended"));
         assert!(is_cancellation("Cancellation confirmed"));
+        assert!(is_cancellation(
+            "Your subscription has been cancelled and will never renew"
+        ));
         assert!(!is_cancellation(
             "Your subscription will be cancelled unless you update your payment"
         ));
+        assert!(!is_cancellation("Your subscription has not been cancelled"));
+        assert!(!is_cancellation("Your plan was never cancelled"));
         assert!(!is_cancellation(
             "Payment failed: subscription cancelled soon"
         ));
+        assert!(!is_cancellation("Your cancellation request failed"));
+        assert!(!is_cancellation("Your subscription renews on 12 May"));
         assert!(!is_cancellation("Your booking was cancelled"));
     }
 }

@@ -1,6 +1,5 @@
 ---
 source: crates/web/src/tests.rs
-assertion_line: 977
 expression: summary
 ---
 {
@@ -39,7 +38,13 @@ expression: summary
     "ArchiveAskMode",
     "ArchiveCitationData",
     "ArchiveRetrievalData",
+    "ArrivalBucketData",
+    "ArrivalCountData",
     "ArrivalData",
+    "ArrivalItemData",
+    "ArrivalListData",
+    "ArrivalModesBody",
+    "ArrivalsData",
     "AttachmentDisposition",
     "AttachmentFile",
     "AttachmentId",
@@ -75,6 +80,7 @@ expression: summary
     "ConversationAttachmentData",
     "ConversationData",
     "ConversationMessageData",
+    "CorrectionData",
     "DaemonEvent",
     "DaemonHealthClass",
     "DecisionLogEntryData",
@@ -182,8 +188,12 @@ expression: summary
     "ModeKindData",
     "ModeMembershipBody",
     "ModeMembershipData",
+    "MoveBody",
+    "MoveChoiceData",
+    "MoveOutcomeData",
     "MutationCommand",
     "MutationResultData",
+    "NotSureData",
     "NotificationChimeEventData",
     "NotificationChimeSoundData",
     "NotificationChimesData",

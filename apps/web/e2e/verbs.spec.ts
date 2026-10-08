@@ -486,7 +486,22 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     const noor = "person:noor@tidewater.example";
     await openApp(page, `/messages?person=${encodeURIComponent(noor)}`);
     const row = page.getByTestId("band-your_turn").locator(`[data-row-id="${noor}"]`);
-    await expect(row).toBeVisible();
+    try {
+      await expect(row).toBeVisible();
+    } catch (error) {
+      // Noor is a shared fixture: say where she is and what moved, so a
+      // failure here names its cause instead of only its symptom.
+      for (const path of ["/api/v1/mail/people", "/api/v1/mail/corrections?limit=100"]) {
+        // oxlint-disable-next-line no-await-in-loop
+        const body = JSON.stringify(await bridge<unknown>(page, path));
+        console.log(`[mode-done] ${path}: ${body.slice(0, 20_000)}`);
+        // oxlint-disable-next-line no-await-in-loop
+        await test
+          .info()
+          .attach(path.replace(/\W+/g, "-"), { body, contentType: "application/json" });
+      }
+      throw error;
+    }
     await expect(page.getByTestId("conversation")).toBeVisible();
     await page.keyboard.press("e");
     await expectToast(page, "mode-done");

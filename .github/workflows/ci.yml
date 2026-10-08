@@ -340,18 +340,20 @@ jobs:
           echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
       # One worker: every spec shares the FakeProvider daemon's mailbox.
       - run: npm run e2e -- --workers=1
-      # The keydown-to-paint gate against a production build (about 20 s):
-      # the development build's owner-stack capture isn't what users run.
-      - name: Speed gate (production build)
-        if: ${{ !cancelled() }}
-        run: npm run e2e:perf -- --workers=1
-      - name: Upload Playwright traces
+      # Right after the suite: the speed gate below starts its own Playwright
+      # run, which empties test-results before a later upload could see it.
+      - name: Upload Playwright results
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-results
           path: apps/web/test-results
-          retention-days: 7
+          retention-days: 3
+      # The keydown-to-paint gate against a production build (about 20 s):
+      # the development build's owner-stack capture isn't what users run.
+      - name: Speed gate (production build)
+        if: ${{ !cancelled() }}
+        run: npm run e2e:perf -- --workers=1
 
   coverage:
     name: Coverage

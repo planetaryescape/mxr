@@ -10,7 +10,9 @@ export default defineConfig({
   fullyParallel: true,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
-  reporter: process.env.CI ? "github" : "list",
+  reporter: process.env.CI
+    ? [["github"], ["./e2e/helpers/people-trace-reporter.ts"]]
+    : "list",
   use: {
     baseURL: appUrl,
     // The theme follows the OS until one is picked; the suite was written

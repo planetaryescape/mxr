@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-import { cursorTo, mailList, openList, rowById } from "./helpers/mail";
+import { cursorTo, mailList, openList, reader, rowById } from "./helpers/mail";
 import { bridge, openApp } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -104,6 +104,7 @@ test("X moves an email, every client sees it, and u puts it back", async ({ page
 test("the reader's expand-all moved to ; so X can move the email", async ({ page }) => {
   await openList(page, "/m/inbox");
   await page.keyboard.press("Enter");
+  await expect(reader(page)).toBeVisible();
   await page.keyboard.press("X");
   await expect(page.getByTestId("move-to-mode-dialog")).toBeVisible();
   await page.keyboard.press("Escape");

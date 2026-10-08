@@ -116,7 +116,11 @@ pub fn draw_arrivals_list(
                 },
                 Style::default().fg(theme.text_secondary),
             )));
-            for (i, item) in list.items.iter().enumerate() {
+            // The count line above and the blank and key lines below stay;
+            // the rows between scroll so the selection is always on screen.
+            let visible = (inner.height as usize).saturating_sub(3).max(1);
+            let offset = (state.selected + 1).saturating_sub(visible);
+            for (i, item) in list.items.iter().enumerate().skip(offset).take(visible) {
                 let selected = i == state.selected;
                 let when = item
                     .first_seen_at
@@ -262,5 +266,51 @@ mod tests {
         assert!(rendered.contains("→ Reading"), "{rendered}");
         assert!(!rendered.contains('\u{1b}'));
         assert!(!rendered.contains('\u{202e}'));
+    }
+
+    #[test]
+    fn the_list_scrolls_to_keep_the_selection_on_screen() {
+        let items: Vec<ArrivalItemData> = (0..30).map(|n| item(&format!("Issue {n:02}"))).collect();
+        let at = |selected: usize| ArrivalsListState {
+            since: Utc::now(),
+            until: Utc::now(),
+            buckets: vec![ArrivalBucketData::Reading],
+            bucket: Some(ArrivalBucketData::Reading),
+            list: Some(ArrivalListData {
+                since: Utc::now(),
+                until: Utc::now(),
+                bucket: Some(ArrivalBucketData::Reading),
+                total: 30,
+                items: items.clone(),
+            }),
+            selected,
+        };
+        let render = |selected: usize| {
+            render_to_string(100, 16, |frame| {
+                draw_arrivals_list(
+                    frame,
+                    Rect::new(0, 0, 100, 16),
+                    Some(&at(selected)),
+                    &crate::theme::Theme::default(),
+                );
+            })
+        };
+        let top = render(0);
+        assert!(top.contains("Issue 00"), "{top}");
+        assert!(!top.contains("Issue 29"), "{top}");
+        // Far down the list, the selected row is drawn and the first isn't.
+        for selected in [9, 20, 29] {
+            let rendered = render(selected);
+            let marker = rendered
+                .lines()
+                .find(|line| line.contains('\u{258c}'))
+                .unwrap_or_else(|| panic!("no selected row for {selected}\n{rendered}"));
+            assert!(
+                marker.contains(&format!("Issue {selected:02}")),
+                "{rendered}"
+            );
+            assert!(rendered.contains("Tab next count"), "{rendered}");
+        }
+        assert!(!render(29).contains("Issue 00"));
     }
 }

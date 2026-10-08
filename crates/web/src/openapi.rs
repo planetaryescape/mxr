@@ -88,7 +88,7 @@ use utoipa::{
         mail_now, mail_rail, mail_freshness, mail_mode_membership_get, mail_mode_membership_post, mail_mode_done,
         mail_people, mail_people_page, mail_people_ack, mail_people_merge, mail_people_split,
         mail_people_merge_suggestions,
-        mail_records_ledger, mail_records_answer, mail_record_get, mail_record_field,
+        mail_records_ledger, mail_records_answer, mail_records_subscriptions, mail_record_get, mail_record_field,
         mail_records_dismiss, mail_records_file, mail_records_sender, mail_records_export,
         mail_reading_edition, mail_reading_item, mail_reading_later, mail_reading_engagement,
         mail_reading_article, mail_reading_highlights_get, mail_reading_highlights_post,
@@ -864,6 +864,20 @@ fn mail_records_ledger() {}
 )]
 #[allow(dead_code)]
 fn mail_records_answer() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/records/subscriptions",
+    summary = "Subscriptions: receipts and invoices at a steady cadence, with next charge, yearly cost, price changes, status and totals per currency",
+    params(("account" = Option<String>, Query, description = "Account id; omitted covers every account")),
+    responses(
+        (status = 200, description = "The `RecordSubscriptions` variant", body = ResponseData),
+        (status = 400, description = "Bad account id"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_records_subscriptions() {}
 
 #[utoipa::path(
     get,

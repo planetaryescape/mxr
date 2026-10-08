@@ -4764,6 +4764,7 @@ version = "0.6.58"
 dependencies = [
  "anyhow",
  "chrono",
+ "chrono-tz",
  "csv",
  "mxr-core",
  "mxr-reader",

@@ -1,6 +1,13 @@
 /* Records shaped like the daemon's, for Archive's unit tests. */
 
-import type { RecordAnswer, RecordAnswerList, RecordData, RecordMonth } from "./api";
+import type {
+  RecordAnswer,
+  RecordAnswerList,
+  RecordData,
+  RecordMonth,
+  RecordSubscription,
+  RecordSubscriptions,
+} from "./api";
 
 export function recordFixture(overrides: Partial<RecordData> = {}): RecordData {
   return {
@@ -144,6 +151,114 @@ export function listFixture(overrides: Partial<RecordAnswerList> = {}): RecordAn
     last: "2025-05-03T12:00:00Z",
     top_record_id: "rec_apr",
     issuer: "Anthropic",
+    ...overrides,
+  };
+}
+
+export function subscriptionFixture(
+  overrides: Partial<RecordSubscription> = {},
+): RecordSubscription {
+  return {
+    id: "sub_netflix",
+    account_id: "acct",
+    issuer: "Netflix",
+    title: "Netflix",
+    cadence: "monthly",
+    cadence_label: "Monthly",
+    amount: { minor: 1299, currency: "GBP", display: "£12.99" },
+    yearly_cost: { minor: 15_588, currency: "GBP", display: "£155.88" },
+    start: "2025-01-10T12:00:00Z",
+    last_charge: "2025-04-10T12:00:00Z",
+    next_expected: "2025-05-10T12:00:00Z",
+    status: "active",
+    status_reason: "4 charges about a month apart since Jan 2025",
+    confirmed: true,
+    charge_count: 4,
+    charges: [
+      {
+        record_ids: ["rec_jan"],
+        date: "2025-01-10T12:00:00Z",
+        amount: { minor: 1099, currency: "GBP", display: "£10.99" },
+        checked: false,
+      },
+      {
+        record_ids: ["rec_apr"],
+        date: "2025-04-10T12:00:00Z",
+        amount: { minor: 1299, currency: "GBP", display: "£12.99" },
+        checked: false,
+      },
+    ],
+    price_changes: [
+      {
+        date: "2025-04-10T12:00:00Z",
+        record_id: "rec_apr",
+        from: { minor: 1099, currency: "GBP", display: "£10.99" },
+        to: { minor: 1299, currency: "GBP", display: "£12.99" },
+        label: "£10.99 to £12.99 on 10 Apr 2025",
+      },
+    ],
+    fields: [
+      {
+        field: "amount",
+        label: "Amount",
+        value: "£12.99",
+        copy: "12.99",
+        source: "rule",
+        source_label: "a pattern in the email",
+        checked: false,
+      },
+      {
+        field: "cadence",
+        label: "Every",
+        value: "a month",
+        copy: "a month",
+        source: "derived",
+        source_label: "your 4 charges",
+        checked: false,
+      },
+    ],
+    one_offs: 0,
+    record_id: "rec_apr",
+    thread_id: "thread_netflix",
+    why: "Here because: 4 charges from Netflix about a month apart (worked out from your records).",
+    ...overrides,
+  };
+}
+
+export function subscriptionsFixture(
+  overrides: Partial<RecordSubscriptions> = {},
+): RecordSubscriptions {
+  return {
+    header:
+      "Receipts that come every week, month, quarter or year, with the next charge and what they cost.",
+    subscriptions: [
+      subscriptionFixture(),
+      subscriptionFixture({
+        id: "sub_disney",
+        title: "Disney+",
+        issuer: "Disney+",
+        status: "ended",
+        next_expected: null,
+      }),
+    ],
+    totals: [
+      {
+        currency: "GBP",
+        per_month: { minor: 1299, currency: "GBP", display: "£12.99" },
+        per_year: { minor: 15_588, currency: "GBP", display: "£155.88" },
+      },
+    ],
+    signals: [
+      {
+        kind: "price_change",
+        subscription_id: "sub_netflix",
+        record_id: "rec_apr",
+        at: "2025-04-10T12:00:00Z",
+        label: "Netflix went up from £10.99 to £12.99 on 10 Apr",
+      },
+    ],
+    live: 1,
+    ended: 1,
     ...overrides,
   };
 }

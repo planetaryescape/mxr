@@ -479,3 +479,135 @@ fn mail_text_cannot_reach_the_terminal_as_control_sequences() {
         "{rendered:?}"
     );
 }
+
+pub(crate) fn subscriptions() -> mxr_protocol::RecordSubscriptionsData {
+    use mxr_protocol::{
+        RecordPriceChangeData, RecordSubscriptionChargeData, RecordSubscriptionData,
+        RecordSubscriptionSignalData, RecordSubscriptionTotalData,
+    };
+    let gbp = |minor: i64, display: &str| RecordAmountData {
+        minor,
+        currency: "GBP".into(),
+        display: display.into(),
+    };
+    let netflix = RecordSubscriptionData {
+        id: "sub_netflix".into(),
+        account_id: AccountId::new(),
+        issuer: "Netflix".into(),
+        product: None,
+        title: "Netflix".into(),
+        cadence: "monthly".into(),
+        cadence_label: "Monthly".into(),
+        amount: Some(gbp(1299, "\u{a3}12.99")),
+        yearly_cost: Some(gbp(15_588, "\u{a3}155.88")),
+        start: at(2025, 1, 10),
+        last_charge: at(2025, 4, 10),
+        next_expected: Some(at(2025, 5, 10)),
+        status: "active".into(),
+        status_reason: "4 charges about a month apart since Jan 2025".into(),
+        confirmed: true,
+        charge_count: 2,
+        charges: vec![
+            RecordSubscriptionChargeData {
+                record_ids: vec!["rec_jan".into()],
+                date: at(2025, 1, 10),
+                amount: Some(gbp(1099, "\u{a3}10.99")),
+                checked: false,
+            },
+            RecordSubscriptionChargeData {
+                record_ids: vec!["rec_apr".into()],
+                date: at(2025, 4, 10),
+                amount: Some(gbp(1299, "\u{a3}12.99")),
+                checked: false,
+            },
+        ],
+        price_changes: vec![RecordPriceChangeData {
+            date: at(2025, 4, 10),
+            record_id: "rec_apr".into(),
+            from: gbp(1099, "\u{a3}10.99"),
+            to: gbp(1299, "\u{a3}12.99"),
+            label: "\u{a3}10.99 to \u{a3}12.99 on 10 Apr 2025".into(),
+        }],
+        fields: vec![field("amount", "Amount", "\u{a3}12.99", "rule", false)],
+        one_offs: 1,
+        record_id: "rec_apr".into(),
+        thread_id: None,
+        message_id: Some(MessageId::new()),
+        why: "Here because: 2 charges from Netflix about a month apart (worked out from your records).".into(),
+    };
+    let mut disney = netflix.clone();
+    disney.id = "sub_disney".into();
+    disney.issuer = "Disney+".into();
+    disney.title = "Disney+".into();
+    disney.status = "ended".into();
+    disney.next_expected = None;
+    disney.price_changes = Vec::new();
+    mxr_protocol::RecordSubscriptionsData {
+        header: mxr_protocol::subscription_copy::HEADER.into(),
+        subscriptions: vec![netflix, disney],
+        totals: vec![RecordSubscriptionTotalData {
+            currency: "GBP".into(),
+            per_month: gbp(1299, "\u{a3}12.99"),
+            per_year: gbp(15_588, "\u{a3}155.88"),
+        }],
+        signals: vec![RecordSubscriptionSignalData {
+            kind: "price_change".into(),
+            subscription_id: "sub_netflix".into(),
+            record_id: "rec_apr".into(),
+            at: at(2025, 4, 10),
+            label: "Netflix went up from \u{a3}10.99 to \u{a3}12.99 on 10 Apr".into(),
+        }],
+        live: 1,
+        ended: 1,
+        empty_state: None,
+    }
+}
+
+#[test]
+fn the_subscriptions_chip_shows_totals_signals_and_one_row_each() {
+    let mut page = page(vec![dell()], true);
+    page.kind_chip = RECORD_KIND_CHIPS.len() - 1;
+    page.subscriptions = Some(subscriptions());
+    let text = render_at(&page, 110);
+    assert!(text.contains("[subscriptions]"), "{text}");
+    assert!(
+        text.contains("1 live: \u{a3}12.99 a month \u{b7} \u{a3}155.88 a year"),
+        "{text}"
+    );
+    assert!(
+        text.contains("! Netflix went up from \u{a3}10.99 to \u{a3}12.99"),
+        "{text}"
+    );
+    assert!(text.contains("next 10 May 2025"), "{text}");
+    assert!(text.contains("Ended"), "{text}");
+    assert!(text.contains("ended, last 10 Apr 2025"), "{text}");
+    assert!(
+        !text.contains("XPS 14"),
+        "the ledger's rows give way: {text}"
+    );
+}
+
+#[test]
+fn the_subscription_card_has_history_price_changes_and_provenance() {
+    let data = subscriptions();
+    let lines: Vec<String> = crate::ui::subscriptions_lens::card_text(&data.subscriptions[0], 80)
+        .into_iter()
+        .map(|(text, _)| text)
+        .collect();
+    let text = lines.join("\n");
+    assert!(text.contains("Price changes"), "{text}");
+    assert!(
+        text.contains("\u{a3}10.99 to \u{a3}12.99 on 10 Apr 2025"),
+        "{text}"
+    );
+    assert!(text.contains("(a pattern in the email)"), "{text}");
+    // Newest charge first.
+    let charges = &text[text.find("2 charges").expect("charges header")..];
+    let april = charges.find("\u{a3}12.99").expect("April charge");
+    let january = charges.find("\u{a3}10.99").expect("January charge");
+    assert!(april < january, "{text}");
+    assert!(
+        text.contains("1 other charge from Netflix not part of it"),
+        "{text}"
+    );
+}

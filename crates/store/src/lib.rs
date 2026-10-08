@@ -62,6 +62,7 @@ mod people;
 mod places;
 mod pool;
 mod reading;
+mod record_subscriptions;
 mod records;
 mod relationship_watchlist;
 mod reply_pairs;
@@ -128,6 +129,7 @@ pub use reading::{
     ReadingArticleRow, ReadingEngagementReport, ReadingHighlightRow, ReadingItemRow,
     ReadingSourcePrefs, ReadingStateRow, ReadingVisitRow, SourceIssue,
 };
+pub use record_subscriptions::SenderMessage;
 pub use records::{
     todo_record_dedup_key, todo_record_source_key, ArchiveRecord, RecordDocument, RecordFieldEdit,
     RecordFieldValue, RecordFiled, RecordFiling, RecordGroup, RecordLink, RecordPdfToFetch,

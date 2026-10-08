@@ -2952,6 +2952,42 @@
         }
       }
     },
+    "/api/v1/mail/records/subscriptions": {
+      "get": {
+        "tags": [],
+        "summary": "Subscriptions: receipts and invoices at a steady cadence, with next charge, yearly cost, price changes, status and totals per currency",
+        "operationId": "mail_records_subscriptions",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `RecordSubscriptions` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad account id"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/records/{record_id}": {
       "get": {
         "tags": [],
@@ -15691,7 +15727,7 @@
           },
           "kind": {
             "type": "string",
-            "description": "trip | booking | ticket | return_window | warranty"
+            "description": "trip | booking | ticket | return_window | warranty, or a\nsubscription's price_change | missed_charge | renewal_approaching\n(then `group_id` is the subscription's id and `record_id` its\nnewest charge)."
           },
           "label": {
             "type": "string",
@@ -15731,6 +15767,36 @@
               "$ref": "#/components/schemas/RecordAmountData"
             },
             "description": "One total per currency, largest first. Never converted."
+          }
+        }
+      },
+      "RecordPriceChangeData": {
+        "type": "object",
+        "required": [
+          "date",
+          "record_id",
+          "from",
+          "to",
+          "label"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The first charge at the new price."
+          },
+          "from": {
+            "$ref": "#/components/schemas/RecordAmountData"
+          },
+          "label": {
+            "type": "string",
+            "description": "\"£10.99 to £12.99 on 10 May 2025\"."
+          },
+          "record_id": {
+            "type": "string"
+          },
+          "to": {
+            "$ref": "#/components/schemas/RecordAmountData"
           }
         }
       },
@@ -15831,6 +15897,312 @@
                 "$ref": "#/components/schemas/ThreadId"
               }
             ]
+          }
+        }
+      },
+      "RecordSubscriptionChargeData": {
+        "type": "object",
+        "description": "One charge of a subscription: a record, or a receipt and an invoice\nfor the same payment.",
+        "required": [
+          "record_ids",
+          "date",
+          "checked"
+        ],
+        "properties": {
+          "amount": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordAmountData"
+              }
+            ]
+          },
+          "checked": {
+            "type": "boolean",
+            "description": "Its amount and date came from schema.org or you."
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "record_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RecordSubscriptionData": {
+        "type": "object",
+        "description": "One subscription: the row and, with its history, the card.",
+        "required": [
+          "id",
+          "account_id",
+          "issuer",
+          "title",
+          "cadence",
+          "cadence_label",
+          "start",
+          "last_charge",
+          "status",
+          "status_reason",
+          "confirmed",
+          "charge_count",
+          "charges",
+          "fields",
+          "one_offs",
+          "record_id",
+          "why"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "amount": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordAmountData",
+                "description": "The newest charge's amount."
+              }
+            ]
+          },
+          "cadence": {
+            "type": "string",
+            "description": "weekly | monthly | quarterly | yearly"
+          },
+          "cadence_label": {
+            "type": "string",
+            "description": "\"Monthly\"."
+          },
+          "charge_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "charges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordSubscriptionChargeData"
+            },
+            "description": "Oldest first."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Three charges or more. A yearly one seen twice is not yet."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordFieldData"
+            },
+            "description": "Every field with where it came from: issuer, product, cadence,\namount, yearly_cost, start, last_charge, next_expected, status."
+          },
+          "id": {
+            "type": "string",
+            "description": "`sub_…`: stable while its first charge stays."
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "last_charge": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MessageId",
+                "description": "The newest charge's newest email."
+              }
+            ]
+          },
+          "next_expected": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Not set once it has ended."
+          },
+          "one_offs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The issuer's receipts and invoices that are not part of any\nsubscription.",
+            "minimum": 0
+          },
+          "price_changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordPriceChangeData"
+            },
+            "description": "Oldest first."
+          },
+          "product": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"Premium\", when the receipts name it."
+          },
+          "record_id": {
+            "type": "string",
+            "description": "The newest charge's record, for \"open the record\"."
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "description": "active | overdue | ended"
+          },
+          "status_reason": {
+            "type": "string",
+            "description": "\"6 charges about a month apart since Jan 2025\", \"Expected around\n3 May 2025; no charge since 3 Apr 2025\", \"Cancellation email on\n20 Mar 2025\"."
+          },
+          "thread_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId",
+                "description": "The newest charge's thread, for \"open the email\"."
+              }
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "\"Spotify Premium\", or the issuer alone."
+          },
+          "why": {
+            "type": "string",
+            "description": "\"Here because: 6 receipts from Spotify about a month apart\n(worked out from your records).\""
+          },
+          "yearly_cost": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordAmountData",
+                "description": "The amount times the charges in a year."
+              }
+            ]
+          }
+        }
+      },
+      "RecordSubscriptionSignalData": {
+        "type": "object",
+        "description": "Something about a subscription worth a look: a price change on the\nnewest charge, an expected charge that didn't come, or a yearly\nsubscription's next charge within its lead time. A suggestion only;\nnothing here is ever filed as a to-do.",
+        "required": [
+          "kind",
+          "subscription_id",
+          "record_id",
+          "at",
+          "label"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kind": {
+            "type": "string",
+            "description": "price_change | missed_charge | renewal_approaching"
+          },
+          "label": {
+            "type": "string",
+            "description": "\"Netflix went up from £10.99 to £12.99 on 10 May\",\n\"No Spotify Premium charge since 3 Apr; expected around 3 May\",\n\"Admiral renews around 24 Oct\"."
+          },
+          "record_id": {
+            "type": "string",
+            "description": "The newest charge's record."
+          },
+          "subscription_id": {
+            "type": "string"
+          }
+        }
+      },
+      "RecordSubscriptionTotalData": {
+        "type": "object",
+        "description": "What the live subscriptions cost in one currency. Never converted.",
+        "required": [
+          "currency",
+          "per_month",
+          "per_year"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "per_month": {
+            "$ref": "#/components/schemas/RecordAmountData",
+            "description": "The year over twelve."
+          },
+          "per_year": {
+            "$ref": "#/components/schemas/RecordAmountData"
+          }
+        }
+      },
+      "RecordSubscriptionsData": {
+        "type": "object",
+        "description": "Returned in `ResponseData::RecordSubscriptions`.",
+        "required": [
+          "header",
+          "subscriptions",
+          "totals",
+          "live",
+          "ended"
+        ],
+        "properties": {
+          "empty_state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ended": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "header": {
+            "type": "string"
+          },
+          "live": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "signals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordSubscriptionSignalData"
+            }
+          },
+          "subscriptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordSubscriptionData"
+            },
+            "description": "Live ones first (active and overdue), then ended, each by issuer."
+          },
+          "totals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordSubscriptionTotalData"
+            },
+            "description": "Over the live ones, per currency, largest first."
           }
         }
       },
@@ -21871,6 +22243,31 @@
           },
           {
             "type": "object",
+            "description": "Subscriptions: receipts and invoices from one issuer for one\nproduct at a steady cadence, with their history, price changes,\nnext charge, status and totals per currency. Worked out from the\nrecords on each call; local reads only. Returns\n`ResponseData::RecordSubscriptions`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListRecordSubscriptions"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "One record's card: every field with its provenance, its documents\nand its source emails. Takes a full id or a unique prefix. Returns\n`ResponseData::Record`.",
             "required": [
               "record_id",
@@ -26098,6 +26495,25 @@
               },
               "ledger": {
                 "$ref": "#/components/schemas/RecordLedgerData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ListRecordSubscriptions`.",
+            "required": [
+              "subscriptions",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RecordSubscriptions"
+                ]
+              },
+              "subscriptions": {
+                "$ref": "#/components/schemas/RecordSubscriptionsData"
               }
             }
           },

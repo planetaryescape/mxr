@@ -60,7 +60,9 @@ pub use reading::{
     ReadingConfirm, ReadingPageState, ReadingRow, ReadingUnsubscribeTarget, ReadingView,
     READING_LINKS_SHOWN,
 };
-pub use records::{PassMenu, RecordFixPrompt, RecordsPageState, RECORD_KIND_CHIPS};
+pub use records::{
+    PassMenu, RecordFixPrompt, RecordsPageState, RECORD_KIND_CHIPS, SUBSCRIPTIONS_CHIP,
+};
 pub use rules::{RuleFormState, RulesPageState, RulesPanel, RulesState};
 pub use search::{
     PendingSearchCountRequest, PendingSearchDebounce, PendingSearchRequest, SearchPageState,

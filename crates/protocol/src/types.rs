@@ -14,6 +14,7 @@ mod places;
 mod platform;
 mod promises;
 mod reading;
+mod record_subscriptions;
 mod records;
 mod thread_context;
 mod todos;
@@ -30,6 +31,7 @@ pub use places::*;
 pub use platform::*;
 pub use promises::*;
 pub use reading::*;
+pub use record_subscriptions::*;
 pub use records::*;
 pub use thread_context::*;
 pub use todos::*;
@@ -1991,6 +1993,15 @@ pub enum Request {
         #[serde(default)]
         offset: u32,
     },
+    /// Subscriptions: receipts and invoices from one issuer for one
+    /// product at a steady cadence, with their history, price changes,
+    /// next charge, status and totals per currency. Worked out from the
+    /// records on each call; local reads only. Returns
+    /// `ResponseData::RecordSubscriptions`.
+    ListRecordSubscriptions {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+    },
     /// One record's card: every field with its provenance, its documents
     /// and its source emails. Takes a full id or a unique prefix. Returns
     /// `ResponseData::Record`.
@@ -2475,6 +2486,7 @@ impl Request {
             | Self::SplitPerson { .. }
             | Self::ListMergeSuggestions { .. }
             | Self::ListRecords { .. }
+            | Self::ListRecordSubscriptions { .. }
             | Self::GetRecord { .. }
             | Self::AnswerFromRecords { .. }
             | Self::SetRecordField { .. }
@@ -3538,6 +3550,10 @@ pub enum ResponseData {
     RecordLedger {
         ledger: RecordLedgerData,
     },
+    /// Returned by `Request::ListRecordSubscriptions`.
+    RecordSubscriptions {
+        subscriptions: RecordSubscriptionsData,
+    },
     /// Returned by `Request::GetRecord`.
     Record {
         record: RecordData,
@@ -3840,6 +3856,7 @@ impl ResponseData {
             | Self::UpdatesDigest { .. }
             | Self::UpdatesLetGo { .. }
             | Self::UpdateSource { .. }
+            | Self::RecordSubscriptions { .. }
             | Self::RecipientBriefing { .. }
             | Self::SuggestedCollaborators { .. }
             | Self::ExpertSuggestions { .. }

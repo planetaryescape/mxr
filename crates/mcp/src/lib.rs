@@ -325,6 +325,20 @@ impl MxrMcpServer {
     }
 
     #[tool(
+        name = "mxr_records_subscriptions",
+        description = "Subscriptions found in Archive's receipts and invoices: one per issuer and product charged at a steady weekly, monthly, quarterly or yearly cadence, with the amount, next expected charge, yearly cost, status (active, overdue after a missed charge, ended after two missed or a cancellation email), price changes with dates, each charge, and totals per month and year in each currency (never converted). Every field says where it came from and whether it is checked. Read-only."
+    )]
+    pub async fn records_subscriptions(
+        &self,
+        Parameters(input): Parameters<AccountScopeInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::ListRecordSubscriptions {
+            account_id: parse_optional_id(input.account_id)?,
+        })
+        .await
+    }
+
+    #[tool(
         name = "mxr_records_ask",
         description = "Ask Archive for a field: \"lisbon booking ref\", \"dell receipt 2025\", \"how much was the octopus bill\". Returns the field from record data on an answer card with its provenance, with no model. A query that only names something several records match (\"anthropic\", \"lisbon\") comes back with mode \"list\": every match, paged, by month, with a count, totals per currency and the date span; `matching` counts every match either way, and `list: true` lists them for any query. Only when no record matches does it fall back to a citation-checked answer over all mail, and the result says so. Read-only."
     )]
@@ -1068,6 +1082,13 @@ impl RecordsInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct AccountScopeInput {
+    /// One account; omit for every account.
+    #[serde(default)]
+    pub account_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct RecordsAskInput {
     pub query: String,
     #[serde(default)]
@@ -1386,6 +1407,7 @@ mod tests {
         assert!(names.contains(&"mxr_sweep_preview"));
         assert!(names.contains(&"mxr_records"));
         assert!(names.contains(&"mxr_records_ask"));
+        assert!(names.contains(&"mxr_records_subscriptions"));
         assert!(names.contains(&"mxr_records_export_preview"));
         assert!(names.contains(&"mxr_mutation_preview"));
         assert!(names.contains(&"mxr_send_draft"));
@@ -1664,6 +1686,21 @@ mod tests {
                 mark_visit: false,
                 ..
             }]
+        ));
+    }
+
+    #[tokio::test]
+    async fn the_subscriptions_tool_reads_one_account_or_all() {
+        let requester = Arc::new(FakeRequester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
+        server
+            .records_subscriptions(Parameters(AccountScopeInput { account_id: None }))
+            .await
+            .expect("tool result");
+        let requests = requester.requests.lock().expect("requests lock");
+        assert!(matches!(
+            requests.as_slice(),
+            [Request::ListRecordSubscriptions { account_id: None }]
         ));
     }
 

@@ -274,8 +274,8 @@ pub(crate) async fn unfile_todos(state: &AppState, todos: &[TodoRecord]) {
     }
 }
 
-/// Records with a moment soon, soonest first, at most `cap`: the strip on
-/// Archive and the line on Now.
+/// Subscription signals, then records with a moment soon, soonest first,
+/// at most `cap`: the strip on Archive and the line on Now.
 pub(super) async fn coming_up(
     state: &AppState,
     accounts: &[AccountId],
@@ -297,13 +297,21 @@ pub(super) async fn coming_up(
         .into_iter()
         .map(|g| (g.id.clone(), g))
         .collect();
-    Ok(
+    // A price change or a missed charge leads: it may want doing
+    // something about, where a moment only wants knowing. Signals leave
+    // one place for a moment, so a trip tomorrow is never crowded out.
+    let moments: Vec<RecordMomentData> =
         mxr_records::coming_up::moments(&records, &groups, now, &Local)
             .into_iter()
-            .take(cap)
             .map(moment_data)
-            .collect(),
-    )
+            .collect();
+    let mut out = super::record_subscriptions::signal_moments(state, accounts, now).await?;
+    if !moments.is_empty() {
+        out.truncate(cap.saturating_sub(1));
+    }
+    out.extend(moments);
+    out.truncate(cap);
+    Ok(out)
 }
 
 fn moment_data(moment: mxr_records::coming_up::Moment) -> RecordMomentData {
@@ -477,7 +485,7 @@ fn short_day(at: DateTime<Utc>) -> String {
     }
 }
 
-fn amount_data(minor: i64, currency: &str) -> RecordAmountData {
+pub(super) fn amount_data(minor: i64, currency: &str) -> RecordAmountData {
     RecordAmountData {
         minor,
         currency: currency.to_string(),
@@ -927,10 +935,12 @@ pub(super) async fn list_records(
         .min(matching.len());
     let page = &matching[start..end];
     let ctx = Context::load(state, page, Some(&accounts)).await?;
-    let coming_up = mxr_records::coming_up::moments(&all, &ctx.groups, now, &Local)
-        .into_iter()
-        .map(moment_data)
-        .collect();
+    let mut coming_up = super::record_subscriptions::signal_moments(state, &accounts, now).await?;
+    coming_up.extend(
+        mxr_records::coming_up::moments(&all, &ctx.groups, now, &Local)
+            .into_iter()
+            .map(moment_data),
+    );
     let issuer = filter.issuer.as_ref().and_then(|_| {
         let first = matching.first()?;
         Some(RecordIssuerData {

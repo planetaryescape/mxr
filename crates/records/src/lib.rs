@@ -14,7 +14,9 @@
 //! * [`detect`] combines the two into what to file, with where each field
 //!   came from.
 //! * [`group`] builds the composite records: trips from bookings whose dates
-//!   overlap, series from recurring bills of one issuer.
+//!   overlap, series from one issuer's regular statements.
+//! * [`subscriptions`] finds receipts and invoices that recur at a steady
+//!   cadence, with their price changes, next charge and status.
 //! * [`answer`] ranks records for the answer box, by fields, with no model.
 //! * [`export`] writes the CSV and its preview.
 //! * [`pass`] runs it over mail: the post-sync scan, the newest-first first
@@ -32,6 +34,7 @@ pub mod group;
 pub mod pass;
 pub mod rules;
 pub mod schema_org;
+pub mod subscriptions;
 
 use serde::{Deserialize, Serialize};
 

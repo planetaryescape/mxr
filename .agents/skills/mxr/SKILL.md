@@ -68,6 +68,7 @@ mxr corrections --format json                    # every move, newest first; `co
 mxr records --format json                        # Archive: records by month, with totals
 mxr records ask "lisbon booking ref" --format json   # the field, from record data
 mxr records show <record_id> --format json       # every field with its source
+mxr records subscriptions --format json          # recurring receipts: cadence, next charge, totals
 mxr records export --csv --dry-run --year 2025   # rows, totals, unchecked, missing PDFs
 mxr reading edition --peek --format json
 mxr reading later --add <item_key> --dry-run

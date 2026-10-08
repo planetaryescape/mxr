@@ -235,6 +235,7 @@ back, so the preview is what the real call does.
 |--------|------|---------|
 | `GET` | `/mail/records` | The ledger: a page of records newest first, with month counts and totals, facets and what is coming up (`?account=&kind=order,booking&issuer=&year=&min_amount_minor=&max_amount_minor=&has_pdf=&checked=&group=&limit=200&offset=`) |
 | `GET` | `/mail/records/answer` | The answer box (`?q=lisbon booking ref&fallback=true&limit=4`): the field from record data, else `mxr ask`'s answer as `fallback` |
+| `GET` | `/mail/records/subscriptions` | Subscriptions worked out from the records: one per issuer and product at a steady cadence, with history, price changes, next charge, status, signals and totals per currency (`?account=`) |
 | `GET` | `/mail/records/{record_id}` | One record's card: every field with its provenance, documents and source emails (a full id or a unique prefix) |
 | `POST` | `/mail/records/{record_id}/field` | Fix, confirm or clear a field, or confirm the whole card (`{edit: {op: "set", field, value} \| {op: "confirm", field} \| {op: "confirm_all"} \| {op: "clear", field}, apply_to_sender?, dry_run?}`) |
 | `POST` | `/mail/records/dismiss` | Not a record, or back with `restore` (`{record_ids, restore?, dry_run?}`); the email is never touched |

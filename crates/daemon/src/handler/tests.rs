@@ -711,6 +711,7 @@ mod owed;
 mod places;
 mod platform_and_export;
 mod reading;
+mod record_subscriptions;
 mod records;
 mod routing_and_search;
 mod stars;

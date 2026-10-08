@@ -230,7 +230,12 @@ booking, invoice, statement, ticket, contract, warranty and account.
 
 **Trip** and **series**: records grouped by Archive. A trip is bookings
 whose dates overlap or come within a day of each other; a series is
-receipts or bills from one issuer in at least three different months.
+statements from one issuer in at least three different months.
+
+**Subscription**: receipts or invoices from one issuer for one product that
+come at a steady cadence (weekly, monthly, quarterly or yearly). Archive
+works it out from the records, with the next charge, the yearly cost, price
+changes and whether it is active, overdue or ended.
 
 **Checked**: a record whose every amount and date came from schema.org
 markup or from you. A value read by a rule shows an open dot until you

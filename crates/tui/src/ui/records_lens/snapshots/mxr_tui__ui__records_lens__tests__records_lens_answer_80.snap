@@ -1,6 +1,5 @@
 ---
 source: crates/tui/src/ui/records_lens/tests.rs
-assertion_line: 370
 expression: rendered
 ---
 "╭ Archive ─ Receipts, orders, bookings and documents. Ask for what you need. ──╮"
@@ -16,7 +15,7 @@ expression: rendered
 "│  Coming up                                                                   │"
 "│    Lisbon, June 2025 · in 3 days                                             │"
 "│                                                                              │"
-"│  [all] receipts orders trips bills docs                                      │"
+"│  [all] receipts orders trips bills docs subscriptions                        │"
 "│ ── 2025 · March ─────────────────────────────────────── 2 records  £1,251.99 │"
 "│▌ 03 Mar  Dell             XPS 14 laptop          £1,249.00   402-118      pdf│"
 "│          ordered · shipped · delivered 7 Mar                                 │"

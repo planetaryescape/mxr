@@ -2511,6 +2511,11 @@ pub enum RecordsAction {
         #[arg(long, default_value_t = 0)]
         offset: u32,
     },
+    /// Subscriptions: receipts and invoices that come every week, month,
+    /// quarter or year, with the next charge, the yearly cost, price
+    /// changes and status (active, overdue, ended), and totals per
+    /// currency. `--format json` for scripts and agents.
+    Subscriptions,
     /// One record with every field and where it came from.
     Show { record_id: String },
     /// Ask for a field: "lisbon booking ref", "dell receipt 2025". A query

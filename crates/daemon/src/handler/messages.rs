@@ -948,10 +948,26 @@ async fn conversation(
     })
 }
 
+/// Blocks of consecutive non-blank lines: what "Read all N paragraphs"
+/// counts. A naive `split("\n\n")` misses a break written as `\r\n\r\n`
+/// (the raw body `new_text` returns when nothing was trimmed keeps its
+/// original line endings), undercounting to one block and showing a
+/// nonsensical "Read all 1 paragraphs" on a message that collapses. Line
+/// splitting takes both line endings, matching `wrapped_lines` and the
+/// client's own paragraph split (`\n\s*\n`, which treats a blank-ish line
+/// the same way regardless of what runs between the two newlines).
 fn paragraphs(text: &str) -> usize {
-    text.split("\n\n")
-        .filter(|block| !block.trim().is_empty())
-        .count()
+    let mut blocks = 0;
+    let mut in_block = false;
+    for line in text.lines() {
+        if line.trim().is_empty() {
+            in_block = false;
+        } else if !in_block {
+            blocks += 1;
+            in_block = true;
+        }
+    }
+    blocks
 }
 
 fn join_names(names: &[String]) -> String {
@@ -1280,5 +1296,42 @@ mod pick_topic_tests {
             pick_topic(&topics, None).map(|t| t.last_at),
             topics.iter().map(|t| t.last_at).max()
         );
+    }
+}
+
+#[cfg(test)]
+mod paragraphs_tests {
+    use super::paragraphs;
+
+    #[test]
+    fn a_single_line_is_one_paragraph() {
+        assert_eq!(paragraphs("Thanks, on it."), 1);
+    }
+
+    #[test]
+    fn blank_line_runs_of_any_length_are_one_break() {
+        assert_eq!(paragraphs("a\n\nb"), 2);
+        assert_eq!(paragraphs("a\n\n\n\nb"), 2);
+    }
+
+    #[test]
+    fn a_crlf_blank_line_still_breaks_a_paragraph() {
+        // `new_text` keeps a message's original line endings when nothing
+        // was trimmed, so a break can be CRLF: a naive `split("\n\n")`
+        // never finds "\n\n" inside "\r\n\r\n" and undercounts to one.
+        assert_eq!(
+            paragraphs("Senior Software Engineer at throxy.\r\n\r\nJack"),
+            2
+        );
+    }
+
+    #[test]
+    fn a_whitespace_only_line_still_breaks_a_paragraph() {
+        assert_eq!(paragraphs("a\n \nb"), 2);
+    }
+
+    #[test]
+    fn lines_within_a_block_stay_one_paragraph() {
+        assert_eq!(paragraphs("a\nb\nc"), 1);
     }
 }

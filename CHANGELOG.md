@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.58](https://github.com/planetaryescape/mxr/compare/v0.6.57...v0.6.58) (2026-10-08)
+
+
+### Features
+
+* Reading is an edition you visit, not a pile you owe ([#309](https://github.com/planetaryescape/mxr/issues/309)) ([a95d86a](https://github.com/planetaryescape/mxr/commit/a95d86a536ee351257df1232efb6a980f4cb0643))
+* show how fresh your mail is on every page ([#302](https://github.com/planetaryescape/mxr/issues/302)) ([83ef39a](https://github.com/planetaryescape/mxr/commit/83ef39ac1c5469f6cefd5ca2e962a14b14a64fca))
+
+
+### Bug Fixes
+
+* count a message's paragraphs by its own line endings, not just \n\n ([#312](https://github.com/planetaryescape/mxr/issues/312)) ([562f16b](https://github.com/planetaryescape/mxr/commit/562f16b30ae2646b220f7220d68ec3e09171d753))
+* keep split panes mounted so opening a conversation is fast again ([#306](https://github.com/planetaryescape/mxr/issues/306)) ([fb6c3d4](https://github.com/planetaryescape/mxr/commit/fb6c3d4ea0c30fec92040873569c4c6fd222e4a2))
+* list every Archive match when a query only names something ([#307](https://github.com/planetaryescape/mxr/issues/307)) ([36943b6](https://github.com/planetaryescape/mxr/commit/36943b6e4298e8e730d8db3766b94d959ecdac09))
+* promises only from mail you sent; machine-like senders out of Messages ([#308](https://github.com/planetaryescape/mxr/issues/308)) ([cc88474](https://github.com/planetaryescape/mxr/commit/cc884740297ac1c09c113650b92b0404627a90ea))
+* replace top-of-page teaching cards with contextual hints ([#304](https://github.com/planetaryescape/mxr/issues/304)) ([f65bbc2](https://github.com/planetaryescape/mxr/commit/f65bbc2b5d8b67353f4b36bca4cf1aa0cad93e4e))
+* show when the email arrived on each To do row ([#311](https://github.com/planetaryescape/mxr/issues/311)) ([1d6b91b](https://github.com/planetaryescape/mxr/commit/1d6b91b6d5232663db53aff995d2ac5c7f619496))
+
 ## [0.6.57](https://github.com/planetaryescape/mxr/compare/v0.6.56...v0.6.57) (2026-10-07)
 
 

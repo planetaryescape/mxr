@@ -64,6 +64,88 @@ That is the demo mailbox on a Saturday morning. Every row says which mode it
 came from and why. `mxr now` prints JSON by default, with the same sections,
 caps and lines.
 
+## See where everything that arrived went
+
+Under the headline, one quiet line accounts for every email that arrived
+since you last opened Now (at most 24 hours back):
+
+```text
+Since 08:12: 50 arrived. 8 Messages · 10 Updates · 31 Reading · 1 spam. Also 2 in To do.
+```
+
+The counts sum to the total: each email is counted once, in the mode it is
+in now, and Spam and screened-out senders are counted too. To do and Archive
+are "also", never added, because an email there is still in its own mode.
+A count of zero is left out. Each count opens exactly those emails, newest
+first, so checking that nothing went missing is one click from the claim.
+When Now has nothing waiting, the line becomes the end state:
+
+```text
+Clear. All 50 emails since 08:12 are accounted for.
+```
+
+"Accounted for" means every email went somewhere; it never claims you read
+them. Where an email went is recorded when it arrives, so mail you archive
+later still counts where it went. From the command line, without moving the
+line's window:
+
+```bash
+mxr arrivals
+mxr arrivals list --mode reading
+```
+
+People you've written to always reach Messages when the mail is addressed to
+you, whatever list it came through. Press `?` on the line to see that rule.
+
+## Move an email to where it belongs
+
+`X` moves the email under the cursor to another mode, on any row in Now,
+Messages, Updates, Reading and Inbox, and in the reader. Pick the mode with
+one key:
+
+| Key | Moves it to |
+|---|---|
+| `m` | Messages |
+| `x` | To do (adds a to-do from it) |
+| `u` | Updates |
+| `r` | Reading |
+| `e` | Archive (files it as a record) |
+
+The move takes effect at once in every client, and the toast asks once:
+"Moved to Reading. Always for this sender? (K)". `K` sends everything from
+that sender to the mode from now on; `u` or **Undo** puts the email back. In
+the picker, a capital `M`, `U` or `R` moves the sender straight away. To do
+and Archive keep their own `X` (not a to-do, not a record).
+
+A sender's mode always wins over a move made before it, and a move made
+after it wins for that one email. Inbox rows name the mode each email went
+to, with the reason on hover or focus: "→ Updates · automated sender".
+
+```bash
+mxr move MESSAGE_ID reading --dry-run
+mxr move MESSAGE_ID reading
+mxr move MESSAGE_ID updates --sender
+mxr corrections            # every move, newest first
+mxr corrections undo 12
+```
+
+## Answer what mxr wasn't sure about
+
+When two rules disagree, Now asks instead of guessing, at most three times a
+day. Today that is mail from someone you've written to that only copied you:
+
+```text
+2 emails I wasn't sure about. Where should these go?
+Sam Okafor copied you on "Boiler service at the flat". Updates for now.
+```
+
+One key sends it (`m`, `x`, `u`, `r`, `e`); keeping it where it is counts as
+an answer. After the answer Now asks once, "Always for this sender?".
+
+Once you have moved mail, Now shows how sorting is going, counted from your
+own moves: "Last week mxr sorted 310 emails; you moved 2." It counts the
+emails you moved; mail you never opened isn't checked.
+
 ## Act on a row in its own mode
 
 | Key | What it does |
@@ -74,6 +156,8 @@ caps and lines.
 | `r` | Reply to a person |
 | `o` | Open the email |
 | `A` | Let go of the Updates card, after a preview |
+| `X` | Move this email to another mode |
+| `K` | Move everything from this sender to a mode |
 | `u` | Undo |
 | `?` | What Now is for, then its keys |
 

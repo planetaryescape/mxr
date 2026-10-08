@@ -1463,6 +1463,8 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             dry_run,
             purge,
             archive_on_no_method,
+            keep_mail,
+            preview_token,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
@@ -1474,6 +1476,8 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 dry_run,
                 purge,
                 archive_on_no_method,
+                keep_mail,
+                preview_token,
                 format,
             )
             .await?;

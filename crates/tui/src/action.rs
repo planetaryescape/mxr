@@ -255,8 +255,12 @@ pub enum Action {
     ReadingLetGo,
     /// `A`: preview letting go of everything shown, or confirm it.
     ReadingLetGoAll,
-    /// `D`: preview unsubscribing from the item's source, or confirm it.
+    /// `D`: preview unsubscribing from the item's source, or `a` in that
+    /// preview: unsubscribe and clear the source's issues.
     ReadingUnsubscribe,
+    /// Enter or `u` in the unsubscribe preview: unsubscribe, keep the mail
+    /// already there.
+    ReadingUnsubscribeOnly,
     /// `R`: the source's own text instead of the reader, remembered.
     ReadingOriginal,
     /// `h`: save the paragraph at the top of the reader as a highlight.

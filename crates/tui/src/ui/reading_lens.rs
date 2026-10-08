@@ -35,7 +35,7 @@ const PROGRESS_CELLS: usize = 20;
 const DEFAULT_WPM: u32 = 230;
 
 const LIST_KEYS: &str = "Enter read \u{b7} L article \u{b7} b later \u{b7} e let go \u{b7} D unsubscribe \u{b7} A let go all \u{b7} B Later shelf \u{b7} ? help";
-const READER_KEYS: &str = "Esc back \u{b7} j/k scroll \u{b7} h highlight \u{b7} L article \u{b7} b later \u{b7} e let go \u{b7} R original \u{b7} o email";
+const READER_KEYS: &str = "Esc back \u{b7} j/k scroll \u{b7} h highlight \u{b7} L article \u{b7} b later \u{b7} e let go \u{b7} D unsubscribe \u{b7} R original \u{b7} o email";
 
 /// As many whole "key verb" items as fit in `width`.
 fn fit_keys(keys: &str, width: usize) -> String {
@@ -664,7 +664,7 @@ fn draw_confirm(
         ReadingConfirm::LetGoAll { thread_ids, .. } => u16::try_from(thread_ids.len())
             .unwrap_or(u16::MAX)
             .saturating_add(8),
-        ReadingConfirm::Unsubscribe { .. } => 10,
+        ReadingConfirm::Unsubscribe { .. } => 15,
     };
     let popup = super::centered_rect_fixed_height(70, height.min(area.height), area);
     frame.render_widget(Clear, popup);
@@ -734,7 +734,11 @@ fn draw_confirm(
                     Style::default().fg(theme.text_secondary),
                 )),
                 Line::from(Span::styled(
-                    format!("  Also archives {message_count} {issues} from this sender."),
+                    "  u just unsubscribe \u{b7} keep what you have",
+                    Style::default().fg(theme.text_secondary),
+                )),
+                Line::from(Span::styled(
+                    format!("  a unsubscribe and clear {message_count} {issues} \u{b7} marks them read and archives them"),
                     Style::default().fg(theme.text_secondary),
                 )),
                 Line::from(Span::styled(
@@ -743,7 +747,7 @@ fn draw_confirm(
                 )),
                 Line::from(""),
                 Line::from(Span::styled(
-                    "Enter unsubscribe \u{b7} Esc keep",
+                    "Enter or u just unsubscribe \u{b7} a clear its issues \u{b7} Esc keep",
                     Style::default().fg(theme.text_muted),
                 )),
             ];

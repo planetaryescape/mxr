@@ -57,6 +57,7 @@ impl App {
             Action::ReadingLetGo => self.reading_let_go(),
             Action::ReadingLetGoAll => self.reading_let_go_all(),
             Action::ReadingUnsubscribe => self.reading_unsubscribe(),
+            Action::ReadingUnsubscribeOnly => self.reading_unsubscribe_only(),
             Action::ReadingOriginal => self.reading_original(),
             Action::ReadingHighlight => self.reading_highlight(),
             Action::ReadingOpenEmail => self.reading_open_email(),
@@ -401,16 +402,28 @@ impl App {
         self.mailbox.reading_page.confirm = Some(ReadingConfirm::LetGoAll { thread_ids, items });
     }
 
-    /// `D`: preview unsubscribing from the item's source, with the
-    /// evidence; Enter on the preview unsubscribes.
-    fn reading_unsubscribe(&mut self) {
+    /// The unsubscribe preview on screen, taken off it. None when the
+    /// confirm is something else.
+    fn committed_unsubscribe(&mut self) -> Option<(ReadingUnsubscribeTarget, Option<String>)> {
         let page = &mut self.mailbox.reading_page;
-        if let Some(ReadingConfirm::Unsubscribe {
-            target,
-            preview_token,
-            ..
-        }) = page.confirm.take()
-        {
+        if !matches!(page.confirm, Some(ReadingConfirm::Unsubscribe { .. })) {
+            return None;
+        }
+        match page.confirm.take() {
+            Some(ReadingConfirm::Unsubscribe {
+                target,
+                preview_token,
+                ..
+            }) => Some((target, preview_token)),
+            _ => None,
+        }
+    }
+
+    /// `D`: preview unsubscribing from the item's source, with the
+    /// evidence. In that preview `a` unsubscribes and clears the source's
+    /// issues.
+    fn reading_unsubscribe(&mut self) {
+        if let Some((target, preview_token)) = self.committed_unsubscribe() {
             // Only a preview the daemon answered with a token commits.
             let Some(preview_token) = preview_token else {
                 self.status_message =
@@ -418,12 +431,12 @@ impl App {
                 return;
             };
             self.queue_mutation(
-                Request::UnsubscribePurge {
+                Request::CommitUnsubscribePreview {
                     address: target.sender_email.clone(),
                     account_id: Some(target.account_id),
-                    dry_run: false,
+                    archive: true,
+                    preview_token,
                     archive_on_no_method: false,
-                    preview_token: Some(preview_token),
                 },
                 MutationEffect::ModeDone(format!("Unsubscribed from {}", target.source)),
                 "Unsubscribing...".into(),
@@ -461,6 +474,28 @@ impl App {
             method,
         });
         self.status_message = Some("Checking what unsubscribing would do\u{2026}".into());
+    }
+
+    /// Enter or `u` commits the preview while leaving existing mail in place.
+    fn reading_unsubscribe_only(&mut self) {
+        let Some((target, preview_token)) = self.committed_unsubscribe() else {
+            return;
+        };
+        let Some(preview_token) = preview_token else {
+            self.status_message = Some("Nothing to unsubscribe with: preview again with D".into());
+            return;
+        };
+        self.queue_mutation(
+            Request::CommitUnsubscribePreview {
+                address: target.sender_email,
+                account_id: Some(target.account_id),
+                archive: false,
+                preview_token,
+                archive_on_no_method: false,
+            },
+            MutationEffect::ModeDone(format!("Unsubscribed from {}", target.source)),
+            "Unsubscribing...".into(),
+        );
     }
 
     /// The daemon's dry run of the unsubscribe.
@@ -576,12 +611,22 @@ impl App {
     pub(super) fn reading_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let page = &self.mailbox.reading_page;
         if let Some(confirm) = &page.confirm {
-            let confirm_action = match confirm {
-                ReadingConfirm::LetGoAll { .. } => Action::ReadingLetGoAll,
-                ReadingConfirm::Unsubscribe { .. } => Action::ReadingUnsubscribe,
+            let commit = match (confirm, key.code) {
+                (ReadingConfirm::LetGoAll { .. }, KeyCode::Enter | KeyCode::Char('y')) => {
+                    Some(Action::ReadingLetGoAll)
+                }
+                (ReadingConfirm::Unsubscribe { .. }, KeyCode::Enter | KeyCode::Char('y' | 'u')) => {
+                    Some(Action::ReadingUnsubscribeOnly)
+                }
+                (ReadingConfirm::Unsubscribe { .. }, KeyCode::Char('a')) => {
+                    Some(Action::ReadingUnsubscribe)
+                }
+                _ => None,
             };
+            if commit.is_some() {
+                return commit;
+            }
             return match key.code {
-                KeyCode::Enter | KeyCode::Char('y') => Some(confirm_action),
                 KeyCode::Esc | KeyCode::Char('n') => {
                     self.mailbox.reading_page.confirm = None;
                     self.status_message = Some("Nothing changed".into());

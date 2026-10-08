@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Archive, Loader2, MailX } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { unsubscribeAndClearSender } from "@/features/mailbox/api";
+import { commitUnsubscribePreview, unsubscribeAndClearSender } from "@/features/mailbox/api";
 import { doneModeRequest } from "@/features/modes/modeDone";
 import { plural } from "@/lib/format";
 
@@ -23,8 +24,11 @@ import { letGo, refreshReading } from "./readingVerbs";
 const IRREVERSIBLE = "This can't be undone from mxr; you'd resubscribe on their site.";
 
 /**
- * `D`: unsubscribe, with the evidence first. The daemon's dry run counts
- * the mail it would clear; nothing is sent until Unsubscribe.
+ * `D`: unsubscribe, with the evidence first. Two choices: just unsubscribe
+ * (Enter or u, keeps the mail already there) or unsubscribe and clear the
+ * sender's issues (a). The daemon's dry run counts the mail the second
+ * choice would clear, and nothing is sent until one of the buttons is
+ * pressed.
  */
 export function ReadingUnsubscribeDialog({
   source,
@@ -46,25 +50,27 @@ export function ReadingUnsubscribeDialog({
   });
   // Only a finished preview with a token and a method can be committed,
   // and the method shown is the one in that preview.
-  const ready = unsubscribePreview(preview);
+  const ready = preview.isFetching ? null : unsubscribePreview(preview);
   const count = ready?.count ?? preview.data?.result?.message_count;
 
-  async function commit() {
-    if (!ready) return;
+  async function commitUnsubscribe(archive: boolean) {
+    if (!ready || busy) return;
     setBusy(true);
     try {
-      const answer = await unsubscribeAndClearSender({
+      const answer = await commitUnsubscribePreview({
         address: source.sender_email,
         accountId: source.account_id,
         previewToken: ready.token,
+        archive,
       });
       const result = answer.result;
       if (result?.error) {
         toast.error(`Couldn't unsubscribe from ${source.name}`, { description: result.error });
       } else {
         toast.success(`Unsubscribed from ${source.name}`, {
-          description:
-            result && result.archived_count > 0
+          description: !archive
+            ? "The mail you already have stays."
+            : result && result.archived_count > 0
               ? `Let go of ${plural(result.archived_count, "issue")} too.`
               : undefined,
         });
@@ -80,11 +86,27 @@ export function ReadingUnsubscribeDialog({
     }
   }
 
+  const clearLabel =
+    count != null
+      ? `Unsubscribe and clear ${plural(count, "issue")}`
+      : "Unsubscribe and clear its issues";
+
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         className="max-w-md grid-cols-[minmax(0,1fr)]"
         data-testid="reading-unsubscribe"
+        onKeyDown={(event) => {
+          // Enter on a focused button is that button's click, not a shortcut.
+          if (event.key === "Enter" && event.target instanceof HTMLButtonElement) return;
+          if (event.key === "u" || event.key === "Enter") {
+            event.preventDefault();
+            void commitUnsubscribe(false);
+          } else if (event.key === "a") {
+            event.preventDefault();
+            void commitUnsubscribe(true);
+          }
+        }}
       >
         <DialogHeader>
           <DialogTitle>Unsubscribe from {source.name}?</DialogTitle>
@@ -115,13 +137,46 @@ export function ReadingUnsubscribeDialog({
             {IRREVERSIBLE}
           </li>
         </ul>
+        <div className="grid gap-2">
+          <button
+            type="button"
+            data-testid="unsubscribe-just"
+            onClick={() => void commitUnsubscribe(false)}
+            disabled={busy || !ready}
+            className="flex items-center gap-3 rounded-md border border-border px-3 py-2.5 text-left hover:border-primary/60 hover:bg-accent disabled:opacity-60"
+          >
+            <MailX className="size-4 text-muted-foreground" />
+            <span className="flex-1">
+              <span className="block text-[13px] font-medium">
+                Just unsubscribe — keep what you have
+              </span>
+            </span>
+            <KeyChip>u</KeyChip>
+          </button>
+          <button
+            type="button"
+            data-testid="unsubscribe-clear"
+            onClick={() => void commitUnsubscribe(true)}
+            disabled={busy || !ready}
+            className="flex items-center gap-3 rounded-md border border-border px-3 py-2.5 text-left hover:border-primary/60 hover:bg-accent disabled:opacity-60"
+          >
+            {preview.isLoading ? (
+              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+            ) : (
+              <Archive className="size-4 text-muted-foreground" />
+            )}
+            <span className="flex-1">
+              <span className="block text-[13px] font-medium">{clearLabel}</span>
+              <span className="block text-2xs text-muted-foreground">
+                Marks them read and archives them
+              </span>
+            </span>
+            <KeyChip>a</KeyChip>
+          </button>
+        </div>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Keep it
-          </Button>
-          <Button size="sm" onClick={() => void commit()} disabled={busy || !ready}>
-            {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
-            Unsubscribe
           </Button>
         </DialogFooter>
       </DialogContent>

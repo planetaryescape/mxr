@@ -46,6 +46,50 @@ mod tests {
     use bytes::BytesMut;
 
     #[test]
+    fn unsubscribe_preview_commit_requires_token_and_choice() {
+        for json in [
+            serde_json::json!({"cmd":"CommitUnsubscribePreview", "address":"news@example.com", "archive":false}),
+            serde_json::json!({"cmd":"CommitUnsubscribePreview", "address":"news@example.com", "preview_token":"tok"}),
+        ] {
+            assert!(serde_json::from_value::<Request>(json).is_err());
+        }
+        let request: Request = serde_json::from_value(serde_json::json!({"cmd":"CommitUnsubscribePreview", "address":"news@example.com", "archive":false, "preview_token":"tok"})).unwrap();
+        assert!(
+            matches!(request, Request::CommitUnsubscribePreview { archive:false, preview_token, .. } if preview_token == "tok")
+        );
+    }
+
+    #[test]
+    fn legacy_unsubscribe_decoder_rejects_preview_commit_instead_of_purging() {
+        // The legacy sender mutation uses a tagged command, with unknown fields
+        // accepted inside UnsubscribePurge. A new command must never decode as it.
+        #[derive(serde::Deserialize)]
+        #[serde(tag = "cmd")]
+        enum LegacySenderRequest {
+            UnsubscribePurge {},
+        }
+        let legacy = serde_json::json!({"cmd":"UnsubscribePurge", "address":"news@example.com", "archive":false});
+        assert!(serde_json::from_value::<LegacySenderRequest>(legacy).is_ok());
+        for archive in [false, true] {
+            let commit = Request::CommitUnsubscribePreview {
+                address: "news@example.com".into(),
+                account_id: None,
+                preview_token: "tok".into(),
+                archive,
+                archive_on_no_method: false,
+            };
+            let error = serde_json::from_value::<LegacySenderRequest>(
+                serde_json::to_value(commit).unwrap(),
+            )
+            .err()
+            .unwrap();
+            assert!(error
+                .to_string()
+                .contains("unknown variant `CommitUnsubscribePreview`"));
+        }
+    }
+
+    #[test]
     fn mutation_result_undo_unavailable_serializes_only_when_set() {
         let mut result = MutationResultData {
             requested: 1,

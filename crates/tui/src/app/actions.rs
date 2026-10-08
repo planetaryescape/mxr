@@ -159,6 +159,7 @@ impl App {
             | Action::ReadingLetGo
             | Action::ReadingLetGoAll
             | Action::ReadingUnsubscribe
+            | Action::ReadingUnsubscribeOnly
             | Action::ReadingOriginal
             | Action::ReadingHighlight
             | Action::ReadingOpenEmail

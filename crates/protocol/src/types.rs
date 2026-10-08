@@ -1047,6 +1047,17 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         preview_token: Option<String>,
     },
+    /// Commit exactly one sender unsubscribe preview. Older daemons reject
+    /// this variant instead of silently clearing mail when `archive` is false.
+    CommitUnsubscribePreview {
+        address: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        preview_token: String,
+        archive: bool,
+        #[serde(default)]
+        archive_on_no_method: bool,
+    },
     Snooze {
         message_id: MessageId,
         wake_at: chrono::DateTime<chrono::Utc>,
@@ -2381,6 +2392,7 @@ impl Request {
             | Self::UndoMutation { .. }
             | Self::Unsubscribe { .. }
             | Self::UnsubscribePurge { .. }
+            | Self::CommitUnsubscribePreview { .. }
             | Self::Snooze { .. }
             | Self::Unsnooze { .. }
             | Self::ListSnoozed

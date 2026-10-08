@@ -31,6 +31,12 @@ Options:
       --archive-on-no-method
           With --purge, archive the footprint even if no List-Unsubscribe method exists
 
+      --keep-mail
+          With --purge, unsubscribe using the previewed method and keep existing mail
+
+      --preview-token <PREVIEW_TOKEN>
+          Commit an earlier --purge --dry-run preview exactly once. Requires --yes
+
       --format <FORMAT>
           [possible values: table, json, jsonl, csv, ids]
 

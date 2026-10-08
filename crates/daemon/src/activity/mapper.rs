@@ -234,6 +234,15 @@ pub fn map_request(
             })),
         ),
 
+        Request::CommitUnsubscribePreview {
+            address, archive, ..
+        } => (
+            "mail.unsubscribe_preview.commit",
+            Some("sender"),
+            Some(address.clone()),
+            Some(serde_json::json!({"archive": archive})),
+        ),
+
         // ----- reply-later flag -----
         Request::SetReplyLater { message_id, flag } => (
             if *flag {

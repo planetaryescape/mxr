@@ -217,16 +217,69 @@ fn unsubscribe_previews_with_the_evidence_before_it_commits() {
         panic!("a preview is on screen");
     };
     assert_eq!(shown.method, ReadingUnsubscribeData::Mailto);
-    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    // `a` clears the issues too: the purge commits exactly that preview.
+    press(&mut app, KeyCode::Char('a'), KeyModifiers::NONE);
     let requests = queued(&app);
     assert!(
         matches!(
             requests.as_slice(),
-            [Request::UnsubscribePurge { address, dry_run: false, preview_token: Some(token), .. }]
+            [Request::CommitUnsubscribePreview { address, archive: true, preview_token: token, .. }]
                 if *address == target.sender_email && token == "tok-1"
         ),
         "{requests:?}"
     );
+}
+
+#[test]
+fn enter_or_u_unsubscribe_commits_the_previewed_sender_and_keeps_the_mail() {
+    let mut app = reading_app();
+    for _ in 0..7 {
+        key(&mut app, 'j');
+    }
+    key(&mut app, 'D');
+    let target = app
+        .mailbox
+        .reading_page
+        .pending_unsubscribe_preview
+        .take()
+        .expect("a dry run is asked for first");
+    app.show_reading_unsubscribe_preview(
+        target.clone(),
+        purge_preview(
+            &target.sender_email,
+            mxr_core::types::UnsubscribeMethod::OneClick {
+                url: "https://growth.example/unsub".into(),
+            },
+            Some("tok-2"),
+        ),
+    );
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(matches!(queued(&app).as_slice(),
+        [Request::CommitUnsubscribePreview { archive: false, preview_token: token, .. }] if token == "tok-2"));
+    assert!(app.modals.pending_unsubscribe_action.is_none());
+    assert!(app.mailbox.reading_page.confirm.is_none());
+
+    key(&mut app, 'D');
+    let target = app
+        .mailbox
+        .reading_page
+        .pending_unsubscribe_preview
+        .take()
+        .expect("a dry run is asked for again");
+    app.show_reading_unsubscribe_preview(
+        target.clone(),
+        purge_preview(
+            &target.sender_email,
+            mxr_core::types::UnsubscribeMethod::OneClick {
+                url: "https://growth.example/unsub".into(),
+            },
+            Some("tok-3"),
+        ),
+    );
+    press(&mut app, KeyCode::Char('u'), KeyModifiers::NONE);
+    assert!(app.modals.pending_unsubscribe_action.is_none());
+    assert!(matches!(queued(&app).last(),
+        Some(Request::CommitUnsubscribePreview { archive: false, preview_token: token, .. }) if token == "tok-3"));
 }
 
 #[test]

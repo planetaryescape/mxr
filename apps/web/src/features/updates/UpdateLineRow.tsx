@@ -100,6 +100,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
     <li
       data-index={index}
       data-testid="update-line"
+      data-line-id={line.id}
       data-section={line.section}
       data-source={line.source_key}
       data-focused={focused ? "true" : undefined}

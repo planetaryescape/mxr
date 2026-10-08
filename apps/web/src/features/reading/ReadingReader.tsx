@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeft, ExternalLink, Loader2, MailX, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
@@ -208,6 +208,14 @@ function Reader({ detail }: { detail: ReadingDetail }) {
               {left > 0 ? `${left} min left` : "Read to the end"}
             </span>
           )}
+          <button
+            type="button"
+            data-testid="reader-unsubscribe"
+            onClick={() => setUnsubscribing(true)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 hover:border-primary/60 hover:bg-accent hover:text-foreground"
+          >
+            <MailX aria-hidden className="size-3.5" /> Unsubscribe <KeyChip>D</KeyChip>
+          </button>
           <span className="ml-auto hidden items-center gap-3 sm:inline-flex">
             <span className="inline-flex items-center gap-1">
               <KeyChip>b</KeyChip> later

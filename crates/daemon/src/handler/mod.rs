@@ -412,7 +412,8 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::StartAuthSession { .. }
         | Request::CompleteAuthSession { .. }
         | Request::TestAccountConfig { .. }
-        | Request::UnsubscribePurge { .. } => IpcLane::Bulk,
+        | Request::UnsubscribePurge { .. }
+        | Request::CommitUnsubscribePreview { .. } => IpcLane::Bulk,
 
         // Full-store rebuilds and bulk indexing.
         Request::RebuildAnalytics
@@ -1729,8 +1730,27 @@ async fn dispatch(
                 account_id.as_ref(),
                 *dry_run,
                 *archive_on_no_method,
+                true,
                 preview_token.as_deref(),
             )
+            .await
+        }
+        Request::CommitUnsubscribePreview {
+            address,
+            account_id,
+            preview_token,
+            archive,
+            archive_on_no_method,
+        } => {
+            Box::pin(mutations::unsubscribe_purge(
+                state,
+                address,
+                account_id.as_ref(),
+                false,
+                *archive_on_no_method,
+                *archive,
+                Some(preview_token),
+            ))
             .await
         }
         Request::SetFlags { message_id, flags } => {
@@ -1867,9 +1887,9 @@ fn request_destructive_action(req: &Request) -> Option<DestructiveAction> {
         }
         Request::DeleteLabel { .. } => Some(DestructiveAction::DeleteLabel),
         Request::RemoveAccountConfig { .. } => Some(DestructiveAction::RemoveAccount),
-        Request::Unsubscribe { .. } | Request::UnsubscribePurge { .. } => {
-            Some(DestructiveAction::Unsubscribe)
-        }
+        Request::Unsubscribe { .. }
+        | Request::UnsubscribePurge { .. }
+        | Request::CommitUnsubscribePreview { .. } => Some(DestructiveAction::Unsubscribe),
         Request::SweepPlace { dry_run: false, .. } => Some(DestructiveAction::Archive),
         // Done in the last mode holding a thread archives it at the provider.
         Request::SetModeDone { dry_run: false, .. } => Some(DestructiveAction::Archive),
@@ -2092,6 +2112,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::RemoveAccountConfig { .. }
         | Request::Unsubscribe { .. }
         | Request::UnsubscribePurge { .. }
+        | Request::CommitUnsubscribePreview { .. }
         | Request::SweepPlace { dry_run: false, .. }
         | Request::RedactActivity { .. }
         | Request::PruneActivity { .. } => Destructive,
@@ -2332,6 +2353,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::UndoMutation { .. } => "undo_mutation",
         Request::Unsubscribe { .. } => "unsubscribe",
         Request::UnsubscribePurge { .. } => "unsubscribe_purge",
+        Request::CommitUnsubscribePreview { .. } => "commit_unsubscribe_preview",
         Request::Snooze { .. } => "snooze",
         Request::Unsnooze { .. } => "unsnooze",
         Request::ListSnoozed => "list_snoozed",

@@ -354,6 +354,23 @@ export function unsubscribeAndClearSender(input: {
   });
 }
 
+export function commitUnsubscribePreview(input: {
+  address: string;
+  accountId?: string;
+  previewToken: string;
+  archive: boolean;
+}): Promise<UnsubscribePurgeResponse> {
+  return apiFetch<UnsubscribePurgeResponse>("/api/v1/mail/actions/unsubscribe-preview/commit", {
+    method: "POST",
+    body: {
+      address: input.address,
+      account_id: input.accountId,
+      preview_token: input.previewToken,
+      archive: input.archive,
+    },
+  });
+}
+
 export interface DraftAssistResponse {
   body?: string;
   draft?: string;

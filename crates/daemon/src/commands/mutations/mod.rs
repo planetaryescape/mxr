@@ -967,6 +967,8 @@ pub async fn unsubscribe(
     dry_run: bool,
     purge: bool,
     archive_on_no_method: bool,
+    keep_mail: bool,
+    preview_token: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
@@ -979,6 +981,8 @@ pub async fn unsubscribe(
             yes,
             dry_run,
             archive_on_no_method,
+            !keep_mail,
+            preview_token,
             format,
         )
         .await;
@@ -1052,8 +1056,10 @@ struct UnsubscribePurgeOutput<'a> {
     archived_count: u32,
     mutation_id: Option<&'a str>,
     error: Option<&'a str>,
+    preview_token: Option<&'a str>,
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn unsubscribe_purge(
     client: &mut IpcClient,
     message_ids: Vec<String>,
@@ -1061,18 +1067,36 @@ async fn unsubscribe_purge(
     yes: bool,
     dry_run: bool,
     archive_on_no_method: bool,
+    archive: bool,
+    preview_token: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     if message_ids.len() != 1 || !looks_like_email(&message_ids[0]) {
         anyhow::bail!("--purge requires exactly one sender email address, e.g. mxr unsubscribe sender@example.com --purge");
     }
     let address = message_ids[0].clone();
+    if let Some(token) = preview_token {
+        let result = request_unsubscribe_purge(
+            client,
+            &address,
+            account_id,
+            false,
+            archive_on_no_method,
+            archive,
+            Some(token),
+        )
+        .await?;
+        print_unsubscribe_purge_output(&result, format)?;
+        return check_unsubscribe_purge_result(result);
+    }
     let preview = request_unsubscribe_purge(
         client,
         &address,
         account_id.clone(),
         true,
         archive_on_no_method,
+        archive,
+        None,
     )
     .await?;
     print_unsubscribe_purge_output(&preview, format.clone())?;
@@ -1083,12 +1107,20 @@ async fn unsubscribe_purge(
         anyhow::bail!("No messages matched sender {address}");
     }
     if matches!(preview.method, UnsubscribeMethod::None) && !archive_on_no_method {
+        if !archive {
+            anyhow::bail!("No unsubscribe method available for {address}; existing mail kept");
+        }
         anyhow::bail!("No unsubscribe method available for {}; rerun with --archive-on-no-method to read-archive {} message(s)", address, preview.message_count);
     }
     if requires_confirmation(false, true, preview.message_count as usize, yes) {
         confirm_action(
             &format!(
-                "unsubscribe and read-archive sender {} (method: {})",
+                "{} sender {} (method: {})",
+                if archive {
+                    "unsubscribe and read-archive"
+                } else {
+                    "unsubscribe from"
+                },
                 address,
                 unsubscribe_method_text(&preview.method)
             ),
@@ -1099,10 +1131,21 @@ async fn unsubscribe_purge(
             },
         )?;
     }
-    let result =
-        request_unsubscribe_purge(client, &address, account_id, false, archive_on_no_method)
-            .await?;
+    let result = request_unsubscribe_purge(
+        client,
+        &address,
+        account_id,
+        false,
+        archive_on_no_method,
+        archive,
+        preview.preview_token,
+    )
+    .await?;
     print_unsubscribe_purge_output(&result, format)?;
+    check_unsubscribe_purge_result(result)
+}
+
+fn check_unsubscribe_purge_result(result: UnsubscribePurgeResultData) -> anyhow::Result<()> {
     if matches!(
         result.status,
         UnsubscribePurgeStatusData::Failed | UnsubscribePurgeStatusData::NoMethod
@@ -1117,19 +1160,37 @@ async fn unsubscribe_purge(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn request_unsubscribe_purge(
     client: &mut IpcClient,
     address: &str,
     account_id: Option<mxr_core::AccountId>,
     dry_run: bool,
     archive_on_no_method: bool,
+    archive: bool,
+    preview_token: Option<String>,
 ) -> anyhow::Result<UnsubscribePurgeResultData> {
-    let request = Request::UnsubscribePurge {
-        address: address.to_string(),
-        account_id,
-        dry_run,
-        archive_on_no_method,
-        preview_token: None,
+    let request = if dry_run {
+        Request::UnsubscribePurge {
+            address: address.to_string(),
+            account_id,
+            dry_run: true,
+            archive_on_no_method,
+            preview_token: None,
+        }
+    } else {
+        let preview_token = preview_token.ok_or_else(|| {
+            anyhow::Error::msg(
+                "Daemon did not provide an unsubscribe preview token; upgrade mxr and preview again",
+            )
+        })?;
+        Request::CommitUnsubscribePreview {
+            address: address.to_string(),
+            account_id,
+            archive,
+            archive_on_no_method,
+            preview_token,
+        }
     };
     let response = if dry_run {
         client.request(request).await?
@@ -1192,6 +1253,7 @@ fn print_unsubscribe_purge_output(
                 archived_count: result.archived_count,
                 mutation_id: result.mutation_id.as_deref(),
                 error: result.error.as_deref(),
+                preview_token: result.preview_token.as_deref(),
             })?
         ),
         OutputFormat::Jsonl => println!(
@@ -1206,6 +1268,7 @@ fn print_unsubscribe_purge_output(
                 archived_count: result.archived_count,
                 mutation_id: result.mutation_id.as_deref(),
                 error: result.error.as_deref(),
+                preview_token: result.preview_token.as_deref(),
             })?
         ),
         OutputFormat::Csv => {

@@ -259,6 +259,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/actions/unsubscribe-preview/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Commit previewed unsubscribe and optionally clear mail */
+        post: operations["action_commit_unsubscribe_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/actions/unsubscribe-purge": {
         parameters: {
             query?: never;
@@ -4336,6 +4353,13 @@ export interface components {
          * @enum {string}
          */
         ClosenessData: "close" | "regular" | "occasional" | "new";
+        CommitUnsubscribePreviewRequest: {
+            account_id?: string | null;
+            address: string;
+            archive: boolean;
+            archive_on_no_method?: boolean;
+            preview_token: string;
+        };
         CommitmentData: {
             account_id: components["schemas"]["AccountId"];
             /** Format: date-time */
@@ -8020,6 +8044,14 @@ export interface components {
              *     arrived since is left alone.
              */
             preview_token?: string | null;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            address: string;
+            archive: boolean;
+            archive_on_no_method?: boolean;
+            /** @enum {string} */
+            cmd: "CommitUnsubscribePreview";
+            preview_token: string;
         } | {
             /** @enum {string} */
             cmd: "Snooze";
@@ -11926,6 +11958,42 @@ export interface operations {
             };
             /** @description Missing or invalid bridge token */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    action_commit_unsubscribe_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommitUnsubscribePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Unsubscribe result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid or unsupported preview commit */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

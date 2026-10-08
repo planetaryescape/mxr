@@ -58,11 +58,11 @@ Releases are triggered by a `v{version}` tag, and the tag comes from release-ple
 
 release-please creates the GitHub Release as a draft (`"draft": true` in `release-please-config.json`). A draft has no tag on GitHub until it is published, so the config also sets `"force-tag-creation": true`: release-please pushes the tag itself with the PAT (which starts `release.yml`) and leaves the release unpublished. `releases/latest`, `install.sh` and the Homebrew tap only ever see a release after `release.yml` publishes it.
 
-The last step of the `github-release` job runs [scripts/publish_github_release.sh](../../scripts/publish_github_release.sh). It finds the draft for the tag (creating one with `gh release create --draft --verify-tag` if release-please has not), refreshes the notes, runs `gh release upload --clobber`, checks that every archive and `.sha256` is attached with the right size, and only then runs `gh release edit --draft=false --latest`. The job only starts after `release-smoke` and `build-binaries` pass, and `homebrew` needs `github-release`, so the tap is updated only for a published release.
+The last step of the `github-release` job runs [scripts/publish_github_release.sh](../../scripts/publish_github_release.sh). It finds the draft for the tag (creating one with `gh release create --draft --verify-tag` if release-please has not), refreshes the notes, runs `gh release upload --clobber`, checks that every archive and `.sha256` is attached with the right size, and only then runs `gh release edit --draft=false --latest`. The `github-release` job is serialized per tag (`concurrency`, no cancel) because `--clobber` deletes an asset before re-uploading it. The job only starts after `release-smoke` and `build-binaries` pass, and `homebrew` needs `github-release`, so the tap is updated only for a published release.
 
 When the scoped diff affects CLI artifacts, the same workflow also builds binaries and updates Homebrew.
 
-For docs-only or version-only tags, `scripts/release_change_scope.sh` sets `cli_changed=false` and `has_artifacts=false`. Those tags still get a GitHub Release and changelog, but they do not build tarballs or update the Homebrew tap. They are published with `--latest=false`, so `releases/latest` keeps pointing at the newest release that has tarballs.
+For docs-only or version-only tags, `scripts/release_change_scope.sh` sets `cli_changed=false` and `has_artifacts=false`. Those tags still get a GitHub Release and changelog, but they do not build tarballs or update the Homebrew tap. They are published without tarballs by design, and with `--latest=false`, so `releases/latest` and Homebrew keep pointing at the newest release that has tarballs. The guarantee is that Latest and the tap never point at a release missing its assets, not that no release is ever visible without them.
 
 ### What a failed release run leaves behind
 
@@ -72,7 +72,7 @@ For docs-only or version-only tags, `scripts/release_change_scope.sh` sets `cli_
 | Upload or the asset check in `github-release` fails | Draft with zero or some assets; not visible. | Re-run the failed job. Upload uses `--clobber` and only ever touches a draft, so it converges. |
 | `gh release edit --draft=false` fails | Draft with all assets. | Re-run the failed job. |
 | `homebrew` fails | Release is published with all assets and Latest; tap is stale. | Re-run the failed `homebrew` job. It only reads the artifacts and the published release. |
-| A full workflow re-run after a successful publish | Nothing changes: the script sees a published release, confirms its assets and exits. A published release that is missing assets is never modified; ship a new version. | None needed. |
+| A full workflow re-run after a successful publish | Nothing is written: the script sees a published release, confirms its asset names and sizes, and compares the published `.sha256` contents with this run's rebuilt ones. A mismatch (the rebuilt tarball differs) fails the job so Homebrew is not updated from checksums that do not match the published tarballs. A published release that is missing assets is never modified; ship a new version. | None needed when it passes. |
 
 If no `release.yml` run exists for a tag, dispatch it on the existing tag (`gh workflow run release.yml --ref vX.Y.Z`); the script reuses the draft.
 

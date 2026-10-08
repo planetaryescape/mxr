@@ -30,13 +30,20 @@ case "$1 $2" in
     fi ;;
   "release upload")
     [[ "$state" == draft ]] || { echo "upload to non-draft" >&2; exit 1; }
-    [[ -f "$FAKE/upload_fails" ]] && { echo "upload failed" >&2; exit 1; }
     shift 3
     for a in "$@"; do
       [[ -f "$a" ]] || continue
-      if [[ -f "$FAKE/short_upload" ]]; then echo 1 > "$FAKE/assets/$(basename "$a")"
-      else wc -c < "$a" | tr -d ' ' > "$FAKE/assets/$(basename "$a")"; fi
+      n="$(basename "$a")"
+      # Real --clobber deletes the existing asset first, then uploads.
+      rm -f "$FAKE/assets/$n" "$FAKE/content/$n"
+      [[ -f "$FAKE/upload_fails" ]] && { echo "upload failed" >&2; exit 1; }
+      if [[ -f "$FAKE/short_upload" ]]; then echo 1 > "$FAKE/assets/$n"
+      else wc -c < "$a" | tr -d ' ' > "$FAKE/assets/$n"; fi
+      cp "$a" "$FAKE/content/$n"
     done ;;
+  "release download")
+    while [[ $# -gt 0 ]]; do [[ "$1" == --dir ]] && dir="$2"; shift; done
+    cp "$FAKE"/content/*.sha256 "$dir"/ ;;
   *) echo "unexpected gh call: $*" >&2; exit 1 ;;
 esac
 FAKE
@@ -46,7 +53,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 
 setup() { # <state>
   export FAKE="$work/fake"; rm -rf "$FAKE" "$work/art"
-  mkdir -p "$FAKE/assets" "$work/art"
+  mkdir -p "$FAKE/assets" "$FAKE/content" "$work/art"
   echo "$1" > "$FAKE/state"; : > "$FAKE/log"
   echo notes > "$work/notes.md"
   printf 'tarball' > "$work/art/mxr-v1-linux.tar.gz"
@@ -87,11 +94,24 @@ setup draft; touch "$FAKE/short_upload"
 ! run "$work/art" >/dev/null 2>&1 || fail "size mismatch did not fail"
 [[ "$(state)" == draft ]] || fail "size mismatch: published anyway"
 
+# 5b. --clobber deletes before re-uploading: a failure mid-way leaves a draft missing that asset, never a published one.
+setup draft; echo 7 > "$FAKE/assets/mxr-v1-linux.tar.gz"; touch "$FAKE/upload_fails"
+! run "$work/art" >/dev/null 2>&1 || fail "clobber failure did not fail"
+[[ "$(state)" == draft ]] || fail "clobber failure: published"
+[[ ! -e "$FAKE/assets/mxr-v1-linux.tar.gz" ]] || fail "fake gh does not model delete-before-upload"
+
 # 6. already published and complete: no mutation, success.
 setup published
-printf 7 > "$FAKE/assets/mxr-v1-linux.tar.gz"; printf 3 > "$FAKE/assets/mxr-v1-linux.tar.gz.sha256"
+publish_same() { printf 7 > "$FAKE/assets/mxr-v1-linux.tar.gz"; printf 3 > "$FAKE/assets/mxr-v1-linux.tar.gz.sha256"; cp "$work/art/mxr-v1-linux.tar.gz.sha256" "$FAKE/content/"; }
+publish_same
 run "$work/art" >/dev/null
 ! grep -Eq 'release (edit|upload|create)' "$FAKE/log" || fail "published: mutated a published release"
+
+# 6b. published with equal names and sizes but different checksum content (rebuilt tarball): fail, no writes.
+setup published
+publish_same; printf 'xyz' > "$FAKE/content/mxr-v1-linux.tar.gz.sha256"
+! run "$work/art" >/dev/null 2>&1 || fail "checksum mismatch on published release did not fail"
+! grep -Eq 'release (edit|upload|create)' "$FAKE/log" || fail "checksum mismatch: mutated"
 
 # 7. already published but incomplete: fail, no mutation.
 setup published

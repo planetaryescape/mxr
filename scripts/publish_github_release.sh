@@ -56,6 +56,23 @@ verify_assets() {
   return "$missing"
 }
 
+# Compares the published .sha256 contents with this run's local ones.
+verify_published_checksums() {
+  local dl bad=0 f name
+  dl="$(mktemp -d)"
+  gh release download "$tag" --pattern '*.sha256' --dir "$dl"
+  for f in "${assets[@]}"; do
+    name="$(basename "$f")"
+    [[ "$name" == *.sha256 ]] || continue
+    if ! cmp -s "$f" "$dl/$name"; then
+      echo "checksum differs from the published $name" >&2
+      bad=1
+    fi
+  done
+  rm -rf "$dl"
+  return "$bad"
+}
+
 # Only a genuine "not found" means no release exists; any other failure (auth,
 # network) must stop here rather than create a duplicate draft.
 if ! state="$(gh release view "$tag" --json isDraft --jq '.isDraft' 2>&1)"; then
@@ -78,12 +95,20 @@ case "$state" in
   false)
     # Already published (full re-run after success, or a release made before
     # this flow). Never touch it; just confirm it is complete.
-    if verify_assets; then
-      echo "$tag is already published with all expected assets; nothing to do."
-      exit 0
+    if ! verify_assets; then
+      echo "$tag is already published but incomplete. Published releases are not modified; ship a fix as a new version." >&2
+      exit 1
     fi
-    echo "$tag is already published but incomplete. Published releases are not modified; ship a fix as a new version." >&2
-    exit 1
+    # Same names and sizes is not enough: a re-run rebuilds the tarballs, whose
+    # bytes (and so sha256) can differ from the published ones. The Homebrew job
+    # reads this run's artifacts, so it must not publish checksums that do not
+    # match what users download.
+    if ! verify_published_checksums; then
+      echo "$tag is published, but this run rebuilt different bytes. Do not update Homebrew from this run's artifacts." >&2
+      exit 1
+    fi
+    echo "$tag is already published with all expected assets; nothing to do."
+    exit 0
     ;;
   *)
     echo "unexpected draft state for $tag: $state" >&2

@@ -297,6 +297,12 @@ jobs:
   github-release:
     name: GitHub Release
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    # --clobber deletes an asset before re-uploading it, so two publishers on one
+    # tag (tag push plus a manual dispatch) could publish with an asset missing.
+    # Queue them instead; never cancel one mid-upload.
+    concurrency:
+      group: release-publish-${{ github.ref }}
+      cancel-in-progress: false
     needs: [plan, release-smoke, build-binaries]
     if: >-
       always()

@@ -62,4 +62,10 @@ if ! grep -Fq 'scripts/publish_github_release.sh' "$workflow"; then
     exit 1
 fi
 
+publish_job="$(sed -n '/^  github-release:/,/^  homebrew:/p' "$workflow")"
+if ! grep -Fq 'group: release-publish-${{ github.ref }}' <<<"$publish_job" || ! grep -Fq 'cancel-in-progress: false' <<<"$publish_job"; then
+    echo "github-release must serialize publishers per tag without cancelling one mid-upload." >&2
+    exit 1
+fi
+
 echo "release_workflow_test: ok"

@@ -1894,10 +1894,9 @@ to BM25.
     statements only. Subscriptions are worked out on every read, with no
     table, so a correction to a record moves its subscription at once.
   - A price change on the newest charge, a missed charge, and a yearly
-    subscription two weeks from renewing are lines in Archive's Coming up
-    and on Now until Updates' Needs a look exists to take them. All three
-    are suggestions worked out from the charge dates alone; none of them
-    files a to-do on its own.
+    subscription two weeks from renewing appear in Archive's Coming up
+    strip and on Now. All three are suggestions worked out from the charge
+    dates alone; none of them files a to-do on its own.
 
 ### Phase 7: Fast-tier classification for what rules can't tell, measured
 

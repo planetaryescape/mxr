@@ -1,5 +1,6 @@
 import { useParams } from "@tanstack/react-router";
 import { ArrowLeft, FolderArchive, RefreshCw, SlidersHorizontal, X } from "lucide-react";
+import { toast } from "sonner";
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
@@ -384,6 +385,11 @@ function Ledger({
     if (onAnswer && answer?.answer) void copyText(answer.answer.copy, "answer");
     else if (current) void copyReference(current);
   };
+  const recordOnlyAction = () => {
+    if (!showingSubscriptions) return false;
+    toast.info("That works on a record: choose All to return to the ledger, or p for this issuer");
+    return true;
+  };
 
   useShortcutScope("archive", !params.threadId || activePane !== "reader");
   useScopeController("archive", {
@@ -411,13 +417,26 @@ function Ledger({
     openEmail: () =>
       showingSubscriptions ? openSubscriptionEmail(subscription) : openEmail(current),
     issuer: () => (showingSubscriptions ? subscriptionIssuer(subscription) : issuerPage(current)),
-    prevYear: () => stepTo(-1),
-    nextYear: () => stepTo(1),
-    edit: () => cardRecord && openMailDialog({ kind: "record-edit", record: cardRecord }),
-    check: () => current && void markChecked(current),
-    dismiss: () => current && void markNotRecord(current),
-    export: () => openMailDialog({ kind: "record-export", account, filter }),
+    prevYear: () => (recordOnlyAction() ? undefined : stepTo(-1)),
+    nextYear: () => (recordOnlyAction() ? undefined : stepTo(1)),
+    edit: () => {
+      if (recordOnlyAction()) return;
+      if (cardRecord) openMailDialog({ kind: "record-edit", record: cardRecord });
+    },
+    check: () => {
+      if (recordOnlyAction()) return;
+      if (current) void markChecked(current);
+    },
+    dismiss: () => {
+      if (recordOnlyAction()) return;
+      if (current) void markNotRecord(current);
+    },
+    export: () => {
+      if (recordOnlyAction()) return;
+      openMailDialog({ kind: "record-export", account, filter });
+    },
     makeTodo: () => {
+      if (recordOnlyAction()) return;
       if (!current?.message_id) return;
       openMailDialog({
         kind: "todo-make",

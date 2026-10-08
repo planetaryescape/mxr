@@ -219,10 +219,6 @@ one-off order from the same shop is not part of it.
 mxr records subscriptions
 ```
 
-```text
-SUBSCRIPTIONS_EXAMPLE
-```
-
 A subscription is active while its charges keep coming, overdue once the
 expected charge is a grace period late (a week for monthly), and ended
 after two missed charges or a cancellation email from the same sender. A

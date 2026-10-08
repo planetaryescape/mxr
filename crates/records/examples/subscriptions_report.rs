@@ -99,7 +99,9 @@ async fn main() -> anyhow::Result<()> {
     // The old rule: an issuer with three receipts, invoices or statements
     // in three different months was a series.
     let records = store.list_archive_records(&RecordQuery::default()).await?;
-    let mut old: BTreeMap<(String, String), (usize, BTreeSet<(i32, u32)>)> = BTreeMap::new();
+    // (account, issuer) -> (count, the (year, month) pairs seen).
+    type SeriesCounts = BTreeMap<(String, String), (usize, BTreeSet<(i32, u32)>)>;
+    let mut old: SeriesCounts = BTreeMap::new();
     let mut statement_issuers: BTreeSet<(String, String)> = BTreeSet::new();
     for record in &records {
         let Some(issuer) = record.issuer_key.clone().filter(|k| !k.is_empty()) else {

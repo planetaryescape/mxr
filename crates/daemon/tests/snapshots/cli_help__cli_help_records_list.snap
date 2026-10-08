@@ -15,10 +15,10 @@ Options:
       --has-pdf            Only records with a PDF
       --no-pdf             Only records without a PDF
       --unchecked          Only records with an amount or date nobody has confirmed
-      --account <ACCOUNT>  Limit to one account; the default covers every account
       --checked            Only records whose amounts and dates are all confirmed
-      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+      --account <ACCOUNT>  Limit to one account; the default covers every account
       --group <GROUP>      Only one trip or series, by its id
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
       --limit <LIMIT>      [default: 200]
       --offset <OFFSET>    [default: 0]
   -h, --help               Print help

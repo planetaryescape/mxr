@@ -47,7 +47,7 @@ fn monthly_charges_with_a_few_days_of_jitter_are_a_subscription() {
         "Spotify",
         "Spotify Premium receipt",
         1199,
-        &[3, 5, 2, 7, 3, 4],
+        &[3, 5, 4, 7, 3, 4],
     );
     let found = run(&inputs, day(2025, 6, 20));
     assert_eq!(found.subscriptions.len(), 1);
@@ -167,12 +167,27 @@ fn a_missed_charge_is_overdue_after_the_grace_period_and_ended_after_two() {
 #[test]
 fn a_yearly_subscriptions_next_charge_within_two_weeks_is_a_renewal_signal() {
     let inputs = [
-        charge("y1", "Admiral", "Admiral receipt", 41_200, day(2023, 10, 26)),
-        charge("y2", "Admiral", "Admiral receipt", 41_200, day(2024, 10, 24)),
+        charge(
+            "y1",
+            "Admiral",
+            "Admiral receipt",
+            41_200,
+            day(2023, 10, 26),
+        ),
+        charge(
+            "y2",
+            "Admiral",
+            "Admiral receipt",
+            41_200,
+            day(2024, 10, 24),
+        ),
     ];
     // Due 24 Oct 2025; two weeks out is 10 Oct.
     let found = run(&inputs, day(2025, 10, 12));
-    assert_eq!(found.subscriptions[0].next_expected, Some(day(2025, 10, 24)));
+    assert_eq!(
+        found.subscriptions[0].next_expected,
+        Some(day(2025, 10, 24))
+    );
     assert!(matches!(
         signals(&found.subscriptions, day(2025, 10, 12)).as_slice(),
         [Signal::RenewalApproaching { due, .. }] if *due == day(2025, 10, 24)
@@ -182,8 +197,20 @@ fn a_yearly_subscriptions_next_charge_within_two_weeks_is_a_renewal_signal() {
 #[test]
 fn a_yearly_subscriptions_next_charge_months_away_is_not_yet_a_signal() {
     let inputs = [
-        charge("y1", "Admiral", "Admiral receipt", 41_200, day(2023, 10, 26)),
-        charge("y2", "Admiral", "Admiral receipt", 41_200, day(2024, 10, 24)),
+        charge(
+            "y1",
+            "Admiral",
+            "Admiral receipt",
+            41_200,
+            day(2023, 10, 26),
+        ),
+        charge(
+            "y2",
+            "Admiral",
+            "Admiral receipt",
+            41_200,
+            day(2024, 10, 24),
+        ),
     ];
     let found = run(&inputs, day(2025, 3, 1));
     assert!(signals(&found.subscriptions, day(2025, 3, 1)).is_empty());

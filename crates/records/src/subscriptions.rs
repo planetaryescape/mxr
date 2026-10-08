@@ -358,12 +358,9 @@ pub fn detect<Tz: TimeZone>(
             }
         }
         if let Some((shown, key)) = product {
-            let entry = products.entry((input.issuer_key.as_str(), key)).or_insert((
-                day,
-                id,
-                shown.clone(),
-                input.title_stated,
-            ));
+            let entry = products
+                .entry((input.issuer_key.as_str(), key))
+                .or_insert_with(|| (day, id, shown.clone(), input.title_stated));
             let stated = entry.3 || input.title_stated;
             if (day, id) >= (entry.0, entry.1) {
                 *entry = (day, id, shown, stated);
@@ -492,22 +489,31 @@ fn bands<'a>(points: &[Point<'a>]) -> Vec<Vec<Point<'a>>> {
 /// Folds a receipt and an invoice for the same payment into one charge.
 fn collapse(points: &[Point<'_>]) -> Vec<Charge> {
     let mut out: Vec<Charge> = Vec::new();
+    // Against the point before it, not the charge's first point: a band's
+    // amount can drift a little from one payment to the next, so anchoring
+    // to the first would keep comparing later points against a price they
+    // never actually saw, and days apart would compound past the window.
+    let mut previous: Option<&Point<'_>> = None;
     for point in points {
-        if let Some(last) = out.last_mut() {
-            if (point.day - last.day).num_days() <= SAME_CHARGE_DAYS
-                && same_price(last.amount_minor, point.input.amount_minor)
-            {
-                last.record_ids.push(point.input.record_id.clone());
-                last.checked &= point.input.checked;
-                continue;
-            }
-        }
-        out.push(Charge {
-            record_ids: vec![point.input.record_id.clone()],
-            day: point.day,
-            amount_minor: point.input.amount_minor,
-            checked: point.input.checked,
+        let merges = previous.is_some_and(|previous| {
+            (point.day - previous.day).num_days() <= SAME_CHARGE_DAYS
+                && same_price(previous.input.amount_minor, point.input.amount_minor)
         });
+        if merges {
+            let charge = out
+                .last_mut()
+                .expect("merges is true only once out holds a charge");
+            charge.record_ids.push(point.input.record_id.clone());
+            charge.checked &= point.input.checked;
+        } else {
+            out.push(Charge {
+                record_ids: vec![point.input.record_id.clone()],
+                day: point.day,
+                amount_minor: point.input.amount_minor,
+                checked: point.input.checked,
+            });
+        }
+        previous = Some(point);
     }
     out
 }
@@ -623,10 +629,14 @@ fn stitch(chains: Vec<Chain>) -> Vec<Chain> {
     });
     let mut out: Vec<Chain> = Vec::new();
     for chain in runs {
-        let joined = out
-            .iter_mut()
-            .rev()
-            .find(|prior| prior.cadence == chain.cadence && follows(prior, &chain, chain.cadence));
+        let joined = out.iter_mut().rev().find(|prior| {
+            prior.cadence == chain.cadence
+                && follows(prior, &chain, chain.cadence)
+                // Against the run's first charge, not its last: many small
+                // steps the same size as one real price change must not
+                // drift past it unnoticed (a shop's rising prices).
+                && modest_step(prior.charges[0].amount_minor, chain.charges[0].amount_minor)
+        });
         match joined {
             Some(prior) => {
                 let last = prior.charges[prior.charges.len() - 1].day;
@@ -697,10 +707,7 @@ fn valid(chain: &Chain, stated: bool) -> bool {
     };
     // One identical plan running alongside is allowed; more is a habit.
     let sparse = chain.crowd <= chain.charges.len();
-    enough
-        && sparse
-        && chain.double <= chain.single
-        && (stated || steady(&chain.charges))
+    enough && sparse && chain.double <= chain.single && (stated || steady(&chain.charges))
 }
 
 /// Every change of amount sticks (the next charge keeps the new price),
@@ -923,9 +930,11 @@ pub fn signals(subscriptions: &[Subscription], today: NaiveDate) -> Vec<Signal> 
                 expected,
             });
         }
-        if let (Status::Active, Cadence::Yearly, Some(due)) =
-            (subscription.status, subscription.cadence, subscription.next_expected)
-        {
+        if let (Status::Active, Cadence::Yearly, Some(due)) = (
+            subscription.status,
+            subscription.cadence,
+            subscription.next_expected,
+        ) {
             if (due - today).num_days() <= RENEWAL_LEAD_DAYS {
                 out.push(Signal::RenewalApproaching {
                     subscription_id: subscription.id.clone(),

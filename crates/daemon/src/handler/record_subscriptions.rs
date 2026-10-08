@@ -82,7 +82,7 @@ async fn to_data(
     for source in state.store.archive_record_sources(&last_ids).await? {
         let entry = newest
             .entry(source.record_id.clone())
-            .or_insert((source.message_at, source.message_id.clone()));
+            .or_insert_with(|| (source.message_at, source.message_id.clone()));
         if source.message_at > entry.0 {
             *entry = (source.message_at, source.message_id);
         }

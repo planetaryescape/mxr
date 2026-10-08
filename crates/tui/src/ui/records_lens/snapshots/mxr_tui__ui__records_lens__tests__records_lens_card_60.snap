@@ -1,5 +1,6 @@
 ---
 source: crates/tui/src/ui/records_lens/tests.rs
+assertion_line: 434
 expression: rendered
 ---
 "╭ Archive ─ Receipts, orders, bookings and documents. Ask f╮"
@@ -8,7 +9,7 @@ expression: rendered
 "│  Comi╭ Record ────────────────────────────────────╮      │"
 "│    Li│Apple · Receipt                             │      │"
 "│      │iCloud+ 200GB                               │      │"
-"│  [all│                                            │      │"
+"│  [all│                                            │ns    │"
 "│ ── 20│  Date         28 Mar 2025          (schem… │51.99 │"
 "│▌ 28 M│○ Paid         £2.99                (a pat… │·?    │"
 "│      │  Order        MSXK21               (schem… │      │"

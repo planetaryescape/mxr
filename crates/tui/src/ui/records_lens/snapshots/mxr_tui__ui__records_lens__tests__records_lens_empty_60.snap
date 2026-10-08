@@ -1,11 +1,12 @@
 ---
 source: crates/tui/src/ui/records_lens/tests.rs
+assertion_line: 459
 expression: rendered
 ---
 "╭ Archive ─ Receipts, orders, bookings and documents. Ask f╮"
 "│ Archive  0 records   / ask: "lisbon booking ref"         │"
 "│                                                          │"
-"│  [all] receipts orders trips bills docs                  │"
+"│  [all] receipts orders trips bills docs subscriptions    │"
 "│                                                          │"
 "│  Receipts, orders, bookings, bills and documents are     │"
 "│  filed here as records, one card per thing, not per      │"

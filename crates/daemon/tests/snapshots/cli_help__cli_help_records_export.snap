@@ -15,8 +15,8 @@ Options:
       --max <MAX>          At most this amount
       --has-pdf            Only records with a PDF
       --no-pdf             Only records without a PDF
-      --account <ACCOUNT>  Limit to one account; the default covers every account
       --unchecked          Only records with an amount or date nobody has confirmed
+      --account <ACCOUNT>  Limit to one account; the default covers every account
       --checked            Only records whose amounts and dates are all confirmed
       --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
       --group <GROUP>      Only one trip or series, by its id

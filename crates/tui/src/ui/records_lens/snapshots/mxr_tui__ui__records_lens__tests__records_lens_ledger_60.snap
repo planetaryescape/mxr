@@ -1,5 +1,6 @@
 ---
 source: crates/tui/src/ui/records_lens/tests.rs
+assertion_line: 337
 expression: rendered
 ---
 "╭ Archive ─ Receipts, orders, bookings and documents. Ask f╮"
@@ -8,7 +9,7 @@ expression: rendered
 "│  Coming up                                               │"
 "│    Lisbon, June 2025 · in 3 days                         │"
 "│                                                          │"
-"│  [all] receipts orders trips bills docs                  │"
+"│  [all] receipts orders trips bills docs subscriptions    │"
 "│ ── 2025 · March ─────────────────── 2 records  £1,251.99 │"
 "│▌ 28 Mar  Apple            iCloud+ 200…       £2.99 ·?    │"
 "│  03 Mar  Dell             XPS 14 lapt…    £1,249.00   pdf│"

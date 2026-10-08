@@ -835,7 +835,7 @@ mod tests {
     #[test]
     fn demo_fixtures_exercise_links_html_attachments_and_colors() {
         let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
-        // Room past the seeded Reading and Updates mail for the generated threads.
+        // Room past the seeded Reading, Updates, and subscription mail for the generated threads.
         let (envelopes, bodies, labels) = fixtures::generate_demo_fixtures(&account_id, 200);
         let html_with_links = bodies
             .values()

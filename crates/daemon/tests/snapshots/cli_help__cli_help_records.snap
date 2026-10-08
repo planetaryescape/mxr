@@ -12,15 +12,16 @@ With no subcommand, prints the ledger: one row per record, grouped by month with
 Usage: mxr records [OPTIONS] [COMMAND]
 
 Commands:
-  list     The ledger (the default): records by month, newest first
-  show     One record with every field and where it came from
-  ask      Ask for a field: "lisbon booking ref", "dell receipt 2025". A query that only names something ("anthropic") lists every match. Falls back to `mxr ask` over all mail only when no record matches [alias: find]
-  fix      Fix a field (field=value), confirm one (--confirm), confirm the whole card (--confirm-all) or go back to the extracted value (--clear). Your value wins on every re-run
-  dismiss  Not a record: take records out of Archive. The emails are untouched and they are never filed again
-  file     File an email as a record yourself
-  sender   Always or never file mail from this email's sender
-  export   Export records as CSV: --dry-run shows the row count, totals, unchecked rows and missing PDFs first
-  help     Print this message or the help of the given subcommand(s)
+  list           The ledger (the default): records by month, newest first
+  subscriptions  Subscriptions: receipts and invoices that come every week, month, quarter or year, with the next charge, the yearly cost, price changes and status (active, overdue, ended), and totals per currency. `--format json` for scripts and agents
+  show           One record with every field and where it came from
+  ask            Ask for a field: "lisbon booking ref", "dell receipt 2025". A query that only names something ("anthropic") lists every match. Falls back to `mxr ask` over all mail only when no record matches [alias: find]
+  fix            Fix a field (field=value), confirm one (--confirm), confirm the whole card (--confirm-all) or go back to the extracted value (--clear). Your value wins on every re-run
+  dismiss        Not a record: take records out of Archive. The emails are untouched and they are never filed again
+  file           File an email as a record yourself
+  sender         Always or never file mail from this email's sender
+  export         Export records as CSV: --dry-run shows the row count, totals, unchecked rows and missing PDFs first
+  help           Print this message or the help of the given subcommand(s)
 
 Options:
       --account <ACCOUNT>

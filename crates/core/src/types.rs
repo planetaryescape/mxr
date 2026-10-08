@@ -1891,6 +1891,8 @@ pub enum SemanticChunkSourceKind {
     Body,
     AttachmentSummary,
     AttachmentText,
+    /// A passage the user highlighted in Reading, with its note.
+    Highlight,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

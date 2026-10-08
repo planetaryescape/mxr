@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Let go of items in Reading, or of everything in the edition with --all. Preview with --dry-run; `mxr undo` reverses it
+
+Usage: mxr reading let-go [OPTIONS] [ITEM]...
+
+Arguments:
+  [ITEM]...
+
+Options:
+      --all
+      --dry-run
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

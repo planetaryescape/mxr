@@ -1,0 +1,12 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Every source in Reading, best read first, with its fade window and the evidence for unsubscribing
+
+Usage: mxr reading sources [OPTIONS]
+
+Options:
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

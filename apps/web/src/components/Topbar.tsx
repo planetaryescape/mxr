@@ -64,6 +64,8 @@ const THREAD_PLACES = new Set([
 ]);
 
 function threadIdInPath(parts: string[]): string | undefined {
+  // /reading/item/<key> is a Reading item, not a conversation.
+  if (parts[0] === "reading" && parts[1] === "item") return undefined;
   if (parts[0] === "m") return parts[1] === "label" || parts[1] === "saved" ? parts[3] : parts[2];
   if (THREAD_PLACES.has(parts[0] ?? "")) return parts[1];
   return undefined;
@@ -109,6 +111,7 @@ function useBreadcrumb(path: string, search: string): Crumb[] {
   if (THREAD_PLACES.has(parts[0] ?? "")) {
     const crumbs: Crumb[] = [{ label: title, to: `/${parts[0]}` }];
     if (openThreadId) crumbs.push({ label: subject });
+    if (parts[0] === "reading" && parts[1] === "item") crumbs.push({ label: "Reader" });
     return crumbs;
   }
   if (parts.length > 1 && parts[0] !== "sender") {

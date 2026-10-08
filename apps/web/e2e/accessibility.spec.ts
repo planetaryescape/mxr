@@ -30,6 +30,7 @@ const ROUTES = [
   "/messages?person=person%3Asamir%40launchpad.example",
   "/updates",
   "/reading",
+  "/reading?view=later",
   "/archive",
   "/find",
   "/desk",

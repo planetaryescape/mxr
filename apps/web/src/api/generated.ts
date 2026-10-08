@@ -1604,6 +1604,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/reading": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reading's edition: bands since your last visit, earlier and fading, ranked by what you read, with Later and the sources */
+        get: operations["mail_reading_edition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/reading/engagement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Local reading engagement (opened, time, progress); not written with MXR_ACTIVITY=off */
+        post: operations["mail_reading_engagement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/reading/highlights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every Reading highlight, with the same as one Markdown document */
+        get: operations["mail_reading_highlights_get"];
+        put?: never;
+        /** Save a passage from a Reading item, with an optional note */
+        post: operations["mail_reading_highlights_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/reading/items/{item_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One Reading item for the reader: text, saved article, highlights and minutes left. Never fetches */
+        get: operations["mail_reading_item"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/reading/items/{item_key}/article": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fetch and save the article a Reading item links to, contacting its site; private addresses are refused */
+        post: operations["mail_reading_article"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/reading/later": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Put Reading items on Later or take them off (dry_run previews) */
+        post: operations["mail_reading_later"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/reading/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Per-source Reading settings: the sender's own layout, or no more unsubscribe offers */
+        post: operations["mail_reading_sources"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/records": {
         parameters: {
             query?: never;
@@ -5950,6 +6070,339 @@ export interface components {
          * @enum {string}
          */
         RailStatusData: "built" | "early";
+        /** @description Body of `POST /api/v1/mail/reading/items/{item_key}/article`. */
+        ReadingArticleBody: {
+            /** @description Fetch again even when a copy is saved. */
+            refresh?: boolean;
+        };
+        /** @description A fetched article, as cached. */
+        ReadingArticleData: {
+            byline?: string | null;
+            /** @description Every site contacted to fetch it, in order. */
+            contacted: string[];
+            /** Format: date-time */
+            fetched_at: string;
+            /** @description Where the page was in the end. */
+            final_url: string;
+            /** @description Cleaned article HTML; untrusted, so clients sanitize it. */
+            html: string;
+            /** Format: int32 */
+            minutes: number;
+            paragraphs: components["schemas"]["ReadingParagraphData"][];
+            site_name?: string | null;
+            title: string;
+            /** Format: int32 */
+            words: number;
+        };
+        /**
+         * @description The edition's three time bands.
+         * @enum {string}
+         */
+        ReadingBandData: "since_last_visit" | "earlier" | "fading";
+        /** @description One band of the edition. */
+        ReadingBandGroupData: {
+            band: components["schemas"]["ReadingBandData"];
+            items: components["schemas"]["ReadingItemData"][];
+            /** @description "Since you were last here". */
+            label: string;
+            /** @description Fading: "Goes within a day, unless you keep it." */
+            note?: string | null;
+        };
+        /** @description Returned by `Request::GetReadingEdition`. */
+        ReadingEditionData: {
+            /** @description Only bands with items, in order. */
+            bands: components["schemas"]["ReadingBandGroupData"][];
+            empty?: null | components["schemas"]["ReadingEmptyData"];
+            /**
+             * Format: int32
+             * @description Items that expired since the last edition: done in Reading, never
+             *     archived at the provider.
+             */
+            expired_now: number;
+            /** Format: date-time */
+            generated_at: string;
+            header: string;
+            /**
+             * Format: date-time
+             * @description Your previous visit ended here: "You left off here" goes after the
+             *     first band when this is set and later bands have items.
+             */
+            last_visit_at?: string | null;
+            /** @description The shelf, newest first. Its count is the only one Reading shows. */
+            later: components["schemas"]["ReadingItemData"][];
+            /** Format: int32 */
+            later_count: number;
+            left_off_here: boolean;
+            pace_measured: boolean;
+            /**
+             * Format: int32
+             * @description Your reading pace in words a minute, and whether it was measured
+             *     from issues you finished (else 230).
+             */
+            pace_wpm: number;
+            /** @description Every source in the edition or on Later, best read first. */
+            sources: components["schemas"]["ReadingSourceData"][];
+        };
+        /** @description The empty state, when the first band has nothing. */
+        ReadingEmptyData: {
+            /** @description "Nothing new since Tuesday. Later has 4 things saved." */
+            line: string;
+            /** @description Nothing has ever landed in Reading. */
+            never_had_any: boolean;
+        };
+        /** @description Body of `POST /api/v1/mail/reading/engagement`. */
+        ReadingEngagementBody: {
+            /**
+             * Format: int64
+             * @description Time read since the last report, in milliseconds.
+             */
+            dwell_ms?: number;
+            item_key: string;
+            opened?: boolean;
+            /**
+             * Format: double
+             * @description How far down, 0 to 1.
+             */
+            progress?: number;
+        };
+        /** @description What `FetchArticle` did. */
+        ReadingFetchData: {
+            article?: null | components["schemas"]["ReadingArticleData"];
+            /** @description Served from the saved copy; nothing was contacted. */
+            cached: boolean;
+            /** @description The site named before fetching: the link's own domain. */
+            domain: string;
+            /** @description Why it failed: a paywall, a private address, a page too large. */
+            error?: string | null;
+            item_key: string;
+        };
+        /** @description Body of `POST /api/v1/mail/reading/highlights`. */
+        ReadingHighlightBody: {
+            item_key: string;
+            note?: string | null;
+            quote: string;
+            /** @description `issue` (default) or `article`. */
+            view?: string | null;
+        };
+        /** @description A saved passage. */
+        ReadingHighlightData: {
+            account_id: components["schemas"]["AccountId"];
+            /** Format: date-time */
+            created_at: string;
+            id: string;
+            item_key: string;
+            message_id: components["schemas"]["MessageId"];
+            note?: string | null;
+            quote: string;
+            source: string;
+            /** @description The item's title and source, as of saving. */
+            title: string;
+            url?: string | null;
+            /** @description `issue` or `article`: which text it was taken from. */
+            view: string;
+        };
+        /** @description One readable item in the edition or on Later. */
+        ReadingItemData: {
+            account_id: components["schemas"]["AccountId"];
+            /** Format: date-time */
+            arrived_at: string;
+            article_cached: boolean;
+            domain?: string | null;
+            /** @description "you read 9 of 10" */
+            engagement?: string | null;
+            /**
+             * Format: date-time
+             * @description When it leaves the edition. Absent on Later, which never expires.
+             */
+            expires_at?: string | null;
+            /** @description "Fades Sunday unless you keep it."; absent on Later. */
+            fades?: string | null;
+            finished: boolean;
+            /** @description `<message id>:<index>`; index 0 is the issue. */
+            item_key: string;
+            kind: components["schemas"]["ReadingItemKindData"];
+            /** Format: date-time */
+            later_at?: string | null;
+            /** @description One of the top items, from a source you read most or a new one. */
+            lead?: boolean;
+            /** @description A digest's links, in order. */
+            links?: components["schemas"]["ReadingLinkData"][];
+            message_id: components["schemas"]["MessageId"];
+            /**
+             * Format: int32
+             * @description Minutes at your pace.
+             */
+            minutes: number;
+            on_later: boolean;
+            opened: boolean;
+            /**
+             * Format: double
+             * @description How far you got, 0 to 1.
+             */
+            progress: number;
+            sender_email: string;
+            /** @description The issue's shape (a link carries its issue's). */
+            shape: components["schemas"]["ReadingShapeData"];
+            source: string;
+            /** @description The issue's first real paragraph, or the link's blurb. */
+            standfirst?: string | null;
+            /** @description On Later for over 30 days and not yet asked: "Still want it?" */
+            still_want_it?: boolean;
+            thread_id: components["schemas"]["ThreadId"];
+            /** @description The cleaned headline, or the link's title. */
+            title: string;
+            tracked?: boolean;
+            /** @description The source's evidence when it suggests unsubscribing. */
+            unsubscribe_offer?: string | null;
+            /**
+             * @description The article this item points at: a teaser's main link, a digest
+             *     link's page.
+             */
+            url?: string | null;
+            /**
+             * @description "Here because: you subscribed, and it has an unsubscribe link
+             *     (rule). Fades Sunday unless you keep it."
+             */
+            why: string;
+            /**
+             * Format: int32
+             * @description Words in the issue's body; 0 for a link until its article is saved.
+             */
+            words: number;
+        };
+        /** @description Returned by `Request::GetReadingItem`: the reader's page. */
+        ReadingItemDetailData: {
+            article?: null | components["schemas"]["ReadingArticleData"];
+            /** @description Why the last fetch failed, kept so the reader can offer the browser. */
+            article_error?: string | null;
+            highlights: components["schemas"]["ReadingHighlightData"][];
+            /**
+             * @description The issue as cleaned HTML when the cleaner kept most of it;
+             *     untrusted, so clients sanitize it.
+             */
+            html?: string | null;
+            item: components["schemas"]["ReadingItemData"];
+            /**
+             * Format: int32
+             * @description Minutes left at your pace, from your progress.
+             */
+            minutes_left: number;
+            /** Format: int32 */
+            pace_wpm: number;
+            /** @description The issue as reader text, masthead and footer removed. */
+            paragraphs: components["schemas"]["ReadingParagraphData"][];
+            source_data: components["schemas"]["ReadingSourceData"];
+        };
+        /**
+         * @description An issue, or one link inside a digest.
+         * @enum {string}
+         */
+        ReadingItemKindData: "issue" | "link";
+        /** @description Body of `POST /api/v1/mail/reading/later`. */
+        ReadingLaterBody: {
+            dry_run?: boolean;
+            /** @description `<message id>:<index>` keys. */
+            item_keys: string[];
+            /** @description True puts them on Later (or keeps them); false takes them off. */
+            later?: boolean;
+        };
+        /** @description What `SetReadingLater` did to one item, or would do. */
+        ReadingLaterOutcomeData: {
+            /** @description Whether this request changed it. */
+            changed: boolean;
+            error?: string | null;
+            item_key: string;
+            on_later: boolean;
+            title?: string | null;
+        };
+        /** @description A link inside a digest, shown under its issue. */
+        ReadingLinkData: {
+            /** @description Its article is saved, so it reads offline. */
+            article_cached: boolean;
+            blurb?: string | null;
+            /** @description `sqlite.org`, or the click tracker's domain when `tracked`. */
+            domain: string;
+            item_key: string;
+            on_later: boolean;
+            title: string;
+            /**
+             * @description The link goes through a click tracker: the article's own site is
+             *     only known once it is fetched.
+             */
+            tracked: boolean;
+            url: string;
+        };
+        /** @description One paragraph of reader text. */
+        ReadingParagraphData: {
+            /** @description `heading`, `text`, `list_item` or `quote`. */
+            kind: string;
+            text: string;
+        };
+        /**
+         * @description What an issue is, by the extractor's rules.
+         * @enum {string}
+         */
+        ReadingShapeData: "single" | "digest" | "teaser" | "notice";
+        /** @description Body of `POST /api/v1/mail/reading/sources`. */
+        ReadingSourceBody: {
+            account_id: string;
+            /** @description Stop offering to unsubscribe from this source. */
+            dismiss_unsubscribe_offer?: boolean;
+            /** @description Show the sender's own layout for this source. */
+            original_layout?: boolean | null;
+            sender_email: string;
+        };
+        /** @description Where an item came from, and how you read it. */
+        ReadingSourceData: {
+            account_id: components["schemas"]["AccountId"];
+            /**
+             * Format: double
+             * @description Finished issues count three times an open, over issues sent.
+             */
+            affinity: number;
+            /** @description "You opened 0 of the last 11 issues." */
+            evidence: string;
+            /**
+             * Format: int32
+             * @description Of those, read to the end in mxr.
+             */
+            finished: number;
+            /**
+             * Format: int32
+             * @description Recent issues the counts below cover (at most the last 20, 90 days).
+             */
+            issues: number;
+            /**
+             * Format: double
+             * @description Its usual gap between issues, when it has sent two or more.
+             */
+            median_gap_days?: number | null;
+            /** @description The publication's name: the sender's display name, else the address. */
+            name: string;
+            /** @description Three issues or fewer: it gets a lead slot. */
+            new_source: boolean;
+            /**
+             * Format: int32
+             * @description Of those, opened in mxr or read elsewhere.
+             */
+            opened: number;
+            /** @description You chose the sender's own layout for this source (`R`). */
+            original_layout: boolean;
+            sender_email: string;
+            /** @description Eight or more recent issues and none opened: offer to unsubscribe. */
+            suggest_unsubscribe: boolean;
+            unsubscribe: components["schemas"]["ReadingUnsubscribeData"];
+            /**
+             * Format: double
+             * @description How long its items stay: twice its usual gap, 2 to 14 days.
+             */
+            window_days: number;
+        };
+        /**
+         * @description How a source can be left: told directly, or a page to open.
+         * @enum {string}
+         */
+        ReadingUnsubscribeData: "one_click" | "link" | "mailto" | "none";
         RecipientSendTimeRowData: {
             /** Format: int64 */
             best_expected_reply_seconds?: number | null;
@@ -7042,6 +7495,12 @@ export interface components {
             /** @enum {string} */
             cmd: "UnsubscribePurge";
             dry_run?: boolean;
+            /**
+             * @description From the dry run. When given, the purge acts on exactly the mail
+             *     that preview listed, with the method it showed, once; mail that
+             *     arrived since is left alone.
+             */
+            preview_token?: string | null;
         } | {
             /** @enum {string} */
             cmd: "Snooze";
@@ -7780,6 +8239,60 @@ export interface components {
             cmd: "ExportRecords";
             dry_run?: boolean;
             filter?: components["schemas"]["RecordFilterData"];
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "GetReadingEdition";
+            mark_visit?: boolean;
+        } | {
+            /** @enum {string} */
+            cmd: "GetReadingItem";
+            item_key: string;
+        } | {
+            /** @enum {string} */
+            cmd: "SetReadingLater";
+            dry_run?: boolean;
+            item_keys: string[];
+            later?: boolean;
+        } | {
+            /** @enum {string} */
+            cmd: "RecordReadingEngagement";
+            /**
+             * Format: int64
+             * @description Time spent reading since the last report, in milliseconds.
+             */
+            dwell_ms?: number;
+            item_key: string;
+            opened?: boolean;
+            /**
+             * Format: double
+             * @description How far down the item, 0 to 1. Only ever moves forward.
+             */
+            progress?: number;
+        } | {
+            /** @enum {string} */
+            cmd: "FetchArticle";
+            item_key: string;
+            refresh?: boolean;
+        } | {
+            /** @enum {string} */
+            cmd: "SaveHighlight";
+            item_key: string;
+            note?: string | null;
+            quote: string;
+            /** @description `issue` (default) or `article`. */
+            view?: string | null;
+        } | {
+            account_id?: null | components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "ExportReadingHighlights";
+        } | {
+            account_id: components["schemas"]["AccountId"];
+            /** @enum {string} */
+            cmd: "SetReadingSource";
+            dismiss_unsubscribe_offer?: boolean;
+            original_layout?: boolean | null;
+            sender_email: string;
         } | {
             account_id?: null | components["schemas"]["AccountId"];
             /** @enum {string} */
@@ -8582,6 +9095,50 @@ export interface components {
             /** @enum {string} */
             kind: "MergeSuggestions";
             suggestions: components["schemas"]["MergeSuggestionData"][];
+        } | {
+            edition: components["schemas"]["ReadingEditionData"];
+            /** @enum {string} */
+            kind: "ReadingEdition";
+        } | {
+            item: components["schemas"]["ReadingItemDetailData"];
+            /** @enum {string} */
+            kind: "ReadingItem";
+        } | {
+            /** @description "Saved to Later. 4 things saved." */
+            copy: string;
+            dry_run: boolean;
+            items: components["schemas"]["ReadingLaterOutcomeData"][];
+            /** @enum {string} */
+            kind: "ReadingLater";
+            /**
+             * Format: int32
+             * @description Items on Later after this (unchanged on a dry run).
+             */
+            later_count: number;
+        } | {
+            finished: boolean;
+            item_key: string;
+            /** @enum {string} */
+            kind: "ReadingEngagement";
+            /** @description False when `MXR_ACTIVITY=off` or activity is paused. */
+            recorded: boolean;
+        } | {
+            fetch: components["schemas"]["ReadingFetchData"];
+            /** @enum {string} */
+            kind: "ReadingArticle";
+        } | {
+            highlight: components["schemas"]["ReadingHighlightData"];
+            /** @enum {string} */
+            kind: "ReadingHighlight";
+        } | {
+            highlights: components["schemas"]["ReadingHighlightData"][];
+            /** @enum {string} */
+            kind: "ReadingHighlights";
+            markdown: string;
+        } | {
+            /** @enum {string} */
+            kind: "ReadingSource";
+            source: components["schemas"]["ReadingSourceData"];
         } | {
             account_id?: null | components["schemas"]["AccountId"];
             bundles: components["schemas"]["PlaceBundleData"][];
@@ -9890,6 +10447,8 @@ export interface components {
             message_ids?: components["schemas"]["MessageId"][];
             method: components["schemas"]["UnsubscribeMethod"];
             mutation_id?: string | null;
+            /** @description A dry run's token: pass it back to commit exactly this preview. */
+            preview_token?: string | null;
             query: string;
             status: components["schemas"]["UnsubscribePurgeStatusData"];
         };
@@ -12677,6 +13236,256 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description The `Rail` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_reading_edition: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description Record that Reading was opened */
+                mark_visit?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `ReadingEdition` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_reading_engagement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadingEngagementBody"];
+            };
+        };
+        responses: {
+            /** @description The `ReadingEngagement` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_reading_highlights_get: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `ReadingHighlights` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_reading_highlights_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadingHighlightBody"];
+            };
+        };
+        responses: {
+            /** @description The `ReadingHighlight` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_reading_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description `<message id>:<index>`, URL-encoded */
+                item_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `ReadingItem` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_reading_article: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description `<message id>:<index>`, URL-encoded */
+                item_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadingArticleBody"];
+            };
+        };
+        responses: {
+            /** @description The `ReadingArticle` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_reading_later: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadingLaterBody"];
+            };
+        };
+        responses: {
+            /** @description The `ReadingLater` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_reading_sources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadingSourceBody"];
+            };
+        };
+        responses: {
+            /** @description The `ReadingSource` variant */
             200: {
                 headers: {
                     [name: string]: unknown;

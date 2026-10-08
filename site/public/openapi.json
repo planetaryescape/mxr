@@ -945,6 +945,49 @@
         }
       }
     },
+    "/api/v1/mail/hints/{hint}": {
+      "post": {
+        "tags": [],
+        "summary": "Dismiss a hint in every client, or show it again",
+        "operationId": "mail_hint_seen",
+        "parameters": [
+          {
+            "name": "hint",
+            "in": "path",
+            "description": "`todo.runway`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HintSeenBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ModeGuides` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/humanizer/rewrite": {
       "post": {
         "tags": [],
@@ -1208,7 +1251,7 @@
     "/api/v1/mail/modes/guide": {
       "get": {
         "tags": [],
-        "summary": "How a mode explains itself: header, empty states, first-encounter card, why template and keys",
+        "summary": "How a mode explains itself: header, empty states, why template, keys and hints",
         "operationId": "mail_mode_guide",
         "parameters": [
           {
@@ -1309,49 +1352,6 @@
           },
           "400": {
             "description": "No threads, or more than 100"
-          },
-          "401": {
-            "description": "Missing or invalid bridge token"
-          }
-        }
-      }
-    },
-    "/api/v1/mail/modes/{mode}/card": {
-      "post": {
-        "tags": [],
-        "summary": "Retire a mode's first-encounter card in every client, or show it again",
-        "operationId": "mail_mode_card",
-        "parameters": [
-          {
-            "name": "mode",
-            "in": "path",
-            "description": "`todo`",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ModeCardBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "The `ModeGuides` variant",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResponseData"
-                }
-              }
-            }
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -2011,6 +2011,283 @@
         "responses": {
           "200": {
             "description": "The `Rail` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/reading": {
+      "get": {
+        "tags": [],
+        "summary": "Reading's edition: bands since your last visit, earlier and fading, ranked by what you read, with Later and the sources",
+        "operationId": "mail_reading_edition",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mark_visit",
+            "in": "query",
+            "description": "Record that Reading was opened",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `ReadingEdition` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/reading/engagement": {
+      "post": {
+        "tags": [],
+        "summary": "Local reading engagement (opened, time, progress); not written with MXR_ACTIVITY=off",
+        "operationId": "mail_reading_engagement",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadingEngagementBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ReadingEngagement` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/reading/highlights": {
+      "get": {
+        "tags": [],
+        "summary": "Every Reading highlight, with the same as one Markdown document",
+        "operationId": "mail_reading_highlights_get",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `ReadingHighlights` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "Save a passage from a Reading item, with an optional note",
+        "operationId": "mail_reading_highlights_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadingHighlightBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ReadingHighlight` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/reading/items/{item_key}": {
+      "get": {
+        "tags": [],
+        "summary": "One Reading item for the reader: text, saved article, highlights and minutes left. Never fetches",
+        "operationId": "mail_reading_item",
+        "parameters": [
+          {
+            "name": "item_key",
+            "in": "path",
+            "description": "`<message id>:<index>`, URL-encoded",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `ReadingItem` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/reading/items/{item_key}/article": {
+      "post": {
+        "tags": [],
+        "summary": "Fetch and save the article a Reading item links to, contacting its site; private addresses are refused",
+        "operationId": "mail_reading_article",
+        "parameters": [
+          {
+            "name": "item_key",
+            "in": "path",
+            "description": "`<message id>:<index>`, URL-encoded",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadingArticleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ReadingArticle` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/reading/later": {
+      "post": {
+        "tags": [],
+        "summary": "Put Reading items on Later or take them off (dry_run previews)",
+        "operationId": "mail_reading_later",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadingLaterBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ReadingLater` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/reading/sources": {
+      "post": {
+        "tags": [],
+        "summary": "Per-source Reading settings: the sender's own layout, or no more unsubscribe offers",
+        "operationId": "mail_reading_sources",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadingSourceBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ReadingSource` variant",
             "content": {
               "application/json": {
                 "schema": {
@@ -9264,6 +9541,56 @@
           "custom"
         ]
       },
+      "HintData": {
+        "type": "object",
+        "description": "One hint as a client shows it: the copy, the key it names, and whether\nit was dismissed on this profile.",
+        "required": [
+          "id",
+          "anchor",
+          "text",
+          "key",
+          "seen"
+        ],
+        "properties": {
+          "anchor": {
+            "type": "string",
+            "description": "The element it attaches to, for agents and the docs: \"the first\nrow's why line\"."
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable across releases, since the seen state is keyed on it:\n\"now.from_mode\"."
+          },
+          "key": {
+            "$ref": "#/components/schemas/ModeKeyData",
+            "description": "The key the hint names, with its verb in this mode."
+          },
+          "seen": {
+            "type": "boolean",
+            "description": "Dismissed by Esc or by acting on the element, in any client."
+          },
+          "seen_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "text": {
+            "type": "string",
+            "description": "One sentence that names its key."
+          }
+        }
+      },
+      "HintSeenBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/hints/{hint}`.",
+        "properties": {
+          "seen": {
+            "type": "boolean",
+            "description": "True dismisses the hint in every client; false shows it again."
+          }
+        }
+      },
       "HtmlImageAsset": {
         "type": "object",
         "required": [
@@ -10582,16 +10909,6 @@
           "theirs"
         ]
       },
-      "ModeCardBody": {
-        "type": "object",
-        "description": "Body of `POST /api/v1/mail/modes/{mode}/card`.",
-        "properties": {
-          "seen": {
-            "type": "boolean",
-            "description": "True retires the card in every client; false shows it again."
-          }
-        }
-      },
       "ModeDoneBody": {
         "type": "object",
         "description": "Body of `POST /api/v1/mail/modes/{mode}/done`.",
@@ -10718,7 +11035,7 @@
       },
       "ModeGuideData": {
         "type": "object",
-        "description": "Returned in `ResponseData::ModeGuides`: one mode's teaching copy and\nwhether its first-encounter card has been retired on this profile.",
+        "description": "Returned in `ResponseData::ModeGuides`: one mode's teaching copy and\nits hints with their seen state on this profile.",
         "required": [
           "mode",
           "name",
@@ -10727,39 +11044,20 @@
           "add_one",
           "clear_for_now",
           "lands_here",
-          "card",
-          "card_keys",
+          "about",
           "why_template",
           "keys",
           "first_run_line",
-          "card_seen"
+          "hints"
         ],
         "properties": {
+          "about": {
+            "type": "string",
+            "description": "How the mode works in one or two sentences. Only `?` and `mxr modes\nexplain` show it: nothing teaches at the top of the page."
+          },
           "add_one": {
             "type": "string",
             "description": "How to add one by hand from a conversation, for the never-had-any\nstate."
-          },
-          "card": {
-            "type": "string",
-            "description": "The first-encounter card: one or two sentences."
-          },
-          "card_keys": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ModeKeyData"
-            },
-            "description": "The card's line of keys."
-          },
-          "card_seen": {
-            "type": "boolean",
-            "description": "The card was closed, or retired by using the mode's main verb."
-          },
-          "card_seen_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
           },
           "clear_for_now": {
             "type": "string",
@@ -10772,6 +11070,13 @@
           "header": {
             "type": "string",
             "description": "Under the mode's name, always visible: the job and its verb."
+          },
+          "hints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HintData"
+            },
+            "description": "Each attached to one element in this mode."
           },
           "keys": {
             "type": "array",
@@ -12241,6 +12546,875 @@
         "enum": [
           "built",
           "early"
+        ]
+      },
+      "ReadingArticleBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/reading/items/{item_key}/article`.",
+        "properties": {
+          "refresh": {
+            "type": "boolean",
+            "description": "Fetch again even when a copy is saved."
+          }
+        }
+      },
+      "ReadingArticleData": {
+        "type": "object",
+        "description": "A fetched article, as cached.",
+        "required": [
+          "title",
+          "final_url",
+          "contacted",
+          "fetched_at",
+          "words",
+          "minutes",
+          "paragraphs",
+          "html"
+        ],
+        "properties": {
+          "byline": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contacted": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every site contacted to fetch it, in order."
+          },
+          "fetched_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "final_url": {
+            "type": "string",
+            "description": "Where the page was in the end."
+          },
+          "html": {
+            "type": "string",
+            "description": "Cleaned article HTML; untrusted, so clients sanitize it."
+          },
+          "minutes": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "paragraphs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReadingParagraphData"
+            }
+          },
+          "site_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "words": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ReadingBandData": {
+        "type": "string",
+        "description": "The edition's three time bands.",
+        "enum": [
+          "since_last_visit",
+          "earlier",
+          "fading"
+        ]
+      },
+      "ReadingBandGroupData": {
+        "type": "object",
+        "description": "One band of the edition.",
+        "required": [
+          "band",
+          "label",
+          "items"
+        ],
+        "properties": {
+          "band": {
+            "$ref": "#/components/schemas/ReadingBandData"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReadingItemData"
+            }
+          },
+          "label": {
+            "type": "string",
+            "description": "\"Since you were last here\"."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Fading: \"Goes within a day, unless you keep it.\""
+          }
+        }
+      },
+      "ReadingEditionData": {
+        "type": "object",
+        "description": "Returned by `Request::GetReadingEdition`.",
+        "required": [
+          "generated_at",
+          "header",
+          "bands",
+          "left_off_here",
+          "later",
+          "later_count",
+          "sources",
+          "pace_wpm",
+          "pace_measured",
+          "expired_now"
+        ],
+        "properties": {
+          "bands": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReadingBandGroupData"
+            },
+            "description": "Only bands with items, in order."
+          },
+          "empty": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReadingEmptyData"
+              }
+            ]
+          },
+          "expired_now": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Items that expired since the last edition: done in Reading, never\narchived at the provider.",
+            "minimum": 0
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "header": {
+            "type": "string"
+          },
+          "last_visit_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Your previous visit ended here: \"You left off here\" goes after the\nfirst band when this is set and later bands have items."
+          },
+          "later": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReadingItemData"
+            },
+            "description": "The shelf, newest first. Its count is the only one Reading shows."
+          },
+          "later_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "left_off_here": {
+            "type": "boolean"
+          },
+          "pace_measured": {
+            "type": "boolean"
+          },
+          "pace_wpm": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Your reading pace in words a minute, and whether it was measured\nfrom issues you finished (else 230).",
+            "minimum": 0
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReadingSourceData"
+            },
+            "description": "Every source in the edition or on Later, best read first."
+          }
+        }
+      },
+      "ReadingEmptyData": {
+        "type": "object",
+        "description": "The empty state, when the first band has nothing.",
+        "required": [
+          "never_had_any",
+          "line"
+        ],
+        "properties": {
+          "line": {
+            "type": "string",
+            "description": "\"Nothing new since Tuesday. Later has 4 things saved.\""
+          },
+          "never_had_any": {
+            "type": "boolean",
+            "description": "Nothing has ever landed in Reading."
+          }
+        }
+      },
+      "ReadingEngagementBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/reading/engagement`.",
+        "required": [
+          "item_key"
+        ],
+        "properties": {
+          "dwell_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Time read since the last report, in milliseconds.",
+            "minimum": 0
+          },
+          "item_key": {
+            "type": "string"
+          },
+          "opened": {
+            "type": "boolean"
+          },
+          "progress": {
+            "type": "number",
+            "format": "double",
+            "description": "How far down, 0 to 1."
+          }
+        }
+      },
+      "ReadingFetchData": {
+        "type": "object",
+        "description": "What `FetchArticle` did.",
+        "required": [
+          "item_key",
+          "domain",
+          "cached"
+        ],
+        "properties": {
+          "article": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReadingArticleData"
+              }
+            ]
+          },
+          "cached": {
+            "type": "boolean",
+            "description": "Served from the saved copy; nothing was contacted."
+          },
+          "domain": {
+            "type": "string",
+            "description": "The site named before fetching: the link's own domain."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it failed: a paywall, a private address, a page too large."
+          },
+          "item_key": {
+            "type": "string"
+          }
+        }
+      },
+      "ReadingHighlightBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/reading/highlights`.",
+        "required": [
+          "item_key",
+          "quote"
+        ],
+        "properties": {
+          "item_key": {
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quote": {
+            "type": "string"
+          },
+          "view": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`issue` (default) or `article`."
+          }
+        }
+      },
+      "ReadingHighlightData": {
+        "type": "object",
+        "description": "A saved passage.",
+        "required": [
+          "id",
+          "item_key",
+          "account_id",
+          "message_id",
+          "view",
+          "quote",
+          "title",
+          "source",
+          "created_at"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "item_key": {
+            "type": "string"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quote": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "The item's title and source, as of saving."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "view": {
+            "type": "string",
+            "description": "`issue` or `article`: which text it was taken from."
+          }
+        }
+      },
+      "ReadingItemData": {
+        "type": "object",
+        "description": "One readable item in the edition or on Later.",
+        "required": [
+          "item_key",
+          "account_id",
+          "message_id",
+          "thread_id",
+          "kind",
+          "shape",
+          "title",
+          "source",
+          "sender_email",
+          "words",
+          "minutes",
+          "arrived_at",
+          "why",
+          "on_later",
+          "progress",
+          "opened",
+          "finished",
+          "article_cached"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "arrived_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "article_cached": {
+            "type": "boolean"
+          },
+          "domain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "engagement": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"you read 9 of 10\""
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it leaves the edition. Absent on Later, which never expires."
+          },
+          "fades": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"Fades Sunday unless you keep it.\"; absent on Later."
+          },
+          "finished": {
+            "type": "boolean"
+          },
+          "item_key": {
+            "type": "string",
+            "description": "`<message id>:<index>`; index 0 is the issue."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ReadingItemKindData"
+          },
+          "later_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lead": {
+            "type": "boolean",
+            "description": "One of the top items, from a source you read most or a new one."
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReadingLinkData"
+            },
+            "description": "A digest's links, in order."
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "minutes": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Minutes at your pace.",
+            "minimum": 0
+          },
+          "on_later": {
+            "type": "boolean"
+          },
+          "opened": {
+            "type": "boolean"
+          },
+          "progress": {
+            "type": "number",
+            "format": "double",
+            "description": "How far you got, 0 to 1."
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "shape": {
+            "$ref": "#/components/schemas/ReadingShapeData",
+            "description": "The issue's shape (a link carries its issue's)."
+          },
+          "source": {
+            "type": "string"
+          },
+          "standfirst": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The issue's first real paragraph, or the link's blurb."
+          },
+          "still_want_it": {
+            "type": "boolean",
+            "description": "On Later for over 30 days and not yet asked: \"Still want it?\""
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "title": {
+            "type": "string",
+            "description": "The cleaned headline, or the link's title."
+          },
+          "tracked": {
+            "type": "boolean"
+          },
+          "unsubscribe_offer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The source's evidence when it suggests unsubscribing."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The article this item points at: a teaser's main link, a digest\nlink's page."
+          },
+          "why": {
+            "type": "string",
+            "description": "\"Here because: you subscribed, and it has an unsubscribe link\n(rule). Fades Sunday unless you keep it.\""
+          },
+          "words": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Words in the issue's body; 0 for a link until its article is saved.",
+            "minimum": 0
+          }
+        }
+      },
+      "ReadingItemDetailData": {
+        "type": "object",
+        "description": "Returned by `Request::GetReadingItem`: the reader's page.",
+        "required": [
+          "item",
+          "source_data",
+          "paragraphs",
+          "highlights",
+          "minutes_left",
+          "pace_wpm"
+        ],
+        "properties": {
+          "article": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReadingArticleData",
+                "description": "The saved article, when there is one."
+              }
+            ]
+          },
+          "article_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the last fetch failed, kept so the reader can offer the browser."
+          },
+          "highlights": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReadingHighlightData"
+            }
+          },
+          "html": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The issue as cleaned HTML when the cleaner kept most of it;\nuntrusted, so clients sanitize it."
+          },
+          "item": {
+            "$ref": "#/components/schemas/ReadingItemData"
+          },
+          "minutes_left": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Minutes left at your pace, from your progress.",
+            "minimum": 0
+          },
+          "pace_wpm": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "paragraphs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReadingParagraphData"
+            },
+            "description": "The issue as reader text, masthead and footer removed."
+          },
+          "source_data": {
+            "$ref": "#/components/schemas/ReadingSourceData"
+          }
+        }
+      },
+      "ReadingItemKindData": {
+        "type": "string",
+        "description": "An issue, or one link inside a digest.",
+        "enum": [
+          "issue",
+          "link"
+        ]
+      },
+      "ReadingLaterBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/reading/later`.",
+        "required": [
+          "item_keys"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "item_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`<message id>:<index>` keys."
+          },
+          "later": {
+            "type": "boolean",
+            "description": "True puts them on Later (or keeps them); false takes them off."
+          }
+        }
+      },
+      "ReadingLaterOutcomeData": {
+        "type": "object",
+        "description": "What `SetReadingLater` did to one item, or would do.",
+        "required": [
+          "item_key",
+          "on_later",
+          "changed"
+        ],
+        "properties": {
+          "changed": {
+            "type": "boolean",
+            "description": "Whether this request changed it."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "item_key": {
+            "type": "string"
+          },
+          "on_later": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ReadingLinkData": {
+        "type": "object",
+        "description": "A link inside a digest, shown under its issue.",
+        "required": [
+          "item_key",
+          "title",
+          "url",
+          "domain",
+          "tracked",
+          "on_later",
+          "article_cached"
+        ],
+        "properties": {
+          "article_cached": {
+            "type": "boolean",
+            "description": "Its article is saved, so it reads offline."
+          },
+          "blurb": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "domain": {
+            "type": "string",
+            "description": "`sqlite.org`, or the click tracker's domain when `tracked`."
+          },
+          "item_key": {
+            "type": "string"
+          },
+          "on_later": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tracked": {
+            "type": "boolean",
+            "description": "The link goes through a click tracker: the article's own site is\nonly known once it is fetched."
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "ReadingParagraphData": {
+        "type": "object",
+        "description": "One paragraph of reader text.",
+        "required": [
+          "kind",
+          "text"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "`heading`, `text`, `list_item` or `quote`."
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "ReadingShapeData": {
+        "type": "string",
+        "description": "What an issue is, by the extractor's rules.",
+        "enum": [
+          "single",
+          "digest",
+          "teaser",
+          "notice"
+        ]
+      },
+      "ReadingSourceBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/reading/sources`.",
+        "required": [
+          "account_id",
+          "sender_email"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string"
+          },
+          "dismiss_unsubscribe_offer": {
+            "type": "boolean",
+            "description": "Stop offering to unsubscribe from this source."
+          },
+          "original_layout": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Show the sender's own layout for this source."
+          },
+          "sender_email": {
+            "type": "string"
+          }
+        }
+      },
+      "ReadingSourceData": {
+        "type": "object",
+        "description": "Where an item came from, and how you read it.",
+        "required": [
+          "account_id",
+          "sender_email",
+          "name",
+          "issues",
+          "opened",
+          "finished",
+          "evidence",
+          "affinity",
+          "window_days",
+          "new_source",
+          "original_layout",
+          "unsubscribe",
+          "suggest_unsubscribe"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "affinity": {
+            "type": "number",
+            "format": "double",
+            "description": "Finished issues count three times an open, over issues sent."
+          },
+          "evidence": {
+            "type": "string",
+            "description": "\"You opened 0 of the last 11 issues.\""
+          },
+          "finished": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Of those, read to the end in mxr.",
+            "minimum": 0
+          },
+          "issues": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Recent issues the counts below cover (at most the last 20, 90 days).",
+            "minimum": 0
+          },
+          "median_gap_days": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Its usual gap between issues, when it has sent two or more."
+          },
+          "name": {
+            "type": "string",
+            "description": "The publication's name: the sender's display name, else the address."
+          },
+          "new_source": {
+            "type": "boolean",
+            "description": "Three issues or fewer: it gets a lead slot."
+          },
+          "opened": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Of those, opened in mxr or read elsewhere.",
+            "minimum": 0
+          },
+          "original_layout": {
+            "type": "boolean",
+            "description": "You chose the sender's own layout for this source (`R`)."
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "suggest_unsubscribe": {
+            "type": "boolean",
+            "description": "Eight or more recent issues and none opened: offer to unsubscribe."
+          },
+          "unsubscribe": {
+            "$ref": "#/components/schemas/ReadingUnsubscribeData"
+          },
+          "window_days": {
+            "type": "number",
+            "format": "double",
+            "description": "How long its items stay: twice its usual gap, 2 to 14 days."
+          }
+        }
+      },
+      "ReadingUnsubscribeData": {
+        "type": "string",
+        "description": "How a source can be left: told directly, or a page to open.",
+        "enum": [
+          "one_click",
+          "link",
+          "mailto",
+          "none"
         ]
       },
       "RecipientSendTimeRowData": {
@@ -16348,6 +17522,13 @@
               },
               "dry_run": {
                 "type": "boolean"
+              },
+              "preview_token": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "From the dry run. When given, the purge acts on exactly the mail\nthat preview listed, with the method it showed, once; mail that\narrived since is left alone."
               }
             }
           },
@@ -19084,7 +20265,7 @@
           },
           {
             "type": "object",
-            "description": "How a mode explains itself: header, empty states, first-encounter\ncard, why template and keys, with whether the card was retired.\n`mode: None` returns every shipped mode. Returns\n`ResponseData::ModeGuides`.",
+            "description": "How a mode explains itself: header, empty states, why template,\nkeys, the `?` explanation and its hints with whether each was\ndismissed. `mode: None` returns every shipped mode. Returns\n`ResponseData::ModeGuides`.",
             "required": [
               "cmd"
             ],
@@ -19105,19 +20286,19 @@
           },
           {
             "type": "object",
-            "description": "Retire a mode's first-encounter card on this profile, so it stays\nclosed in every client; `seen: false` brings it back. Returns\n`ResponseData::ModeGuides` with the one mode.",
+            "description": "Dismiss a hint on this profile, so it never shows again in any\nclient; `seen: false` brings it back. Returns\n`ResponseData::ModeGuides` with every mode the hint attaches in.",
             "required": [
-              "mode",
+              "hint",
               "cmd"
             ],
             "properties": {
               "cmd": {
                 "type": "string",
                 "enum": [
-                  "SetModeGuideSeen"
+                  "SetHintSeen"
                 ]
               },
-              "mode": {
+              "hint": {
                 "type": "string"
               },
               "seen": {
@@ -19729,6 +20910,229 @@
               },
               "filter": {
                 "$ref": "#/components/schemas/RecordFilterData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The edition: Reading's items in three bands (since your last visit,\nearlier, fading), ranked inside by how much you read each source,\nplus Later and the sources. Items past their source's window are\nmarked done in Reading on the way (never archived at the provider).\n`mark_visit` records that Reading was opened, so the next visit's\n\"since you were last here\" starts from this one. Returns\n`ResponseData::ReadingEdition`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetReadingEdition"
+                ]
+              },
+              "mark_visit": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "One item as the reader shows it: the issue as reader text, the\nsaved article, highlights and minutes left. Local only: it never\nfetches. Returns `ResponseData::ReadingItem`.",
+            "required": [
+              "item_key",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetReadingItem"
+                ]
+              },
+              "item_key": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Put items on Later (`later: true`, which also answers \"Still want\nit?\" with keep) or take them off. A link put on Later has its article\nfetched by the client with `FetchArticle`, so it reads offline.\nReturns `ResponseData::ReadingLater`.",
+            "required": [
+              "item_keys",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetReadingLater"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "item_keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "later": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Local engagement for ranking and unsubscribe evidence: opened,\nseconds read, how far. Never leaves the machine; with\n`MXR_ACTIVITY=off` nothing is written. Returns\n`ResponseData::ReadingEngagement`.",
+            "required": [
+              "item_key",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RecordReadingEngagement"
+                ]
+              },
+              "dwell_ms": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Time spent reading since the last report, in milliseconds.",
+                "minimum": 0
+              },
+              "item_key": {
+                "type": "string"
+              },
+              "opened": {
+                "type": "boolean"
+              },
+              "progress": {
+                "type": "number",
+                "format": "double",
+                "description": "How far down the item, 0 to 1. Only ever moves forward."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Fetch and save the article an item links to, contacting the link's\nsite (and any site it redirects to). Only ever on an explicit\nrequest; private addresses, redirects into them and pages over the\nsize cap are refused. A saved copy is served unless `refresh`.\nReturns `ResponseData::ReadingArticle`.",
+            "required": [
+              "item_key",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "FetchArticle"
+                ]
+              },
+              "item_key": {
+                "type": "string"
+              },
+              "refresh": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Save a passage from an item, with an optional note. Highlights are\nfound by search and exported with `ExportReadingHighlights`. Returns\n`ResponseData::ReadingHighlight`.",
+            "required": [
+              "item_key",
+              "quote",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SaveHighlight"
+                ]
+              },
+              "item_key": {
+                "type": "string"
+              },
+              "note": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "quote": {
+                "type": "string"
+              },
+              "view": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "`issue` (default) or `article`."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Every highlight, oldest first, with the same as one Markdown\ndocument. Returns `ResponseData::ReadingHighlights`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ExportReadingHighlights"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Per-source reading settings: show the sender's own layout (`R`), or\nstop offering to unsubscribe. Returns `ResponseData::ReadingSource`.",
+            "required": [
+              "account_id",
+              "sender_email",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetReadingSource"
+                ]
+              },
+              "dismiss_unsubscribe_offer": {
+                "type": "boolean"
+              },
+              "original_layout": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "sender_email": {
+                "type": "string"
               }
             }
           },
@@ -23101,7 +24505,7 @@
           },
           {
             "type": "object",
-            "description": "Returned by `Request::GetModeGuide` and `Request::SetModeGuideSeen`.",
+            "description": "Returned by `Request::GetModeGuide` and `Request::SetHintSeen`.",
             "required": [
               "guides",
               "kind"
@@ -23406,6 +24810,193 @@
                 "items": {
                   "$ref": "#/components/schemas/MergeSuggestionData"
                 }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetReadingEdition`.",
+            "required": [
+              "edition",
+              "kind"
+            ],
+            "properties": {
+              "edition": {
+                "$ref": "#/components/schemas/ReadingEditionData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ReadingEdition"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetReadingItem`.",
+            "required": [
+              "item",
+              "kind"
+            ],
+            "properties": {
+              "item": {
+                "$ref": "#/components/schemas/ReadingItemDetailData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ReadingItem"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::SetReadingLater`.",
+            "required": [
+              "items",
+              "dry_run",
+              "later_count",
+              "copy",
+              "kind"
+            ],
+            "properties": {
+              "copy": {
+                "type": "string",
+                "description": "\"Saved to Later. 4 things saved.\""
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ReadingLaterOutcomeData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ReadingLater"
+                ]
+              },
+              "later_count": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Items on Later after this (unchanged on a dry run).",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::RecordReadingEngagement`.",
+            "required": [
+              "item_key",
+              "recorded",
+              "finished",
+              "kind"
+            ],
+            "properties": {
+              "finished": {
+                "type": "boolean"
+              },
+              "item_key": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ReadingEngagement"
+                ]
+              },
+              "recorded": {
+                "type": "boolean",
+                "description": "False when `MXR_ACTIVITY=off` or activity is paused."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::FetchArticle`.",
+            "required": [
+              "fetch",
+              "kind"
+            ],
+            "properties": {
+              "fetch": {
+                "$ref": "#/components/schemas/ReadingFetchData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ReadingArticle"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::SaveHighlight`.",
+            "required": [
+              "highlight",
+              "kind"
+            ],
+            "properties": {
+              "highlight": {
+                "$ref": "#/components/schemas/ReadingHighlightData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ReadingHighlight"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ExportReadingHighlights`.",
+            "required": [
+              "highlights",
+              "markdown",
+              "kind"
+            ],
+            "properties": {
+              "highlights": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ReadingHighlightData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ReadingHighlights"
+                ]
+              },
+              "markdown": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::SetReadingSource`.",
+            "required": [
+              "source",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ReadingSource"
+                ]
+              },
+              "source": {
+                "$ref": "#/components/schemas/ReadingSourceData"
               }
             }
           },
@@ -27299,6 +28890,13 @@
               "string",
               "null"
             ]
+          },
+          "preview_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A dry run's token: pass it back to commit exactly this preview."
           },
           "query": {
             "type": "string"

@@ -1379,6 +1379,9 @@ impl App {
             ActivePane::MailList if self.mailbox.mailbox_view == MailboxView::ArchiveMode => {
                 self.records_lens_key(key)
             }
+            ActivePane::MailList if self.mailbox.mailbox_view == MailboxView::Reading => {
+                self.reading_lens_key(key)
+            }
             ActivePane::MailList => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
                 (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),

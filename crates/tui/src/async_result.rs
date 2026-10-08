@@ -80,6 +80,36 @@ pub(crate) enum AsyncResult {
         Vec<mxr_core::id::ThreadId>,
         Result<Vec<mxr_protocol::ModeDoneOutcomeData>, MxrError>,
     ),
+    /// Reading's edition and, when the daemon served it, its guide.
+    /// Boxed: the edition is large next to the other variants.
+    ReadingEdition(
+        Result<
+            Box<(
+                mxr_protocol::ReadingEditionData,
+                Option<mxr_protocol::ModeGuideData>,
+            )>,
+            MxrError,
+        >,
+    ),
+    /// One item for the reader, by key.
+    ReadingItem(
+        String,
+        Result<Box<mxr_protocol::ReadingItemDetailData>, MxrError>,
+    ),
+    /// The article fetched for an item, by key.
+    ReadingArticle(String, Result<mxr_protocol::ReadingFetchData, MxrError>),
+    /// The dry run of letting go of everything shown.
+    ReadingLetGoPreview(
+        Vec<mxr_core::id::ThreadId>,
+        Result<Vec<mxr_protocol::ModeDoneOutcomeData>, MxrError>,
+    ),
+    /// The dry run of unsubscribing from a source.
+    ReadingUnsubscribePreview(
+        crate::app::ReadingUnsubscribeTarget,
+        Result<Box<mxr_protocol::UnsubscribePurgeResultData>, MxrError>,
+    ),
+    /// An email's own text, cleaned, for `R`.
+    ReadingOriginal(Result<String, MxrError>),
     /// To do's runway and, when the daemon served it, its guide.
     TodoRunway(
         Result<

@@ -144,6 +144,18 @@ impl App {
             | Action::RecordsMakeTodo
             | Action::RecordsBack
             | Action::PassToMode => self.apply_records_action(action),
+            Action::OpenReading
+            | Action::ReadingRead
+            | Action::ReadingArticle
+            | Action::ReadingLater
+            | Action::ReadingLetGo
+            | Action::ReadingLetGoAll
+            | Action::ReadingUnsubscribe
+            | Action::ReadingOriginal
+            | Action::ReadingHighlight
+            | Action::ReadingOpenEmail
+            | Action::ReadingBack
+            | Action::ReadingLaterShelf => self.apply_reading_action(action),
             Action::OpenNow
             | Action::OpenMessages
             | Action::OpenArchiveMode

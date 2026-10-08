@@ -43,6 +43,7 @@ pub mod places;
 pub mod profile;
 pub mod progress;
 pub(crate) mod promises;
+pub mod reading;
 pub mod records;
 pub mod remind;
 pub mod replies;

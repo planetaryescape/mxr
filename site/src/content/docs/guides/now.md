@@ -22,9 +22,9 @@ disappears, and when they all have, Now says "Clear." and when the next to-do
 surfaces. The caps live in the daemon, so the web app, the TUI and
 `mxr now` show the same ten things.
 
-Messages, Updates and Reading are early versions built on the desk, Paper
-trail and the Reading place, and Archive's records are not built yet. Each
-says "early version" where it shows. [Email modes](/guides/email-modes/) has
+Updates is an early version built on Paper trail, and Archive's records
+are not built yet. Each says "early version"
+where it shows. [Email modes](/guides/email-modes/) has
 the status of each mode.
 
 ## Open Now
@@ -139,7 +139,7 @@ The sidebar lists Now, the five modes and Inbox, with their keys:
 | Messages | `g m` | People, built on the desk's lanes (early version) |
 | To do | `g x` | Things email asked you to do, by when to act |
 | Updates | `g u` | Notifications, built on Paper trail (early version). `g p` opens it too |
-| Reading | `g r` | Newsletters and lists (early version) |
+| Reading | `g r` | Newsletters as an [edition](/guides/reading/), with a Later shelf. No count: nothing in it is owed |
 | Archive | `g e` | Records, which are coming; search finds receipts until then |
 | Inbox | `g i` | Everything, newest first |
 

@@ -108,8 +108,9 @@ function startDaemon() {
       MXR_FAKE_DATASET: "demo",
       // The account uses the demo's own address so sent mail syncs as
       // outbound (the desk's owed and waiting lanes need it). That makes it
-      // the personal demo profile, which keeps 55% of this count: 120.
-      MXR_FAKE_MESSAGE_COUNT: "218",
+      // the personal demo profile, which keeps 55% of this count: 146, the
+      // same generated threads as before plus Reading's 26 newsletters.
+      MXR_FAKE_MESSAGE_COUNT: "265",
       // Specs drop messages and sync failures here (crates/provider-fake
       // spool.rs); e2e/helpers/spool.ts writes them.
       MXR_FAKE_SPOOL_DIR: join(runtimeDir, "spool"),

@@ -1197,6 +1197,11 @@ async fn post_sync_fanout(
     // Records in the new mail: receipts, orders, bookings, bills. Rules and
     // schema.org only; an order's later emails join its record.
     crate::handler::records::scan_messages(&state, &upserted_message_ids).await;
+
+    // Reading: extract the new newsletters and let go of what faded.
+    if !initial_backfill_in_progress {
+        Box::pin(crate::handler::reading::after_sync(&state, &account_id)).await;
+    }
 }
 
 /// Clears what the store delete cannot reach for mail the provider deleted,

@@ -624,6 +624,7 @@ async fn previously_unlisted_requests_stay_in_the_agents_accounts() {
         account_id: Some(o.account.clone()),
         dry_run: true,
         archive_on_no_method: false,
+        preview_token: None,
     })
     .await;
     assert_scoped(&s, |o| Request::ExportSearch {

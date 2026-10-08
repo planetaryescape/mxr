@@ -20,6 +20,7 @@ mod mode_routes;
 mod openapi;
 mod place_routes;
 mod promise_routes;
+mod reading_routes;
 mod record_routes;
 mod request_types;
 mod routes_v6;
@@ -1360,6 +1361,7 @@ async fn unsubscribe_purge(
             account_id,
             dry_run: request.dry_run,
             archive_on_no_method: request.archive_on_no_method,
+            preview_token: request.preview_token,
         },
     )
     .await?

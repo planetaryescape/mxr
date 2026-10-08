@@ -46,27 +46,6 @@ function sidebar(page: Page) {
   return page.getByRole("complementary", { name: "Mailboxes" });
 }
 
-test("Reading shows every issue already open, with a reason and no unread counts", async ({
-  page,
-}) => {
-  const reading = await place(page, "reading");
-  expect(reading.total_messages).toBeGreaterThan(0);
-  await openApp(page, "/reading");
-  const issues = page.getByTestId("reading-issue");
-  await expect(issues.first()).toBeVisible();
-  // Open means the body is there without a click.
-  await expect(issues.first().getByTestId("issue-body")).toHaveAttribute("data-loaded", "true");
-  await expect(issues.first().getByTestId("why-here")).toHaveText(/^Here because: .+\.$/);
-  // Nothing in Reading counts: no unread badge in the sidebar or the page.
-  await expect(sidebar(page).getByRole("link", { name: "Reading" })).not.toContainText(/\d/);
-  await expect(page.getByRole("main")).not.toContainText(/unread/i);
-
-  // j moves issue to issue.
-  await expect(issues.first()).toHaveAttribute("aria-current", "true");
-  await page.keyboard.press("j");
-  await expect(issues.nth(1)).toHaveAttribute("aria-current", "true");
-});
-
 test("moving a sender from Reading to People takes it to the desk, and u brings it back", async ({
   page,
 }) => {
@@ -75,7 +54,7 @@ test("moving a sender from Reading to People takes it to the desk, and u brings 
   try {
     await openApp(page, "/reading");
     const issue = page.locator(
-      `[data-testid='reading-issue'][data-sender='${bundle!.sender_email}']`,
+      `[data-testid='reading-item'][data-sender='${bundle!.sender_email}']`,
     );
     await expect(issue.first()).toBeVisible();
     await issue.first().click({ position: { x: 5, y: 5 } });

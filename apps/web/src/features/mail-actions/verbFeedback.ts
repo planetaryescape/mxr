@@ -35,7 +35,8 @@ export type OtherVerb =
   | "record-file"
   | "record-dismiss"
   | "record-fix"
-  | "record-check";
+  | "record-check"
+  | "reading-later";
 
 export type Verb = MailAction | OtherVerb;
 
@@ -355,6 +356,14 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     actions: ["mail.make-todo"],
     optimistic: "Nothing moves until the title is saved; the to-do joins To do.",
     pastTense: "Added to To do",
+    tone: "success",
+    sound: null,
+    undo: "reverse-request",
+  },
+  "reading-later": {
+    actions: ["reading.later"],
+    optimistic: "The item shows as saved and stays on the Later shelf until you take it off.",
+    pastTense: "Saved to Later",
     tone: "success",
     sound: null,
     undo: "reverse-request",

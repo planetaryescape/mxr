@@ -127,6 +127,9 @@ impl App {
                         MailboxView::ArchiveMode => {
                             self.apply(Action::RecordsOpenCard);
                         }
+                        MailboxView::Reading => {
+                            self.apply(Action::ReadingRead);
+                        }
                     }
                 }
             }

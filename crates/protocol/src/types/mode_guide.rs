@@ -11,7 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{archive_copy, messages_copy, now_copy, todo_copy};
+use super::{archive_copy, messages_copy, now_copy, reading_copy, todo_copy};
 
 /// One key and the verb it does in this mode: "e tick off".
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -347,9 +347,62 @@ pub const ARCHIVE_GUIDE: ModeGuideCopy = ModeGuideCopy {
     ],
 };
 
+/// Reading's keys, per the blueprint's one key map.
+const READING_KEYS: &[(&str, &str)] = &[
+    ("Enter", "read"),
+    ("b", "later"),
+    ("e", "let go"),
+    ("L", "fetch the linked article"),
+    ("D", "unsubscribe"),
+    ("R", "original layout"),
+    ("A", "let go of everything shown"),
+    ("h", "highlight"),
+    ("o", "open the email"),
+    ("u", "undo"),
+    ("?", "what is this"),
+];
+
+pub const READING_GUIDE: ModeGuideCopy = ModeGuideCopy {
+    mode: "reading",
+    name: "Reading",
+    header: reading_copy::HEADER,
+    never_had_any: reading_copy::NEVER_HAD_ANY,
+    add_one: "",
+    clear_for_now: reading_copy::CLEAR_FOR_NOW,
+    lands_here: reading_copy::LANDS_HERE,
+    about: reading_copy::ABOUT,
+    why_template: "Here because: {evidence} ({source}). {fades}",
+    keys: READING_KEYS,
+    first_run_line: reading_copy::FIRST_RUN_LINE,
+    hints: &[READING_FADING_HINT, READING_LINK_HINT],
+};
+
+/// On the first Fading band: what fading means and the one key that stops it.
+pub const READING_FADING_HINT: HintCopy = HintCopy {
+    id: "reading.fading",
+    anchor: "The first Fading band",
+    text: "These go within a day; b keeps one on Later, which never fades.",
+    key: ("b", "later"),
+};
+
+/// On the first digest link: a link is its own item, and its article is
+/// fetched only when asked.
+pub const READING_LINK_HINT: HintCopy = HintCopy {
+    id: "reading.link",
+    anchor: "The first link under a digest",
+    text: "Each link is its own item; L fetches its article, and only then does mxr contact that site.",
+    key: ("L", "fetch the linked article"),
+};
+
 /// Every mode that has shipped, in rail order. Now leads: it is the front
 /// page over the modes.
-pub const MODE_GUIDES: &[ModeGuideCopy] = &[NOW_GUIDE, MESSAGES_GUIDE, TODO_GUIDE, ARCHIVE_GUIDE];
+pub const MODE_GUIDES: &[ModeGuideCopy] = &[
+    NOW_GUIDE,
+    MESSAGES_GUIDE,
+    TODO_GUIDE,
+    READING_GUIDE,
+    ARCHIVE_GUIDE,
+];
 
 /// The guide for a mode id. Accepts "todo", "to-do" and "to do".
 pub fn mode_guide(mode: &str) -> Option<&'static ModeGuideCopy> {

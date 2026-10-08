@@ -33,6 +33,11 @@ allow_send = false
 allow_destructive = false
 ```
 
+With `allowed_accounts` set, a request for another account is denied. The
+Reading edition and highlights export with no account cover only the allowed
+accounts, so `mxr_reading_edition` and `mxr_reading_highlights` work without
+naming one.
+
 Use a narrow profile by default. Set `safety_policy = "full"`,
 `allow_send = true`, or `allow_destructive = true` only for a client session
 where the human approval loop is explicit.
@@ -68,6 +73,10 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_mutation_preview`
 - `mxr_mutate`
 - `mxr_send_draft`
+- `mxr_reading_edition`
+- `mxr_reading_item`
+- `mxr_reading_later`
+- `mxr_reading_highlights`
 
 `mxr_read_message` only includes full body content when `include_body = true`.
 `mxr_thread_context` returns a thread's facts (counterparty, owed reply, open
@@ -90,6 +99,13 @@ off). `mxr_records_export_preview` reports what a CSV export would hold: rows,
 total per currency, unchecked rows and missing PDFs. All three are
 read-only; corrections and the export itself happen in `mxr records` or the
 apps.
+`mxr_reading_edition` returns [Reading's edition](/guides/reading/) and
+never counts as the user's visit. `mxr_reading_item` returns an item's
+reader text, saved article and highlights; with `fetch_article = true` it
+fetches the linked article, which tells that site the user clicked, so it
+also needs `confirm = true`. `mxr_reading_later` puts items on Later or
+takes them off (`dry_run = true` previews). `mxr_reading_highlights` returns
+every highlight and the same as Markdown.
 `mxr_mutate` requires `confirm = true` and should be called only after
 `mxr_mutation_preview`. `mxr_send_draft` requires `confirm = true`; the daemon
 can still reject the request if the `mcp` profile disallows sends or the draft

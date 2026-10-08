@@ -961,6 +961,75 @@ async fn seed_demo_surfaces() -> anyhow::Result<()> {
     seed_surface!("drafts", seed_demo_drafts);
     seed_surface!("to-dos", seed_demo_todos);
     seed_surface!("contacts", seed_demo_contacts);
+    seed_surface!("reading", seed_demo_reading);
+    Ok(())
+}
+
+/// Reading's history: the older Long Reads essays read to the end (so the
+/// source leads and the pace is measured), and one digest link on Later
+/// with its article saved. Engagement retires the first-encounter card, so
+/// it is shown again for the first look.
+async fn seed_demo_reading(client: &mut IpcClient) -> anyhow::Result<()> {
+    let personal = AccountId::from_provider_id("fake", DEMO_PERSONAL_EMAIL);
+    let message = |provider_id: &str| {
+        mxr_core::id::MessageId::from_scoped_provider_id(&personal, "fake", provider_id)
+    };
+    let later = message(&mxr_provider_fake::fixtures::reading_demo_later_provider_id());
+    // The hand-written 50-message showcase has no Reading demo mail.
+    let exists = matches!(
+        client
+            .request(Request::GetEnvelope {
+                message_id: later.clone(),
+            })
+            .await?,
+        Response::Ok {
+            data: ResponseData::Envelope { .. },
+        }
+    );
+    if !exists {
+        return Ok(());
+    }
+    for provider_id in mxr_provider_fake::fixtures::reading_demo_finished_provider_ids() {
+        let response = client
+            .request(Request::RecordReadingEngagement {
+                item_key: format!("{}:0", message(&provider_id)),
+                opened: true,
+                // About 330 words at 250 a minute.
+                dwell_ms: 80_000,
+                progress: 1.0,
+            })
+            .await?;
+        if let Response::Error { message, .. } = response {
+            anyhow::bail!(message);
+        }
+    }
+    let key = format!(
+        "{later}:{}",
+        mxr_reading::urls::link_idx(mxr_provider_fake::fixtures::DEMO_ARTICLE_WAL)
+    );
+    for request in [
+        Request::SetReadingLater {
+            item_keys: vec![key.clone()],
+            later: true,
+            dry_run: false,
+        },
+        Request::FetchArticle {
+            item_key: key,
+            refresh: false,
+        },
+        Request::SetHintSeen {
+            hint: mxr_protocol::READING_FADING_HINT.id.to_string(),
+            seen: false,
+        },
+        Request::SetHintSeen {
+            hint: mxr_protocol::READING_LINK_HINT.id.to_string(),
+            seen: false,
+        },
+    ] {
+        if let Response::Error { message, .. } = client.request(request).await? {
+            anyhow::bail!(message);
+        }
+    }
     Ok(())
 }
 

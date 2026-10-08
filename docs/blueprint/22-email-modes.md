@@ -1033,10 +1033,11 @@ test checks it). A hint shared by two modes has one id and one seen state.
 | `messages.got_it` | Messages | Got it, the first time it has focus or the pointer (TUI: a row whose turn is yours) | "Got it (.) sends a short note that you've seen it and takes them off Your turn." |
 | `archive.record` | Archive | The first record row | "Each row is one order, trip or bill, not an email; o opens the email it came from." |
 | `archive.answer` | Archive | The first answer to a question | "y copies what this answer found; Enter opens the document." |
+| `reading.fading` | Reading | The first Fading band (TUI: its first item) | "These go within a day; b keeps one on Later, which never fades." |
+| `reading.link` | Reading | The first link under a digest | "Each link is its own item; L fetches its article, and only then does mxr contact that site." |
 
-Updates and Reading add their own hints in the phases that ship them, at
-the analogous first-use points (a digest's let go, a pick's keep for
-later).
+Updates adds its own hints in the phase that ships it, at the analogous
+first-use point (a digest's let go).
 
 The topics hint says "yours to answer first" because the daemon orders a
 person's topics by state, your turn first, then by recency
@@ -1772,6 +1773,25 @@ only. Index: section-aware chunks and link items, embedded lazily.
   Repo: `.agents/skills/mxr/SKILL.md`, `docs/web-app.md`.
 - **Tests:** extractor fixtures from real newsletter HTML (low confidence
   falls back to the subject); expiry clamp tests; `e2e/reading.spec.ts`.
+- **As built:** the requests are
+  `GetReadingEdition { mark_visit }`, `GetReadingItem`, `SetReadingLater {
+  dry_run }`, `RecordReadingEngagement`, `FetchArticle`, `SaveHighlight`,
+  `ExportReadingHighlights` and `SetReadingSource`; let go is `SetModeDone {
+  mode: reading, dry_run }` and unsubscribe the existing `UnsubscribePurge {
+  dry_run }`. Extraction lives in `crates/reading` (rules over `scraper`, no
+  model) and fetched articles go through `dom_smoothie`, a maintained
+  Readability.js port on the same HTML stack. Storage is migration 066.
+  Three choices made while building: the unsubscribe evidence counts only
+  issues that arrived after Reading was first opened and only mxr's own
+  engagement, because letting go marks mail read at the provider and the
+  read flag would call a skipped issue opened; expiry writes Reading's done
+  mark and never archives at the provider, as "Expiry lets go in its mode"
+  says; the article fetch refuses loopback, private, link-local and
+  `.local`/`.internal` hosts by name and by every resolved address, pins the
+  connection to the checked address, checks each redirect hop, uses no
+  proxy and stops at 5 MB. Highlights are indexed as their own semantic
+  chunk kind. Section-aware chunks and lazy embedding for whole issues are
+  not built yet.
 
 ### Phase 6: Archive as records with an answer box
 

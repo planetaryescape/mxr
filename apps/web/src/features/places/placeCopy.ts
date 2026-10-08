@@ -55,23 +55,6 @@ export function bundleKey(bundle: Pick<PlaceBundle, "account_id" | "sender_email
   return `${bundle.account_id}|${bundle.sender_email}`;
 }
 
-/** One issue in the Reading feed, with the bundle that says why it is there. */
-export interface ReadingIssue {
-  message: PlaceMessage;
-  bundle: PlaceBundle;
-}
-
-/** Every listed issue across bundles, newest first. */
-export function readingIssues(bundles: readonly PlaceBundle[]): ReadingIssue[] {
-  return bundles
-    .flatMap((bundle) => bundle.messages.map((message) => ({ message, bundle })))
-    .toSorted(
-      (a, b) =>
-        Date.parse(b.message.date) - Date.parse(a.message.date) ||
-        a.message.message_id.localeCompare(b.message.message_id),
-    );
-}
-
 /** "Here because: automated sender, has List-Unsubscribe." */
 export function whyHere(kind: Pick<MailKind, "reason">): string {
   return `Here because: ${kind.reason}.`;

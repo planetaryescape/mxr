@@ -19,6 +19,7 @@ const MAIL_QUERY_ROOTS = new Set([
   "saved-search-counts",
   "now",
   "mode-membership",
+  "reading",
 ]);
 
 /**

@@ -167,8 +167,9 @@ To open on the inbox instead, set **Settings > Appearance > Home** to
 **Inbox**. The arrival-order inbox shows everything.
 
 The sidebar is the rail: Now, Messages, To do, Updates, Reading, Archive,
-then Inbox, each with its `g` key. Messages, Updates and Reading say "early"
-because they are built on the desk, Paper trail and the Reading place. Only Now carries a badge (people whose
+then Inbox, each with its `g` key. Updates says "early" because it is built
+on Paper trail. Reading is the [edition](/guides/reading/), with no count on
+the rail. Only Now carries a badge (people whose
 turn it is and things to act on); To do and Messages show a quiet count.
 Screener, Reply queue, Waiting on, Snoozed and Subscriptions, the folders
 (Starred, Sent, Drafts, All Mail, Spam, Trash) and the rarer lists (Owed

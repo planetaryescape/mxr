@@ -227,6 +227,57 @@ If `opened_count == message_count`, every message in that sender bucket is read
 locally. That can come from the `mxr read` command, another mail client,
 provider-side read state, filters, or bulk mark-read actions.
 
+## Reading edition
+
+`mxr reading --format json` (or `edition --peek --format json`, which
+doesn't count as a visit) prints the edition. Each item is a readable item,
+not a message; its `item_key` feeds `mxr reading open`, `later --add` and
+`let-go`.
+
+```json
+{
+  "header": "Newsletters you chose, as an edition. Read when you like.",
+  "bands": [
+    {
+      "band": "since_last_visit",
+      "label": "Since you were last here",
+      "items": [
+        {
+          "item_key": "0198c2f4-…:0",
+          "kind": "issue",
+          "shape": "single",
+          "title": "The quiet death of the three-pane layout",
+          "standfirst": "Every reader since 2002 shipped the same window…",
+          "source": "Long Reads Weekly",
+          "words": 450,
+          "minutes": 2,
+          "expires_at": "2026-10-21T00:07:00Z",
+          "why": "Here because: has List-Unsubscribe (rule). Fades Tuesday 21 Oct unless you keep it.",
+          "lead": true,
+          "engagement": "you read 8 of 10",
+          "links": [],
+          "on_later": false,
+          "progress": 0.0,
+          "article_cached": false
+        }
+      ]
+    }
+  ],
+  "left_off_here": true,
+  "later_count": 1,
+  "sources": [{ "name": "Growth Digest", "evidence": "You opened 0 of the last 11 issues", "window_days": 14.0, "suggest_unsubscribe": true, "unsubscribe": "one_click" }],
+  "pace_wpm": 250,
+  "pace_measured": true
+}
+```
+
+`band` is `since_last_visit`, `earlier` or `fading`; `shape` is `single`,
+`digest`, `teaser` or `notice`. A digest's links sit in `links`, each with
+its own `item_key`, `domain` and `tracked` (the link goes through a click
+tracker, so `domain` is the tracker's). There is no unread field anywhere
+in Reading. `--format jsonl` prints one item per line and `--format ids`
+the item keys.
+
 ## Mutation dry-run
 
 `--dry-run` on a core mail mutation returns one preview object:

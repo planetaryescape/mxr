@@ -5,8 +5,11 @@ use std::collections::HashMap;
 
 mod messages_demo;
 mod modes_demo;
+mod reading_demo;
 mod records_demo;
 mod todo_demo;
+
+pub use reading_demo::{demo_article_html, DEMO_ARTICLE_WAL};
 
 /// The provider id of the demo's sent message that promises the signed
 /// engagement form, which `mxr demo` keeps as an undated promise. Seeded
@@ -18,6 +21,29 @@ pub fn todo_demo_promise_provider_id() -> String {
         "demo-msg-{}",
         DELIVERY_DEMO_MESSAGE_COUNT + todo_demo::TODO_DEMO_PROMISE_POSITION + 1
     )
+}
+
+fn reading_demo_provider_id(position: usize) -> String {
+    // Reading's mail comes after every other seeded mode's.
+    let first = DELIVERY_DEMO_MESSAGE_COUNT
+        + todo_demo::TODO_DEMO_MESSAGE_COUNT
+        + modes_demo::MODES_DEMO_MESSAGE_COUNT
+        + messages_demo::MESSAGES_DEMO_MESSAGE_COUNT
+        + records_demo::RECORDS_DEMO_MESSAGE_COUNT;
+    format!("demo-msg-{}", first + position + 1)
+}
+
+/// The Reading demo's issues the demo command marks as read to the end.
+pub fn reading_demo_finished_provider_ids() -> Vec<String> {
+    reading_demo::READING_DEMO_FINISHED
+        .map(reading_demo_provider_id)
+        .collect()
+}
+
+/// The digest whose second link (an article the demo serves) the demo
+/// command puts on Later.
+pub fn reading_demo_later_provider_id() -> String {
+    reading_demo_provider_id(reading_demo::READING_DEMO_LATER_DIGEST)
 }
 
 pub const CURATED_DEMO_MESSAGE_COUNT: usize = 50;
@@ -612,6 +638,12 @@ pub(crate) fn demo_message_count_from_env() -> Option<usize> {
     Some(requested.clamp(1, MAX_DEMO_MESSAGE_COUNT))
 }
 
+/// The fake provider serves the generated demo mailbox (`mxr demo`, and
+/// the web app's end-to-end daemon).
+pub fn demo_dataset_active() -> bool {
+    demo_message_count_from_env().is_some()
+}
+
 /// Materialise the whole demo dataset. Only tests want this shape; the
 /// provider streams pages instead.
 #[cfg(test)]
@@ -763,6 +795,7 @@ impl DemoFixtureStream {
                 + modes_demo::MODES_DEMO_MESSAGE_COUNT
                 + messages_demo::MESSAGES_DEMO_MESSAGE_COUNT
                 + records_demo::RECORDS_DEMO_MESSAGE_COUNT
+                + reading_demo::READING_DEMO_MESSAGE_COUNT
         } else {
             0
         };
@@ -871,6 +904,12 @@ impl DemoFixtureStream {
             messages.len() + 1,
         ));
         messages.extend(records_demo::records_demo_messages(
+            &self.account_id,
+            &self.self_addr,
+            self.now,
+            messages.len() + 1,
+        ));
+        messages.extend(reading_demo::reading_demo_messages(
             &self.account_id,
             &self.self_addr,
             self.now,
@@ -2046,6 +2085,25 @@ fn push_msg(
             metadata: Default::default(),
         },
     );
+}
+
+#[cfg(test)]
+mod reading_demo_ids {
+    use super::*;
+
+    #[test]
+    fn the_reading_demo_ids_point_at_reading_mail() {
+        let account = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
+        let stream = DemoFixtureStream::new(&account, 2000);
+        let (envelope, _) = stream
+            .find(&reading_demo_later_provider_id())
+            .expect("the later digest");
+        assert_eq!(envelope.from.email, "links@links.demo.mxr.local");
+        for id in reading_demo_finished_provider_ids() {
+            let (envelope, _) = stream.find(&id).expect("a finished essay");
+            assert_eq!(envelope.from.email, "essays@longreads.demo.mxr.local");
+        }
+    }
 }
 
 #[cfg(test)]

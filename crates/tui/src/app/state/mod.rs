@@ -8,6 +8,7 @@ mod mailbox;
 mod messages;
 mod modals;
 mod now;
+mod reading;
 mod records;
 mod rules;
 mod search;
@@ -50,6 +51,10 @@ pub use modals::{
     UserErrorSeverity, WhoisModalState, SNOOZE_PRESETS, USER_ERROR_LOG_CAPACITY, WARN_STATUS_TTL,
 };
 pub use now::{NowDigestPreview, NowPageState, NowRow};
+pub use reading::{
+    ReadingConfirm, ReadingPageState, ReadingRow, ReadingUnsubscribeTarget, ReadingView,
+    READING_LINKS_SHOWN,
+};
 pub use records::{PassMenu, RecordFixPrompt, RecordsPageState, RECORD_KIND_CHIPS};
 pub use rules::{RuleFormState, RulesPageState, RulesPanel, RulesState};
 pub use search::{

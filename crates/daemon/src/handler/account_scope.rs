@@ -6,7 +6,7 @@
 //! The old hand-kept list ended in `_ => None`, which let every request it
 //! forgot through unchecked.
 
-use super::{records, request_kind, todos};
+use super::{reading, records, request_kind, todos};
 use crate::state::AppState;
 use mxr_config::AgentProfileConfig;
 use mxr_core::id::{AccountId, DeliveryId, DraftId, LabelId, MessageId, ThreadId};
@@ -56,6 +56,8 @@ enum ScopeTarget<'a> {
     Todo(&'a str),
     /// An Archive record id or unique prefix.
     Record(&'a str),
+    /// A Reading item key; it belongs to its message's account.
+    ReadingItem(&'a str),
     Delivery(&'a DeliveryId),
     Commitment(&'a str),
     Decision(&'a str),
@@ -202,7 +204,8 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ListOwedReplies { account_id, .. }
         | Request::MergePeople { account_id, .. }
         | Request::SplitPerson { account_id, .. }
-        | Request::SetSenderKind { account_id, .. } => account(account_id),
+        | Request::SetSenderKind { account_id, .. }
+        | Request::SetReadingSource { account_id, .. } => account(account_id),
 
         // ----- Account config, named by key -----
         Request::AuthorizeAccountConfig { account, .. }
@@ -256,6 +259,24 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::Mutation { mutation, .. } | Request::StartMutationJob { mutation, .. } => {
             messages(mutation_messages(mutation))
         }
+        // With no account these read only the caller's accounts: dispatch
+        // narrows them with `allowed_accounts`, so Reading keeps working
+        // for a scoped agent instead of being denied.
+        Request::GetReadingEdition { account_id, .. }
+        | Request::ExportReadingHighlights { account_id } => match account_id {
+            Some(account_id) => account(account_id),
+            None => Targets(Vec::new()),
+        },
+        Request::GetReadingItem { item_key }
+        | Request::RecordReadingEngagement { item_key, .. }
+        | Request::FetchArticle { item_key, .. }
+        | Request::SaveHighlight { item_key, .. } => Targets(vec![T::ReadingItem(item_key)]),
+        Request::SetReadingLater { item_keys, .. } => Targets(
+            item_keys
+                .iter()
+                .map(|key| T::ReadingItem(key.as_str()))
+                .collect(),
+        ),
         Request::DetectPromises { source, .. } => match source {
             PromiseSourceData::Draft { draft } => Targets(vec![T::DraftBody(draft)]),
             PromiseSourceData::SentMessage { message_id } => Targets(vec![T::Message(message_id)]),
@@ -503,6 +524,11 @@ async fn resolve_targets(
                 }
             }
             T::Message(message_id) => resolved.push(message_account(state, message_id).await?),
+            T::ReadingItem(key) => {
+                let (message_id, _) =
+                    reading::parse_item_key(key).map_err(|error| error.to_string())?;
+                resolved.push(message_account(state, &message_id).await?);
+            }
             T::Thread(thread_id) => thread_ids.push((*thread_id).clone()),
             T::Draft(draft_id) => {
                 let draft = state
@@ -755,6 +781,25 @@ async fn account_id_allowed(
         }
     }
     Ok(false)
+}
+
+/// The enabled accounts a scoped profile may see.
+pub(super) async fn allowed_accounts(
+    state: &AppState,
+    profile: &AgentProfileConfig,
+) -> Result<Vec<AccountId>, String> {
+    let mut allowed = Vec::new();
+    for account in state
+        .store
+        .list_accounts()
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        if account.enabled && account_id_allowed(state, profile, &account.id).await? {
+            allowed.push(account.id);
+        }
+    }
+    Ok(allowed)
 }
 
 fn account_token_allowed(profile: &AgentProfileConfig, token: &str) -> bool {

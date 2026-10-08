@@ -26,6 +26,9 @@ ALLOW = {
     "mxr-protocol": {"mxr-core"},
     "mxr-reader": set(),
     "mxr-records": {"mxr-core", "mxr-reader", "mxr-store", "mxr-todo"},
+    # Reading: extraction, fade and ranking rules, and the guarded article
+    # fetch. Plain data in and out; the daemon owns the store.
+    "mxr-reading": {"mxr-llm", "mxr-reader"},
     "mxr-relationship": {"mxr-core", "mxr-llm", "mxr-reader", "mxr-store"},
     "mxr-rules": {"mxr-core"},
     "mxr-safety": {"mxr-core", "mxr-reader", "mxr-relationship"},

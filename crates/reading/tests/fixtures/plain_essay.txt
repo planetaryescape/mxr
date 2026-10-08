@@ -1,0 +1,17 @@
+Hi there,
+
+I spent the last month moving every machine I own onto one SQLite file per device, and the most surprising part was how little of the work was about SQLite at all. Most of it was about deciding what a device is allowed to forget.
+
+The first week went to the obvious parts: a change log per table, a clock per device and a merge that prefers the later write. That handled ninety percent of the cases and every one of the demos.
+
+The second week went to deletes. A delete is the absence of a row, and an absence does not travel on its own. I tried three designs before settling on tombstones with a window measured in weeks, and I would skip the other two if I did it again.
+
+The third and fourth weeks went to the slowest device in the house, an old tablet that comes online once a fortnight. It found every bug the others had hidden, and it is the reason the window is three weeks, not one.
+
+If you are about to build something like this, start with the tablet.
+
+Thanks for reading,
+Sam
+
+--
+Unsubscribe: https://essays.example.com/unsubscribe

@@ -1129,6 +1129,7 @@ async fn request_unsubscribe_purge(
         account_id,
         dry_run,
         archive_on_no_method,
+        preview_token: None,
     };
     let response = if dry_run {
         client.request(request).await?

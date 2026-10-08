@@ -430,6 +430,7 @@ pub struct AppState {
     pub account_addresses: Arc<mxr_core::types::InMemoryAccountAddressLookup>,
     /// Sweep dry runs waiting to be committed, by preview token.
     pub(crate) sweep_previews: crate::handler::places::SweepPreviews,
+    pub(crate) purge_previews: crate::handler::mutations::PurgePreviews,
     pub(crate) sweep_gate: crate::handler::places::SweepGate,
     /// Conversations waiting for a list-row gist (`GetThreadGists`).
     pub(crate) gist_queue: crate::handler::thread_gists::GistQueue,
@@ -727,6 +728,7 @@ impl AppState {
             sync_engine,
             account_addresses,
             sweep_previews: Default::default(),
+            purge_previews: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
@@ -1859,6 +1861,7 @@ impl AppState {
             sync_engine,
             account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
             sweep_previews: Default::default(),
+            purge_previews: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
@@ -1933,6 +1936,7 @@ impl AppState {
             sync_engine,
             account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
             sweep_previews: Default::default(),
+            purge_previews: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
             runtime: RwLock::new(ProviderRuntime {
@@ -2033,6 +2037,7 @@ impl AppState {
                 sync_engine,
                 account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
                 sweep_previews: Default::default(),
+                purge_previews: Default::default(),
                 sweep_gate: Default::default(),
                 gist_queue: Default::default(),
                 runtime: RwLock::new(ProviderRuntime {

@@ -173,7 +173,7 @@ impl InputHandler {
                 KeyModifiers::NONE,
             ) => {
                 self.state = KeyState::Normal;
-                Some(Action::OpenPlace(mxr_protocol::MailPlaceData::Reading))
+                Some(Action::OpenReading)
             }
             (
                 KeyState::WaitingForSecond { first: 'g', .. },
@@ -456,7 +456,7 @@ mod tests {
         let _ = input.handle_key(key(KeyCode::Char('g')));
         assert_eq!(
             input.handle_key(key(KeyCode::Char('r'))),
-            Some(Action::OpenPlace(mxr_protocol::MailPlaceData::Reading))
+            Some(Action::OpenReading)
         );
         let _ = input.handle_key(key(KeyCode::Char('g')));
         assert_eq!(

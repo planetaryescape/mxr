@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Every highlight as Markdown (the default) or JSON
+
+Usage: mxr reading export [OPTIONS]
+
+Options:
+      --markdown           Markdown, ready for a notes app (the default)
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

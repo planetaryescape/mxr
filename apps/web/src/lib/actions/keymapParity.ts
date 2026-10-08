@@ -18,7 +18,8 @@ export type ParityContext =
   | "todo"
   | "now"
   | "messages"
-  | "archive";
+  | "archive"
+  | "reading";
 
 /** The web scopes live in each context, innermost first. */
 const CONTEXT_SCOPES: Record<ParityContext, ActionScope[]> = {
@@ -30,6 +31,7 @@ const CONTEXT_SCOPES: Record<ParityContext, ActionScope[]> = {
   now: ["now", "global"],
   messages: ["messages", "global"],
   archive: ["archive", "global"],
+  reading: ["reading", "global"],
   // The TUI's screener is a modal that swallows every other key.
   screener: ["screener"],
 };
@@ -61,7 +63,7 @@ export const SAME_ACTION: Record<string, string[]> = {
   "nav.reply-queue": ["OpenReplyQueue"],
   "nav.owed": ["OpenOwedReplies"],
   "nav.invites": ["OpenCalendarInvites"],
-  "nav.reading": ["OpenPlace(Reading)"],
+  "nav.reading": ["OpenReading"],
   "nav.screener": ["OpenScreenerQueue"],
   "nav.tab-mail": ["OpenTab1"],
   "nav.search-page": ["OpenTab2"],
@@ -208,6 +210,18 @@ export const SAME_ACTION: Record<string, string[]> = {
   "archive.export": ["RecordsExport"],
   "archive.make-todo": ["RecordsMakeTodo"],
   "archive.close": ["RecordsBack"],
+  "reading.down": ["MoveDown"],
+  "reading.up": ["MoveUp"],
+  "reading.read": ["ReadingRead"],
+  "reading.article": ["ReadingArticle"],
+  "reading.later": ["ReadingLater"],
+  "reading.let-go": ["ReadingLetGo"],
+  "reading.unsubscribe": ["ReadingUnsubscribe"],
+  "reading.original": ["ReadingOriginal"],
+  "reading.let-go-all": ["ReadingLetGoAll"],
+  "reading.open-email": ["ReadingOpenEmail"],
+  "reading.later-shelf": ["ReadingLaterShelf"],
+  "reading.move-sender": ["OpenSenderKindMenu"],
 };
 
 export interface KeymapDifference {
@@ -486,6 +500,38 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   },
   {
     context: "archive",
+    keys: ["c"],
+    bound: "web",
+    why: "Compose works everywhere on the web; the TUI lens keeps c free",
+  },
+  // Reading.
+  {
+    context: "reading",
+    // prettier-ignore
+    keys: ["G", "g g", "H", "M", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
+    bound: "tui",
+    why: "The TUI lens shares the list's motions and pane keys; the web edition moves with j and k",
+  },
+  {
+    context: "reading",
+    keys: ["i a", "i m", "i d", "i A", "i M", "i D"],
+    bound: "tui",
+    why: "The TUI lens passes invite answers through; the web answers an invite from the reader",
+  },
+  {
+    context: "reading",
+    keys: ["t"],
+    bound: "tui",
+    why: "The TUI makes a to-do from an item's email; on the web, open the email and press t there",
+  },
+  {
+    context: "reading",
+    keys: ["Escape"],
+    bound: "web",
+    why: "Both close the Reading card with Esc; the TUI's keymap probe can't see a key that needs the card on screen",
+  },
+  {
+    context: "reading",
     keys: ["c"],
     bound: "web",
     why: "Compose works everywhere on the web; the TUI lens keeps c free",

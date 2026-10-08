@@ -629,13 +629,31 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     });
   },
 
+  "reading-later": async (page) => {
+    await openApp(page, "/reading");
+    const item = page
+      .getByTestId("reading-item")
+      .filter({ hasNot: page.getByText("On Later") })
+      .first();
+    const key = await item.getAttribute("data-key");
+    if (!key) throw new Error("the demo edition has no item off Later");
+    const saved = page.locator(`[data-testid='reading-item'][data-key='${key}']`).first();
+    await saved.click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press("b");
+    await expectToast(page, "reading-later");
+    await expect(saved.getByText("On Later")).toBeVisible();
+    await page.keyboard.press("u");
+    await expectUndone(page);
+    await expect(saved.getByText("On Later")).toHaveCount(0);
+  },
+
   "move-sender": async (page) => {
     const [bundle] = await placeBundles(page, "reading");
     if (!bundle) throw new Error("the demo has no Reading bundle to move");
     try {
       await openApp(page, "/reading");
       const issue = page.locator(
-        `[data-testid='reading-issue'][data-sender='${bundle.sender_email}']`,
+        `[data-testid='reading-item'][data-sender='${bundle.sender_email}']`,
       );
       await issue.first().click({ position: { x: 5, y: 5 } });
       await page.keyboard.press("K");

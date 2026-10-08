@@ -33,7 +33,7 @@ Browser (apps/web SPA)  ──HTTP+WS──>  bridge (crates/web)  ──Unix so
 | Styling | Tailwind 4 with our own tokens (`styles/tokens.css`) | One token source; shadcn-style components read it |
 | Keyboard | One dispatcher over the action registry (`lib/keys`) | See "Keyboard" |
 | Compose editor | CodeMirror 6 + vim by default, Tiptap opt-in | Vim-first users; Tiptap lazy |
-| HTML mail | DOMPurify, then a sandboxed `srcdoc` iframe | See "Reading" |
+| HTML mail | DOMPurify, then a sandboxed `srcdoc` iframe | See "Reading a conversation" |
 | Charts | No chart library; `BarList` in `features/analytics/analyticsParts.tsx` draws CSS bars | Long labels stay readable and every row is a keyboard drill-down |
 | Distribution | `apps/web/dist` embedded with `include_dir!` behind the `web-ui` feature | One artifact |
 | Responsive floor | 900 px for the desktop shell; under 640 px, five tabs (`components/MobileTabs.tsx`) | Blueprint 22 puts Now and the modes on a phone, inside the five-tab limit |
@@ -199,7 +199,25 @@ for motion), implement the command in the view's controller, done.
 - Unsubscribe-and-archive shows the count from a `dry_run` of the same daemon
   request before it runs.
 
-## Reading
+## Reading mode
+
+- `features/reading/`: the edition (`ReadingRoute.tsx`: bands, You left off
+  here, lead cards, digest links, Later via `?view=later`), the reader
+  (`ReadingReader.tsx`: 66ch column, minutes left, progress line,
+  Issue/Article, `R` original layout through the sanitized message view,
+  engagement every 10 s and on leave, `h` highlights) and the previews
+  (`ReadingDialogs.tsx`: unsubscribe with evidence over the purge dry run,
+  let go of all over the `SetModeDone` dry run, committing the same
+  thread ids). Pure helpers live in `readingView.ts`.
+- The reader renders the daemon's paragraphs as text, never the email's
+  HTML in the app page; the sender's layout stays in the sandboxed iframe.
+- The article is fetched only on `L` or the Article tab, after the toast
+  names the site; `b` on a link saves it and then fetches it so it reads
+  offline.
+- Scopes `reading` and `reading-reader` in `lib/actions`; swipe right is
+  Later and left is let go on phones.
+
+## Reading a conversation
 
 - Read messages collapse to one line; the newest and every unread message start
   open. `J`/`K` move between messages, `o` toggles one, `X` all.

@@ -50,13 +50,14 @@ mod mode_done;
 mod mode_guide;
 mod mode_rules;
 mod modes;
-mod mutations;
+pub(crate) mod mutations;
 mod notifications;
 mod now;
 mod owed;
 pub(crate) mod places;
 mod platform;
 mod promises;
+pub(crate) mod reading;
 pub(crate) mod records;
 mod relationship_profile;
 pub(crate) mod reply_later;
@@ -519,6 +520,9 @@ async fn dispatch(
         return Response::error(message);
     }
 
+    // A scoped profile passed `enforce_client_profile`, so it exists.
+    let scoped_profile = account_scope::profile_name(source)
+        .and_then(|name| config.agent_surfaces.profiles.get(name));
     let result = match req {
         Request::ListEnvelopes {
             label_id,
@@ -1461,6 +1465,19 @@ async fn dispatch(
         } => {
             modes::get_membership(state, message_id.as_ref(), thread_id.as_ref(), thread_ids).await
         }
+        // One boxed call for all of Reading: its arms inline make
+        // `dispatch`'s poll frame big enough to overflow a debug build's
+        // worker stack on deep paths such as a mutation.
+        Request::GetReadingEdition { .. }
+        | Request::GetReadingItem { .. }
+        | Request::SetReadingLater { .. }
+        | Request::RecordReadingEngagement { .. }
+        | Request::FetchArticle { .. }
+        | Request::SaveHighlight { .. }
+        | Request::ExportReadingHighlights { .. }
+        | Request::SetReadingSource { .. } => {
+            Box::pin(reading::handle(state, scoped_profile, req)).await
+        }
         Request::SetModeDone {
             thread_ids,
             mode,
@@ -1646,6 +1663,7 @@ async fn dispatch(
             account_id,
             dry_run,
             archive_on_no_method,
+            preview_token,
         } => {
             mutations::unsubscribe_purge(
                 state,
@@ -1653,6 +1671,7 @@ async fn dispatch(
                 account_id.as_ref(),
                 *dry_run,
                 *archive_on_no_method,
+                preview_token.as_deref(),
             )
             .await
         }
@@ -1661,9 +1680,6 @@ async fn dispatch(
         }
         Request::GetSyncStatus { account_id } => runtime::get_sync_status(state, account_id).await,
     };
-    // A scoped profile passed `enforce_client_profile`, so it exists.
-    let scoped_profile = account_scope::profile_name(source)
-        .and_then(|name| config.agent_surfaces.profiles.get(name));
     let result = match (result, scoped_profile) {
         (Ok(data), Some(profile)) => account_scope::scope_response(state, profile, data)
             .await
@@ -1928,6 +1944,11 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListMessages { .. }
         | Request::GetPerson { .. }
         | Request::ListMergeSuggestions { .. }
+        | Request::GetReadingEdition {
+            mark_visit: false, ..
+        }
+        | Request::GetReadingItem { .. }
+        | Request::ExportReadingHighlights { .. }
         | Request::ListSignatures
         | Request::ListSignatureDefaults
         | Request::ResolveSignature { .. }
@@ -2095,6 +2116,14 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::DismissRecord { .. }
         | Request::FileRecord { .. }
         | Request::SetRecordSender { .. }
+        | Request::GetReadingEdition {
+            mark_visit: true, ..
+        }
+        | Request::SetReadingLater { .. }
+        | Request::RecordReadingEngagement { .. }
+        | Request::FetchArticle { .. }
+        | Request::SaveHighlight { .. }
+        | Request::SetReadingSource { .. }
         | Request::RebuildUserVoice { .. }
         | Request::SetScreenerDecision { .. }
         | Request::ClearScreenerDecision { .. }
@@ -2322,6 +2351,14 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SplitPerson { .. } => "split_person",
         Request::ListMergeSuggestions { .. } => "list_merge_suggestions",
         Request::SetModeDone { .. } => "set_mode_done",
+        Request::GetReadingEdition { .. } => "get_reading_edition",
+        Request::GetReadingItem { .. } => "get_reading_item",
+        Request::SetReadingLater { .. } => "set_reading_later",
+        Request::RecordReadingEngagement { .. } => "record_reading_engagement",
+        Request::FetchArticle { .. } => "fetch_article",
+        Request::SaveHighlight { .. } => "save_highlight",
+        Request::ExportReadingHighlights { .. } => "export_reading_highlights",
+        Request::SetReadingSource { .. } => "set_reading_source",
         Request::ScheduleTodo { .. } => "schedule_todo",
         Request::UpdateTodo { .. } => "update_todo",
         Request::CreateTodo { .. } => "create_todo",
@@ -2417,6 +2454,8 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListMessages { account_id, .. }
         | Request::GetPerson { account_id, .. }
         | Request::ListMergeSuggestions { account_id }
+        | Request::GetReadingEdition { account_id, .. }
+        | Request::ExportReadingHighlights { account_id }
         | Request::SetTodoCatchup { account_id, .. }
         | Request::ListSenders { account_id, .. }
         | Request::ListStorageBreakdown { account_id, .. }
@@ -2450,7 +2489,8 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::RebuildUserVoice { account_id }
         | Request::SetSenderKind { account_id, .. }
         | Request::MergePeople { account_id, .. }
-        | Request::SplitPerson { account_id, .. } => Some(account_id),
+        | Request::SplitPerson { account_id, .. }
+        | Request::SetReadingSource { account_id, .. } => Some(account_id),
         Request::DraftCompose { account_id, .. } => account_id.as_ref(),
         Request::DraftEval { account_id, .. } => account_id.as_ref(),
         Request::SetSignatureDefault { account_id, .. }

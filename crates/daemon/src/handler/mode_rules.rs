@@ -410,17 +410,10 @@ pub(super) fn updates_card_since<Tz: TimeZone>(now: DateTime<Utc>, tz: &Tz) -> D
 
 /// How long a newsletter's issues stay in Reading before they fade: twice
 /// the source's median interval, clamped to 2 to 14 days (blueprint 22,
-/// Reading's rhythm). One issue alone fades at the longest.
-pub(super) fn reading_fade(mut dates: Vec<DateTime<Utc>>) -> Duration {
-    let (shortest, longest) = (Duration::days(2), Duration::days(14));
-    dates.sort_unstable();
-    let mut gaps: Vec<Duration> = dates.windows(2).map(|pair| pair[1] - pair[0]).collect();
-    if gaps.is_empty() {
-        return longest;
-    }
-    gaps.sort_unstable();
-    let median = gaps[gaps.len() / 2];
-    (median * 2).clamp(shortest, longest)
+/// Reading's rhythm). A source with one issue so far fades after a week.
+pub(super) fn reading_fade(dates: Vec<DateTime<Utc>>) -> Duration {
+    // One rule for Now's pick and the edition.
+    mxr_reading::fade::source_window(&dates).window
 }
 
 #[cfg(test)]

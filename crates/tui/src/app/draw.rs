@@ -245,6 +245,17 @@ impl App {
                                 },
                                 theme,
                             );
+                        } else if self.mailbox.mailbox_view == MailboxView::Reading {
+                            ui::reading_lens::draw(
+                                frame,
+                                chunks[1],
+                                &ui::reading_lens::ReadingLensView {
+                                    page: &self.mailbox.reading_page,
+                                    selected_index: self.mailbox.selected_index,
+                                    active_pane: &self.mailbox.active_pane,
+                                },
+                                theme,
+                            );
                         } else if self.mailbox.mailbox_view == MailboxView::Todo {
                             ui::todo_lens::draw(
                                 frame,
@@ -373,6 +384,17 @@ impl App {
                                 chunks[1],
                                 &ui::records_lens::RecordsView {
                                     page: &self.mailbox.records_page,
+                                    selected_index: self.mailbox.selected_index,
+                                    active_pane: &self.mailbox.active_pane,
+                                },
+                                theme,
+                            );
+                        } else if self.mailbox.mailbox_view == MailboxView::Reading {
+                            ui::reading_lens::draw(
+                                frame,
+                                chunks[1],
+                                &ui::reading_lens::ReadingLensView {
+                                    page: &self.mailbox.reading_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                 },

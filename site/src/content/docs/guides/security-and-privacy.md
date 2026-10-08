@@ -22,12 +22,13 @@ Mail syncs from the provider into SQLite on your machine. Search runs against th
 - Provider-side mutations like archive, trash, labels, and spam
 - Browser handoff for HTML or unsubscribe pages when needed
 
-There is no mxr-operated service in that list. Four other things can reach the network, each because you configured or asked for it:
+There is no mxr-operated service in that list. Five other things can reach the network, each because you configured or asked for it:
 
 - The model endpoint under `[llm]`, when you turn model features on and point them at a cloud provider.
 - The semantic search model weights, downloaded once from Hugging Face unless `search.semantic.auto_download_models = false`. Embedding runs on your CPU after that.
 - Remote images in HTML mail, unless `render.html_remote_content = false` (the web app has its own Remote images toggle).
 - The unsubscribe endpoint a sender chose, when you run `mxr unsubscribe`.
+- The site a newsletter links to, when you fetch its article in [Reading](/guides/reading/#fetch-the-linked-article-only-when-you-ask) (`L`, the reader's Article tab, `b` on a link, or `mxr reading open ITEM --article`). The client names the site first. The fetch refuses this machine and private networks by name and by every resolved address, checks each redirect, uses no proxy and stops at 5 MB. Nothing fetches an article on its own.
 
 The daemon also downloads one kind of attachment before you open it: the PDFs of
 emails [Archive](/guides/archive/) filed as records, from your own provider,
@@ -68,6 +69,7 @@ When your provider deletes or expunges a message and mxr syncs that change, the 
 | Semantic chunks and embeddings in the database | The in-memory semantic index until its next rebuild or a daemon restart |
 | The message's link to a delivery | The delivery row itself |
 | The cached triage verdict | Attachment files you opened, under the attachment cache |
+| Reading's items, Later, engagement, fetched articles and highlights | |
 | | Contact records and relationship summaries built from that mail |
 | Every value Archive read from the email; a record left with no source email is deleted, and one with other sources is recomputed from them | Values you typed into a record yourself, on a record that still has another source |
 

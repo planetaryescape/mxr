@@ -23,6 +23,16 @@ mxr subscriptions --rank --format json \
 What you get: the sender, local engagement counts, and method mxr can use
 (`OneClick`, `Mailto`, `HttpLink`, `BodyLink`, or `None`).
 
+## Unsubscribe from Reading with evidence
+
+In [Reading](/guides/reading/#unsubscribe-with-evidence), `D` on an item
+opens this same unsubscribe for its source, with the evidence first: "You
+opened 0 of the last 11 issues", how the sender is told (one click, a page
+or an email) and that it can't be undone from mxr. It runs the dry run
+below before anything is sent. A source that sent eight or more issues you
+never opened gets a quiet "Unsubscribe?" offer on its items.
+`mxr reading sources` prints each source's evidence.
+
 ## What mxr will do
 
 mxr treats unsubscribe as a normal mutation: preview first, then confirm.

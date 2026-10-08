@@ -1075,7 +1075,7 @@ async fn the_mode_guide_serves_to_do_copy_from_one_table() {
     };
     assert_eq!(
         guides.iter().map(|g| g.mode.as_str()).collect::<Vec<_>>(),
-        vec!["now", "messages", "todo", "archive"]
+        vec!["now", "messages", "todo", "reading", "archive"]
     );
     let refused = handle_request(
         &fx.state,

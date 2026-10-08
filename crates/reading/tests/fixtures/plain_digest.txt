@@ -1,0 +1,26 @@
+This week's links
+
+Hello again. Five links this week, mostly about storage engines and one about keyboards, and nothing that takes longer than ten minutes.
+
+1. Local-first mail is having a moment
+https://demo.example.com/articles/local-first?utm_source=plainnews&utm_medium=email
+Three clients that keep your mailbox on your own disk, and why it matters offline.
+
+2. SQLite 3.51 release notes
+https://sqlite.org/releaselog/3_51.html
+Faster JSON and a new pragma for reading the WAL.
+
+3. Terminal workflows that stuck
+https://example.com/terminal-workflows
+A year in the terminal and the tools that survived it.
+
+4. Why sync engines need tombstones (https://example.org/tombstones)
+Deletes are the hard part.
+
+5. A keyboard I can type on for a whole day
+https://keys.example.net/review
+Low profile, quiet, and boring in the best way.
+
+--
+You are receiving this because you subscribed at plainnews.example.
+To unsubscribe, visit https://plainnews.example/unsubscribe?u=1

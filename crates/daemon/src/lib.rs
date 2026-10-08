@@ -433,9 +433,13 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 (None, None) => anyhow::bail!("give a sender's email address"),
             }
         }
-        Some(Command::Reading { args }) => {
+        Some(Command::Reading {
+            action,
+            account,
+            format,
+        }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::places::list(mxr_protocol::MailPlaceData::Reading, args).await?;
+            commands::reading::run(action, account, format).await?;
         }
         Some(Command::PaperTrail { args }) => {
             crate::server::ensure_daemon_running().await?;

@@ -484,7 +484,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         PaletteCommand {
             label: "Reading".into(),
             shortcut: "gr".into(),
-            action: Action::OpenPlace(mxr_protocol::MailPlaceData::Reading),
+            action: Action::OpenReading,
             category: "Navigation".into(),
         },
         PaletteCommand {

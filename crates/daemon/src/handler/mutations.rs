@@ -3842,14 +3842,90 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
     }
 }
 
+/// How long an unsubscribe preview's token stays good.
+const PURGE_PREVIEW_TTL: std::time::Duration = std::time::Duration::from_secs(600);
+const MAX_PURGE_PREVIEWS: usize = 64;
+
+/// One unsubscribe preview: the sender it was for, the mail it listed and
+/// the method it showed.
+struct PurgePreview {
+    scope: (String, Option<mxr_core::AccountId>),
+    message_ids: std::collections::HashSet<mxr_core::MessageId>,
+    method: UnsubscribeMethod,
+    created: std::time::Instant,
+}
+
+/// Unsubscribe previews by token, so a commit acts on exactly what its
+/// preview showed, once.
+#[derive(Default)]
+pub(crate) struct PurgePreviews {
+    entries: parking_lot::Mutex<std::collections::HashMap<String, PurgePreview>>,
+}
+
+impl PurgePreviews {
+    fn insert(&self, preview: PurgePreview) -> String {
+        let token = uuid::Uuid::now_v7().to_string();
+        let mut entries = self.entries.lock();
+        entries.retain(|_, entry| entry.created.elapsed() < PURGE_PREVIEW_TTL);
+        while entries.len() >= MAX_PURGE_PREVIEWS {
+            let Some(oldest) = entries
+                .iter()
+                .min_by_key(|(_, entry)| entry.created)
+                .map(|(token, _)| token.clone())
+            else {
+                break;
+            };
+            entries.remove(&oldest);
+        }
+        entries.insert(token.clone(), preview);
+        token
+    }
+
+    fn take(
+        &self,
+        token: &str,
+        scope: &(String, Option<mxr_core::AccountId>),
+    ) -> Result<PurgePreview, crate::handler::HandlerError> {
+        let mut entries = self.entries.lock();
+        match entries.get(token) {
+            Some(entry) if entry.created.elapsed() >= PURGE_PREVIEW_TTL => {
+                entries.remove(token);
+            }
+            Some(entry) if &entry.scope != scope => {
+                return Err("unsubscribe: that preview was for another sender".into());
+            }
+            Some(_) => {
+                if let Some(entry) = entries.remove(token) {
+                    return Ok(entry);
+                }
+            }
+            None => {}
+        }
+        Err("unsubscribe: that preview expired or was already used; preview again".into())
+    }
+}
+
 pub(super) async fn unsubscribe_purge(
     state: &AppState,
     address: &str,
     account_id: Option<&mxr_core::AccountId>,
     dry_run: bool,
     archive_on_no_method: bool,
+    preview_token: Option<&str>,
 ) -> HandlerResult {
-    let selection = select_sender_footprint(state, address, account_id).await?;
+    let mut selection = select_sender_footprint(state, address, account_id).await?;
+    let scope = (selection.address.clone(), account_id.cloned());
+    // Committing a preview: only the mail it listed, and only if the
+    // sender still offers the method it showed.
+    let previewed = match (dry_run, preview_token) {
+        (false, Some(token)) => Some(state.purge_previews.take(token, &scope)?),
+        _ => None,
+    };
+    if let Some(previewed) = &previewed {
+        selection
+            .envelopes
+            .retain(|envelope| previewed.message_ids.contains(&envelope.id));
+    }
     let method_envelope = selection
         .envelopes
         .iter()
@@ -3858,6 +3934,15 @@ pub(super) async fn unsubscribe_purge(
     let method = method_envelope.map_or(UnsubscribeMethod::None, |envelope| {
         envelope.unsubscribe.clone()
     });
+    if previewed
+        .as_ref()
+        .is_some_and(|previewed| previewed.method != method)
+    {
+        return Err(
+            "unsubscribe: the sender's unsubscribe method changed since the preview; preview again"
+                .into(),
+        );
+    }
     let message_ids: Vec<_> = selection
         .envelopes
         .iter()
@@ -3865,6 +3950,12 @@ pub(super) async fn unsubscribe_purge(
         .collect();
 
     if dry_run {
+        let preview_token = Some(state.purge_previews.insert(PurgePreview {
+            scope,
+            message_ids: message_ids.iter().cloned().collect(),
+            method: method.clone(),
+            created: std::time::Instant::now(),
+        }));
         return Ok(ResponseData::UnsubscribePurgeResult {
             result: UnsubscribePurgeResultData {
                 address: selection.address,
@@ -3878,6 +3969,7 @@ pub(super) async fn unsubscribe_purge(
                 message_ids,
                 mutation_id: None,
                 error: None,
+                preview_token,
             },
         });
     }
@@ -3896,6 +3988,7 @@ pub(super) async fn unsubscribe_purge(
                 message_ids,
                 mutation_id: None,
                 error: Some("No messages matched this sender".to_string()),
+                preview_token: None,
             },
         });
     }
@@ -3920,6 +4013,7 @@ pub(super) async fn unsubscribe_purge(
                     message_ids,
                     mutation_id: None,
                     error: Some("No unsubscribe method available; rerun with archive-on-no-method to clear the footprint".into()),
+                    preview_token: None,
                 },
             });
         }
@@ -3938,6 +4032,7 @@ pub(super) async fn unsubscribe_purge(
                     message_ids,
                     mutation_id: None,
                     error: Some(err.to_string()),
+                    preview_token: None,
                 },
             });
         }
@@ -3969,6 +4064,7 @@ pub(super) async fn unsubscribe_purge(
             message_ids,
             mutation_id,
             error,
+            preview_token: None,
         },
     })
 }

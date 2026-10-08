@@ -2,15 +2,22 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Reading: newsletters and lists in your inbox, grouped by sender, each with the reason it is here. Nothing here counts as unread
+Reading: newsletters you chose, as an edition. Read when you like. Newest since your last visit first, the sources you read most on top, and nothing owed: items fade unless you keep them on Later
 
-Usage: mxr reading [OPTIONS]
+Usage: mxr reading [OPTIONS] [COMMAND]
+
+Commands:
+  edition    The edition (the default): since your last visit, earlier this week and fading, with the Later shelf's count
+  later      The Later shelf, or put items on it and take them off. Later never fades
+  open       Read one item: the issue as reader text, or with --article the article it links to. --article contacts the article's site (named first) unless a copy is saved
+  let-go     Let go of items in Reading, or of everything in the edition with --all. Preview with --dry-run; `mxr undo` reverses it
+  highlight  Save a passage from an item as a highlight
+  export     Every highlight as Markdown (the default) or JSON
+  sources    Every source in Reading, best read first, with its fade window and the evidence for unsubscribing
+  senders    Reading's inbox mail grouped by sender, as before the edition
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
-      --account <ACCOUNT>    Limit to one account; the default covers every account
-      --sender <SENDER>      Only this sender's bundle
-      --limit <LIMIT>        Bundles to show [default: 50]
-      --offset <OFFSET>      Bundles to skip, for paging [default: 0]
-      --messages <MESSAGES>  Messages listed per bundle; counts always cover the whole bundle [default: 3]
-      --format <FORMAT>      [possible values: table, json, jsonl, csv, ids]
-  -h, --help                 Print help
+      --account <ACCOUNT>  Limit to one account; the default covers every account
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

@@ -59,6 +59,7 @@ import { Route as UpdatesThreadIdRouteImport } from './routes/updates.$threadId'
 import { Route as MMailboxThreadIdRouteImport } from './routes/m.$mailbox.$threadId'
 import { Route as MLabelNameRouteImport } from './routes/m.label.$name'
 import { Route as MSavedSlugRouteImport } from './routes/m.saved.$slug'
+import { Route as ReadingItemItemKeyRouteImport } from './routes/reading.item.$itemKey'
 import { Route as MLabelNameThreadIdRouteImport } from './routes/m.label.$name.$threadId'
 import { Route as MSavedSlugThreadIdRouteImport } from './routes/m.saved.$slug.$threadId'
 
@@ -312,6 +313,11 @@ const MSavedSlugRoute = MSavedSlugRouteImport.update({
   path: '/m/saved/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReadingItemItemKeyRoute = ReadingItemItemKeyRouteImport.update({
+  id: '/item/$itemKey',
+  path: '/item/$itemKey',
+  getParentRoute: () => ReadingRoute,
+} as any)
 const MLabelNameThreadIdRoute = MLabelNameThreadIdRouteImport.update({
   id: '/$threadId',
   path: '/$threadId',
@@ -374,6 +380,7 @@ export interface FileRoutesByFullPath {
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRouteWithChildren
   '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
+  '/reading/item/$itemKey': typeof ReadingItemItemKeyRoute
   '/m/label/$name/$threadId': typeof MLabelNameThreadIdRoute
   '/m/saved/$slug/$threadId': typeof MSavedSlugThreadIdRoute
 }
@@ -428,6 +435,7 @@ export interface FileRoutesByTo {
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRouteWithChildren
   '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
+  '/reading/item/$itemKey': typeof ReadingItemItemKeyRoute
   '/m/label/$name/$threadId': typeof MLabelNameThreadIdRoute
   '/m/saved/$slug/$threadId': typeof MSavedSlugThreadIdRoute
 }
@@ -483,6 +491,7 @@ export interface FileRoutesById {
   '/m/$mailbox/$threadId': typeof MMailboxThreadIdRoute
   '/m/label/$name': typeof MLabelNameRouteWithChildren
   '/m/saved/$slug': typeof MSavedSlugRouteWithChildren
+  '/reading/item/$itemKey': typeof ReadingItemItemKeyRoute
   '/m/label/$name/$threadId': typeof MLabelNameThreadIdRoute
   '/m/saved/$slug/$threadId': typeof MSavedSlugThreadIdRoute
 }
@@ -539,6 +548,7 @@ export interface FileRouteTypes {
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
+    | '/reading/item/$itemKey'
     | '/m/label/$name/$threadId'
     | '/m/saved/$slug/$threadId'
   fileRoutesByTo: FileRoutesByTo
@@ -593,6 +603,7 @@ export interface FileRouteTypes {
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
+    | '/reading/item/$itemKey'
     | '/m/label/$name/$threadId'
     | '/m/saved/$slug/$threadId'
   id:
@@ -647,6 +658,7 @@ export interface FileRouteTypes {
     | '/m/$mailbox/$threadId'
     | '/m/label/$name'
     | '/m/saved/$slug'
+    | '/reading/item/$itemKey'
     | '/m/label/$name/$threadId'
     | '/m/saved/$slug/$threadId'
   fileRoutesById: FileRoutesById
@@ -1041,6 +1053,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MSavedSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/reading/item/$itemKey': {
+      id: '/reading/item/$itemKey'
+      path: '/item/$itemKey'
+      fullPath: '/reading/item/$itemKey'
+      preLoaderRoute: typeof ReadingItemItemKeyRouteImport
+      parentRoute: typeof ReadingRoute
+    }
     '/m/label/$name/$threadId': {
       id: '/m/label/$name/$threadId'
       path: '/$threadId'
@@ -1139,10 +1158,12 @@ const PaperTrailRouteWithChildren = PaperTrailRoute._addFileChildren(
 
 interface ReadingRouteChildren {
   ReadingThreadIdRoute: typeof ReadingThreadIdRoute
+  ReadingItemItemKeyRoute: typeof ReadingItemItemKeyRoute
 }
 
 const ReadingRouteChildren: ReadingRouteChildren = {
   ReadingThreadIdRoute: ReadingThreadIdRoute,
+  ReadingItemItemKeyRoute: ReadingItemItemKeyRoute,
 }
 
 const ReadingRouteWithChildren =

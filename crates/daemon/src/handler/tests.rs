@@ -633,6 +633,18 @@ fn classify_request_keeps_send_and_destructive_gates() {
         assert!(!request_is_read_only(req), "{} not read", request_kind(req));
     }
 
+    // Looking at Reading is a read; opening it writes the visit.
+    assert!(request_is_read_only(&Request::GetReadingEdition {
+        account_id: None,
+        mark_visit: false,
+    }));
+    let visit = Request::GetReadingEdition {
+        account_id: None,
+        mark_visit: true,
+    };
+    assert_eq!(classify_request(&visit), RequestClass::Mutate);
+    assert!(!request_is_read_only(&visit));
+
     // A GET of remote HTML image assets does remote egress
     // (tracking-pixel risk) and must NOT be read-only.
     assert!(!request_is_read_only(&Request::GetHtmlImageAssets {
@@ -696,6 +708,7 @@ mod now;
 mod owed;
 mod places;
 mod platform_and_export;
+mod reading;
 mod records;
 mod routing_and_search;
 mod stars;

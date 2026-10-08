@@ -322,7 +322,7 @@ export const navigationActions: Action[] = [
   {
     id: "nav.reading",
     label: "Reading",
-    description: "Newsletters and lists, open as a feed; nothing here counts as unread",
+    description: "Newsletters you chose, as an edition; nothing here is owed",
     group: "Triage",
     icon: Newspaper,
     shortcut: "g r",

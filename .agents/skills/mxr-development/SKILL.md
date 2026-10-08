@@ -78,6 +78,8 @@ CI is the workspace gate. Every PR runs Check, Clippy, Rustdoc, Test (nextest, w
 
 Then push and read the PR checks. If one is red, reproduce that one failure with `-p <crate>`, fix, push again.
 
+**Open the PR as a draft while iterating.** `Test (fast / no semantic)`, `Test (semantic-local)` and `Web E2E` skip on draft PR pushes (they still run on every push to `main` and on `workflow_dispatch`); every other check still runs on each push, so you still get fast fmt/clippy/type feedback. Each of those three is the most expensive job in the matrix, and re-running the full set on every rebase/fixup push during iteration is most of the Blacksmith bill. Mark the PR ready for review (`gh pr ready <N>`) once it's genuinely final, which triggers the full suite once before merge; merge once it's green. If a fix is still needed after marking ready, push it and expect one more full run — that's expected and fine, just don't flip ready back and forth to dodge the gate.
+
 ## Release shorthand
 
 Releases go through release-please. `ship it` means run the whole chain below, including merging the release PR, so the manifest, `Cargo.toml`, `CHANGELOG.md` and tags never drift. Never create, push or move a `v*` tag by hand; never overwrite a tag or GitHub release. The flow is built so the laptop never rebuilds what CI already built.

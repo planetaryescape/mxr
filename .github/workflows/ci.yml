@@ -228,7 +228,11 @@ jobs:
     name: Test (fast / no semantic)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
+    # Full workspace test run. On a PR, skip it while the PR is a draft —
+    # draft pushes still get the cheap jobs (fmt/clippy/check/etc.) on every
+    # push; this one is expensive enough that it should run once near the
+    # end of iteration (mark the PR ready), not on every rebase/fixup push.
+    if: (needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -241,7 +245,8 @@ jobs:
     name: Test (semantic-local)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
+    # See the draft-skip note on the `test` job above.
+    if: (needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -302,7 +307,10 @@ jobs:
     name: Web E2E
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
-    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true'
+    # See the draft-skip note on the `test` job above — this is the single
+    # most expensive job in the matrix (full Playwright suite plus the
+    # production-build speed gate), so it's the main target of that gate.
+    if: (needs.changes.outputs.web == 'true' || needs.changes.outputs.expensive == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     # The suite runs serially against one daemon (~4 min locally, plus
     # retries on CI), on top of the cargo build.
     timeout-minutes: 40

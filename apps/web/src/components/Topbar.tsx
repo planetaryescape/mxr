@@ -80,7 +80,6 @@ function useBreadcrumb(path: string, search: string): Crumb[] {
     .split("/")
     .filter(Boolean)
     .map((part) => decodeURIComponent(part));
-  if (unmatched) return [{ label: "Not found" }];
   const openThreadId = threadIdInPath(parts);
   // Passive observer: the reader fetches; the crumb updates when it lands.
   const thread = useQuery({
@@ -88,6 +87,7 @@ function useBreadcrumb(path: string, search: string): Crumb[] {
     queryFn: () => fetchThread(openThreadId ?? ""),
     enabled: false,
   });
+  if (unmatched) return [{ label: "Not found" }];
   const subject = thread.data?.thread.subject || "Conversation";
   if (parts[0] === "m") {
     const lenses = lensesFromShell(shell.data);

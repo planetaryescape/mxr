@@ -40,6 +40,7 @@ describe("TodoRow", () => {
     expect(row).toHaveTextContent("Camden Council");
     expect(view.getByTestId("todo-amount")).toHaveTextContent("£142.00");
     expect(view.getByTestId("todo-when")).toHaveTextContent("act by Wed 7 Oct · due Fri 9 Oct");
+    expect(view.getByTestId("todo-arrived")).toHaveAttribute("dateTime", "2026-10-02T09:00:00Z");
     expect(view.getByTestId("runway-bar")).toHaveAttribute("data-fill", "0.60");
     expect(view.getByTestId("todo-why")).toHaveTextContent('"payment due 9 October"');
     const button = view.getByTestId("todo-action");
@@ -50,6 +51,11 @@ describe("TodoRow", () => {
     ).toHaveLength(1);
     fireEvent.click(button);
     expect(props.onPrimary).toHaveBeenCalledWith(props.todo);
+  });
+
+  test("a manually added row with no source email shows no arrived date", () => {
+    const { row } = renderRow(todoFixture({ source_date: null }));
+    expect(within(row).queryByTestId("todo-arrived")).toBeNull();
   });
 
   test("a row about a link renders no outside link to click", () => {

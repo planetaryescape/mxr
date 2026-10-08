@@ -143,6 +143,27 @@ export function AppShell() {
   const mountHelp = useOnceTrue(helpOpen);
   const mountPromises = useOnceTrue(promiseOffered);
 
+  // With no account, every mail action fails ("No runtime account
+  // configured"), so the shell offers only the way to add one. Hooks stay
+  // above this return; the help dialog still opens on `?`.
+  if (accounts.data?.accounts.length === 0) {
+    return (
+      <div className="flex h-dvh min-h-0 flex-col bg-background">
+        <header className="flex h-12 shrink-0 items-center border-b border-border px-6">
+          <span className="font-mono text-sm font-semibold">mxr</span>
+        </header>
+        <main id="main" className="flex min-h-0 flex-1 flex-col">
+          <ErrorBoundary resetKey={path}>
+            <Outlet />
+          </ErrorBoundary>
+        </main>
+        <Suspense fallback={null}>
+          {mountHelp ? <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} /> : null}
+        </Suspense>
+      </div>
+    );
+  }
+
   return (
     <>
       <a

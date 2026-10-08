@@ -1,5 +1,7 @@
-//! Archive's subscriptions: IPC, the signals on Now and Archive, and the
-//! renewal to-do a yearly subscription leaves in To do.
+//! Archive's subscriptions: IPC and the signals on Now and Archive. A
+//! price change, a missed charge and a yearly renewal within its lead
+//! time are all suggestions on the same surface; none of them ever files
+//! a to-do on its own.
 //!
 //! Detection lives in `mxr_records::subscriptions` and runs over the
 //! records on every call, so nothing here stores state: correcting a
@@ -28,7 +30,7 @@ pub(super) async fn list(state: &AppState, account_id: Option<&AccountId>) -> Ha
     let accounts = scoped_accounts(state, account_id).await?;
     let started = std::time::Instant::now();
     let loaded = load(state, &accounts, now).await?;
-    let data = to_data(state, &loaded).await?;
+    let data = to_data(state, &loaded, now).await?;
     tracing::debug!(
         subscriptions = data.subscriptions.len(),
         elapsed_ms = started.elapsed().as_secs_f64() * 1000.0,
@@ -52,8 +54,10 @@ async fn load(
 async fn to_data(
     state: &AppState,
     loaded: &Loaded,
+    now: DateTime<Utc>,
 ) -> Result<RecordSubscriptionsData, HandlerError> {
     let found = &loaded.detection.subscriptions;
+    let today = subscriptions::local_day(now, &Local);
     // The first and newest charge's records give the fields their
     // provenance: where the amount, the issuer and the dates were read.
     let mut ids: Vec<String> = Vec::new();
@@ -110,7 +114,7 @@ async fn to_data(
                 currency,
             })
             .collect(),
-        signals: signal_data(found),
+        signals: signal_data(found, today),
         subscriptions: rows,
         live: count(live),
         ended: count(ended),
@@ -348,9 +352,9 @@ fn fields(
     out
 }
 
-fn signal_data(found: &[Subscription]) -> Vec<RecordSubscriptionSignalData> {
+fn signal_data(found: &[Subscription], today: NaiveDate) -> Vec<RecordSubscriptionSignalData> {
     let by_id: HashMap<&str, &Subscription> = found.iter().map(|s| (s.id.as_str(), s)).collect();
-    subscriptions::signals(found)
+    subscriptions::signals(found, today)
         .into_iter()
         .filter_map(|signal| {
             let (kind, id, at, label) = match &signal {
@@ -395,6 +399,22 @@ fn signal_data(found: &[Subscription]) -> Vec<RecordSubscriptionSignalData> {
                         ),
                     )
                 }
+                Signal::RenewalApproaching {
+                    subscription_id,
+                    due,
+                } => {
+                    let subscription = by_id.get(subscription_id.as_str())?;
+                    (
+                        "renewal_approaching",
+                        subscription_id,
+                        *due,
+                        format!(
+                            "{} renews around {}",
+                            subscription.title(),
+                            due.format("%-d %b")
+                        ),
+                    )
+                }
             };
             let subscription = by_id.get(id.as_str())?;
             Some(RecordSubscriptionSignalData {
@@ -409,15 +429,16 @@ fn signal_data(found: &[Subscription]) -> Vec<RecordSubscriptionSignalData> {
 }
 
 /// The signals as lines for Now and Archive's strip, until Updates' Needs
-/// a look is there to take them: a price change or a missed charge reads
-/// as a moment of its own.
+/// a look is there to take them: a price change, a missed charge or an
+/// approaching yearly renewal each read as a moment of their own.
 pub(super) async fn signal_moments(
     state: &AppState,
     accounts: &[AccountId],
     now: DateTime<Utc>,
 ) -> Result<Vec<RecordMomentData>, HandlerError> {
     let loaded = load(state, accounts, now).await?;
-    Ok(signal_data(&loaded.detection.subscriptions)
+    let today = subscriptions::local_day(now, &Local);
+    Ok(signal_data(&loaded.detection.subscriptions, today)
         .into_iter()
         .map(|signal| RecordMomentData {
             kind: signal.kind,
@@ -427,23 +448,4 @@ pub(super) async fn signal_moments(
             label: signal.label,
         })
         .collect())
-}
-
-/// The renewal to-do of each yearly subscription whose next charge is
-/// within To do's lead time. Runs on the records tick.
-pub(crate) async fn file_renewals(
-    state: &AppState,
-    now: DateTime<Utc>,
-) -> Result<u32, HandlerError> {
-    let accounts = scoped_accounts(state, None).await?;
-    let loaded = load(state, &accounts, now).await?;
-    subscriptions::file_renewals(
-        &state.store,
-        &loaded,
-        now,
-        &Local,
-        state.snooze_time_prefs().morning_hour,
-    )
-    .await
-    .map_err(|error| HandlerError::Message(error.to_string()))
 }

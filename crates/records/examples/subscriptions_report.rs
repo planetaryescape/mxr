@@ -68,9 +68,10 @@ async fn main() -> anyhow::Result<()> {
         "price changes: {changes} across {} subscriptions",
         found.iter().filter(|s| !s.price_changes.is_empty()).count()
     );
-    let signals = subscriptions::signals(found);
+    let today = subscriptions::local_day(now, &chrono::Local);
+    let signals = subscriptions::signals(found, today);
     println!(
-        "signals now: {} price changes, {} missed charges",
+        "signals now: {} price changes, {} missed charges, {} renewals approaching",
         signals
             .iter()
             .filter(|s| matches!(s, subscriptions::Signal::PriceChange { .. }))
@@ -78,6 +79,10 @@ async fn main() -> anyhow::Result<()> {
         signals
             .iter()
             .filter(|s| matches!(s, subscriptions::Signal::MissedCharge { .. }))
+            .count(),
+        signals
+            .iter()
+            .filter(|s| matches!(s, subscriptions::Signal::RenewalApproaching { .. }))
             .count()
     );
     let one_offs: usize = loaded.detection.one_offs.values().map(Vec::len).sum();

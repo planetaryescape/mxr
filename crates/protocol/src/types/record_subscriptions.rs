@@ -117,18 +117,21 @@ pub struct RecordSubscriptionTotalData {
 }
 
 /// Something about a subscription worth a look: a price change on the
-/// newest charge, or an expected charge that didn't come.
+/// newest charge, an expected charge that didn't come, or a yearly
+/// subscription's next charge within its lead time. A suggestion only;
+/// nothing here is ever filed as a to-do.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RecordSubscriptionSignalData {
-    /// price_change | missed_charge
+    /// price_change | missed_charge | renewal_approaching
     pub kind: String,
     pub subscription_id: String,
     /// The newest charge's record.
     pub record_id: String,
     pub at: chrono::DateTime<chrono::Utc>,
     /// "Netflix went up from £10.99 to £12.99 on 10 May",
-    /// "No Spotify Premium charge since 3 Apr; expected around 3 May".
+    /// "No Spotify Premium charge since 3 Apr; expected around 3 May",
+    /// "Admiral renews around 24 Oct".
     pub label: String,
 }
 

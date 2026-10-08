@@ -23,7 +23,6 @@
 
 mod load;
 pub mod product;
-mod renewal;
 
 use crate::fields::day_at;
 use crate::RecordKind;
@@ -32,7 +31,6 @@ use std::collections::BTreeMap;
 
 pub use load::{load, Loaded};
 pub use product::is_cancellation;
-pub use renewal::{file_renewals, renewal_key};
 
 /// One receipt or invoice, as detection reads it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -871,6 +869,10 @@ fn set_status(subscription: &mut Subscription, today: NaiveDate) {
     }
 }
 
+/// How long before a yearly subscription's next charge it is worth a
+/// look: the lead time a renewal email would typically give.
+const RENEWAL_LEAD_DAYS: i64 = 14;
+
 /// Something about a subscription worth a look.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Signal {
@@ -884,11 +886,19 @@ pub enum Signal {
         subscription_id: String,
         expected: NaiveDate,
     },
+    /// A yearly subscription's next charge is within the lead time: worth
+    /// comparing quotes before it renews. A suggestion only; nothing
+    /// files a to-do from it.
+    RenewalApproaching {
+        subscription_id: String,
+        due: NaiveDate,
+    },
 }
 
 /// Signals for live subscriptions: a price change while the newest charge
-/// carries it, a missed charge while it is overdue.
-pub fn signals(subscriptions: &[Subscription]) -> Vec<Signal> {
+/// carries it, a missed charge while it is overdue, a yearly renewal
+/// within its lead time.
+pub fn signals(subscriptions: &[Subscription], today: NaiveDate) -> Vec<Signal> {
     let mut out = Vec::new();
     for subscription in subscriptions {
         if subscription.status == Status::Ended {
@@ -912,6 +922,16 @@ pub fn signals(subscriptions: &[Subscription]) -> Vec<Signal> {
                 subscription_id: subscription.id.clone(),
                 expected,
             });
+        }
+        if let (Status::Active, Cadence::Yearly, Some(due)) =
+            (subscription.status, subscription.cadence, subscription.next_expected)
+        {
+            if (due - today).num_days() <= RENEWAL_LEAD_DAYS {
+                out.push(Signal::RenewalApproaching {
+                    subscription_id: subscription.id.clone(),
+                    due,
+                });
+            }
         }
     }
     out

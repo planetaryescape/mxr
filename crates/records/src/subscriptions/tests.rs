@@ -134,12 +134,12 @@ fn a_price_change_that_sticks_is_kept_with_its_date_and_signalled() {
         }]
     );
     // The newest charge is at the old new price by now: no signal.
-    assert!(signals(&found.subscriptions).is_empty());
+    assert!(signals(&found.subscriptions, day(2025, 6, 15)).is_empty());
 
     // On the first charge at the new price, it is a signal.
     let found = run(&inputs[..5], day(2025, 5, 12));
     assert!(matches!(
-        signals(&found.subscriptions).as_slice(),
+        signals(&found.subscriptions, day(2025, 5, 12)).as_slice(),
         [Signal::PriceChange { change, .. }] if change.to_minor == 1299
     ));
 }
@@ -155,13 +155,38 @@ fn a_missed_charge_is_overdue_after_the_grace_period_and_ended_after_two() {
     let overdue = run(&inputs, day(2025, 5, 12));
     assert_eq!(overdue.subscriptions[0].status, Status::Overdue);
     assert!(matches!(
-        signals(&overdue.subscriptions).as_slice(),
+        signals(&overdue.subscriptions, day(2025, 5, 12)).as_slice(),
         [Signal::MissedCharge { expected, .. }] if *expected == day(2025, 5, 3)
     ));
     let ended = run(&inputs, day(2025, 6, 12));
     assert_eq!(ended.subscriptions[0].status, Status::Ended);
     assert_eq!(ended.subscriptions[0].next_expected, None);
-    assert!(signals(&ended.subscriptions).is_empty());
+    assert!(signals(&ended.subscriptions, day(2025, 6, 12)).is_empty());
+}
+
+#[test]
+fn a_yearly_subscriptions_next_charge_within_two_weeks_is_a_renewal_signal() {
+    let inputs = [
+        charge("y1", "Admiral", "Admiral receipt", 41_200, day(2023, 10, 26)),
+        charge("y2", "Admiral", "Admiral receipt", 41_200, day(2024, 10, 24)),
+    ];
+    // Due 24 Oct 2025; two weeks out is 10 Oct.
+    let found = run(&inputs, day(2025, 10, 12));
+    assert_eq!(found.subscriptions[0].next_expected, Some(day(2025, 10, 24)));
+    assert!(matches!(
+        signals(&found.subscriptions, day(2025, 10, 12)).as_slice(),
+        [Signal::RenewalApproaching { due, .. }] if *due == day(2025, 10, 24)
+    ));
+}
+
+#[test]
+fn a_yearly_subscriptions_next_charge_months_away_is_not_yet_a_signal() {
+    let inputs = [
+        charge("y1", "Admiral", "Admiral receipt", 41_200, day(2023, 10, 26)),
+        charge("y2", "Admiral", "Admiral receipt", 41_200, day(2024, 10, 24)),
+    ];
+    let found = run(&inputs, day(2025, 3, 1));
+    assert!(signals(&found.subscriptions, day(2025, 3, 1)).is_empty());
 }
 
 #[test]

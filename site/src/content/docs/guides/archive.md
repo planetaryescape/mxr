@@ -226,10 +226,11 @@ SUBSCRIPTIONS_EXAMPLE
 A subscription is active while its charges keep coming, overdue once the
 expected charge is a grace period late (a week for monthly), and ended
 after two missed charges or a cancellation email from the same sender. A
-price change on the newest charge and a missed charge show in Archive's
-Coming up strip and on Now. When a yearly subscription is two weeks from
-renewing, a renewal to-do appears in [To do](/guides/todo/), the same as a
-renewal email would make.
+price change on the newest charge, a missed charge, and a yearly
+subscription two weeks from renewing each show as a suggestion in
+Archive's Coming up strip and on Now, worked out from the charge dates
+alone. None of them files a to-do on its own; press `t` on the record
+when one needs doing.
 
 Totals are per currency, never converted; the month is the year over
 twelve. Every field says where it came from: the amount and dates keep the

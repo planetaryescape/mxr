@@ -319,8 +319,9 @@ pub struct RecordFacetsData {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RecordMomentData {
     /// trip | booking | ticket | return_window | warranty, or a
-    /// subscription's price_change | missed_charge (then `group_id` is the
-    /// subscription's id and `record_id` its newest charge).
+    /// subscription's price_change | missed_charge | renewal_approaching
+    /// (then `group_id` is the subscription's id and `record_id` its
+    /// newest charge).
     pub kind: String,
     pub record_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

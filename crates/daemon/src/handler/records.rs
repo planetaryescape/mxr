@@ -104,8 +104,7 @@ async fn reindex_record_sources(state: &AppState, message_ids: &[MessageId]) {
 }
 
 /// One background tick: advance each account's first run, file delivered
-/// orders, add yearly subscriptions' renewal to-dos, then prefetch record
-/// PDFs within the budget. Returns whether a
+/// orders, then prefetch record PDFs within the budget. Returns whether a
 /// first run is still going, so the loop can come back sooner.
 pub(crate) async fn tick(state: &AppState, now: DateTime<Utc>) -> Result<bool, HandlerError> {
     if !enabled(state) {
@@ -132,11 +131,6 @@ pub(crate) async fn tick(state: &AppState, now: DateTime<Utc>) -> Result<bool, H
                 .await
                 .map_err(|error| HandlerError::Message(error.to_string()))?;
         }
-    }
-    match super::record_subscriptions::file_renewals(state, now).await {
-        Ok(0) => {}
-        Ok(written) => tracing::debug!(written, "subscription renewals filed in To do"),
-        Err(error) => tracing::warn!(%error, "filing subscription renewals failed"),
     }
     prefetch_pdfs(state).await;
     Ok(in_progress)

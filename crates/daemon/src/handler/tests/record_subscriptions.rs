@@ -1,6 +1,7 @@
 //! Subscriptions over the daemon: detection from filed receipts, field
 //! provenance, totals per currency, the signals on Now and Archive, a
-//! cancellation email, and the renewal to-do a yearly charge leaves.
+//! cancellation email, and an approaching yearly renewal (a suggestion
+//! only; nothing files a to-do from it).
 
 use super::desk::{request, Fixture};
 use super::records::put;
@@ -242,10 +243,10 @@ async fn a_cancellation_email_from_the_same_sender_ends_it() {
 }
 
 #[tokio::test]
-async fn a_yearly_charge_due_soon_leaves_one_renewal_to_do() {
+async fn a_yearly_charge_due_soon_is_a_renewal_signal_not_a_to_do() {
     let fx = Fixture::new().await;
     // Last charged 357 days ago: the next is due in about a week, inside
-    // To do's 14 days for a renewal.
+    // the renewal signal's 14-day lead time.
     let ids = receipts(
         &fx,
         ("Admiral", "noreply@admiral.com"),
@@ -258,39 +259,26 @@ async fn a_yearly_charge_due_soon_leaves_one_renewal_to_do() {
     let data = subscriptions(&fx).await;
     assert_eq!(data.subscriptions[0].cadence, "yearly");
     assert!(!data.subscriptions[0].confirmed);
+    assert_eq!(data.signals.len(), 1);
+    assert_eq!(data.signals[0].kind, "renewal_approaching");
+    assert!(
+        data.signals[0].label.starts_with("Admiral renews around "),
+        "{}",
+        data.signals[0].label
+    );
 
-    let now = Utc::now();
-    let written = crate::handler::record_subscriptions::file_renewals(&fx.state, now)
-        .await
-        .expect("renewals");
-    assert_eq!(written, 1);
-    let again = crate::handler::record_subscriptions::file_renewals(&fx.state, now)
-        .await
-        .expect("renewals again");
-    assert_eq!(again, 0, "one to-do per renewal, never two");
-
+    // A suggestion only: nothing is ever filed as a to-do from it.
     let todos = fx
         .state
         .store
         .list_todos_in_state(None, TodoState::Open, 50)
         .await
         .expect("todos");
-    assert_eq!(todos.len(), 1);
-    let todo = &todos[0];
-    assert_eq!(todo.kind, "renewal");
-    assert_eq!(todo.origin, "rule");
-    assert!(todo.action_url.is_none(), "no link from mail");
-    assert_eq!(todo.amount_minor, Some(41_200));
-    assert!(
-        todo.title.starts_with("Admiral, renews around "),
-        "{}",
-        todo.title
-    );
-    assert!(todo.surface_at.is_some_and(|at| at <= now));
+    assert!(todos.is_empty(), "{todos:#?}");
 }
 
 #[tokio::test]
-async fn a_yearly_charge_months_away_leaves_no_to_do_yet() {
+async fn a_yearly_charge_months_away_is_not_a_signal_yet() {
     let fx = Fixture::new().await;
     let ids = receipts(
         &fx,
@@ -301,8 +289,6 @@ async fn a_yearly_charge_months_away_leaves_no_to_do_yet() {
     )
     .await;
     scan(&fx, &ids).await;
-    let written = crate::handler::record_subscriptions::file_renewals(&fx.state, Utc::now())
-        .await
-        .expect("renewals");
-    assert_eq!(written, 0);
+    let data = subscriptions(&fx).await;
+    assert!(data.signals.is_empty(), "{:#?}", data.signals);
 }

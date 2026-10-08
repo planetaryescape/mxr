@@ -54,7 +54,7 @@ const PAGE = 200;
 type ArchiveSection = "ledger" | "subscriptions";
 
 /** Coming-up kinds that are about a subscription, not a dated record. */
-const SUBSCRIPTION_SIGNALS = new Set(["price_change", "missed_charge"]);
+const SUBSCRIPTION_SIGNALS = new Set(["price_change", "missed_charge", "renewal_approaching"]);
 /** The record card beside the ledger. */
 const CARD_PANE_SIZE = { defaultSize: "38%", minSize: "20rem", maxSize: "36rem" };
 

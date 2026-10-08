@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import type { MailboxResponse } from "../src/features/mailbox/types";
 import { mailList, mailRows, reader } from "./helpers/mail";
-import { openApp } from "./helpers/state";
+import { bridge, openApp } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -41,7 +42,15 @@ async function delay(page: Page, pattern: string, ms: number): Promise<void> {
 
 test("a list that loads in 100 ms never shows a skeleton", async ({ page }) => {
   await watchSkeletons(page, "list-skeleton");
-  await delay(page, "**/api/v1/mail/mailbox?**", 100);
+  // Keep daemon response latency outside the browser's 100 ms loading window.
+  const mailbox = await bridge<MailboxResponse>(
+    page,
+    "/api/v1/mail/mailbox?lens_kind=inbox&view=threads&limit=150&offset=0",
+  );
+  await page.route("**/api/v1/mail/mailbox?**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await route.fulfill({ json: mailbox });
+  });
   await openApp(page, "/m/inbox");
   await expect(mailRows(page).first()).toBeVisible();
   expect(await spans(page)).toEqual([]);

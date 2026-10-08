@@ -41,7 +41,7 @@ use utoipa::{
         mutation_archive, mutation_trash, mutation_spam, mutation_star,
         mutation_read, mutation_read_archive, mutation_labels, mutation_move,
         mutation_route, mutation_undo, action_snooze_presets, action_snooze,
-        action_unsubscribe, action_unsubscribe_purge, action_invite_reply, attachment_open, attachment_download,
+        action_unsubscribe, action_unsubscribe_purge, action_commit_unsubscribe_preview, action_invite_reply, attachment_open, attachment_download,
         label_create, label_rename, label_delete, mail_unsnooze_one,
         reply_later_list, reply_later_set, reminders_set, reminders_cancel,
         scheduled_sends_list, scheduled_sends_create, scheduled_sends_cancel, snippets_list,
@@ -213,6 +213,16 @@ endpoint!(get action_snooze_presets "/api/v1/mail/actions/snooze/presets", "List
 endpoint!(post action_snooze "/api/v1/mail/actions/snooze", "Snooze messages");
 endpoint!(post action_unsubscribe "/api/v1/mail/actions/unsubscribe", "Unsubscribe from list mail");
 endpoint!(post action_unsubscribe_purge "/api/v1/mail/actions/unsubscribe-purge", "Unsubscribe and clear sender footprint");
+#[utoipa::path(
+    post, path = "/api/v1/mail/actions/unsubscribe-preview/commit",
+    summary = "Commit previewed unsubscribe and optionally clear mail",
+    request_body = crate::request_types::CommitUnsubscribePreviewRequest,
+    responses((status = 200, description = "Unsubscribe result"),
+        (status = 401, description = "Missing or invalid bridge token"),
+        (status = 422, description = "Invalid or unsupported preview commit"))
+)]
+#[allow(dead_code)]
+fn action_commit_unsubscribe_preview() {}
 endpoint!(post action_invite_reply "/api/v1/mail/actions/invite/reply", "Reply to a calendar invite");
 endpoint!(post attachment_open "/api/v1/mail/attachments/open", "Open an attachment");
 endpoint!(post attachment_download "/api/v1/mail/attachments/download", "Download an attachment");

@@ -431,12 +431,12 @@ impl App {
                 return;
             };
             self.queue_mutation(
-                Request::UnsubscribePurge {
+                Request::CommitUnsubscribePreview {
                     address: target.sender_email.clone(),
                     account_id: Some(target.account_id),
-                    dry_run: false,
+                    archive: true,
+                    preview_token,
                     archive_on_no_method: false,
-                    preview_token: Some(preview_token),
                 },
                 MutationEffect::ModeDone(format!("Unsubscribed from {}", target.source)),
                 "Unsubscribing...".into(),
@@ -467,7 +467,6 @@ impl App {
             |source| (source.evidence.clone(), source.unsubscribe),
         );
         self.mailbox.reading_page.pending_unsubscribe_preview = Some(ReadingUnsubscribeTarget {
-            message_id: target.message_id,
             account_id: target.account_id,
             sender_email: target.sender_email,
             source: target.source,
@@ -477,23 +476,26 @@ impl App {
         self.status_message = Some("Checking what unsubscribing would do\u{2026}".into());
     }
 
-    /// Enter or `u` in the preview: unsubscribe from this one message's
-    /// sender, leaving the mail already there in place.
+    /// Enter or `u` commits the preview while leaving existing mail in place.
     fn reading_unsubscribe_only(&mut self) {
         let Some((target, preview_token)) = self.committed_unsubscribe() else {
             return;
         };
-        if preview_token.is_none() {
+        let Some(preview_token) = preview_token else {
             self.status_message = Some("Nothing to unsubscribe with: preview again with D".into());
             return;
-        }
-        self.modals.pending_unsubscribe_action = Some(PendingUnsubscribeAction {
-            message_id: target.message_id,
-            account_id: target.account_id,
-            archive_message_ids: Vec::new(),
-            sender_email: target.sender_email,
-        });
-        self.status_message = Some("Unsubscribing...".into());
+        };
+        self.queue_mutation(
+            Request::CommitUnsubscribePreview {
+                address: target.sender_email,
+                account_id: Some(target.account_id),
+                archive: false,
+                preview_token,
+                archive_on_no_method: false,
+            },
+            MutationEffect::ModeDone(format!("Unsubscribed from {}", target.source)),
+            "Unsubscribing...".into(),
+        );
     }
 
     /// The daemon's dry run of the unsubscribe.

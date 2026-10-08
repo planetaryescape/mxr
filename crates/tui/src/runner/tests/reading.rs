@@ -223,7 +223,7 @@ fn unsubscribe_previews_with_the_evidence_before_it_commits() {
     assert!(
         matches!(
             requests.as_slice(),
-            [Request::UnsubscribePurge { address, dry_run: false, preview_token: Some(token), .. }]
+            [Request::CommitUnsubscribePreview { address, archive: true, preview_token: token, .. }]
                 if *address == target.sender_email && token == "tok-1"
         ),
         "{requests:?}"
@@ -231,7 +231,7 @@ fn unsubscribe_previews_with_the_evidence_before_it_commits() {
 }
 
 #[test]
-fn enter_or_u_unsubscribes_from_this_message_and_keeps_the_mail() {
+fn enter_or_u_unsubscribe_commits_the_previewed_sender_and_keeps_the_mail() {
     let mut app = reading_app();
     for _ in 0..7 {
         key(&mut app, 'j');
@@ -254,15 +254,9 @@ fn enter_or_u_unsubscribes_from_this_message_and_keeps_the_mail() {
         ),
     );
     press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    assert!(queued(&app).is_empty(), "no purge: the mail stays");
-    let pending = app
-        .modals
-        .pending_unsubscribe_action
-        .take()
-        .expect("just unsubscribe is queued for the runner");
-    assert_eq!(pending.message_id, target.message_id);
-    assert_eq!(pending.sender_email, target.sender_email);
-    assert!(pending.archive_message_ids.is_empty());
+    assert!(matches!(queued(&app).as_slice(),
+        [Request::CommitUnsubscribePreview { archive: false, preview_token: token, .. }] if token == "tok-2"));
+    assert!(app.modals.pending_unsubscribe_action.is_none());
     assert!(app.mailbox.reading_page.confirm.is_none());
 
     key(&mut app, 'D');
@@ -283,8 +277,9 @@ fn enter_or_u_unsubscribes_from_this_message_and_keeps_the_mail() {
         ),
     );
     press(&mut app, KeyCode::Char('u'), KeyModifiers::NONE);
-    assert!(app.modals.pending_unsubscribe_action.is_some());
-    assert!(queued(&app).is_empty());
+    assert!(app.modals.pending_unsubscribe_action.is_none());
+    assert!(matches!(queued(&app).last(),
+        Some(Request::CommitUnsubscribePreview { archive: false, preview_token: token, .. }) if token == "tok-3"));
 }
 
 #[test]

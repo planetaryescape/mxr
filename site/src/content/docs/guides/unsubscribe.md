@@ -31,7 +31,9 @@ opened 0 of the last 11 issues", how the sender is told (one click, a page
 or an email) and that it can't be undone from mxr. It runs the dry run
 below before anything is sent. A source that sent eight or more issues you
 never opened gets a quiet "Unsubscribe?" offer on its items.
-`mxr reading sources` prints each source's evidence.
+`mxr reading sources` prints each source's evidence. Choose **Just unsubscribe**
+(Enter or `u`) to keep existing mail, or **Unsubscribe and clear** (`a`) to mark
+read and archive the previewed issues. Both use the method shown in the preview.
 
 ## What mxr will do
 
@@ -59,6 +61,24 @@ idempotent, so scripts do not accidentally fire the side effect twice.
 mxr activity list --action mail.unsubscribe --format json \
   | jq '.entries'
 ```
+
+## Keep mail with the sender preview
+
+```bash
+mxr unsubscribe sender@example.com --purge --keep-mail --dry-run --format json
+mxr unsubscribe sender@example.com --purge --keep-mail --preview-token '<preview_token>' --yes --format json
+```
+
+Copy `preview_token` from the dry-run JSON into the second command. The token
+expires after ten minutes and can be committed once. The daemon refuses it if
+the sender's unsubscribe method changed. `--keep-mail` preserves read flags and
+labels; omit it to read-archive exactly the previewed messages. Mail arriving
+after the preview stays in place.
+
+`--keep-mail` requires `--purge` and cannot be combined with
+`--archive-on-no-method`. `--preview-token` requires `--purge --yes` and cannot
+be combined with `--dry-run`. Without `--preview-token`, `--purge` previews and
+commits within the same command.
 
 ## Header method vs body link
 

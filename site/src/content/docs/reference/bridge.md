@@ -272,7 +272,13 @@ curl -X POST -H "Authorization: Bearer $MXR_TOKEN" \
 The daemon cuts newsletters into items, bands and ranks them, and owns the
 article fetch's guards. Item keys are `<message id>:<index>`; URL-encode
 them in a path. Let go is `/mail/modes/reading/done` and unsubscribe is
-`/mail/actions/unsubscribe/purge`, both previewed with `dry_run: true`.
+`/mail/actions/unsubscribe-purge`, both previewed with `dry_run: true`.
+For unsubscribe, commit through `/mail/actions/unsubscribe-preview/commit`
+with the dry run's `preview_token` and an explicit `archive` choice. Set
+`archive: false` to keep existing mail or `true` to mark read and archive the
+previewed issues. Both choices use the method shown in the preview. Older
+bridges reject this route; upgrade the bridge and daemon before retrying.
+The existing `/mail/actions/unsubscribe-purge` commit retains its clear-mail behaviour.
 
 | Method | Path | Purpose |
 |--------|------|---------|

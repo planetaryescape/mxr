@@ -142,6 +142,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::Count { account_id, .. }
         | Request::SearchAggregation { account_id, .. }
         | Request::UnsubscribePurge { account_id, .. }
+        | Request::CommitUnsubscribePreview { account_id, .. }
         | Request::ListScheduledSends { account_id }
         | Request::ListDeliveries { account_id, .. }
         | Request::ScanDeliveries { account_id, .. }

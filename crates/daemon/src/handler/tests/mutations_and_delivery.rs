@@ -3106,6 +3106,19 @@ async fn an_unsubscribe_committed_with_its_preview_token_clears_only_what_was_pr
     later.provider_id = format!("after-preview-{}", later.id);
     later.message_id_header = Some(format!("<{}@after>", later.id));
     state.store.upsert_envelope(&later).await.unwrap();
+    state
+        .search
+        .apply_batch(mxr_search::SearchUpdateBatch {
+            entries: vec![mxr_search::SearchIndexEntry {
+                envelope: later.clone(),
+                body: None,
+                reply_later: false,
+            }],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    state.search.commit().await.unwrap();
 
     let Response::Ok {
         data: ResponseData::UnsubscribePurgeResult { result },
@@ -3118,4 +3131,322 @@ async fn an_unsubscribe_committed_with_its_preview_token_clears_only_what_was_pr
     // A token is good once.
     let again = purge(&state, "alice@work.com", false, Some(token)).await;
     assert!(matches!(again, Response::Error { .. }), "{again:?}");
+}
+
+async fn sender_unsubscribe(
+    state: &Arc<AppState>,
+    dry_run: bool,
+    archive: bool,
+    preview_token: Option<String>,
+) -> Response {
+    let request = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(if dry_run {
+            Request::UnsubscribePurge {
+                address: "alice@work.com".into(),
+                account_id: state.default_account_id_opt(),
+                dry_run: true,
+                archive_on_no_method: false,
+                preview_token: None,
+            }
+        } else {
+            Request::CommitUnsubscribePreview {
+                address: "alice@work.com".into(),
+                account_id: state.default_account_id_opt(),
+                archive,
+                preview_token: preview_token.unwrap_or_default(),
+                archive_on_no_method: false,
+            }
+        }),
+    };
+    match handle_request(state, &request).await.payload {
+        IpcPayload::Response(response) => response,
+        other => panic!("expected response, got {other:?}"),
+    }
+}
+
+fn sender_unsubscribe_result(response: Response) -> mxr_protocol::UnsubscribePurgeResultData {
+    match response {
+        Response::Ok {
+            data: ResponseData::UnsubscribePurgeResult { result },
+        } => result,
+        other => panic!("expected unsubscribe result, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn unsubscribe_keep_or_clear_uses_previewed_method_even_if_selected_issue_has_another_or_none(
+) {
+    use mxr_core::types::UnsubscribeMethod;
+    for archive in [false, true] {
+        for selected_method in [
+            UnsubscribeMethod::None,
+            UnsubscribeMethod::Mailto {
+                address: "wrong@example.test".into(),
+                subject: None,
+            },
+        ] {
+            let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+            state
+                .sync_engine
+                .sync_account(state.default_provider().as_ref())
+                .await
+                .unwrap();
+            let state = Arc::new(state);
+            let initial =
+                sender_unsubscribe_result(sender_unsubscribe(&state, true, archive, None).await);
+            let selected_id = initial.message_ids[0].clone();
+            let mut selected = state
+                .store
+                .get_envelope(&selected_id)
+                .await
+                .unwrap()
+                .unwrap();
+            selected.unsubscribe = selected_method;
+            state.store.upsert_envelope(&selected).await.unwrap();
+            let method = UnsubscribeMethod::Mailto {
+                address: "previewed@example.test".into(),
+                subject: Some("cancel the previewed list".into()),
+            };
+            let mut previewed_issue = selected.clone();
+            previewed_issue.id = mxr_core::MessageId::new();
+            previewed_issue.provider_id = format!("previewed-{}", previewed_issue.id);
+            previewed_issue.message_id_header = Some(format!("<{}@preview>", previewed_issue.id));
+            previewed_issue.date = chrono::Utc::now();
+            previewed_issue.unsubscribe = method.clone();
+            state.store.upsert_envelope(&previewed_issue).await.unwrap();
+            state
+                .search
+                .apply_batch(mxr_search::SearchUpdateBatch {
+                    entries: vec![mxr_search::SearchIndexEntry {
+                        envelope: previewed_issue.clone(),
+                        body: None,
+                        reply_later: false,
+                    }],
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
+            state.search.commit().await.unwrap();
+            let preview =
+                sender_unsubscribe_result(sender_unsubscribe(&state, true, archive, None).await);
+            assert_eq!(preview.method, method);
+            assert!(preview.message_ids.contains(&selected_id));
+            assert!(preview.message_ids.contains(&previewed_issue.id));
+            let mut before = Vec::new();
+            for id in &preview.message_ids {
+                before.push((
+                    state.store.get_envelope(id).await.unwrap().unwrap(),
+                    state.store.get_message_label_ids(id).await.unwrap(),
+                ));
+            }
+            let result = sender_unsubscribe_result(
+                sender_unsubscribe(&state, false, archive, preview.preview_token).await,
+            );
+            assert_eq!(result.method, method);
+            assert_eq!(result.message_ids, preview.message_ids);
+            assert_eq!(
+                result.status,
+                mxr_protocol::UnsubscribePurgeStatusData::Unsubscribed
+            );
+            let sent = fake.sent_drafts();
+            assert_eq!(sent.len(), 1);
+            assert_eq!(sent[0].to[0].email, "previewed@example.test");
+            assert_eq!(sent[0].subject, "cancel the previewed list");
+            if archive {
+                assert_eq!(result.archived_count, preview.message_count);
+                let expected_provider_ids: Vec<_> = before
+                    .iter()
+                    .map(|(envelope, _)| envelope.provider_id.as_str())
+                    .collect();
+                let calls = fake.mutations();
+                assert_eq!(calls.len(), expected_provider_ids.len() * 2);
+                for call in calls {
+                    match call {
+                        mxr_provider_fake::RecordedMutation::ReadSet { provider_id, read } => {
+                            assert!(read);
+                            assert!(expected_provider_ids.contains(&provider_id.as_str()));
+                        }
+                        mxr_provider_fake::RecordedMutation::LabelsModified {
+                            provider_id,
+                            added,
+                            removed,
+                        } => {
+                            assert!(added.is_empty());
+                            assert_eq!(removed, vec!["INBOX"]);
+                            assert!(expected_provider_ids.contains(&provider_id.as_str()));
+                        }
+                        other => panic!("unexpected archive mutation: {other:?}"),
+                    }
+                }
+                for (original, _labels) in before {
+                    let after = state
+                        .store
+                        .get_envelope(&original.id)
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    assert!(after.flags.contains(mxr_core::MessageFlags::READ));
+                    let inbox = state
+                        .store
+                        .list_labels_by_account(&after.account_id)
+                        .await
+                        .unwrap()
+                        .into_iter()
+                        .find(|label| label.provider_id == "INBOX")
+                        .unwrap();
+                    assert!(!state
+                        .store
+                        .get_message_label_ids(&after.id)
+                        .await
+                        .unwrap()
+                        .contains(&inbox.id));
+                }
+            } else {
+                assert_eq!(result.archived_count, 0);
+                assert!(result.mutation_id.is_none());
+                assert!(fake.mutations().is_empty());
+                for (original, labels) in before {
+                    let after = state
+                        .store
+                        .get_envelope(&original.id)
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(after.flags, original.flags);
+                    assert_eq!(
+                        state
+                            .store
+                            .get_message_label_ids(&original.id)
+                            .await
+                            .unwrap(),
+                        labels
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn unsubscribe_keep_and_clear_reject_a_changed_previewed_method_before_sending() {
+    use mxr_core::types::UnsubscribeMethod;
+    for archive in [false, true] {
+        let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+        state
+            .sync_engine
+            .sync_account(state.default_provider().as_ref())
+            .await
+            .unwrap();
+        let state = Arc::new(state);
+        let initial =
+            sender_unsubscribe_result(sender_unsubscribe(&state, true, archive, None).await);
+        for id in &initial.message_ids {
+            let mut envelope = state.store.get_envelope(id).await.unwrap().unwrap();
+            envelope.unsubscribe = UnsubscribeMethod::Mailto {
+                address: "before@example.test".into(),
+                subject: None,
+            };
+            state.store.upsert_envelope(&envelope).await.unwrap();
+        }
+        let preview =
+            sender_unsubscribe_result(sender_unsubscribe(&state, true, archive, None).await);
+        for id in &preview.message_ids {
+            let mut envelope = state.store.get_envelope(id).await.unwrap().unwrap();
+            envelope.unsubscribe = UnsubscribeMethod::Mailto {
+                address: "after@example.test".into(),
+                subject: None,
+            };
+            state.store.upsert_envelope(&envelope).await.unwrap();
+        }
+        let response = sender_unsubscribe(&state, false, archive, preview.preview_token).await;
+        assert!(
+            matches!(response, Response::Error { message, .. } if message.contains("method changed"))
+        );
+        assert!(fake.sent_drafts().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn unsubscribe_keep_mail_with_an_empty_preview_token_is_refused() {
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    let state = Arc::new(state);
+    assert!(matches!(
+        sender_unsubscribe(&state, false, false, None).await,
+        Response::Error { .. }
+    ));
+    assert!(fake.sent_drafts().is_empty());
+}
+
+#[tokio::test]
+async fn unsubscribe_preview_token_allows_only_one_parallel_commit() {
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    state
+        .sync_engine
+        .sync_account(state.default_provider().as_ref())
+        .await
+        .unwrap();
+    let state = Arc::new(state);
+    let initial = sender_unsubscribe_result(sender_unsubscribe(&state, true, false, None).await);
+    for id in &initial.message_ids {
+        let mut envelope = state.store.get_envelope(id).await.unwrap().unwrap();
+        envelope.unsubscribe = mxr_core::types::UnsubscribeMethod::Mailto {
+            address: "once@example.test".into(),
+            subject: None,
+        };
+        state.store.upsert_envelope(&envelope).await.unwrap();
+    }
+    let preview = sender_unsubscribe_result(sender_unsubscribe(&state, true, false, None).await);
+    let token = preview.preview_token.unwrap();
+    let (first, second) = tokio::join!(
+        sender_unsubscribe(&state, false, false, Some(token.clone())),
+        sender_unsubscribe(&state, false, false, Some(token)),
+    );
+    assert_eq!(
+        [first, second]
+            .iter()
+            .filter(|response| matches!(response, Response::Ok { .. }))
+            .count(),
+        1
+    );
+    assert_eq!(fake.sent_drafts().len(), 1);
+}
+
+#[tokio::test]
+async fn unsubscribe_preview_commit_preserves_explicit_archive_only_opt_in() {
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    state
+        .sync_engine
+        .sync_account(state.default_provider().as_ref())
+        .await
+        .unwrap();
+    let state = Arc::new(state);
+    let preview = sender_unsubscribe_result(sender_unsubscribe(&state, true, true, None).await);
+    assert!(matches!(
+        preview.method,
+        mxr_core::types::UnsubscribeMethod::None
+    ));
+    let request = IpcMessage {
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::CommitUnsubscribePreview {
+            address: "alice@work.com".into(),
+            account_id: state.default_account_id_opt(),
+            preview_token: preview.preview_token.unwrap(),
+            archive: true,
+            archive_on_no_method: true,
+        }),
+    };
+    let IpcPayload::Response(response) = handle_request(&state, &request).await.payload else {
+        panic!("expected response")
+    };
+    let result = sender_unsubscribe_result(response);
+    assert_eq!(
+        result.status,
+        mxr_protocol::UnsubscribePurgeStatusData::ArchiveOnly
+    );
+    assert_eq!(result.message_ids, preview.message_ids);
+    assert_eq!(result.archived_count, preview.message_count);
+    assert!(fake.sent_drafts().is_empty());
 }

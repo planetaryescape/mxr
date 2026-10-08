@@ -350,3 +350,31 @@ impl From<LlmConfigRequest> for LlmConfigData {
         }
     }
 }
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(super) struct CommitUnsubscribePreviewRequest {
+    pub(super) address: String,
+    #[serde(default)]
+    pub(super) account_id: Option<String>,
+    pub(super) preview_token: String,
+    pub(super) archive: bool,
+    #[serde(default)]
+    pub(super) archive_on_no_method: bool,
+}
+
+#[cfg(test)]
+mod unsubscribe_preview_tests {
+    use super::CommitUnsubscribePreviewRequest;
+
+    #[test]
+    fn unsubscribe_preview_commit_requires_token_and_archive_choice() {
+        let missing_token = serde_json::json!({"address":"news@example.com", "archive":false});
+        assert!(serde_json::from_value::<CommitUnsubscribePreviewRequest>(missing_token).is_err());
+        let missing_choice =
+            serde_json::json!({"address":"news@example.com", "preview_token":"tok"});
+        assert!(serde_json::from_value::<CommitUnsubscribePreviewRequest>(missing_choice).is_err());
+        let keep: CommitUnsubscribePreviewRequest = serde_json::from_value(serde_json::json!({"address":"news@example.com", "archive":false, "preview_token":"tok"})).expect("keep mail request");
+        assert!(!keep.archive);
+        assert_eq!(keep.preview_token, "tok");
+    }
+}

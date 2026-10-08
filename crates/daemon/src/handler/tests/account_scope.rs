@@ -683,6 +683,14 @@ async fn previously_unlisted_requests_stay_in_the_agents_accounts() {
         preview_token: None,
     })
     .await;
+    assert_scoped(&s, |o| Request::CommitUnsubscribePreview {
+        address: "orders@shop.example".into(),
+        account_id: Some(o.account.clone()),
+        preview_token: "tok".into(),
+        archive: false,
+        archive_on_no_method: false,
+    })
+    .await;
     assert_scoped(&s, |o| Request::ExportSearch {
         query: "receipt".into(),
         account_id: Some(o.account.clone()),

@@ -5113,6 +5113,73 @@ async fn unsubscribe_purge_dry_run_returns_would_affect_ids() {
     );
 }
 
+/// Both choices use the token-required command; malformed requests never reach IPC.
+#[tokio::test]
+async fn unsubscribe_preview_commit_forwards_choice_and_token_without_legacy_fallback() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let commits = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let captured = commits.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| {
+            match request {
+                Request::CommitUnsubscribePreview {
+                    address,
+                    preview_token,
+                    archive,
+                    ..
+                } => {
+                    captured
+                        .lock()
+                        .unwrap()
+                        .push((address, preview_token, archive));
+                    // Model a daemon rejecting the commit, without any retry on the legacy command.
+                    Some(Response::error("unsupported unsubscribe preview commit"))
+                }
+                other => panic!("unexpected fallback: {other:?}"),
+            }
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = reqwest::Client::new();
+    let url = format!("http://{addr}/api/v1/mail/actions/unsubscribe-preview/commit");
+    for archive in [false, true] {
+        let response = client.post(&url).bearer_auth(TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({"address":"news@example.com", "preview_token":"tok", "archive":archive}))
+            .send().await.unwrap();
+        assert!(!response.status().is_success());
+        let error: serde_json::Value = response.json().await.unwrap();
+        assert!(error["error"]
+            .as_str()
+            .unwrap()
+            .contains("unsupported unsubscribe preview commit"));
+    }
+    let response = client
+        .post(&url)
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({"address":"news@example.com", "archive":false}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        *commits.lock().unwrap(),
+        vec![
+            ("news@example.com".into(), "tok".into(), false),
+            ("news@example.com".into(), "tok".into(), true)
+        ]
+    );
+}
+
 /// The events socket answers `{"type":"ping"}` and, once the browser goes
 /// away, drops its daemon connection straight away instead of waiting for
 /// the next daemon event to fail.

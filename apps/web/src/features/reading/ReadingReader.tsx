@@ -337,11 +337,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
         )}
       </div>
       {unsubscribing ? (
-        <ReadingUnsubscribeDialog
-          source={source}
-          messageId={item.message_id}
-          onClose={() => setUnsubscribing(false)}
-        />
+        <ReadingUnsubscribeDialog source={source} onClose={() => setUnsubscribing(false)} />
       ) : null}
     </div>
   );

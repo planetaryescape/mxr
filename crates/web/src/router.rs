@@ -115,6 +115,10 @@ fn mail_router() -> Router<AppState> {
         .route("/actions/snooze", post(snooze))
         .route("/actions/unsubscribe", post(unsubscribe))
         .route("/actions/unsubscribe-purge", post(unsubscribe_purge))
+        .route(
+            "/actions/unsubscribe-preview/commit",
+            post(commit_unsubscribe_preview),
+        )
         .route("/actions/invite/reply", post(reply_to_invite))
         .route("/attachments/open", post(open_attachment))
         .route("/attachments/download", post(download_attachment))

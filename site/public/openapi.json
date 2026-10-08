@@ -236,6 +236,34 @@
         }
       }
     },
+    "/api/v1/mail/actions/unsubscribe-preview/commit": {
+      "post": {
+        "tags": [],
+        "summary": "Commit previewed unsubscribe and optionally clear mail",
+        "operationId": "action_commit_unsubscribe_preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitUnsubscribePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Unsubscribe result"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "Invalid or unsupported preview commit"
+          }
+        }
+      }
+    },
     "/api/v1/mail/actions/unsubscribe-purge": {
       "post": {
         "tags": [],
@@ -7250,6 +7278,34 @@
           "occasional",
           "new"
         ]
+      },
+      "CommitUnsubscribePreviewRequest": {
+        "type": "object",
+        "required": [
+          "address",
+          "preview_token",
+          "archive"
+        ],
+        "properties": {
+          "account_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address": {
+            "type": "string"
+          },
+          "archive": {
+            "type": "boolean"
+          },
+          "archive_on_no_method": {
+            "type": "boolean"
+          },
+          "preview_token": {
+            "type": "string"
+          }
+        }
       },
       "CommitmentData": {
         "type": "object",
@@ -18898,6 +18954,46 @@
                   "null"
                 ],
                 "description": "From the dry run. When given, the purge acts on exactly the mail\nthat preview listed, with the method it showed, once; mail that\narrived since is left alone."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Commit exactly one sender unsubscribe preview. Older daemons reject\nthis variant instead of silently clearing mail when `archive` is false.",
+            "required": [
+              "address",
+              "preview_token",
+              "archive",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "address": {
+                "type": "string"
+              },
+              "archive": {
+                "type": "boolean"
+              },
+              "archive_on_no_method": {
+                "type": "boolean"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "CommitUnsubscribePreview"
+                ]
+              },
+              "preview_token": {
+                "type": "string"
               }
             }
           },

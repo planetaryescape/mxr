@@ -1863,6 +1863,12 @@ pub enum Command {
         /// With --purge, archive the footprint even if no List-Unsubscribe method exists.
         #[arg(long, requires = "purge")]
         archive_on_no_method: bool,
+        /// With --purge, unsubscribe using the previewed method and keep existing mail.
+        #[arg(long, requires = "purge", conflicts_with = "archive_on_no_method")]
+        keep_mail: bool,
+        /// Commit an earlier --purge --dry-run preview exactly once. Requires --yes.
+        #[arg(long, requires_all = ["purge", "yes"], conflicts_with = "dry_run")]
+        preview_token: Option<String>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -3490,6 +3496,47 @@ pub fn unsupported_command_guidance(args: &[String]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unsubscribe_keep_mail_and_preview_token_require_sender_preview_mode() {
+        assert!(
+            Cli::try_parse_from(["mxr", "unsubscribe", "news@example.com", "--keep-mail"]).is_err()
+        );
+        assert!(Cli::try_parse_from([
+            "mxr",
+            "unsubscribe",
+            "news@example.com",
+            "--purge",
+            "--preview-token",
+            "tok"
+        ])
+        .is_err());
+        assert!(Cli::try_parse_from([
+            "mxr",
+            "unsubscribe",
+            "news@example.com",
+            "--purge",
+            "--keep-mail",
+            "--archive-on-no-method"
+        ])
+        .is_err());
+        let cli = Cli::try_parse_from([
+            "mxr",
+            "unsubscribe",
+            "news@example.com",
+            "--purge",
+            "--keep-mail",
+            "--preview-token",
+            "tok",
+            "--yes",
+            "--format",
+            "json",
+        ])
+        .unwrap();
+        assert!(
+            matches!(cli.command, Some(Command::Unsubscribe { keep_mail: true, preview_token: Some(token), .. }) if token == "tok")
+        );
+    }
 
     #[test]
     fn parses_labels_create_subcommand() {

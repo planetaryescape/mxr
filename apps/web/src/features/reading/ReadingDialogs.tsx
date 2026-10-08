@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { unsubscribeAndClearSender, unsubscribeFromSender } from "@/features/mailbox/api";
+import { commitUnsubscribePreview, unsubscribeAndClearSender } from "@/features/mailbox/api";
 import { doneModeRequest } from "@/features/modes/modeDone";
 import { plural } from "@/lib/format";
 
@@ -32,12 +32,9 @@ const IRREVERSIBLE = "This can't be undone from mxr; you'd resubscribe on their 
  */
 export function ReadingUnsubscribeDialog({
   source,
-  messageId,
   onClose,
 }: {
   source: ReadingSource;
-  /** The item's message: "just unsubscribe" acts on that one message. */
-  messageId: string;
   onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -53,44 +50,27 @@ export function ReadingUnsubscribeDialog({
   });
   // Only a finished preview with a token and a method can be committed,
   // and the method shown is the one in that preview.
-  const ready = unsubscribePreview(preview);
+  const ready = preview.isFetching ? null : unsubscribePreview(preview);
   const count = ready?.count ?? preview.data?.result?.message_count;
 
-  async function justUnsubscribe() {
+  async function commitUnsubscribe(archive: boolean) {
     if (!ready || busy) return;
     setBusy(true);
     try {
-      await unsubscribeFromSender({ messageId, archive: false });
-      toast.success(`Unsubscribed from ${source.name}`, {
-        description: "The mail you already have stays.",
-      });
-      await refreshReading();
-      onClose();
-    } catch (error) {
-      toast.error(`Couldn't unsubscribe from ${source.name}`, {
-        description: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function unsubscribeAndClear() {
-    if (!ready || busy) return;
-    setBusy(true);
-    try {
-      const answer = await unsubscribeAndClearSender({
+      const answer = await commitUnsubscribePreview({
         address: source.sender_email,
         accountId: source.account_id,
         previewToken: ready.token,
+        archive,
       });
       const result = answer.result;
       if (result?.error) {
         toast.error(`Couldn't unsubscribe from ${source.name}`, { description: result.error });
       } else {
         toast.success(`Unsubscribed from ${source.name}`, {
-          description:
-            result && result.archived_count > 0
+          description: !archive
+            ? "The mail you already have stays."
+            : result && result.archived_count > 0
               ? `Let go of ${plural(result.archived_count, "issue")} too.`
               : undefined,
         });
@@ -121,10 +101,10 @@ export function ReadingUnsubscribeDialog({
           if (event.key === "Enter" && event.target instanceof HTMLButtonElement) return;
           if (event.key === "u" || event.key === "Enter") {
             event.preventDefault();
-            void justUnsubscribe();
+            void commitUnsubscribe(false);
           } else if (event.key === "a") {
             event.preventDefault();
-            void unsubscribeAndClear();
+            void commitUnsubscribe(true);
           }
         }}
       >
@@ -161,7 +141,7 @@ export function ReadingUnsubscribeDialog({
           <button
             type="button"
             data-testid="unsubscribe-just"
-            onClick={() => void justUnsubscribe()}
+            onClick={() => void commitUnsubscribe(false)}
             disabled={busy || !ready}
             className="flex items-center gap-3 rounded-md border border-border px-3 py-2.5 text-left hover:border-primary/60 hover:bg-accent disabled:opacity-60"
           >
@@ -176,7 +156,7 @@ export function ReadingUnsubscribeDialog({
           <button
             type="button"
             data-testid="unsubscribe-clear"
-            onClick={() => void unsubscribeAndClear()}
+            onClick={() => void commitUnsubscribe(true)}
             disabled={busy || !ready}
             className="flex items-center gap-3 rounded-md border border-border px-3 py-2.5 text-left hover:border-primary/60 hover:bg-accent disabled:opacity-60"
           >

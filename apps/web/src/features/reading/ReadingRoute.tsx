@@ -87,7 +87,7 @@ const itemOf = (entry: EditionEntry | undefined) =>
   entry?.kind === "item" ? entry.item : entry?.parent;
 
 type Dialog =
-  | { kind: "unsubscribe"; source: ReadingSource; messageId: string }
+  | { kind: "unsubscribe"; source: ReadingSource }
   | { kind: "let-go-all"; threadIds: string[]; titles: string[] }
   | null;
 
@@ -121,11 +121,7 @@ function Edition({ status, view }: { status: ReturnType<typeof useEdition>; view
         <Bands edition={data} guide={guide.data} view={view} setDialog={setDialog} />
       ) : null}
       {dialog?.kind === "unsubscribe" ? (
-        <ReadingUnsubscribeDialog
-          source={dialog.source}
-          messageId={dialog.messageId}
-          onClose={() => setDialog(null)}
-        />
+        <ReadingUnsubscribeDialog source={dialog.source} onClose={() => setDialog(null)} />
       ) : null}
       {dialog?.kind === "let-go-all" ? (
         <LetGoAllDialog
@@ -285,7 +281,7 @@ function Bands({
   const unsubscribe = useCallback(
     (item: ReadingItem) => {
       const source = sourceOf(edition, item);
-      if (source) setDialog({ kind: "unsubscribe", source, messageId: item.message_id });
+      if (source) setDialog({ kind: "unsubscribe", source });
     },
     [edition, setDialog],
   );

@@ -3910,14 +3910,19 @@ impl PurgePreviews {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn unsubscribe_purge(
     state: &AppState,
     address: &str,
     account_id: Option<&mxr_core::AccountId>,
     dry_run: bool,
     archive_on_no_method: bool,
+    archive: bool,
     preview_token: Option<&str>,
 ) -> HandlerResult {
+    if !dry_run && !archive && preview_token.is_none() {
+        return Err("unsubscribe: keeping mail requires a preview token; preview again".into());
+    }
     let mut selection = select_sender_footprint(state, address, account_id).await?;
     let scope = (selection.address.clone(), account_id.cloned());
     // Committing a preview: only the mail it listed, and only if the
@@ -4001,7 +4006,7 @@ pub(super) async fn unsubscribe_purge(
     let mut status = UnsubscribePurgeStatusData::Unsubscribed;
     let mut error = None;
     if matches!(method, UnsubscribeMethod::None) {
-        if archive_on_no_method {
+        if archive && archive_on_no_method {
             status = UnsubscribePurgeStatusData::ArchiveOnly;
             error = Some("No unsubscribe method available; archived sender footprint only".into());
         } else {
@@ -4017,13 +4022,17 @@ pub(super) async fn unsubscribe_purge(
                     archived_count: 0,
                     message_ids,
                     mutation_id: None,
-                    error: Some("No unsubscribe method available; rerun with archive-on-no-method to clear the footprint".into()),
+                    error: Some(if archive {
+                        "No unsubscribe method available; rerun with archive-on-no-method to clear the footprint"
+                    } else {
+                        "No unsubscribe method available; existing mail kept"
+                    }.into()),
                     preview_token: None,
                 },
             });
         }
     } else if let Some(envelope) = method_envelope {
-        if let Err(err) = unsubscribe(state, &envelope.id).await {
+        if let Err(err) = unsubscribe_envelope(state, envelope).await {
             return Ok(ResponseData::UnsubscribePurgeResult {
                 result: UnsubscribePurgeResultData {
                     address: selection.address,
@@ -4043,17 +4052,21 @@ pub(super) async fn unsubscribe_purge(
         }
     }
 
-    let mutation_response = mutation(
-        state,
-        &MutationCommand::ReadAndArchive {
-            message_ids: message_ids.clone(),
-        },
-        None,
-    )
-    .await?;
-    let (archived_count, mutation_id) = match mutation_response {
-        ResponseData::MutationResult { result } => (result.succeeded, result.mutation_id),
-        _ => (0, None),
+    let (archived_count, mutation_id) = if archive {
+        let mutation_response = mutation(
+            state,
+            &MutationCommand::ReadAndArchive {
+                message_ids: message_ids.clone(),
+            },
+            None,
+        )
+        .await?;
+        match mutation_response {
+            ResponseData::MutationResult { result } => (result.succeeded, result.mutation_id),
+            _ => (0, None),
+        }
+    } else {
+        (0, None)
     };
 
     Ok(ResponseData::UnsubscribePurgeResult {
@@ -4140,6 +4153,13 @@ pub(super) async fn unsubscribe(
         .await?
         .ok_or_else(|| "Message not found".to_string())?;
 
+    unsubscribe_envelope(state, &envelope).await
+}
+
+// Execute the envelope snapshot validated against the preview, even if sync
+// changes its stored header while this external operation awaits.
+async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerResult {
+    let message_id = &envelope.id;
     // Idempotency: if we already logged a successful unsubscribe for
     // this message, return Ack without re-firing the side effect. The
     // event-log entries written by this same handler ("Unsubscribed
@@ -4194,7 +4214,7 @@ pub(super) async fn unsubscribe(
             sender.send(&draft, &from, &rfc2822_message_id).await?;
             if let Err(error) = log_mutation(
                 state,
-                &envelope,
+                envelope,
                 format!(
                     "Sent unsubscribe request for {}",
                     quoted_subject(&envelope.subject)
@@ -4213,7 +4233,7 @@ pub(super) async fn unsubscribe(
                 crate::unsubscribe::UnsubscribeResult::Success(result) => {
                     if let Err(error) = log_mutation(
                         state,
-                        &envelope,
+                        envelope,
                         format!("Unsubscribed from {}", quoted_subject(&envelope.subject)),
                         Some(format!("result={result} from={}", envelope.from.email)),
                     )

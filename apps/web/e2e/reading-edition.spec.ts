@@ -238,6 +238,33 @@ test("the reader's Unsubscribe button is visible without scrolling and offers bo
   await page.keyboard.press("Enter");
   const control = page.getByTestId("reader-unsubscribe");
   await expect(control).toBeInViewport();
+  const commits: { preview_token: string; archive: boolean }[] = [];
+  let previewToken = "";
+  await page.route(/\/api\/v1\/mail\/actions\/unsubscribe(?:-purge|-preview\/commit)$/, async (route) => {
+    const request = route.request().postDataJSON();
+    if (request.dry_run) {
+      const response = await route.fetch();
+      const preview = await response.json();
+      previewToken = preview.result.preview_token;
+      await route.fulfill({ response });
+    } else {
+      // The outbound unsubscribe is irreversible; daemon tests use FakeProvider.
+      // Here we check each button's real request against the real daemon preview.
+      commits.push({ preview_token: request.preview_token, archive: request.archive });
+      await route.fulfill({
+        json: {
+          ok: true,
+          result: {
+            address: request.address,
+            method: "None",
+            status: "unsubscribed",
+            message_count: 12,
+            archived_count: request.archive ? 12 : 0,
+          },
+        },
+      });
+    }
+  });
   await control.click();
   const dialog = page.getByTestId("reading-unsubscribe");
   await expect(dialog).toBeVisible();
@@ -247,8 +274,20 @@ test("the reader's Unsubscribe button is visible without scrolling and offers bo
   await expect(dialog.getByTestId("unsubscribe-clear")).toContainText(
     /Unsubscribe and clear \d+ issues?/,
   );
-  await dialog.getByRole("button", { name: "Keep it" }).click();
+  await expect(dialog.getByTestId("unsubscribe-just")).toBeEnabled();
+  const keepToken = previewToken;
+  await dialog.getByTestId("unsubscribe-just").click();
   await expect(dialog).toHaveCount(0);
+  expect(commits).toEqual([{ preview_token: keepToken, archive: false }]);
+  await control.click();
+  await expect(dialog.getByTestId("unsubscribe-clear")).toBeEnabled();
+  const clearToken = previewToken;
+  await dialog.getByTestId("unsubscribe-clear").click();
+  await expect(dialog).toHaveCount(0);
+  expect(commits).toEqual([
+    { preview_token: keepToken, archive: false },
+    { preview_token: clearToken, archive: true },
+  ]);
 });
 
 /** Bring a hint back, as `mxr modes hint ID --show` does. */

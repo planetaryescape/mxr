@@ -1382,6 +1382,38 @@ async fn unsubscribe_purge(
     }
 }
 
+async fn commit_unsubscribe_preview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(request): Json<CommitUnsubscribePreviewRequest>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let account_id = request
+        .account_id
+        .as_deref()
+        .map(parse_account_id)
+        .transpose()?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::CommitUnsubscribePreview {
+            address: request.address,
+            account_id,
+            preview_token: request.preview_token,
+            archive: request.archive,
+            archive_on_no_method: request.archive_on_no_method,
+        },
+    )
+    .await?
+    {
+        ResponseData::UnsubscribePurgeResult { result } => Ok(Json(json!({
+            "ok": !matches!(result.status, mxr_protocol::UnsubscribePurgeStatusData::Failed | mxr_protocol::UnsubscribePurgeStatusData::NoMethod),
+            "result": result,
+        }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
 async fn reply_to_invite(
     State(state): State<AppState>,
     headers: HeaderMap,

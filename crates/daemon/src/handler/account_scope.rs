@@ -1140,7 +1140,8 @@ pub(crate) async fn scope_event(
         | DaemonEvent::OperationProgress { ref account_id, .. }
         | DaemonEvent::OperationCompleted { ref account_id, .. }
         | DaemonEvent::OperationFailed { ref account_id, .. }
-        | DaemonEvent::OperationCancelled { ref account_id, .. } => {
+        | DaemonEvent::OperationCancelled { ref account_id, .. }
+        | DaemonEvent::ModesChanged { ref account_id } => {
             let allowed = match account_id {
                 Some(account_id) => account_id_allowed(state, profile, account_id).await?,
                 // An operation over every account, or one that didn't say.

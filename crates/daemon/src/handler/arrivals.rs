@@ -72,15 +72,14 @@ fn place_message(
     shape: super::conversation_shape::ShapeConfig,
     spam: bool,
 ) -> ArrivalPlacement {
-    let placed = |mode: &str, rule: String, reason: String, not_sure: Option<String>| {
-        ArrivalPlacement {
+    let placed =
+        |mode: &str, rule: String, reason: String, not_sure: Option<String>| ArrivalPlacement {
             message_id: message.id.clone(),
             mode: mode.to_string(),
             rule,
             reason,
             not_sure,
-        }
-    };
+        };
     if spam {
         return placed("spam", "spam".into(), "in Spam".into(), None);
     }
@@ -820,7 +819,10 @@ pub(super) async fn move_message(state: &AppState, request: MoveRequest<'_>) -> 
         })?;
         if dry_run {
             return Ok(moved(outcome(
-                format!("Would send all mail from {sender_email} to {}.", mode.name()),
+                format!(
+                    "Would send all mail from {sender_email} to {}.",
+                    mode.name()
+                ),
                 None,
                 None,
                 None,
@@ -932,14 +934,17 @@ pub(super) async fn move_message(state: &AppState, request: MoveRequest<'_>) -> 
                 }
                 _ => None,
             };
-            aspect_move(state, AspectMove {
-                account_id: &account_id,
-                message_id,
-                dry_run,
-                aspect_id: todo_id,
-                correction: correction("email"),
-                copy: ("Would add to To do.", "Added to To do."),
-            })
+            aspect_move(
+                state,
+                AspectMove {
+                    account_id: &account_id,
+                    message_id,
+                    dry_run,
+                    aspect_id: todo_id,
+                    correction: correction("email"),
+                    copy: ("Would add to To do.", "Added to To do."),
+                },
+            )
             .await
             .map(|(copy, id, aspect)| moved(outcome(copy, None, id, aspect)))
         }
@@ -951,14 +956,17 @@ pub(super) async fn move_message(state: &AppState, request: MoveRequest<'_>) -> 
                 }
                 _ => None,
             };
-            aspect_move(state, AspectMove {
-                account_id: &account_id,
-                message_id,
-                dry_run,
-                aspect_id: record_id,
-                correction: correction("email"),
-                copy: ("Would file in Archive.", "Filed in Archive."),
-            })
+            aspect_move(
+                state,
+                AspectMove {
+                    account_id: &account_id,
+                    message_id,
+                    dry_run,
+                    aspect_id: record_id,
+                    correction: correction("email"),
+                    copy: ("Would file in Archive.", "Filed in Archive."),
+                },
+            )
             .await
             .map(|(copy, id, aspect)| moved(outcome(copy, None, id, aspect)))
         }
@@ -1014,9 +1022,7 @@ pub(super) async fn undo_move(state: &AppState, correction_id: i64) -> HandlerRe
         .store
         .get_correction(correction_id)
         .await?
-        .ok_or_else(|| {
-            HandlerError::InvalidRequest(format!("No correction {correction_id}."))
-        })?;
+        .ok_or_else(|| HandlerError::InvalidRequest(format!("No correction {correction_id}.")))?;
     // Stamping first makes a double undo (two clients, a double press) a
     // no-op instead of reverting twice.
     if !state
@@ -1031,13 +1037,15 @@ pub(super) async fn undo_move(state: &AppState, correction_id: i64) -> HandlerRe
     }
     revert(state, &correction).await?;
     modes_changed(state, &correction.fields.account_id);
-    let back = ArrivalBucketData::parse(&correction.fields.from_mode)
-        .map_or("where it was".to_string(), |bucket| {
+    let back = ArrivalBucketData::parse(&correction.fields.from_mode).map_or_else(
+        || "where it was".to_string(),
+        |bucket| {
             bucket.mode().map_or_else(
                 || bucket.label(1).trim_start_matches("1 ").to_string(),
                 |mode| mode.name().to_string(),
             )
-        });
+        },
+    );
     Ok(ResponseData::MoveUndone {
         correction_id,
         copy: format!("Moved back to {back}."),
@@ -1118,17 +1126,13 @@ pub(super) async fn after_sender_kind(
         .store
         .latest_sender_correction(account_id, sender_email)
         .await?;
-    let undoes_latest = latest.as_ref().is_some_and(|latest| {
-        (now - latest.fields.created_at).num_seconds() <= SENDER_UNDO_WINDOW_SECS
-            && latest
-                .fields
-                .prior_disposition
-                .as_deref()
-                .map(|prior| {
+    let undoes_latest =
+        latest.as_ref().is_some_and(|latest| {
+            (now - latest.fields.created_at).num_seconds() <= SENDER_UNDO_WINDOW_SECS
+                && latest.fields.prior_disposition.as_deref().map(|prior| {
                     ScreenerDisposition::from_db_str(prior).and_then(mail_kind::kind_for)
-                })
-                == Some(kind)
-    });
+                }) == Some(kind)
+        });
     if undoes_latest {
         if let Some(latest) = latest {
             state.store.mark_correction_undone(latest.id, now).await?;
@@ -1200,17 +1204,3 @@ pub(super) async fn list_corrections(
         .collect();
     Ok(ResponseData::Corrections { corrections })
 }
-
-/// The accounts a message-scoped arrivals request touches.
-pub(super) async fn correction_accounts(
-    state: &AppState,
-    correction_id: i64,
-) -> Result<Vec<AccountId>, HandlerError> {
-    Ok(state
-        .store
-        .get_correction(correction_id)
-        .await?
-        .map(|correction| vec![correction.fields.account_id])
-        .unwrap_or_default())
-}
-

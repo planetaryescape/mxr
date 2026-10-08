@@ -91,6 +91,7 @@ fn sample_mail_row() -> MailListRow {
         triage_verdict: None,
         reply_later: false,
         pending_mutation: false,
+        mode_chip: None,
     }
 }
 

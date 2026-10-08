@@ -217,8 +217,7 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
             let empty = match arrivals.and_then(|a| a.clear_line.as_ref()) {
                 Some(_) => empty
                     .strip_prefix(mxr_protocol::now_copy::CLEAR)
-                    .map(str::trim)
-                    .unwrap_or(empty.as_str())
+                    .map_or(empty.as_str(), str::trim)
                     .to_string(),
                 None => empty,
             };

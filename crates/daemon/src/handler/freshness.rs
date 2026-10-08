@@ -7,7 +7,7 @@
 //! already writes (error, failure class, backoff), and each arrival's mode
 //! comes from the sender classifier the modes use (`mail_kind`).
 
-use super::desk::Senders;
+use super::desk::{self_matcher, Senders};
 use super::mail_kind;
 use super::mode_rules::{membership, provider_name};
 use super::modes::{is_early, signals};
@@ -229,10 +229,11 @@ async fn place_arrivals(
             .filter(|message| wanted.contains(&message.id))
             .collect();
         let senders = Senders::load(state, &account, &messages).await?;
+        let is_self = self_matcher(state, &account).await?;
         for message in &messages {
             went_to.insert(
                 message.id.clone(),
-                (message.in_inbox, sender_mode(message, &senders)),
+                (message.in_inbox, sender_mode(message, &senders, &is_self)),
             );
         }
     }
@@ -256,11 +257,15 @@ async fn place_arrivals(
 
 /// The mode a message's sender rule puts it in, with its one-word tag.
 /// None for mail out of the inbox or from someone screened out.
-fn sender_mode(message: &DeskMessage, senders: &Senders) -> Vec<ModeMembershipData> {
+fn sender_mode(
+    message: &DeskMessage,
+    senders: &Senders,
+    is_self: &dyn Fn(&str) -> bool,
+) -> Vec<ModeMembershipData> {
     if !message.in_inbox || message.trashed {
         return Vec::new();
     }
-    let described = mail_kind::describe(&signals(message, senders));
+    let described = mail_kind::describe(&signals(message, senders, is_self));
     let mode = match described.kind {
         SenderKindData::People => ModeKindData::Messages,
         SenderKindData::PaperTrail => ModeKindData::Updates,

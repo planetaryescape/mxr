@@ -324,7 +324,7 @@ fn a_not_sure_question_takes_one_key_then_asks_about_the_sender_once() {
     assert!(ask.yes_no);
     press(&mut app, KeyCode::Char('y'));
     assert_eq!(
-        queued(&app).iter().filter_map(moved).last(),
+        queued(&app).iter().filter_map(moved).next_back(),
         Some((first, ModeKindData::Updates, true, None))
     );
     assert!(app.mailbox.trust.sender_ask.is_none());

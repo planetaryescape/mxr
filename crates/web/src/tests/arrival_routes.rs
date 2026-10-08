@@ -98,7 +98,7 @@ async fn arrival_routes_forward_their_requests() {
         }
     ));
     assert!(
-        matches!(&seen[3], Request::GetArrivalModes { message_ids } if message_ids == &[message.clone()])
+        matches!(&seen[3], Request::GetArrivalModes { message_ids } if message_ids == std::slice::from_ref(&message))
     );
     assert!(matches!(
         &seen[4],

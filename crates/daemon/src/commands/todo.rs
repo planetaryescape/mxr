@@ -8,6 +8,7 @@ use crate::commands::selection::parse_message_id;
 use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, print_json, resolve_format, terminal_block};
+use chrono::Local;
 use mxr_core::id::AccountId;
 use mxr_protocol::{
     todo_copy, Request, Response, ResponseData, TodoCatchupData, TodoCatchupDecisionData,
@@ -389,6 +390,13 @@ fn row(out: &mut String, todo: &TodoData, indent: &str) {
     }
     if let Some(done) = &todo.looks_done {
         let _ = writeln!(out, "{indent}            Looks done: {}.", done.reason);
+    }
+    if let Some(arrived) = todo.source_date {
+        let _ = writeln!(
+            out,
+            "{indent}            Arrived {}",
+            arrived.with_timezone(&Local).format("%a %-d %b")
+        );
     }
     let _ = writeln!(out, "{indent}            {}", todo.why);
 }

@@ -9,6 +9,7 @@
 //! in the status line (`app/hints.rs`). Pure render; wiring lives in
 //! `app/todo_actions.rs`.
 
+use chrono::Local;
 use mxr_protocol::{TodoChangeData, TodoData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -60,6 +61,12 @@ fn who(todo: &TodoData) -> String {
 /// email, never the link), then why the row is here.
 pub(crate) fn trust_line(todo: &TodoData) -> String {
     let mut parts = Vec::new();
+    if let Some(arrived) = todo.source_date {
+        parts.push(format!(
+            "arrived {}",
+            arrived.with_timezone(&Local).format("%a %-d %b")
+        ));
+    }
     if let Some(domain) = todo
         .action
         .as_ref()
@@ -868,6 +875,20 @@ pub(crate) mod tests {
         let rendered = render(&page(runway(vec![council_tax()], vec![]), true), 0);
         assert!(rendered.contains("link goes to camden.gov.uk \u{b7} Here because"));
         assert!(rendered.contains("\u{21b5} Open email to pay"));
+    }
+
+    #[test]
+    fn the_footer_says_when_the_source_email_arrived() {
+        let mut bill = council_tax();
+        bill.source_date = Some(
+            chrono::DateTime::parse_from_rfc3339("2026-10-02T09:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+        );
+        assert!(trust_line(&bill).starts_with("arrived "));
+
+        let no_source = council_tax();
+        assert!(!trust_line(&no_source).contains("arrived"));
     }
 
     #[test]

@@ -3,6 +3,7 @@ import { Check, Mail, Reply } from "lucide-react";
 import { memo, type ReactNode } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
+import { useWhen } from "@/components/When";
 import { fetchThread } from "@/features/mailbox/api";
 import { formatLongDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -252,6 +253,7 @@ export const TodoRow = memo(function TodoRow({
   const party = rowParty(todo);
   const action = primaryAction(todo);
   const fill = runwayFill(todo);
+  const arrived = useWhen(todo.source_date);
   const dimmed = band === "coming";
   const done = band === "done";
   return (
@@ -306,6 +308,16 @@ export const TodoRow = memo(function TodoRow({
               >
                 {todo.when_label}
               </span>
+              {todo.source_date ? (
+                <time
+                  data-testid="todo-arrived"
+                  dateTime={todo.source_date}
+                  title={`Arrived ${formatLongDate(todo.source_date)}`}
+                  className="font-mono text-2xs tabular-nums text-muted-foreground"
+                >
+                  {arrived}
+                </time>
+              ) : null}
               {todo.looks_done ? (
                 <span className="text-[12px] text-foreground/85">
                   Looks done: {todo.looks_done.reason}

@@ -54,6 +54,7 @@ export function todoFixture(overrides: Partial<Todo> = {}): Todo {
     user_touched: false,
     thread_id: "thread_bill",
     source_message_id: "msg_bill",
+    source_date: "2026-10-02T09:00:00Z",
     created_at: "2026-10-02T09:00:00Z",
     updated_at: "2026-10-02T09:00:00Z",
     ...overrides,

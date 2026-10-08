@@ -625,6 +625,7 @@ impl App {
             KeyCode::Esc if page.later_shelf => Some(Action::ReadingLaterShelf),
             KeyCode::Char('B') if shifted => Some(Action::ReadingLaterShelf),
             KeyCode::Char('K') if shifted => Some(Action::OpenSenderKindMenu),
+            KeyCode::Char('X') if shifted => Some(Action::OpenMoveMenu),
             KeyCode::Enter => Some(Action::ReadingRead),
             KeyCode::Char('L') if shifted => Some(Action::ReadingArticle),
             KeyCode::Char('b') if plain => Some(Action::ReadingLater),

@@ -6,7 +6,9 @@
 
 use super::input::plain_or_shift;
 use super::*;
-use crate::app::state::{ArrivalsListFetch, ArrivalsListState, MoveMenu, NowRow, SenderAsk};
+use crate::app::state::{
+    ArrivalsListFetch, ArrivalsListState, MoveMenu, NowRow, SenderAsk, UpdatesRow,
+};
 use mxr_protocol::{
     ArrivalBucketData, ArrivalItemData, ArrivalListData, ArrivalsData, ModeKindData,
     MoveOutcomeData,
@@ -128,6 +130,28 @@ impl App {
                 NowRow::Arrivals(_) | NowRow::Updates(_) => None,
             };
         }
+        if self.updates_list_focused() {
+            // A source line stands for its newest email.
+            let UpdatesRow::Line(line) = self.selected_updates_row()? else {
+                return None;
+            };
+            let message_id = line
+                .latest_message_id
+                .clone()
+                .or_else(|| line.fact_message_id.clone())?;
+            return Some((message_id, line.source_name.clone()));
+        }
+        if self.reading_lens_focused() {
+            let item = self.selected_reading_row()?.issue();
+            return Some((
+                item.message_id.clone(),
+                if item.source.trim().is_empty() {
+                    item.sender_email.clone()
+                } else {
+                    item.source.clone()
+                },
+            ));
+        }
         if self.messages_list_focused() {
             return self
                 .selected_messages_topic()
@@ -161,8 +185,8 @@ impl App {
             );
             return;
         };
-        let not_sure = self.now_list_focused()
-            && matches!(self.selected_now_row(), Some(NowRow::NotSure(_)));
+        let not_sure =
+            self.now_list_focused() && matches!(self.selected_now_row(), Some(NowRow::NotSure(_)));
         self.mailbox.trust.move_menu = Some(MoveMenu {
             message_id,
             display,
@@ -235,7 +259,13 @@ impl App {
         }
     }
 
-    fn queue_move(&mut self, message_id: MessageId, mode: ModeKindData, sender: bool, not_sure: bool) {
+    fn queue_move(
+        &mut self,
+        message_id: MessageId,
+        mode: ModeKindData,
+        sender: bool,
+        not_sure: bool,
+    ) {
         let status = if sender {
             format!("Moving the sender to {}...", mode.name())
         } else {
@@ -293,7 +323,8 @@ impl App {
         let after = self.mailbox.now_page.arrivals_rows().len();
         // Keep the cursor on the row it was on as the line's rows come and go.
         if self.mailbox.mailbox_view == MailboxView::Now && self.mailbox.selected_index >= before {
-            self.mailbox.selected_index = (self.mailbox.selected_index + after).saturating_sub(before);
+            self.mailbox.selected_index =
+                (self.mailbox.selected_index + after).saturating_sub(before);
         }
         self.clamp_now_selection();
         if first_question && !self.mailbox.trust.not_sure_hint_shown {
@@ -306,7 +337,12 @@ impl App {
 
     /// The open arrivals list asks again, for the bucket it shows.
     fn refetch_arrivals_list(&mut self) {
-        let bucket = self.mailbox.trust.arrivals_list.as_ref().map(|list| list.bucket);
+        let bucket = self
+            .mailbox
+            .trust
+            .arrivals_list
+            .as_ref()
+            .map(|list| list.bucket);
         if let Some(bucket) = bucket {
             self.open_arrivals_list(bucket);
         }
@@ -409,6 +445,8 @@ impl App {
             MailboxView::People => self.refresh_messages(),
             MailboxView::Place(_) | MailboxView::Desk => self.refresh_places(),
             MailboxView::Todo => self.refresh_todo(),
+            MailboxView::Updates => self.refresh_updates(),
+            MailboxView::Reading => self.refresh_reading(),
             _ => {}
         }
         self.refetch_arrivals_list();

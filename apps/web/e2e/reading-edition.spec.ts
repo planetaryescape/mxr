@@ -227,6 +227,30 @@ test("D previews unsubscribing with the evidence, the method and that it can't b
   await expect(items(page).filter({ hasText: "Growth Digest" }).first()).toBeVisible();
 });
 
+test("the reader's Unsubscribe button is visible without scrolling and offers both choices", async ({
+  page,
+}) => {
+  await openEdition(page);
+  await items(page)
+    .filter({ hasText: "Growth Digest" })
+    .first()
+    .click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("Enter");
+  const control = page.getByTestId("reader-unsubscribe");
+  await expect(control).toBeInViewport();
+  await control.click();
+  const dialog = page.getByTestId("reading-unsubscribe");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId("unsubscribe-just")).toContainText(
+    "Just unsubscribe — keep what you have",
+  );
+  await expect(dialog.getByTestId("unsubscribe-clear")).toContainText(
+    /Unsubscribe and clear \d+ issues?/,
+  );
+  await dialog.getByRole("button", { name: "Keep it" }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
 /** Bring a hint back, as `mxr modes hint ID --show` does. */
 async function showHint(page: Page, id: string) {
   await bridge(page, `/api/v1/mail/hints/${encodeURIComponent(id)}`, { seen: false });

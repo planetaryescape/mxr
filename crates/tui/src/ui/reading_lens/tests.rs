@@ -321,6 +321,7 @@ fn the_unsubscribe_preview_shows_evidence_method_and_that_it_cannot_be_undone() 
     let mut confirm = page();
     confirm.confirm = Some(ReadingConfirm::Unsubscribe {
         target: crate::app::ReadingUnsubscribeTarget {
+            message_id: MessageId::from_provider_id("fake", "digest-1"),
             account_id: AccountId::from_provider_id("fake", "alex@demo.mxr.local"),
             sender_email: "digest@growth.demo.mxr.local".into(),
             source: "Growth Digest".into(),

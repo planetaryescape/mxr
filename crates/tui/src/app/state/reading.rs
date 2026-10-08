@@ -4,7 +4,7 @@
 //! shown, unsubscribe). The daemon owns every band, rank and line; this
 //! state only holds what came back and what the user is doing with it.
 
-use mxr_core::id::{AccountId, ThreadId};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
     ModeDoneOutcomeData, ModeGuideData, ReadingEditionData, ReadingItemData, ReadingItemDetailData,
     ReadingLinkData, ReadingUnsubscribeData,
@@ -61,6 +61,8 @@ pub enum ReadingView {
 /// What `D` asks about before anything is sent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadingUnsubscribeTarget {
+    /// The item's message: "just unsubscribe" acts on this one message.
+    pub message_id: MessageId,
     pub account_id: AccountId,
     pub sender_email: String,
     pub source: String,

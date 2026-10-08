@@ -217,7 +217,8 @@ fn unsubscribe_previews_with_the_evidence_before_it_commits() {
         panic!("a preview is on screen");
     };
     assert_eq!(shown.method, ReadingUnsubscribeData::Mailto);
-    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    // `a` clears the issues too: the purge commits exactly that preview.
+    press(&mut app, KeyCode::Char('a'), KeyModifiers::NONE);
     let requests = queued(&app);
     assert!(
         matches!(
@@ -227,6 +228,63 @@ fn unsubscribe_previews_with_the_evidence_before_it_commits() {
         ),
         "{requests:?}"
     );
+}
+
+#[test]
+fn enter_or_u_unsubscribes_from_this_message_and_keeps_the_mail() {
+    let mut app = reading_app();
+    for _ in 0..7 {
+        key(&mut app, 'j');
+    }
+    key(&mut app, 'D');
+    let target = app
+        .mailbox
+        .reading_page
+        .pending_unsubscribe_preview
+        .take()
+        .expect("a dry run is asked for first");
+    app.show_reading_unsubscribe_preview(
+        target.clone(),
+        purge_preview(
+            &target.sender_email,
+            mxr_core::types::UnsubscribeMethod::OneClick {
+                url: "https://growth.example/unsub".into(),
+            },
+            Some("tok-2"),
+        ),
+    );
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(queued(&app).is_empty(), "no purge: the mail stays");
+    let pending = app
+        .modals
+        .pending_unsubscribe_action
+        .take()
+        .expect("just unsubscribe is queued for the runner");
+    assert_eq!(pending.message_id, target.message_id);
+    assert_eq!(pending.sender_email, target.sender_email);
+    assert!(pending.archive_message_ids.is_empty());
+    assert!(app.mailbox.reading_page.confirm.is_none());
+
+    key(&mut app, 'D');
+    let target = app
+        .mailbox
+        .reading_page
+        .pending_unsubscribe_preview
+        .take()
+        .expect("a dry run is asked for again");
+    app.show_reading_unsubscribe_preview(
+        target.clone(),
+        purge_preview(
+            &target.sender_email,
+            mxr_core::types::UnsubscribeMethod::OneClick {
+                url: "https://growth.example/unsub".into(),
+            },
+            Some("tok-3"),
+        ),
+    );
+    press(&mut app, KeyCode::Char('u'), KeyModifiers::NONE);
+    assert!(app.modals.pending_unsubscribe_action.is_some());
+    assert!(queued(&app).is_empty());
 }
 
 #[test]

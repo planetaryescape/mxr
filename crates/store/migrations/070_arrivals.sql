@@ -12,9 +12,10 @@ CREATE TABLE IF NOT EXISTS arrivals (
     sender_email  TEXT NOT NULL,
     -- When mxr first stored it. Never the Date header of mail that arrives
     -- after the account's first sync, which the sender sets and may back-
-    -- date. Only an account's first sync (no sync cursor yet) is backfill:
-    -- there, history older than two days keeps its date so it never reads
-    -- as "arrived just now".
+    -- date. Only the account's first sync (until `initial_syncs` has a row
+    -- for it, written when sync reaches the last page of history) is
+    -- backfill: there, history older than two days keeps its date so it
+    -- never reads as "arrived just now".
     first_seen_at INTEGER NOT NULL,
     -- messages | updates | reading | screened_out | spam; NULL while sorting.
     mode          TEXT,
@@ -48,14 +49,28 @@ CREATE INDEX IF NOT EXISTS idx_arrivals_sorting
 CREATE INDEX IF NOT EXISTS idx_arrivals_moved
     ON arrivals(account_id) WHERE moved_at IS NOT NULL;
 
+-- An account's first sync pages through its history, which can take many
+-- batches (Gmail saves a cursor after the first 200 messages). Sync writes a
+-- row here when the last page is in; until then the account is backfilling.
+CREATE TABLE IF NOT EXISTS initial_syncs (
+    account_id   TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+    completed_at INTEGER NOT NULL
+);
+
+-- Accounts that already finished their first sync before this migration. A
+-- cursor holding a page token is a backfill still in progress.
+INSERT OR IGNORE INTO initial_syncs (account_id, completed_at)
+SELECT id, CAST(strftime('%s', 'now') AS INTEGER)
+FROM accounts
+WHERE sync_cursor IS NOT NULL AND sync_cursor NOT LIKE '%page_token%';
+
 -- After an account's first sync every inbound message is an arrival, first
 -- seen when it is stored whatever its Date header says. During the first
--- sync (the account has no sync cursor yet) only the last 30 days count:
--- older messages are history, not news.
+-- sync only the last 30 days count: older messages are history, not news.
 CREATE TRIGGER IF NOT EXISTS arrivals_on_message_insert AFTER INSERT ON messages
 WHEN NEW.direction != 'outbound'
     AND (
-        NOT COALESCE((SELECT sync_cursor IS NULL FROM accounts WHERE id = NEW.account_id), 0)
+        EXISTS (SELECT 1 FROM initial_syncs WHERE account_id = NEW.account_id)
         OR NEW.date >= CAST(strftime('%s', 'now') AS INTEGER) - 30 * 86400
     )
 BEGIN
@@ -65,7 +80,7 @@ BEGIN
         NEW.account_id,
         lower(NEW.from_email),
         CASE
-            WHEN COALESCE((SELECT sync_cursor IS NULL FROM accounts WHERE id = NEW.account_id), 0)
+            WHEN NOT EXISTS (SELECT 1 FROM initial_syncs WHERE account_id = NEW.account_id)
                 AND NEW.date < CAST(strftime('%s', 'now') AS INTEGER) - 2 * 86400
             THEN NEW.date
             ELSE CAST(strftime('%s', 'now') AS INTEGER)

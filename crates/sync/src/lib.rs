@@ -2364,6 +2364,10 @@ mod tests {
             stored_cursor.as_ref().map(SyncCursor::as_bytes),
             Some(b"recovered-cursor".as_slice())
         );
+        assert!(
+            store.initial_sync_done(&account_id).await.unwrap(),
+            "the last page of a first sync marks it done"
+        );
     }
 
     #[tokio::test]
@@ -2417,6 +2421,10 @@ mod tests {
         };
 
         let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
+        assert!(
+            !store.initial_sync_done(&account_id).await.unwrap(),
+            "a page with more behind it leaves the first sync unfinished"
+        );
 
         assert_eq!(outcome.synced_count, 1);
         assert!(

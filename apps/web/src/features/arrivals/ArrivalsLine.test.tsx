@@ -170,4 +170,21 @@ describe("Not sure: failures and the last answer", () => {
       "Always for Maya Ortiz?",
     );
   });
+
+  test("Undo after the last answer brings the question back", async () => {
+    fetchMock.mockResolvedValueOnce({
+      kind: "MessageMoved",
+      outcome: outcome({ to: "messages", from: "messages", correction_id: null }),
+    });
+    const view = render(<ArrivalsView arrivals={one()} nowWaiting />);
+    fireEvent.keyDown(screen.getByTestId("not-sure-row"), { key: "m" });
+    expect(screen.queryByTestId("not-sure-row")).toBeNull();
+    // The answer refreshes the line without it, then Undo lists it again.
+    view.rerender(<ArrivalsView arrivals={arrivals({ not_sure: [] })} nowWaiting />);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    // Let the move settle (its toast, then the refresh) before Undo.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    view.rerender(<ArrivalsView arrivals={one()} nowWaiting />);
+    expect(await screen.findByTestId("not-sure-row")).toBeVisible();
+  });
 });

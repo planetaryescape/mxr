@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,18 @@ export function NotSureSection({
   heading?: string;
   hint?: string;
 }) {
+  // Hidden while their answer is on its way. Once the daemon has stopped
+  // listing a question that was answered, it is forgotten, so an Undo that
+  // brings the question back shows it again.
   const [answered, setAnswered] = useState<ReadonlySet<string>>(new Set());
+  const settled = useRef(new Set<string>());
+  useEffect(() => {
+    const listed = new Set(questions.map((question) => question.message_id));
+    const gone = [...answered].filter((id) => settled.current.has(id) && !listed.has(id));
+    if (gone.length === 0) return;
+    for (const id of gone) settled.current.delete(id);
+    setAnswered((current) => new Set([...current].filter((id) => !gone.includes(id))));
+  }, [questions, answered]);
   const [ask, setAsk] = useState<PendingAsk | null>(null);
   const shown = questions.filter((question) => !answered.has(question.message_id));
   const firstHint = useTrustHint("now.not_sure", hint, shown.length > 0);
@@ -52,6 +63,10 @@ export function NotSureSection({
         });
         return;
       }
+      // The answer is in and the lists have refreshed: from here the
+      // daemon's own list says whether the question is still open.
+      settled.current.add(question.message_id);
+      setAnswered((current) => new Set(current));
       // Keeping it where it was moved nothing, so there is nothing to repeat.
       const moved = outcome.correction_id != null && outcome.from !== outcome.to;
       if (moved && SENDER_MODES.includes(mode)) {

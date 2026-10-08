@@ -473,14 +473,8 @@ async fn reads_use_indexes_not_scans() {
 #[tokio::test]
 async fn after_the_first_sync_old_dated_mail_still_arrives_when_stored() {
     let (store, account) = store_with_account().await;
-    // Past its first sync: the account has a sync cursor.
-    store
-        .set_sync_cursor(
-            &account,
-            &mxr_core::types::SyncCursor::from_bytes(br#"{"v":"1","history_id":42}"#.to_vec()),
-        )
-        .await
-        .unwrap();
+    // Past its first sync: sync reached the last page of history.
+    store.mark_initial_sync_done(&account).await.unwrap();
     let now = Utc::now();
     let backdated = arrive(
         &store,
@@ -615,7 +609,13 @@ async fn a_restored_decision_keeps_its_original_date_so_earlier_moves_stand() {
         )
         .await
         .unwrap();
-    assert!(store.arrivals_by_ids(&[message.clone()]).await.unwrap()[0].moved);
+    assert!(
+        store
+            .arrivals_by_ids(std::slice::from_ref(&message))
+            .await
+            .unwrap()[0]
+            .moved
+    );
     // Restoring the decision with today's date overrides the move ...
     store
         .set_screener_decision(&ScreenerDecision {
@@ -627,11 +627,126 @@ async fn a_restored_decision_keeps_its_original_date_so_earlier_moves_stand() {
         })
         .await
         .unwrap();
-    assert!(!store.arrivals_by_ids(&[message.clone()]).await.unwrap()[0].moved);
+    assert!(
+        !store
+            .arrivals_by_ids(std::slice::from_ref(&message))
+            .await
+            .unwrap()[0]
+            .moved
+    );
     // ... putting the original date back lets the move stand.
     store
         .set_screener_decided_at(&account, "maya@example.com", t0)
         .await
         .unwrap();
-    assert!(store.arrivals_by_ids(&[message.clone()]).await.unwrap()[0].moved);
+    assert!(
+        store
+            .arrivals_by_ids(std::slice::from_ref(&message))
+            .await
+            .unwrap()[0]
+            .moved
+    );
+}
+
+#[tokio::test]
+async fn pages_of_an_unfinished_first_sync_stay_history_whatever_the_cursor() {
+    let (store, account) = store_with_account().await;
+    // Gmail saves a backfill cursor after the first 200 messages; the
+    // account is still in its first sync.
+    store
+        .set_sync_cursor(
+            &account,
+            &mxr_core::types::SyncCursor::from_bytes(
+                br#"{"v":"1","history_id":42,"page_token":"page-2"}"#.to_vec(),
+            ),
+        )
+        .await
+        .unwrap();
+    let now = Utc::now();
+    let history = arrive(
+        &store,
+        &account,
+        1,
+        "maya@example.com",
+        now - Duration::days(5),
+        MessageDirection::Inbound,
+    )
+    .await;
+    assert_eq!(
+        first_seen(&store, &history).await,
+        Some((now - Duration::days(5)).timestamp()),
+        "history keeps its date"
+    );
+    let ancient = arrive(
+        &store,
+        &account,
+        2,
+        "b@example.com",
+        now - Duration::days(45),
+        MessageDirection::Inbound,
+    )
+    .await;
+    assert_eq!(first_seen(&store, &ancient).await, None);
+    // The last page lands: later mail is news.
+    store.mark_initial_sync_done(&account).await.unwrap();
+    let late = arrive(
+        &store,
+        &account,
+        3,
+        "c@example.com",
+        now - Duration::days(45),
+        MessageDirection::Inbound,
+    )
+    .await;
+    let seen = first_seen(&store, &late).await.expect("an arrival row");
+    assert!((seen - now.timestamp()).abs() <= 5);
+}
+
+#[tokio::test]
+async fn only_a_newer_sender_move_blocks_undoing_an_older_one() {
+    let (store, account) = store_with_account().await;
+    let sender_move = |to: &str, from: &str, sender: &str| NewCorrection {
+        account_id: account.clone(),
+        scope: "sender".into(),
+        message_id: None,
+        sender_email: sender.into(),
+        from_mode: from.into(),
+        to_mode: to.into(),
+        rule: None,
+        source: "sender".into(),
+        created_at: Utc::now(),
+        prior_moved_to: None,
+        prior_moved_at: None,
+        prior_disposition: None,
+        prior_decided_at: None,
+        aspect_id: None,
+    };
+    let first = store
+        .insert_correction(&sender_move("updates", "reading", "maya@example.com"))
+        .await
+        .unwrap();
+    store
+        .insert_correction(&sender_move("messages", "updates", "other@example.com"))
+        .await
+        .unwrap();
+    assert!(!store
+        .newer_sender_move_stands(&account, "maya@example.com", first)
+        .await
+        .unwrap());
+    let second = store
+        .insert_correction(&sender_move("messages", "updates", "Maya@Example.com"))
+        .await
+        .unwrap();
+    assert!(store
+        .newer_sender_move_stands(&account, "maya@example.com", first)
+        .await
+        .unwrap());
+    store
+        .mark_correction_undone(second, Utc::now())
+        .await
+        .unwrap();
+    assert!(!store
+        .newer_sender_move_stands(&account, "maya@example.com", first)
+        .await
+        .unwrap());
 }

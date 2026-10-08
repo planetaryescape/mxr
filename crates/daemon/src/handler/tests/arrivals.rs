@@ -1109,3 +1109,25 @@ async fn always_messages_for_a_sender_keeps_a_copied_email_in_messages() {
     assert!(modes(&held).contains(&ModeKindData::Messages), "{held:?}");
     assert!(!modes(&held).contains(&ModeKindData::Updates), "{held:?}");
 }
+
+#[tokio::test]
+async fn undoing_an_older_sender_move_is_refused_while_a_newer_one_stands() {
+    let fx = Fixture::new().await;
+    let a = inbound(&fx, "editor@weekly.example", true).await;
+    line(&fx).await;
+    let to_updates = move_to(&fx, &a.id, ModeKindData::Updates, true).await;
+    let to_messages = move_to(&fx, &a.id, ModeKindData::Messages, true).await;
+    let message = refused(
+        &fx,
+        Request::UndoMove {
+            correction_id: to_updates.correction_id.unwrap(),
+        },
+    )
+    .await;
+    assert!(message.contains("newer move"), "{message}");
+    assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Messages);
+    undo(&fx, to_messages.correction_id.unwrap()).await;
+    assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Updates);
+    undo(&fx, to_updates.correction_id.unwrap()).await;
+    assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Reading);
+}

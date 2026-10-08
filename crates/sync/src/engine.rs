@@ -603,6 +603,14 @@ impl SyncEngine {
                 .set_sync_cursor(account_id, &batch.next_cursor)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
+            // The last page of history is in: from here on, stored mail is
+            // news (arrivals), not backfill.
+            if !batch.has_more {
+                self.store
+                    .mark_initial_sync_done(account_id)
+                    .await
+                    .map_err(|e| MxrError::Store(e.to_string()))?;
+            }
 
             // Backfill: if junction table is empty but messages exist, reset cursor
             // and re-sync to rebuild label associations (handles DBs corrupted by

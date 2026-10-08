@@ -421,6 +421,28 @@ impl super::Store {
         Ok(())
     }
 
+    /// Record that the account's first sync has reached its last page, so
+    /// mail stored from now on is news whatever its Date header says.
+    pub async fn mark_initial_sync_done(&self, account_id: &AccountId) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO initial_syncs (account_id, completed_at)
+             VALUES (?1, CAST(strftime('%s', 'now') AS INTEGER))",
+        )
+        .bind(account_id.as_str())
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
+    /// Whether the account's first sync has reached its last page.
+    pub async fn initial_sync_done(&self, account_id: &AccountId) -> Result<bool, sqlx::Error> {
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM initial_syncs WHERE account_id = ?1")
+            .bind(account_id.as_str())
+            .fetch_one(self.reader())
+            .await?;
+        Ok(n > 0)
+    }
+
     /// Whether a later move of this email still stands: undoing an older
     /// move then would throw the newer one away. Moves that only kept the
     /// email where it was, and the To do and Archive aspects, don't count.
@@ -435,6 +457,27 @@ impl super::Store {
                AND from_mode != to_mode AND to_mode IN ('messages', 'updates', 'reading')",
         )
         .bind(message_id.as_str())
+        .bind(after_correction_id)
+        .fetch_one(self.reader())
+        .await?;
+        Ok(n > 0)
+    }
+
+    /// Whether a later sender move for this sender still stands: undoing an
+    /// older one then would put back a decision the newer one replaced.
+    pub async fn newer_sender_move_stands(
+        &self,
+        account_id: &AccountId,
+        sender_email: &str,
+        after_correction_id: i64,
+    ) -> Result<bool, sqlx::Error> {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM mode_corrections
+             WHERE account_id = ?1 AND sender_email = lower(?2) AND id > ?3
+               AND scope = 'sender' AND undone_at IS NULL",
+        )
+        .bind(account_id.as_str())
+        .bind(sender_email)
         .bind(after_correction_id)
         .fetch_one(self.reader())
         .await?;

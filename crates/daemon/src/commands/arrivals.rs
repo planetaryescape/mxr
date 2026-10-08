@@ -529,9 +529,12 @@ mod tests {
         assert!(commands.len() >= 4, "found {commands:?}");
         for command in commands {
             let argv: Vec<&str> = command.split_whitespace().collect();
-            if let Err(error) = crate::cli::Cli::try_parse_from(&argv) {
-                panic!("`{command}` does not parse: {error}");
-            }
+            let parsed = crate::cli::Cli::try_parse_from(&argv);
+            assert!(
+                parsed.is_ok(),
+                "`{command}` does not parse: {:?}",
+                parsed.err()
+            );
         }
     }
 }

@@ -1117,26 +1117,36 @@ pub(super) async fn undo_move(state: &AppState, correction_id: i64) -> HandlerRe
         .get_correction(correction_id)
         .await?
         .ok_or_else(|| HandlerError::InvalidRequest(format!("No correction {correction_id}.")))?;
-    // An older move can't be undone while a newer one of the same email
-    // stands: restoring the older one's "before" would discard the newer.
+    // An older move can't be undone while a newer one of the same email (or,
+    // for a sender move, the same sender) stands: restoring the older one's
+    // "before" would discard the newer.
     if correction.undone_at.is_none() {
-        if let Some(message_id) = correction.fields.message_id.as_ref() {
-            let changes_mode = correction.fields.scope == "email"
-                && correction.fields.from_mode != correction.fields.to_mode
+        let fields = &correction.fields;
+        let newer_stands = if fields.scope == "sender" {
+            state
+                .store
+                .newer_sender_move_stands(&fields.account_id, &fields.sender_email, correction_id)
+                .await?
+        } else {
+            let changes_mode = fields.from_mode != fields.to_mode
                 && matches!(
-                    ModeKindData::parse(&correction.fields.to_mode),
+                    ModeKindData::parse(&fields.to_mode),
                     Some(ModeKindData::Messages | ModeKindData::Updates | ModeKindData::Reading)
                 );
-            if changes_mode
-                && state
-                    .store
-                    .newer_email_move_stands(message_id, correction_id)
-                    .await?
-            {
-                return Err(HandlerError::InvalidRequest(
-                    "A newer move of this email stands. Undo that one first.".into(),
-                ));
+            match fields.message_id.as_ref() {
+                Some(message_id) if changes_mode => {
+                    state
+                        .store
+                        .newer_email_move_stands(message_id, correction_id)
+                        .await?
+                }
+                _ => false,
             }
+        };
+        if newer_stands {
+            return Err(HandlerError::InvalidRequest(
+                "A newer move of this email stands. Undo that one first.".into(),
+            ));
         }
     }
     // Stamping first makes a double undo (two clients, a double press) a

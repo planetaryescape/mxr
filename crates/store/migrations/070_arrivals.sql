@@ -10,9 +10,11 @@ CREATE TABLE IF NOT EXISTS arrivals (
     account_id    TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     -- Lowercased, so a sender's rows are found without a scan.
     sender_email  TEXT NOT NULL,
-    -- When mxr first stored it. Never the Date header, which the sender
-    -- sets; history older than two days at first sight keeps its date so
-    -- a new account's backfill never reads as "arrived just now".
+    -- When mxr first stored it. Never the Date header of mail that arrives
+    -- after the account's first sync, which the sender sets and may back-
+    -- date. Only an account's first sync (no sync cursor yet) is backfill:
+    -- there, history older than two days keeps its date so it never reads
+    -- as "arrived just now".
     first_seen_at INTEGER NOT NULL,
     -- messages | updates | reading | screened_out | spam; NULL while sorting.
     mode          TEXT,
@@ -46,11 +48,16 @@ CREATE INDEX IF NOT EXISTS idx_arrivals_sorting
 CREATE INDEX IF NOT EXISTS idx_arrivals_moved
     ON arrivals(account_id) WHERE moved_at IS NOT NULL;
 
--- Only mail from the last 30 days is an arrival: an old message a first
--- sync stores is history, not news.
+-- After an account's first sync every inbound message is an arrival, first
+-- seen when it is stored whatever its Date header says. During the first
+-- sync (the account has no sync cursor yet) only the last 30 days count:
+-- older messages are history, not news.
 CREATE TRIGGER IF NOT EXISTS arrivals_on_message_insert AFTER INSERT ON messages
 WHEN NEW.direction != 'outbound'
-    AND NEW.date >= CAST(strftime('%s', 'now') AS INTEGER) - 30 * 86400
+    AND (
+        NOT COALESCE((SELECT sync_cursor IS NULL FROM accounts WHERE id = NEW.account_id), 0)
+        OR NEW.date >= CAST(strftime('%s', 'now') AS INTEGER) - 30 * 86400
+    )
 BEGIN
     INSERT INTO arrivals (message_id, account_id, sender_email, first_seen_at)
     VALUES (
@@ -58,7 +65,9 @@ BEGIN
         NEW.account_id,
         lower(NEW.from_email),
         CASE
-            WHEN NEW.date < CAST(strftime('%s', 'now') AS INTEGER) - 2 * 86400 THEN NEW.date
+            WHEN COALESCE((SELECT sync_cursor IS NULL FROM accounts WHERE id = NEW.account_id), 0)
+                AND NEW.date < CAST(strftime('%s', 'now') AS INTEGER) - 2 * 86400
+            THEN NEW.date
             ELSE CAST(strftime('%s', 'now') AS INTEGER)
         END
     )
@@ -100,6 +109,9 @@ CREATE TABLE IF NOT EXISTS mode_corrections (
     prior_moved_at     INTEGER,
     -- For undo of a sender move: the decision before it ('' for none).
     prior_disposition  TEXT,
+    -- ... and when it was made, so undo restores it without a new date
+    -- that would override email moves made after the original decision.
+    prior_decided_at   INTEGER,
     -- To do and Archive add an aspect: the to-do or record it made.
     aspect_id          TEXT
 );

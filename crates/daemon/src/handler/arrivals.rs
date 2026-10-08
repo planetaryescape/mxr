@@ -94,7 +94,11 @@ fn place_message(
         SenderKind::Person => {
             let person_sender = |m: &DeskMessage| senders.answers(m, is_self);
             let human = |email: &str| human_address(email, &senders.contacts, &senders.screener);
-            let kept = |m: &DeskMessage| senders.moves.get(&m.id) == Some(&SenderKind::Person);
+            let kept = |m: &DeskMessage| {
+                let mut signals = senders.signals(m, is_self);
+                signals.written_to |= written_to.contains(&m.from.email.to_ascii_lowercase());
+                mail_kind::kept_in_messages(&signals)
+            };
             let shape = conversation_shape(
                 thread,
                 &ShapeInputs {
@@ -368,7 +372,8 @@ pub(super) async fn handle(state: &AppState, req: &Request) -> HandlerResult {
         Request::GetArrivals {
             account_id,
             mark_seen,
-        } => get_arrivals(state, account_id.as_ref(), *mark_seen).await,
+            since,
+        } => get_arrivals(state, account_id.as_ref(), *mark_seen, *since).await,
         Request::ListArrivals {
             account_id,
             bucket,
@@ -411,9 +416,10 @@ pub(super) async fn get_arrivals(
     state: &AppState,
     account_id: Option<&AccountId>,
     mark_seen: bool,
+    since: Option<DateTime<Utc>>,
 ) -> HandlerResult {
     Ok(ResponseData::Arrivals {
-        arrivals: arrivals_at(state, account_id, mark_seen, Utc::now(), &Local).await?,
+        arrivals: arrivals_at(state, account_id, mark_seen, since, Utc::now(), &Local).await?,
     })
 }
 
@@ -422,6 +428,7 @@ pub(super) async fn arrivals_at<Tz: TimeZone>(
     state: &AppState,
     account_id: Option<&AccountId>,
     mark_seen: bool,
+    open_since: Option<DateTime<Utc>>,
     now: DateTime<Utc>,
     tz: &Tz,
 ) -> Result<ArrivalsData, HandlerError>
@@ -435,7 +442,11 @@ where
     for account in &accounts {
         place_pending(state, account).await?;
     }
-    let since = window(state, account_id, mark_seen, now, tz).await?;
+    let since = match open_since.filter(|_| !mark_seen) {
+        // The visit the client has open keeps its window.
+        Some(open) => open.clamp(now - Duration::hours(24), now),
+        None => window(state, account_id, mark_seen, now, tz).await?,
+    };
     let until = until_of(now);
     let label = since_label(since, now, tz);
     let counts = state.store.arrival_counts(&accounts, since, until).await?;
@@ -861,6 +872,7 @@ pub(super) async fn move_message(state: &AppState, request: MoveRequest<'_>) -> 
         prior_moved_to: None,
         prior_moved_at: None,
         prior_disposition: None,
+        prior_decided_at: None,
         aspect_id: None,
     };
 
@@ -881,17 +893,21 @@ pub(super) async fn move_message(state: &AppState, request: MoveRequest<'_>) -> 
                 None,
             )));
         }
-        let prior = state
+        let prior_decision = state
             .store
             .get_screener_decision(&account_id, &sender_email)
-            .await?
+            .await?;
+        let prior = prior_decision
+            .as_ref()
             .map(|decision| decision.disposition.as_db_str().to_string())
             .unwrap_or_default();
-        super::places::apply_sender_kind(state, &account_id, &sender_email, Some(kind)).await?;
+        super::places::apply_sender_kind(state, &account_id, &sender_email, Some(kind), None)
+            .await?;
         let id = state
             .store
             .insert_correction(&NewCorrection {
                 prior_disposition: Some(prior),
+                prior_decided_at: prior_decision.map(|decision| decision.decided_at),
                 ..correction("sender")
             })
             .await?;
@@ -979,6 +995,21 @@ pub(super) async fn move_message(state: &AppState, request: MoveRequest<'_>) -> 
             } else {
                 title
             };
+            // A repeat (a retry, a second client) reuses the open to-do, so
+            // there is one task per email and nothing new to undo.
+            if state
+                .store
+                .open_todo_for_message(message_id)
+                .await?
+                .is_some()
+            {
+                return Ok(moved(outcome(
+                    "Already in To do.".to_string(),
+                    None,
+                    None,
+                    None,
+                )));
+            }
             let response =
                 super::todos::create(state, message_id, title, None, None, None, dry_run).await?;
             let todo_id = match response {
@@ -1005,6 +1036,16 @@ pub(super) async fn move_message(state: &AppState, request: MoveRequest<'_>) -> 
             let response = super::records::file(state, message_id, None, dry_run).await?;
             let record_id = match response {
                 ResponseData::RecordChange { change } => {
+                    // Already filed: nothing was made, so there is nothing
+                    // to undo (undoing would dismiss the existing record).
+                    if change.message.starts_with(super::records::ALREADY_FILED) {
+                        return Ok(moved(outcome(
+                            "Already in Archive.".to_string(),
+                            None,
+                            None,
+                            None,
+                        )));
+                    }
                     change.records.first().map(|record| record.id.clone())
                 }
                 _ => None,
@@ -1076,6 +1117,28 @@ pub(super) async fn undo_move(state: &AppState, correction_id: i64) -> HandlerRe
         .get_correction(correction_id)
         .await?
         .ok_or_else(|| HandlerError::InvalidRequest(format!("No correction {correction_id}.")))?;
+    // An older move can't be undone while a newer one of the same email
+    // stands: restoring the older one's "before" would discard the newer.
+    if correction.undone_at.is_none() {
+        if let Some(message_id) = correction.fields.message_id.as_ref() {
+            let changes_mode = correction.fields.scope == "email"
+                && correction.fields.from_mode != correction.fields.to_mode
+                && matches!(
+                    ModeKindData::parse(&correction.fields.to_mode),
+                    Some(ModeKindData::Messages | ModeKindData::Updates | ModeKindData::Reading)
+                );
+            if changes_mode
+                && state
+                    .store
+                    .newer_email_move_stands(message_id, correction_id)
+                    .await?
+            {
+                return Err(HandlerError::InvalidRequest(
+                    "A newer move of this email stands. Undo that one first.".into(),
+                ));
+            }
+        }
+    }
     // Stamping first makes a double undo (two clients, a double press) a
     // no-op instead of reverting twice.
     if !state
@@ -1113,8 +1176,16 @@ async fn revert(state: &AppState, correction: &Correction) -> Result<(), Handler
             .as_deref()
             .and_then(ScreenerDisposition::from_db_str)
             .and_then(mail_kind::kind_for);
-        super::places::apply_sender_kind(state, &fields.account_id, &fields.sender_email, previous)
-            .await?;
+        // The decision comes back with its original date: a new one would
+        // override the email moves made since.
+        super::places::apply_sender_kind(
+            state,
+            &fields.account_id,
+            &fields.sender_email,
+            previous,
+            fields.prior_decided_at,
+        )
+        .await?;
         state.store.restore_superseded_moves(correction.id).await?;
         replace_sender(state, &fields.account_id, &fields.sender_email).await?;
         return Ok(());
@@ -1171,9 +1242,10 @@ pub(super) async fn after_sender_kind(
     state: &AppState,
     account_id: &AccountId,
     sender_email: &str,
-    previous: Option<SenderKindData>,
+    applied: super::places::AppliedKind,
     kind: Option<SenderKindData>,
 ) -> Result<(), HandlerError> {
+    let previous = applied.previous;
     let now = Utc::now();
     let latest = state
         .store
@@ -1190,6 +1262,12 @@ pub(super) async fn after_sender_kind(
         if let Some(latest) = latest {
             state.store.mark_correction_undone(latest.id, now).await?;
             state.store.restore_superseded_moves(latest.id).await?;
+            if let (Some(_), Some(at)) = (kind, latest.fields.prior_decided_at) {
+                state
+                    .store
+                    .set_screener_decided_at(account_id, sender_email, at)
+                    .await?;
+            }
         }
     } else if previous != kind {
         let name = |kind: Option<SenderKindData>| {
@@ -1215,6 +1293,7 @@ pub(super) async fn after_sender_kind(
                         .map(|kind| mail_kind::disposition_for(kind).as_db_str().to_string())
                         .unwrap_or_default(),
                 ),
+                prior_decided_at: applied.previous_decided_at,
                 aspect_id: None,
             })
             .await?;

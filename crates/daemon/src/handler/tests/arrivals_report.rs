@@ -154,7 +154,7 @@ async fn arrivals_report() {
         .await
         .unwrap();
     let started = Instant::now();
-    let line = arrivals::arrivals_at(&state, None, false, now, &Local)
+    let line = arrivals::arrivals_at(&state, None, false, None, now, &Local)
         .await
         .unwrap();
     println!("GetArrivals: {:.0} ms", ms(started));

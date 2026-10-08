@@ -67,6 +67,10 @@ async fn arrival_routes_forward_their_requests() {
         client.get(format!(
             "http://{addr}/api/v1/mail/corrections?account={account}&limit=5"
         )),
+        // An open Now names the window it holds.
+        client.get(format!(
+            "http://{addr}/api/v1/mail/arrivals?since=2026-10-07T08:00:00Z"
+        )),
     ] {
         let response = request.bearer_auth(TEST_AUTH_TOKEN).send().await.unwrap();
         assert_eq!(response.status(), reqwest::StatusCode::OK);
@@ -74,10 +78,19 @@ async fn arrival_routes_forward_their_requests() {
 
     let seen = seen.lock().unwrap();
     assert!(matches!(
+        seen.last(),
+        Some(Request::GetArrivals {
+            account_id: None,
+            mark_seen: false,
+            since: Some(_),
+        })
+    ));
+    assert!(matches!(
         &seen[0],
         Request::GetArrivals {
             account_id: None,
             mark_seen: false,
+            since: None,
         }
     ));
     assert!(matches!(
@@ -85,6 +98,7 @@ async fn arrival_routes_forward_their_requests() {
         Request::GetArrivals {
             account_id: Some(id),
             mark_seen: true,
+            since: None,
         } if *id == account
     ));
     assert!(matches!(

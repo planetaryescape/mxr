@@ -1649,6 +1649,8 @@ pub async fn run() -> anyhow::Result<()> {
             });
             // The arrivals line beside it; only opening Now starts a visit.
             let mark_seen = std::mem::take(&mut app.mailbox.now_page.pending_mark_seen);
+            // Refreshes while Now stays open keep the window the visit opened with.
+            let open_since = app.mailbox.now_page.arrivals.as_ref().map(|a| a.since);
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 AsyncResult::Arrivals(
@@ -1657,6 +1659,7 @@ pub async fn run() -> anyhow::Result<()> {
                         Request::GetArrivals {
                             account_id: None,
                             mark_seen,
+                            since: open_since,
                         },
                         |data| match data {
                             ResponseData::Arrivals { arrivals } => Some(Box::new(arrivals)),

@@ -1823,12 +1823,18 @@ pub enum Request {
     /// was last opened (at most 24 hours back), counted once by where it
     /// went, plus "Not sure" questions and the weekly track record.
     /// `mark_seen` starts a visit: the window then runs from the visit
-    /// before. Returns `ResponseData::Arrivals`.
+    /// before. `since` is the window start of the visit a client already
+    /// has open (the `since` it was answered): a read that doesn't mark
+    /// then keeps that window instead of working one out again, so a Now
+    /// that stays open polls the same window all visit. Returns
+    /// `ResponseData::Arrivals`.
     GetArrivals {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         account_id: Option<AccountId>,
         #[serde(default)]
         mark_seen: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        since: Option<chrono::DateTime<chrono::Utc>>,
     },
     /// The emails behind one count of the arrivals line, newest first:
     /// exactly as many as the count. `since`/`until` default to the line's

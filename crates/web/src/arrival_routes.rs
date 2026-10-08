@@ -18,6 +18,9 @@ struct ArrivalsQuery {
     /// visit before.
     #[serde(default)]
     mark_seen: bool,
+    /// The `since` the open Now was answered: refetches keep its window.
+    #[serde(default)]
+    since: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 async fn get_arrivals(
@@ -33,6 +36,7 @@ async fn get_arrivals(
         Request::GetArrivals {
             account_id,
             mark_seen: query.mark_seen,
+            since: query.since,
         },
     )
     .await?;

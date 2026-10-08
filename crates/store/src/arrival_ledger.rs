@@ -104,6 +104,8 @@ pub struct NewCorrection {
     pub prior_moved_at: Option<DateTime<Utc>>,
     /// A sender move's decision before it: the disposition, or "" for none.
     pub prior_disposition: Option<String>,
+    /// When that decision was made, so undo can put it back unchanged.
+    pub prior_decided_at: Option<DateTime<Utc>>,
     pub aspect_id: Option<String>,
 }
 
@@ -203,6 +205,7 @@ fn decode_correction(row: &sqlx::sqlite::SqliteRow) -> Result<Correction, sqlx::
             prior_moved_to: row.try_get("prior_moved_to")?,
             prior_moved_at: decode_optional_timestamp(row.try_get("prior_moved_at")?)?,
             prior_disposition: row.try_get("prior_disposition")?,
+            prior_decided_at: decode_optional_timestamp(row.try_get("prior_decided_at")?)?,
             aspect_id: row.try_get("aspect_id")?,
         },
     })
@@ -210,7 +213,7 @@ fn decode_correction(row: &sqlx::sqlite::SqliteRow) -> Result<Correction, sqlx::
 
 const CORRECTION_COLUMNS: &str = "id, account_id, scope, message_id, sender_email, from_mode,
     to_mode, rule, source, created_at, undone_at, prior_moved_to, prior_moved_at,
-    prior_disposition, aspect_id";
+    prior_disposition, prior_decided_at, aspect_id";
 
 impl super::Store {
     /// Arrivals of `account_id` not placed yet, oldest first.
@@ -418,6 +421,60 @@ impl super::Store {
         Ok(())
     }
 
+    /// Whether a later move of this email still stands: undoing an older
+    /// move then would throw the newer one away. Moves that only kept the
+    /// email where it was, and the To do and Archive aspects, don't count.
+    pub async fn newer_email_move_stands(
+        &self,
+        message_id: &MessageId,
+        after_correction_id: i64,
+    ) -> Result<bool, sqlx::Error> {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM mode_corrections
+             WHERE message_id = ?1 AND id > ?2 AND scope = 'email' AND undone_at IS NULL
+               AND from_mode != to_mode AND to_mode IN ('messages', 'updates', 'reading')",
+        )
+        .bind(message_id.as_str())
+        .bind(after_correction_id)
+        .fetch_one(self.reader())
+        .await?;
+        Ok(n > 0)
+    }
+
+    /// The open to-do made from this email, if any.
+    pub async fn open_todo_for_message(
+        &self,
+        message_id: &MessageId,
+    ) -> Result<Option<String>, sqlx::Error> {
+        sqlx::query_scalar(
+            "SELECT id FROM todos WHERE source_message_id = ?1 AND state = 'open'
+             ORDER BY created_at LIMIT 1",
+        )
+        .bind(message_id.as_str())
+        .fetch_optional(self.reader())
+        .await
+    }
+
+    /// Put a sender decision's date back after undo restored the decision:
+    /// a new date would override the email moves made after the original.
+    pub async fn set_screener_decided_at(
+        &self,
+        account_id: &AccountId,
+        sender_email: &str,
+        decided_at: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE screener_decisions SET decided_at = ?3
+             WHERE account_id = ?1 AND sender_email = ?2 COLLATE NOCASE",
+        )
+        .bind(account_id.as_str())
+        .bind(sender_email)
+        .bind(decided_at.timestamp())
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
     /// A sender move overrides every move of that sender's mail in force.
     pub async fn supersede_sender_moves(
         &self,
@@ -604,8 +661,9 @@ impl super::Store {
         let id = sqlx::query(
             "INSERT INTO mode_corrections
                  (account_id, scope, message_id, sender_email, from_mode, to_mode, rule, source,
-                  created_at, prior_moved_to, prior_moved_at, prior_disposition, aspect_id)
-             VALUES (?1, ?2, ?3, lower(?4), ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                  created_at, prior_moved_to, prior_moved_at, prior_disposition,
+                  prior_decided_at, aspect_id)
+             VALUES (?1, ?2, ?3, lower(?4), ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         )
         .bind(correction.account_id.as_str())
         .bind(&correction.scope)
@@ -619,6 +677,7 @@ impl super::Store {
         .bind(&correction.prior_moved_to)
         .bind(correction.prior_moved_at.map(|at| at.timestamp()))
         .bind(&correction.prior_disposition)
+        .bind(correction.prior_decided_at.map(|at| at.timestamp()))
         .bind(&correction.aspect_id)
         .execute(self.writer())
         .await?

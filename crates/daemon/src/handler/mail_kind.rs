@@ -154,6 +154,15 @@ impl SenderKind {
     }
 }
 
+/// The email stays in Messages whatever the copied and crowd rules say: the
+/// user moved it there, set its sender to Messages, or it is mail addressed
+/// to you from someone you've written to that a list rule would have buried.
+pub(super) fn kept_in_messages(signals: &KindSignals<'_>) -> bool {
+    signals.moved == Some(SenderKind::Person)
+        || signals.decision == Some(ScreenerDisposition::Allow)
+        || (signals.addressed && classify(signals).rule == KindRuleData::WrittenTo)
+}
+
 /// The kind a move of one email to `mode` gives it. To do and Archive add
 /// the email there instead of moving it, so they have no kind.
 pub(super) const fn kind_for_mode(mode: ModeKindData) -> Option<SenderKind> {
@@ -407,19 +416,13 @@ pub(super) fn classify(signals: &KindSignals<'_>) -> Classification {
     if signals.is_invite {
         return automated(KindRuleData::Invite);
     }
-    let hint = address_hint(signals.email);
-    match hint {
-        Some(AddressHint::Notifying(rule)) => return automated(rule),
-        Some(AddressHint::Newsletter(rule)) => return list(rule),
-        Some(AddressHint::NoReply) | None => {}
-    }
-    // Never sorted away (D119, N1): mail addressed to you from someone
-    // you've written to reaches Messages over any list or no-reply rule.
-    // The rule is named only where it overrode one, so a plain person's
-    // mail keeps its own reason.
-    let never_bury = signals.written_to && signals.addressed;
+    // Never sorted away (D119, N1): mail from someone you've written to is
+    // a person's over any list, newsletter-address or no-reply rule, copied
+    // or not (a copy-only message is then asked about, not buried). The
+    // rule is named only where it overrode one, so a plain person's mail
+    // keeps its own reason.
     let unless_never_bury = |classification: Classification| {
-        if never_bury {
+        if signals.written_to {
             Classification {
                 kind: SenderKind::Person,
                 rule: KindRuleData::WrittenTo,
@@ -428,6 +431,12 @@ pub(super) fn classify(signals: &KindSignals<'_>) -> Classification {
             classification
         }
     };
+    let hint = address_hint(signals.email);
+    match hint {
+        Some(AddressHint::Notifying(rule)) => return automated(rule),
+        Some(AddressHint::Newsletter(rule)) => return unless_never_bury(list(rule)),
+        Some(AddressHint::NoReply) | None => {}
+    }
     if signals.has_list_id {
         return unless_never_bury(list(KindRuleData::ListId));
     }
@@ -915,16 +924,34 @@ mod tests {
             assert_eq!(known.kind, SenderKindData::People);
             assert_eq!(known.rule, KindRuleData::WrittenTo);
             assert_eq!(known.reason, WRITTEN_TO_REASON);
-            // Only copied: the rule doesn't apply.
-            let copied = describe(&KindSignals {
+            // Only copied: still theirs, not Reading. Placement then asks
+            // about it (the thread is copied), and `kept_in_messages` holds
+            // only what is addressed to you.
+            let copied_signals = KindSignals {
                 written_to: true,
                 addressed: false,
                 ..list
-            });
-            assert_ne!(copied.kind, SenderKindData::People);
+            };
+            assert_eq!(describe(&copied_signals).kind, SenderKindData::People);
+            assert!(!kept_in_messages(&copied_signals));
+            assert!(kept_in_messages(&KindSignals {
+                written_to: true,
+                ..list
+            }));
             // A stranger's list mail stays Reading.
             assert_eq!(describe(&list).kind, SenderKindData::Reading);
         }
+        // A newsletter address gives way too.
+        let by_address = describe(&KindSignals {
+            written_to: true,
+            ..signals("newsletter@orbit.example")
+        });
+        assert_eq!(by_address.kind, SenderKindData::People);
+        assert_eq!(by_address.rule, KindRuleData::WrittenTo);
+        assert_eq!(
+            describe(&signals("newsletter@orbit.example")).kind,
+            SenderKindData::Reading
+        );
         // Plain mail from someone you wrote to keeps its own reason.
         let plain = describe(&KindSignals {
             written_to: true,

@@ -289,6 +289,15 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "The window start the open visit was answered; a refetch that doesn't mark keeps it",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -21387,7 +21396,7 @@
           },
           {
             "type": "object",
-            "description": "Now's arrivals line (D119): every inbound email first seen since Now\nwas last opened (at most 24 hours back), counted once by where it\nwent, plus \"Not sure\" questions and the weekly track record.\n`mark_seen` starts a visit: the window then runs from the visit\nbefore. Returns `ResponseData::Arrivals`.",
+            "description": "Now's arrivals line (D119): every inbound email first seen since Now\nwas last opened (at most 24 hours back), counted once by where it\nwent, plus \"Not sure\" questions and the weekly track record.\n`mark_seen` starts a visit: the window then runs from the visit\nbefore. `since` is the window start of the visit a client already\nhas open (the `since` it was answered): a read that doesn't mark\nthen keeps that window instead of working one out again, so a Now\nthat stays open polls the same window all visit. Returns\n`ResponseData::Arrivals`.",
             "required": [
               "cmd"
             ],
@@ -21410,6 +21419,13 @@
               },
               "mark_seen": {
                 "type": "boolean"
+              },
+              "since": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
               }
             }
           },

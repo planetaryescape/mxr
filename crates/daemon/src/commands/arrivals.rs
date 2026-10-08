@@ -1,4 +1,4 @@
-//! `mxr arrivals`, `mxr move` and `mxr corrections` (D119): where every
+//! `mxr arrivals`, `mxr reclassify` and `mxr corrections` (D119): where every
 //! email that arrived went, moving one email or a sender, and the moves
 //! made. The same daemon requests as Now's line and the clients' `X`/`K`.
 
@@ -30,6 +30,7 @@ pub async fn run_arrivals(
                     .request(Request::GetArrivals {
                         account_id,
                         mark_seen: false,
+                        since: None,
                     })
                     .await?,
                 |response| match response {
@@ -128,7 +129,7 @@ fn render_line(arrivals: &ArrivalsData, format: OutputFormat) -> anyhow::Result<
                 }
                 let _ = writeln!(
                     out,
-                    "  Answer with `mxr move <id> <mode> --not-sure`; keeping it where it is counts too."
+                    "  Answer with `mxr reclassify <id> <mode> --not-sure`; keeping it where it is counts too."
                 );
             }
             if let Some(track) = &arrivals.track_record {
@@ -265,7 +266,7 @@ fn render_move(outcome: &MoveOutcomeData, format: OutputFormat) -> anyhow::Resul
                 if outcome.ask_sender.is_some() {
                     let _ = writeln!(
                         out,
-                        "Always for this sender: mxr move {} {} --sender",
+                        "Always for this sender: mxr reclassify {} {} --sender",
                         outcome.message_id,
                         outcome.to.id()
                     );
@@ -370,7 +371,9 @@ fn render_corrections(
         }
         OutputFormat::Table => {
             if corrections.is_empty() {
-                return Ok("No moves yet. Move an email with `mxr move <id> <mode>`.\n".into());
+                return Ok(
+                    "No moves yet. Move an email with `mxr reclassify <id> <mode>`.\n".into(),
+                );
             }
             let mut out = String::new();
             for c in corrections {
@@ -404,7 +407,7 @@ mod tests {
 
     use super::*;
     use mxr_core::id::{AccountId, MessageId, ThreadId};
-    use mxr_protocol::ArrivalCountData;
+    use mxr_protocol::{ArrivalCountData, NotSureData};
 
     fn line() -> ArrivalsData {
         let now = chrono::Utc::now();
@@ -462,5 +465,73 @@ mod tests {
         assert!(out.contains("mxr corrections undo 7"));
         assert!(out.contains("--sender"));
         assert_eq!(render_move(&outcome, OutputFormat::Ids).unwrap(), "7\n");
+    }
+    /// Every command the output tells the user to run must be one the real
+    /// CLI accepts: a printed `mxr move ... --sender` once didn't parse.
+    #[test]
+    fn every_command_the_output_prints_parses_with_the_real_cli() {
+        use clap::Parser;
+        let id = MessageId::new();
+        let mut arrivals = line();
+        arrivals.not_sure_line = Some("1 email I wasn't sure about.".into());
+        arrivals.not_sure = vec![NotSureData {
+            account_id: AccountId::new(),
+            message_id: id.clone(),
+            thread_id: ThreadId::new(),
+            sender_email: "maya@example.com".into(),
+            sender_name: None,
+            subject: "Q4 plan".into(),
+            mode: ModeKindData::Updates,
+            line: "Maya copied you on \"Q4 plan\". Updates for now.".into(),
+            choices: Vec::new(),
+        }];
+        let outcome = MoveOutcomeData {
+            account_id: AccountId::new(),
+            message_id: id.clone(),
+            thread_id: ThreadId::new(),
+            sender_email: "maya@example.com".into(),
+            from: ArrivalBucketData::Updates,
+            to: ModeKindData::Reading,
+            sender: false,
+            dry_run: false,
+            copy: "Moved to Reading.".into(),
+            ask_sender: Some("Always for this sender? (K)".into()),
+            hint: None,
+            correction_id: Some(7),
+            aspect_id: None,
+        };
+        let printed = [
+            render_line(&arrivals, OutputFormat::Table).unwrap(),
+            render_move(&outcome, OutputFormat::Table).unwrap(),
+            render_corrections(&[], OutputFormat::Table).unwrap(),
+        ]
+        .join("\n");
+        let mut commands = Vec::new();
+        for line in printed.lines() {
+            // A command is quoted in backticks or follows a "label: ".
+            let Some(start) = line
+                .find("`mxr ")
+                .map(|at| at + 1)
+                .or_else(|| line.find(": mxr ").map(|at| at + 2))
+            else {
+                continue;
+            };
+            let rest = &line[start..];
+            let end = rest.find('`').unwrap_or(rest.len());
+            let command = rest[..end].trim_end_matches('.');
+            commands.push(
+                command
+                    .replace("<id>", &id.as_str())
+                    .replace("<mode>", "reading"),
+            );
+        }
+        // The not-sure answer, the undo and the sender follow-up at least.
+        assert!(commands.len() >= 4, "found {commands:?}");
+        for command in commands {
+            let argv: Vec<&str> = command.split_whitespace().collect();
+            if let Err(error) = crate::cli::Cli::try_parse_from(&argv) {
+                panic!("`{command}` does not parse: {error}");
+            }
+        }
     }
 }

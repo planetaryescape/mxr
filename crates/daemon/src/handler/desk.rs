@@ -267,6 +267,15 @@ impl Senders {
         )
     }
 
+    /// The thread rules leave this message in Messages (`kept_in_messages`).
+    pub(super) fn kept_in_messages(
+        &self,
+        message: &DeskMessage,
+        is_self: &dyn Fn(&str) -> bool,
+    ) -> bool {
+        mail_kind::kept_in_messages(&self.signals(message, is_self))
+    }
+
     /// A person other than you wrote it (not an auto-responder, list or
     /// notification): it answers you.
     pub(super) fn answers(&self, message: &DeskMessage, is_self: &dyn Fn(&str) -> bool) -> bool {

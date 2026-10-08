@@ -189,6 +189,7 @@ async fn seed(fx: &Fixture, account: &mxr_core::AccountId, tag: &str) -> Owned {
             prior_moved_to: None,
             prior_moved_at: None,
             prior_disposition: None,
+            prior_decided_at: None,
             aspect_id: None,
         })
         .await
@@ -759,6 +760,7 @@ async fn requests_spanning_every_account_are_denied_and_unscoped_ones_allowed() 
         Request::GetArrivals {
             account_id: None,
             mark_seen: false,
+            since: None,
         },
         Request::ListMessages {
             account_id: None,

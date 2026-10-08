@@ -83,7 +83,7 @@ async fn line(fx: &Fixture) -> ArrivalsData {
         .set_mode_viewed("arrivals:since", now - Duration::hours(1))
         .await
         .unwrap();
-    arrivals_at(&fx.state, None, false, now, &Utc)
+    arrivals_at(&fx.state, None, false, None, now, &Utc)
         .await
         .unwrap()
 }
@@ -291,9 +291,16 @@ async fn nothing_new_says_when_mail_last_came() {
         .set_mode_viewed("arrivals:since", now + Duration::seconds(2))
         .await
         .unwrap();
-    let line = arrivals_at(&fx.state, None, false, now + Duration::seconds(5), &Utc)
-        .await
-        .unwrap();
+    let line = arrivals_at(
+        &fx.state,
+        None,
+        false,
+        None,
+        now + Duration::seconds(5),
+        &Utc,
+    )
+    .await
+    .unwrap();
     assert_eq!(line.total, 0);
     assert!(line.line.starts_with("Nothing new since "), "{}", line.line);
     assert!(line.line.contains("Latest mail"), "{}", line.line);
@@ -306,23 +313,32 @@ async fn the_window_runs_from_the_visit_before_and_a_quick_return_keeps_it() {
     let tz = Utc;
     let morning = Utc.with_ymd_and_hms(2026, 10, 7, 8, 12, 0).unwrap();
     // Never opened: the start of today.
-    let first = arrivals_at(&fx.state, None, true, morning, &tz)
+    let first = arrivals_at(&fx.state, None, true, None, morning, &tz)
         .await
         .unwrap();
     assert_eq!(first.since_label, "00:00");
     // The next visit counts from 08:12.
     let noon = morning + Duration::hours(4);
-    let second = arrivals_at(&fx.state, None, true, noon, &tz).await.unwrap();
+    let second = arrivals_at(&fx.state, None, true, None, noon, &tz)
+        .await
+        .unwrap();
     assert_eq!(second.since_label, "08:12");
     // Back within a minute (a double mount, a quick look elsewhere): the
     // same visit.
-    let again = arrivals_at(&fx.state, None, true, noon + Duration::seconds(20), &tz)
-        .await
-        .unwrap();
+    let again = arrivals_at(
+        &fx.state,
+        None,
+        true,
+        None,
+        noon + Duration::seconds(20),
+        &tz,
+    )
+    .await
+    .unwrap();
     assert_eq!(again.since_label, "08:12");
     // Never more than 24 hours back.
     let days_later = noon + Duration::days(3);
-    let late = arrivals_at(&fx.state, None, true, days_later, &tz)
+    let late = arrivals_at(&fx.state, None, true, None, days_later, &tz)
         .await
         .unwrap();
     assert_eq!(late.since, days_later - Duration::hours(24));
@@ -334,6 +350,7 @@ async fn the_window_runs_from_the_visit_before_and_a_quick_return_keeps_it() {
         &fx.state,
         None,
         false,
+        None,
         days_later + Duration::seconds(30),
         &tz,
     )
@@ -345,11 +362,11 @@ async fn the_window_runs_from_the_visit_before_and_a_quick_return_keeps_it() {
         days_later + Duration::seconds(30) - Duration::hours(24)
     );
     let lapsed_at = days_later + Duration::hours(1);
-    let peek = arrivals_at(&fx.state, None, false, lapsed_at, &tz)
+    let peek = arrivals_at(&fx.state, None, false, None, lapsed_at, &tz)
         .await
         .unwrap();
     assert_eq!(peek.since, days_later);
-    let opened = arrivals_at(&fx.state, None, true, lapsed_at, &tz)
+    let opened = arrivals_at(&fx.state, None, true, None, lapsed_at, &tz)
         .await
         .unwrap();
     assert_eq!(opened.since, peek.since);
@@ -667,8 +684,12 @@ async fn not_sure_asks_at_most_three_a_day_by_the_local_day() {
     }
     let now = midnight + Duration::hours(2);
     // Place them first.
-    arrivals_at(&fx.state, None, false, now, &tz).await.unwrap();
-    let asked = arrivals_at(&fx.state, None, false, now, &tz).await.unwrap();
+    arrivals_at(&fx.state, None, false, None, now, &tz)
+        .await
+        .unwrap();
+    let asked = arrivals_at(&fx.state, None, false, None, now, &tz)
+        .await
+        .unwrap();
     let shown: Vec<MessageId> = asked
         .not_sure
         .iter()
@@ -684,7 +705,9 @@ async fn not_sure_asks_at_most_three_a_day_by_the_local_day() {
     let kept = move_with(&fx, &ids[1], ModeKindData::Updates, false, Some("not_sure")).await;
     assert_eq!(kept.copy, "Kept in Updates.");
     assert!(kept.correction_id.is_some(), "keeping it is an answer");
-    let after = arrivals_at(&fx.state, None, false, now, &tz).await.unwrap();
+    let after = arrivals_at(&fx.state, None, false, None, now, &tz)
+        .await
+        .unwrap();
     let shown: Vec<MessageId> = after
         .not_sure
         .iter()
@@ -698,7 +721,7 @@ async fn not_sure_asks_at_most_three_a_day_by_the_local_day() {
     // Keeping an email where it was is not a move for the track record.
     assert!(after.track_record.is_none());
     // A day later UTC is still the 8th, but it's the 9th in UTC+10.
-    let next_day = arrivals_at(&fx.state, None, false, now + Duration::days(1), &tz)
+    let next_day = arrivals_at(&fx.state, None, false, None, now + Duration::days(1), &tz)
         .await
         .unwrap();
     assert!(next_day.not_sure.is_empty());
@@ -799,8 +822,290 @@ async fn each_account_counts_its_own_mail() {
         )
         .await
         .unwrap();
-    let work = arrivals_at(&fx.state, Some(&other.id), false, now, &Utc)
+    let work = arrivals_at(&fx.state, Some(&other.id), false, None, now, &Utc)
         .await
         .unwrap();
     assert_eq!(work.total, 1);
+}
+
+/// The error text of a request the daemon refuses.
+async fn refused(fx: &Fixture, request: Request) -> String {
+    let msg = IpcMessage {
+        id: 3,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(request),
+    };
+    match handle_request(&fx.state, &msg).await.payload {
+        IpcPayload::Response(Response::Error { message, .. }) => message,
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn an_open_now_keeps_its_window_while_it_polls() {
+    let fx = Fixture::new().await;
+    let tz = Utc;
+    let morning = Utc.with_ymd_and_hms(2026, 10, 7, 8, 0, 0).unwrap();
+    arrivals_at(&fx.state, None, true, None, morning, &tz)
+        .await
+        .unwrap();
+    let noon = morning + Duration::hours(4);
+    let opened = arrivals_at(&fx.state, None, true, None, noon, &tz)
+        .await
+        .unwrap();
+    assert_eq!(opened.since, morning);
+    // A minute-plus later the open page refetches without marking and
+    // names the window it holds: it must not jump to the visit itself.
+    let later = noon + Duration::minutes(5);
+    let polled = arrivals_at(&fx.state, None, false, Some(opened.since), later, &tz)
+        .await
+        .unwrap();
+    assert_eq!(polled.since, opened.since);
+    // A peek that holds no window (the CLI) still answers what Now would
+    // open with.
+    let peek = arrivals_at(&fx.state, None, false, None, later, &tz)
+        .await
+        .unwrap();
+    assert_eq!(peek.since, noon);
+}
+
+#[tokio::test]
+async fn undoing_an_older_move_is_refused_while_a_newer_one_stands() {
+    let fx = Fixture::new().await;
+    let newsletter = inbound(&fx, "editor@weekly.example", true).await;
+    line(&fx).await;
+    let first = move_to(&fx, &newsletter.id, ModeKindData::Updates, false).await;
+    let second = move_to(&fx, &newsletter.id, ModeKindData::Messages, false).await;
+    let message = refused(
+        &fx,
+        Request::UndoMove {
+            correction_id: first.correction_id.unwrap(),
+        },
+    )
+    .await;
+    assert!(message.contains("newer move"), "{message}");
+    assert_eq!(
+        chip(&fx, &newsletter.id).await.0,
+        ArrivalBucketData::Messages,
+        "the newer move is untouched"
+    );
+    // Newest first works, and then the older one is free to undo.
+    undo(&fx, second.correction_id.unwrap()).await;
+    undo(&fx, first.correction_id.unwrap()).await;
+    assert_eq!(
+        chip(&fx, &newsletter.id).await.0,
+        ArrivalBucketData::Reading
+    );
+}
+
+#[tokio::test]
+async fn undoing_a_sender_move_leaves_earlier_email_moves_standing() {
+    let fx = Fixture::new().await;
+    let a = inbound(&fx, "editor@weekly.example", true).await;
+    line(&fx).await;
+    // The sender was sent to Reading some time ago; then A was moved to
+    // Messages by hand.
+    let long_ago = Utc::now() - Duration::hours(3);
+    request(
+        &fx,
+        Request::SetSenderKind {
+            account_id: fx.account.clone(),
+            sender_email: "editor@weekly.example".into(),
+            kind: Some(mxr_protocol::SenderKindData::Reading),
+        },
+    )
+    .await;
+    fx.state
+        .store
+        .set_screener_decided_at(&fx.account, "editor@weekly.example", long_ago)
+        .await
+        .unwrap();
+    move_to(&fx, &a.id, ModeKindData::Messages, false).await;
+    assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Messages);
+
+    // K to Updates overrides A's move; undoing K restores Reading for the
+    // sender with its old date, so A's move stands again.
+    let sender = move_to(&fx, &a.id, ModeKindData::Updates, true).await;
+    assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Updates);
+    undo(&fx, sender.correction_id.unwrap()).await;
+    assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Messages);
+    let decision = fx
+        .state
+        .store
+        .get_screener_decision(&fx.account, "editor@weekly.example")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(decision.decided_at.timestamp(), long_ago.timestamp());
+}
+
+#[tokio::test]
+async fn reversing_a_sender_mode_set_elsewhere_keeps_earlier_email_moves() {
+    let fx = Fixture::new().await;
+    let a = inbound(&fx, "editor@weekly.example", true).await;
+    line(&fx).await;
+    let set = |kind| Request::SetSenderKind {
+        account_id: fx.account.clone(),
+        sender_email: "editor@weekly.example".into(),
+        kind,
+    };
+    request(&fx, set(Some(mxr_protocol::SenderKindData::Reading))).await;
+    let long_ago = Utc::now() - Duration::hours(3);
+    fx.state
+        .store
+        .set_screener_decided_at(&fx.account, "editor@weekly.example", long_ago)
+        .await
+        .unwrap();
+    move_to(&fx, &a.id, ModeKindData::Messages, false).await;
+    request(&fx, set(Some(mxr_protocol::SenderKindData::PaperTrail))).await;
+    assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Updates);
+    // The quick reversal is an undo: Reading is back, A's move stands.
+    request(&fx, set(Some(mxr_protocol::SenderKindData::Reading))).await;
+    assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Messages);
+}
+
+#[tokio::test]
+async fn moving_to_archive_when_already_filed_records_no_undo_and_keeps_the_record() {
+    let fx = Fixture::new().await;
+    let receipt = inbound(&fx, "no-reply@shop.example", false).await;
+    line(&fx).await;
+    let first = move_to(&fx, &receipt.id, ModeKindData::Archive, false).await;
+    let record = first.aspect_id.clone().expect("the record made");
+    let again = move_to(&fx, &receipt.id, ModeKindData::Archive, false).await;
+    assert_eq!(again.copy, "Already in Archive.");
+    assert!(again.correction_id.is_none() && again.aspect_id.is_none());
+    // Nothing the repeat logged can dismiss the record; undoing the first
+    // filing still does.
+    let still = fx
+        .state
+        .store
+        .get_archive_record(&record)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(still.dismissed_at.is_none());
+    let corrections = fx
+        .state
+        .store
+        .list_corrections(std::slice::from_ref(&fx.account), 10)
+        .await
+        .unwrap();
+    assert_eq!(corrections.len(), 1);
+}
+
+#[tokio::test]
+async fn moving_to_to_do_twice_makes_one_task() {
+    let fx = Fixture::new().await;
+    let receipt = inbound(&fx, "no-reply@shop.example", false).await;
+    line(&fx).await;
+    let first = move_to(&fx, &receipt.id, ModeKindData::Todo, false).await;
+    let todo = first.aspect_id.clone().expect("the to-do made");
+    let again = move_to(&fx, &receipt.id, ModeKindData::Todo, false).await;
+    assert_eq!(again.copy, "Already in To do.");
+    assert!(again.correction_id.is_none() && again.aspect_id.is_none());
+    let open: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM todos WHERE source_message_id = ?1 AND state = 'open'",
+    )
+    .bind(receipt.id.as_str())
+    .fetch_one(fx.state.store.reader())
+    .await
+    .unwrap();
+    assert_eq!(open, 1);
+    // Undo of the one move still dismisses that task.
+    undo(&fx, first.correction_id.unwrap()).await;
+    let row = fx.state.store.get_todo(&todo).await.unwrap().unwrap();
+    assert_eq!(row.state, mxr_store::TodoState::Dismissed);
+}
+
+#[tokio::test]
+async fn someone_you_wrote_to_is_never_buried_by_copy_newsletter_address_or_crowd() {
+    let fx = Fixture::new().await;
+    wrote_to(&fx, "maya@orbit.example").await;
+    wrote_to(&fx, "newsletter@orbit.example").await;
+    // Newsletter-address rule, addressed to you.
+    let by_address = inbound(&fx, "newsletter@orbit.example", true).await;
+    // Crowd: more than ten recipients, addressed to you.
+    let crowd: Vec<String> = (0..12).map(|i| format!("p{i}@team.example")).collect();
+    let mut to: Vec<&str> = crowd.iter().map(String::as_str).collect();
+    to.push(ME);
+    let crowded = mail(
+        &fx,
+        &ThreadId::new(),
+        "maya@orbit.example",
+        &to,
+        &[],
+        true,
+        Duration::minutes(4),
+    )
+    .await;
+    // List mail with you only in Cc: not buried in Reading; Now asks.
+    let cc_only = mail(
+        &fx,
+        &ThreadId::new(),
+        "maya@orbit.example",
+        &["ruth@keystone.example"],
+        &[ME],
+        true,
+        Duration::minutes(3),
+    )
+    .await;
+    let line = line(&fx).await;
+    let messages = list(&fx, &line, ArrivalBucketData::Messages).await;
+    assert!(messages.contains(&by_address.id), "newsletter address");
+    assert!(messages.contains(&crowded.id), "crowd");
+    assert!(
+        list(&fx, &line, ArrivalBucketData::Reading)
+            .await
+            .is_empty(),
+        "nothing from someone you wrote to lands in Reading"
+    );
+    assert_eq!(
+        list(&fx, &line, ArrivalBucketData::Updates).await,
+        vec![cc_only.id.clone()]
+    );
+    assert_eq!(line.not_sure.len(), 1);
+    assert_eq!(line.not_sure[0].message_id, cc_only.id);
+}
+
+#[tokio::test]
+async fn always_messages_for_a_sender_keeps_a_copied_email_in_messages() {
+    let fx = Fixture::new().await;
+    wrote_to(&fx, "maya@orbit.example").await;
+    let copied = mail(
+        &fx,
+        &ThreadId::new(),
+        "maya@orbit.example",
+        &["ruth@keystone.example"],
+        &[ME],
+        false,
+        Duration::minutes(3),
+    )
+    .await;
+    line(&fx).await;
+    assert_eq!(chip(&fx, &copied.id).await.0, ArrivalBucketData::Updates);
+    move_to(&fx, &copied.id, ModeKindData::Messages, false).await;
+    assert_eq!(chip(&fx, &copied.id).await.0, ArrivalBucketData::Messages);
+    // K supersedes the per-email move; the sender's Messages setting must
+    // hold the email there, as the preview and the toast promise.
+    let preview = match request(
+        &fx,
+        Request::MoveMessage {
+            message_id: copied.id.clone(),
+            mode: ModeKindData::Messages,
+            sender: true,
+            dry_run: true,
+            source: None,
+        },
+    )
+    .await
+    {
+        ResponseData::MessageMoved { outcome } => outcome,
+        other => panic!("expected a preview, got {other:?}"),
+    };
+    assert!(preview.copy.contains("Messages"));
+    move_to(&fx, &copied.id, ModeKindData::Messages, true).await;
+    assert_eq!(chip(&fx, &copied.id).await.0, ArrivalBucketData::Messages);
+    let held = membership(&fx, &copied.thread_id).await;
+    assert!(modes(&held).contains(&ModeKindData::Messages), "{held:?}");
+    assert!(!modes(&held).contains(&ModeKindData::Updates), "{held:?}");
 }

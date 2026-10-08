@@ -202,7 +202,16 @@ impl AccountInputs<'_> {
     pub(super) fn shape(&self, thread: &[DeskMessage]) -> Shape {
         let person_sender = |m: &DeskMessage| self.sender_kind(m) == SenderKind::Person;
         let human_address = |email: &str| self.human_address(email);
-        let kept = |m: &DeskMessage| self.moves.get(&m.id) == Some(&SenderKind::Person);
+        let kept = |m: &DeskMessage| {
+            let email = &m.from.email;
+            mail_kind::kept_in_messages(&desk_signals(
+                m,
+                self.contact(email),
+                self.decision(email),
+                self.moves.get(&m.id).copied(),
+                self.is_self,
+            ))
+        };
         conversation_shape(
             thread,
             &ShapeInputs {

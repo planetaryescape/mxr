@@ -347,6 +347,7 @@ async fn corrections_log_undo_once_and_count_only_real_moves() {
         prior_moved_to: None,
         prior_moved_at: None,
         prior_disposition: None,
+        prior_decided_at: None,
         aspect_id: None,
     };
     assert!(!store
@@ -421,6 +422,7 @@ async fn deleting_a_message_takes_its_arrival_and_keeps_the_correction_log() {
             prior_moved_to: None,
             prior_moved_at: None,
             prior_disposition: None,
+            prior_decided_at: None,
             aspect_id: None,
         })
         .await
@@ -466,4 +468,170 @@ async fn reads_use_indexes_not_scans() {
             .any(|s| s.contains("idx_arrivals_account_seen")),
         "{steps:#?}"
     );
+}
+
+#[tokio::test]
+async fn after_the_first_sync_old_dated_mail_still_arrives_when_stored() {
+    let (store, account) = store_with_account().await;
+    // Past its first sync: the account has a sync cursor.
+    store
+        .set_sync_cursor(
+            &account,
+            &mxr_core::types::SyncCursor::from_bytes(br#"{"v":"1","history_id":42}"#.to_vec()),
+        )
+        .await
+        .unwrap();
+    let now = Utc::now();
+    let backdated = arrive(
+        &store,
+        &account,
+        1,
+        "maya@example.com",
+        now - Duration::days(3),
+        MessageDirection::Inbound,
+    )
+    .await;
+    let seen = first_seen(&store, &backdated)
+        .await
+        .expect("an arrival row");
+    assert!(
+        (seen - now.timestamp()).abs() <= 5,
+        "a header three days back is first seen when stored, not three days ago"
+    );
+    // Even a header older than the 30-day backfill horizon is news now.
+    let ancient = arrive(
+        &store,
+        &account,
+        2,
+        "b@example.com",
+        now - Duration::days(45),
+        MessageDirection::Inbound,
+    )
+    .await;
+    let seen = first_seen(&store, &ancient).await.expect("an arrival row");
+    assert!((seen - now.timestamp()).abs() <= 5);
+}
+
+#[tokio::test]
+async fn only_a_newer_move_of_the_same_email_blocks_undoing_an_older_one() {
+    let (store, account) = store_with_account().await;
+    let message = arrive(
+        &store,
+        &account,
+        1,
+        "maya@example.com",
+        Utc::now(),
+        MessageDirection::Inbound,
+    )
+    .await;
+    let moved = |to: &str, from: &str| NewCorrection {
+        account_id: account.clone(),
+        scope: "email".into(),
+        message_id: Some(message.clone()),
+        sender_email: "maya@example.com".into(),
+        from_mode: from.into(),
+        to_mode: to.into(),
+        rule: None,
+        source: "move".into(),
+        created_at: Utc::now(),
+        prior_moved_to: None,
+        prior_moved_at: None,
+        prior_disposition: None,
+        prior_decided_at: None,
+        aspect_id: None,
+    };
+    let first = store
+        .insert_correction(&moved("updates", "reading"))
+        .await
+        .unwrap();
+    assert!(!store
+        .newer_email_move_stands(&message, first)
+        .await
+        .unwrap());
+    // An aspect (To do) and a keep-where-it-is answer are not moves.
+    store
+        .insert_correction(&moved("todo", "updates"))
+        .await
+        .unwrap();
+    store
+        .insert_correction(&moved("updates", "updates"))
+        .await
+        .unwrap();
+    assert!(!store
+        .newer_email_move_stands(&message, first)
+        .await
+        .unwrap());
+    let second = store
+        .insert_correction(&moved("messages", "updates"))
+        .await
+        .unwrap();
+    assert!(store
+        .newer_email_move_stands(&message, first)
+        .await
+        .unwrap());
+    assert!(!store
+        .newer_email_move_stands(&message, second)
+        .await
+        .unwrap());
+    store
+        .mark_correction_undone(second, Utc::now())
+        .await
+        .unwrap();
+    assert!(!store
+        .newer_email_move_stands(&message, first)
+        .await
+        .unwrap());
+}
+
+#[tokio::test]
+async fn a_restored_decision_keeps_its_original_date_so_earlier_moves_stand() {
+    let (store, account) = store_with_account().await;
+    let t0 = Utc::now() - Duration::hours(3);
+    let message = arrive(
+        &store,
+        &account,
+        1,
+        "maya@example.com",
+        Utc::now(),
+        MessageDirection::Inbound,
+    )
+    .await;
+    store
+        .set_screener_decision(&ScreenerDecision {
+            account_id: account.clone(),
+            sender_email: "maya@example.com".into(),
+            disposition: ScreenerDisposition::Feed,
+            route_label: None,
+            decided_at: t0,
+        })
+        .await
+        .unwrap();
+    store.ensure_arrival(&message).await.unwrap();
+    store
+        .set_arrival_move(
+            &message,
+            Some("messages"),
+            Some(Utc::now() - Duration::hours(1)),
+        )
+        .await
+        .unwrap();
+    assert!(store.arrivals_by_ids(&[message.clone()]).await.unwrap()[0].moved);
+    // Restoring the decision with today's date overrides the move ...
+    store
+        .set_screener_decision(&ScreenerDecision {
+            account_id: account.clone(),
+            sender_email: "maya@example.com".into(),
+            disposition: ScreenerDisposition::Feed,
+            route_label: None,
+            decided_at: Utc::now(),
+        })
+        .await
+        .unwrap();
+    assert!(!store.arrivals_by_ids(&[message.clone()]).await.unwrap()[0].moved);
+    // ... putting the original date back lets the move stand.
+    store
+        .set_screener_decided_at(&account, "maya@example.com", t0)
+        .await
+        .unwrap();
+    assert!(store.arrivals_by_ids(&[message.clone()]).await.unwrap()[0].moved);
 }

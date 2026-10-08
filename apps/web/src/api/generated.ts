@@ -8501,6 +8501,8 @@ export interface components {
             /** @enum {string} */
             cmd: "GetArrivals";
             mark_seen?: boolean;
+            /** Format: date-time */
+            since?: string | null;
         } | {
             account_id?: null | components["schemas"]["AccountId"];
             bucket?: null | components["schemas"]["ArrivalBucketData"];
@@ -11830,6 +11832,8 @@ export interface operations {
                 account?: string;
                 /** @description True when Now opens: starts a visit */
                 mark_seen?: boolean;
+                /** @description The window start the open visit was answered; a refetch that doesn't mark keeps it */
+                since?: string;
             };
             header?: never;
             path?: never;

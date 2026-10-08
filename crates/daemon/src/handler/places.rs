@@ -275,9 +275,7 @@ async fn copied_threads(
     let human = |email: &str| {
         super::conversation_shape::human_address(email, &senders.contacts, &senders.screener)
     };
-    let kept = |m: &mxr_store::DeskMessage| {
-        senders.moves.get(&m.id) == Some(&mail_kind::SenderKind::Person)
-    };
+    let kept = |m: &mxr_store::DeskMessage| senders.kept_in_messages(m, &is_self);
     let inputs = super::conversation_shape::ShapeInputs {
         is_self: &is_self,
         person_sender: &person_sender,
@@ -481,11 +479,12 @@ pub(super) async fn set_sender_kind(
             "sender email cannot be empty".to_string(),
         ));
     }
-    let previous = apply_sender_kind(state, account_id, &sender_email, kind).await?;
+    let applied = apply_sender_kind(state, account_id, &sender_email, kind, None).await?;
+    let previous = applied.previous;
     // The decision is the move; logging and re-placing it is bookkeeping a
     // failure of which must not report the move as failed.
     if let Err(error) =
-        super::arrivals::after_sender_kind(state, account_id, &sender_email, previous, kind).await
+        super::arrivals::after_sender_kind(state, account_id, &sender_email, applied, kind).await
     {
         tracing::warn!(%error, "arrivals: recording a sender's mode failed");
     }
@@ -497,14 +496,23 @@ pub(super) async fn set_sender_kind(
     })
 }
 
-/// Store a sender's kind (`None`: back to automatic) and return the one it
-/// had. `sender_email` is lowercased already.
+/// What a sender's decision was before `apply_sender_kind` replaced it.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct AppliedKind {
+    pub previous: Option<SenderKindData>,
+    pub previous_decided_at: Option<chrono::DateTime<Utc>>,
+}
+
+/// Store a sender's kind (`None`: back to automatic) and return what it
+/// replaced. `decided_at` dates the decision (undo puts the original date
+/// back); `None` is now. `sender_email` is lowercased already.
 pub(super) async fn apply_sender_kind(
     state: &AppState,
     account_id: &AccountId,
     sender_email: &str,
     kind: Option<SenderKindData>,
-) -> Result<Option<SenderKindData>, HandlerError> {
+    decided_at: Option<chrono::DateTime<Utc>>,
+) -> Result<AppliedKind, HandlerError> {
     let sender_email = sender_email.to_string();
     let _change = state.sweep_gate.change([account_id]).await;
     let store = &state.store;
@@ -514,6 +522,7 @@ pub(super) async fn apply_sender_kind(
     let previous = existing
         .as_ref()
         .and_then(|decision| mail_kind::kind_for(decision.disposition));
+    let previous_decided_at = existing.as_ref().map(|decision| decision.decided_at);
     match kind {
         Some(kind) => {
             store
@@ -524,7 +533,7 @@ pub(super) async fn apply_sender_kind(
                     // A routing label chosen in the screener survives a
                     // change of kind.
                     route_label: existing.and_then(|decision| decision.route_label),
-                    decided_at: Utc::now(),
+                    decided_at: decided_at.unwrap_or_else(Utc::now),
                 })
                 .await?;
         }
@@ -534,7 +543,10 @@ pub(super) async fn apply_sender_kind(
                 .await?;
         }
     }
-    Ok(previous)
+    Ok(AppliedKind {
+        previous,
+        previous_decided_at,
+    })
 }
 
 pub(super) async fn pin_messages(

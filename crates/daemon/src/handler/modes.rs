@@ -408,8 +408,7 @@ fn shape_of(inputs: &PlaceInputs<'_>) -> Shape {
     };
     let human =
         |email: &str| human_address(email, &inputs.senders.contacts, &inputs.senders.screener);
-    let kept =
-        |m: &DeskMessage| inputs.senders.moves.get(&m.id) == Some(&mail_kind::SenderKind::Person);
+    let kept = |m: &DeskMessage| inputs.senders.kept_in_messages(m, inputs.is_self);
     conversation_shape(
         inputs.thread,
         &ShapeInputs {

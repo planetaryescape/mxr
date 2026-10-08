@@ -554,7 +554,8 @@ fn mail_hint_seen() {}
     summary = "Now's arrivals line: every email first seen since Now was last opened, counted once by where it went, with Not-sure questions and the track record",
     params(
         ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
-        ("mark_seen" = Option<bool>, Query, description = "True when Now opens: starts a visit")
+        ("mark_seen" = Option<bool>, Query, description = "True when Now opens: starts a visit"),
+        ("since" = Option<String>, Query, description = "The window start the open visit was answered; a refetch that doesn't mark keeps it")
     ),
     responses(
         (status = 200, description = "The `Arrivals` variant", body = ResponseData),

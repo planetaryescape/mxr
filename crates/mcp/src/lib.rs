@@ -373,6 +373,7 @@ impl MxrMcpServer {
         self.daemon_json(Request::GetArrivals {
             account_id: parse_optional_id(input.account_id)?,
             mark_seen: false,
+            since: None,
         })
         .await
     }

@@ -859,7 +859,7 @@ mod tests {
     #[test]
     fn demo_fixtures_include_spam_promotions_and_suspicious_inbox_mail() {
         let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
-        let (envelopes, _, labels) = fixtures::generate_demo_fixtures(&account_id, 220);
+        let (envelopes, _, labels) = fixtures::generate_demo_fixtures(&account_id, 230);
         let spam = envelopes
             .iter()
             .filter(|env| {

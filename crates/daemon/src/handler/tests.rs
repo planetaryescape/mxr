@@ -738,3 +738,5 @@ async fn dispatch_future_stays_well_inside_a_worker_stack() {
     assert!(size < 256 * 1024, "handle_request future is {size} bytes");
     drop(future);
 }
+
+mod rule_treatment;

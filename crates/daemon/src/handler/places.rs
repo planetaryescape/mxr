@@ -47,6 +47,7 @@ pub(super) struct AccountKinds {
     written_to: HashSet<String>,
     /// Emails the user moved (`X`) whose move is in force.
     moves: HashMap<MessageId, mail_kind::SenderKind>,
+    treatments: HashMap<MessageId, (String, String)>,
     addresses: Arc<mxr_core::types::InMemoryAccountAddressLookup>,
     account_id: AccountId,
     account_email: Option<String>,
@@ -106,6 +107,7 @@ impl AccountKinds {
             contacts,
             written_to,
             moves,
+            treatments: state.store.rule_treatments(account_id).await?,
             addresses: state.account_addresses.clone(),
             account_id: account_id.clone(),
             account_email,
@@ -120,7 +122,7 @@ impl AccountKinds {
                 .is_some_and(|own| own.eq_ignore_ascii_case(email))
     }
 
-    pub(super) fn signals<'a>(&self, message: &'a PlaceMessage) -> KindSignals<'a> {
+    pub(super) fn signals<'a>(&'a self, message: &'a PlaceMessage) -> KindSignals<'a> {
         let key = message.from_email.to_ascii_lowercase();
         KindSignals {
             email: &message.from_email,
@@ -142,6 +144,9 @@ impl AccountKinds {
                 &|email: &str| self.is_self(email),
             ),
             moved: self.moves.get(&message.id).copied(),
+            treatment: self.treatments.get(&message.id).and_then(|(mode, name)| {
+                Some((mail_kind::kind_for_stored_mode(mode)?, name.as_str()))
+            }),
         }
     }
 
@@ -473,6 +478,7 @@ pub(super) async fn set_sender_kind(
     sender_email: &str,
     kind: Option<SenderKindData>,
 ) -> HandlerResult {
+    let _sorting = state.rule_mutation_gate.lock().await;
     let sender_email = sender_email.trim().to_ascii_lowercase();
     if sender_email.is_empty() {
         return Err(HandlerError::from(

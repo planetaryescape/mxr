@@ -94,7 +94,7 @@ pub(super) struct Placement {
 /// them.
 pub(super) fn signals<'a>(
     message: &'a DeskMessage,
-    senders: &Senders,
+    senders: &'a Senders,
     is_self: &dyn Fn(&str) -> bool,
 ) -> KindSignals<'a> {
     senders.signals(message, is_self)
@@ -148,6 +148,7 @@ pub(super) async fn place_threads(
         timers: &timers,
         is_self: &is_self,
         moves: &senders.moves,
+        treatments: &senders.treatments,
         shape: super::conversation_shape::shape_config(state),
         now,
     });

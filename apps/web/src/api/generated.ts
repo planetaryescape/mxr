@@ -3418,6 +3418,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/rules/treatment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview or apply account-scoped sorting */
+        post: operations["rule_treatment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/rules/upsert": {
         parameters: {
             query?: never;
@@ -5502,7 +5519,7 @@ export interface components {
          *     means the user moved the sender; everything else is automatic.
          * @enum {string}
          */
-        KindRuleData: "decision" | "delivery" | "invite" | "automated_address" | "automated_domain" | "newsletter_address" | "newsletter_domain" | "list_id" | "list_unsubscribe" | "no_reply_address" | "transaction_alert" | "role_address" | "bulk_sender" | "templated_sender" | "list_sender" | "person" | "copied" | "written_to" | "moved";
+        KindRuleData: "decision" | "delivery" | "invite" | "automated_address" | "automated_domain" | "newsletter_address" | "newsletter_domain" | "list_id" | "list_unsubscribe" | "no_reply_address" | "transaction_alert" | "role_address" | "bulk_sender" | "templated_sender" | "list_sender" | "person" | "copied" | "written_to" | "moved" | "custom_rule";
         Label: {
             account_id: components["schemas"]["AccountId"];
             color?: string | null;
@@ -7654,6 +7671,11 @@ export interface components {
             cmd: "RepairAccountConfig";
         } | {
             /** @enum {string} */
+            cmd: "RuleTreatment";
+            form: components["schemas"]["RuleFormData"];
+            preview_token?: string | null;
+        } | {
+            /** @enum {string} */
             cmd: "ListRules";
         } | {
             /** @enum {string} */
@@ -7668,6 +7690,7 @@ export interface components {
             cmd: "UpsertRule";
             rule: unknown;
         } | {
+            account_id?: null | components["schemas"]["AccountId"];
             action: string;
             /** @enum {string} */
             cmd: "UpsertRuleForm";
@@ -9286,6 +9309,10 @@ export interface components {
             result: components["schemas"]["UnsubscribePurgeResultData"];
         } | {
             /** @enum {string} */
+            kind: "RuleTreatmentResult";
+            preview: components["schemas"]["RuleTreatmentPreviewData"];
+        } | {
+            /** @enum {string} */
             kind: "Rules";
             rules: unknown[];
         } | {
@@ -9919,6 +9946,7 @@ export interface components {
          */
         Role: "inbox" | "sent" | "drafts" | "trash" | "spam" | "archive" | "all_mail" | "important" | "starred";
         RuleFormData: {
+            account_id?: null | components["schemas"]["AccountId"];
             action: string;
             condition: string;
             enabled: boolean;
@@ -9926,6 +9954,32 @@ export interface components {
             name: string;
             /** Format: int32 */
             priority: number;
+        };
+        RuleTreatmentMatchData: {
+            after: string;
+            before: string;
+            blocked: boolean;
+            from: string;
+            message_id: components["schemas"]["MessageId"];
+            reason: string;
+            subject: string;
+            treatment?: string | null;
+            winner?: string | null;
+        };
+        RuleTreatmentPreviewData: {
+            applied: boolean;
+            result: components["schemas"]["RuleTreatmentSelectionData"];
+            rule_id?: string | null;
+            token?: string | null;
+        };
+        RuleTreatmentSelectionData: {
+            complete: boolean;
+            matches: components["schemas"]["RuleTreatmentMatchData"][];
+            notice: string;
+            /** Format: int32 */
+            scan_limit: number;
+            /** Format: int32 */
+            unavailable: number;
         };
         /** @description Wire shape of a saved activity filter preset (Phase 8). */
         SavedActivityFilterEntry: {
@@ -17507,6 +17561,31 @@ export interface operations {
         };
     };
     rule_history: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rule_treatment: {
         parameters: {
             query?: never;
             header?: never;

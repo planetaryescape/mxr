@@ -3725,6 +3725,7 @@ mod tests {
             Some(Command::Rules {
                 action:
                     Some(RulesAction::Add {
+                        account: None,
                         name,
                         condition,
                         action,

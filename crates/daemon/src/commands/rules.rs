@@ -31,6 +31,18 @@ fn parse_actions(value: &str) -> anyhow::Result<Vec<RuleAction>> {
 fn parse_action(value: &str) -> anyhow::Result<RuleAction> {
     let trimmed = value.trim();
     let lower = trimmed.to_ascii_lowercase();
+    if let Some(value) = strip_action_prefix(trimmed, "treatment:") {
+        let mode = value;
+        let treatment = match mode.to_ascii_lowercase().as_str() {
+            "messages" => mxr_rules::Treatment::Messages,
+            "updates" => mxr_rules::Treatment::Updates,
+            "reading" => mxr_rules::Treatment::Reading,
+            _ => {
+                anyhow::bail!("Invalid treatment: {mode}; choose messages, updates or reading");
+            }
+        };
+        return Ok(RuleAction::SetTreatment { treatment });
+    }
     if lower == "archive" {
         return Ok(RuleAction::Archive);
     }
@@ -285,6 +297,10 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
     let mut client = IpcClient::connect().await?;
 
     match action.unwrap_or(RulesAction::List) {
+        RulesAction::TreatmentPreview { rule } => run_treatment(&mut client, rule, None).await?,
+        RulesAction::TreatmentApply { rule, token } => {
+            run_treatment(&mut client, rule, Some(token)).await?
+        }
         RulesAction::List => match client.request(Request::ListRules).await? {
             Response::Ok {
                 data: ResponseData::Rules { rules },
@@ -297,6 +313,7 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
             println!("{}", serde_json::to_string_pretty(&rule)?);
         }
         RulesAction::Add {
+            account,
             name,
             condition,
             action,
@@ -304,6 +321,9 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
         } => {
             let ast = parse_query(&condition).map_err(|e| anyhow::anyhow!(e.to_string()))?;
             let rule = Rule {
+                account_id: account
+                    .map(|value| value.parse::<mxr_core::AccountId>())
+                    .transpose()?,
                 id: RuleId::new(),
                 name,
                 enabled: true,
@@ -474,4 +494,32 @@ mod tests {
             RuleAction::ShellHook { .. }
         ));
     }
+}
+
+async fn run_treatment(
+    client: &mut IpcClient,
+    rule: String,
+    preview_token: Option<String>,
+) -> anyhow::Result<()> {
+    let form = match client.request(Request::GetRuleForm { rule }).await? {
+        Response::Ok {
+            data: ResponseData::RuleFormData { form },
+        } => form,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    };
+    match client
+        .request(Request::RuleTreatment {
+            form,
+            preview_token,
+        })
+        .await?
+    {
+        Response::Ok {
+            data: ResponseData::RuleTreatmentResult { preview },
+        } => println!("{}", serde_json::to_string_pretty(&preview)?),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    }
+    Ok(())
 }

@@ -161,8 +161,116 @@ impl ServerHandler for MxrMcpServer {
     }
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SortingRuleParams {
+    pub rule_id: Option<String>,
+    pub account_id: String,
+    pub name: String,
+    pub condition: String,
+    pub treatment: SortingTreatment,
+    pub priority: i32,
+    pub enabled: bool,
+    pub preview_token: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SortingTreatment {
+    Messages,
+    Updates,
+    Reading,
+}
+impl SortingTreatment {
+    fn action(&self) -> &'static str {
+        match self {
+            Self::Messages => "treatment:messages",
+            Self::Updates => "treatment:updates",
+            Self::Reading => "treatment:reading",
+        }
+    }
+}
+fn sorting_actions(existing: Option<&str>, treatment: &SortingTreatment) -> String {
+    let mut actions: Vec<_> = existing
+        .into_iter()
+        .flat_map(|s| s.split([',', ';']))
+        .map(str::trim)
+        .filter(|a| !a.is_empty() && !a.to_ascii_lowercase().starts_with("treatment:"))
+        .collect();
+    actions.push(treatment.action());
+    actions.join(",")
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RuleKeyParams {
+    pub rule: String,
+}
+
 #[tool_router(router = tool_router)]
 impl MxrMcpServer {
+    #[tool(
+        description = "Read the complete editable rule form including account scope and all actions. Use before editing a sorting rule to preserve unrelated actions."
+    )]
+    async fn mxr_rule_form(
+        &self,
+        Parameters(p): Parameters<RuleKeyParams>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::GetRuleForm { rule: p.rule })
+            .await
+    }
+
+    #[tool(
+        description = "Create or edit an account-scoped sorting rule for Messages, Updates or Reading. Without preview_token returns a bounded preview with before/after, conflicts and a token. With that token saves and applies exactly the unchanged preview. Personal corrections take precedence. Only changes sorting; any other actions of an existing rule are retained automatically. Header conditions only; body and link-density predicates are unsupported."
+    )]
+    async fn mxr_sorting_rule(
+        &self,
+        Parameters(p): Parameters<SortingRuleParams>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let existing = if let Some(id) = &p.rule_id {
+            match self
+                .requester
+                .request(Request::GetRuleForm { rule: id.clone() })
+                .await
+                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?
+            {
+                Response::Ok {
+                    data: ResponseData::RuleFormData { form },
+                } => Some(form),
+                Response::Error { message, .. } => {
+                    return Err(ErrorData::internal_error(message, None))
+                }
+                _ => {
+                    return Err(ErrorData::internal_error(
+                        "Unexpected rule form response",
+                        None,
+                    ))
+                }
+            }
+        } else {
+            None
+        };
+        let action = sorting_actions(existing.as_ref().map(|f| f.action.as_str()), &p.treatment);
+        self.daemon_json(Request::RuleTreatment {
+            form: mxr_protocol::RuleFormData {
+                id: p.rule_id,
+                account_id: Some(parse_id(&p.account_id)?),
+                name: p.name,
+                condition: p.condition,
+                action,
+                priority: p.priority,
+                enabled: p.enabled,
+            },
+            preview_token: p.preview_token,
+        })
+        .await
+    }
+
+    #[tool(
+        description = "List configured mail rules including account scope, conditions, actions and rule IDs. Read-only."
+    )]
+    async fn mxr_rules(&self) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::ListRules).await
+    }
+
     #[tool(
         name = "mxr_status",
         description = "Return daemon status, accounts, message counts, health, and protocol metadata."
@@ -1328,6 +1436,23 @@ pub enum MutationAction {
 mod tests {
     use super::*;
     use std::sync::Mutex;
+
+    #[test]
+    fn sorting_tool_rejects_arbitrary_actions_and_preserves_existing_actions() {
+        assert!(serde_json::from_value::<SortingTreatment>(json!("shell:rm")).is_err());
+        assert!(serde_json::from_value::<SortingTreatment>(json!("archive")).is_err());
+        assert_eq!(
+            sorting_actions(None, &SortingTreatment::Reading),
+            "treatment:reading"
+        );
+        assert_eq!(
+            sorting_actions(
+                Some("label:Receipts,treatment:updates,shell:echo existing"),
+                &SortingTreatment::Messages
+            ),
+            "label:Receipts,shell:echo existing,treatment:messages"
+        );
+    }
 
     #[derive(Debug, Default)]
     struct FakeRequester {

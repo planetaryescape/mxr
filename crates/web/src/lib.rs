@@ -1606,6 +1606,7 @@ async fn upsert_rule_form(
     match ipc_request(
         &state.config.socket_path,
         Request::UpsertRuleForm {
+            account_id: request.account_id,
             existing_rule: request.existing_rule,
             name: request.name,
             condition: request.condition,
@@ -3507,3 +3508,29 @@ async fn trigger_semantic_reindex(
 
 #[cfg(test)]
 mod tests;
+
+#[derive(Deserialize)]
+struct RuleTreatmentRequest {
+    form: mxr_protocol::RuleFormData,
+    preview_token: Option<String>,
+}
+async fn rule_treatment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(request): Json<RuleTreatmentRequest>,
+) -> Result<Json<mxr_protocol::RuleTreatmentPreviewData>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::RuleTreatment {
+            form: request.form,
+            preview_token: request.preview_token,
+        },
+    )
+    .await?
+    {
+        ResponseData::RuleTreatmentResult { preview } => Ok(Json(preview)),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}

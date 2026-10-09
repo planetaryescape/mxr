@@ -331,6 +331,7 @@ impl App {
             | Action::DeleteRule
             | Action::ShowRuleHistory
             | Action::ShowRuleDryRun
+            | Action::ApplyRuleTreatment
             | Action::OpenRuleFormNew
             | Action::OpenRuleFormEdit
             | Action::SaveRuleForm => self.apply_rule_action(action),

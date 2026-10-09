@@ -1156,27 +1156,118 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if let Some(rule) = app.rules.pending_dry_run.take() {
+        if let Some(form) = app.rules.pending_sorting_preview.take() {
             let bg = bg.clone();
+            app.rules.dry_run_request_id = app.rules.dry_run_request_id.wrapping_add(1);
+            let request_id = app.rules.dry_run_request_id;
             let _ = submit_task(&queued, async move {
-                let resp = ipc_call(
+                let result = match ipc_call(
                     &bg,
-                    Request::DryRunRules {
-                        rule: Some(rule),
-                        all: false,
-                        after: None,
+                    Request::RuleTreatment {
+                        form: form.clone(),
+                        preview_token: None,
                     },
                 )
-                .await;
-                let result = match resp {
+                .await
+                {
                     Ok(Response::Ok {
-                        data: ResponseData::RuleDryRun { results },
-                    }) => Ok(results),
+                        data: ResponseData::RuleTreatmentResult { preview },
+                    }) => match serde_json::to_value(preview) {
+                        Ok(mut preview) => match serde_json::to_value(form) {
+                            Ok(form) => {
+                                preview["form"] = form;
+                                Ok(vec![preview])
+                            }
+                            Err(e) => Err(MxrError::Ipc(e.to_string())),
+                        },
+                        Err(e) => Err(MxrError::Ipc(e.to_string())),
+                    },
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response to DryRunRules".into())),
+                    _ => Err(MxrError::Ipc("Unexpected sorting preview response".into())),
                 };
-                AsyncResult::RuleDryRun(result)
+                AsyncResult::RuleDryRun { request_id, result }
+            });
+        }
+        if let Some(rule) = app.rules.pending_dry_run.take() {
+            let bg = bg.clone();
+            app.rules.dry_run_request_id = app.rules.dry_run_request_id.wrapping_add(1);
+            let request_id = app.rules.dry_run_request_id;
+            let _ = submit_task(&queued, async move {
+                let result = async {
+                    let form_response =
+                        ipc_call(&bg, Request::GetRuleForm { rule: rule.clone() }).await?;
+                    if let Response::Ok {
+                        data: ResponseData::RuleFormData { form },
+                    } = form_response
+                    {
+                        if form.action.contains("treatment:") {
+                            return match ipc_call(
+                                &bg,
+                                Request::RuleTreatment {
+                                    form: form.clone(),
+                                    preview_token: None,
+                                },
+                            )
+                            .await?
+                            {
+                                Response::Ok {
+                                    data: ResponseData::RuleTreatmentResult { preview },
+                                } => {
+                                    let mut preview = serde_json::to_value(preview)
+                                        .map_err(|e| MxrError::Ipc(e.to_string()))?;
+                                    preview["form"] = serde_json::to_value(form)
+                                        .map_err(|e| MxrError::Ipc(e.to_string()))?;
+                                    Ok(vec![preview])
+                                }
+                                Response::Error { message, .. } => Err(MxrError::Ipc(message)),
+                                _ => {
+                                    Err(MxrError::Ipc("Unexpected sorting preview response".into()))
+                                }
+                            };
+                        }
+                    }
+                    match ipc_call(
+                        &bg,
+                        Request::DryRunRules {
+                            rule: Some(rule),
+                            all: false,
+                            after: None,
+                        },
+                    )
+                    .await?
+                    {
+                        Response::Ok {
+                            data: ResponseData::RuleDryRun { results },
+                        } => Ok(results),
+                        Response::Error { message, .. } => Err(MxrError::Ipc(message)),
+                        _ => Err(MxrError::Ipc("Unexpected dry run response".into())),
+                    }
+                }
+                .await;
+                AsyncResult::RuleDryRun { request_id, result }
+            });
+        }
+        if let Some((form, token)) = app.rules.pending_treatment.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let result = match ipc_call(
+                    &bg,
+                    Request::RuleTreatment {
+                        form,
+                        preview_token: Some(token),
+                    },
+                )
+                .await
+                {
+                    Ok(Response::Ok {
+                        data: ResponseData::RuleTreatmentResult { preview },
+                    }) => serde_json::to_value(preview).map_err(|e| MxrError::Ipc(e.to_string())),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("Unexpected sorting apply response".into())),
+                };
+                AsyncResult::RuleTreatment(result)
             });
         }
 
@@ -1221,6 +1312,7 @@ pub async fn run() -> anyhow::Result<()> {
         if app.rules.pending_form_save {
             app.rules.pending_form_save = false;
             let bg = bg.clone();
+            let account_id = app.rules.page.form.account_id.clone();
             let existing_rule = app.rules.page.form.existing_rule.clone();
             let name = app.rules.page.form.name.clone();
             let condition = app.rules.page.form.condition.clone();
@@ -1231,6 +1323,7 @@ pub async fn run() -> anyhow::Result<()> {
                 let resp = ipc_call(
                     &bg,
                     Request::UpsertRuleForm {
+                        account_id,
                         existing_rule,
                         name,
                         condition,
@@ -3089,11 +3182,20 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                             app.rules.page.status = Some(format!("History error: {e}"));
                         }
-                        AsyncResult::RuleDryRun(Ok(results)) => {
+                        AsyncResult::RuleDryRun { request_id, result: Ok(results) } => {
+                            if request_id != app.rules.dry_run_request_id { continue; }
                             app.rules.page.dry_run = results;
                         }
-                        AsyncResult::RuleDryRun(Err(e)) => {
+                        AsyncResult::RuleDryRun { request_id, result: Err(e) } => {
+                            if request_id != app.rules.dry_run_request_id { continue; }
                             app.rules.page.status = Some(format!("Dry-run error: {e}"));
+                        }
+                        AsyncResult::RuleTreatment(result) => {
+                            app.rules.page.status = Some(match result {
+                                Ok(_) => "Sorting preview applied; personal corrections preserved".into(),
+                                Err(e) => format!("Sorting failed: {e}"),
+                            });
+                            app.rules.page.refresh_pending = true;
                         }
                         AsyncResult::RuleForm {
                             request_id,
@@ -3105,6 +3207,7 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                             app.rules.page.form.visible = true;
                             app.rules.page.form.existing_rule = form.id;
+                            app.rules.page.form.account_id = form.account_id;
                             app.rules.page.form.name = form.name;
                             app.rules.page.form.condition = form.condition;
                             app.rules.page.form.action = form.action;

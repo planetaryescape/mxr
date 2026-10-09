@@ -174,6 +174,7 @@ pub(super) async fn persist_rule(state: &AppState, rule: &Rule) -> Result<(), St
     state
         .store
         .upsert_rule(mxr_store::RuleRecordInput {
+            account_id: rule.account_id.as_ref(),
             id: &rule.id.0,
             name: &rule.name,
             enabled: rule.enabled,
@@ -266,35 +267,34 @@ pub(super) async fn dry_run_rules(
         }
     }
 
-    let dry_run_input: Vec<_> = owned_messages
+    Ok(rules
         .iter()
-        .map(|message| {
-            (
-                message as &dyn mxr_rules::MessageView,
-                message.id.as_str(),
-                message.from.as_str(),
-                message.subject.as_str(),
-            )
+        .filter(|rule| !all || rule.enabled)
+        .filter_map(|rule| {
+            let input: Vec<_> = owned_messages
+                .iter()
+                .filter(|message| {
+                    rule.account_id
+                        .as_ref()
+                        .is_none_or(|id| id == &message.account_id)
+                })
+                .map(|message| {
+                    (
+                        message as &dyn mxr_rules::MessageView,
+                        message.id.as_str(),
+                        message.from.as_str(),
+                        message.subject.as_str(),
+                    )
+                })
+                .collect();
+            engine.dry_run(&rule.id, &input)
         })
-        .collect();
-
-    if all {
-        Ok(rules
-            .iter()
-            .filter(|rule| rule.enabled)
-            .filter_map(|rule| engine.dry_run(&rule.id, &dry_run_input))
-            .collect())
-    } else {
-        Ok(rules
-            .first()
-            .and_then(|rule| engine.dry_run(&rule.id, &dry_run_input))
-            .into_iter()
-            .collect())
-    }
+        .collect())
 }
 
 struct DryRunMessage {
     id: String,
+    account_id: mxr_core::AccountId,
     from: String,
     to: Vec<String>,
     subject: String,
@@ -315,6 +315,7 @@ impl DryRunMessage {
         labels: Vec<String>,
     ) -> Self {
         Self {
+            account_id: envelope.account_id.clone(),
             id: envelope.id.to_string(),
             from: envelope.from.email,
             to: envelope.to.into_iter().map(|addr| addr.email).collect(),

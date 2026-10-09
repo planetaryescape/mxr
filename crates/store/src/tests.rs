@@ -1953,6 +1953,7 @@ async fn rules_roundtrip_and_history() {
 
     store
         .upsert_rule(crate::RuleRecordInput {
+            account_id: None,
             id: "rule-1",
             name: "Archive newsletters",
             enabled: true,

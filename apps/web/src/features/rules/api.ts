@@ -1,7 +1,9 @@
 import { apiFetch } from "@/api/client";
+import type { components } from "@/api/generated";
 
 export interface RuleForm {
   id?: string | null;
+  account_id?: string | null;
   name: string;
   condition: string;
   action: string;
@@ -61,6 +63,7 @@ export function upsertRuleForm(form: RuleForm, existingRule?: string | null) {
     method: "POST",
     body: {
       existing_rule: existingRule,
+      account_id: form.account_id,
       name: form.name,
       condition: form.condition,
       action: form.action,
@@ -74,5 +77,14 @@ export function deleteRule(rule: string) {
   return apiFetch<{ ok: boolean }>("/api/v1/platform/rules/delete", {
     method: "POST",
     body: { rule },
+  });
+}
+
+export type TreatmentMatch = components["schemas"]["RuleTreatmentMatchData"];
+export type TreatmentPreview = components["schemas"]["RuleTreatmentPreviewData"];
+export function previewTreatment(form: RuleForm, previewToken?: string) {
+  return apiFetch<TreatmentPreview>("/api/v1/platform/rules/treatment", {
+    method: "POST",
+    body: { form: { ...form, id: form.id ?? null }, preview_token: previewToken ?? null },
   });
 }

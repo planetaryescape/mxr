@@ -50,6 +50,65 @@ Common actions:
 - `Ctrl-s`: save the current form
 - `#`: delete
 
+## Sort mail into Messages, Updates or Reading
+
+```bash
+mxr accounts --format json
+mxr rules add "Weekly reading" --account ACCOUNT_UUID \
+  --when "from:editor@example.com subject:weekly" --then treatment:reading
+mxr rules treatment-preview "Weekly reading" --format json
+mxr rules treatment-apply "Weekly reading" PREVIEW_TOKEN --format json
+```
+
+Use the account ID returned by `mxr accounts`. The preview returns a token and
+up to 200 recent messages, each with its current place, proposed place and
+reason. `complete: false` means older mail was excluded. Apply requires the
+unchanged token; if mail, rules or personal choices changed, preview again.
+Tokens remain valid for up to ten minutes and can be used once.
+
+Sorting accepts header conditions such as sender, recipient, subject, labels,
+date and flags. Body and link-density conditions are rejected. The preview
+includes inbound inbox mail; archived, trashed and outbound mail is excluded.
+Lower numeric priority wins. Equal priorities use rule ID order, so the winner
+stays stable. Personal sender preferences and message corrections keep their
+existing precedence and appear in the preview when they prevent a change.
+
+Saving a rule sorts future arrivals. Editing, disabling or deleting it leaves
+historical placements in place; apply a new preview to change the selected
+existing mail. Ordinary sync replay preserves those placements. The explanation
+names the source rule and identifies deleted, disabled or earlier versions.
+Account scope covers every action in the rule. Apply changes only sorting;
+label, archive and other existing actions retain their ordinary sync behavior.
+
+In the TUI, choose `n` or `E`, set the account, condition and
+`treatment:messages`, `treatment:updates` or `treatment:reading`. `Space` cycles
+accounts in the Account field. `Ctrl-d` previews the draft; `D` previews a saved
+rule. Press `A` on the preview to save and apply it. `Ctrl-s` saves for future
+arrivals.
+
+In the web Rules editor, select an account and **Sort into Messages**,
+**Sort into Updates** or **Sort into Reading**. Review the before/after places
+and reasons, then choose **Apply to…** and confirm. **Save rule** affects future
+arrivals. The MCP tool `mxr_sorting_rule` accepts the same draft fields and a
+`messages`, `updates` or `reading` treatment. Omit `preview_token` to preview;
+pass the returned token to apply. `mxr_rule_form` reads an existing rule before
+editing. The sorting tool preserves its other actions. Scoped MCP profiles can
+read and edit only rules within their allowed accounts.
+
+The bridge exposes `POST /api/v1/platform/rules/treatment` with a `form` object
+and optional `preview_token`. It uses the bridge's bearer-token authorization.
+The response contains `token`, `applied`, `rule_id` and `result`, with the same
+selection and explanations as the CLI and TUI.
+
+Prefer a forward fix if sorting needs repair. Before downgrading to a binary
+without sorting support, remove or migrate every account-scoped rule and
+remove all `set_treatment` actions using the current binary. Disabling rules
+is insufficient: older binaries deserialize every stored rule before filtering
+by enabled state, and cannot read the new action. They also ignore account
+scope, so remaining label, archive or shell actions could run across accounts.
+The additive storage migration can remain; historical sorting is displayed
+only by binaries supporting it.
+
 ## Supported actions
 
 - `archive`
@@ -60,6 +119,7 @@ Common actions:
 - `add-label:NAME`
 - `remove-label:NAME`
 - `shell:COMMAND`
+- `treatment:messages`, `treatment:updates`, `treatment:reading`
 
 ## Body-derived conditions
 

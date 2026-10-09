@@ -63,6 +63,7 @@ pub(crate) mod record_subscriptions;
 pub(crate) mod records;
 mod relationship_profile;
 pub(crate) mod reply_later;
+pub(crate) mod rule_treatment;
 mod rules;
 mod runtime;
 mod safety_llm;
@@ -658,12 +659,17 @@ async fn dispatch(
         Request::RepairAccountConfig { account } => {
             accounts::repair_account(state, account.clone()).await
         }
+        Request::RuleTreatment {
+            form,
+            preview_token,
+        } => Box::pin(rule_treatment::run(state, form, preview_token.as_deref())).await,
         Request::ListRules => rules::list_rules(state).await,
         Request::GetRule { rule } => rules::get_rule(state, rule).await,
         Request::GetRuleForm { rule } => rules::get_rule_form(state, rule).await,
         Request::UpsertRule { rule } => rules::upsert_rule_value(state, rule.clone()).await,
         Request::DeleteRule { rule } => rules::delete_rule(state, rule).await,
         Request::UpsertRuleForm {
+            account_id,
             existing_rule,
             name,
             condition,
@@ -679,6 +685,7 @@ async fn dispatch(
                 action,
                 *priority,
                 *enabled,
+                account_id.as_ref(),
             )
             .await
         }
@@ -1967,6 +1974,10 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetThread { .. }
         | Request::ListThreads { .. }
         | Request::ListLabels { .. }
+        | Request::RuleTreatment {
+            preview_token: None,
+            ..
+        }
         | Request::ListRules
         | Request::ListAccounts
         | Request::ListAccountsConfig
@@ -2144,6 +2155,10 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::TestAccountConfig { .. }
         | Request::DisableAccountConfig { .. }
         | Request::RepairAccountConfig { .. }
+        | Request::RuleTreatment {
+            preview_token: Some(_),
+            ..
+        }
         | Request::UpsertRule { .. }
         | Request::UpsertRuleForm { .. }
         | Request::DeleteRule { .. }
@@ -2279,6 +2294,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::CreateLabel { .. } => "create_label",
         Request::DeleteLabel { .. } => "delete_label",
         Request::RenameLabel { .. } => "rename_label",
+        Request::RuleTreatment { .. } => "rule_treatment",
         Request::ListRules => "list_rules",
         Request::ListAccounts => "list_accounts",
         Request::ListAccountsConfig => "list_accounts_config",
@@ -3046,6 +3062,7 @@ async fn build_rule_from_form(
     action: &str,
     priority: i32,
     enabled: bool,
+    account_id: Option<&mxr_core::AccountId>,
 ) -> Result<Rule, String> {
     let existing = if let Some(rule) = existing_rule {
         state
@@ -3064,6 +3081,9 @@ async fn build_rule_from_form(
 
     let now = chrono::Utc::now();
     Ok(Rule {
+        account_id: account_id
+            .cloned()
+            .or_else(|| existing.as_ref().and_then(|rule| rule.account_id.clone())),
         id: existing
             .as_ref()
             .map(|rule| rule.id.clone())
@@ -3256,6 +3276,20 @@ fn parse_rule_actions_string(value: &str) -> Result<Vec<RuleAction>, String> {
 fn parse_rule_action_string(value: &str) -> Result<RuleAction, String> {
     let trimmed = value.trim();
     let lower = trimmed.to_ascii_lowercase();
+    if let Some(value) = strip_action_prefix(trimmed, "treatment:") {
+        let mode = value;
+        let treatment = match mode.to_ascii_lowercase().as_str() {
+            "messages" => mxr_rules::Treatment::Messages,
+            "updates" => mxr_rules::Treatment::Updates,
+            "reading" => mxr_rules::Treatment::Reading,
+            _ => {
+                return Err(format!(
+                    "Invalid treatment: {mode}; choose messages, updates or reading"
+                ));
+            }
+        };
+        return Ok(RuleAction::SetTreatment { treatment });
+    }
     if lower == "archive" {
         return Ok(RuleAction::Archive);
     }
@@ -3315,6 +3349,7 @@ fn strip_action_prefix<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
 fn rule_to_form_data(rule: &Rule) -> Result<mxr_protocol::RuleFormData, String> {
     let action = rule_actions_to_string(&rule.actions)?;
     Ok(mxr_protocol::RuleFormData {
+        account_id: rule.account_id.clone(),
         id: Some(rule.id.to_string()),
         name: rule.name.clone(),
         condition: conditions_to_query(&rule.conditions)?,
@@ -3337,6 +3372,7 @@ fn rule_actions_to_string(actions: &[RuleAction]) -> Result<String, String> {
 
 fn rule_action_to_string(action: &RuleAction) -> Result<String, String> {
     match action {
+        RuleAction::SetTreatment { treatment } => Ok(format!("treatment:{}", treatment.as_str())),
         RuleAction::Archive => Ok("archive".to_string()),
         RuleAction::Trash => Ok("trash".to_string()),
         RuleAction::Star => Ok("star".to_string()),

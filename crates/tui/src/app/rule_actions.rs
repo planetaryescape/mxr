@@ -37,13 +37,47 @@ impl App {
                 self.rules.page.panel = RulesPanel::History;
                 self.refresh_selected_rule_panel();
             }
+            Action::ApplyRuleTreatment => {
+                if let Some(preview) = self.rules.page.dry_run.first() {
+                    if let (Some(token), Ok(form)) = (
+                        preview["token"].as_str(),
+                        serde_json::from_value::<mxr_protocol::RuleFormData>(
+                            preview["form"].clone(),
+                        ),
+                    ) {
+                        self.rules.pending_treatment = Some((form, token.to_string()));
+                        self.rules.page.dry_run.clear();
+                        self.rules.page.status = Some("Applying the sorting preview...".into());
+                    }
+                }
+            }
             Action::ShowRuleDryRun => {
+                if self.rules.page.form.visible
+                    && self.rules.page.form.action.contains("treatment:")
+                {
+                    self.sync_rule_form_strings_from_editors();
+                    let f = &self.rules.page.form;
+                    self.rules.pending_sorting_preview = Some(mxr_protocol::RuleFormData {
+                        id: f.existing_rule.clone(),
+                        account_id: f.account_id.clone(),
+                        name: f.name.clone(),
+                        condition: f.condition.clone(),
+                        action: f.action.clone(),
+                        priority: f.priority.parse().unwrap_or(100),
+                        enabled: f.enabled,
+                    });
+                    self.rules.page.form.visible = false;
+                    self.rules.page.panel = RulesPanel::DryRun;
+                    self.rules.page.dry_run.clear();
+                    return;
+                }
                 self.rules.page.panel = RulesPanel::DryRun;
                 self.refresh_selected_rule_panel();
             }
             Action::OpenRuleFormNew => {
                 self.rules.page.form = RuleFormState {
                     visible: true,
+                    account_id: self.default_account_id().cloned(),
                     enabled: true,
                     priority: "100".to_string(),
                     active_field: 0,

@@ -705,6 +705,11 @@ pub enum Request {
     RepairAccountConfig {
         account: AccountConfigData,
     },
+    /// Preview or apply only the sorting action of a draft rule.
+    RuleTreatment {
+        form: RuleFormData,
+        preview_token: Option<String>,
+    },
     ListRules,
     GetRule {
         rule: String,
@@ -716,6 +721,8 @@ pub enum Request {
         rule: serde_json::Value,
     },
     UpsertRuleForm {
+        #[serde(default)]
+        account_id: Option<AccountId>,
         existing_rule: Option<String>,
         name: String,
         condition: String,
@@ -2543,6 +2550,7 @@ impl Request {
             | Self::DisableAccountConfig { .. }
             | Self::RemoveAccountConfig { .. }
             | Self::RepairAccountConfig { .. }
+            | Self::RuleTreatment { .. }
             | Self::ListRules
             | Self::GetRule { .. }
             | Self::GetRuleForm { .. }
@@ -3164,6 +3172,9 @@ pub enum ResponseData {
     },
 
     // mxr app/platform responses.
+    RuleTreatmentResult {
+        preview: RuleTreatmentPreviewData,
+    },
     Rules {
         rules: Vec<serde_json::Value>,
     },
@@ -3873,7 +3884,8 @@ impl ResponseData {
             | Self::SuggestedCollaborators { .. }
             | Self::ExpertSuggestions { .. }
             | Self::EntityExplanation { .. } => IpcCategory::CoreMail,
-            Self::Rules { .. }
+            Self::RuleTreatmentResult { .. }
+            | Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }
             | Self::AccountsConfig { .. }
@@ -4492,9 +4504,44 @@ pub struct DoctorDataStats {
     pub relationship_drifts: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RuleTreatmentMatchData {
+    pub message_id: MessageId,
+    pub from: String,
+    pub subject: String,
+    pub before: String,
+    pub after: String,
+    pub reason: String,
+    pub winner: Option<String>,
+    pub treatment: Option<String>,
+    pub blocked: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RuleTreatmentSelectionData {
+    pub matches: Vec<RuleTreatmentMatchData>,
+    pub complete: bool,
+    pub scan_limit: u32,
+    pub unavailable: u32,
+    pub notice: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RuleTreatmentPreviewData {
+    pub token: Option<String>,
+    pub applied: bool,
+    pub rule_id: Option<String>,
+    pub result: RuleTreatmentSelectionData,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RuleFormData {
+    #[serde(default)]
+    pub account_id: Option<AccountId>,
     pub id: Option<String>,
     pub name: String,
     pub condition: String,

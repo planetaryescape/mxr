@@ -34,8 +34,32 @@ pub struct DryRunMatch {
 impl RuleEngine {
     pub fn new(mut rules: Vec<Rule>) -> Self {
         // Sort by priority (lower = first)
-        rules.sort_by_key(|r| r.priority);
+        rules.sort_by(|a, b| {
+            a.priority
+                .cmp(&b.priority)
+                .then_with(|| a.id.0.cmp(&b.id.0))
+        });
         Self { rules }
+    }
+
+    /// Automatic sorting is account-bound and never becomes a personal move.
+    pub fn treatment<'a>(
+        &'a self,
+        msg: &dyn MessageView,
+        account_id: &mxr_core::AccountId,
+    ) -> Option<(&'a Rule, crate::Treatment)> {
+        self.rules
+            .iter()
+            .filter(|rule| rule.enabled && rule.account_id.as_ref() == Some(account_id))
+            .find_map(|rule| {
+                if rule.conditions.evaluate_known(msg) != Some(true) {
+                    return None;
+                }
+                rule.actions.iter().find_map(|action| match action {
+                    RuleAction::SetTreatment { treatment } => Some((rule, *treatment)),
+                    _ => None,
+                })
+            })
     }
 
     pub fn rules(&self) -> &[Rule] {
@@ -53,7 +77,16 @@ impl RuleEngine {
             if !rule.enabled {
                 continue;
             }
-            if rule.conditions.evaluate(msg) {
+            let matches = if rule
+                .actions
+                .iter()
+                .any(|action| matches!(action, RuleAction::SetTreatment { .. }))
+            {
+                rule.conditions.evaluate_known(msg) == Some(true)
+            } else {
+                rule.conditions.evaluate(msg)
+            };
+            if matches {
                 tracing::debug!(
                     rule_name = %rule.name,
                     message_id = %message_id,
@@ -123,6 +156,7 @@ mod tests {
 
     fn archive_newsletters_rule() -> Rule {
         Rule {
+            account_id: None,
             id: RuleId("r_archive".into()),
             name: "Archive newsletters".into(),
             enabled: true,
@@ -138,6 +172,7 @@ mod tests {
 
     fn mark_read_unsub_rule() -> Rule {
         Rule {
+            account_id: None,
             id: RuleId("r_markread".into()),
             name: "Mark read if unsubscribe available".into(),
             enabled: true,
@@ -272,6 +307,7 @@ mod tests {
     #[test]
     fn multiple_actions_per_rule() {
         let rule = Rule {
+            account_id: None,
             id: RuleId("r_multi".into()),
             name: "Multi-action rule".into(),
             enabled: true,
@@ -292,5 +328,73 @@ mod tests {
         let result = engine.evaluate(&msg, "msg_1");
 
         assert_eq!(result.actions.len(), 3);
+    }
+    #[test]
+    fn sorting_winner_is_stable_and_account_scoped() {
+        let account = mxr_core::AccountId::new();
+        let other = mxr_core::AccountId::new();
+        let mut a = archive_newsletters_rule();
+        a.id = RuleId("a".into());
+        a.account_id = Some(account.clone());
+        a.actions = vec![RuleAction::SetTreatment {
+            treatment: crate::Treatment::Reading,
+        }];
+        let mut b = a.clone();
+        b.id = RuleId("b".into());
+        b.actions = vec![
+            RuleAction::SetTreatment {
+                treatment: crate::Treatment::Messages,
+            },
+            RuleAction::Star,
+        ];
+        for rules in [vec![a.clone(), b.clone()], vec![b.clone(), a.clone()]] {
+            let engine = RuleEngine::new(rules);
+            assert_eq!(
+                engine
+                    .treatment(&newsletter_msg(), &account)
+                    .unwrap()
+                    .0
+                    .id
+                    .0,
+                "a"
+            );
+            assert!(engine.treatment(&newsletter_msg(), &other).is_none());
+            assert_eq!(engine.evaluate(&newsletter_msg(), "id").actions.len(), 3);
+        }
+        a.enabled = false;
+        assert_eq!(
+            RuleEngine::new(vec![a, b])
+                .treatment(&newsletter_msg(), &account)
+                .unwrap()
+                .0
+                .id
+                .0,
+            "b"
+        );
+    }
+
+    #[test]
+    fn unfetched_body_does_not_match_under_not_or_trigger_mixed_actions() {
+        let mut message = newsletter_msg();
+        message.body = None;
+        let mut rule = archive_newsletters_rule();
+        rule.account_id = Some(mxr_core::AccountId::new());
+        rule.conditions = Conditions::Not {
+            condition: Box::new(Conditions::Field(FieldCondition::BodyContains {
+                pattern: StringMatch::Contains("sale".into()),
+            })),
+        };
+        rule.actions = vec![
+            RuleAction::SetTreatment {
+                treatment: crate::Treatment::Reading,
+            },
+            RuleAction::Archive,
+        ];
+        let account = rule.account_id.clone().unwrap();
+        let engine = RuleEngine::new(vec![rule]);
+        assert!(engine.treatment(&message, &account).is_none());
+        assert!(engine.evaluate(&message, "id").actions.is_empty());
+        message.body = Some("ordinary newsletter".into());
+        assert!(engine.treatment(&message, &account).is_some());
     }
 }

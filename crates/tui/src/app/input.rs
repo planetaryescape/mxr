@@ -1940,6 +1940,9 @@ impl App {
                 self.refresh_selected_rule_panel();
                 None
             }
+            (KeyCode::Char('A'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::ApplyRuleTreatment)
+            }
             (KeyCode::Enter | KeyCode::Char('o'), _) => Some(Action::RefreshRules),
             (KeyCode::Char('e'), _) => Some(Action::ToggleRuleEnabled),
             (KeyCode::Char('D'), modifiers) if plain_or_shift(modifiers) => {
@@ -1966,12 +1969,12 @@ impl App {
                 None
             }
             (KeyCode::Tab, _) => {
-                self.rules.page.form.active_field = (self.rules.page.form.active_field + 1) % 5;
+                self.rules.page.form.active_field = (self.rules.page.form.active_field + 1) % 6;
                 None
             }
             (KeyCode::BackTab, _) => {
                 self.rules.page.form.active_field = if self.rules.page.form.active_field == 0 {
-                    4
+                    5
                 } else {
                     self.rules.page.form.active_field - 1
                 };
@@ -1981,6 +1984,23 @@ impl App {
                 self.rules.page.form.enabled = !self.rules.page.form.enabled;
                 None
             }
+            (KeyCode::Char(' '), _) if self.rules.page.form.active_field == 5 => {
+                let choices: Vec<_> = self
+                    .accounts
+                    .page
+                    .accounts
+                    .iter()
+                    .filter(|a| a.enabled)
+                    .map(|a| a.account_id.clone())
+                    .collect();
+                let index = choices
+                    .iter()
+                    .position(|id| Some(id) == self.rules.page.form.account_id.as_ref())
+                    .map_or(0, |i| (i + 1) % choices.len().max(1));
+                self.rules.page.form.account_id = choices.get(index).cloned();
+                None
+            }
+            (KeyCode::Char('d'), KeyModifiers::CONTROL) => Some(Action::ShowRuleDryRun),
             (KeyCode::Char('s'), KeyModifiers::CONTROL) => Some(Action::SaveRuleForm),
             (_, _) if self.rules.page.form.active_field == 1 => {
                 self.rules.condition_editor.input(key);

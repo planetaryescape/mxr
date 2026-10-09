@@ -30,7 +30,11 @@ pub(crate) enum AsyncResult {
         request_id: u64,
         result: Result<Vec<serde_json::Value>, MxrError>,
     },
-    RuleDryRun(Result<Vec<serde_json::Value>, MxrError>),
+    RuleDryRun {
+        request_id: u64,
+        result: Result<Vec<serde_json::Value>, MxrError>,
+    },
+    RuleTreatment(Result<serde_json::Value, MxrError>),
     RuleForm {
         request_id: u64,
         result: Result<RuleFormData, MxrError>,

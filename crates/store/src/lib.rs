@@ -136,7 +136,9 @@ pub use records::{
     RecordQuery, RecordRun, RecordSenderRule, RecordSource, SenderIssuer, RECORD_CHECKED_FIELDS,
 };
 pub use relationship_watchlist::{CadenceDriftRow, RelationshipWatchEntry};
-pub use rules::{row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecordInput};
+pub use rules::{
+    row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecordInput, RuleTreatmentInput,
+};
 pub use scheduled_sends::PendingScheduledSend;
 pub use screener::{ScreenerDecision, ScreenerDisposition, ScreenerQueueEntry};
 pub use semantic::SemanticIndexRow;

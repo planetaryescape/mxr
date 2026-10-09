@@ -158,7 +158,9 @@ impl SenderKind {
 /// user moved it there, set its sender to Messages, or it is mail addressed
 /// to you from someone you've written to that a list rule would have buried.
 pub(super) fn kept_in_messages(signals: &KindSignals<'_>) -> bool {
-    signals.moved == Some(SenderKind::Person)
+    classify(signals).rule == KindRuleData::CustomRule
+        && classify(signals).kind == SenderKind::Person
+        || signals.moved == Some(SenderKind::Person)
         || signals.decision == Some(ScreenerDisposition::Allow)
         || (signals.addressed && classify(signals).rule == KindRuleData::WrittenTo)
 }
@@ -375,6 +377,7 @@ pub(super) struct KindSignals<'a> {
     /// The user moved this one email (`X`) and no later sender decision
     /// overrode it.
     pub moved: Option<SenderKind>,
+    pub treatment: Option<(SenderKind, &'a str)>,
 }
 
 /// A message's kind and the rule that decided it.
@@ -401,6 +404,12 @@ pub(super) fn classify(signals: &KindSignals<'_>) -> Classification {
         Some(ScreenerDisposition::PaperTrail) => return decided(SenderKind::Automated),
         Some(ScreenerDisposition::Allow) => return decided(SenderKind::Person),
         Some(ScreenerDisposition::Unknown) | None => {}
+    }
+    if let Some((kind, _)) = signals.treatment {
+        return Classification {
+            kind,
+            rule: KindRuleData::CustomRule,
+        };
     }
     let automated = |rule| Classification {
         kind: SenderKind::Automated,
@@ -516,6 +525,10 @@ fn reason(signals: &KindSignals<'_>, classification: Classification) -> String {
         KindRuleData::Copied => COPIED_REASON.to_string(),
         KindRuleData::WrittenTo => WRITTEN_TO_REASON.to_string(),
         KindRuleData::Moved => "you moved this email".to_string(),
+        KindRuleData::CustomRule => format!(
+            "sorted by rule: {}",
+            signals.treatment.map_or("", |(_, name)| name)
+        ),
     }
 }
 
@@ -537,6 +550,7 @@ pub(super) const fn rule_tag(rule: KindRuleData) -> &'static str {
         KindRuleData::Copied => "copied",
         KindRuleData::WrittenTo => "written to",
         KindRuleData::Moved => "moved",
+        KindRuleData::CustomRule => "custom rule",
     }
 }
 
@@ -578,6 +592,7 @@ mod tests {
             written_to: false,
             addressed: true,
             moved: None,
+            treatment: None,
         }
     }
 

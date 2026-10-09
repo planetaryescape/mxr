@@ -193,12 +193,23 @@ pub enum LabelsAction {
 
 #[derive(Subcommand)]
 pub enum RulesAction {
+    /// Preview a saved sorting rule; returns the token Apply requires.
+    TreatmentPreview {
+        rule: String,
+    },
+    /// Apply exactly a sorting preview, rejecting changed mail or rules.
+    TreatmentApply {
+        rule: String,
+        token: String,
+    },
     List,
     Show {
         rule: String,
     },
     Add {
         name: String,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long = "when")]
         condition: String,
         #[arg(long = "then")]

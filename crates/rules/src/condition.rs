@@ -116,6 +116,35 @@ impl StringMatch {
 }
 
 impl Conditions {
+    /// Unknown body data stays unknown under negation; it cannot prove a match.
+    pub fn evaluate_known(&self, msg: &dyn MessageView) -> Option<bool> {
+        match self {
+            Self::Not { condition } => condition.evaluate_known(msg).map(|v| !v),
+            Self::And { conditions } => {
+                let values: Vec<_> = conditions.iter().map(|c| c.evaluate_known(msg)).collect();
+                if values.contains(&Some(false)) {
+                    Some(false)
+                } else if values.contains(&None) {
+                    None
+                } else {
+                    Some(true)
+                }
+            }
+            Self::Or { conditions } => {
+                let values: Vec<_> = conditions.iter().map(|c| c.evaluate_known(msg)).collect();
+                if values.contains(&Some(true)) {
+                    Some(true)
+                } else if values.contains(&None) {
+                    None
+                } else {
+                    Some(false)
+                }
+            }
+            Self::Field(FieldCondition::BodyContains { .. }) if msg.body_text().is_none() => None,
+            _ => Some(self.evaluate(msg)),
+        }
+    }
+
     /// Recursively evaluate the condition tree against a message.
     pub fn evaluate(&self, msg: &dyn MessageView) -> bool {
         match self {

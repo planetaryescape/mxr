@@ -1,6 +1,19 @@
 use super::*;
 
 impl App {
+    pub fn replace_rule_list(&mut self, rules: Vec<serde_json::Value>) {
+        self.rules.page.rules = rules;
+        self.rules.page.selected_index = self
+            .rules
+            .page
+            .selected_index
+            .min(self.rules.page.rules.len().saturating_sub(1));
+        // The list can arrive after a draft preview starts; it does not own that preview.
+        if !self.rules.draft_preview_active {
+            self.refresh_selected_rule_panel();
+        }
+    }
+
     pub(super) fn apply_rule_action(&mut self, action: Action) {
         match action {
             Action::RefreshRules => {
@@ -38,6 +51,7 @@ impl App {
                 self.refresh_selected_rule_panel();
             }
             Action::ApplyRuleTreatment => {
+                self.rules.draft_preview_active = false;
                 if let Some(preview) = self.rules.page.dry_run.first() {
                     if let (Some(token), Ok(form)) = (
                         preview["token"].as_str(),
@@ -55,6 +69,8 @@ impl App {
                 if self.rules.page.form.visible
                     && self.rules.page.form.action.contains("treatment:")
                 {
+                    self.rules.draft_preview_active = true;
+                    self.rules.pending_dry_run = None;
                     self.sync_rule_form_strings_from_editors();
                     let f = &self.rules.page.form;
                     self.rules.pending_sorting_preview = Some(mxr_protocol::RuleFormData {

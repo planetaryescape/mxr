@@ -58,6 +58,7 @@ impl Default for RulesPageState {
 
 #[derive(Default)]
 pub struct RulesState {
+    pub draft_preview_active: bool,
     pub page: RulesPageState,
     pub pending_detail: Option<String>,
     pub detail_request_id: u64,

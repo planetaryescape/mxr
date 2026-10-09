@@ -216,6 +216,7 @@ impl App {
     }
 
     pub fn refresh_selected_rule_panel(&mut self) {
+        self.rules.draft_preview_active = false;
         let selected_rule_id = self
             .selected_rule()
             .and_then(|rule| rule["id"].as_str())

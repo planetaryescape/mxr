@@ -2890,13 +2890,7 @@ pub async fn run() -> anyhow::Result<()> {
                             app.status_message = Some(format!("Search count failed: {error}"));
                         }
                         AsyncResult::Rules(Ok(rules)) => {
-                            app.rules.page.rules = rules;
-                            app.rules.page.selected_index = app
-                                .rules
-                                .page
-                                .selected_index
-                                .min(app.rules.page.rules.len().saturating_sub(1));
-                            app.refresh_selected_rule_panel();
+                            app.replace_rule_list(rules);
                         }
                         AsyncResult::Rules(Err(e)) => {
                             app.rules.page.status = Some(format!("Rules error: {e}"));

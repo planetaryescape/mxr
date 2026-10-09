@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.60](https://github.com/planetaryescape/mxr/compare/v0.6.59...v0.6.60) (2026-10-09)
+
+
+### Features
+
+* add account-scoped mail sorting rules ([88afd25](https://github.com/planetaryescape/mxr/commit/88afd251be7ddabbc8e19d5fb07815f32b971c83))
+
 ## [0.6.59](https://github.com/planetaryescape/mxr/compare/v0.6.58...v0.6.59) (2026-10-09)
 
 

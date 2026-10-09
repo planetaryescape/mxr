@@ -251,11 +251,10 @@ test("Got it sends after the countdown and the turn passes", async ({ page }) =>
   await expect(page.getByTestId("got-it-preview")).toBeVisible();
   await expect(page.getByText(/Got it sent to/)).toBeVisible({ timeout: 15_000 });
   await expect
-    .poll(
-      async () => (await messages(page)).your_turn.some((candidate) => candidate.id === person),
-      {
-        timeout: 15_000,
-      },
+    .poll(async () =>
+      (await messages(page)).your_turn.some((candidate) =>
+        candidate.topics.some((topic) => topic.thread_id === thread && topic.state === "your_turn"),
+      ),
     )
     .toBe(false);
 });

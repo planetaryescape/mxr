@@ -297,7 +297,7 @@ export const TodoRow = memo(function TodoRow({
             checked={done}
             data-testid="todo-done"
             aria-label={done ? `Reopen ${todo.title}` : `Tick off ${todo.title}`}
-            title={done ? "Reopen" : "Tick off (e)"}
+            title={done ? "Reopen (Space or e)" : "Tick off (Space or e)"}
             onClick={(event) => event.stopPropagation()}
             onCheckedChange={(checked) => (checked ? onDone(todo) : onRestore(todo))}
             className="mt-0.5 size-8 rounded-md border-2 border-foreground/70 bg-background data-[state=checked]:border-primary"

@@ -12,6 +12,7 @@ import { useReaderNav } from "@/features/mailbox/readerNav";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
+import { keysForModeGuide } from "@/features/modes/guideKeys";
 import { ModeFrame, ModeHeader } from "@/components/ModeFrame";
 import { PlaceLayout } from "@/features/places/PlaceLayout";
 import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
@@ -466,7 +467,9 @@ function Bands({
 
 /** Keys with their verbs at the point of use, from the mode's own table. */
 function KeyLine({ guide }: { guide: ModeGuide }) {
-  const keys = guide.keys.filter((key) => key.key !== "t" && key.key !== "?" && key.key !== "u");
+  const keys = keysForModeGuide(guide).filter(
+    (key) => key.key !== "t" && key.key !== "?" && key.key !== "u",
+  );
   return (
     <p className="mx-5 mt-6 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground md:flex">
       {keys.map((key) => (

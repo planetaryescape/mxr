@@ -1,5 +1,5 @@
 /*
- * To do's keys, as in the TUI's To do lens and blueprint 22's key table.
+ * To do's web keys. The `e` alias matches the TUI; Space follows checkbox convention.
  * The mounted runway, catch-up or Expired list registers what each command
  * does (`useScopeController`); the reader keeps its own keys while it has
  * focus. `g x` opens To do from anywhere and `t` (in verbActions) makes a
@@ -50,7 +50,11 @@ export const todoActions: Action[] = [
     shortLabel: "Do it",
     tuiNote: "Opens a link only when the sender passed the check; otherwise the email",
   }),
-  key("todo", "todo.done", "done", "Tick off", "e", { shortLabel: "Tick off", icon: Check }),
+  key("todo", "todo.done", "done", "Tick off", "Space", {
+    shortLabel: "Tick off",
+    icon: Check,
+    aliases: ["e"],
+  }),
   key("todo", "todo.schedule", "schedule", "Schedule…", "Z", {
     shortLabel: "Schedule",
     icon: CalendarClock,

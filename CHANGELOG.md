@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.59](https://github.com/planetaryescape/mxr/compare/v0.6.58...v0.6.59) (2026-10-09)
+
+
+### Features
+
+* Archive finds subscriptions in your receipts and invoices ([#315](https://github.com/planetaryescape/mxr/issues/315)) ([57b39c7](https://github.com/planetaryescape/mxr/commit/57b39c7afa1cacf4092e30658b631e6ace36257d))
+* Midnight dark theme with a middle text tier ([#321](https://github.com/planetaryescape/mxr/issues/321)) ([68e57a1](https://github.com/planetaryescape/mxr/commit/68e57a19a07d811f4e682be8f11749d6625e8b59))
+* serve Updates as a twice-daily briefing by source ([#313](https://github.com/planetaryescape/mxr/issues/313)) ([f72f89c](https://github.com/planetaryescape/mxr/commit/f72f89cc138348a11362f150016089a10461120d))
+* trust-reclassify — arrivals line, Not sure, and X/K mode moves ([#314](https://github.com/planetaryescape/mxr/issues/314)) ([16b9dfc](https://github.com/planetaryescape/mxr/commit/16b9dfc611a0ea1009cad408eb42c08df3586ecf))
+
+
+### Bug Fixes
+
+* Reading unsubscribe offers just unsubscribe or unsubscribe and clear ([#319](https://github.com/planetaryescape/mxr/issues/319)) ([1fa3ade](https://github.com/planetaryescape/mxr/commit/1fa3ade15bd6398f7c2a40e89f6587f498e27db5))
+* sweep and pin are available on the Updates page ([#323](https://github.com/planetaryescape/mxr/issues/323)) ([26b09bf](https://github.com/planetaryescape/mxr/commit/26b09bf9b7bd03eb44a154a2f1b492474453adf3))
+* web app shows a not-found page, a no-account frame and labelled IMAP fields ([#322](https://github.com/planetaryescape/mxr/issues/322)) ([939bef1](https://github.com/planetaryescape/mxr/commit/939bef10add27259eabf0ebc4b87732f2bc53d42))
+
 ## [0.6.58](https://github.com/planetaryescape/mxr/compare/v0.6.57...v0.6.58) (2026-10-08)
 
 

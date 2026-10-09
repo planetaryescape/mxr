@@ -11,6 +11,11 @@ fn a_delayed_rule_list_preserves_an_unsaved_sorting_preview_and_apply() {
     app.rules.condition_editor = tui_textarea::TextArea::from(["from:owned@example.com"]);
     app.apply(Action::ShowRuleDryRun);
     let form = app.rules.pending_sorting_preview.take().unwrap();
+    app.apply(Action::ApplyRuleTreatment);
+    assert!(
+        app.rules.draft_preview_active,
+        "Apply before a token must preserve the in-flight draft"
+    );
     app.rules.dry_run_request_id = 42;
     let saved = serde_json::json!({"id":"unrelated", "name":"Saved rule"});
 

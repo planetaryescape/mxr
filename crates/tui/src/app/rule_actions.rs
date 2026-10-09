@@ -51,7 +51,6 @@ impl App {
                 self.refresh_selected_rule_panel();
             }
             Action::ApplyRuleTreatment => {
-                self.rules.draft_preview_active = false;
                 if let Some(preview) = self.rules.page.dry_run.first() {
                     if let (Some(token), Ok(form)) = (
                         preview["token"].as_str(),
@@ -59,6 +58,7 @@ impl App {
                             preview["form"].clone(),
                         ),
                     ) {
+                        self.rules.draft_preview_active = false;
                         self.rules.pending_treatment = Some((form, token.to_string()));
                         self.rules.page.dry_run.clear();
                         self.rules.page.status = Some("Applying the sorting preview...".into());
@@ -91,6 +91,7 @@ impl App {
                 self.refresh_selected_rule_panel();
             }
             Action::OpenRuleFormNew => {
+                self.rules.draft_preview_active = false;
                 self.rules.page.form = RuleFormState {
                     visible: true,
                     account_id: self.default_account_id().cloned(),
@@ -103,6 +104,7 @@ impl App {
                 self.rules.page.panel = RulesPanel::Form;
             }
             Action::OpenRuleFormEdit => {
+                self.rules.draft_preview_active = false;
                 if let Some(rule_id) = self
                     .selected_rule()
                     .and_then(|rule| rule["id"].as_str())

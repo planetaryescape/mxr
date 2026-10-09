@@ -45,10 +45,13 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
     if (request.url().includes("/api/")) requests.push(request.url());
   });
 
-  // Load Messages, open its first conversation, and load the inbox.
+  // Choose and open Messages' first conversation, then load the inbox.
   await openApp(page, "/messages");
   await expect(page).toHaveURL(/\/messages$/);
   await expect(page.getByTestId("messages-row").first()).toBeVisible();
+  const openedPersonId = await page.getByTestId("messages-row").first().getAttribute("data-row-id");
+  expect(openedPersonId).toBeTruthy();
+  await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("conversation-message").first()).toBeVisible();
   const openedPerson = await page.getByTestId("person-name").textContent();
@@ -81,11 +84,14 @@ test("with the daemon stopped, loaded mail stays readable and keys move; archive
     await expect(rowById(page, first!)).toBeVisible();
     await expect(page.getByText(/^Archived/)).toHaveCount(0);
 
-    // A g-jump back to Messages shows it from cache, and the conversation
-    // opened earlier opens again with its messages.
+    // A g-jump back to Messages leaves the person closed. Opening that row
+    // explicitly still shows the conversation from cache while offline.
     await pressSequence(page, "g", "m");
     await expect(page).toHaveURL(/\/messages/);
     await expect(page.getByTestId("messages-row").first()).toBeVisible();
+    await expect(page.getByTestId("person-page")).toHaveCount(0);
+    await expect(page.getByTestId("conversation-message")).toHaveCount(0);
+    await page.locator(`[data-testid="messages-row"][data-row-id="${openedPersonId}"]`).click();
     await expect(page.getByTestId("person-name")).toHaveText(openedPerson!);
     await expect(page.getByTestId("conversation-message").first()).toBeVisible();
     await pressSequence(page, "g", "i");

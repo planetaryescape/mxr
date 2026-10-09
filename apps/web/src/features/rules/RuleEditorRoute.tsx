@@ -473,7 +473,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
                   onRetry={() => void history.refetch()}
                 />
               ) : history.data.entries.length === 0 ? (
-                <p className="text-[13px] text-muted-foreground">This rule has not run yet.</p>
+                <p className="text-[13px] text-muted-foreground">No action history recorded.</p>
               ) : (
                 <RuledList label="Rule history">
                   {history.data.entries.map((entry) => (

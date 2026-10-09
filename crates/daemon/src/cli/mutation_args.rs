@@ -193,14 +193,23 @@ pub enum LabelsAction {
 
 #[derive(Subcommand)]
 pub enum RulesAction {
-    /// Preview a saved sorting rule; returns the token Apply requires.
+    /// Preview a saved rule or an unsaved JSON form; returns the token Apply requires.
     TreatmentPreview {
-        rule: String,
+        rule: Option<String>,
+        /// RuleFormData JSON file, or - for stdin. Does not save the draft.
+        #[arg(long, conflicts_with = "rule")]
+        form: Option<PathBuf>,
     },
     /// Apply exactly a sorting preview, rejecting changed mail or rules.
     TreatmentApply {
-        rule: String,
-        token: String,
+        rule: Option<String>,
+        token: Option<String>,
+        /// The unchanged RuleFormData JSON file, or - for stdin.
+        #[arg(long, conflicts_with = "rule")]
+        form: Option<PathBuf>,
+        /// Token from a draft preview (saved rules may pass it positionally).
+        #[arg(long, conflicts_with = "token")]
+        preview_token: Option<String>,
     },
     List,
     Show {

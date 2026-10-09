@@ -34,11 +34,7 @@ pub struct DryRunMatch {
 impl RuleEngine {
     pub fn new(mut rules: Vec<Rule>) -> Self {
         // Sort by priority (lower = first)
-        rules.sort_by(|a, b| {
-            a.priority
-                .cmp(&b.priority)
-                .then_with(|| a.id.0.cmp(&b.id.0))
-        });
+        rules.sort_by_key(|rule| rule.priority);
         Self { rules }
     }
 
@@ -51,7 +47,7 @@ impl RuleEngine {
         self.rules
             .iter()
             .filter(|rule| rule.enabled && rule.account_id.as_ref() == Some(account_id))
-            .find_map(|rule| {
+            .filter_map(|rule| {
                 if rule.conditions.evaluate_known(msg) != Some(true) {
                     return None;
                 }
@@ -59,6 +55,11 @@ impl RuleEngine {
                     RuleAction::SetTreatment { treatment } => Some((rule, *treatment)),
                     _ => None,
                 })
+            })
+            .min_by(|(a, _), (b, _)| {
+                a.priority
+                    .cmp(&b.priority)
+                    .then_with(|| a.id.0.cmp(&b.id.0))
             })
     }
 
@@ -396,5 +397,29 @@ mod tests {
         assert!(engine.evaluate(&message, "id").actions.is_empty());
         message.body = Some("ordinary newsletter".into());
         assert!(engine.treatment(&message, &account).is_some());
+    }
+    #[test]
+    fn equal_priority_ordinary_actions_retain_storage_order() {
+        let mut first = archive_newsletters_rule();
+        first.id = RuleId("z-first".into());
+        first.actions = vec![RuleAction::AddLabel {
+            label: "first".into(),
+        }];
+        let mut second = first.clone();
+        second.id = RuleId("a-second".into());
+        second.actions = vec![RuleAction::AddLabel {
+            label: "second".into(),
+        }];
+        let engine = RuleEngine::new(vec![first, second]);
+        let result = engine.evaluate(&newsletter_msg(), "id");
+        let labels: Vec<_> = result
+            .actions
+            .iter()
+            .filter_map(|a| match a {
+                RuleAction::AddLabel { label } => Some(label.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(labels, vec!["first", "second"]);
     }
 }

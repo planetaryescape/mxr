@@ -80,26 +80,10 @@ pub(super) async fn delete_rule(state: &AppState, rule: &str) -> HandlerResult {
 
 pub(super) async fn upsert_rule_form(
     state: &AppState,
-    existing_rule: Option<&String>,
-    name: &str,
-    condition: &str,
-    action: &str,
-    priority: i32,
-    enabled: bool,
-    account_id: Option<&mxr_core::AccountId>,
+    form: &mxr_protocol::RuleFormData,
 ) -> HandlerResult {
     let _sorting = state.rule_mutation_gate.lock().await;
-    let rule = build_rule_from_form(
-        state,
-        existing_rule,
-        name,
-        condition,
-        action,
-        priority,
-        enabled,
-        account_id,
-    )
-    .await?;
+    let rule = build_rule_from_form(state, form).await?;
     super::rule_treatment::validate(state, &rule).await?;
     let value = serde_json::to_value(&rule)?;
     warn_once_for_enabled_shell_hook(&rule);

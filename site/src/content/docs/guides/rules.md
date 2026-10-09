@@ -54,13 +54,25 @@ Common actions:
 
 ```bash
 mxr accounts --format json
-mxr rules add "Weekly reading" --account ACCOUNT_UUID \
-  --when "from:editor@example.com subject:weekly" --then treatment:reading
-mxr rules treatment-preview "Weekly reading" --format json
-mxr rules treatment-apply "Weekly reading" PREVIEW_TOKEN --format json
+cat > sorting-rule.json <<'JSON'
+{
+  "id": null,
+  "account_id": "ACCOUNT_UUID",
+  "name": "Weekly reading",
+  "condition": "from:editor@example.com subject:weekly",
+  "action": "treatment:reading",
+  "priority": 100,
+  "enabled": true
+}
+JSON
+mxr rules treatment-preview --form sorting-rule.json --format json
+mxr rules treatment-apply --form sorting-rule.json --preview-token PREVIEW_TOKEN --format json
 ```
 
-Use the account ID returned by `mxr accounts`. The preview returns a token and
+Replace `ACCOUNT_UUID` with the account ID returned by `mxr accounts` and
+`PREVIEW_TOKEN` with the preview token. `--form -` reads JSON from stdin.
+To preview a saved rule, pass its name or ID instead of `--form`; apply it with
+`mxr rules treatment-apply RULE PREVIEW_TOKEN`. The preview returns a token and
 up to 200 recent messages, each with its current place, proposed place and
 reason. `complete: false` means older mail was excluded. Apply requires the
 unchanged token; if mail, rules or personal choices changed, preview again.

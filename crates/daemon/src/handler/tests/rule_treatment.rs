@@ -252,7 +252,7 @@ async fn copied_messages_stay_in_messages_and_deleted_sources_keep_history() {
     .await
     {
         ResponseData::ArrivalModes { items } => {
-            assert_eq!(items[0].bucket, ArrivalBucketData::Messages)
+            assert_eq!(items[0].bucket, ArrivalBucketData::Messages);
         }
         other => panic!("{other:?}"),
     }
@@ -353,7 +353,7 @@ async fn now_read_before_sync_still_applies_rule_before_first_placement() {
     .await
     {
         ResponseData::ArrivalModes { items } => {
-            assert_eq!(items[0].bucket, mxr_protocol::ArrivalBucketData::Reading)
+            assert_eq!(items[0].bucket, mxr_protocol::ArrivalBucketData::Reading);
         }
         other => panic!("{other:?}"),
     }

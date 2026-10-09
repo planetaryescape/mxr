@@ -679,13 +679,15 @@ async fn dispatch(
         } => {
             rules::upsert_rule_form(
                 state,
-                existing_rule.as_ref(),
-                name,
-                condition,
-                action,
-                *priority,
-                *enabled,
-                account_id.as_ref(),
+                &mxr_protocol::RuleFormData {
+                    id: existing_rule.clone(),
+                    account_id: account_id.clone(),
+                    name: name.clone(),
+                    condition: condition.clone(),
+                    action: action.clone(),
+                    priority: *priority,
+                    enabled: *enabled,
+                },
             )
             .await
         }
@@ -3056,15 +3058,9 @@ fn parse_rule_value(value: serde_json::Value) -> Result<Rule, String> {
 
 async fn build_rule_from_form(
     state: &AppState,
-    existing_rule: Option<&String>,
-    name: &str,
-    condition: &str,
-    action: &str,
-    priority: i32,
-    enabled: bool,
-    account_id: Option<&mxr_core::AccountId>,
+    form: &mxr_protocol::RuleFormData,
 ) -> Result<Rule, String> {
-    let existing = if let Some(rule) = existing_rule {
+    let existing = if let Some(rule) = &form.id {
         state
             .store
             .get_rule_by_id_or_name(rule)
@@ -3081,18 +3077,19 @@ async fn build_rule_from_form(
 
     let now = chrono::Utc::now();
     Ok(Rule {
-        account_id: account_id
-            .cloned()
+        account_id: form
+            .account_id
+            .clone()
             .or_else(|| existing.as_ref().and_then(|rule| rule.account_id.clone())),
         id: existing
             .as_ref()
             .map(|rule| rule.id.clone())
             .unwrap_or_default(),
-        name: name.to_string(),
-        enabled,
-        priority,
-        conditions: parse_rule_condition_string(condition)?,
-        actions: parse_rule_actions_string(action)?,
+        name: form.name.clone(),
+        enabled: form.enabled,
+        priority: form.priority,
+        conditions: parse_rule_condition_string(&form.condition)?,
+        actions: parse_rule_actions_string(&form.action)?,
         created_at: existing.as_ref().map_or(now, |rule| rule.created_at),
         updated_at: now,
     })

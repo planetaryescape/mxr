@@ -211,17 +211,7 @@ pub(super) async fn run(
     token: Option<&str>,
 ) -> HandlerResult {
     let _sorting = state.rule_mutation_gate.lock().await;
-    let rule = super::build_rule_from_form(
-        state,
-        form.id.as_ref(),
-        &form.name,
-        &form.condition,
-        &form.action,
-        form.priority,
-        form.enabled,
-        form.account_id.as_ref(),
-    )
-    .await?;
+    let rule = super::build_rule_from_form(state, form).await?;
     validate(state, &rule).await?;
     if !rule
         .actions
@@ -230,6 +220,20 @@ pub(super) async fn run(
     {
         return Err("This preview requires a sorting treatment".into());
     }
+    let account = rule
+        .account_id
+        .as_ref()
+        .ok_or("Sorting rules require an account")?;
+    let _preview_hold = if token.is_none() {
+        Some(state.sweep_gate.hold(account).await)
+    } else {
+        None
+    };
+    let _change = if token.is_some() {
+        Some(state.sweep_gate.change([account]).await)
+    } else {
+        None
+    };
     if let Some(token) = token {
         let preview = state
             .treatment_previews
@@ -354,6 +358,7 @@ pub(crate) async fn classify_pending(
     account: &mxr_core::AccountId,
     ids: &[mxr_core::MessageId],
 ) -> Result<(), HandlerError> {
+    let _change = state.sweep_gate.change([account]).await;
     let stored: Vec<Rule> = state
         .store
         .list_rules()

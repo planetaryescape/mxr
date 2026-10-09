@@ -53,8 +53,21 @@ describe("Toaster", () => {
     expect(assertive(container)?.textContent).toBe("Archive failed");
   });
 
-  it("sits top right with rich colours", async () => {
+  it("defaults to bottom right with rich colours", async () => {
     const { container, findByText } = render(<Toaster />);
+    act(() => {
+      toast.info("Archived 1 message");
+    });
+    await findByText("Archived 1 message");
+    const shown = container.querySelector("[data-sonner-toast]");
+    expect(shown?.getAttribute("data-y-position")).toBe("bottom");
+    expect(shown?.getAttribute("data-x-position")).toBe("right");
+    expect(shown?.getAttribute("data-rich-colors")).toBe("true");
+    expect(shown?.getAttribute("data-type")).toBe("info");
+  });
+
+  it("can sit top right below the app header", async () => {
+    const { container, findByText } = render(<Toaster position="top-right" />);
     act(() => {
       toast.info("Archived 1 message");
     });
@@ -62,8 +75,6 @@ describe("Toaster", () => {
     const shown = container.querySelector("[data-sonner-toast]");
     expect(shown?.getAttribute("data-y-position")).toBe("top");
     expect(shown?.getAttribute("data-x-position")).toBe("right");
-    expect(shown?.getAttribute("data-rich-colors")).toBe("true");
-    expect(shown?.getAttribute("data-type")).toBe("info");
   });
 
   it("pauses for keyboard focus, then leaves undo available after dismissal", async () => {

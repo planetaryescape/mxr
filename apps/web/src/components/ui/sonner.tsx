@@ -9,6 +9,11 @@ export const UNDO_TOAST_DURATION_MS = 8_000;
 
 /* Keep quiet feedback below Search and Compose in the app header. */
 const BELOW_TOPBAR = "calc(var(--shell-topbar-h) + 0.75rem)";
+/* Keep normal-mail feedback above the bottom status and mobile tabs. */
+const ABOVE_STATUSBAR = "calc(var(--shell-statusbar-h) + 0.75rem)";
+const ABOVE_MOBILE_TABS = "calc(env(safe-area-inset-bottom, 0px) + 4.5rem)";
+
+type ToastPosition = "top-right" | "bottom-right";
 
 const ICONS = {
   success: <CircleCheck className="size-4" aria-hidden />,
@@ -17,7 +22,7 @@ const ICONS = {
   error: <CircleX className="size-4" aria-hidden />,
 };
 
-export function Toaster() {
+export function Toaster({ position = "bottom-right" }: { position?: ToastPosition }) {
   const theme = useUiPrefs((s) => s.theme);
   const resolved =
     theme === "system" ? "system" : theme === "light" || theme === "paper" ? "light" : "dark";
@@ -28,11 +33,13 @@ export function Toaster() {
     <div ref={container} className="contents">
       <SonnerToaster
         theme={resolved}
-        position="top-right"
+        position={position}
         // Colour by type (app.css maps sonner's rich colours to theme tokens).
         richColors
-        offset={{ top: BELOW_TOPBAR }}
-        mobileOffset={{ top: BELOW_TOPBAR }}
+        offset={position === "top-right" ? { top: BELOW_TOPBAR } : { bottom: ABOVE_STATUSBAR }}
+        mobileOffset={
+          position === "top-right" ? { top: BELOW_TOPBAR } : { bottom: ABOVE_MOBILE_TABS }
+        }
         duration={4_000}
         visibleToasts={3}
         closeButton

@@ -244,16 +244,19 @@ test("leaving mid-countdown sends nothing", async ({ page }) => {
 
 test("Got it sends after the countdown and the turn passes", async ({ page }) => {
   await waitForPeople(page);
-  const thread = await topicOf(page, JON, "Pricing copy for the docs");
-  await openApp(page, `/messages?person=${encodeURIComponent(JON)}&topic=${thread}`);
+  const { person, thread } = await unanswered(page);
+  await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${thread}`);
   await expect(page.getByTestId("conversation")).toBeVisible();
   await page.getByTestId("got-it").click();
   await expect(page.getByTestId("got-it-preview")).toBeVisible();
-  await expect(page.getByText(/Got it sent to Jon/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/Got it sent to/)).toBeVisible({ timeout: 15_000 });
   await expect
-    .poll(async () => (await messages(page)).your_turn.some((candidate) => candidate.id === JON), {
-      timeout: 15_000,
-    })
+    .poll(
+      async () => (await messages(page)).your_turn.some((candidate) => candidate.id === person),
+      {
+        timeout: 15_000,
+      },
+    )
     .toBe(false);
 });
 

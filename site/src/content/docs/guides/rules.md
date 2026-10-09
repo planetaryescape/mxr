@@ -53,7 +53,7 @@ Common actions:
 ## Sort mail into Messages, Updates or Reading
 
 ```bash
-mxr accounts --format json
+mxr status --format json
 cat > sorting-rule.json <<'JSON'
 {
   "id": null,
@@ -69,8 +69,9 @@ mxr rules --format json treatment-preview --form sorting-rule.json
 mxr rules --format json treatment-apply --form sorting-rule.json --preview-token PREVIEW_TOKEN
 ```
 
-Replace `ACCOUNT_UUID` with the account ID returned by `mxr accounts` and
-`PREVIEW_TOKEN` with the preview token. `--form -` reads JSON from stdin.
+Replace `ACCOUNT_UUID` with the `account_id` from the matching entry in
+`sync_statuses` (match on `account_name`) and `PREVIEW_TOKEN` with the preview
+token. `--form -` reads JSON from stdin.
 To preview a saved rule, pass its name or ID instead of `--form`; apply it with
 `mxr rules treatment-apply RULE PREVIEW_TOKEN`. The preview returns a token and
 up to 200 recent messages, each with its current place, proposed place and

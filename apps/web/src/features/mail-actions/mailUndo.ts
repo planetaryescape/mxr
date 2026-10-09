@@ -7,7 +7,7 @@
 import { createElement } from "react";
 import { toast } from "sonner";
 
-import { UndoLabel } from "@/components/ui/sonner";
+import { UNDO_TOAST_DURATION_MS, UndoLabel } from "@/components/ui/sonner";
 
 import { undoMutation, unsnoozeMessage } from "@/features/mailbox/api";
 import type { MutationResponse } from "@/features/mailbox/types";
@@ -186,7 +186,7 @@ export function offerUndo(
   if (newest) useUndo.getState().recordUndo(undo, mutationId);
   show(message, {
     id: toastId,
-    duration: 60_000,
+    duration: UNDO_TOAST_DURATION_MS,
     description: "Press u to undo",
     action: { label: createElement(UndoLabel), onClick: () => void undo() },
   });

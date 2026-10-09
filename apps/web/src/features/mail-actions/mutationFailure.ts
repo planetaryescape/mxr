@@ -5,7 +5,7 @@
 
 import { createElement } from "react";
 import { toast } from "sonner";
-import { UndoLabel } from "@/components/ui/sonner";
+import { UNDO_TOAST_DURATION_MS, UndoLabel } from "@/components/ui/sonner";
 
 import { requestAccountReauth } from "@/features/accounts/reauthRequest";
 import type { AccountMutationResult, MutationResponse } from "@/features/mailbox/types";
@@ -87,7 +87,7 @@ export function announceFailure(
     description: undo
       ? `${error.message.replace(/\.?$/, ".")} Press u to undo what changed.`
       : error.message,
-    duration: undo ? 60_000 : undefined,
+    duration: undo ? UNDO_TOAST_DURATION_MS : undefined,
     action: undo
       ? { label: createElement(UndoLabel), onClick: () => void undo() }
       : account

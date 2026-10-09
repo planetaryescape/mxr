@@ -88,7 +88,7 @@ function PlainRow({
           ) : null}
         </div>
         <p className="mt-0.5 font-mono text-2xs text-foreground/80">{todo.when_label}</p>
-        <p className="mt-0.5 text-[12px] text-muted-foreground">{todo.why}</p>
+        <p className="mt-0.5 text-[12px] text-fg-2">{todo.why}</p>
       </div>
       <div className="flex shrink-0 gap-2">{children}</div>
     </li>

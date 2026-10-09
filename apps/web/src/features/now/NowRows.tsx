@@ -180,7 +180,7 @@ export function PersonRow({
               <span className="min-w-0 truncate text-muted-foreground">{subject}</span>
             ) : null}
           </p>
-          <p data-testid="now-why" className="truncate text-[12px] text-muted-foreground">
+          <p data-testid="now-why" className="truncate text-[12px] text-fg-2">
             {item.person.why}
           </p>
         </>
@@ -247,7 +247,7 @@ export function TodoRow({ item, modes, ...state }: RowState & { item: Due; modes
               <span className="text-[12px] text-muted-foreground">{todo.person_label}</span>
             ) : null}
           </p>
-          <p data-testid="now-why" className="truncate text-[12px] text-muted-foreground">
+          <p data-testid="now-why" className="truncate text-[12px] text-fg-2">
             {item.todo.why}
           </p>
         </>
@@ -380,7 +380,7 @@ export function ReadingRow({
             <span className="min-w-0 truncate font-medium text-foreground/90">{pick.subject}</span>
             <span className="shrink-0 text-[12px] text-muted-foreground">{from}</span>
           </p>
-          <p data-testid="now-why" className="truncate text-[12px] text-muted-foreground">
+          <p data-testid="now-why" className="truncate text-[12px] text-fg-2">
             {pick.why}
           </p>
         </>

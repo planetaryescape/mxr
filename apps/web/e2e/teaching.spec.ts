@@ -108,7 +108,9 @@ test("doing what the hint names dismisses it", async ({ page }) => {
   await expect(page.getByTestId("todo-row").first()).toBeVisible();
   await page.keyboard.press("j");
   await expect(firstBarRow(page).getByTestId("hint")).toBeVisible();
-  await firstBarRow(page).getByTestId("todo-action").click();
+  await firstBarRow(page).getByTestId("todo-title").click();
+  await expect(firstBarRow(page)).toHaveAttribute("aria-current", "true");
+  await page.keyboard.press("Enter");
   await expect.poll(() => hintSeen(page, "todo.runway")).toBe(true);
   await openApp(page, "/todo");
   await expect(page.getByTestId("todo-row").first()).toBeVisible();

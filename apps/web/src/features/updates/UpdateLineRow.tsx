@@ -150,13 +150,13 @@ export const UpdateLineRow = memo(function UpdateLineRow({
           </p>
           {line.tracker?.kind === "parcel" ? <Track line={line} /> : null}
           {detail || status ? (
-            <p className="mt-0.5 text-[12px] text-muted-foreground">
+            <p className="mt-0.5 text-[12px] text-fg-2">
               {status}
               {status && detail ? " · " : null}
               {detail}
             </p>
           ) : null}
-          <p data-testid="update-why" className="mt-0.5 text-[12px] text-muted-foreground">
+          <p data-testid="update-why" className="mt-0.5 text-[12px] text-fg-2">
             {line.why}
           </p>
           {line.todo_suggestion ? (

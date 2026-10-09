@@ -7,9 +7,8 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 /** The visual undo prompt is brief; the independent keyboard undo stays live. */
 export const UNDO_TOAST_DURATION_MS = 8_000;
 
-/* Keep desktop toasts above the status bar and phone toasts above the tabs. */
-const ABOVE_STATUSBAR = "calc(var(--shell-statusbar-h) + 0.75rem)";
-const ABOVE_MOBILE_TABS = "calc(env(safe-area-inset-bottom, 0px) + 4.5rem)";
+/* Keep quiet feedback below Search and Compose in the app header. */
+const BELOW_TOPBAR = "calc(var(--shell-topbar-h) + 0.75rem)";
 
 const ICONS = {
   success: <CircleCheck className="size-4" aria-hidden />,
@@ -29,11 +28,11 @@ export function Toaster() {
     <div ref={container} className="contents">
       <SonnerToaster
         theme={resolved}
-        position="bottom-right"
+        position="top-right"
         // Colour by type (app.css maps sonner's rich colours to theme tokens).
         richColors
-        offset={{ bottom: ABOVE_STATUSBAR }}
-        mobileOffset={{ bottom: ABOVE_MOBILE_TABS }}
+        offset={{ top: BELOW_TOPBAR }}
+        mobileOffset={{ top: BELOW_TOPBAR }}
         duration={4_000}
         visibleToasts={3}
         closeButton

@@ -738,7 +738,7 @@ for (const [verb, entry] of Object.entries(VERB_FEEDBACK) as [
   });
 }
 
-test("toasts sit top centre under the header, clear of search and Compose", async ({ page }) => {
+test("toasts sit top right below Search and Compose", async ({ page }) => {
   await openList(page, "/m/inbox");
   await mailList(page).focus();
   // A toast that stays as it is: star, answered at once with an undo.
@@ -761,7 +761,7 @@ test("toasts sit top centre under the header, clear of search and Compose", asyn
   const shown = page.locator("[data-sonner-toast]").first();
   await expect(shown).toBeVisible();
   await expect(shown).toHaveAttribute("data-y-position", "top");
-  await expect(shown).toHaveAttribute("data-x-position", "center");
+  await expect(shown).toHaveAttribute("data-x-position", "right");
   // A neutral change with an undo is the accent (info) toast.
   await expect(shown).toHaveAttribute("data-type", "info");
   const header = page.locator(".app-shell-topbar");
@@ -771,10 +771,11 @@ test("toasts sit top centre under the header, clear of search and Compose", asyn
       const [toastBox, headerBox] = await Promise.all([shown.boundingBox(), header.boundingBox()]);
       if (!toastBox || !headerBox) return "not laid out";
       const below = toastBox.y >= headerBox.y + headerBox.height;
-      const centre = Math.abs(toastBox.x + toastBox.width / 2 - viewport.width / 2) <= 2;
-      return below && centre ? "top centre" : JSON.stringify({ toastBox, headerBox });
+      const right = Math.abs(toastBox.x + toastBox.width - viewport.width + 24) <= 2;
+      return below && right ? "top right" : JSON.stringify({ toastBox, headerBox });
     })
-    .toBe("top centre");
-  // Search and Compose live in the header, so a toast under it covers neither.
+    .toBe("top right");
+  // The toast starts below the header and leaves its two primary actions clickable.
+  await page.getByRole("button", { name: "Search mail" }).click({ trial: true });
   await page.getByRole("button", { name: "Compose" }).first().click({ trial: true });
 });

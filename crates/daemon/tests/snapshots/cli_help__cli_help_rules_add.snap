@@ -8,6 +8,7 @@ Arguments:
   <NAME>
 
 Options:
+      --account <ACCOUNT>
       --when <CONDITION>
       --then <ACTION>
       --priority <PRIORITY>  [default: 100]

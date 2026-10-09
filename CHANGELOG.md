@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.61](https://github.com/planetaryescape/mxr/compare/v0.6.60...v0.6.61) (2026-10-09)
+
+
+### Bug Fixes
+
+* calm Now, require explicit Messages opening and clarify To do ([4b4b524](https://github.com/planetaryescape/mxr/commit/4b4b52452e4b146e74313f7fabd6e82c5edf2dee))
+
+
+### Documentation
+
+* correct sorting rule account ID lookup ([0b00f84](https://github.com/planetaryescape/mxr/commit/0b00f847c073386f154cd7e36aacfe75b8dc4f7d))
+
 ## [0.6.60](https://github.com/planetaryescape/mxr/compare/v0.6.59...v0.6.60) (2026-10-09)
 
 

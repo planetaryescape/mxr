@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Apply exactly a sorting preview, rejecting changed mail or rules
+
+Usage: mxr rules treatment-apply [OPTIONS] [RULE] [TOKEN]
+
+Arguments:
+  [RULE]
+  [TOKEN]
+
+Options:
+      --form <FORM>                    The unchanged RuleFormData JSON file, or - for stdin
+      --preview-token <PREVIEW_TOKEN>  Token from a draft preview (saved rules may pass it positionally)
+  -h, --help                           Print help

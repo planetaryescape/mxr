@@ -4,7 +4,7 @@ pub mod engine;
 pub mod history;
 pub mod shell_hook;
 
-pub use action::{RuleAction, SnoozeDuration};
+pub use action::{RuleAction, SnoozeDuration, Treatment};
 pub use condition::{Conditions, FieldCondition, LinkDensityMatch, MessageView, StringMatch};
 pub use engine::{DryRunMatch, DryRunResult, EvaluationResult, RuleEngine};
 pub use history::{RuleExecutionLog, RuleMatchEntry};
@@ -39,6 +39,8 @@ impl std::fmt::Display for RuleId {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Rule {
     pub id: RuleId,
+    #[serde(default)]
+    pub account_id: Option<mxr_core::AccountId>,
     pub name: String,
     pub enabled: bool,
     /// Lower number = runs first.

@@ -1100,3 +1100,78 @@ async fn pins_across_accounts_never_hold_one_gate_while_waiting_for_another() {
         pinning.await.unwrap();
     }
 }
+
+#[tokio::test]
+async fn sorting_to_messages_invalidates_a_running_reading_sweep() {
+    let fx = Fixture::new().await;
+    let message = fx
+        .inbound(
+            &fx.account,
+            NEWSLETTER,
+            "Owned sorting sweep test",
+            Duration::hours(1),
+            true,
+        )
+        .await;
+    let (_, reading_count) = fx
+        .place(MailPlaceData::Reading, Some(fx.account.clone()))
+        .await;
+    assert_eq!(reading_count, 1);
+    let form = mxr_protocol::RuleFormData {
+        id: None,
+        account_id: Some(fx.account.clone()),
+        name: "Keep this mail".into(),
+        condition: format!("from:{NEWSLETTER}"),
+        action: "treatment:messages".into(),
+        priority: 10,
+        enabled: true,
+    };
+    let preview = match crate::handler::rule_treatment::run(&fx.state, &form, None)
+        .await
+        .unwrap()
+    {
+        ResponseData::RuleTreatmentResult { preview } => preview,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(preview.result.matches[0].after, "messages");
+    let syncing = fx.state.acquire_provider_operation(&fx.account).await;
+    let started = super::mutations::start_mutation_job(
+        fx.state.clone(),
+        MutationCommand::Archive {
+            message_ids: vec![message.id.clone()],
+        },
+        None,
+        super::mutations::ChunkGuard::Sweep(crate::handler::places::SweepScope {
+            place: MailPlaceData::Reading,
+            account_id: Some(fx.account.clone()),
+            sender_email: None,
+        }),
+    )
+    .await
+    .unwrap();
+    let ResponseData::JobStarted { job } = started else {
+        panic!("Expected sweep job")
+    };
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        fx.state.sweep_gate.before_provider.notified(),
+    )
+    .await
+    .expect("Reading sweep must reach its provider boundary");
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        crate::handler::rule_treatment::run(&fx.state, &form, preview.token.as_deref()),
+    )
+    .await
+    .expect("Local sorting must not wait on the provider lock")
+    .unwrap();
+    drop(syncing);
+    let result = fx.wait_for_job(&job.job_id).await;
+    assert_eq!(result.status, JobStatusData::Succeeded, "{result:?}");
+    assert_eq!(result.progress.succeeded, 0);
+    assert_eq!(result.progress.skipped, 1);
+    assert!(
+        fx.in_inbox(&message.id).await,
+        "Sorting moved this mail out of Reading before the sweep rechecked it"
+    );
+}

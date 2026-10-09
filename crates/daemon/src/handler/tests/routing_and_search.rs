@@ -588,6 +588,7 @@ async fn dispatch_upsert_rule_form_and_get_rule_form() {
         id: 231,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::UpsertRuleForm {
+            account_id: None,
             existing_rule: None,
             name: "Archive unread".into(),
             condition: "is:unread".into(),

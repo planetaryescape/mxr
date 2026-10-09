@@ -1,6 +1,5 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 450
 expression: snapshot
 ---
 "┌ Rules ───────────────────────┐┌ Workspace ───────────────────────────────────────────────────────┐"
@@ -21,5 +20,5 @@ expression: snapshot
 "│                              ││Last match: -                                                     │"
 "│                              │└──────────────────────────────────────────────────────────────────┘"
 "│                              │┌──────────────────────────────────────────────────────────────────┐"
-"│                              ││j/k:select  Enter:overview  H:history  D:dry run  E:edit  n:new  e│"
+"│                              ││j/k:select  Enter:overview  H:history  D:dry run  A:apply sorting │"
 "└──────────────────────────────┘└──────────────────────────────────────────────────────────────────┘"

@@ -10,6 +10,7 @@ import {
   fetchRuleForm,
   fetchRuleHistory,
   upsertRuleForm,
+  previewTreatment,
   type RuleForm,
 } from "./api";
 import { mailActions, runMailActions } from "./ruleActions";
@@ -38,6 +39,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { shellKey, undoMutation } from "@/features/mailbox/api";
+import { fetchAccounts } from "@/features/accounts/api";
 import { fetchSearch } from "@/features/search/api";
 import { formatRelative, plural } from "@/lib/format";
 
@@ -50,6 +52,9 @@ const emptyRule: RuleForm = {
 };
 
 const ACTION_PRESETS = [
+  "treatment:messages",
+  "treatment:updates",
+  "treatment:reading",
   "archive",
   "mark-read,archive",
   "label:Receipts",
@@ -64,6 +69,10 @@ interface PreviewMatch {
   message_id: string;
   from: string;
   subject: string;
+  before?: string;
+  after?: string;
+  reason?: string;
+  blocked?: boolean;
 }
 
 export function RuleEditorRoute() {
@@ -102,6 +111,20 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
   const [form, setForm] = useState<RuleForm>(saved ?? emptyRule);
   const [applyConfirmOpen, setApplyConfirmOpen] = useState(false);
   const condition = useDebounced(form.condition.trim(), 350);
+  const isSorting = form.action
+    .split(/[;,]/)
+    .some((action) => action.trim().toLowerCase().startsWith("treatment:"));
+  const sortingForm = useDebounced(form, 350);
+  const sortingDraftPending = sortingForm !== form;
+  const accounts = useQuery({ queryKey: ["rule-accounts"], queryFn: fetchAccounts });
+  const sortingPreview = useQuery({
+    queryKey: ["rule-treatment-preview", sortingForm],
+    queryFn: () => previewTreatment(sortingForm),
+    enabled:
+      isSorting &&
+      Boolean(sortingForm.account_id && sortingForm.name.trim() && sortingForm.condition.trim()),
+    retry: false,
+  });
   // The daemon's dry run evaluates the saved rule. While the condition is
   // unsaved (new rule, or edited), preview with the same query as a search.
   const usesSavedRule = !isNew && condition === saved.condition.trim();
@@ -118,7 +141,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
         .flatMap((group) => group.rows)
         .map((row) => ({ message_id: row.id, from: row.sender, subject: row.subject }));
     },
-    enabled: condition.length > 0,
+    enabled: condition.length > 0 && !isSorting,
   });
   const history = useQuery({
     queryKey: ["rule-history", id],
@@ -126,14 +149,15 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
     enabled: !isNew,
   });
   const save = useMutation({
-    mutationFn: () => upsertRuleForm(form, isNew ? null : id),
-    onSuccess: async () => {
-      toast.success(`Saved ${form.name}`);
+    mutationFn: (submitted: RuleForm) => upsertRuleForm(submitted, isNew ? null : id),
+    onSuccess: async (_, submitted) => {
+      toast.success(`Saved ${submitted.name}`);
       void qc.invalidateQueries({ queryKey: ["rules"] });
       void qc.invalidateQueries({ queryKey: ["rule-form"] });
       void qc.invalidateQueries({ queryKey: ["rule-preview"] });
-      if (isNew || form.name !== id)
-        await navigate({ to: "/rules/$id", params: { id: form.name } });
+      void qc.invalidateQueries({ queryKey: ["rule-treatment-preview"] });
+      if (isNew || submitted.name !== id)
+        await navigate({ to: "/rules/$id", params: { id: submitted.name } });
     },
     onError: (error) => toast.error("Save failed", { description: error.message }),
   });
@@ -147,8 +171,29 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
     onError: (error) => toast.error("Delete failed", { description: error.message }),
   });
 
-  const matches = preview.data ?? [];
+  const shownPreview = isSorting ? sortingPreview : preview;
+  const matches: PreviewMatch[] = isSorting
+    ? (sortingPreview.data?.result.matches ?? [])
+    : (preview.data ?? []);
   const parsedActions = mailActions(form.action);
+  const applySorting = useMutation({
+    mutationFn: async () => {
+      const token = sortingPreview.data?.token;
+      if (sortingDraftPending) throw new Error("Wait for the current draft preview");
+      if (!token) throw new Error("Preview this sorting rule first");
+      return previewTreatment(form, token);
+    },
+    onSuccess: async (response) => {
+      setApplyConfirmOpen(false);
+      toast.success(`Sorted ${plural(response.result.matches.length, "message")}`);
+      void qc.invalidateQueries({ queryKey: ["rules"] });
+      void qc.invalidateQueries({ queryKey: ["rule-form"] });
+      void qc.invalidateQueries({ queryKey: ["rule-treatment-preview"] });
+      void qc.invalidateQueries({ queryKey: shellKey });
+      if (response.rule_id) await navigate({ to: "/rules/$id", params: { id: response.rule_id } });
+    },
+    onError: (error) => toast.error("Sorting failed", { description: error.message }),
+  });
   const applyNow = useMutation({
     mutationFn: async () => {
       if (!parsedActions) throw new Error("This action cannot be applied from the web yet");
@@ -185,10 +230,16 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
       void qc.invalidateQueries({ queryKey: ["mailbox"] });
       void qc.invalidateQueries({ queryKey: shellKey });
       void qc.invalidateQueries({ queryKey: ["rule-preview"] });
+      void qc.invalidateQueries({ queryKey: ["rule-treatment-preview"] });
     },
   });
 
-  const canSave = Boolean(form.name.trim() && form.condition.trim() && form.action.trim());
+  const canSave = Boolean(
+    form.name.trim() &&
+    form.condition.trim() &&
+    form.action.trim() &&
+    (!isSorting || form.account_id),
+  );
 
   return (
     <Page
@@ -221,7 +272,11 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
               </AlertDialogContent>
             </AlertDialog>
           ) : null}
-          <Button size="sm" onClick={() => save.mutate()} disabled={!canSave || save.isPending}>
+          <Button
+            size="sm"
+            onClick={() => save.mutate(form)}
+            disabled={!canSave || save.isPending || applySorting.isPending || applyNow.isPending}
+          >
             <Check className="size-3" />
             {isNew ? "Save rule" : "Save changes"}
           </Button>
@@ -230,7 +285,30 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
     >
       <div className="grid gap-x-10 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
         <PageSection title="Definition">
-          <div className="space-y-4">
+          <fieldset
+            className="space-y-4"
+            disabled={save.isPending || applySorting.isPending || applyNow.isPending}
+          >
+            <Field
+              label="Account"
+              htmlFor="rule-account"
+              hint="Sorting requires one account. All actions in this rule use this scope."
+            >
+              <select
+                id="rule-account"
+                value={form.account_id ?? ""}
+                onChange={(event) => setForm({ ...form, account_id: event.target.value || null })}
+              >
+                <option value="" disabled={Boolean(saved?.account_id)}>
+                  All accounts
+                </option>
+                {accounts.data?.accounts.map((account) => (
+                  <option key={account.account_id} value={account.account_id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <Field label="Name" htmlFor="rule-name">
               <Input
                 id="rule-name"
@@ -243,7 +321,11 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
             <Field
               label="When a message matches"
               htmlFor="rule-condition"
-              hint="Search syntax, e.g. from:news@example.com older_than:7d"
+              hint={
+                isSorting
+                  ? "Header conditions, e.g. from:news@example.com subject:weekly. Body and link-density conditions are unsupported."
+                  : "Search syntax, e.g. from:news@example.com older_than:7d"
+              }
             >
               <Input
                 id="rule-condition"
@@ -271,7 +353,9 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
                     className="font-mono"
                     onClick={() => setForm({ ...form, action })}
                   >
-                    {action}
+                    {action.startsWith("treatment:")
+                      ? `Sort into ${action.slice(10).replace(/^./, (letter) => letter.toUpperCase())}`
+                      : action}
                   </Button>
                 ))}
               </div>
@@ -295,7 +379,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
                 onCheckedChange={(enabled) => setForm({ ...form, enabled })}
               />
             </div>
-          </div>
+          </fieldset>
         </PageSection>
         <div className="min-w-0">
           <PageSection
@@ -303,23 +387,43 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
             description={
               condition.length === 0
                 ? undefined
-                : usesSavedRule
-                  ? "The daemon's dry run of the saved rule."
-                  : "Messages matching the unsaved condition. Save to run the daemon's dry run."
+                : isSorting
+                  ? "See where matching mail will go. Your manual choices are preserved."
+                  : usesSavedRule
+                    ? "The daemon's dry run of the saved rule."
+                    : "Messages matching the unsaved condition. Save to run the daemon's dry run."
             }
             actions={
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setApplyConfirmOpen(true)}
-                disabled={!parsedActions || matches.length === 0 || applyNow.isPending}
+                disabled={
+                  (isSorting
+                    ? !sortingPreview.data?.token ||
+                      sortingPreview.isFetching ||
+                      sortingDraftPending
+                    : !parsedActions) ||
+                  matches.length === 0 ||
+                  applyNow.isPending ||
+                  applySorting.isPending ||
+                  save.isPending
+                }
               >
                 <Play className="size-3" />
                 Apply to {plural(matches.length, "message")}
               </Button>
             }
           >
-            {!parsedActions && form.action.trim() ? (
+            {isSorting && sortingPreview.data ? (
+              <PageNote>
+                {sortingPreview.data.result.complete
+                  ? "Complete selection."
+                  : `Sample of the newest ${sortingPreview.data.result.scan_limit} messages; older mail is excluded.`}
+                {` ${sortingPreview.data.result.notice}`}
+              </PageNote>
+            ) : null}
+            {!isSorting && !parsedActions && form.action.trim() ? (
               <PageNote>
                 Apply now supports archive, trash, spam, star, read, unread, label:Name,
                 unlabel:Name and move:Name. The daemon still runs other actions during sync.
@@ -331,13 +435,13 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
                 title="Nothing to preview"
                 body="Write a condition to see which messages this rule would change."
               />
-            ) : preview.isPending ? (
+            ) : shownPreview.isPending ? (
               <PageSkeleton rows={5} label="Running dry run" />
-            ) : preview.isError ? (
+            ) : shownPreview.isError ? (
               <PageError
                 title="Dry run failed"
-                error={preview.error}
-                onRetry={() => void preview.refetch()}
+                error={shownPreview.error}
+                onRetry={() => void shownPreview.refetch()}
               />
             ) : matches.length === 0 ? (
               <PageEmpty title="No matches" body="This rule would not change any message now." />
@@ -347,11 +451,11 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
                   {plural(matches.length, "message")} would get: {form.action || "no action"}
                 </p>
                 <RuledList label="Dry run matches">
-                  {matches.slice(0, 50).map((match) => (
+                  {(isSorting ? matches : matches.slice(0, 50)).map((match) => (
                     <RuledRow
                       key={match.message_id}
                       title={match.subject.trim() || "(no subject)"}
-                      meta={match.from}
+                      meta={`${match.from}${match.after ? ` · ${match.before} → ${match.after} · ${match.reason}${match.blocked ? " · personal choice preserved" : ""}` : ""}`}
                     />
                   ))}
                 </RuledList>
@@ -369,7 +473,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
                   onRetry={() => void history.refetch()}
                 />
               ) : history.data.entries.length === 0 ? (
-                <p className="text-[13px] text-muted-foreground">This rule has not run yet.</p>
+                <p className="text-[13px] text-muted-foreground">No action history recorded.</p>
               ) : (
                 <RuledList label="Rule history">
                   {history.data.entries.map((entry) => (
@@ -395,17 +499,39 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Apply to {plural(matches.length, "message")}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Runs <span className="font-mono">{form.action}</span> on exactly the messages in the
-              dry run, through the same path as mailbox bulk actions. You can undo from the toast.
+              {isSorting ? (
+                "Saves this rule and applies only its sorting treatment to the unchanged preview. Personal choices are preserved."
+              ) : (
+                <>
+                  Runs <span className="font-mono">{form.action}</span> on exactly the messages in
+                  the dry run, through the same path as mailbox bulk actions. You can undo from the
+                  toast.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={applyNow.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel
+              disabled={
+                applyNow.isPending ||
+                applySorting.isPending ||
+                sortingPreview.isFetching ||
+                sortingDraftPending
+              }
+            >
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
-              disabled={applyNow.isPending}
+              disabled={
+                applyNow.isPending ||
+                applySorting.isPending ||
+                sortingPreview.isFetching ||
+                sortingDraftPending
+              }
               onClick={(event) => {
                 event.preventDefault();
-                applyNow.mutate();
+                if (isSorting) applySorting.mutate();
+                else applyNow.mutate();
               }}
             >
               Apply now

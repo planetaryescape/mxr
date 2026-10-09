@@ -190,6 +190,7 @@ pub(super) struct Senders {
     /// Emails the user moved (`X`) whose move is in force, with the kind
     /// each gives.
     pub moves: HashMap<MessageId, SenderKind>,
+    pub treatments: HashMap<MessageId, (String, String)>,
 }
 
 impl Senders {
@@ -248,23 +249,29 @@ impl Senders {
             contacts,
             screener,
             moves,
+            treatments: state.store.rule_treatments(account_id).await?,
         })
     }
 
     /// The kind signals for one of these messages.
     pub(super) fn signals<'a>(
-        &self,
+        &'a self,
         message: &'a DeskMessage,
         is_self: &dyn Fn(&str) -> bool,
     ) -> mail_kind::KindSignals<'a> {
         let email = message.from.email.to_ascii_lowercase();
-        super::desk_lanes::desk_signals(
+        let mut signals = super::desk_lanes::desk_signals(
             message,
             self.contacts.get(&email),
             self.screener.get(&email).copied(),
             self.moves.get(&message.id).copied(),
             is_self,
-        )
+        );
+        signals.treatment = self
+            .treatments
+            .get(&message.id)
+            .and_then(|(mode, name)| Some((mail_kind::kind_for_stored_mode(mode)?, name.as_str())));
+        signals
     }
 
     /// The thread rules leave this message in Messages (`kept_in_messages`).
@@ -330,6 +337,7 @@ async fn account_desk(
         timers: &timers,
         is_self: &is_self,
         moves: &senders.moves,
+        treatments: &senders.treatments,
         shape: super::conversation_shape::shape_config(state),
         now,
     });

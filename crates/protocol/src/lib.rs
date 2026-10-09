@@ -449,6 +449,7 @@ mod tests {
             ),
             (
                 Request::UpsertRuleForm {
+                    account_id: None,
                     existing_rule: None,
                     name: "rule".into(),
                     condition: "from contains a".into(),
@@ -1056,6 +1057,7 @@ mod tests {
             (
                 ResponseData::RuleFormData {
                     form: RuleFormData {
+                        account_id: None,
                         id: None,
                         name: "rule".into(),
                         condition: "from contains a".into(),

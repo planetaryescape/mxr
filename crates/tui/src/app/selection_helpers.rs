@@ -216,6 +216,7 @@ impl App {
     }
 
     pub fn refresh_selected_rule_panel(&mut self) {
+        self.rules.draft_preview_active = false;
         let selected_rule_id = self
             .selected_rule()
             .and_then(|rule| rule["id"].as_str())
@@ -224,6 +225,8 @@ impl App {
         self.rules.pending_detail = None;
         self.rules.pending_history = None;
         self.rules.pending_dry_run = None;
+        self.rules.dry_run_request_id = self.rules.dry_run_request_id.wrapping_add(1);
+        self.rules.page.dry_run.clear();
 
         if let Some(rule_id) = selected_rule_id {
             match self.rules.page.panel {

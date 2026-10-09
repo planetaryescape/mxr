@@ -257,6 +257,7 @@ mod tests {
 
         store
             .upsert_rule(crate::RuleRecordInput {
+                account_id: None,
                 id: "rule-1",
                 name: "Archive",
                 enabled: true,

@@ -665,6 +665,7 @@ pub fn map_request(
         | Request::ListAccounts
         | Request::ListAccountsConfig
         | Request::ListRules
+        | Request::RuleTreatment { .. }
         | Request::GetRule { .. }
         | Request::GetRuleForm { .. }
         | Request::ListSavedSearches

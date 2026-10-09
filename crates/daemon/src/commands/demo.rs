@@ -1488,6 +1488,7 @@ fn demo_rules() -> Vec<Rule> {
     let now = chrono::Utc::now();
     vec![
         Rule {
+            account_id: None,
             id: RuleId("demo-newsletters".to_string()),
             name: "Demo: newsletters are marked read".to_string(),
             enabled: true,
@@ -1503,6 +1504,7 @@ fn demo_rules() -> Vec<Rule> {
             updated_at: now,
         },
         Rule {
+            account_id: None,
             id: RuleId("demo-build-failures".to_string()),
             name: "Demo: star build failures".to_string(),
             enabled: true,
@@ -1520,6 +1522,7 @@ fn demo_rules() -> Vec<Rule> {
             updated_at: now,
         },
         Rule {
+            account_id: None,
             id: RuleId("demo-receipts".to_string()),
             name: "Demo: receipts leave the inbox after read".to_string(),
             enabled: true,
@@ -1539,6 +1542,7 @@ fn demo_rules() -> Vec<Rule> {
             updated_at: now,
         },
         Rule {
+            account_id: None,
             id: RuleId("demo-promotions".to_string()),
             name: "Demo: promotions are marked read".to_string(),
             enabled: true,
@@ -1556,6 +1560,7 @@ fn demo_rules() -> Vec<Rule> {
             updated_at: now,
         },
         Rule {
+            account_id: None,
             id: RuleId("demo-potential-spam".to_string()),
             name: "Demo: suspicious inbox mail gets flagged".to_string(),
             enabled: true,

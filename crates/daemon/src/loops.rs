@@ -1354,7 +1354,7 @@ pub(crate) fn describe_sync_cursor(
     provider.describe_cursor(cursor.unwrap_or(&empty))
 }
 
-async fn apply_rules_to_messages(
+pub(crate) async fn apply_rules_to_messages(
     state: &AppState,
     account_id: &AccountId,
     provider: &dyn MailSyncProvider,
@@ -1371,6 +1371,10 @@ async fn apply_rules_to_messages(
             serde_json::from_value(mxr_store::row_to_rule_json(row)).map_err(|e| e.to_string())
         })
         .collect::<Result<_, _>>()?;
+    let rules: Vec<_> = rules
+        .into_iter()
+        .filter(|rule| rule.account_id.as_ref().is_none_or(|id| id == account_id))
+        .collect();
     let engine = RuleEngine::new(rules.clone());
     let labels = state
         .store
@@ -1404,7 +1408,20 @@ async fn apply_rules_to_messages(
             .collect();
         let message = RuleMessage::from_parts(envelope.clone(), body, label_provider_ids);
         let message_id_str = message_id.as_str();
-        let result = engine.evaluate(&message, &message_id_str);
+        {
+            let _sorting = state.rule_mutation_gate.lock().await;
+            crate::handler::rule_treatment::classify_pending(
+                state,
+                account_id,
+                std::slice::from_ref(message_id),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+        let mut result = engine.evaluate(&message, &message_id_str);
+        result
+            .actions
+            .retain(|action| !matches!(action, RuleAction::SetTreatment { .. }));
         if result.actions.is_empty() {
             continue;
         }
@@ -1485,6 +1502,9 @@ async fn execute_rule_action(
     action: &RuleAction,
     labels: &[mxr_core::Label],
 ) -> Result<(), String> {
+    if matches!(action, RuleAction::SetTreatment { .. }) {
+        return Ok(());
+    }
     let provider_message_id = state
         .store
         .get_provider_id(message_id)
@@ -1527,7 +1547,9 @@ async fn execute_rule_action(
             provider_message_id: provider_message_id.clone(),
             read: false,
         }),
-        RuleAction::Snooze { .. } | RuleAction::ShellHook { .. } => None,
+        RuleAction::SetTreatment { .. }
+        | RuleAction::Snooze { .. }
+        | RuleAction::ShellHook { .. } => None,
     };
     if let Some(mutation) = mutation_to_apply {
         provider
@@ -1544,6 +1566,7 @@ async fn execute_rule_action(
         }
     }
     match action {
+        RuleAction::SetTreatment { .. } => {}
         RuleAction::AddLabel { label } => {
             if let Some(found) = labels
                 .iter()
@@ -1655,7 +1678,7 @@ async fn execute_rule_action(
     Ok(())
 }
 
-struct RuleMessage {
+pub(crate) struct RuleMessage {
     subject: String,
     from: String,
     to: Vec<String>,
@@ -1672,7 +1695,7 @@ struct RuleMessage {
 }
 
 impl RuleMessage {
-    fn from_parts(
+    pub(crate) fn from_parts(
         envelope: mxr_core::Envelope,
         body: Option<mxr_core::MessageBody>,
         labels: Vec<String>,

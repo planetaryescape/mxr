@@ -31,6 +31,18 @@ fn parse_actions(value: &str) -> anyhow::Result<Vec<RuleAction>> {
 fn parse_action(value: &str) -> anyhow::Result<RuleAction> {
     let trimmed = value.trim();
     let lower = trimmed.to_ascii_lowercase();
+    if let Some(value) = strip_action_prefix(trimmed, "treatment:") {
+        let mode = value;
+        let treatment = match mode.to_ascii_lowercase().as_str() {
+            "messages" => mxr_rules::Treatment::Messages,
+            "updates" => mxr_rules::Treatment::Updates,
+            "reading" => mxr_rules::Treatment::Reading,
+            _ => {
+                anyhow::bail!("Invalid treatment: {mode}; choose messages, updates or reading");
+            }
+        };
+        return Ok(RuleAction::SetTreatment { treatment });
+    }
     if lower == "archive" {
         return Ok(RuleAction::Archive);
     }
@@ -285,6 +297,20 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
     let mut client = IpcClient::connect().await?;
 
     match action.unwrap_or(RulesAction::List) {
+        RulesAction::TreatmentPreview { rule, form } => {
+            run_treatment(&mut client, rule, form, None, format).await?;
+        }
+        RulesAction::TreatmentApply {
+            rule,
+            token,
+            form,
+            preview_token,
+        } => {
+            let token = token.or(preview_token).ok_or_else(|| {
+                anyhow::anyhow!("Pass the preview token positionally or with --preview-token")
+            })?;
+            run_treatment(&mut client, rule, form, Some(token), format).await?;
+        }
         RulesAction::List => match client.request(Request::ListRules).await? {
             Response::Ok {
                 data: ResponseData::Rules { rules },
@@ -297,6 +323,7 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
             println!("{}", serde_json::to_string_pretty(&rule)?);
         }
         RulesAction::Add {
+            account,
             name,
             condition,
             action,
@@ -304,6 +331,9 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
         } => {
             let ast = parse_query(&condition).map_err(|e| anyhow::anyhow!(e.to_string()))?;
             let rule = Rule {
+                account_id: account
+                    .map(|value| value.parse::<mxr_core::AccountId>())
+                    .transpose()?,
                 id: RuleId::new(),
                 name,
                 enabled: true,
@@ -432,9 +462,85 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
     Ok(())
 }
 
+async fn run_treatment(
+    client: &mut IpcClient,
+    rule: Option<String>,
+    form_path: Option<std::path::PathBuf>,
+    preview_token: Option<String>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let form = if let Some(path) = form_path {
+        let input = if path.as_os_str() == "-" {
+            use std::io::Read;
+            let mut input = String::new();
+            std::io::stdin().read_to_string(&mut input)?;
+            input
+        } else {
+            std::fs::read_to_string(path)?
+        };
+        serde_json::from_str::<RuleFormData>(&input)?
+    } else {
+        let rule = rule
+            .ok_or_else(|| anyhow::anyhow!("Pass a saved rule or --form FILE (- reads stdin)"))?;
+        match client.request(Request::GetRuleForm { rule }).await? {
+            Response::Ok {
+                data: ResponseData::RuleFormData { form },
+            } => form,
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            _ => anyhow::bail!("Unexpected response"),
+        }
+    };
+    match client
+        .request(Request::RuleTreatment {
+            form,
+            preview_token,
+        })
+        .await?
+    {
+        Response::Ok {
+            data: ResponseData::RuleTreatmentResult { preview },
+        } => println!("{}", render_treatment(&preview, resolve_format(format))?),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    }
+    Ok(())
+}
+
+fn render_treatment(
+    preview: &RuleTreatmentPreviewData,
+    format: OutputFormat,
+) -> anyhow::Result<String> {
+    match format {
+        OutputFormat::Jsonl => jsonl(std::slice::from_ref(preview)),
+        _ => Ok(serde_json::to_string_pretty(preview)?),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sorting_jsonl_is_one_compact_response() {
+        let preview = RuleTreatmentPreviewData {
+            token: Some("token".into()),
+            applied: false,
+            rule_id: None,
+            result: RuleTreatmentSelectionData {
+                matches: vec![],
+                complete: true,
+                scan_limit: 200,
+                unavailable: 0,
+                notice: "Synthetic preview".into(),
+            },
+        };
+        let output = render_treatment(&preview, OutputFormat::Jsonl).unwrap();
+        assert_eq!(output.lines().count(), 1);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&output).unwrap()["token"],
+            "token"
+        );
+    }
 
     #[test]
     fn parse_action_archive() {

@@ -152,6 +152,7 @@ fn mail_router() -> Router<AppState> {
 fn platform_router() -> Router<AppState> {
     Router::new()
         .route("/rules", get(rules))
+        .route("/rules/treatment", post(rule_treatment))
         .route("/rules/detail", get(rule_detail))
         .route("/rules/form", get(rule_form))
         .route("/rules/history", get(rule_history))

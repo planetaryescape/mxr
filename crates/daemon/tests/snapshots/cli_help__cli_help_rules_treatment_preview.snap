@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Preview a saved rule or an unsaved JSON form; returns the token Apply requires
+
+Usage: mxr rules treatment-preview [OPTIONS] [RULE]
+
+Arguments:
+  [RULE]
+
+Options:
+      --form <FORM>  RuleFormData JSON file, or - for stdin. Does not save the draft
+  -h, --help         Print help

@@ -255,6 +255,7 @@ pub(super) struct UpsertRuleRequest {
 
 #[derive(Debug, Deserialize)]
 pub(super) struct UpsertRuleFormRequest {
+    pub(super) account_id: Option<mxr_core::AccountId>,
     pub(super) existing_rule: Option<String>,
     pub(super) name: String,
     pub(super) condition: String,

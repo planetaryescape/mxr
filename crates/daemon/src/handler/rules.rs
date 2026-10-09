@@ -53,13 +53,18 @@ pub(super) async fn get_rule_form(state: &AppState, rule: &str) -> HandlerResult
 }
 
 pub(super) async fn upsert_rule_value(state: &AppState, value: serde_json::Value) -> HandlerResult {
-    let rule = parse_rule_value(value.clone())?;
+    let _sorting = state.rule_mutation_gate.lock().await;
+    let mut rule = parse_rule_value(value)?;
+    rule.updated_at = chrono::Utc::now();
+    super::rule_treatment::validate(state, &rule).await?;
+    let value = serde_json::to_value(&rule)?;
     warn_once_for_enabled_shell_hook(&rule);
     persist_rule(state, &rule).await?;
     Ok(ResponseData::RuleData { rule: value })
 }
 
 pub(super) async fn delete_rule(state: &AppState, rule: &str) -> HandlerResult {
+    let _sorting = state.rule_mutation_gate.lock().await;
     match state.store.get_rule_by_id_or_name(rule).await? {
         Some(row) => {
             let id = mxr_store::row_to_rule_json(&row)["id"]
@@ -75,23 +80,11 @@ pub(super) async fn delete_rule(state: &AppState, rule: &str) -> HandlerResult {
 
 pub(super) async fn upsert_rule_form(
     state: &AppState,
-    existing_rule: Option<&String>,
-    name: &str,
-    condition: &str,
-    action: &str,
-    priority: i32,
-    enabled: bool,
+    form: &mxr_protocol::RuleFormData,
 ) -> HandlerResult {
-    let rule = build_rule_from_form(
-        state,
-        existing_rule,
-        name,
-        condition,
-        action,
-        priority,
-        enabled,
-    )
-    .await?;
+    let _sorting = state.rule_mutation_gate.lock().await;
+    let rule = build_rule_from_form(state, form).await?;
+    super::rule_treatment::validate(state, &rule).await?;
     let value = serde_json::to_value(&rule)?;
     warn_once_for_enabled_shell_hook(&rule);
     persist_rule(state, &rule).await?;

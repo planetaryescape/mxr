@@ -213,3 +213,22 @@ Focus on core: sync, search, compose, TUI.
 - Embed Lua (mlua) or Rhai for in-process scripting
 - Richer event hooks (on_receive, on_send, on_label_change)
 - But NOT before declarative rules are proven and trusted
+
+## Account-scoped sorting is implemented
+
+`SetTreatment` assigns Messages, Updates or Reading without creating a manual
+correction or invoking provider actions. Optional `Rule.account_id` scopes every
+action; legacy rules without it retain their all-account scope. Sorting rules
+require one account and header predicates. Personal corrections retain their
+existing chronological precedence.
+
+The daemon owns bounded draft preview and token application. A preview scans
+the newest 200 messages, reports whether older mail was excluded and resolves
+the same classification and conversation shape as live modes and arrivals.
+Apply saves the rule, selected automatic treatment provenance and arrival
+counts together. Rule edits affect future arrivals; historical provenance
+retains source ID, name and version independently of rule deletion. Sync
+replay of previously placed mail preserves its treatment.
+
+See [the rules guide](../../site/src/content/docs/guides/rules.md) for client
+commands, preview limits and downgrade requirements.

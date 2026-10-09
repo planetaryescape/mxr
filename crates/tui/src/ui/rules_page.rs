@@ -55,7 +55,7 @@ pub fn draw(
         draw_footer(
             frame,
             detail_chunks[2],
-            "Tab:next  Ctrl-s:save  Space:toggle enabled  Esc:close",
+            "Tab:next  Ctrl-s:save  Ctrl-d:preview sorting  Space:choose account/toggle  Esc:close",
             theme,
         );
         return;
@@ -87,7 +87,7 @@ pub fn draw(
         if state.rules.is_empty() {
             "n:new rule  Esc:mailbox"
         } else {
-            "j/k:select  Enter:overview  H:history  D:dry run  E:edit  n:new  e:toggle"
+            "j/k:select  Enter:overview  H:history  D:dry run  A:apply sorting preview  E:edit  n:new  e:toggle"
         },
         theme,
     );
@@ -180,13 +180,22 @@ fn draw_form(
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(7),
+            Constraint::Length(8),
             Constraint::Min(8),
             Constraint::Length(6),
         ])
         .split(area);
 
     let summary_lines = vec![
+        summary_line(
+            "Account",
+            &form
+                .account_id
+                .as_ref()
+                .map_or_else(|| "All accounts".to_string(), ToString::to_string),
+            form.active_field == 5,
+            theme,
+        ),
         summary_line("Name", &form.name, form.active_field == 0, theme),
         summary_line("Priority", &form.priority, form.active_field == 3, theme),
         summary_line(
@@ -254,6 +263,7 @@ fn draw_form(
 
     let mut example_lines = vec![
         Line::from("Starter recipes"),
+        Line::from("from:editor@example.com → treatment:reading"),
         Line::from("from:github.com → add-label:GitHub"),
         Line::from("label:newsletters → mark-read,archive"),
         Line::from("from:billing@ → shell:notify-send 'Bill'"),
@@ -376,6 +386,30 @@ fn history_lines(entries: &[serde_json::Value]) -> Vec<Line<'static>> {
 }
 
 fn dry_run_lines(entries: &[serde_json::Value]) -> Vec<Line<'static>> {
+    if let Some(preview) = entries.first().filter(|p| p["result"].is_object()) {
+        let result = &preview["result"];
+        let mut lines = vec![
+            Line::from("A applies exactly this sorting preview. Personal choices win."),
+            Line::from(if result["complete"] == true {
+                "Complete selection"
+            } else {
+                "Sample: newest 200 messages; older mail excluded"
+            }),
+            Line::from(result["notice"].as_str().unwrap_or("").to_string()),
+        ];
+        if let Some(matches) = result["matches"].as_array() {
+            for item in matches {
+                lines.push(Line::from(format!(
+                    "{}: {} → {} · {}",
+                    item["subject"].as_str().unwrap_or(""),
+                    item["before"].as_str().unwrap_or(""),
+                    item["after"].as_str().unwrap_or(""),
+                    item["reason"].as_str().unwrap_or("")
+                )));
+            }
+        }
+        return lines;
+    }
     if entries.is_empty() {
         return vec![
             Line::from("No dry-run output yet."),

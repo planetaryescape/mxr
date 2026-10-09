@@ -122,6 +122,7 @@ pub(super) struct AccountInputs<'a> {
     pub is_self: &'a dyn Fn(&str) -> bool,
     /// Emails the user moved (`X`), with the kind each move gave.
     pub moves: &'a HashMap<MessageId, SenderKind>,
+    pub treatments: &'a HashMap<MessageId, (String, String)>,
     /// The thread shape thresholds: a copied thread is nobody's turn.
     pub shape: ShapeConfig,
     pub now: DateTime<Utc>,
@@ -183,13 +184,18 @@ impl AccountInputs<'_> {
     /// never disagree about a message.
     pub(super) fn sender_kind(&self, message: &DeskMessage) -> SenderKind {
         let email = &message.from.email;
-        sender_kind(
+        let mut signals = desk_signals(
             message,
             self.contact(email),
             self.decision(email),
             self.moves.get(&message.id).copied(),
             self.is_self,
-        )
+        );
+        signals.treatment = self
+            .treatments
+            .get(&message.id)
+            .and_then(|(mode, name)| Some((mail_kind::kind_for_stored_mode(mode)?, name.as_str())));
+        mail_kind::classify(&signals).kind
     }
 
     /// A person other than you wrote it: an answer. An auto-responder or a
@@ -204,13 +210,17 @@ impl AccountInputs<'_> {
         let human_address = |email: &str| self.human_address(email);
         let kept = |m: &DeskMessage| {
             let email = &m.from.email;
-            mail_kind::kept_in_messages(&desk_signals(
+            let mut signals = desk_signals(
                 m,
                 self.contact(email),
                 self.decision(email),
                 self.moves.get(&m.id).copied(),
                 self.is_self,
-            ))
+            );
+            signals.treatment = self.treatments.get(&m.id).and_then(|(mode, name)| {
+                Some((mail_kind::kind_for_stored_mode(mode)?, name.as_str()))
+            });
+            mail_kind::kept_in_messages(&signals)
         };
         conversation_shape(
             thread,
@@ -236,18 +246,6 @@ impl AccountInputs<'_> {
     }
 }
 
-/// The shared classifier (`mail_kind`) for one desk message, given what the
-/// store knows about its sender and whether the user moved it.
-pub(super) fn sender_kind(
-    message: &DeskMessage,
-    contact: Option<&DeskContact>,
-    decision: Option<ScreenerDisposition>,
-    moved: Option<SenderKind>,
-    is_self: &dyn Fn(&str) -> bool,
-) -> SenderKind {
-    mail_kind::classify(&desk_signals(message, contact, decision, moved, is_self)).kind
-}
-
 /// The kind signals for one desk message. "Written to" comes from the
 /// contacts table, the same everywhere a message is classified.
 pub(super) fn desk_signals<'a>(
@@ -270,6 +268,7 @@ pub(super) fn desk_signals<'a>(
         written_to: contact.is_some_and(|c| c.total_outbound > 0),
         addressed: addressed_to_you(&message.to, &message.cc, is_self),
         moved,
+        treatment: None,
     }
 }
 
@@ -857,6 +856,7 @@ mod tests {
             timers: &timers,
             is_self: &is_self,
             moves: &moves,
+            treatments: &HashMap::new(),
             shape: ShapeConfig::default(),
             now: now(),
         })

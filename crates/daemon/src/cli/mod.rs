@@ -3498,6 +3498,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sorting_preview_and_apply_accept_unsaved_json_forms() {
+        assert!(Cli::try_parse_from(["mxr", "rules", "treatment-preview", "--form", "-"]).is_ok());
+        assert!(Cli::try_parse_from([
+            "mxr",
+            "rules",
+            "treatment-apply",
+            "--form",
+            "rule.json",
+            "--preview-token",
+            "token"
+        ])
+        .is_ok());
+        assert!(
+            Cli::try_parse_from(["mxr", "rules", "treatment-apply", "saved-rule", "token"]).is_ok()
+        );
+        assert!(Cli::try_parse_from([
+            "mxr",
+            "rules",
+            "treatment-preview",
+            "saved-rule",
+            "--form",
+            "-"
+        ])
+        .is_err());
+    }
+
+    #[test]
     fn unsubscribe_keep_mail_and_preview_token_require_sender_preview_mode() {
         assert!(
             Cli::try_parse_from(["mxr", "unsubscribe", "news@example.com", "--keep-mail"]).is_err()
@@ -3725,6 +3752,7 @@ mod tests {
             Some(Command::Rules {
                 action:
                     Some(RulesAction::Add {
+                        account: None,
                         name,
                         condition,
                         action,

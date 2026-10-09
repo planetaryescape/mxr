@@ -55,7 +55,7 @@ use utoipa::{
         compose_session_update, compose_session_send, compose_session_safety_check,
         compose_session_collaborators, compose_session_save, compose_session_schedule,
         compose_session_attachment, compose_session_discard, rules_list, rule_detail, rule_form,
-        rule_history, rule_dry_run, rule_upsert, rule_upsert_form, rule_delete,
+        rule_history, rule_dry_run, rule_upsert, rule_upsert_form, rule_delete, rule_treatment,
         saved_searches_list, saved_searches_create, saved_searches_delete, saved_searches_update,
         saved_searches_run, accounts_list, accounts_config, account_test,
         account_upsert, account_set_default, account_remove, account_disable,
@@ -1290,6 +1290,7 @@ endpoint!(get rule_history "/api/v1/platform/rules/history", "Rule history");
 endpoint!(get rule_dry_run "/api/v1/platform/rules/dry-run", "Dry-run rules");
 endpoint!(post rule_upsert "/api/v1/platform/rules/upsert", "Create or update rule");
 endpoint!(post rule_upsert_form "/api/v1/platform/rules/upsert-form", "Create or update rule from form");
+endpoint!(post rule_treatment "/api/v1/platform/rules/treatment", "Preview or apply account-scoped sorting");
 endpoint!(post rule_delete "/api/v1/platform/rules/delete", "Delete rule");
 
 endpoint!(get saved_searches_list "/api/v1/platform/saved-searches", "List saved searches");

@@ -1073,6 +1073,14 @@ const MIGRATIONS: &[Migration] = &[
         name: "arrivals",
         kind: MigrationKind::Sql(include_str!("../migrations/070_arrivals.sql")),
     },
+    Migration {
+        version: 71,
+        name: "rule_treatments",
+        kind: MigrationKind::Composite(&[
+            MigrationStep::AddColumn {table:"rules",column:"account_id",sql:"ALTER TABLE rules ADD COLUMN account_id TEXT REFERENCES accounts(id) ON DELETE CASCADE"},
+            MigrationStep::Sql(include_str!("../migrations/071_rule_treatments.sql")),
+        ]),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

@@ -40,6 +40,7 @@ enum ScopeTarget<'a> {
     Account(&'a AccountId),
     /// A config account key; matched against the allowlist as written.
     AccountKey(&'a str),
+    Rule(&'a str),
     AuthSession(&'a AuthSessionId),
     /// A label that must belong to the account named beside it: listing by
     /// label ignores the account, so a foreign label would list another
@@ -394,12 +395,19 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::UndoMutation { mutation_id } => Targets(vec![T::Undo(mutation_id)]),
         Request::GetJob { job_id } => Targets(vec![T::Job(job_id)]),
 
+        Request::RuleTreatment {form,..} => {
+            if let Some(account_id) = &form.account_id {
+                let mut targets = vec![T::Account(account_id)];
+                targets.extend(form.id.as_deref().map(T::Rule));
+                Targets(targets)
+            } else { AllAccounts }
+        }
+        Request::GetRule {rule} | Request::GetRuleForm {rule} => Targets(vec![T::Rule(rule)]),
+
         // ----- Every account, or daemon-wide data that mixes them -----
         Request::ListAccounts
         | Request::ListAccountsConfig
         | Request::ListRules
-        | Request::GetRule { .. }
-        | Request::GetRuleForm { .. }
         | Request::UpsertRule { .. }
         | Request::UpsertRuleForm { .. }
         | Request::DeleteRule { .. }
@@ -517,6 +525,19 @@ async fn resolve_targets(
         match target {
             T::Account(account_id) => resolved.push((*account_id).clone()),
             T::AccountKey(key) => resolved.keys.push((*key).to_string()),
+            T::Rule(key) => {
+                let row = state
+                    .store
+                    .get_rule_by_id_or_name(key)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| format!("Rule not found: {key}"))?;
+                let value = mxr_store::row_to_rule_json(&row);
+                let account = value["account_id"]
+                    .as_str()
+                    .ok_or("Global rules require access to all accounts")?;
+                resolved.push(account.parse::<AccountId>().map_err(|e| e.to_string())?);
+            }
             T::AuthSession(session_id) => {
                 let key = state
                     .auth_sessions

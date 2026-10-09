@@ -63,7 +63,7 @@ fn rule_id(rule: KindRuleData) -> String {
 /// Where one arrival goes now, by the rules live membership uses.
 /// `written_to` reads sent mail directly: on a first sync the contacts
 /// table may not have counted it yet.
-fn place_message(
+pub(super) fn place_message(
     message: &DeskMessage,
     thread: &[DeskMessage],
     senders: &Senders,
@@ -210,6 +210,7 @@ pub(crate) async fn place_pending(
     state: &AppState,
     account_id: &AccountId,
 ) -> Result<u32, HandlerError> {
+    let _sorting = state.rule_mutation_gate.lock().await;
     let started = std::time::Instant::now();
     let mut placed = 0u32;
     loop {
@@ -229,6 +230,8 @@ pub(crate) async fn place_pending(
                 wanted.push((row.message_id, row.thread_id, row.spam));
             }
         }
+        let ids: Vec<_> = wanted.iter().map(|(id, _, _)| id.clone()).collect();
+        super::rule_treatment::classify_pending(state, account_id, &ids).await?;
         let sorted = place_all(state, account_id, &wanted).await?;
         sent.extend(sorted.sent);
         let dropped = state.store.delete_arrivals(&sent).await?;
@@ -270,7 +273,7 @@ async fn replace_sender(
 /// Re-place arrivals after a correction: each row's `now_mode` becomes
 /// where it goes now, by the same rules as live membership, which honour
 /// the moves still in force.
-async fn replace(
+pub(super) async fn replace(
     state: &AppState,
     account_id: &AccountId,
     rows: Vec<(MessageId, ThreadId)>,
@@ -814,6 +817,7 @@ pub(super) struct MoveRequest<'a> {
 }
 
 pub(super) async fn move_message(state: &AppState, request: MoveRequest<'_>) -> HandlerResult {
+    let _sorting = state.rule_mutation_gate.lock().await;
     let MoveRequest {
         message_id,
         mode,
@@ -1071,7 +1075,7 @@ fn moved(outcome: MoveOutcomeData) -> ResponseData {
     ResponseData::MessageMoved { outcome }
 }
 
-fn modes_changed(state: &AppState, account_id: &AccountId) {
+pub(super) fn modes_changed(state: &AppState, account_id: &AccountId) {
     crate::chimes::emit_daemon_event(
         state,
         DaemonEvent::ModesChanged {
@@ -1112,6 +1116,7 @@ async fn aspect_move(
 }
 
 pub(super) async fn undo_move(state: &AppState, correction_id: i64) -> HandlerResult {
+    let _sorting = state.rule_mutation_gate.lock().await;
     let correction = state
         .store
         .get_correction(correction_id)

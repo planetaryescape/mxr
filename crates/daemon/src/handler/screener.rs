@@ -70,6 +70,7 @@ pub(super) async fn set_decision(
     disposition: ScreenerDispositionData,
     route_label: Option<String>,
 ) -> HandlerResult {
+    let _sorting = state.rule_mutation_gate.lock().await;
     if sender_email.trim().is_empty() {
         return Err(crate::handler::HandlerError::Message(
             "sender email cannot be empty".to_string(),
@@ -93,6 +94,7 @@ pub(super) async fn clear_decision(
     account_id: &AccountId,
     sender_email: &str,
 ) -> HandlerResult {
+    let _sorting = state.rule_mutation_gate.lock().await;
     let _change = state.sweep_gate.change([account_id]).await;
     state
         .store

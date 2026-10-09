@@ -7,6 +7,8 @@ Manage rules
 Usage: mxr rules [OPTIONS] [COMMAND]
 
 Commands:
+  treatment-preview  Preview a saved rule or an unsaved JSON form; returns the token Apply requires
+  treatment-apply    Apply exactly a sorting preview, rejecting changed mail or rules
   list
   show
   add
@@ -17,7 +19,7 @@ Commands:
   delete
   dry-run
   history
-  help      Print this message or the help of the given subcommand(s)
+  help               Print this message or the help of the given subcommand(s)
 
 Options:
       --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]

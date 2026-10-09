@@ -173,6 +173,14 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_labels_create", &["labels", "create", "--help"]),
         ("cli_help_labels_delete", &["labels", "delete", "--help"]),
         ("cli_help_labels_rename", &["labels", "rename", "--help"]),
+        (
+            "cli_help_rules_treatment_preview",
+            &["rules", "treatment-preview", "--help"],
+        ),
+        (
+            "cli_help_rules_treatment_apply",
+            &["rules", "treatment-apply", "--help"],
+        ),
         ("cli_help_rules", &["rules", "--help"]),
         ("cli_help_rules_list", &["rules", "list", "--help"]),
         ("cli_help_rules_show", &["rules", "show", "--help"]),
@@ -432,7 +440,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_briefing_gists", &["briefing", "gists", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 253);
+    assert_eq!(cases.len(), 255);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

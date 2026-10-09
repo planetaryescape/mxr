@@ -408,6 +408,7 @@ pub enum Action {
     DeleteRule,
     ShowRuleHistory,
     ShowRuleDryRun,
+    ApplyRuleTreatment,
     OpenRuleFormNew,
     OpenRuleFormEdit,
     SaveRuleForm,
@@ -680,6 +681,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | DeleteRule
                 | ShowRuleHistory
                 | ShowRuleDryRun
+                | ApplyRuleTreatment
                 | OpenRuleFormNew
                 | OpenRuleFormEdit
                 | SaveRuleForm
@@ -715,6 +717,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | DeleteRule
                 | ShowRuleHistory
                 | ShowRuleDryRun
+                | ApplyRuleTreatment
                 | OpenRuleFormNew
                 | OpenRuleFormEdit
                 | SaveRuleForm

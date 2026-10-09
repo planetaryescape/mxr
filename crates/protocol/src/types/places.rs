@@ -78,6 +78,7 @@ pub enum KindRuleData {
     WrittenTo,
     /// You moved this one email (`X`).
     Moved,
+    CustomRule,
 }
 
 /// A message's kind with the reason it was given.

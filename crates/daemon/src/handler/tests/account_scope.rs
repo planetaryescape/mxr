@@ -1201,3 +1201,65 @@ async fn a_scoped_thread_takes_its_subject_from_the_kept_messages() {
     };
     assert_only_own_part(&thread, &s);
 }
+
+#[tokio::test]
+async fn sorting_rule_scope_checks_previous_account_before_retargeting() {
+    let s = scoped().await;
+    let mut form = mxr_protocol::RuleFormData {
+        id: None,
+        account_id: Some(s.own.account.clone()),
+        name: "Scoped sorting".into(),
+        condition: "from:editor@example.com".into(),
+        action: "treatment:reading".into(),
+        priority: 10,
+        enabled: true,
+    };
+    assert!(check(
+        &s,
+        &Request::RuleTreatment {
+            form: form.clone(),
+            preview_token: None
+        }
+    )
+    .await
+    .is_ok());
+    form.account_id = Some(s.other.account.clone());
+    assert!(check(
+        &s,
+        &Request::RuleTreatment {
+            form: form.clone(),
+            preview_token: None
+        }
+    )
+    .await
+    .is_err());
+    let saved = request(
+        &s.fx,
+        Request::UpsertRuleForm {
+            existing_rule: None,
+            account_id: form.account_id.clone(),
+            name: form.name.clone(),
+            condition: form.condition.clone(),
+            action: form.action.clone(),
+            priority: form.priority,
+            enabled: form.enabled,
+        },
+    )
+    .await;
+    let id = match saved {
+        ResponseData::RuleData { rule } => rule["id"].as_str().unwrap().to_string(),
+        other => panic!("{other:?}"),
+    };
+    form.id = Some(id.clone());
+    form.account_id = Some(s.own.account.clone());
+    assert!(check(
+        &s,
+        &Request::RuleTreatment {
+            form,
+            preview_token: None
+        }
+    )
+    .await
+    .is_err());
+    assert!(check(&s, &Request::GetRuleForm { rule: id }).await.is_err());
+}

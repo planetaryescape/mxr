@@ -147,6 +147,7 @@ async fn gather(
             timers: &timers,
             is_self: &is_self,
             moves: &senders.moves,
+            treatments: &senders.treatments,
             shape,
             now,
         };

@@ -10,6 +10,7 @@ pub enum RulesPanel {
 pub struct RuleFormState {
     pub visible: bool,
     pub existing_rule: Option<String>,
+    pub account_id: Option<mxr_core::AccountId>,
     pub name: String,
     pub condition: String,
     pub action: String,
@@ -57,12 +58,16 @@ impl Default for RulesPageState {
 
 #[derive(Default)]
 pub struct RulesState {
+    pub draft_preview_active: bool,
     pub page: RulesPageState,
     pub pending_detail: Option<String>,
     pub detail_request_id: u64,
     pub pending_history: Option<String>,
     pub history_request_id: u64,
     pub pending_dry_run: Option<String>,
+    pub dry_run_request_id: u64,
+    pub pending_sorting_preview: Option<mxr_protocol::RuleFormData>,
+    pub pending_treatment: Option<(mxr_protocol::RuleFormData, String)>,
     pub pending_delete: Option<String>,
     pub pending_upsert: Option<serde_json::Value>,
     pub pending_form_load: Option<String>,

@@ -1,10 +1,14 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { afterAll, describe, expect, test, vi } from "vitest";
 
 import { MoveToModeDialog, pickerChoice } from "./MoveToModeDialog";
 
 const moves = vi.hoisted(() => ({ performMove: vi.fn<(...args: unknown[]) => void>() }));
+const realSetTimeout = globalThis.setTimeout;
 vi.mock("./moves", () => moves);
+
+// Drain Radix's focus-scope unmount timer before Vitest tears down jsdom globals.
+afterAll(() => new Promise<void>((resolve) => realSetTimeout(resolve, 0)));
 
 describe("the move picker's keys", () => {
   test("letters move this email; capitals send the sender's mail", () => {

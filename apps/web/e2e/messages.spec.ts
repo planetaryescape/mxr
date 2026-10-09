@@ -67,8 +67,15 @@ test("each person is one row with topics, a group is its own row, a cc is not he
   page,
 }) => {
   await waitForPeople(page);
+  const personPageRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/mail/people/page")) personPageRequests.push(request.url());
+  });
   await openApp(page, "/messages");
   await expect(page.getByRole("heading", { name: "Messages", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose a conversation" })).toBeVisible();
+  await expect(page.getByTestId("person-page")).toHaveCount(0);
+  expect(personPageRequests).toEqual([]);
   await expect(page.getByTestId("mode-header").first()).toHaveText(
     "People you talk with, one row each. Reply or mark done.",
   );
@@ -88,6 +95,10 @@ test("each person is one row with topics, a group is its own row, a cc is not he
   await expect(row(page, IRIS).getByTestId("row-preview")).toHaveText("You: Thanks, on it.");
   // No early-version marker on Messages any more.
   await expect(page.getByTestId("rail-early").filter({ hasText: /messages/i })).toHaveCount(0);
+
+  const firstRow = page.getByTestId("messages-row").first();
+  await page.keyboard.press("ArrowDown");
+  await expect(firstRow).toHaveAttribute("aria-current", "true");
 
   await row(page, SAMIR).click();
   const pageView = page.getByTestId("person-page");
@@ -112,6 +123,38 @@ test("[ and ] step through a person's topics", async ({ page }) => {
   await expect(current).not.toContainText("Contract renewal");
   await page.keyboard.press("[");
   await expect(current).toContainText("Contract renewal");
+});
+
+test("a thread link opens the person and topic that contain it", async ({ page }) => {
+  await waitForPeople(page);
+  const contract = await topicOf(page, SAMIR, "Contract renewal");
+  await openApp(page, `/messages/${encodeURIComponent(contract)}`);
+  const pageView = page.getByTestId("person-page");
+  await expect(pageView.getByTestId("person-name")).toHaveText("Samir Patel");
+  await expect(pageView.locator('[data-testid="topic"][aria-current="true"]')).toContainText(
+    "Contract renewal",
+  );
+});
+
+test("returning to Messages leaves the previous conversation closed", async ({ page }) => {
+  await waitForPeople(page);
+  const personPageRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/mail/people/page")) personPageRequests.push(request.url());
+  });
+  await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}`);
+  await expect(page.getByTestId("person-name")).toHaveText("Samir Patel");
+  expect(personPageRequests).toHaveLength(1);
+
+  await page.keyboard.press("g");
+  await page.keyboard.press("i");
+  await expect(page).toHaveURL(/\/m\/inbox$/);
+  await page.keyboard.press("g");
+  await page.keyboard.press("m");
+  await expect(page).toHaveURL(/\/messages$/);
+  await expect(page.getByRole("heading", { name: "Choose a conversation" })).toBeVisible();
+  await expect(page.getByTestId("person-page")).toHaveCount(0);
+  expect(personPageRequests).toHaveLength(1);
 });
 
 test("a long reply is a letter, trimmed, and v shows it as sent", async ({ page }) => {
@@ -201,16 +244,18 @@ test("leaving mid-countdown sends nothing", async ({ page }) => {
 
 test("Got it sends after the countdown and the turn passes", async ({ page }) => {
   await waitForPeople(page);
-  const thread = await topicOf(page, JON, "Pricing copy for the docs");
-  await openApp(page, `/messages?person=${encodeURIComponent(JON)}&topic=${thread}`);
+  const { person, thread } = await unanswered(page);
+  await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${thread}`);
   await expect(page.getByTestId("conversation")).toBeVisible();
   await page.getByTestId("got-it").click();
   await expect(page.getByTestId("got-it-preview")).toBeVisible();
-  await expect(page.getByText(/Got it sent to Jon/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/Got it sent to/)).toBeVisible({ timeout: 15_000 });
   await expect
-    .poll(async () => (await messages(page)).your_turn.some((candidate) => candidate.id === JON), {
-      timeout: 15_000,
-    })
+    .poll(async () =>
+      (await messages(page)).your_turn.some((candidate) =>
+        candidate.topics.some((topic) => topic.thread_id === thread && topic.state === "your_turn"),
+      ),
+    )
     .toBe(false);
 });
 
@@ -233,11 +278,31 @@ test("done here moves a person out of Recent until they write again", async ({ p
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
+  test("opening plain Messages closes the previously open person", async ({ page }) => {
+    await waitForPeople(page);
+    const personPageRequests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/v1/mail/people/page"))
+        personPageRequests.push(request.url());
+    });
+    await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}`);
+    await expect(page.getByTestId("person-name")).toHaveText("Samir Patel");
+    expect(personPageRequests).toHaveLength(1);
+
+    await page.keyboard.press("g");
+    await page.keyboard.press("m");
+    await expect(page).toHaveURL(/\/messages$/);
+    await expect(row(page, SAMIR)).toBeVisible();
+    await expect(page.getByTestId("person-page")).toHaveCount(0);
+    expect(personPageRequests).toHaveLength(1);
+  });
+
   test("the list and the person page are two screens", async ({ page }) => {
     await waitForPeople(page);
     await openApp(page, "/messages");
     await expect(row(page, SAMIR)).toBeVisible();
     await expect(page.getByTestId("person-page")).toBeHidden();
+    await expect(page.getByRole("heading", { name: "Choose a conversation" })).toHaveCount(0);
     await row(page, SAMIR).click();
     const pageView = page.getByTestId("person-page");
     await expect(pageView).toBeVisible();

@@ -6,7 +6,7 @@ test.use({ viewport: { width: 1440, height: 900 } });
 
 // The demo dataset's "Security review follow-up" thread has five messages,
 // each HTML with one remote image (demo_html_body, category 4).
-const MULTI_MESSAGE_THREAD = /Re: Security review follow-up, 5 messages in conversation/;
+const MULTI_MESSAGE_THREAD = /Security review follow-up/;
 
 test("a long thread folds read messages, expands on o/X, and blocks remote images until M", async ({
   page,
@@ -17,7 +17,8 @@ test("a long thread folds read messages, expands on o/X, and blocks remote image
     await route.fulfill({ status: 200, contentType: "image/png", body: Buffer.alloc(0) });
   });
 
-  await openList(page, "/m/inbox");
+  // Other specs archive shared demo mail; reader behavior must not depend on Inbox membership.
+  await openList(page, `/search?q=${encodeURIComponent('subject:"Security review follow-up"')}`);
   const row = mailList(page).getByRole("option", { name: MULTI_MESSAGE_THREAD }).first();
   // A click puts the cursor on the row; Enter opens it with the reader focused.
   await row.click();

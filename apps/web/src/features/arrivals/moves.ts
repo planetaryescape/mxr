@@ -9,6 +9,7 @@
 import { toast } from "sonner";
 import { create } from "zustand";
 
+import { UNDO_TOAST_DURATION_MS } from "@/components/ui/sonner";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { invalidateMailQueries } from "@/features/mail-actions/mailQueryInvalidation";
 import { claimUndo } from "@/features/mail-actions/mailUndo";
@@ -142,7 +143,7 @@ export function announceMove(
   };
   show(ask ? `${outcome.copy} ${ask}` : outcome.copy, {
     id,
-    duration: ask ? 15_000 : 60_000,
+    duration: ask ? 15_000 : UNDO_TOAST_DURATION_MS,
     description: hint ?? "Press u to undo",
     action: { label: "Undo", onClick: () => void undo() },
     cancel: ask

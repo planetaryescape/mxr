@@ -33,16 +33,17 @@ function renderRow(todo: Todo, band: Band = "now", overrides: Partial<TodoRowPro
 }
 
 describe("TodoRow", () => {
-  test("reads as an instruction: verb and object, who, amount, dates and one button", () => {
+  test("prioritizes the action and key facts before the explanation", () => {
     const { row, props } = renderRow(todoFixture());
     const view = within(row);
     expect(view.getByTestId("todo-title")).toHaveTextContent("Pay council tax");
     expect(row).toHaveTextContent("Camden Council");
     expect(view.getByTestId("todo-amount")).toHaveTextContent("£142.00");
     expect(view.getByTestId("todo-when")).toHaveTextContent("act by Wed 7 Oct · due Fri 9 Oct");
-    expect(view.getByTestId("todo-arrived")).toHaveAttribute("dateTime", "2026-10-02T09:00:00Z");
+    expect(view.queryByTestId("todo-arrived")).toBeNull();
+    expect(view.queryByTestId("todo-why")).toBeNull();
+    expect(view.getByTestId("todo-provenance")).toHaveTextContent("1 to check");
     expect(view.getByTestId("runway-bar")).toHaveAttribute("data-fill", "0.60");
-    expect(view.getByTestId("todo-why")).toHaveTextContent('"payment due 9 October"');
     const button = view.getByTestId("todo-action");
     expect(button).toHaveTextContent("Open email to pay");
     expect(view.getByTestId("todo-action-domain")).toHaveTextContent("camden.gov.uk");
@@ -54,8 +55,28 @@ describe("TodoRow", () => {
   });
 
   test("a manually added row with no source email shows no arrived date", () => {
-    const { row } = renderRow(todoFixture({ source_date: null }));
+    const { row } = renderRow(todoFixture({ source_date: null, thread_id: null }), "now", {
+      expanded: true,
+    });
     expect(within(row).queryByTestId("todo-arrived")).toBeNull();
+  });
+
+  test("expanded details preserve arrival, why, next and source evidence", () => {
+    const { row } = renderRow(
+      todoFixture({ next: "Check the council tax account", thread_id: null }),
+      "now",
+      { expanded: true },
+    );
+    const details = within(row).getByTestId("todo-source");
+
+    expect(within(details).getByTestId("todo-arrived")).toHaveAttribute(
+      "dateTime",
+      "2026-10-02T09:00:00Z",
+    );
+    expect(within(details).getByTestId("todo-why")).toHaveTextContent('"payment due 9 October"');
+    expect(details).toHaveTextContent("Check the council tax account");
+    expect(details).toHaveTextContent("09/10/2026");
+    expect(details).toHaveTextContent("(check this)");
   });
 
   test("a row about a link renders no outside link to click", () => {
@@ -82,12 +103,13 @@ describe("TodoRow", () => {
     expect(row.innerHTML).not.toMatch(/destructive|text-red|bg-red|warning/);
   });
 
-  test("Coming up rows say when they show up, without a button", () => {
+  test("Coming up rows say when they show up, without a primary action", () => {
     const { row } = renderRow(
       todoFixture({ when_label: "shows up Mon 12 Oct · act by Thu 15 Oct", runway: 0 }),
       "coming",
     );
     expect(row).toHaveTextContent("shows up Mon 12 Oct · act by Thu 15 Oct");
+    expect(within(row).getByTestId("todo-provenance")).toHaveTextContent("1 to check");
     expect(within(row).queryByTestId("todo-action")).toBeNull();
   });
 
@@ -101,9 +123,39 @@ describe("TodoRow", () => {
     expect(onToggleSource).toHaveBeenCalled();
   });
 
-  test("ticking off from the row's check", () => {
+  test("keeps a visible checkbox before the title and does not select the row", () => {
     const { row, props } = renderRow(todoFixture());
-    fireEvent.click(within(row).getByTestId("todo-done"));
+    const checkbox = within(row).getByRole("checkbox", { name: "Tick off Pay council tax" });
+    expect(checkbox).toHaveAttribute("data-testid", "todo-done");
+    expect(checkbox).toHaveAttribute("aria-checked", "false");
+    expect(row.querySelector("[data-testid='todo-title']")?.compareDocumentPosition(checkbox)).toBe(
+      Node.DOCUMENT_POSITION_PRECEDING,
+    );
+
+    fireEvent.click(checkbox);
+    expect(props.onDone).toHaveBeenCalledWith(props.todo);
+    expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  test("a completed row stays checked and reopens from the same checkbox", () => {
+    const { row, props } = renderRow(todoFixture(), "done");
+    const checkbox = within(row).getByRole("checkbox", { name: "Reopen Pay council tax" });
+
+    expect(checkbox).toHaveAttribute("aria-checked", "true");
+    expect(within(row).queryByText("Reopen")).toBeNull();
+    fireEvent.click(checkbox);
+
+    expect(props.onRestore).toHaveBeenCalledWith(props.todo);
+    expect(props.onDone).not.toHaveBeenCalled();
+    expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  test("coming rows also expose the checkbox before their title", () => {
+    const { row, props } = renderRow(todoFixture(), "coming");
+    const checkbox = within(row).getByRole("checkbox", { name: "Tick off Pay council tax" });
+
+    expect(checkbox).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(checkbox);
     expect(props.onDone).toHaveBeenCalledWith(props.todo);
   });
 });

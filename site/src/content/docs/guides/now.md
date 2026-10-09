@@ -66,8 +66,10 @@ caps and lines.
 
 ## See where everything that arrived went
 
-Under the headline, one quiet line accounts for every email that arrived
-since you last opened Now (at most 24 hours back):
+Under the headline, the web app shows an arrival count and how many emails
+need a sorting decision. Expand that line to see where mail went, answer
+sorting questions, and check the weekly track record. The details account
+for every email that arrived since you last opened Now (at most 24 hours back):
 
 ```text
 Since 08:12: 50 arrived. 8 Messages · 10 Updates · 31 Reading · 1 spam. Also 2 in To do.
@@ -132,7 +134,8 @@ mxr corrections undo 12
 ## Answer what mxr wasn't sure about
 
 When two rules disagree, Now asks instead of guessing, at most three times a
-day. Today that is mail from someone you've written to that only copied you:
+day. In the web app, expand the arrivals line to answer. Today that is mail
+from someone you've written to that only copied you:
 
 ```text
 2 emails I wasn't sure about. Where should these go?
@@ -179,6 +182,10 @@ still holds.
 In To do, `e` ticks off that one to-do. Another to-do on the same email stays
 open, and the email stays in the inbox until the last one is ticked off. In
 Updates, `e` lets go of one source in the digest.
+
+On the web To do page, press Space or `e` to tick off the focused item. Space
+on the left checkbox ticks it off or reopens it. Click the source chip on its
+date line to see the explanation, arrival time and field evidence.
 
 ```bash
 mxr modes done THREAD_ID --mode todo --todo TODO_ID --dry-run

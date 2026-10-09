@@ -180,9 +180,6 @@ export function PersonRow({
               <span className="min-w-0 truncate text-muted-foreground">{subject}</span>
             ) : null}
           </p>
-          <p data-testid="now-why" className="truncate text-[12px] text-fg-2">
-            {item.person.why}
-          </p>
         </>
       }
       extra={
@@ -246,9 +243,6 @@ export function TodoRow({ item, modes, ...state }: RowState & { item: Due; modes
             {todo.person_label ? (
               <span className="text-[12px] text-muted-foreground">{todo.person_label}</span>
             ) : null}
-          </p>
-          <p data-testid="now-why" className="truncate text-[12px] text-fg-2">
-            {item.todo.why}
           </p>
         </>
       }

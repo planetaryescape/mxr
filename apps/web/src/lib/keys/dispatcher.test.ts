@@ -1,14 +1,15 @@
 import { fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { listActions } from "@/lib/actions/paneActions";
+import { todoActions } from "@/features/todo/actions";
+import { listActions, readerActions } from "@/lib/actions/paneActions";
 import { ActionRegistry } from "@/lib/actions/registry";
 import type { Action, ActionContext, ActionScope } from "@/lib/actions/types";
 
 import { setController } from "./controllers";
 import { installKeyDispatcher, SEQUENCE_TIMEOUT_MS } from "./dispatcher";
 
-const ALL_SCOPES: ActionScope[] = ["global", "sidebar", "list", "reader", "screener"];
+const ALL_SCOPES: ActionScope[] = ["global", "sidebar", "list", "reader", "screener", "todo"];
 
 function ctxWith(scopes: ActionScope[]): ActionContext {
   return {
@@ -270,6 +271,64 @@ describe("installKeyDispatcher", () => {
     press({ key: "d", ctrlKey: true });
 
     expect(pageDown).toHaveBeenCalledTimes(1);
+  });
+
+  test("Space and e tick off the focused to-do once per press", () => {
+    registry.defineMany(todoActions);
+    const done = vi.fn<() => void>();
+    setController("todo", { done });
+    scopes = ["todo", "global"];
+
+    expect(press({ key: " " })).toBe(false);
+    expect(press({ key: "e" })).toBe(false);
+    expect(press({ key: " ", repeat: true })).toBe(false);
+
+    expect(done).toHaveBeenCalledTimes(2);
+  });
+
+  test("Space on a focused checkbox keeps its native toggle", () => {
+    registry.defineMany(todoActions);
+    const done = vi.fn<() => void>();
+    setController("todo", { done });
+    scopes = ["todo", "global"];
+    const checkbox = document.createElement("button");
+    checkbox.setAttribute("role", "checkbox");
+    document.body.append(checkbox);
+
+    expect(press({ key: " " }, checkbox)).toBe(true);
+    expect(done).not.toHaveBeenCalled();
+  });
+
+  test("To do shortcuts do not consume ordinary text typed into fields", () => {
+    registry.defineMany(todoActions);
+    const done = vi.fn<() => void>();
+    setController("todo", { done });
+    scopes = ["todo", "global"];
+    const input = document.createElement("input");
+    const editor = document.createElement("div");
+    editor.setAttribute("contenteditable", "true");
+    document.body.append(input, editor);
+
+    expect(press({ key: " " }, input)).toBe(true);
+    expect(press({ key: "e" }, input)).toBe(true);
+    expect(press({ key: "g" }, editor)).toBe(true);
+    expect(press({ key: "x" }, editor)).toBe(true);
+
+    expect(done).not.toHaveBeenCalled();
+    expect(pending.at(-1)).not.toBe("g");
+  });
+
+  test("Space keeps its reader page-down action", () => {
+    registry.defineMany([...todoActions, ...readerActions]);
+    const done = vi.fn<() => void>();
+    const pageDown = vi.fn<() => void>();
+    setController("todo", { done });
+    setController("reader", { pageDown });
+    scopes = ["reader", "todo", "global"];
+
+    expect(press({ key: " " })).toBe(false);
+    expect(pageDown).toHaveBeenCalledTimes(1);
+    expect(done).not.toHaveBeenCalled();
   });
 
   test("isSuspended vetoes every key, modifier chords included", () => {

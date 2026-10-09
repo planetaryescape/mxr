@@ -30,6 +30,16 @@ test.afterEach(async ({ page }) => {
 
 type Journey = (page: Page) => Promise<void>;
 
+interface MessagesModeRow {
+  id: string;
+  kind: string;
+  topics: { thread_id: string; state: string }[];
+}
+
+interface MessagesModeAnswer {
+  messages: { your_turn: MessagesModeRow[] };
+}
+
 /** The newest toast whose title matches `words` (its buttons aren't part of the match). */
 function toast(page: Page, words: string | RegExp) {
   const title = page.locator("[data-title]").filter({ hasText: words });
@@ -507,15 +517,28 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
   },
 
   "mode-done": async (page) => {
-    // Noor's one conversation: done here takes her out of Your turn.
-    const noor = "person:noor@tidewater.example";
-    await openApp(page, `/messages?person=${encodeURIComponent(noor)}`);
-    const row = page.getByTestId("band-your_turn").locator(`[data-row-id="${noor}"]`);
+    const { messages } = await bridge<MessagesModeAnswer>(page, "/api/v1/mail/people");
+    const candidates = messages.your_turn.flatMap((person) => {
+      if (person.kind !== "person") return [];
+      const topics = person.topics.filter((topic) => topic.state === "your_turn");
+      const [topic] = topics;
+      return topics.length === 1 && topic ? [{ person: person.id, thread: topic.thread_id }] : [];
+    });
+    const candidate = candidates[0];
+    if (!candidate) {
+      throw new Error("no person has exactly one conversation in Your turn");
+    }
+
+    const { person, thread } = candidate;
+    await openApp(
+      page,
+      `/messages?person=${encodeURIComponent(person)}&topic=${encodeURIComponent(thread)}`,
+    );
+    const row = page.getByTestId("band-your_turn").locator(`[data-row-id="${person}"]`);
     try {
-      await expect(row).toBeVisible();
+      await expect(row, `selected person ${person}`).toBeVisible();
     } catch (error) {
-      // Noor is a shared fixture: say where she is and what moved, so a
-      // failure here names its cause instead of only its symptom.
+      // Say which fixture moved, so a failure names its cause as well.
       for (const path of ["/api/v1/mail/people", "/api/v1/mail/corrections?limit=100"]) {
         // oxlint-disable-next-line no-await-in-loop
         const body = JSON.stringify(await bridge<unknown>(page, path));
@@ -738,7 +761,7 @@ for (const [verb, entry] of Object.entries(VERB_FEEDBACK) as [
   });
 }
 
-test("toasts sit top centre under the header, clear of search and Compose", async ({ page }) => {
+test("toasts sit bottom right, clear of Search and Compose", async ({ page }) => {
   await openList(page, "/m/inbox");
   await mailList(page).focus();
   // A toast that stays as it is: star, answered at once with an undo.
@@ -760,21 +783,11 @@ test("toasts sit top centre under the header, clear of search and Compose", asyn
   await page.keyboard.press("s");
   const shown = page.locator("[data-sonner-toast]").first();
   await expect(shown).toBeVisible();
-  await expect(shown).toHaveAttribute("data-y-position", "top");
-  await expect(shown).toHaveAttribute("data-x-position", "center");
+  await expect(shown).toHaveAttribute("data-y-position", "bottom");
+  await expect(shown).toHaveAttribute("data-x-position", "right");
   // A neutral change with an undo is the accent (info) toast.
   await expect(shown).toHaveAttribute("data-type", "info");
-  const header = page.locator(".app-shell-topbar");
-  const viewport = page.viewportSize()!;
-  await expect
-    .poll(async () => {
-      const [toastBox, headerBox] = await Promise.all([shown.boundingBox(), header.boundingBox()]);
-      if (!toastBox || !headerBox) return "not laid out";
-      const below = toastBox.y >= headerBox.y + headerBox.height;
-      const centre = Math.abs(toastBox.x + toastBox.width / 2 - viewport.width / 2) <= 2;
-      return below && centre ? "top centre" : JSON.stringify({ toastBox, headerBox });
-    })
-    .toBe("top centre");
-  // Search and Compose live in the header, so a toast under it covers neither.
+  // Keep the default placement and verify the header actions stay clear.
+  await page.getByRole("button", { name: "Search mail" }).click({ trial: true });
   await page.getByRole("button", { name: "Compose" }).first().click({ trial: true });
 });

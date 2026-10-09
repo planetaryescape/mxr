@@ -9,10 +9,8 @@ import { NotSureSection } from "./NotSureSection";
 import type { Arrivals } from "./types";
 
 /**
- * Sorting shows its work (D119), under Now's headline: where every email
- * since Now was last opened went, each count opening those emails; the
- * "Not sure" questions; and, once you have moved something, the week's
- * track record. Quiet on purpose: muted text, no badge, no colour.
+ * A compact arrival count under Now's headline; the linked buckets,
+ * "Not sure" questions and weekly track record stay in its disclosure.
  */
 export function ArrivalsSection({ nowWaiting }: { nowWaiting: boolean }) {
   const arrivals = useArrivalsQuery();
@@ -27,22 +25,38 @@ export function ArrivalsView({
   arrivals: Arrivals;
   nowWaiting: boolean;
 }) {
+  const notSureCount = arrivals.not_sure?.length ?? 0;
   return (
-    <div data-testid="arrivals" className="shrink-0 border-b border-border px-5 py-2">
-      <ArrivalsLine arrivals={arrivals} nowWaiting={nowWaiting} />
-      {arrivals.track_record ? (
-        <p data-testid="arrivals-track-record" className="mt-0.5 text-[12px] text-muted-foreground">
-          {arrivals.track_record}
-        </p>
-      ) : null}
-      {/* Always mounted: answering the last question refetches an empty
-          list, and "Always for this sender?" lives in this component. */}
-      <NotSureSection
-        questions={arrivals.not_sure ?? []}
-        heading={arrivals.not_sure_line ?? undefined}
-        hint={arrivals.not_sure_hint ?? undefined}
-      />
-    </div>
+    <details data-testid="arrivals" className="shrink-0 border-b border-border px-5 py-2">
+      <summary
+        data-testid="arrivals-summary"
+        className="cursor-pointer text-[12.5px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span>
+          Since {arrivals.since_label}: {arrivals.total} arrived
+        </span>
+        {notSureCount > 0 ? (
+          <span>
+            {" · "}
+            {notSureCount} {notSureCount === 1 ? "email needs" : "emails need"} sorting
+          </span>
+        ) : null}
+      </summary>
+      <div className="space-y-1 pb-1 pt-2">
+        <ArrivalsLine arrivals={arrivals} nowWaiting={nowWaiting} />
+        {arrivals.track_record ? (
+          <p data-testid="arrivals-track-record" className="text-[12px] text-muted-foreground">
+            {arrivals.track_record}
+          </p>
+        ) : null}
+        {/* Keep this mounted while collapsed so the sender follow-up survives refetch. */}
+        <NotSureSection
+          questions={arrivals.not_sure ?? []}
+          heading={arrivals.not_sure_line ?? undefined}
+          hint={arrivals.not_sure_hint ?? undefined}
+        />
+      </div>
+    </details>
   );
 }
 

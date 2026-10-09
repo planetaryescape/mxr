@@ -297,8 +297,13 @@ test("the first done here carries its hint in the toast, and only the first", as
   // Demo people with a conversation still open in Messages: other specs
   // leave their own sends and dones behind.
   const open = (row: (typeof people.recent)[number]) =>
-    row.topics.find((topic) => topic.state !== "done" && !topic.subject.startsWith("e2e-"));
-  const candidates = people.recent.filter(
+    row.topics.find(
+      (topic) =>
+        (topic.state === "your_turn" || topic.state === "waiting") &&
+        !topic.subject.startsWith("e2e-"),
+    );
+  const activeRows = [...people.your_turn, ...people.recent];
+  const candidates = activeRows.filter(
     (row) => row.kind === "person" && row.id !== SAMIR && open(row) !== undefined,
   );
   expect(candidates.length).toBeGreaterThan(1);

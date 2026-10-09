@@ -3,6 +3,7 @@ import { Archive, Loader2, MailX } from "lucide-react";
 import { toast } from "sonner";
 
 import { KeyChip } from "@/components/KeyChip";
+import { UNDO_TOAST_DURATION_MS } from "@/components/ui/sonner";
 import {
   Dialog,
   DialogContent,
@@ -75,7 +76,7 @@ export function UnsubscribeDialog({
         if (undo) useUndo.getState().recordUndo(undo, mutationId ?? undefined);
         else useUndo.getState().recordNoUndo();
         toast.success(`Unsubscribed and archived ${plural(outcome.archived_count, "message")}`, {
-          duration: undo ? 60_000 : 6000,
+          duration: undo ? UNDO_TOAST_DURATION_MS : 6000,
           action: undo ? { label: "Undo archive", onClick: () => void undo() } : undefined,
         });
         void invalidateMailQueries();

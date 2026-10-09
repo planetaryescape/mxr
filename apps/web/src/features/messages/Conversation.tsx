@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Paperclip } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { fetchThread } from "@/features/mailbox/api";
@@ -73,6 +73,7 @@ function MessageItem({
   onToggleAsSent: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const bodyId = useId();
   const compact = message.layout === "compact";
   const { lead, hidden } = letterLead(message);
   const shown = expanded || hidden === 0 ? message.text : lead;
@@ -98,6 +99,7 @@ function MessageItem({
         </p>
       ) : (
         <div
+          id={bodyId}
           className={cn(
             "text-[14px] leading-6 text-foreground",
             compact
@@ -128,6 +130,8 @@ function MessageItem({
         {!asSent && hidden > 0 ? (
           <button
             type="button"
+            aria-controls={bodyId}
+            aria-expanded={expanded}
             onClick={() => setExpanded((open) => !open)}
             className="hover:text-foreground hover:underline"
           >

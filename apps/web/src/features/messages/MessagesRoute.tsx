@@ -160,20 +160,17 @@ function MessagesBody({
   );
   const memberships = useThreadModesMap(firstTopics).data;
 
-  // The selected row: the URL's, else the row holding a linked thread, else
-  // the first.
+  // Opening Messages alone never selects or fetches a conversation.
   const linked = threadId ? rowForThread(data, threadId) : undefined;
   const allRows = useMemo(
     () => [...data.your_turn, ...data.pinned, ...data.recent, ...data.quiet],
     [data],
   );
-  // After done here leaves nobody to open, nothing is selected until a row is.
-  const [cleared, setCleared] = useState(false);
-  const selectedId = search.person ?? (cleared ? null : (linked?.id ?? rows[0]?.id ?? null));
+  const selectedId = search.person ?? linked?.id ?? null;
   const selected: MessagesRow | undefined = allRows.find((row) => row.id === selectedId);
   const topic = search.topic ?? (linked ? threadId : undefined) ?? null;
   const person = usePersonQuery(selectedId, topic);
-  const page: PersonPage | undefined = person.data;
+  const page: PersonPage | undefined = selectedId ? person.data : undefined;
   const conversation = page?.conversation ?? null;
   const hiddenDone = useModeDone((s) => s.hidden.messages);
   const stillOpen = useMemo(() => openThreads(selected, hiddenDone), [selected, hiddenDone]);
@@ -188,6 +185,9 @@ function MessagesBody({
     return () => clearTimeout(timer);
   }, [arrival]);
   const [replyAllOverride, setReplyAllOverride] = useState<boolean | null>(null);
+  useEffect(() => {
+    setPageOpen(Boolean(search.person || threadId));
+  }, [search.person, threadId]);
   const replyAll = replyAllOverride ?? conversation?.composer.reply_all ?? false;
   useEffect(() => {
     setReplyAllOverride(null);
@@ -201,7 +201,6 @@ function MessagesBody({
         search: { ...(search.turn ? { turn: search.turn } : {}), person: id, topic: options.topic },
         replace: true,
       });
-      setCleared(false);
       if (options.open) setPageOpen(true);
     },
     [navigate, search.turn],
@@ -224,7 +223,6 @@ function MessagesBody({
   );
   /** Nobody left to open: the page shows the empty state. */
   const clearSelection = useCallback(() => {
-    setCleared(true);
     setPageOpen(false);
     void navigate({
       to: "/messages",
@@ -453,12 +451,10 @@ function MessagesBody({
     conversation?.messages.toReversed().find((message) => message.trimmed_label) ??
     conversation?.messages.at(-1);
 
-  const index = Math.max(
-    0,
-    rows.findIndex((row) => row.id === selectedId),
-  );
+  const index = rows.findIndex((row) => row.id === selectedId);
   const move = (delta: number) => {
-    const next = rows[Math.min(rows.length - 1, Math.max(0, index + delta))];
+    const nextIndex = index < 0 ? (delta > 0 ? 0 : rows.length - 1) : index + delta;
+    const next = rows[Math.min(rows.length - 1, Math.max(0, nextIndex))];
     if (next) select(next.id);
   };
   useShortcutScope("messages", true);
@@ -602,8 +598,12 @@ function MessagesBody({
           ) : (
             <Centered
               icon={<ChevronRight className="size-6" />}
-              title="Nobody here yet"
-              body={guide?.never_had_any}
+              title={allRows.length > 0 ? "Choose a conversation" : "Nobody here yet"}
+              body={
+                allRows.length > 0
+                  ? "Select someone from the list to open their conversations."
+                  : guide?.never_had_any
+              }
             />
           )}
         </ResizablePanel>

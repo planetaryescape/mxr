@@ -1,6 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { RouterProvider, createRouter } from "@tanstack/react-router";
+import { RouterProvider, createRouter, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { Toaster } from "@/components/ui/sonner";
@@ -37,12 +37,17 @@ declare module "@tanstack/react-router" {
 }
 
 export default function App() {
+  const toastPosition = useRouterState({
+    router,
+    select: (state) => (state.location.pathname === "/focus" ? "top-right" : "bottom-right"),
+  });
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={300}>
         <RealtimeBootstrap />
         <RouterProvider router={router} />
-        <Toaster />
+        <Toaster position={toastPosition} />
         {/* Opt-in: the floating button covers the reader's corner in normal dev use. */}
         {import.meta.env.DEV && import.meta.env.VITE_MXR_DEVTOOLS === "1" ? (
           <ReactQueryDevtools buttonPosition="bottom-left" />

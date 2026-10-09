@@ -60,7 +60,13 @@ test("the arrivals line's counts sum, and each opens exactly that many emails", 
   }
 
   await openApp(page, "/now");
+  const arrivalsDisclosure = page.getByTestId("arrivals");
+  const summary = page.getByTestId("arrivals-summary");
   const shown = page.getByTestId("arrivals-line");
+  await expect(summary).toContainText(`${arrivals.total} arrived`);
+  await expect(arrivalsDisclosure).not.toHaveAttribute("open");
+  await expect(shown).not.toBeVisible();
+  await summary.click();
   await expect(shown).toBeVisible();
   const first = arrivals.counts[0];
   if (!first) {
@@ -117,6 +123,7 @@ for (const colorScheme of ["dark", "light"] as const) {
 
     test("axe: Now with its arrivals line", async ({ page }) => {
       await openApp(page, "/now");
+      await page.getByTestId("arrivals-summary").click();
       await expect(page.getByTestId("arrivals-line")).toBeVisible();
       await page.waitForLoadState("networkidle");
       expect(await blockingViolations(page)).toEqual([]);

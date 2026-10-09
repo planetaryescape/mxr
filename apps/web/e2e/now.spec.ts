@@ -45,6 +45,8 @@ test("each section shows at most three items and Now at most ten", async ({ page
     const rows = page.getByTestId(`now-section-${section}`).getByTestId("now-row");
     expect(await rows.count(), section).toBeLessThanOrEqual(3);
   }
+  await expect(page.getByTestId("now-section-people").getByTestId("now-why")).toHaveCount(0);
+  await expect(page.getByTestId("now-section-due").getByTestId("now-why")).toHaveCount(0);
   expect(await page.getByTestId("now-section-updates").count()).toBeLessThanOrEqual(1);
   expect(await page.getByTestId("now-row").count()).toBeLessThanOrEqual(10);
   // A section with more says where the rest are, in the daemon's words.
@@ -179,7 +181,7 @@ test("a Now row opens from the keyboard: Tab reaches its link, Enter follows it"
   await openApp(page, "/now");
   const open = page.getByTestId("now-section-people").getByTestId("now-open").first();
   await expect(open).toBeVisible();
-  await expect(open).toHaveAccessibleName(/^Open in Messages: /);
+  await expect(open).toHaveAccessibleName(/^Open in Messages: .*From Messages:/);
   await open.focus();
   await expect(open).toBeFocused();
   await page.keyboard.press("Enter");

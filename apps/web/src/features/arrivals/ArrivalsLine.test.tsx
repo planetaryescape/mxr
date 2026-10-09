@@ -38,9 +38,33 @@ beforeEach(() => {
   resetHintsForTests();
 });
 
+function openSortingDetails() {
+  fireEvent.click(screen.getByTestId("arrivals-summary"));
+}
+
 describe("Now's arrivals line", () => {
+  test("keeps the headline and correction count visible, with sorting details closed", () => {
+    render(
+      <ArrivalsView
+        arrivals={arrivals({ not_sure: [notSure()], not_sure_hint: "Rules differed." })}
+        nowWaiting
+      />,
+    );
+
+    expect(screen.getByTestId("arrivals-summary")).toHaveTextContent("50 arrived");
+    expect(screen.getByTestId("arrivals-summary")).toHaveTextContent("1 email needs sorting");
+    expect(screen.getByTestId("arrivals")).not.toHaveAttribute("open");
+    expect(screen.getByTestId("arrivals-line")).not.toBeVisible();
+    expect(screen.getByTestId("not-sure-hint")).not.toBeVisible();
+
+    openSortingDetails();
+    expect(screen.getByTestId("arrivals-line")).toBeVisible();
+    expect(screen.getByTestId("not-sure-hint")).toBeVisible();
+  });
+
   test("is the daemon's sentence with each count a link to those emails in its window", () => {
     render(<ArrivalsView arrivals={arrivals()} nowWaiting />);
+    openSortingDetails();
     const line = screen.getByTestId("arrivals-line");
     expect(line).toHaveTextContent(
       "Since 08:12: 50 arrived. 8 Messages · 10 Updates · 31 Reading · 1 spam. Also 2 in To do.",
@@ -55,6 +79,7 @@ describe("Now's arrivals line", () => {
 
   test("says Clear when nothing on Now waits", () => {
     render(<ArrivalsView arrivals={arrivals()} nowWaiting={false} />);
+    openSortingDetails();
     expect(screen.getByTestId("arrivals-line")).toHaveTextContent(
       "Clear. All 50 emails since 08:12 are accounted for.",
     );
@@ -69,6 +94,7 @@ describe("Now's arrivals line", () => {
         nowWaiting
       />,
     );
+    openSortingDetails();
     expect(screen.getByTestId("arrivals-track-record")).toHaveTextContent(
       "Last week mxr sorted 310 emails; you moved 2.",
     );
@@ -88,6 +114,7 @@ describe("Not sure", () => {
 
   test("asks with one key per mode and a hint under the first question only", () => {
     render(<ArrivalsView arrivals={withQuestions()} nowWaiting />);
+    openSortingDetails();
     expect(screen.getByRole("heading", { name: /wasn't sure/ })).toBeVisible();
     expect(screen.getAllByTestId("not-sure-row")).toHaveLength(2);
     expect(screen.getAllByTestId("not-sure-hint")).toHaveLength(1);
@@ -96,6 +123,7 @@ describe("Not sure", () => {
   test("a key answers it, then asks once whether to do the same for the sender", async () => {
     fetchMock.mockResolvedValueOnce({ kind: "MessageMoved", outcome: outcome({ to: "messages" }) });
     render(<ArrivalsView arrivals={withQuestions()} nowWaiting />);
+    openSortingDetails();
     fireEvent.keyDown(screen.getAllByTestId("not-sure-row")[0]!, { key: "m" });
 
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/mail/messages/msg-1/move", {
@@ -131,6 +159,7 @@ describe("Not sure", () => {
       }),
     });
     render(<ArrivalsView arrivals={withQuestions()} nowWaiting />);
+    openSortingDetails();
     fireEvent.click(screen.getAllByTestId("not-sure-updates")[0]!);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     await Promise.resolve();
@@ -140,6 +169,7 @@ describe("Not sure", () => {
   test("n declines the sender question", async () => {
     fetchMock.mockResolvedValueOnce({ kind: "MessageMoved", outcome: outcome() });
     render(<ArrivalsView arrivals={withQuestions()} nowWaiting />);
+    openSortingDetails();
     fireEvent.keyDown(screen.getAllByTestId("not-sure-row")[0]!, { key: "r" });
     fireEvent.keyDown(await screen.findByTestId("not-sure-sender-ask"), { key: "n" });
     expect(screen.queryByTestId("not-sure-sender-ask")).toBeNull();
@@ -154,6 +184,7 @@ describe("Not sure: failures and the last answer", () => {
   test("a move that fails brings the question back", async () => {
     fetchMock.mockRejectedValueOnce(new Error("daemon said no"));
     render(<ArrivalsView arrivals={one()} nowWaiting />);
+    openSortingDetails();
     fireEvent.keyDown(screen.getByTestId("not-sure-row"), { key: "m" });
     expect(screen.queryByTestId("not-sure-row")).toBeNull();
     expect(await screen.findByTestId("not-sure-row")).toBeVisible();
@@ -163,12 +194,17 @@ describe("Not sure: failures and the last answer", () => {
   test("the sender question survives the refetch that empties the list", async () => {
     fetchMock.mockResolvedValueOnce({ kind: "MessageMoved", outcome: outcome({ to: "messages" }) });
     const view = render(<ArrivalsView arrivals={one()} nowWaiting />);
+    openSortingDetails();
     fireEvent.keyDown(screen.getByTestId("not-sure-row"), { key: "m" });
+    fireEvent.click(screen.getByTestId("arrivals-summary"));
+    expect(screen.getByTestId("arrivals")).not.toHaveAttribute("open");
     // The answer refreshes the line: no questions left.
     view.rerender(<ArrivalsView arrivals={arrivals({ not_sure: [] })} nowWaiting />);
-    expect(await screen.findByTestId("not-sure-sender-ask")).toHaveTextContent(
-      "Always for Maya Ortiz?",
-    );
+    const ask = await screen.findByTestId("not-sure-sender-ask");
+    expect(ask).toHaveTextContent("Always for Maya Ortiz?");
+    expect(ask).not.toBeVisible();
+    openSortingDetails();
+    expect(ask).toBeVisible();
   });
 
   test("Undo after the last answer brings the question back", async () => {
@@ -177,6 +213,7 @@ describe("Not sure: failures and the last answer", () => {
       outcome: outcome({ to: "messages", from: "messages", correction_id: null }),
     });
     const view = render(<ArrivalsView arrivals={one()} nowWaiting />);
+    openSortingDetails();
     fireEvent.keyDown(screen.getByTestId("not-sure-row"), { key: "m" });
     expect(screen.queryByTestId("not-sure-row")).toBeNull();
     // The answer refreshes the line without it, then Undo lists it again.

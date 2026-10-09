@@ -167,7 +167,7 @@ export function letterLead(message: ConversationMessage): { lead: string; hidden
   if (asked >= 0) return { lead: blocks[asked] ?? "", hidden: blocks.length - 1 };
   // A greeting alone ("Hi Alex,") says nothing: lead with what follows too.
   const first = blocks[0] ?? "";
-  const greeting = first.length <= GREETING_MAX_CHARS && first.endsWith(",") && blocks.length > 2;
+  const greeting = first.length <= GREETING_MAX_CHARS && first.endsWith(",") && blocks.length > 1;
   const shown = greeting ? 2 : 1;
   return { lead: blocks.slice(0, shown).join("\n\n"), hidden: blocks.length - shown };
 }

@@ -167,6 +167,12 @@ describe("length decides the shape", () => {
     });
   });
 
+  test("a two-paragraph greeting does not hide the substantive paragraph", () => {
+    const text =
+      "Hi Alex,\n\nThe renewal terms have changed substantially, and I need you to review the new timeline before Friday.";
+    expect(letterLead(message(text, { paragraphs: 2 }))).toEqual({ lead: text, hidden: 0 });
+  });
+
   test("a compact note shows whole", () => {
     expect(letterLead(message("Thanks, on it.", { layout: "compact" }))).toEqual({
       lead: "Thanks, on it.",

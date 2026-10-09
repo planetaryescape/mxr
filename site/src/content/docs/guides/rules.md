@@ -65,8 +65,8 @@ cat > sorting-rule.json <<'JSON'
   "enabled": true
 }
 JSON
-mxr rules treatment-preview --form sorting-rule.json --format json
-mxr rules treatment-apply --form sorting-rule.json --preview-token PREVIEW_TOKEN --format json
+mxr rules --format json treatment-preview --form sorting-rule.json
+mxr rules --format json treatment-apply --form sorting-rule.json --preview-token PREVIEW_TOKEN
 ```
 
 Replace `ACCOUNT_UUID` with the account ID returned by `mxr accounts` and

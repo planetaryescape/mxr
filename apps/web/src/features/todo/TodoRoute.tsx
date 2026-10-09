@@ -61,9 +61,9 @@ export function useRunway() {
 
 /**
  * To do: things email asked you to do, as a runway of instructions
- * ordered by when to act. Not a list of emails: each row is a task titled
- * verb plus object, with its dates and one button, and the email it came
- * from is one key away (`o`).
+ * ordered by when to act. Not a list of emails: each row is an action titled
+ * verb plus object, with its dates and primary action visible; supporting
+ * details and the source email are one key away (`o`).
  */
 export function TodoRoute({ view }: { view?: "catchup" | "expired" }) {
   const { runway, expiredOnOpen } = useRunway();

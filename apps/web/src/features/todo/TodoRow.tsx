@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { Check, Mail, Reply } from "lucide-react";
+import { Mail, Reply } from "lucide-react";
 import { memo, type ReactNode } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { useWhen } from "@/components/When";
+import { Checkbox } from "@/components/ui/checkbox";
 import { fetchThread } from "@/features/mailbox/api";
 import { formatLongDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -140,8 +141,9 @@ export function ProvenanceChip({
   );
 }
 
-/** Under a row on `o`: each field with its source, then the email it came from. */
+/** Under a row on `o`: why, when, field sources and evidence, then the source email. */
 function SourcePanel({ todo, onOpenEmail }: { todo: Todo; onOpenEmail: () => void }) {
+  const arrived = useWhen(todo.source_date);
   const thread = useQuery({
     queryKey: ["thread", todo.thread_id ?? ""],
     queryFn: () => fetchThread(todo.thread_id ?? ""),
@@ -158,6 +160,21 @@ function SourcePanel({ todo, onOpenEmail }: { todo: Todo; onOpenEmail: () => voi
       className="mt-2 grid gap-2 border-l border-border pl-3 text-[12px]"
     >
       <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-0.5">
+        {todo.source_date ? (
+          <FieldLine label="Arrived">
+            <time
+              dateTime={todo.source_date}
+              title={`Arrived ${formatLongDate(todo.source_date)}`}
+              data-testid="todo-arrived"
+            >
+              {arrived}
+            </time>
+          </FieldLine>
+        ) : null}
+        <FieldLine label="Why">
+          <span data-testid="todo-why">{todo.why}</span>
+        </FieldLine>
+        {todo.next ? <FieldLine label="Next">{todo.next}</FieldLine> : null}
         {orderedFields(todo.fields).map((field) => (
           <FieldLine key={field.field} label={fieldLabel(field.field)}>
             <span className="text-foreground/85">{field.source_label}</span>
@@ -229,9 +246,9 @@ export interface TodoRowProps {
 
 /**
  * One thing to do, as an instruction: verb and object, who it is for, the
- * amount, the runway bar with "act by Wed · due Fri", and one button named
- * for what it does. Coming up rows are quieter (lighter type, no button)
- * and say when they show up; colour stays at full contrast.
+ * amount, the runway bar with "act by Wed · due Fri", and one primary action
+ * named for what it does. Coming up rows are quieter (lighter type, no primary
+ * action) and say when they show up; colour stays at full contrast.
  */
 export const TodoRow = memo(function TodoRow({
   todo,
@@ -253,7 +270,6 @@ export const TodoRow = memo(function TodoRow({
   const party = rowParty(todo);
   const action = primaryAction(todo);
   const fill = runwayFill(todo);
-  const arrived = useWhen(todo.source_date);
   const dimmed = band === "coming";
   const done = band === "done";
   return (
@@ -277,13 +293,22 @@ export const TodoRow = memo(function TodoRow({
       ) : null}
       <div className="flex flex-col gap-2 @2xl:flex-row @2xl:items-start @2xl:gap-4">
         <div className="flex min-w-0 flex-1 gap-3">
+          <Checkbox
+            checked={done}
+            data-testid="todo-done"
+            aria-label={done ? `Reopen ${todo.title}` : `Tick off ${todo.title}`}
+            title={done ? "Reopen" : "Tick off (e)"}
+            onClick={(event) => event.stopPropagation()}
+            onCheckedChange={(checked) => (checked ? onDone(todo) : onRestore(todo))}
+            className="mt-0.5 size-8 rounded-md border-2 border-foreground/70 bg-background data-[state=checked]:border-primary"
+          />
           <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
               <span
                 data-testid="todo-title"
                 className={cn(
-                  "text-[14px] text-foreground",
+                  "text-[15px] text-foreground",
                   dimmed ? "font-normal" : "font-medium",
                   done && "text-muted-foreground line-through decoration-border-strong",
                 )}
@@ -304,53 +329,26 @@ export const TodoRow = memo(function TodoRow({
               {fill !== null && !done ? <RunwayBar fill={fill} /> : null}
               <span
                 data-testid="todo-when"
-                className="font-mono text-2xs tabular-nums text-foreground/80"
+                className="text-[12.5px] font-medium tabular-nums text-foreground/90"
               >
                 {todo.when_label}
               </span>
-              {todo.source_date ? (
-                <time
-                  data-testid="todo-arrived"
-                  dateTime={todo.source_date}
-                  title={`Arrived ${formatLongDate(todo.source_date)}`}
-                  className="font-mono text-2xs tabular-nums text-muted-foreground"
-                >
-                  {arrived}
-                </time>
-              ) : null}
-              {todo.looks_done ? (
-                <span className="text-[12px] text-foreground/85">
-                  Looks done: {todo.looks_done.reason}
-                </span>
-              ) : null}
+              <ProvenanceChip
+                todo={todo}
+                expanded={expanded}
+                onToggle={() => onToggleSource(todo)}
+              />
             </div>
-            {hint}
-            {band !== "coming" ? (
-              <p className="mt-1 text-pretty text-[12px] leading-5 text-muted-foreground">
-                <span data-testid="todo-why">{todo.why}</span>
-                {todo.next ? <span> {todo.next}</span> : null}{" "}
-                <ProvenanceChip
-                  todo={todo}
-                  expanded={expanded}
-                  onToggle={() => onToggleSource(todo)}
-                />
+            {todo.looks_done ? (
+              <p className="mt-1 text-[12px] text-foreground/85">
+                Looks done: {todo.looks_done.reason}
               </p>
             ) : null}
+            {hint}
             {expanded ? <SourcePanel todo={todo} onOpenEmail={() => onOpenEmail(todo)} /> : null}
           </div>
         </div>
-        {done ? (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onRestore(todo);
-            }}
-            className="self-start text-[12px] text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground"
-          >
-            Reopen
-          </button>
-        ) : band === "coming" ? null : (
+        {done || band === "coming" ? null : (
           <div className="flex w-full shrink-0 items-start gap-1 @2xl:w-auto">
             {action ? (
               <div className="grid min-w-0 flex-1 gap-0.5 @2xl:flex-none">
@@ -362,19 +360,6 @@ export const TodoRow = memo(function TodoRow({
                 ) : null}
               </div>
             ) : null}
-            <button
-              type="button"
-              data-testid="todo-done"
-              aria-label={`Tick off ${todo.title}`}
-              title="Tick off (e)"
-              onClick={(event) => {
-                event.stopPropagation();
-                onDone(todo);
-              }}
-              className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-primary-muted hover:text-primary"
-            >
-              <Check className="size-3.5" strokeWidth={2.25} />
-            </button>
           </div>
         )}
       </div>

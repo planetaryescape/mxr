@@ -180,6 +180,10 @@ In To do, `e` ticks off that one to-do. Another to-do on the same email stays
 open, and the email stays in the inbox until the last one is ticked off. In
 Updates, `e` lets go of one source in the digest.
 
+On the web To do page, use the left checkbox to tick off or reopen an item.
+Click the source chip on its date line to see the explanation, arrival time
+and field evidence.
+
 ```bash
 mxr modes done THREAD_ID --mode todo --todo TODO_ID --dry-run
 mxr modes done --mode updates --sender notifications@github.com --account ACCOUNT_ID --dry-run

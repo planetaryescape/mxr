@@ -199,7 +199,7 @@ async fn write_rule(
         .bind(rule.actions_json)
         .bind(rule.created_at.to_rfc3339())
         .bind(rule.updated_at.to_rfc3339())
-        .bind(rule.account_id.map(|id| id.as_str()))
+        .bind(rule.account_id.map(mxr_core::AccountId::as_str))
         .execute(connection)
         .await?;
     Ok(())

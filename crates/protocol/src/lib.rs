@@ -1056,7 +1056,6 @@ mod tests {
             ),
             (
                 ResponseData::RuleFormData {
-                    account_id: None,
                     form: RuleFormData {
                         account_id: None,
                         id: None,

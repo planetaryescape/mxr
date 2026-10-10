@@ -599,7 +599,7 @@ async fn override_token_unblocks_send_exactly_once() {
 
     // PEM private key in the body → Blocker.
     let draft = mxr_core::types::Draft {
-        revision: Some(1),
+        revision: None,
         id: mxr_core::DraftId::new(),
         account_id: account_id.clone(),
         from: None,
@@ -627,6 +627,21 @@ async fn override_token_unblocks_send_exactly_once() {
         updated_at: chrono::Utc::now(),
     };
 
+    let saved_draft = |response: IpcMessage, expected_id: &mxr_core::DraftId| match response.payload
+    {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Draft { draft },
+        }) => {
+            assert_eq!(&draft.id, expected_id);
+            assert!(
+                draft.revision.is_some(),
+                "saved draft must carry its canonical revision"
+            );
+            draft
+        }
+        other => panic!("expected confirmed Draft, got {other:?}"),
+    };
+
     // Save the draft so SendStoredDraft can locate it.
     let save = handle_request(
         &state,
@@ -639,12 +654,7 @@ async fn override_token_unblocks_send_exactly_once() {
         },
     )
     .await;
-    assert!(matches!(
-        save.payload,
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::Ack
-        })
-    ));
+    let draft = saved_draft(save, &draft.id);
 
     // 1. Check returns Blocked + a token on the blocker issue.
     let check = handle_request(
@@ -738,7 +748,7 @@ async fn override_token_unblocks_send_exactly_once() {
     // override against a new draft, sending once, then trying the
     // SAME token a second time to assert single-use.
     let draft2 = mxr_core::types::Draft {
-        revision: Some(1),
+        revision: None,
         id: mxr_core::DraftId::new(),
         account_id: account_id.clone(),
         from: None,
@@ -761,7 +771,7 @@ async fn override_token_unblocks_send_exactly_once() {
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     };
-    let _ = handle_request(
+    let save2 = handle_request(
         &state,
         &IpcMessage {
             id: 5,
@@ -772,6 +782,7 @@ async fn override_token_unblocks_send_exactly_once() {
         },
     )
     .await;
+    let draft2 = saved_draft(save2, &draft2.id);
     let check2 = handle_request(
         &state,
         &IpcMessage {
@@ -816,11 +827,11 @@ async fn override_token_unblocks_send_exactly_once() {
     // can't re-send the same draft (already gone after send), so we
     // make a third draft and try to use the spent token.
     let draft3 = mxr_core::types::Draft {
-        revision: Some(1),
+        revision: None,
         id: mxr_core::DraftId::new(),
         ..draft2
     };
-    let _ = handle_request(
+    let save3 = handle_request(
         &state,
         &IpcMessage {
             id: 8,
@@ -831,6 +842,7 @@ async fn override_token_unblocks_send_exactly_once() {
         },
     )
     .await;
+    let draft3 = saved_draft(save3, &draft3.id);
     let reuse = handle_request(
         &state,
         &IpcMessage {

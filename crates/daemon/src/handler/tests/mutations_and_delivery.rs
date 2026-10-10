@@ -1816,7 +1816,7 @@ async fn draft_only_safety_policy_blocks_send_but_allows_local_draft() {
         IpcPayload::Response(Response::Ok {
             data: ResponseData::Draft { .. },
         }) => {}
-        other => panic!("Expected SaveDraft Ack, got {other:?}"),
+        other => panic!("Expected confirmed SaveDraft response, got {other:?}"),
     }
 }
 

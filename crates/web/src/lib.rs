@@ -2609,7 +2609,7 @@ async fn validate_compose_session_for_submission(
         match issue {
             ComposeValidation::MissingRecipients => {
                 return Err(BridgeError::InvalidDraft(
-                    "No recipients (to: field is empty)".into(),
+                    "Draft errors: No recipients (to: field is empty)".into(),
                 ))
             }
             ComposeValidation::Error(message) => {

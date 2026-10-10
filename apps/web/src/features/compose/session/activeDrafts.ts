@@ -19,7 +19,6 @@ interface ActiveDraftEntry {
 }
 
 export async function loadInitialComposeSession(intent: ComposeIntent) {
-  if (intent.draftId) return restoreComposeSession(intent.draftId);
   const active = readActiveDraft(intent.key);
   if (active?.draftPath) {
     try {
@@ -29,7 +28,11 @@ export async function loadInitialComposeSession(intent: ComposeIntent) {
         composeQueueKey(active.draftPath, active.recoverySourcePath),
       );
       const settled = readActiveDraft(intent.key) ?? active;
+      if (intent.draftId && !settled.recoverySourcePath)
+        return restoreComposeSession(intent.draftId);
       const refreshed = await refreshComposeSession(settled.draftPath);
+      if (intent.draftId && refreshed.session.draftId !== intent.draftId)
+        throw new Error("The recovered session belongs to another draft");
       // The refresh reads the file, which doesn't name the account; the
       // entry kept it. Without it the send and safety check have no account.
       return {
@@ -43,6 +46,7 @@ export async function loadInitialComposeSession(intent: ComposeIntent) {
       forgetActiveDraft(intent.key);
     }
   }
+  if (intent.draftId) return restoreComposeSession(intent.draftId);
   return startComposeSession(intent.kind, intent.messageId, intent.inviteAction);
 }
 

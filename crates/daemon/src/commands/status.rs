@@ -7,6 +7,7 @@
 )]
 
 use crate::cli::OutputFormat;
+use crate::commands::diagnostics::{client_local_metadata, selected_target_metadata};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_core::types::SemanticRuntimeMetrics;
@@ -30,17 +31,13 @@ struct StatusRender<'a> {
     restart_required: bool,
     health_class: DaemonHealthClass,
     degraded: bool,
+    selected_target: serde_json::Value,
+    client_local: serde_json::Value,
+    remote_target: bool,
 }
 
 fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result<String> {
-    // Report the socket the daemon actually uses (single-source resolution,
-    // honors MXR_DAEMON_ADDR) so status agrees with autostart / probe / request.
-    let socket_path = crate::server::resolve_daemon_socket()?;
-    let data = serde_json::json!({
-        "runtime_instance": mxr_config::app_instance_name(),
-        "config_path": mxr_config::config_file_path(),
-        "data_dir": mxr_config::data_dir(),
-        "socket_path": socket_path,
+    let mut data = serde_json::json!({
         "uptime_secs": view.uptime_secs,
         "accounts": view.accounts,
         "total_messages": view.total_messages,
@@ -56,15 +53,66 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
         "health_class": view.health_class,
         "degraded": view.degraded,
     });
+    if view.remote_target {
+        data["daemon_target"] = view.selected_target.clone();
+        data["client_local"] = view.client_local.clone();
+    } else {
+        data["runtime_instance"] = serde_json::json!(mxr_config::app_instance_name());
+        data["config_path"] = serde_json::json!(mxr_config::config_file_path());
+        data["data_dir"] = serde_json::json!(mxr_config::data_dir());
+        data["socket_path"] = view.client_local["socket_path"].clone();
+    }
     Ok(match format {
         OutputFormat::Json => serde_json::to_string_pretty(&data)?,
         OutputFormat::Jsonl => serde_json::to_string(&data)?,
         _ => {
             let mut lines = vec![
-                format!("Runtime: {}", mxr_config::app_instance_name()),
-                format!("Config: {}", mxr_config::config_file_path().display()),
-                format!("Data: {}", mxr_config::data_dir().display()),
-                format!("Socket: {}", socket_path.display()),
+                format!(
+                    "{}: {}",
+                    if view.remote_target {
+                        "Selected daemon"
+                    } else {
+                        "Socket"
+                    },
+                    if view.remote_target {
+                        view.selected_target["display"]
+                            .as_str()
+                            .unwrap_or("unknown")
+                            .to_string()
+                    } else {
+                        view.client_local["socket_path"]
+                            .as_str()
+                            .unwrap_or("unknown")
+                            .to_string()
+                    }
+                ),
+                format!(
+                    "{}: {}",
+                    if view.remote_target {
+                        "Client runtime"
+                    } else {
+                        "Runtime"
+                    },
+                    mxr_config::app_instance_name()
+                ),
+                format!(
+                    "{}: {}",
+                    if view.remote_target {
+                        "Client config"
+                    } else {
+                        "Config"
+                    },
+                    mxr_config::config_file_path().display()
+                ),
+                format!(
+                    "{}: {}",
+                    if view.remote_target {
+                        "Client data"
+                    } else {
+                        "Data"
+                    },
+                    mxr_config::data_dir().display()
+                ),
                 format!("Health: {}", view.health_class.as_str()),
                 format!("Uptime: {}s", view.uptime_secs),
                 format!(
@@ -128,16 +176,30 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
                 );
             }
             if view.restart_required {
-                lines.push(format!(
-                    "Note: running daemon does not match this binary (protocol {}, client {}). Use `mxr restart`.",
-                    view.protocol_version, IPC_PROTOCOL_VERSION
-                ));
+                if view.remote_target {
+                    lines.push(format!(
+                        "Note: selected daemon protocol {} differs from this client protocol {}; check that this client supports the selected daemon.",
+                        view.protocol_version, IPC_PROTOCOL_VERSION
+                    ));
+                } else {
+                    lines.push(format!(
+                        "Note: running daemon does not match this binary (protocol {}, client {}). Use `mxr restart`.",
+                        view.protocol_version, IPC_PROTOCOL_VERSION
+                    ));
+                }
             }
             if view.repair_required {
-                lines.push(
-                    "Note: search index needs repair or rebuild. Use `mxr doctor --reindex` or restart the daemon."
-                        .to_string(),
-                );
+                if view.remote_target {
+                    lines.push(
+                        "Note: the selected daemon's search index needs repair. Repair it on the daemon host, then restart that daemon."
+                            .to_string(),
+                    );
+                } else {
+                    lines.push(
+                        "Note: search index needs repair or rebuild. Use `mxr doctor --reindex` or restart the daemon."
+                            .to_string(),
+                    );
+                }
             }
             lines.join("\n")
         }
@@ -146,6 +208,7 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
 
 pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()> {
     let fmt = resolve_format(format);
+    let (selected_target, remote_target) = selected_target_metadata()?;
 
     loop {
         let mut client = IpcClient::connect().await?;
@@ -169,11 +232,15 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                         degraded,
                     },
             } => {
-                let restart_required = crate::server::daemon_requires_restart(
-                    protocol_version,
-                    daemon_version.as_deref(),
-                    daemon_build_id.as_deref(),
-                );
+                let restart_required = if remote_target {
+                    protocol_version != IPC_PROTOCOL_VERSION
+                } else {
+                    crate::server::daemon_requires_restart(
+                        protocol_version,
+                        daemon_version.as_deref(),
+                        daemon_build_id.as_deref(),
+                    )
+                };
                 let health_class = crate::server::classify_health(
                     &sync_statuses,
                     repair_required,
@@ -198,6 +265,9 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                             restart_required,
                             health_class,
                             degraded,
+                            selected_target: selected_target.clone(),
+                            client_local: client_local_metadata()?,
+                            remote_target,
                         },
                         fmt.clone(),
                     )?
@@ -264,14 +334,30 @@ mod tests {
                 restart_required: false,
                 health_class: DaemonHealthClass::Healthy,
                 degraded: false,
+                selected_target: serde_json::json!({"display":"unix:///tmp/mxr.sock"}),
+                client_local: serde_json::json!({"socket_path":"/tmp/mxr.sock"}),
+                remote_target: false,
             },
             OutputFormat::Json,
         )
         .unwrap();
-        assert!(rendered.contains("\"uptime_secs\": 42"));
-        assert!(rendered.contains("\"daemon_pid\": 999"));
-        assert!(rendered.contains("\"total_messages\": 10"));
-        assert!(rendered.contains("\"semantic_runtime\""));
+        let value: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(value["uptime_secs"], 42);
+        assert_eq!(value["daemon_pid"], 999);
+        assert_eq!(value["total_messages"], 10);
+        assert_eq!(value["runtime_instance"], mxr_config::app_instance_name());
+        assert_eq!(
+            value["config_path"],
+            mxr_config::config_file_path().display().to_string()
+        );
+        assert_eq!(
+            value["data_dir"],
+            mxr_config::data_dir().display().to_string()
+        );
+        assert_eq!(value["socket_path"], "/tmp/mxr.sock");
+        assert!(value.get("daemon_target").is_none());
+        assert!(value.get("client_local").is_none());
+        assert!(value.get("semantic_runtime").is_some());
     }
 
     #[test]
@@ -292,6 +378,9 @@ mod tests {
                 restart_required: false,
                 health_class: DaemonHealthClass::Degraded,
                 degraded: true,
+                selected_target: serde_json::json!({"display":"unix:///tmp/mxr.sock"}),
+                client_local: serde_json::json!({"socket_path":"/tmp/mxr.sock"}),
+                remote_target: false,
             },
             OutputFormat::Table,
         )
@@ -331,11 +420,43 @@ mod tests {
                 restart_required: false,
                 health_class: DaemonHealthClass::RepairRequired,
                 degraded: false,
+                selected_target: serde_json::json!({"display":"unix:///tmp/mxr.sock"}),
+                client_local: serde_json::json!({"socket_path":"/tmp/mxr.sock"}),
+                remote_target: false,
             },
             OutputFormat::Table,
         )
         .unwrap();
         assert!(rendered.contains("Health: repair_required"));
         assert!(rendered.contains("search index needs repair"));
+    }
+
+    #[test]
+    fn remote_repair_advice_points_to_selected_daemon_host() {
+        let rendered = render_status(
+            StatusRender {
+                uptime_secs: 1,
+                accounts: &[],
+                total_messages: 0,
+                daemon_pid: None,
+                sync_statuses: &[],
+                daemon_version: None,
+                daemon_build_id: None,
+                protocol_version: IPC_PROTOCOL_VERSION,
+                repair_required: true,
+                semantic_runtime: None,
+                feature_health: None,
+                restart_required: false,
+                health_class: DaemonHealthClass::RepairRequired,
+                degraded: false,
+                selected_target: serde_json::json!({"display":"cmd://<command hidden>"}),
+                client_local: serde_json::json!({"socket_path":"/client/mxr.sock"}),
+                remote_target: true,
+            },
+            OutputFormat::Table,
+        )
+        .unwrap();
+        assert!(rendered.contains("Repair it on the daemon host"));
+        assert!(!rendered.contains("doctor --reindex"));
     }
 }

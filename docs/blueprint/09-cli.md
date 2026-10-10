@@ -178,6 +178,8 @@ MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio"  # off-machine, via an
 
 The TUI, web bridge, and MCP server honour `MXR_DAEMON_ADDR` too, but accept `unix://` only (a `tcp://`/`cmd://` value is rejected with a clear message — use the CLI for those). Full reference: `docs/blueprint/20-transports.md`.
 
+`mxr status` and `mxr doctor --check`, `--store-stats`, or `--index-stats` report the daemon selected by `MXR_DAEMON_ADDR`. For an explicitly selected target, JSON places connection identity under `daemon_target` and client-machine paths under `client_local`; doctor puts the daemon-owned report or statistics under `daemon`. Any remediation or next-step commands in the doctor report are for the selected daemon host, including when they appear in JSON or table output. Connection metadata and client-generated connection errors hide `cmd://` arguments. If an explicitly selected target is unreachable, these diagnostics fail without falling back to or starting the local default daemon. `mxr doctor --reindex` operates on the local profile. Run it on the daemon host with `MXR_DAEMON_ADDR` unset and the intended `MXR_INSTANCE` or `MXR_CONFIG_DIR`/`MXR_DATA_DIR` settings.
+
 ## Output formats
 
 Data commands support:

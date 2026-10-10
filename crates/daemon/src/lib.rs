@@ -854,7 +854,12 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             account,
             limit,
         }) => {
-            crate::server::ensure_daemon_running().await?;
+            // Diagnostics against an explicitly selected daemon must report
+            // that target's reachability without starting or repairing a
+            // same-machine daemon as a fallback.
+            if !commands::diagnostics::selected_target_metadata()?.1 {
+                crate::server::ensure_daemon_running().await?;
+            }
             if freshness {
                 commands::freshness::run(account.as_deref(), limit, format).await?;
             } else {

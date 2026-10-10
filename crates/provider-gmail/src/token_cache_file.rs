@@ -96,4 +96,20 @@ mod tests {
         let parent = path.parent().unwrap();
         assert_eq!(std::fs::read_dir(parent).unwrap().count(), 0);
     }
+
+    #[test]
+    fn rename_failure_preserves_destination_and_cleans_up_temporary_file() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("tokens.json");
+        std::fs::create_dir(&path).unwrap();
+
+        assert!(write(&path, "new").is_err());
+        assert!(path.is_dir());
+        let leftovers = std::fs::read_dir(directory.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .filter(|name| name.to_string_lossy().starts_with(".mxr-token-cache-"))
+            .count();
+        assert_eq!(leftovers, 0);
+    }
 }

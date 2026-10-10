@@ -448,6 +448,7 @@ mod tests {
         assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 1);
     }
 
+    #[cfg(unix)]
     fn token_cache_json(access_token: &str) -> String {
         serde_json::to_string(&vec![StoredToken {
             scopes: vec!["synthetic-scope".to_string()],
@@ -501,7 +502,6 @@ mod tests {
     fn set_calls_persist_in_cache_update_order() {
         use std::sync::mpsc;
         use std::thread;
-        use std::time::Duration;
 
         let cache = std::sync::Arc::new(Mutex::new(Vec::new()));
         let (first_entered_tx, first_entered_rx) = mpsc::channel();
@@ -541,9 +541,10 @@ mod tests {
         });
         second_entered_rx.recv().unwrap();
 
-        assert!(second_persisted_rx
-            .recv_timeout(Duration::from_millis(50))
-            .is_err());
+        assert!(matches!(
+            cache.try_lock(),
+            Err(std::sync::TryLockError::WouldBlock)
+        ));
         release_first_tx.send(()).unwrap();
         let old_snapshot = persisted_rx.recv().unwrap();
         let new_snapshot = second_persisted_rx.recv().unwrap();

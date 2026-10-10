@@ -41,6 +41,7 @@ We considered having the TUI be the entire application (like mutt or aerc). We r
 
 - `mxr` (no subcommand) starts the TUI. If the daemon isn't running, the TUI starts it automatically as a background process.
 - `mxr daemon` starts the daemon explicitly (for systemd/launchd integration, headless servers, etc.).
+- `mxr daemon --foreground` handles SIGINT and SIGTERM with the daemon's normal ordered shutdown, so a supervisor can stop it and start the same profile again.
 - `mxr sync`, `mxr search`, `mxr export`, etc. are CLI commands that connect to the running daemon.
 - `mxr doctor` runs diagnostics (config validation, connection tests, daemon health).
 - If the daemon isn't running when a CLI command executes, it either starts it temporarily or errors with a helpful message.

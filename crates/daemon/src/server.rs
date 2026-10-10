@@ -14,6 +14,7 @@ use crate::serve::{
     CONNECTION_DRAIN_TIMEOUT, REQUEST_CONCURRENCY_LIMIT,
 };
 use crate::state::AppState;
+use anyhow::Context;
 use mxr_protocol::{
     AccountSyncStatus, DaemonHealthClass, Request, Response, ResponseData, IPC_PROTOCOL_VERSION,
 };
@@ -193,6 +194,20 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         }
     }
 
+    // Install process-stop handlers only after all startup checks and binds
+    // succeed. They are polled by the accept loop itself, so no detached task
+    // can outlive an embedded daemon invocation.
+    let mut shutdown_signals = match ShutdownSignals::install() {
+        Ok(signals) => signals,
+        Err(error) => {
+            for listener in &mut listeners {
+                let _ = listener.cleanup().await;
+            }
+            state.shutdown_runtime_tasks(Duration::from_secs(5)).await;
+            return Err(error);
+        }
+    };
+
     // Every post-bind exit — a clean shutdown OR any error (pid-file write,
     // bridge startup, accept failure) — must funnel through the ordered
     // teardown after this block, so no exit path leaves a stale socket. The
@@ -353,6 +368,12 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
                         break;
                     }
                 }
+                signal = shutdown_signals.recv() => {
+                    let signal = signal?;
+                    tracing::info!("{signal} received; stopping IPC accept loop");
+                    state.request_shutdown();
+                    break;
+                }
                 accepted = accept_any(&mut listeners), if !listeners.is_empty() => {
                     let (stream, peer) = accepted?;
                     let state = state.clone();
@@ -404,6 +425,83 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     drop(listeners);
     clear_daemon_pid_file_if_owned();
     serve_result
+}
+
+#[derive(Clone, Copy)]
+enum ShutdownSignal {
+    Interrupt,
+    #[cfg(unix)]
+    Terminate,
+}
+
+impl std::fmt::Display for ShutdownSignal {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            #[cfg(unix)]
+            Self::Interrupt => "SIGINT",
+            #[cfg(not(unix))]
+            Self::Interrupt => "Ctrl-C",
+            #[cfg(unix)]
+            Self::Terminate => "SIGTERM",
+        })
+    }
+}
+
+#[cfg(unix)]
+struct ShutdownSignals {
+    interrupt: tokio::signal::unix::Signal,
+    terminate: tokio::signal::unix::Signal,
+}
+
+#[cfg(unix)]
+impl ShutdownSignals {
+    fn install() -> anyhow::Result<Self> {
+        use tokio::signal::unix::{signal, SignalKind};
+
+        let interrupt = signal(SignalKind::interrupt())
+            .context("failed to register SIGINT shutdown handler")?;
+        let terminate = signal(SignalKind::terminate())
+            .context("failed to register SIGTERM shutdown handler")?;
+        Ok(Self {
+            interrupt,
+            terminate,
+        })
+    }
+
+    async fn recv(&mut self) -> anyhow::Result<ShutdownSignal> {
+        tokio::select! {
+            received = self.interrupt.recv() => {
+                received.context("SIGINT signal stream ended")?;
+                Ok(ShutdownSignal::Interrupt)
+            }
+            received = self.terminate.recv() => {
+                received.context("SIGTERM signal stream ended")?;
+                Ok(ShutdownSignal::Terminate)
+            }
+        }
+    }
+}
+
+#[cfg(not(unix))]
+struct ShutdownSignals {
+    interrupt: std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<()>> + Send>>,
+}
+
+#[cfg(not(unix))]
+impl ShutdownSignals {
+    fn install() -> anyhow::Result<Self> {
+        Ok(Self {
+            interrupt: Box::pin(tokio::signal::ctrl_c()),
+        })
+    }
+
+    async fn recv(&mut self) -> anyhow::Result<ShutdownSignal> {
+        self.interrupt
+            .as_mut()
+            .await
+            .context("failed to receive Ctrl-C while daemon was running")?;
+        Ok(ShutdownSignal::Interrupt)
+    }
 }
 
 /// Accept from whichever bound transport is ready first. `select_all` over the

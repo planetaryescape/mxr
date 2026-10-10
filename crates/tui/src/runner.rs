@@ -500,7 +500,7 @@ pub async fn run() -> anyhow::Result<()> {
                     .await;
                     match unsubscribe_resp {
                         Ok(Response::Ok {
-                            data: ResponseData::Ack | ResponseData::Draft { .. },
+                            data: ResponseData::Ack,
                         }) => Ok(UnsubscribeResultData {
                             archived_ids: Vec::new(),
                             message: format!("Unsubscribed from {}", pending.sender_email),
@@ -659,7 +659,7 @@ pub async fn run() -> anyhow::Result<()> {
                         .await
                         {
                             Ok(Response::Ok {
-                                data: ResponseData::Ack | ResponseData::Draft { .. },
+                                data: ResponseData::Ack,
                             }) => Ok(()),
                             Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                             Err(error) => Err(error),
@@ -676,7 +676,7 @@ pub async fn run() -> anyhow::Result<()> {
                         .await
                         {
                             Ok(Response::Ok {
-                                data: ResponseData::Ack | ResponseData::Draft { .. },
+                                data: ResponseData::Ack,
                             }) => Ok(()),
                             Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                             Err(error) => Err(error),

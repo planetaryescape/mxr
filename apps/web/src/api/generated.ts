@@ -4425,7 +4425,7 @@ export interface components {
             preservedRecoveryPath?: string | null;
             previewHtml: string;
             rawContent: string;
-            /** @description Private recovery destination; this session cannot mutate the canonical draft. */
+            /** @description Private recovery destination; automatic saves preserve it without canonical effects. */
             recoverySourcePath?: string | null;
             /** Format: int64 */
             revision?: number | null;
@@ -4500,7 +4500,7 @@ export interface components {
             /** Format: int64 */
             expected_revision?: number | null;
             from: string;
-            /** @description Explicit creation retry for a private recovery with no accepted revision. */
+            /** @description Explicit canonical persistence retry using a private recovery's observed revision. */
             retry_recovery?: boolean;
             subject: string;
             to: string;

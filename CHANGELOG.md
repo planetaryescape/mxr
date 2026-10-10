@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.62](https://github.com/planetaryescape/mxr/compare/v0.6.61...v0.6.62) (2026-10-10)
+
+
+### Bug Fixes
+
+* diagnose the selected daemon without local fallback ([#331](https://github.com/planetaryescape/mxr/issues/331)) ([f783d93](https://github.com/planetaryescape/mxr/commit/f783d937b3dbabb23c338f0164d96c0b875b4c89))
+
 ## [0.6.61](https://github.com/planetaryescape/mxr/compare/v0.6.60...v0.6.61) (2026-10-09)
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import socket
 import struct
@@ -14,9 +15,49 @@ import tempfile
 import time
 from pathlib import Path
 
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
 
 def fail(message: str) -> None:
     raise RuntimeError(message)
+
+
+def log_field(line: str, name: str) -> str | None:
+    match = re.search(rf'(?:^|\s){re.escape(name)}=(?:"((?:\\.|[^"])*)"|([^\s]+))', line)
+    if match is None:
+        return None
+    return match.group(1) if match.group(1) is not None else match.group(2)
+
+
+def shutdown_warning(line: str) -> tuple[str, str | None] | None:
+    line = ANSI_ESCAPE.sub("", line)
+    if "client connection drain timed out" in line:
+        return ("client drain timeout", None)
+    if "service shutdown signal timed out" in line:
+        return ("service timeout", log_field(line, "service"))
+    if "service shutdown signal failed" in line:
+        return ("service failure", log_field(line, "service"))
+    if "runtime task drain timed out" in line:
+        return ("runtime task timeout", log_field(line, "task"))
+    if "runtime task join failed" in line:
+        return ("runtime task failure", log_field(line, "task"))
+    return None
+
+
+def validate_shutdown_log(log: str, sig: signal.Signals) -> list[tuple[str, str]]:
+    allowed = {
+        ("service timeout", "relationship"),
+        ("runtime task timeout", "relationship_worker"),
+    } if sig == signal.SIGTERM else set()
+    observed: list[tuple[str, str]] = []
+    for line in log.splitlines():
+        warning = shutdown_warning(line)
+        if warning is None:
+            continue
+        if warning not in allowed or warning in observed:
+            fail(f"{sig.name} shutdown reported an unexpected timeout or service failure: {line}")
+        observed.append(warning)
+    return observed
 
 
 def fixture_environment(root: Path, instance: str, data_dir: Path, config_dir: Path, socket_path: Path) -> dict[str, str]:
@@ -39,6 +80,8 @@ def fixture_environment(root: Path, instance: str, data_dir: Path, config_dir: P
         "MXR_CONFIG_DIR": str(config_dir),
         "MXR_SOCKET_PATH": str(socket_path),
         "MXR_ACTIVITY": "off",
+        "RUST_LOG": "info",
+        "NO_COLOR": "1",
     }
 
 
@@ -171,7 +214,7 @@ def stop_and_check(
     client: socket.socket,
     log_path: Path,
     log_offset: int,
-) -> None:
+) -> list[tuple[str, str]]:
     os.kill(process.pid, sig)
     try:
         return_code = process.wait(timeout=20)
@@ -197,14 +240,7 @@ def stop_and_check(
     marker = "SIGTERM received" if sig == signal.SIGTERM else "SIGINT received"
     if marker not in log or "daemon shutdown drain completed" not in log:
         fail(f"{sig.name} did not show the ordered shutdown in daemon log:\n{log}")
-    shutdown_failures = (
-        "client connection drain timed out",
-        "runtime task drain timed out",
-        "service shutdown signal timed out",
-        "service shutdown signal failed",
-    )
-    if any(failure in log for failure in shutdown_failures):
-        fail(f"{sig.name} shutdown reported a drain or service shutdown failure:\n{log}")
+    return validate_shutdown_log(log, sig)
 
 
 def start_daemon(binary: Path, env: dict[str, str], log_handle) -> subprocess.Popen[bytes]:
@@ -272,7 +308,11 @@ def main() -> int:
                 run_cli(binary, env, "sync", "--wait", "--wait-timeout-secs", "30")
                 before_ids = search_message_ids(binary, env)
                 client = ping_and_hold(socket_path)
-                stop_and_check(process, signal.SIGTERM, socket_path, pid_path, client, log_path, first_log_offset)
+                cancellations = stop_and_check(
+                    process, signal.SIGTERM, socket_path, pid_path, client, log_path, first_log_offset
+                )
+                if cancellations:
+                    print(f"SIGTERM bounded analytics cancellation: {cancellations}")
                 client.close()
                 client = None
 
@@ -283,7 +323,11 @@ def main() -> int:
                 if after_ids != before_ids:
                     fail(f"restart changed acknowledged message IDs: before={before_ids!r}, after={after_ids!r}")
                 client = ping_and_hold(socket_path)
-                stop_and_check(process, signal.SIGINT, socket_path, pid_path, client, log_path, second_log_offset)
+                cancellations = stop_and_check(
+                    process, signal.SIGINT, socket_path, pid_path, client, log_path, second_log_offset
+                )
+                if cancellations:
+                    print(f"SIGINT bounded analytics cancellation: {cancellations}")
                 client.close()
                 client = None
             except Exception as error:

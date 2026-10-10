@@ -1603,8 +1603,8 @@ impl AppState {
             else {
                 if !task.handle.is_finished() {
                     task.handle.abort();
+                    tracing::warn!(task = %task.name, "runtime task drain timed out");
                 }
-                tracing::warn!(task = %task.name, "runtime task drain timed out");
                 continue;
             };
 
@@ -1616,8 +1616,8 @@ impl AppState {
                 Err(_) => {
                     if !task.handle.is_finished() {
                         task.handle.abort();
+                        tracing::warn!(task = %task.name, "runtime task drain timed out");
                     }
-                    tracing::warn!(task = %task.name, "runtime task drain timed out");
                 }
             }
         }

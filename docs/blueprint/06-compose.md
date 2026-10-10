@@ -228,7 +228,12 @@ writes. A new client refuses writes to an older daemon without that capability;
 reads remain supported. A new daemon rejects edits or deletes without a
 revision. Binary downgrade is unsupported for revision safety: older binaries
 can read the database's extra migration row but do not enforce revision checks.
-Use a forward fix rather than running an older daemon against this store.
+Use a forward fix rather than running an older daemon against this store. Close and reopen clients around the upgrade: an already-running old client cannot safely write, and its draft-creation response may be incompatible after the write commits.
+
+A compose window opened before the upgrade has no durable session metadata.
+Keep its text, copy it into a newly opened compose window, and save there; do not
+invent a revision for the old window. Confirm Discard to delete a saved draft and
+any provider copy. Close saves the current draft and closes the window.
 
 The isolated synthetic journey is repeatable with
 `scripts/smoke-draft-revisions /path/to/mxr`. It saves, restarts, reads, races two

@@ -5745,10 +5745,15 @@ async fn draft_revision_conflict_is_409_and_preserves_browser_scratch_text() {
         store.snapshot()[0].content.analysis_text(),
         "accepted browser text"
     );
-    assert!(read_compose_file(Path::new(&second))
+    let recovered = error["recovery_session"]["draft_path"].as_str().unwrap();
+    assert_ne!(recovered, second);
+    assert!(read_compose_file(Path::new(recovered))
         .await
         .unwrap()
         .contains("stale browser text"));
+    assert_eq!(error["recovery_session"]["revision"], 1);
+    assert!(error.get("accepted_draft").is_none());
+    remove_compose_file(Path::new(recovered)).await.unwrap();
     assert_eq!(
         read_draft_session_metadata(Path::new(&second))
             .await

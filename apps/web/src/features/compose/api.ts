@@ -137,12 +137,14 @@ export function sendComposeSession(
   draftPath: string,
   accountId: string,
   overrideSafetyToken?: string,
+  expectedRevision?: number | null,
 ): Promise<ComposeSendResponse> {
   return apiFetch<ComposeSendResponse>("/api/v1/mail/compose/session/send", {
     method: "POST",
     body: {
       draft_path: draftPath,
       account_id: accountId,
+      expected_revision: expectedRevision,
       ...(overrideSafetyToken ? { override_safety_token: overrideSafetyToken } : {}),
     },
   });
@@ -166,10 +168,11 @@ export interface DraftSafetyReport {
 export function checkComposeSafety(
   draftPath: string,
   accountId: string,
+  expectedRevision?: number | null,
 ): Promise<{ report: DraftSafetyReport }> {
   return apiFetch<{ report: DraftSafetyReport }>("/api/v1/mail/compose/session/safety-check", {
     method: "POST",
-    body: { draft_path: draftPath, account_id: accountId },
+    body: { draft_path: draftPath, account_id: accountId, expected_revision: expectedRevision },
   });
 }
 

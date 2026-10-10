@@ -20,6 +20,7 @@ import { DaemonUnavailableError } from "@/api/client";
 import { useDaemonDown } from "@/lib/daemonAvailability";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 import { updateComposeSession } from "../api";
+import { acceptedDraftRevision } from "./acceptedDraftRevision";
 import { rememberActiveDraft } from "./activeDrafts";
 import {
   captureSaveSnapshot,
@@ -77,15 +78,36 @@ export function useComposeAutosave({
           const sameSession =
             activeDraft?.draftPath === snapshot.draftPath &&
             (snapshot.draftId == null || activeDraft.draftId === snapshot.draftId);
-          const response = await updateSession.mutateAsync({
-            accountId: snapshot.accountId,
-            draftPath: snapshot.draftPath,
-            frontmatter: snapshot.frontmatter,
-            body: snapshot.body,
-            expectedRevision: sameSession
-              ? (activeDraft.revision ?? snapshot.revision)
-              : snapshot.revision,
-          });
+          const response = await (async () => {
+            try {
+              return await updateSession.mutateAsync({
+                accountId: snapshot.accountId,
+                draftPath: snapshot.draftPath,
+                frontmatter: snapshot.frontmatter,
+                body: snapshot.body,
+                expectedRevision: sameSession
+                  ? (activeDraft.revision ?? snapshot.revision)
+                  : snapshot.revision,
+              });
+            } catch (error) {
+              const accepted = acceptedDraftRevision(error);
+              const latest = draftRef.current;
+              if (
+                accepted &&
+                accepted.draft_id === snapshot.draftId &&
+                latest?.draftPath === snapshot.draftPath &&
+                latest.draftId === snapshot.draftId
+              ) {
+                draftRef.current = { ...latest, revision: accepted.revision };
+                setDraft((value) =>
+                  value?.draftPath === snapshot.draftPath && value.draftId === snapshot.draftId
+                    ? { ...value, revision: accepted.revision }
+                    : value,
+                );
+              }
+              throw error;
+            }
+          })();
           const latest = draftRef.current;
           if (
             latest?.draftPath === snapshot.draftPath &&

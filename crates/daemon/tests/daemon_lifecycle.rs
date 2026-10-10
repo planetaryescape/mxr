@@ -320,15 +320,26 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
     let instance = unique_instance_name("mxr-test-supervised-stop");
     let data_dir = temp.path().join("data");
     let config_dir = temp.path().join("config");
+    let home_dir = temp.path().join("home");
+    let xdg_config_home = home_dir.join(".config");
     let socket_path = temp.path().join("mxr.sock");
     let pid_path = data_dir.join("daemon.pid");
     std::fs::create_dir_all(&data_dir).expect("data dir");
     std::fs::create_dir_all(&config_dir).expect("config dir");
+    std::fs::create_dir_all(&xdg_config_home).expect("fixture XDG config dir");
     mxr_test_support::daemon::write_fake_account_config(&config_dir);
     let mut daemon = TestDaemon::new(socket_path.clone(), pid_path.clone());
+    let inherited_env = std::env::vars_os()
+        .filter(|(key, _)| !key.to_string_lossy().starts_with("MXR_"))
+        .collect::<Vec<_>>();
 
     let spawn = || {
-        StdCommand::new(env!("CARGO_BIN_EXE_mxr"))
+        let mut command = StdCommand::new(env!("CARGO_BIN_EXE_mxr"));
+        command
+            .env_clear()
+            .envs(inherited_env.clone())
+            .env("HOME", &home_dir)
+            .env("XDG_CONFIG_HOME", &xdg_config_home)
             .args(["daemon", "--foreground", "--no-bridge"])
             .env("MXR_INSTANCE", &instance)
             .env("MXR_DATA_DIR", &data_dir)
@@ -341,8 +352,12 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
             .expect("spawn foreground daemon")
     };
     let run_cli = |args: &[&str]| {
-        Command::cargo_bin("mxr")
-            .expect("mxr bin")
+        let mut command = StdCommand::new(env!("CARGO_BIN_EXE_mxr"));
+        command
+            .env_clear()
+            .envs(inherited_env.clone())
+            .env("HOME", &home_dir)
+            .env("XDG_CONFIG_HOME", &xdg_config_home)
             .env("MXR_INSTANCE", &instance)
             .env("MXR_DATA_DIR", &data_dir)
             .env("MXR_CONFIG_DIR", &config_dir)

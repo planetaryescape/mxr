@@ -13,6 +13,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use yup_oauth2::storage::{TokenInfo, TokenStorage, TokenStorageError};
 
+use crate::token_cache_file;
+
 pub(crate) const KEYCHAIN_SERVICE: &str = "mxr-gmail-oauth";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,30 +110,8 @@ impl KeychainTokenStorage {
     }
 
     fn persist_to_disk(&self, json: &str) -> std::io::Result<()> {
-        if let Some(parent) = self.fallback_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        write_fallback_token_file(&self.fallback_path, json)
+        token_cache_file::write(&self.fallback_path, json)
     }
-}
-
-#[cfg(unix)]
-fn write_fallback_token_file(path: &std::path::Path, json: &str) -> std::io::Result<()> {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
-
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(path)?;
-    file.write_all(json.as_bytes())
-}
-
-#[cfg(not(unix))]
-fn write_fallback_token_file(path: &std::path::Path, json: &str) -> std::io::Result<()> {
-    std::fs::write(path, json)
 }
 
 #[cfg(target_os = "macos")]
@@ -289,23 +269,10 @@ fn load_fallback_token_cache(
 #[async_trait]
 impl TokenStorage for KeychainTokenStorage {
     async fn set(&self, scopes: &[&str], token: TokenInfo) -> Result<(), TokenStorageError> {
-        let scopes_owned = normalize_scopes(scopes);
-        let json = {
-            let mut cache = self
-                .cache
-                .lock()
-                .map_err(|_| TokenStorageError::Other("token cache mutex poisoned".into()))?;
-            cache.retain(|stored| normalize_scopes_owned(&stored.scopes) != scopes_owned);
-            cache.push(StoredToken {
-                scopes: scopes_owned,
-                token,
-            });
-            serde_json::to_string(&*cache)
-                .map_err(|error| TokenStorageError::Other(error.to_string().into()))?
-        };
-        self.persist(&json)
-            .map_err(|error| TokenStorageError::Other(error.to_string().into()))?;
-        Ok(())
+        update_and_persist(&self.cache, normalize_scopes(scopes), token, |json| {
+            self.persist(json)
+        })
+        .map_err(|error| TokenStorageError::Other(error.into()))
     }
 
     async fn get(&self, scopes: &[&str]) -> Option<TokenInfo> {
@@ -316,6 +283,21 @@ impl TokenStorage for KeychainTokenStorage {
             .find(|stored| normalize_scopes_owned(&stored.scopes) == target)
             .map(|stored| stored.token.clone())
     }
+}
+
+fn update_and_persist(
+    cache: &Mutex<Vec<StoredToken>>,
+    scopes: Vec<String>,
+    token: TokenInfo,
+    persist: impl FnOnce(&str) -> std::io::Result<()>,
+) -> Result<(), String> {
+    let mut cache = cache
+        .lock()
+        .map_err(|_| "token cache mutex poisoned".to_string())?;
+    cache.retain(|stored| normalize_scopes_owned(&stored.scopes) != scopes);
+    cache.push(StoredToken { scopes, token });
+    let json = serde_json::to_string(&*cache).map_err(|error| error.to_string())?;
+    persist(&json).map_err(|error| error.to_string())
 }
 
 /// yup-oauth2's storage layer always passes scopes already sorted+deduped
@@ -420,6 +402,61 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn interrupted_disk_replace_reloads_complete_old_token_json() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("tokens.json");
+        std::fs::write(&path, token_cache_json("old-access")).unwrap();
+
+        let result =
+            token_cache_file::write_with_hook(&path, &token_cache_json("new-access"), |stage| {
+                match stage {
+                    token_cache_file::ReplaceStage::BeforeRename => {
+                        Err(std::io::Error::other("injected interruption"))
+                    }
+                    token_cache_file::ReplaceStage::AfterRename => Ok(()),
+                }
+            });
+
+        assert!(result.is_err());
+        let loaded = load_fallback_token_cache("synthetic", &path, |_| false).unwrap();
+        assert_eq!(loaded[0].token.access_token.as_deref(), Some("old-access"));
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn error_after_disk_replace_reloads_complete_new_token_json() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("tokens.json");
+        std::fs::write(&path, token_cache_json("old-access")).unwrap();
+
+        let result =
+            token_cache_file::write_with_hook(&path, &token_cache_json("new-access"), |stage| {
+                match stage {
+                    token_cache_file::ReplaceStage::BeforeRename => Ok(()),
+                    token_cache_file::ReplaceStage::AfterRename => {
+                        Err(std::io::Error::other("injected interruption"))
+                    }
+                }
+            });
+
+        assert!(result.is_err());
+        let loaded = load_fallback_token_cache("synthetic", &path, |_| false).unwrap();
+        assert_eq!(loaded[0].token.access_token.as_deref(), Some("new-access"));
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    fn token_cache_json(access_token: &str) -> String {
+        serde_json::to_string(&vec![StoredToken {
+            scopes: vec!["synthetic-scope".to_string()],
+            token: fake_token(access_token),
+        }])
+        .unwrap()
+    }
+
     /// Regression: yup-oauth2's storage layer always passes scopes
     /// sorted+deduped, but the legacy on-disk DiskStorage wrote them in their
     /// original order (typically the order the SDK declared them, which is
@@ -461,17 +498,62 @@ mod tests {
         assert_eq!(token.unwrap().access_token.as_deref(), Some("legacy-token"));
     }
 
-    #[cfg(unix)]
     #[test]
-    fn disk_fallback_token_cache_is_private_to_the_user() {
-        use std::os::unix::fs::PermissionsExt;
+    fn set_calls_persist_in_cache_update_order() {
+        use std::sync::mpsc;
+        use std::thread;
 
-        let temp = tempdir().unwrap();
-        let path = temp.path().join("fallback.json");
+        let cache = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let (first_entered_tx, first_entered_rx) = mpsc::channel();
+        let (release_first_tx, release_first_rx) = mpsc::channel();
+        let (second_entered_tx, second_entered_rx) = mpsc::channel();
+        let (persisted_tx, persisted_rx) = mpsc::channel();
 
-        write_fallback_token_file(&path, "[]").unwrap();
+        let first_cache = std::sync::Arc::clone(&cache);
+        let first = thread::spawn(move || {
+            update_and_persist(
+                &first_cache,
+                vec!["scope".into()],
+                fake_token("old"),
+                |json| {
+                    first_entered_tx.send(()).unwrap();
+                    release_first_rx.recv().unwrap();
+                    persisted_tx.send(json.to_string()).unwrap();
+                    Ok(())
+                },
+            )
+        });
+        first_entered_rx.recv().unwrap();
 
-        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600);
+        let second_cache = std::sync::Arc::clone(&cache);
+        let (second_persisted_tx, second_persisted_rx) = mpsc::channel();
+        let second = thread::spawn(move || {
+            second_entered_tx.send(()).unwrap();
+            update_and_persist(
+                &second_cache,
+                vec!["scope".into()],
+                fake_token("new"),
+                |json| {
+                    second_persisted_tx.send(json.to_string()).unwrap();
+                    Ok(())
+                },
+            )
+        });
+        second_entered_rx.recv().unwrap();
+
+        assert!(matches!(
+            cache.try_lock(),
+            Err(std::sync::TryLockError::WouldBlock)
+        ));
+        release_first_tx.send(()).unwrap();
+        let old_snapshot = persisted_rx.recv().unwrap();
+        let new_snapshot = second_persisted_rx.recv().unwrap();
+        first.join().unwrap().unwrap();
+        second.join().unwrap().unwrap();
+
+        let old: Vec<StoredToken> = serde_json::from_str(&old_snapshot).unwrap();
+        let new: Vec<StoredToken> = serde_json::from_str(&new_snapshot).unwrap();
+        assert_eq!(old[0].token.access_token.as_deref(), Some("old"));
+        assert_eq!(new[0].token.access_token.as_deref(), Some("new"));
     }
 }

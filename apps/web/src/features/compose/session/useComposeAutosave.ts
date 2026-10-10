@@ -73,17 +73,17 @@ export function useComposeAutosave({
       const result = await requestCoordinator.queueComposeLatest(
         composeQueueKey(snapshot.draftPath),
         async () => {
-          const current = draftRef.current;
+          const activeDraft = draftRef.current;
           const sameSession =
-            current?.draftPath === snapshot.draftPath &&
-            (snapshot.draftId == null || current.draftId === snapshot.draftId);
+            activeDraft?.draftPath === snapshot.draftPath &&
+            (snapshot.draftId == null || activeDraft.draftId === snapshot.draftId);
           const response = await updateSession.mutateAsync({
             accountId: snapshot.accountId,
             draftPath: snapshot.draftPath,
             frontmatter: snapshot.frontmatter,
             body: snapshot.body,
             expectedRevision: sameSession
-              ? (current.revision ?? snapshot.revision)
+              ? (activeDraft.revision ?? snapshot.revision)
               : snapshot.revision,
           });
           const latest = draftRef.current;

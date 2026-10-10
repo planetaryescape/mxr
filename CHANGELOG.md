@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.63](https://github.com/planetaryescape/mxr/compare/v0.6.62...v0.6.63) (2026-10-10)
+
+
+### Bug Fixes
+
+* atomically persist the Gmail token cache ([#333](https://github.com/planetaryescape/mxr/issues/333)) ([3d17b16](https://github.com/planetaryescape/mxr/commit/3d17b1600a9db36b9f062bc4e2ca6997d8a9c562))
+
 ## [0.6.62](https://github.com/planetaryescape/mxr/compare/v0.6.61...v0.6.62) (2026-10-10)
 
 

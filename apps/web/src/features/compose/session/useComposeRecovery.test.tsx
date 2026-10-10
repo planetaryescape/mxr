@@ -104,17 +104,24 @@ for (const disconnected of [false, true]) {
     expect(hook.result.current.isCurrentDraftSaved(hook.result.current.draft)).toBe(false);
     expect(hook.result.current.saveError).toContain("preserved");
     expect(hook.result.current.saveError).toContain(failure.message);
+    expect(hook.result.current.lastSavedAt).toBeNull();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(7000);
     });
     expect(update).toHaveBeenCalledTimes(1);
     update.mockImplementation(async (request) => saved(request.body ?? ""));
+    availability.down = true;
+    hook.rerender();
     act(() => {
       hook.result.current.setDraft((draft) =>
         draft ? { ...draft, bodyMarkdown: "latest before close" } : draft,
       );
       hook.result.current.setDirty(true);
     });
+    expect(hook.result.current.saveError).toContain("preserved");
+    availability.down = false;
+    hook.rerender();
+    expect(hook.result.current.saveError).toContain("preserved");
     await act(async () => {
       await hook.result.current.saveCurrentDraft();
     });
@@ -124,6 +131,7 @@ for (const disconnected of [false, true]) {
       body: "latest before close",
     });
     expect(hook.result.current.dirty).toBe(false);
+    expect(hook.result.current.lastSavedAt).toBeNull();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(7000);
       await hook.result.current.saveCurrentDraft();

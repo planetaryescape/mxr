@@ -885,7 +885,7 @@ pub async fn drafts_resume(draft_id: String, account: Option<String>) -> anyhow:
         .await?;
     match resp {
         Response::Ok {
-            data: ResponseData::Ack | ResponseData::Draft { .. },
+            data: ResponseData::Ack,
         } => {
             println!("Draft {parsed} reset to 'draft' — retry with `mxr send {parsed}`");
             Ok(())
@@ -918,7 +918,7 @@ pub async fn drafts_discard(
         .await?;
     match resp {
         Response::Ok {
-            data: ResponseData::Ack | ResponseData::Draft { .. },
+            data: ResponseData::Ack,
         } => print_draft_delete_result(&draft, false, format),
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
@@ -1436,7 +1436,7 @@ pub async fn schedule_send(
         .await?;
     match resp {
         Response::Ok {
-            data: ResponseData::Ack | ResponseData::Draft { .. },
+            data: ResponseData::Ack,
         } => {
             let pretty = send_at
                 .with_timezone(&chrono::Local)
@@ -1464,7 +1464,7 @@ pub async fn cancel_scheduled_send(
         .await?;
     match resp {
         Response::Ok {
-            data: ResponseData::Ack | ResponseData::Draft { .. },
+            data: ResponseData::Ack,
         } => {
             println!("Cancelled scheduled send for draft {draft_id}");
             Ok(())
@@ -2071,7 +2071,7 @@ fn expect_send_receipt(resp: Response) -> anyhow::Result<Option<SendReceiptInfo>
             rfc2822_message_id,
         })),
         Response::Ok {
-            data: ResponseData::Ack | ResponseData::Draft { .. },
+            data: ResponseData::Ack,
         } => Some(None),
         _ => None,
     })
@@ -2133,7 +2133,7 @@ async fn set_auto_reminder_after_send(
         .await?
     {
         Response::Ok {
-            data: ResponseData::Ack | ResponseData::Draft { .. },
+            data: ResponseData::Ack,
         } => {
             println!("Reminder set for {}", remind.description);
             Ok(())

@@ -3258,9 +3258,14 @@ async fn invite_reply_sidecar_round_trips_into_compose_draft() {
     let path_str = draft_path.to_str().unwrap().to_string();
 
     // No sidecar → a plain draft with no iTIP payload.
-    let plain = compose_draft_from_file(&path_str, &account_id.to_string(), None)
-        .await
-        .unwrap();
+    let plain = compose_draft_from_file(
+        &path_str,
+        &account_id.to_string(),
+        None,
+        ComposeDraftValidation::Incomplete,
+    )
+    .await
+    .unwrap();
     assert!(plain.inline_calendar_reply.is_none());
 
     // With a sidecar → the built draft carries the REPLY payload so the
@@ -3274,9 +3279,14 @@ async fn invite_reply_sidecar_round_trips_into_compose_draft() {
     write_invite_reply_sidecar(&draft_path, &reply)
         .await
         .unwrap();
-    let with_invite = compose_draft_from_file(&path_str, &account_id.to_string(), None)
-        .await
-        .unwrap();
+    let with_invite = compose_draft_from_file(
+        &path_str,
+        &account_id.to_string(),
+        None,
+        ComposeDraftValidation::Incomplete,
+    )
+    .await
+    .unwrap();
     let got = with_invite
         .inline_calendar_reply
         .expect("draft must carry the inline calendar reply");
@@ -5811,6 +5821,7 @@ async fn draft_session_chooses_account_before_first_save_and_keeps_saved_identit
         &path.display().to_string(),
         &second.to_string(),
         Some(original.id.clone()),
+        ComposeDraftValidation::Incomplete,
     )
     .await
     .unwrap();
@@ -5825,7 +5836,8 @@ async fn draft_session_chooses_account_before_first_save_and_keeps_saved_identit
         compose_draft_from_file(
             &path.display().to_string(),
             &first.to_string(),
-            Some(original.id)
+            Some(original.id),
+            ComposeDraftValidation::Incomplete
         )
         .await,
         Err(BridgeError::BadRequest(_))

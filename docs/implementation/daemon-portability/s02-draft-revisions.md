@@ -185,3 +185,30 @@ coverage. Those new tests, final contracts, typecheck, build and the two-tab
 browser journey have not yet run while the shared queue is paused. Old/null-token
 shared-path send clients remain an upgrade boundary; S02 does not guarantee their
 reviewed content or add the S03 effect journal.
+
+
+## Recovery copies own bridge-managed attachment bytes
+
+Conflict preservation and explicit recovery opens copy uploaded attachments into
+their new private compose directory. Frontmatter, draft metadata and the response
+name those copies in the submitted order. Equal basenames retain distinct bytes;
+repeated references reuse a copy. The browser applies only this operation's path
+evidence, including attachments added while a conflict and Close save are queued.
+Discarding an earlier recovery therefore leaves each reopened editor's bytes
+intact. User-managed external paths keep their existing lifetime: compose Discard
+never removes those files. Failed copying removes the new partial files and keeps
+the source payload.
+
+A first-save outage can preserve a draft before any canonical row exists. Save
+explicitly retries that recovery with its original DraftId and absent revision.
+It first preserves the latest recovery, then prepares a separate compose payload
+and owned attachment bytes before submitting the existing SaveDraft request.
+Only its accepted response advances the editor to the canonical copy. A lost
+creation response followed by different content conflicts without overwriting
+the stored row; Open saved draft can then restore it. An uncertain retry retains
+its extra candidate privately because canonical storage may reference its bytes.
+Close and automatic saves continue to preserve locally without creation retries.
+
+The attachment and unsaved recovery correction has focused bridge and hook
+regressions, but their execution, generated schemas, frontend typecheck/build and
+the real browser journey remain pending while the shared queue is paused.

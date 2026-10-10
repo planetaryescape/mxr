@@ -51,5 +51,17 @@ export function recoveredComposeSession(
     (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 1)
   )
     return undefined;
-  return { draft_path: recovery.draft_path, draft_id: recovery.draft_id, revision };
+  const paths = "attachment_paths" in recovery ? recovery.attachment_paths : [];
+  if (!Array.isArray(paths)) return undefined;
+  const attachmentPaths: string[] = [];
+  for (const path of paths) {
+    if (typeof path !== "string" || !path) return undefined;
+    attachmentPaths.push(path);
+  }
+  return {
+    draft_path: recovery.draft_path,
+    draft_id: recovery.draft_id,
+    revision,
+    attachment_paths: attachmentPaths,
+  };
 }

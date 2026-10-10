@@ -861,11 +861,51 @@ async fn update_compose_session(
                 "recovery revision does not match its observed token".into(),
             ));
         }
-        replace_compose_file(path, rendered.clone()).await?;
-        write_recovery_metadata(path, &candidate, &source).await?;
+        if request.retry_recovery && metadata.revision.is_some() {
+            return Err(BridgeError::BadRequest(
+                "only an unsaved recovery can retry creation".into(),
+            ));
+        }
+        let (rendered, candidate, copied) =
+            copy_recovery_attachments(path, &rendered, &candidate).await?;
+        if let Err(error) = async {
+            replace_compose_file(path, rendered.clone()).await?;
+            write_recovery_metadata(path, &candidate, &source).await
+        }
+        .await
+        {
+            if replace_compose_file(path, content).await.is_ok() {
+                for attachment in copied {
+                    let _ = tokio::fs::remove_file(attachment).await;
+                }
+            }
+            return Err(error);
+        }
         let mut session = compose_session_from_snapshot(path, &rendered, Some(&candidate))?;
         session["recoverySourcePath"] = json!(source);
+        if request.retry_recovery {
+            // Prepare an independently owned payload before SQLite may store its
+            // paths. An ambiguous IPC result retains this copy and its bytes.
+            let retry = preserve_compose_snapshot(path, &rendered, &candidate).await?;
+            let retry_path = Path::new(&retry.draft_path);
+            let retry_content = read_compose_file(retry_path).await?;
+            let retry_draft = read_draft_session_metadata(retry_path)
+                .await?
+                .ok_or(BridgeError::UnexpectedResponse)?;
+            let accepted =
+                submit_compose_draft(&state.config.socket_path, retry_draft, None).await?;
+            write_draft_session_metadata(retry_path, &accepted)
+                .await
+                .map_err(|error| error.with_compose_evidence(Some(&accepted), None))?;
+            session = compose_session_from_snapshot(retry_path, &retry_content, Some(&accepted))?;
+            session["preservedRecoveryPath"] = json!(request.draft_path);
+        }
         return Ok(Json(json!({ "session": session })));
+    }
+    if request.retry_recovery {
+        return Err(BridgeError::BadRequest(
+            "creation retry requires a private unsaved recovery".into(),
+        ));
     }
     let accepted = match submit_compose_draft(
         &state.config.socket_path,
@@ -3057,6 +3097,79 @@ fn snoozed_summary_view(entry: &Snoozed, envelope: &Envelope) -> serde_json::Val
     })
 }
 
+/// Recovery copies bridge-owned uploads; user-managed paths retain their existing
+/// lifetime because deleting a compose session never deletes those files.
+async fn copy_recovery_attachments(
+    destination: &Path,
+    content: &str,
+    observed: &Draft,
+) -> Result<(String, Draft, Vec<PathBuf>), BridgeError> {
+    let (mut frontmatter, body) = parse_compose_content(content)?;
+    let managed_root = std::env::temp_dir().join("mxr-compose-attachments");
+    let destination_dir = compose_attachment_dir(destination)?;
+    let mut copied = Vec::new();
+    let result = async {
+        let mut paths: HashMap<PathBuf, PathBuf> = HashMap::new();
+        for attachment in &mut frontmatter.attach {
+            let source = PathBuf::from(&*attachment);
+            if !source.starts_with(&managed_root)
+                || source.parent() == Some(destination_dir.as_path())
+            {
+                continue;
+            }
+            // Repeated references reuse one copy, while equal basenames from
+            // different directories get distinct UUID-based destination names.
+            let target = if let Some(target) = paths.get(&source) {
+                target.clone()
+            } else {
+                let bytes = tokio::fs::read(&source).await.map_err(|error| {
+                    BridgeError::Ipc(format!(
+                        "cannot preserve attachment {}: {error}",
+                        source.display()
+                    ))
+                })?;
+                let filename = safe_attachment_filename(
+                    source
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("attachment"),
+                );
+                let target = compose_attachment_path(destination, &filename)?;
+                tokio::fs::create_dir_all(&destination_dir)
+                    .await
+                    .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+                copied.push(target.clone());
+                mxr_compose::private_tmp::write_private_async(&target, &bytes)
+                    .await
+                    .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+                paths.insert(source, target.clone());
+                target
+            };
+            *attachment = target.display().to_string();
+        }
+        let context = extract_compose_context(content);
+        let rendered = render_compose_file(&frontmatter, &body, context.as_deref())
+            .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+        let draft = mxr_compose::draft_codec::apply_edited_compose_file(
+            observed,
+            &rendered,
+            observed.updated_at,
+        )
+        .map_err(|error| BridgeError::InvalidDraft(error.to_string()))?;
+        Ok((rendered, draft))
+    }
+    .await;
+    match result {
+        Ok((rendered, draft)) => Ok((rendered, draft, copied)),
+        Err(error) => {
+            for path in copied {
+                let _ = tokio::fs::remove_file(path).await;
+            }
+            Err(error)
+        }
+    }
+}
+
 async fn preserve_compose_snapshot(
     source: &Path,
     content: &str,
@@ -3065,15 +3178,30 @@ async fn preserve_compose_snapshot(
     let dir = mxr_compose::private_tmp::private_scratch_dir()
         .map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let path = dir.join(format!("mxr-compose-recovery-{}.md", Uuid::now_v7()));
-    mxr_compose::private_tmp::write_private_async(&path, content.as_bytes())
-        .await
-        .map_err(|error| BridgeError::Ipc(error.to_string()))?;
-    write_recovery_metadata(&path, observed, &source.display().to_string()).await?;
-    Ok(RecoveredComposeSession {
-        draft_path: path.display().to_string(),
-        draft_id: observed.id.clone(),
-        revision: observed.revision,
-    })
+    let saved = async {
+        let (content, draft, _) = copy_recovery_attachments(&path, content, observed).await?;
+        mxr_compose::private_tmp::write_private_async(&path, content.as_bytes())
+            .await
+            .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+        write_recovery_metadata(&path, &draft, &source.display().to_string()).await?;
+        Ok(RecoveredComposeSession {
+            draft_path: path.display().to_string(),
+            draft_id: draft.id,
+            revision: draft.revision,
+            attachment_paths: draft
+                .attachments
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect(),
+        })
+    }
+    .await;
+    if saved.is_err() {
+        let _ = tokio::fs::remove_file(&path).await;
+        let _ = tokio::fs::remove_file(draft_session_metadata_path(&path)).await;
+        let _ = remove_compose_attachment_dir(&path).await;
+    }
+    saved
 }
 
 async fn replace_compose_file(path: &Path, content: String) -> Result<(), BridgeError> {

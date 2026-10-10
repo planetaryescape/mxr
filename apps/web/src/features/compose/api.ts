@@ -86,6 +86,7 @@ export function refreshComposeSession(draftPath: string): Promise<ComposeSession
 }
 
 export function updateComposeSession(input: {
+  retryRecovery?: boolean;
   accountId?: string;
   draftPath: string;
   frontmatter: ComposeFrontmatter;
@@ -95,6 +96,7 @@ export function updateComposeSession(input: {
   return apiFetch<ComposeSessionResponse>("/api/v1/mail/compose/session/update", {
     method: "POST",
     body: {
+      retry_recovery: input.retryRecovery ?? false,
       draft_path: input.draftPath,
       account_id: input.accountId,
       to: input.frontmatter.to,

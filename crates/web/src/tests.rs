@@ -23,9 +23,11 @@ mod arrival_routes;
 mod compose_and_scheduling;
 mod place_routes;
 mod record_routes;
+mod recovery_attachments;
 mod thread_context_routes;
 mod time_routes;
 mod todo_routes;
+mod unsaved_recovery;
 
 const TEST_AUTH_TOKEN: &str = "test-token";
 

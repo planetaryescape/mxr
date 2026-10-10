@@ -20,7 +20,7 @@ import { DaemonUnavailableError } from "@/api/client";
 import { useDaemonDown } from "@/lib/daemonAvailability";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 import { updateComposeSession } from "../api";
-import { acceptedDraftRevision } from "./acceptedDraftRevision";
+import { acceptedDraftRevision, recoveredComposeSession } from "./acceptedDraftRevision";
 import { rememberActiveDraft } from "./activeDrafts";
 import {
   captureSaveSnapshot,
@@ -52,6 +52,13 @@ export function useComposeAutosave({
   dirty,
   setDirty,
 }: ComposeAutosaveInput) {
+  const recoveryTargetRef = useRef<
+    | { sourcePath: string; draftPath: string; draftId?: string; revision?: number | null }
+    | undefined
+  >(undefined);
+  const pendingSavesRef = useRef(0);
+  const currentIntentKeyRef = useRef(intentKey);
+  currentIntentKeyRef.current = intentKey;
   const lastSavedFingerprintRef = useRef<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -64,85 +71,170 @@ export function useComposeAutosave({
     const current = draftRef.current;
     if (!current) return undefined;
     const snapshot = captureSaveSnapshot(current);
-    if (snapshot.fingerprint === lastSavedFingerprintRef.current) {
+    const queueKey = composeQueueKey(snapshot.draftPath, snapshot.recoverySourcePath);
+    const sourcePath = snapshot.recoverySourcePath ?? snapshot.draftPath;
+    if (snapshot.fingerprint === lastSavedFingerprintRef.current && pendingSavesRef.current === 0) {
       setDirty(false);
       setSaveError(null);
       return undefined;
     }
     setSaveError(null);
+    pendingSavesRef.current += 1;
     try {
-      const result = await requestCoordinator.queueComposeLatest(
-        composeQueueKey(snapshot.draftPath),
-        async () => {
-          const activeDraft = draftRef.current;
-          const sameSession =
-            activeDraft?.draftPath === snapshot.draftPath &&
-            (snapshot.draftId == null || activeDraft.draftId === snapshot.draftId);
-          const response = await (async () => {
-            try {
-              return await updateSession.mutateAsync({
-                accountId: snapshot.accountId,
-                draftPath: snapshot.draftPath,
-                frontmatter: snapshot.frontmatter,
-                body: snapshot.body,
-                expectedRevision: sameSession
-                  ? (activeDraft.revision ?? snapshot.revision)
-                  : snapshot.revision,
-              });
-            } catch (error) {
-              const accepted = acceptedDraftRevision(error);
-              const latest = draftRef.current;
-              if (
-                accepted &&
-                accepted.draft_id === snapshot.draftId &&
-                latest?.draftPath === snapshot.draftPath &&
-                latest.draftId === snapshot.draftId
-              ) {
-                draftRef.current = { ...latest, revision: accepted.revision };
+      const result = await requestCoordinator.queueComposeLatest(queueKey, async () => {
+        const activeDraft = draftRef.current;
+        const sameSession =
+          activeDraft != null &&
+          composeQueueKey(activeDraft.draftPath, activeDraft.recoverySourcePath) === queueKey &&
+          (snapshot.draftId == null || activeDraft.draftId === snapshot.draftId);
+        const recoveryTarget =
+          recoveryTargetRef.current?.sourcePath === sourcePath &&
+          recoveryTargetRef.current.draftId === snapshot.draftId
+            ? recoveryTargetRef.current
+            : undefined;
+        const submittedPath = sameSession
+          ? activeDraft.draftPath
+          : recoveryTarget
+            ? recoveryTarget.draftPath
+            : snapshot.draftPath;
+        const expectedRevision = sameSession
+          ? (activeDraft.revision ?? snapshot.revision)
+          : recoveryTarget
+            ? recoveryTarget.revision
+            : snapshot.revision;
+        const response = await (async () => {
+          try {
+            return await updateSession.mutateAsync({
+              accountId: snapshot.accountId,
+              draftPath: submittedPath,
+              frontmatter: snapshot.frontmatter,
+              body: snapshot.body,
+              expectedRevision,
+            });
+          } catch (error) {
+            const accepted = acceptedDraftRevision(error);
+            const recovery = recoveredComposeSession(error);
+            const latest = draftRef.current;
+            if (
+              recovery &&
+              recovery.draft_id === snapshot.draftId &&
+              recovery.revision ===
+                (accepted && accepted.draft_id === snapshot.draftId
+                  ? accepted.revision
+                  : expectedRevision) &&
+              recovery.draft_path !== submittedPath
+            ) {
+              recoveryTargetRef.current = {
+                sourcePath,
+                draftPath: recovery.draft_path,
+                draftId: snapshot.draftId,
+                revision: recovery.revision,
+              };
+              const recovered = {
+                ...snapshot,
+                draftPath: recovery.draft_path,
+                recoverySourcePath: sourcePath,
+                bodyMarkdown: snapshot.body,
+                rawContent: "",
+                kind: "recovery",
+                issues: [],
+                revision: recovery.revision,
+              };
+              const belongsToActive =
+                latest != null &&
+                composeQueueKey(latest.draftPath, latest.recoverySourcePath) === queueKey &&
+                latest.draftId === snapshot.draftId;
+              if (belongsToActive) {
+                lastSavedFingerprintRef.current = null;
+                draftRef.current = {
+                  ...latest,
+                  draftPath: recovery.draft_path,
+                  recoverySourcePath: sourcePath,
+                  revision: recovery.revision,
+                };
                 setDraft((value) =>
-                  value?.draftPath === snapshot.draftPath && value.draftId === snapshot.draftId
-                    ? { ...value, revision: accepted.revision }
+                  value != null &&
+                  composeQueueKey(value.draftPath, value.recoverySourcePath) === queueKey &&
+                  value.draftId === snapshot.draftId
+                    ? {
+                        ...value,
+                        draftPath: recovery.draft_path,
+                        recoverySourcePath: sourcePath,
+                        revision: recovery.revision,
+                      }
                     : value,
                 );
               }
-              throw error;
+              if (belongsToActive || currentIntentKeyRef.current !== intentKey)
+                rememberActiveDraft(intentKey, recovered);
+            } else if (
+              accepted &&
+              accepted.draft_id === snapshot.draftId &&
+              latest != null &&
+              composeQueueKey(latest.draftPath, latest.recoverySourcePath) === queueKey &&
+              latest.draftId === snapshot.draftId
+            ) {
+              draftRef.current = { ...latest, revision: accepted.revision };
+              setDraft((value) =>
+                value != null &&
+                composeQueueKey(value.draftPath, value.recoverySourcePath) === queueKey &&
+                value.draftId === snapshot.draftId
+                  ? { ...value, revision: accepted.revision }
+                  : value,
+              );
             }
-          })();
-          const latest = draftRef.current;
-          if (
-            latest?.draftPath === snapshot.draftPath &&
-            (snapshot.draftId == null || latest.draftId === snapshot.draftId)
-          ) {
-            draftRef.current = {
-              ...latest,
-              draftId: response.session.draftId ?? undefined,
-              revision: response.session.revision,
-            };
-            setDraft((active) =>
-              active?.draftPath === snapshot.draftPath &&
-              (snapshot.draftId == null || active.draftId === snapshot.draftId)
-                ? {
-                    ...active,
-                    draftId: response.session.draftId ?? undefined,
-                    revision: response.session.revision,
-                  }
-                : active,
-            );
+            throw error;
           }
-          return response;
-        },
-      );
+        })();
+        if (snapshot.draftId != null && response.session.draftId !== snapshot.draftId)
+          throw new Error("The saved response belongs to another draft; your text stays here");
+        recoveryTargetRef.current = {
+          sourcePath,
+          draftPath: submittedPath,
+          draftId: response.session.draftId ?? snapshot.draftId,
+          revision: response.session.revision,
+        };
+        const latest = draftRef.current;
+        if (
+          latest != null &&
+          composeQueueKey(latest.draftPath, latest.recoverySourcePath) === queueKey &&
+          (snapshot.draftId == null || latest.draftId === snapshot.draftId)
+        ) {
+          draftRef.current = {
+            ...latest,
+            draftId: response.session.draftId ?? undefined,
+            revision: response.session.revision,
+          };
+          setDraft((active) =>
+            active != null &&
+            composeQueueKey(active.draftPath, active.recoverySourcePath) === queueKey &&
+            (snapshot.draftId == null || active.draftId === snapshot.draftId)
+              ? {
+                  ...active,
+                  draftId: response.session.draftId ?? undefined,
+                  revision: response.session.revision,
+                }
+              : active,
+          );
+        }
+        return response;
+      });
       if (result.status !== "committed") return undefined;
       const response = result.value;
       if (
-        draftRef.current?.draftPath !== snapshot.draftPath ||
+        draftRef.current == null ||
+        composeQueueKey(draftRef.current.draftPath, draftRef.current.recoverySourcePath) !==
+          queueKey ||
         (snapshot.draftId != null && draftRef.current.draftId !== snapshot.draftId)
       )
         return undefined;
       lastSavedFingerprintRef.current = snapshot.fingerprint;
       const latest = draftRef.current;
       if (latest && draftFingerprint(latest) === snapshot.fingerprint) {
-        const next = draftFromSession(response.session, snapshot.accountId);
+        const next = {
+          ...draftFromSession(response.session, snapshot.accountId),
+          recoverySourcePath: latest.recoverySourcePath,
+        };
         setDraft(next);
         lastSavedFingerprintRef.current = draftFingerprint(next);
         setDirty(false);
@@ -160,8 +252,15 @@ export function useComposeAutosave({
       return response.session;
     } catch (error) {
       const message = errorMessage(error);
-      if (draftRef.current?.draftPath === snapshot.draftPath) setSaveError(message);
+      if (
+        draftRef.current &&
+        composeQueueKey(draftRef.current.draftPath, draftRef.current.recoverySourcePath) ===
+          queueKey
+      )
+        setSaveError(message);
       throw error;
+    } finally {
+      pendingSavesRef.current -= 1;
     }
   }, [draftRef, intentKey, queryClient, setDirty, setDraft, updateSession]);
 

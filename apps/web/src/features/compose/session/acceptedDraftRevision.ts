@@ -24,3 +24,32 @@ export function acceptedDraftRevision(
     return undefined;
   return { draft_id: accepted.draft_id, revision: accepted.revision };
 }
+
+export function recoveredComposeSession(
+  error: unknown,
+): components["schemas"]["RecoveredComposeSession"] | undefined {
+  const failure = error instanceof DaemonUnavailableError ? error.cause : error;
+  if (!(failure instanceof BridgeRequestError)) return undefined;
+  const recovery = failure.details.recovery_session;
+  if (
+    !recovery ||
+    typeof recovery !== "object" ||
+    !("draft_path" in recovery) ||
+    !("draft_id" in recovery) ||
+    !("revision" in recovery)
+  )
+    return undefined;
+  if (
+    typeof recovery.draft_path !== "string" ||
+    !recovery.draft_path ||
+    typeof recovery.draft_id !== "string"
+  )
+    return undefined;
+  const revision = recovery.revision;
+  if (
+    revision !== null &&
+    (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 1)
+  )
+    return undefined;
+  return { draft_path: recovery.draft_path, draft_id: recovery.draft_id, revision };
+}

@@ -13,6 +13,7 @@ const activeDraftStorageKey = "mxr.compose.activeDrafts";
 
 interface ActiveDraftEntry {
   draftPath: string;
+  recoverySourcePath?: string;
   accountId?: string;
   updatedAt: number;
 }
@@ -24,15 +25,18 @@ export async function loadInitialComposeSession(intent: ComposeIntent) {
     try {
       // A composer that just closed (focus mode moving on, a reply closed
       // and reopened) may still be saving this file: read it after that.
-      await requestCoordinator.settleCompose(composeQueueKey(active.draftPath));
-      const refreshed = await refreshComposeSession(active.draftPath);
+      await requestCoordinator.settleCompose(
+        composeQueueKey(active.draftPath, active.recoverySourcePath),
+      );
+      const settled = readActiveDraft(intent.key) ?? active;
+      const refreshed = await refreshComposeSession(settled.draftPath);
       // The refresh reads the file, which doesn't name the account; the
       // entry kept it. Without it the send and safety check have no account.
       return {
         ...refreshed,
         session: {
           ...refreshed.session,
-          accountId: refreshed.session.accountId ?? active.accountId,
+          accountId: refreshed.session.accountId ?? settled.accountId,
         },
       };
     } catch {
@@ -59,7 +63,12 @@ export function rememberActiveDraft(key: string, draft: ComposeDraftState) {
   try {
     const raw = window.localStorage.getItem(activeDraftStorageKey);
     const parsed = raw ? (JSON.parse(raw) as Record<string, ActiveDraftEntry>) : {};
-    parsed[key] = { draftPath: draft.draftPath, accountId: draft.accountId, updatedAt: Date.now() };
+    parsed[key] = {
+      draftPath: draft.draftPath,
+      recoverySourcePath: draft.recoverySourcePath,
+      accountId: draft.accountId,
+      updatedAt: Date.now(),
+    };
     window.localStorage.setItem(activeDraftStorageKey, JSON.stringify(parsed));
   } catch {
     // Reload survival is best-effort only.

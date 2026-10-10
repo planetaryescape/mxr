@@ -78,8 +78,9 @@ existing API module mock convention; lint passed on ea37aa63 and on the round 3 
 The candidate worktree is `mxr-portability-stage-01/mxr`, on
 `codex/mxr-portability-draft-revisions`. Rebase uses freshly fetched HTTPS main.
 The parent owns independent Claude review, CI, merge, serialized release and the
-released-binary smoke. Draft PR335 exists for this branch. The parent pushed f8b326ea
-to draft PR335 for CI; it has not been released, and no real mail has been sent. The shared orchestration ledger remains parent-owned.
+released-binary smoke. PR335 is open for this branch. It has not been released,
+and no real mail has been sent. The shared orchestration ledger remains
+parent-owned.
 
 The store's revision guard assumes one active daemon owns the local store; SQL
 CAS protects content writes, while process-local draft locks serialize provider
@@ -300,8 +301,9 @@ or Open saved draft without automatically sending. Mounted fixtures cover
 reconnect, visible retry success and conflict, retained latest text and no false
 saved label. Hook fixtures retain the recovery warning across reconnect.
 
-Source be6a947f passed the fast workspace CI suite at run 38094341689: 3979 tests
-passed and nine were skipped, including the corrected override-token fixture.
+Source be6a947f passed both workspace CI suites at run 38094341689: 3979 fast
+tests and 4025 semantic-local tests passed, including the corrected override-token
+fixture. Nine fast tests and ten semantic-local tests were skipped.
 Those results describe the preceding source, not this UI correction; affected
 web execution and local build/browser gates remain pending. API callers must
 carry their accepted expected_revision after the first save: a null token

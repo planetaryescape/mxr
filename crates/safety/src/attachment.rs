@@ -87,6 +87,7 @@ mod tests {
 
     fn draft_with(body: &str, attachments: Vec<PathBuf>) -> Draft {
         Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: AccountId::new(),
             from: None,

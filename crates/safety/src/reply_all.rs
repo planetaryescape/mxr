@@ -136,6 +136,7 @@ mod tests {
 
     fn draft(to: Vec<Address>, cc: Vec<Address>, body: &str) -> Draft {
         Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: AccountId::new(),
             from: None,

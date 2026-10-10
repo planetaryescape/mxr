@@ -205,6 +205,36 @@ revisions, pulls remote edits into the same local `DraftId`, and removes the
 local row after an explicit provider-side deletion. Deleting locally removes a
 linked provider draft first; provider failures preserve the local row.
 
+Every stored draft has a durable local `revision`, separate from the provider
+revision. `mxr drafts --format json` exposes it; saving and updating return the
+canonical draft. Editing an existing draft or deleting it must carry its last
+read revision. A successful edit increments that revision. Concurrent editors
+cannot overwrite one another: the stale editor receives
+`code: "draft_revision_conflict"` with `expected_revision` and
+`current_revision` in the error details. CLI and TUI preserve the editor file;
+the CLI prints its path. Browser conflicts preserve the current text and the
+session file. Read the current saved draft and resolve the two versions before
+trying again; there is no automatic overwrite retry.
+
+Browser autosave keeps one `DraftId` across save, daemon restart and reopen.
+Its private session metadata carries the canonical draft and revision, retaining
+reply headers, HTML body constraints and inline assets. Linked-provider edits,
+deletes, reconciliation and sends serialize per draft, then per account when a
+provider operation is needed. Revision checks happen before provider effects.
+Provider reconciliation that changes content advances the local revision too.
+
+Clients negotiate `draft_revision_supported` through daemon status before draft
+writes. A new client refuses writes to an older daemon without that capability;
+reads remain supported. A new daemon rejects edits or deletes without a
+revision. Binary downgrade is unsupported for revision safety: older binaries
+can read the database's extra migration row but do not enforce revision checks.
+Use a forward fix rather than running an older daemon against this store.
+
+The isolated synthetic journey is repeatable with
+`scripts/smoke-draft-revisions /path/to/mxr`. It saves, restarts, reads, races two
+CLI editors, checks the rejected editor's scratch text and previews deletion.
+It uses fake providers and sends no mail.
+
 Gmail supports this through its stable draft resource id and changing nested
 message id. Providers without server-draft support keep drafts local-only.
 

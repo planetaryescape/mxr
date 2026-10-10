@@ -131,6 +131,7 @@ function session(overrides: Partial<ComposeSessionResponse["session"]> = {}) {
       accountId: "account-1",
       kind: "new",
       ...overrides,
+      previewHtml: overrides.previewHtml ?? "",
     },
   } satisfies ComposeSessionResponse;
 }

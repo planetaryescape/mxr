@@ -376,6 +376,7 @@ mod tests {
 
     fn draft_for(account_id: mxr_core::AccountId, body: &str) -> Draft {
         Draft {
+            revision: Some(1),
             id: mxr_core::DraftId::new(),
             account_id,
             from: None,

@@ -1782,6 +1782,7 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
         .await
     {
         for draft_id in &orphans {
+            let _draft_guard = state.acquire_draft_operation(draft_id).await;
             if let Err(e) = state.store.reset_orphaned_draft(draft_id).await {
                 tracing::warn!(
                     draft_id = %draft_id,
@@ -2936,6 +2937,7 @@ mod tests {
                         source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Response(Response::Ok {
                             data: ResponseData::Status {
+                                draft_revision_supported: true,
                                 uptime_secs: 1,
                                 accounts: vec!["personal".to_string()],
                                 total_messages: 1,

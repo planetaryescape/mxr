@@ -1499,6 +1499,8 @@ pub enum Request {
     },
     DeleteDraft {
         draft_id: DraftId,
+        #[serde(default)]
+        expected_revision: Option<i64>,
     },
     /// Fetch a single locally-stored draft by id (for editing in place).
     /// Returns `ResponseData::Draft`; errors when no such draft exists.
@@ -3282,6 +3284,8 @@ pub enum ResponseData {
         entries: Vec<serde_json::Value>,
     },
     Status {
+        #[serde(default)]
+        draft_revision_supported: bool,
         uptime_secs: u64,
         accounts: Vec<String>,
         total_messages: u32,

@@ -2356,6 +2356,7 @@ pub(super) async fn reset_orphaned_draft(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
 ) -> HandlerResult {
+    let _draft_guard = state.acquire_draft_operation(draft_id).await;
     state.store.reset_orphaned_draft(draft_id).await?;
     Ok(ResponseData::Ack)
 }
@@ -2428,11 +2429,52 @@ fn materialize_text_alternative(draft: &Draft) -> std::borrow::Cow<'_, Draft> {
     std::borrow::Cow::Owned(owned)
 }
 
-pub(super) async fn save_draft(state: &AppState, draft: &Draft) -> HandlerResult {
+async fn checked_draft(
+    state: &AppState,
+    id: &mxr_core::DraftId,
+    expected: Option<i64>,
+) -> Result<Draft, crate::handler::HandlerError> {
+    let draft = state
+        .store
+        .get_draft(id)
+        .await?
+        .ok_or_else(|| format!("Draft not found: {id}"))?;
+    if expected.is_none() || expected != draft.revision {
+        return Err(crate::handler::HandlerError::DraftConflict {
+            expected,
+            current: draft.revision,
+        });
+    }
+    if state.store.get_draft_status(id).await? != Some(DraftStatus::Draft) {
+        return Err("draft is sending or has been sent and cannot be changed".into());
+    }
+    Ok(draft)
+}
+
+async fn create_draft_locked(state: &AppState, draft: &Draft) -> HandlerResult {
     validate_draft_content(draft)?;
     let draft = materialize_text_alternative(draft);
-    state.store.insert_draft(&draft).await?;
-    Ok(ResponseData::Ack)
+    if let Some(stored) = state.store.get_draft(&draft.id).await? {
+        // Lost creation responses may repeat the same identity and content.
+        let mut submitted = draft.clone().into_owned();
+        submitted.revision = stored.revision;
+        submitted.created_at = stored.created_at;
+        submitted.updated_at = stored.updated_at;
+        if serde_json::to_value(&submitted)? != serde_json::to_value(&stored)? {
+            return Err(crate::handler::HandlerError::DraftConflict {
+                expected: draft.revision,
+                current: stored.revision,
+            });
+        }
+    } else {
+        state.store.insert_draft(&draft).await?;
+    }
+    get_draft(state, &draft.id).await
+}
+
+pub(super) async fn save_draft(state: &AppState, draft: &Draft) -> HandlerResult {
+    let _draft_guard = state.acquire_draft_operation(&draft.id).await;
+    create_draft_locked(state, draft).await
 }
 
 /// Fetch a single stored draft by id so a client can load it into `$EDITOR`.
@@ -2449,22 +2491,15 @@ pub(super) async fn get_draft(state: &AppState, draft_id: &mxr_core::DraftId) ->
 /// rows still in `'draft'` status; when nothing is updated we inspect the
 /// current status to return a precise reason.
 ///
-/// An update may not change the draft's body *kind*. This is an upsert keyed on
-/// a caller-supplied id, and `DraftContent` deserialises a payload carrying no
-/// body fields at all to an empty markdown body — so an update that merely
-/// omits `body_html` would replace a supplied HTML document with `""` and
-/// report success. The store's own guard only covers `status`, so it does not
-/// help here. Refusing is the only safe answer: a caller that genuinely wants a
-/// different kind of message discards this draft and composes a new one.
+/// An update may not change the draft's body kind. `DraftContent` defaults a
+/// payload without body fields to empty markdown, so omitting `body_html`
+/// would erase an HTML document. Revision and status checks cannot catch that
+/// change; composing a different body kind requires a new draft.
 pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResult {
+    let _draft_guard = state.acquire_draft_operation(&draft.id).await;
     validate_draft_content(draft)?;
     let draft = &*materialize_text_alternative(draft);
-    let Some(stored) = state.store.get_draft(&draft.id).await? else {
-        return Err(crate::handler::HandlerError::Message(format!(
-            "Draft not found: {}",
-            draft.id
-        )));
-    };
+    let stored = checked_draft(state, &draft.id, draft.revision).await?;
     let stored_kind = stored.content.kind_str();
     let incoming_kind = draft.content.kind_str();
     if stored_kind != incoming_kind {
@@ -2534,7 +2569,7 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
                 .set_provider_draft_revision(&draft.id, &revision)
                 .await?;
         }
-        return Ok(ResponseData::Ack);
+        return get_draft(state, &draft.id).await;
     }
     match state.store.get_draft_status(&draft.id).await? {
         None => Err(crate::handler::HandlerError::Message(format!(
@@ -2555,10 +2590,13 @@ pub(super) async fn update_draft(state: &AppState, draft: &Draft) -> HandlerResu
     }
 }
 
-pub(super) async fn delete_draft(state: &AppState, draft_id: &mxr_core::DraftId) -> HandlerResult {
-    let Some(draft) = state.store.get_draft(draft_id).await? else {
-        return Ok(ResponseData::Ack);
-    };
+pub(super) async fn delete_draft(
+    state: &AppState,
+    draft_id: &mxr_core::DraftId,
+    expected_revision: Option<i64>,
+) -> HandlerResult {
+    let _draft_guard = state.acquire_draft_operation(draft_id).await;
+    let draft = checked_draft(state, draft_id, expected_revision).await?;
     if let Some(provider_draft_id) = state.store.get_provider_draft_id(draft_id).await? {
         let sender = state.send_provider_for_account(&draft.account_id)?;
         let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
@@ -2572,7 +2610,20 @@ pub(super) async fn delete_draft(state: &AppState, draft_id: &mxr_core::DraftId)
             }
         }
     }
-    state.store.delete_draft(draft_id).await?;
+    if !state
+        .store
+        .delete_draft_at_revision(draft_id, draft.revision.unwrap_or(0))
+        .await?
+    {
+        return Err(crate::handler::HandlerError::DraftConflict {
+            expected: expected_revision,
+            current: state
+                .store
+                .get_draft(draft_id)
+                .await?
+                .and_then(|draft| draft.revision),
+        });
+    }
     remove_provider_draft_cache(state, draft_id).await;
     Ok(ResponseData::Ack)
 }
@@ -2594,9 +2645,35 @@ pub(crate) async fn reconcile_provider_drafts(
     }
 
     let sender = state.send_provider_for_account(account_id)?;
-    let _provider_guard = state.acquire_provider_operation(account_id).await;
     let mut removed = 0;
-    for (local_draft_id, provider_draft_id, stored_revision) in links {
+    for (local_draft_id, _, _) in links {
+        let _draft_guard = state.acquire_draft_operation(&local_draft_id).await;
+        let Some(local) = state
+            .store
+            .get_draft(&local_draft_id)
+            .await
+            .map_err(|error| error.to_string())?
+        else {
+            continue;
+        };
+        if state
+            .store
+            .get_draft_status(&local_draft_id)
+            .await
+            .map_err(|error| error.to_string())?
+            != Some(DraftStatus::Draft)
+        {
+            continue;
+        }
+        let Some((provider_draft_id, stored_revision)) = state
+            .store
+            .get_provider_draft_link(&local_draft_id)
+            .await
+            .map_err(|error| error.to_string())?
+        else {
+            continue;
+        };
+        let _provider_guard = state.acquire_provider_operation(account_id).await;
         match sender.fetch_draft(&provider_draft_id).await {
             Ok(Some(snapshot))
                 if stored_revision.as_deref() == Some(snapshot.revision.as_str()) => {}
@@ -2644,7 +2721,7 @@ pub(crate) async fn reconcile_provider_drafts(
             Ok(None) => {
                 state
                     .store
-                    .delete_draft(&local_draft_id)
+                    .delete_draft_at_revision(&local_draft_id, local.revision.unwrap_or(0))
                     .await
                     .map_err(|error| error.to_string())?;
                 removed += 1;
@@ -2740,6 +2817,7 @@ async fn draft_from_server_snapshot(
             .and_then(|reply| reply.thread_id.clone()),
     });
     Ok(Draft {
+        revision: existing.revision,
         id: existing.id.clone(),
         account_id: existing.account_id.clone(),
         from: headers.from.or_else(|| existing.from.clone()),
@@ -3179,6 +3257,7 @@ pub(super) async fn send_draft(
     draft: &Draft,
     override_safety_token: Option<&str>,
 ) -> HandlerResult {
+    let _draft_guard = state.acquire_draft_operation(&draft.id).await;
     if let Some(receipt) = state.store.get_sent_draft_receipt(&draft.id).await? {
         return Ok(sent_draft_receipt_response(receipt));
     }
@@ -3186,11 +3265,15 @@ pub(super) async fn send_draft(
     validate_draft_content(draft)?;
     let draft = &*materialize_text_alternative(draft);
 
-    if state.store.get_draft_status(&draft.id).await?.is_none() {
-        state.store.insert_draft_if_absent(draft).await?;
+    {
+        if state.store.get_draft_status(&draft.id).await?.is_none() {
+            state.store.insert_draft_if_absent(draft).await?;
+        } else {
+            checked_draft(state, &draft.id, draft.revision).await?;
+        }
     }
 
-    send_stored_draft(state, &draft.id, override_safety_token).await
+    send_stored_draft_locked(state, &draft.id, override_safety_token).await
 }
 
 /// Everything `send_stored_draft` checks before it reaches the provider:
@@ -3249,6 +3332,15 @@ pub(super) async fn list_scheduled_sends(
 }
 
 pub(crate) async fn send_stored_draft(
+    state: &AppState,
+    draft_id: &mxr_core::DraftId,
+    override_safety_token: Option<&str>,
+) -> HandlerResult {
+    let _draft_guard = state.acquire_draft_operation(draft_id).await;
+    send_stored_draft_locked(state, draft_id, override_safety_token).await
+}
+
+async fn send_stored_draft_locked(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
     override_safety_token: Option<&str>,
@@ -3745,7 +3837,7 @@ async fn persist_reply_thread_id(state: &AppState, draft: &Draft) {
     };
     if let Err(error) = state
         .store
-        .set_draft_reply_headers(&draft.id, headers)
+        .set_draft_reply_headers(&draft.id, headers, draft.revision.unwrap_or(0))
         .await
     {
         tracing::warn!(draft_id = %draft.id, %error, "could not cache provider thread id on draft");
@@ -3767,26 +3859,28 @@ async fn reply_parent_thread_id(state: &AppState, draft: &Draft) -> Option<mxr_c
 }
 
 pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> HandlerResult {
-    validate_draft_content(draft)?;
-    let draft = &*materialize_text_alternative(draft);
+    let _draft_guard = state.acquire_draft_operation(&draft.id).await;
+    if state.store.get_draft(&draft.id).await?.is_some() {
+        checked_draft(state, &draft.id, draft.revision).await?;
+    } else {
+        create_draft_locked(state, draft).await?;
+    }
+    let canonical = state
+        .store
+        .get_draft(&draft.id)
+        .await?
+        .ok_or_else(|| "Draft disappeared".to_string())?;
+    let draft = &canonical;
     let sender = match state.send_provider_for_account(&draft.account_id) {
         Ok(sender) => sender,
         Err(error) => {
             tracing::info!(error, "No server draft provider; saving local draft");
-            return if state.store.get_draft(&draft.id).await?.is_some() {
-                Ok(ResponseData::Ack)
-            } else {
-                save_draft(state, draft).await
-            };
+            return get_draft(state, &draft.id).await;
         }
     };
     // Validate the per-message From (owned-address) exactly like the send
     // path — an unvalidated `Draft.from` must never reach a provider payload.
     let from = resolve_from_address(state, &draft.account_id, draft.from.as_ref()).await?;
-    // A provider draft is always anchored by the same local DraftId. This also
-    // covers clients that choose "save to server" on their first save instead
-    // of issuing SaveDraft followed by SaveDraftToServer.
-    state.store.insert_draft_if_absent(draft).await?;
     let _provider_guard = state.acquire_provider_operation(&draft.account_id).await;
     let threaded = resolved_reply_thread(sender.as_ref(), draft).await;
     let draft = threaded.as_ref().unwrap_or(draft);
@@ -3803,7 +3897,7 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
                         .await?;
                 }
                 tracing::info!(provider_draft_id, "Draft updated on server");
-                return Ok(ResponseData::Ack);
+                return get_draft(state, &draft.id).await;
             }
             Err(MxrError::NotFound(_)) => {
                 // The user may have deleted the provider draft directly. Drop
@@ -3833,15 +3927,11 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
                 .set_provider_draft_link(&draft.id, &draft_id, revision.as_deref())
                 .await?;
             tracing::info!(draft_id, linked, "Draft saved to server");
-            Ok(ResponseData::Ack)
+            get_draft(state, &draft.id).await
         }
         Ok(None) => {
             tracing::info!("Provider does not support server-side drafts; saving local draft");
-            if state.store.get_draft(&draft.id).await?.is_some() {
-                Ok(ResponseData::Ack)
-            } else {
-                save_draft(state, draft).await
-            }
+            get_draft(state, &draft.id).await
         }
         Err(error) => Err(format!("Failed to save draft: {error}").into()),
     }
@@ -4191,6 +4281,7 @@ async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerR
             };
             let now = chrono::Utc::now();
             let draft = Draft {
+                revision: Some(1),
                 id: mxr_core::DraftId::new(),
                 account_id: envelope.account_id.clone(),
                 from: None,
@@ -4748,6 +4839,7 @@ mod safety_context_wiring_tests {
 
     fn draft_to(account_id: AccountId, to: Vec<Address>, body: &str) -> Draft {
         Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id,
             from: None,
@@ -5170,6 +5262,7 @@ mod sent_append_tests {
 
     fn sent_draft(account_id: &AccountId) -> Draft {
         Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: account_id.clone(),
             from: None,

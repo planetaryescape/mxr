@@ -2,6 +2,7 @@ import { apiFetch } from "@/api/client";
 
 export interface DraftSummary {
   id: string;
+  revision?: number | null;
   account_id: string;
   subject: string;
   recipients: string;
@@ -20,10 +21,17 @@ export function fetchDrafts(): Promise<{ drafts: DraftSummary[] }> {
   return apiFetch<{ drafts: DraftSummary[] }>("/api/v1/mail/drafts");
 }
 
-export function deleteDraft(draftId: string): Promise<{ ok: boolean }> {
-  return apiFetch<{ ok: boolean }>(`/api/v1/mail/drafts/${draftId}/stored`, {
-    method: "DELETE",
-  });
+export function deleteDraft(draft: DraftSummary): Promise<{ ok: boolean }> {
+  if (draft.revision == null)
+    return Promise.reject(
+      new Error("Daemon does not support durable draft revisions; upgrade before deleting"),
+    );
+  return apiFetch<{ ok: boolean }>(
+    `/api/v1/mail/drafts/${draft.id}/stored?expected_revision=${draft.revision}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 /** A stored draft stuck in `sending` (the send never confirmed). Raw daemon

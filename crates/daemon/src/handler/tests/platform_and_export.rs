@@ -306,6 +306,7 @@ async fn dispatch_list_drafts_includes_all_accounts() {
     state.store.insert_account(&other_account).await.unwrap();
 
     let old_draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id: default_account_id,
         from: None,
@@ -323,6 +324,7 @@ async fn dispatch_list_drafts_includes_all_accounts() {
         updated_at: chrono::Utc::now() - chrono::Duration::minutes(5),
     };
     let new_draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id: other_account_id,
         from: None,
@@ -374,6 +376,7 @@ async fn dispatch_save_and_send_stored_draft() {
     );
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: None,
@@ -405,7 +408,7 @@ async fn dispatch_save_and_send_stored_draft() {
     assert!(matches!(
         save_resp.payload,
         IpcPayload::Response(Response::Ok {
-            data: ResponseData::Ack
+            data: ResponseData::Draft { .. }
         })
     ));
 
@@ -447,6 +450,7 @@ async fn dispatch_send_stored_draft_replay_returns_original_receipt_without_rese
     );
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: None,
@@ -518,6 +522,7 @@ async fn dispatch_send_draft_replay_returns_original_receipt_without_resending()
     );
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: None,
@@ -594,6 +599,7 @@ async fn override_token_unblocks_send_exactly_once() {
 
     // PEM private key in the body → Blocker.
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id: account_id.clone(),
         from: None,
@@ -732,6 +738,7 @@ async fn override_token_unblocks_send_exactly_once() {
     // override against a new draft, sending once, then trying the
     // SAME token a second time to assert single-use.
     let draft2 = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id: account_id.clone(),
         from: None,
@@ -809,6 +816,7 @@ async fn override_token_unblocks_send_exactly_once() {
     // can't re-send the same draft (already gone after send), so we
     // make a third draft and try to use the spent token.
     let draft3 = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         ..draft2
     };
@@ -865,6 +873,7 @@ async fn blocked_send_error_carries_usable_override_token() {
     );
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id: account_id.clone(),
         from: None,
@@ -982,6 +991,7 @@ async fn send_stored_draft_touches_heartbeat_after_cas() {
     );
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: None,
@@ -1061,6 +1071,7 @@ async fn send_stored_draft_blocks_empty_recipient_before_sending_state() {
     );
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: None,
@@ -1120,6 +1131,7 @@ async fn send_draft_blocks_invalid_recipient_before_provider_send() {
     );
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: None,
@@ -1199,6 +1211,7 @@ async fn send_stored_reply_all_blocks_missing_original_recipient_before_sending_
     state.store.upsert_envelope(&parent).await.unwrap();
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: None,
@@ -1278,6 +1291,7 @@ async fn dispatch_send_draft_preserves_parent_thread_for_synthetic_sent() {
         .unwrap();
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: None,
@@ -1347,6 +1361,7 @@ async fn dispatch_save_draft_to_server_falls_back_to_local_draft() {
     );
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: None,
@@ -1378,7 +1393,7 @@ async fn dispatch_save_draft_to_server_falls_back_to_local_draft() {
     assert!(matches!(
         resp.payload,
         IpcPayload::Response(Response::Ok {
-            data: ResponseData::Ack
+            data: ResponseData::Draft { .. }
         })
     ));
     assert!(state.store.get_draft(&draft.id).await.unwrap().is_some());
@@ -1668,6 +1683,7 @@ async fn dispatch_save_draft_to_server() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 
     let draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id: state.default_account_id(),
         from: None,
@@ -1698,7 +1714,7 @@ async fn dispatch_save_draft_to_server() {
 
     match resp.payload {
         IpcPayload::Response(Response::Ok {
-            data: ResponseData::Ack,
+            data: ResponseData::Draft { .. },
         }) => {}
         other => panic!("Expected Ack, got {other:?}"),
     }
@@ -1721,6 +1737,7 @@ async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() 
             .unwrap(),
     );
     let mut draft = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         account_id,
         from: None,
@@ -1756,7 +1773,7 @@ async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() 
     assert!(matches!(
         first.payload,
         IpcPayload::Response(Response::Ok {
-            data: ResponseData::Ack
+            data: ResponseData::Draft { .. }
         })
     ));
     let provider_draft_id = state
@@ -1782,7 +1799,7 @@ async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() 
     assert!(matches!(
         second.payload,
         IpcPayload::Response(Response::Ok {
-            data: ResponseData::Ack
+            data: ResponseData::Draft { .. }
         })
     ));
     assert_eq!(
@@ -1811,6 +1828,7 @@ async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() 
     assert_eq!(pulled.content.analysis_text(), "Remote body");
 
     let locally_deleted = mxr_core::types::Draft {
+        revision: Some(1),
         id: mxr_core::DraftId::new(),
         subject: "Delete from mxr".into(),
         ..draft.clone()
@@ -1830,7 +1848,7 @@ async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() 
     assert!(matches!(
         save_local_delete.payload,
         IpcPayload::Response(Response::Ok {
-            data: ResponseData::Ack
+            data: ResponseData::Draft { .. }
         })
     ));
     let locally_deleted_provider_id = state
@@ -1845,6 +1863,7 @@ async fn dispatch_save_draft_to_server_updates_linked_provider_draft_in_place() 
             id: 54,
             source: ::mxr_protocol::ClientKind::default(),
             payload: IpcPayload::Request(Request::DeleteDraft {
+                expected_revision: Some(1),
                 draft_id: locally_deleted.id.clone(),
             }),
         },

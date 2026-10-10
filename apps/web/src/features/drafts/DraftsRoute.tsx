@@ -75,7 +75,7 @@ export function DraftsRoute() {
                 key={draft.id}
                 draft={draft}
                 deleting={remove.isPending}
-                onDelete={() => remove.mutate(draft.id)}
+                onDelete={() => remove.mutate(draft)}
               />
             ))}
           </ul>

@@ -74,13 +74,21 @@ export function useComposeAutosave({
         composeQueueKey(snapshot.draftPath),
         async () =>
           await updateSession.mutateAsync({
+            accountId: snapshot.accountId,
             draftPath: snapshot.draftPath,
             frontmatter: snapshot.frontmatter,
             body: snapshot.body,
+            expectedRevision: draftRef.current?.revision ?? snapshot.revision,
           }),
       );
       if (result.status !== "committed") return undefined;
       const response = result.value;
+      if (draftRef.current)
+        draftRef.current = {
+          ...draftRef.current,
+          draftId: response.session.draftId ?? undefined,
+          revision: response.session.revision,
+        };
       lastSavedFingerprintRef.current = snapshot.fingerprint;
       const latest = draftRef.current;
       if (latest && draftFingerprint(latest) === snapshot.fingerprint) {
@@ -90,7 +98,12 @@ export function useComposeAutosave({
         setDirty(false);
         rememberActiveDraft(intentKey, next);
       } else if (latest) {
-        setDraft({ ...latest, issues: response.session.issues });
+        setDraft({
+          ...latest,
+          draftId: response.session.draftId ?? undefined,
+          revision: response.session.revision,
+          issues: response.session.issues,
+        });
       }
       setLastSavedAt(new Date());
       void queryClient.invalidateQueries({ queryKey: ["drafts"] });

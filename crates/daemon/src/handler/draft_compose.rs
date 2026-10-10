@@ -928,6 +928,7 @@ mod tests {
             .llm
             .replace_feature_providers(providers, std::collections::HashMap::new());
         let draft = mxr_core::types::Draft {
+            revision: Some(1),
             id: mxr_core::DraftId::new(),
             account_id: account_id.clone(),
             from: None,

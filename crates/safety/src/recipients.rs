@@ -147,6 +147,7 @@ mod tests {
 
     fn d(addrs: Vec<Address>) -> Draft {
         Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: AccountId::new(),
             from: None,

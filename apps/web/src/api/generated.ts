@@ -439,7 +439,6 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start compose session */
         post: operations["compose_session_start"];
         delete?: never;
         options?: never;
@@ -490,7 +489,6 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Discard compose session */
         post: operations["compose_session_discard"];
         delete?: never;
         options?: never;
@@ -524,7 +522,6 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Refresh compose session */
         post: operations["compose_session_refresh"];
         delete?: never;
         options?: never;
@@ -575,7 +572,6 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Save compose session */
         post: operations["compose_session_save"];
         delete?: never;
         options?: never;
@@ -592,7 +588,6 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Store a compose session as a local draft and schedule it */
         post: operations["compose_session_schedule"];
         delete?: never;
         options?: never;
@@ -626,7 +621,6 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Update compose session */
         post: operations["compose_session_update"];
         delete?: never;
         options?: never;
@@ -881,7 +875,6 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Persist draft locally (SaveDraft) */
         post: operations["mail_drafts_save_local"];
         delete?: never;
         options?: never;
@@ -933,7 +926,6 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete stored draft */
         delete: operations["mail_drafts_delete_stored"];
         options?: never;
         head?: never;
@@ -4396,6 +4388,113 @@ export interface components {
         CommitmentDirectionData: "yours" | "theirs";
         /** @enum {string} */
         CommitmentStatusData: "open" | "resolved" | "expired";
+        /** @description YAML frontmatter for compose files. */
+        ComposeFrontmatter: {
+            attach?: string[];
+            bcc?: string;
+            cc?: string;
+            from: string;
+            "in-reply-to"?: string | null;
+            intent?: components["schemas"]["DraftIntent"];
+            references?: string[];
+            signature?: string | null;
+            subject: string;
+            /** @description Provider-native thread hint (e.g. Gmail thread id). Used so replies stay in-thread. */
+            "thread-id"?: string | null;
+            to: string;
+        };
+        ComposeIssueView: {
+            message: string;
+            severity: string;
+        };
+        ComposeSessionData: {
+            accountId?: string | null;
+            bodyMarkdown: string;
+            cursorLine?: number | null;
+            draftId?: string | null;
+            draftPath: string;
+            editorCommand?: string | null;
+            frontmatter: components["schemas"]["ComposeFrontmatter"];
+            issues: components["schemas"]["ComposeIssueView"][];
+            kind?: string | null;
+            previewHtml: string;
+            rawContent: string;
+            /** Format: int64 */
+            revision?: number | null;
+        };
+        /** @enum {string} */
+        ComposeSessionKindRequest: "new" | "reply" | "reply_all" | "forward" | "invite_reply";
+        ComposeSessionPathRequest: {
+            draft_path: string;
+            /** Format: int64 */
+            expected_revision?: number | null;
+        };
+        ComposeSessionResponse: {
+            session: components["schemas"]["ComposeSessionData"];
+        };
+        ComposeSessionRestoreRequest: {
+            draft_id: string;
+        };
+        ComposeSessionScheduleRequest: {
+            account_id: string;
+            /**
+             * @description The stored draft this session was restored from, if any. With it the
+             *     schedule updates that draft in place; without it a new local draft is
+             *     stored.
+             */
+            draft_id?: string | null;
+            draft_path: string;
+            /** Format: int64 */
+            expected_revision?: number | null;
+            /** Format: date-time */
+            send_at: string;
+        };
+        ComposeSessionSendRequest: {
+            account_id: string;
+            /**
+             * @description The stored draft this session was restored from, when it was one — the
+             *     same id the client passed to `ComposeSessionRestoreRequest`. Acted on by
+             *     the save handler only: with it, saving updates that local draft in
+             *     place before any requested provider link/sync.
+             */
+            draft_id?: string | null;
+            draft_path: string;
+            /** Format: int64 */
+            expected_revision?: number | null;
+            /**
+             * @description Token from a prior safety-check report authorizing a send despite
+             *     blockers. Forwarded to `SendDraft`; ignored by save/check handlers.
+             */
+            override_safety_token?: string | null;
+            /**
+             * @description Explicit provider-link request. Linked drafts already synchronize when
+             *     updated; this flag links a local-only draft to the provider.
+             */
+            save_to_server?: boolean;
+        };
+        ComposeSessionStartRequest: {
+            /**
+             * @description Required when `kind == InviteReply`. One of `accept`, `tentative`,
+             *     `decline`. Ignored for other kinds.
+             */
+            action?: string | null;
+            kind: components["schemas"]["ComposeSessionKindRequest"];
+            message_id?: string | null;
+            to?: string | null;
+        };
+        ComposeSessionUpdateRequest: {
+            account_id?: string | null;
+            attach?: string[];
+            bcc: string;
+            body?: string | null;
+            cc: string;
+            draft_path: string;
+            /** Format: int64 */
+            expected_revision?: number | null;
+            from: string;
+            subject: string;
+            to: string;
+        };
         /** @description The box at the bottom, already addressed. */
         ComposerData: {
             /** @description "Reply to Samir · Contract renewal". */
@@ -4922,6 +5021,9 @@ export interface components {
             /** @description The deliverable as a short clause, such as "send the deck". */
             what: string;
         };
+        DiscardedComposeResponse: {
+            ok: boolean;
+        };
         DoctorDataStats: {
             /** Format: int32 */
             accounts: number;
@@ -5065,6 +5167,11 @@ export interface components {
             inline_calendar_reply?: null | components["schemas"]["InlineCalendarReply"];
             intent?: components["schemas"]["DraftIntent"];
             reply_headers?: null | components["schemas"]["ReplyHeaders"];
+            /**
+             * Format: int64
+             * @description Durable local content revision; absent only for unsaved or legacy drafts.
+             */
+            revision?: number | null;
             subject: string;
             to: components["schemas"]["Address"][];
             /** Format: date-time */
@@ -5082,6 +5189,17 @@ export interface components {
             id: string;
             what: string;
             who_owes: string;
+        };
+        DraftConflictDetails: {
+            /** Format: int64 */
+            current_revision?: number | null;
+            /** Format: int64 */
+            expected_revision?: number | null;
+        };
+        DraftConflictResponse: {
+            code: string;
+            details?: null | components["schemas"]["DraftConflictDetails"];
+            error: string;
         };
         /**
          * @description Documents the flattened [`DraftContent`] wire shape for OpenAPI.
@@ -8448,6 +8566,8 @@ export interface components {
             /** @enum {string} */
             cmd: "DeleteDraft";
             draft_id: components["schemas"]["DraftId"];
+            /** Format: int64 */
+            expected_revision?: number | null;
         } | {
             /** @enum {string} */
             cmd: "GetDraft";
@@ -9466,6 +9586,7 @@ export interface components {
              *     `daemon_pid`, `feature_health`) are always a real reading.
              */
             degraded?: boolean;
+            draft_revision_supported?: boolean;
             feature_health?: null | components["schemas"]["FeatureHealthReport"];
             /** @enum {string} */
             kind: "Status";
@@ -9993,6 +10114,12 @@ export interface components {
             /** Format: int64 */
             updated_at: number;
         };
+        SavedDraftResponse: {
+            draft_id: components["schemas"]["DraftId"];
+            ok: boolean;
+            /** Format: int64 */
+            revision?: number | null;
+        };
         SavedSearch: {
             account_id?: null | components["schemas"]["AccountId"];
             /** Format: date-time */
@@ -10008,6 +10135,13 @@ export interface components {
         };
         /** Format: uuid */
         SavedSearchId: string;
+        ScheduledComposeResponse: {
+            cleanup_warnings: string[];
+            draft_id: components["schemas"]["DraftId"];
+            ok: boolean;
+            /** Format: date-time */
+            send_at: string;
+        };
         /** @description One draft waiting to be sent later. */
         ScheduledSendData: {
             account_id: components["schemas"]["AccountId"];
@@ -12360,21 +12494,38 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeSessionStartRequest"];
+            };
+        };
         responses: {
-            /** @description OK */
+            /** @description Compose session result */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ComposeSessionResponse"];
+                };
             };
-            /** @description Missing or invalid bridge token */
-            401: {
+            /** @description Stale draft revision; preserve unsent text */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Invalid compose session */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
             };
         };
     };
@@ -12435,21 +12586,38 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeSessionPathRequest"];
+            };
+        };
         responses: {
-            /** @description OK */
+            /** @description Compose session result */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DiscardedComposeResponse"];
+                };
             };
-            /** @description Missing or invalid bridge token */
-            401: {
+            /** @description Stale draft revision; preserve unsent text */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Invalid compose session */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
             };
         };
     };
@@ -12491,21 +12659,38 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeSessionPathRequest"];
+            };
+        };
         responses: {
-            /** @description OK */
+            /** @description Compose session result */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ComposeSessionResponse"];
+                };
             };
-            /** @description Missing or invalid bridge token */
-            401: {
+            /** @description Stale draft revision; preserve unsent text */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Invalid compose session */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
             };
         };
     };
@@ -12516,14 +12701,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeSessionRestoreRequest"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ComposeSessionResponse"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {
@@ -12573,21 +12764,45 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeSessionSendRequest"];
+            };
+        };
         responses: {
-            /** @description OK */
+            /** @description Saved draft session */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SavedDraftResponse"];
+                };
             };
-            /** @description Missing or invalid bridge token */
+            /** @description Missing bridge token */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Stale draft revision; preserve unsent text */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Invalid draft or unsupported daemon */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
             };
         };
     };
@@ -12598,21 +12813,45 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeSessionScheduleRequest"];
+            };
+        };
         responses: {
-            /** @description OK */
+            /** @description Saved draft session */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ScheduledComposeResponse"];
+                };
             };
-            /** @description Missing or invalid bridge token */
+            /** @description Missing bridge token */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Stale draft revision; preserve unsent text */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Invalid draft or unsupported daemon */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
             };
         };
     };
@@ -12648,21 +12887,45 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeSessionUpdateRequest"];
+            };
+        };
         responses: {
-            /** @description OK */
+            /** @description Saved draft session */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ComposeSessionResponse"];
+                };
             };
-            /** @description Missing or invalid bridge token */
+            /** @description Missing bridge token */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Stale draft revision; preserve unsent text */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Invalid draft or unsupported daemon */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
             };
         };
     };
@@ -13056,21 +13319,38 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Draft"];
+            };
+        };
         responses: {
-            /** @description OK */
+            /** @description Canonical saved draft */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
-            /** @description Missing or invalid bridge token */
-            401: {
+            /** @description Stale revision */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Invalid draft or legacy daemon */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
             };
         };
     };
@@ -13126,26 +13406,44 @@ export interface operations {
     };
     mail_drafts_delete_stored: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Revision from the deletion preview */
+                expected_revision: number;
+            };
             header?: never;
-            path?: never;
+            path: {
+                draft_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Draft deleted */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
-            /** @description Missing or invalid bridge token */
-            401: {
+            /** @description Stale revision */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Legacy daemon */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
             };
         };
     };

@@ -1,4 +1,5 @@
 import { apiFetch } from "@/api/client";
+import type { components } from "@/api/generated";
 
 export interface ComposeFrontmatter {
   to: string;
@@ -14,22 +15,8 @@ export interface ComposeIssue {
   message: string;
 }
 
-export interface ComposeSession {
-  draftPath: string;
-  rawContent: string;
-  frontmatter: ComposeFrontmatter;
-  bodyMarkdown: string;
-  previewHtml?: string;
-  issues: ComposeIssue[];
-  accountId?: string;
-  kind?: string;
-  editorCommand?: string;
-  cursorLine?: number;
-}
-
-export interface ComposeSessionResponse {
-  session: ComposeSession;
-}
+export type ComposeSession = components["schemas"]["ComposeSessionData"];
+export type ComposeSessionResponse = components["schemas"]["ComposeSessionResponse"];
 
 export interface RuntimeAccount {
   account_id: string;
@@ -99,14 +86,17 @@ export function refreshComposeSession(draftPath: string): Promise<ComposeSession
 }
 
 export function updateComposeSession(input: {
+  accountId?: string;
   draftPath: string;
   frontmatter: ComposeFrontmatter;
   body: string;
+  expectedRevision?: number | null;
 }): Promise<ComposeSessionResponse> {
   return apiFetch<ComposeSessionResponse>("/api/v1/mail/compose/session/update", {
     method: "POST",
     body: {
       draft_path: input.draftPath,
+      account_id: input.accountId,
       to: input.frontmatter.to,
       cc: input.frontmatter.cc,
       bcc: input.frontmatter.bcc,
@@ -114,6 +104,7 @@ export function updateComposeSession(input: {
       from: input.frontmatter.from,
       attach: input.frontmatter.attach,
       body: input.body,
+      expected_revision: input.expectedRevision,
     },
   });
 }
@@ -211,14 +202,16 @@ export function scheduleComposeSession(input: {
   draftPath: string;
   accountId: string;
   draftId?: string;
+  expectedRevision?: number | null;
   sendAt: Date;
-}): Promise<{ ok: boolean; draft_id: string; send_at: string }> {
+}): Promise<components["schemas"]["ScheduledComposeResponse"]> {
   return apiFetch("/api/v1/mail/compose/session/schedule", {
     method: "POST",
     body: {
       draft_path: input.draftPath,
       account_id: input.accountId,
-      ...(input.draftId ? { draft_id: input.draftId } : {}),
+      draft_id: input.draftId,
+      expected_revision: input.expectedRevision,
       send_at: input.sendAt.toISOString(),
     },
   });
@@ -257,22 +250,30 @@ export function saveComposeSession(
   draftPath: string,
   accountId: string,
   draftId?: string,
-): Promise<{ ok: boolean }> {
-  return apiFetch<{ ok: boolean }>("/api/v1/mail/compose/session/save", {
-    method: "POST",
-    body: {
-      draft_path: draftPath,
-      account_id: accountId,
-      save_to_server: true,
-      ...(draftId ? { draft_id: draftId } : {}),
+  expectedRevision?: number | null,
+): Promise<components["schemas"]["SavedDraftResponse"]> {
+  return apiFetch<components["schemas"]["SavedDraftResponse"]>(
+    "/api/v1/mail/compose/session/save",
+    {
+      method: "POST",
+      body: {
+        draft_path: draftPath,
+        account_id: accountId,
+        save_to_server: true,
+        expected_revision: expectedRevision,
+        draft_id: draftId,
+      },
     },
-  });
+  );
 }
 
-export function discardComposeSession(draftPath: string): Promise<{ ok: boolean }> {
+export function discardComposeSession(
+  draftPath: string,
+  expectedRevision?: number | null,
+): Promise<{ ok: boolean }> {
   return apiFetch<{ ok: boolean }>("/api/v1/mail/compose/session/discard", {
     method: "POST",
-    body: { draft_path: draftPath },
+    body: { draft_path: draftPath, expected_revision: expectedRevision },
   });
 }
 

@@ -814,6 +814,7 @@ async fn update_compose_session(
             .as_deref()
             .unwrap_or(&metadata.account_id.to_string()),
         Some(metadata.id),
+        ComposeDraftValidation::Incomplete,
     )
     .await?;
     persist_compose_draft(
@@ -868,8 +869,13 @@ async fn send_compose_session(
         "bridge compose send requested"
     );
     // Autosave persists this session under its stable local draft identity.
-    validate_compose_session_for_submission(Path::new(&request.draft_path), false).await?;
-    let draft = compose_draft_from_file(&request.draft_path, &request.account_id, None).await?;
+    let draft = compose_draft_from_file(
+        &request.draft_path,
+        &request.account_id,
+        None,
+        ComposeDraftValidation::Send,
+    )
+    .await?;
     let draft_id = draft.id.clone();
     // The sent message id is what `POST /mail/reminders` keys on, so a client
     // can offer "send and remind" without re-finding the message. A bare `Ack`
@@ -986,8 +992,13 @@ async fn check_compose_session_safety(
     // Nothing is stored, so the id never leaves this report: the safety
     // pipeline reads recipients and body only, and override tokens are keyed
     // by blocker kind rather than by draft.
-    validate_compose_session_for_submission(Path::new(&request.draft_path), false).await?;
-    let draft = compose_draft_from_file(&request.draft_path, &request.account_id, None).await?;
+    let draft = compose_draft_from_file(
+        &request.draft_path,
+        &request.account_id,
+        None,
+        ComposeDraftValidation::Send,
+    )
+    .await?;
     match ipc_request_with_id(
         &state.config.socket_path,
         request_id,
@@ -1016,8 +1027,13 @@ async fn suggest_compose_collaborators(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let request_id = bridge_request_id(&headers);
     // Read-only suggestion lookup; nothing is stored under this draft's id.
-    validate_compose_session_for_submission(Path::new(&request.draft_path), false).await?;
-    let draft = compose_draft_from_file(&request.draft_path, &request.account_id, None).await?;
+    let draft = compose_draft_from_file(
+        &request.draft_path,
+        &request.account_id,
+        None,
+        ComposeDraftValidation::Send,
+    )
+    .await?;
     match ipc_request_with_id(
         &state.config.socket_path,
         request_id,
@@ -1059,9 +1075,13 @@ async fn save_compose_session(
         editing_stored_draft,
         "bridge compose save requested"
     );
-    validate_compose_session_for_submission(Path::new(&request.draft_path), true).await?;
-    let candidate =
-        compose_draft_from_file(&request.draft_path, &request.account_id, stored_draft_id).await?;
+    let candidate = compose_draft_from_file(
+        &request.draft_path,
+        &request.account_id,
+        stored_draft_id,
+        ComposeDraftValidation::Save,
+    )
+    .await?;
     let draft = persist_compose_draft(
         &state.config.socket_path,
         Path::new(&request.draft_path),
@@ -1149,9 +1169,13 @@ async fn schedule_compose_session(
         editing_stored_draft,
         "bridge compose schedule requested"
     );
-    validate_compose_session_for_submission(Path::new(&request.draft_path), false).await?;
-    let mut draft =
-        compose_draft_from_file(&request.draft_path, &request.account_id, stored_draft_id).await?;
+    let mut draft = compose_draft_from_file(
+        &request.draft_path,
+        &request.account_id,
+        stored_draft_id,
+        ComposeDraftValidation::Send,
+    )
+    .await?;
     draft.revision = request.expected_revision;
     let draft_id = draft.id.clone();
     let store_request = if draft.revision.is_some() {
@@ -2403,6 +2427,7 @@ async fn create_compose_session(
         &draft_path.display().to_string(),
         &account.account_id.to_string(),
         None,
+        ComposeDraftValidation::Incomplete,
     )
     .await?;
     write_draft_session_metadata(&draft_path, &initial).await?;
@@ -2588,22 +2613,22 @@ fn extract_thread_id(content: &str) -> Result<Option<String>, BridgeError> {
     Ok(frontmatter.thread_id)
 }
 
-/// Build the daemon `Draft` a compose file describes.
-///
-/// `draft_id` names the stored draft this session is editing, when there is
-/// one: carrying it through is what lets a save land on the draft the user
-/// opened instead of storing a second copy of it. A session with no stored
-/// draft behind it mints a fresh id, so saving creates one.
-async fn validate_compose_session_for_submission(
-    path: &Path,
-    saving: bool,
+#[derive(Clone, Copy)]
+enum ComposeDraftValidation {
+    Incomplete,
+    Save,
+    Send,
+}
+
+fn validate_compose_submission(
+    frontmatter: &ComposeFrontmatter,
+    body: &str,
+    validation: ComposeDraftValidation,
 ) -> Result<(), BridgeError> {
-    let raw = read_compose_file(path).await?;
-    let (frontmatter, body) = parse_compose_content(&raw)?;
-    let issues = if saving {
-        mxr_compose::validate_draft_for_save(&frontmatter, &body)
-    } else {
-        validate_draft(&frontmatter, &body)
+    let issues = match validation {
+        ComposeDraftValidation::Incomplete => return Ok(()),
+        ComposeDraftValidation::Save => mxr_compose::validate_draft_for_save(frontmatter, body),
+        ComposeDraftValidation::Send => validate_draft(frontmatter, body),
     };
     for issue in issues {
         match issue {
@@ -2623,13 +2648,21 @@ async fn validate_compose_session_for_submission(
     Ok(())
 }
 
+/// Build the daemon `Draft` a compose file describes.
+///
+/// `draft_id` names the stored draft this session is editing, when there is
+/// one: carrying it through is what lets a save land on the draft the user
+/// opened instead of storing a second copy of it. A session with no stored
+/// draft behind it mints a fresh id, so saving creates one.
 async fn compose_draft_from_file(
     draft_path: &str,
     account_id: &str,
     draft_id: Option<DraftId>,
+    validation: ComposeDraftValidation,
 ) -> Result<Draft, BridgeError> {
     let raw_content = read_compose_file(Path::new(draft_path)).await?;
     let (frontmatter, body) = parse_compose_content(&raw_content)?;
+    validate_compose_submission(&frontmatter, &body, validation)?;
     if let Some(mut existing) = read_draft_session_metadata(Path::new(draft_path)).await? {
         if draft_id.as_ref().is_some_and(|id| id != &existing.id)
             || (existing.revision.is_some() && existing.account_id != parse_account_id(account_id)?)

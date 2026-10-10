@@ -47,7 +47,7 @@ function setup(path: string) {
   return renderHook(
     () => {
       const [draft, setDraft] = useState<ComposeDraftState | null>(
-        draftFromSession(session(path, 1, "first")),
+        draftFromSession(session(path, 1, "first").session),
       );
       const draftRef = useRef(draft);
       draftRef.current = draft;
@@ -92,8 +92,8 @@ test("queued own saves advance the token even when the first UI result is stale"
   });
   await act(async () => first.resolve(session("/tmp/overlapping-draft.md", 2, "first")));
   await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
-  expect(update.mock.calls[1][0].expectedRevision).toBe(2);
-  expect(update.mock.calls[1][0].body).toBe("latest text");
+  expect(update.mock.calls[1]?.[0].expectedRevision).toBe(2);
+  expect(update.mock.calls[1]?.[0].body).toBe("latest text");
   await act(async () => {
     second.resolve(session("/tmp/overlapping-draft.md", 3, "latest text"));
     await Promise.all([savingFirst, savingSecond]);
@@ -115,7 +115,7 @@ test("a save finishing after a session switch cannot copy identity or revision t
   await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
   act(() =>
     hook.result.current.setDraft(
-      draftFromSession(session("/tmp/new-session.md", 7, "new session text")),
+      draftFromSession(session("/tmp/new-session.md", 7, "new session text").session),
     ),
   );
   await act(async () => {

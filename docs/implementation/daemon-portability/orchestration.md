@@ -1,6 +1,6 @@
 # Each portability stage ships a usable workflow
 
-Status: S01 is in final review; independent token-persistence work has a local candidate awaiting review, and supervised shutdown is building. No stage is reviewed, merged or released yet. The user authorized implementing the full readiness sequence and releasing each stage on 2026-10-10. [Blueprint 23](../../blueprint/23-daemon-portability.md) owns the requirements; this file owns delivery order. The program ledger is `/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/ledger.md`.
+Status: S01 passed independent Claude review and full CI at `5de44f93`; small wording and test corrections are in final checks. Independent token-persistence and supervised-shutdown candidates are awaiting final review. No stage has merged or released yet. The user authorized implementing the full readiness sequence and releasing each stage on 2026-10-10. [Blueprint 23](../../blueprint/23-daemon-portability.md) owns the requirements; this file owns delivery order. The program ledger is `/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/ledger.md`.
 
 The outcome is safer existing clients across disconnects, restarts and different daemon hosts, leaving a future native SwiftUI client and personal VPS deployment possible with one active daemon owner. The iOS app, Hostinger provisioning and public HTTP exposure remain outside this readiness run.
 

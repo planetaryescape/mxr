@@ -38,7 +38,7 @@ MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio" mxr status --format js
 MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio" mxr doctor --check --format json
 ```
 
-If that target cannot be reached, the diagnostic command fails without switching to or starting the local default daemon. Connection metadata and client-generated connection errors hide `cmd://` arguments. `mxr doctor --reindex` operates on the local profile; set `MXR_SOCKET_PATH` to its socket and unset `MXR_DAEMON_ADDR`, or run the command on the host whose profile you intend to repair.
+If that target cannot be reached, the diagnostic command fails without switching to or starting the local default daemon. Connection metadata and client-generated connection errors hide `cmd://` arguments. `mxr doctor --reindex` operates on the local profile. Run it on the daemon host with `MXR_DAEMON_ADDR` unset and the intended `MXR_INSTANCE` or `MXR_CONFIG_DIR`/`MXR_DATA_DIR` settings.
 
 ### Is my mail current?
 

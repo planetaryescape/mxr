@@ -209,6 +209,8 @@ def main() -> int:
         (config_dir / "config.toml").write_text(
             '[general]\ndefault_account = "fake"\n\n'
             '[bridge]\nenabled = false\n\n'
+            '[search.semantic]\nenabled = false\nauto_download_models = false\n\n'
+            '[llm]\nenabled = false\n\n'
             '[accounts.fake]\nname = "Fake Account"\nemail = "fake@example.com"\n\n'
             '[accounts.fake.sync]\ntype = "fake"\n\n'
             '[accounts.fake.send]\ntype = "fake"\n',

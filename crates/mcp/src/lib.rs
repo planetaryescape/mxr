@@ -1773,7 +1773,10 @@ mod tests {
                     }],
                 },
                 Request::SaveDraftToServer { draft } => {
-                    self.submitted.lock().unwrap().push(draft.clone());
+                    self.submitted
+                        .lock()
+                        .expect("provider submissions lock is not poisoned")
+                        .push(draft.clone());
                     ResponseData::Draft { draft }
                 }
                 _ => ResponseData::Pong,
@@ -1805,7 +1808,10 @@ mod tests {
                 };
                 assert_eq!(result.is_ok(), expected == Some(2));
             }
-            let submitted = requester.submitted.lock().unwrap();
+            let submitted = requester
+                .submitted
+                .lock()
+                .expect("provider submissions lock is not poisoned");
             assert_eq!(
                 submitted.len(),
                 1,

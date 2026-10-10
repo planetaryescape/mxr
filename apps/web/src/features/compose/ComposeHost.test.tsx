@@ -924,7 +924,10 @@ describe("saved draft discard preview", () => {
     act(() => useComposeUi.getState().openCompose(draftIntent("editing-delete"), "overlay"));
     const subject = await screen.findByLabelText("Subject");
     fireEvent.keyDown(subject, { key: "Backspace", metaKey: true });
-    fireEvent.keyDown(screen.getByLabelText("Message body"), { key: "Backspace", ctrlKey: true });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message body" }), {
+      key: "Backspace",
+      ctrlKey: true,
+    });
     expect(screen.queryByText("Discard draft?")).not.toBeInTheDocument();
     expect(api.discardComposeSession).not.toHaveBeenCalled();
   });

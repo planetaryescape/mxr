@@ -305,7 +305,7 @@ fn status_recovers_running_daemon_when_socket_path_disappears() {
 #[cfg(unix)]
 #[tokio::test]
 // Keep the shared daemon fixture serialized while the async client is active.
-#[allow(clippy::await_holding_lock)]
+#[allow(clippy::await_holding_lock, clippy::panic)]
 async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
     use futures::{SinkExt, StreamExt};
     use mxr_protocol::{

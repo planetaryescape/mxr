@@ -1,0 +1,24 @@
+{
+  "observed_at": "2026-10-10T22:05:52.430018+00:00",
+  "sha": "2c55a735e2b013910cb7222211fa8d6156d6204c",
+  "worker": "/root/attachment_boundary_audit",
+  "model": "gpt-6-luna",
+  "tier": "Fast",
+  "effort": "high",
+  "mode": "source-only; no runtime tests or implementation",
+  "blobs": {
+    "crates/core/src/types.rs": "f214ff74402bc3a70156b46dca42a7e4f8e3e876",
+    "crates/protocol/src/codec.rs": "531b07af1238a8eb4d853fef5de76c33d258ee6e",
+    "crates/protocol/src/types.rs": "02f59c527d4e7b34369f07fa1e2753caea5a42fa",
+    "crates/core/src/provider.rs": "2b1e819c2dfb1c2e8e7db88fd7a95ef80ce6bb94",
+    "crates/outbound/src/attachments.rs": "07418593dbcd16b950eee32683355856da1f40d0",
+    "crates/daemon/src/commands/mutations/attachments.rs": "d72c25de6ca1346062d960a7d5c3ae825a1d375b",
+    "crates/daemon/src/handler/mod.rs": "7c888b3f5c592738abb50e4e1d60802c9ac50ec7",
+    "crates/daemon/src/message_deletion.rs": "f12dfab4204162afef87b85c1fe34d1ad31c84a2",
+    "crates/store/src/body.rs": "5838f0b316c410147057d26c8c8b9721d28a4d58",
+    "crates/tui/src/app/attachment_helpers.rs": "5c2e93d1826beddcd511cc7548a1f82b7255d869",
+    "crates/web/src/lib.rs": "d358d14749296244d870fcae8681253d83817c70",
+    "apps/web/src/features/thread/AttachmentActions.tsx": "08358da11d16ce31b1a60db704f7b991514505a5",
+    "crates/mcp/src/lib.rs": "993efc5de424cbf508fd981a9a24f37b19efe227"
+  }
+}

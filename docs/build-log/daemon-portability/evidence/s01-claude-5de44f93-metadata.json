@@ -1,0 +1,23 @@
+{
+  "session_id": "ses_edc8ff205ffeL4hTmlBWbJV215",
+  "models": [
+    {
+      "modelID": "claude-opus-5-5",
+      "providerID": "anthropic",
+      "variant": "max",
+      "agent": "verifier"
+    }
+  ],
+  "tools": {
+    "glob": 11,
+    "read": 60,
+    "grep": 35
+  },
+  "tool_status": {
+    "completed": 106
+  },
+  "report": "s01-claude-5de44f93.md",
+  "head": "5de44f93a8ae3cf8ff90d6a53738ea98bf2366db",
+  "tree": "631da5f926a3f3f41dd1f020f568a9b3c6354ff2",
+  "base": "80606f4833b651bf9b07975ddd49083d7cb2568a"
+}

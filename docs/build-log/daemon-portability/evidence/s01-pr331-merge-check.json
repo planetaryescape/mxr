@@ -1,0 +1,28 @@
+{
+  "pr": 331,
+  "head": "5de44f93a8ae3cf8ff90d6a53738ea98bf2366db",
+  "base": "80606f4833b651bf9b07975ddd49083d7cb2568a",
+  "tree": "631da5f926a3f3f41dd1f020f568a9b3c6354ff2",
+  "merge_tree": "631da5f926a3f3f41dd1f020f568a9b3c6354ff2",
+  "files": [
+    "Cargo.toml",
+    "crates/daemon/src/commands/diagnostics.rs",
+    "crates/daemon/src/commands/doctor.rs",
+    "crates/daemon/src/commands/mod.rs",
+    "crates/daemon/src/commands/status.rs",
+    "crates/daemon/src/ipc_client.rs",
+    "crates/daemon/src/lib.rs",
+    "crates/daemon/tests/selected_daemon_diagnostics.rs",
+    "docs/blueprint/09-cli.md",
+    "docs/blueprint/23-daemon-portability.md",
+    "docs/blueprint/README.md",
+    "docs/build-log/daemon-portability/evidence/verifier-routing.json",
+    "docs/build-log/daemon-portability/s01_smoke.py",
+    "docs/implementation/daemon-portability/orchestration.md",
+    "docs/implementation/daemon-portability/plan.md",
+    "docs/research/ios-architecture.md",
+    "site/src/content/docs/guides/observability.md"
+  ],
+  "mergeable": "MERGEABLE",
+  "merge_state": "BLOCKED"
+}

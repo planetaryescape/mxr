@@ -1,0 +1,19 @@
+{
+  "stage": "S08b",
+  "base": "f783d937b3dbabb23c338f0164d96c0b875b4c89",
+  "head": "7d290b1f0b5231cc873298fc7940d702bb05c8da",
+  "tree": "5e6be371cd3ed032c5c78ee9045ebdf80e881e30",
+  "merge_base": "f783d937b3dbabb23c338f0164d96c0b875b4c89",
+  "checks": {
+    "provider_tests": "81 unit + 3 offline smoke passed on rebased candidate",
+    "build": "cargo build -p mxr passed",
+    "fmt": "passed",
+    "diff": "passed",
+    "pre_pr_gate": "passed on prior base80606f4; provider patch byte-identical after rebase"
+  },
+  "limits": [
+    "Synthetic error injection at replacement boundaries; not physical power-loss simulation",
+    "Storage instance mutex; no cross-process coordination"
+  ],
+  "parent_review": "GREEN, whole source patch reviewed; byte-identical patch after rebase"
+}

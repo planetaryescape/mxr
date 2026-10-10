@@ -1,0 +1,173 @@
+diff --git a/crates/daemon/src/commands/doctor.rs b/crates/daemon/src/commands/doctor.rs
+index eea6cf08..817c4697 100644
+--- a/crates/daemon/src/commands/doctor.rs
++++ b/crates/daemon/src/commands/doctor.rs
+@@ -36,7 +36,7 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
+     let (selected_target, remote_target) = selected_target_metadata()?;
+ 
+     if options.reindex && remote_target {
+-        anyhow::bail!("`mxr doctor --reindex` only supports the local default daemon; selected daemon diagnostics are read-only");
++        anyhow::bail!("`mxr doctor --reindex` only supports the local default profile. Run it on the daemon host with `MXR_DAEMON_ADDR` unset and the intended `MXR_INSTANCE` or `MXR_CONFIG_DIR`/`MXR_DATA_DIR` settings.");
+     }
+ 
+     if !remote_target
+diff --git a/crates/daemon/src/commands/status.rs b/crates/daemon/src/commands/status.rs
+index 15835323..7d929e3a 100644
+--- a/crates/daemon/src/commands/status.rs
++++ b/crates/daemon/src/commands/status.rs
+@@ -37,8 +37,6 @@ struct StatusRender<'a> {
+ }
+ 
+ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result<String> {
+-    // Report the socket the daemon actually uses (single-source resolution,
+-    // honors MXR_DAEMON_ADDR) so status agrees with autostart / probe / request.
+     let mut data = serde_json::json!({
+         "uptime_secs": view.uptime_secs,
+         "accounts": view.accounts,
+@@ -343,10 +341,23 @@ mod tests {
+             OutputFormat::Json,
+         )
+         .unwrap();
+-        assert!(rendered.contains("\"uptime_secs\": 42"));
+-        assert!(rendered.contains("\"daemon_pid\": 999"));
+-        assert!(rendered.contains("\"total_messages\": 10"));
+-        assert!(rendered.contains("\"semantic_runtime\""));
++        let value: serde_json::Value = serde_json::from_str(&rendered).unwrap();
++        assert_eq!(value["uptime_secs"], 42);
++        assert_eq!(value["daemon_pid"], 999);
++        assert_eq!(value["total_messages"], 10);
++        assert_eq!(value["runtime_instance"], mxr_config::app_instance_name());
++        assert_eq!(
++            value["config_path"],
++            mxr_config::config_file_path().display().to_string()
++        );
++        assert_eq!(
++            value["data_dir"],
++            mxr_config::data_dir().display().to_string()
++        );
++        assert_eq!(value["socket_path"], "/tmp/mxr.sock");
++        assert!(value.get("daemon_target").is_none());
++        assert!(value.get("client_local").is_none());
++        assert!(value.get("semantic_runtime").is_some());
+     }
+ 
+     #[test]
+diff --git a/crates/daemon/tests/selected_daemon_diagnostics.rs b/crates/daemon/tests/selected_daemon_diagnostics.rs
+index 26f2a5f3..5bb4c0ea 100644
+--- a/crates/daemon/tests/selected_daemon_diagnostics.rs
++++ b/crates/daemon/tests/selected_daemon_diagnostics.rs
+@@ -39,6 +39,15 @@ fn isolated_env(root: &Path) -> Vec<(String, String)> {
+             local.join("mxr.sock").display().to_string(),
+         ),
+         ("MXR_ACTIVITY".into(), "off".into()),
++        ("HOME".into(), local.join("home").display().to_string()),
++        (
++            "XDG_CONFIG_HOME".into(),
++            local.join("xdg-config").display().to_string(),
++        ),
++        (
++            "XDG_DATA_HOME".into(),
++            local.join("xdg-data").display().to_string(),
++        ),
+     ]
+ }
+ 
+@@ -233,7 +242,13 @@ async fn cmd_target_diagnostics_report_target_and_separate_local_profile() {
+         .kill_on_drop(true)
+         .spawn()
+         .unwrap();
+-    tokio::time::sleep(std::time::Duration::from_millis(2300)).await;
++    tokio::time::timeout(std::time::Duration::from_secs(10), async {
++        while requests.load(Ordering::Relaxed) - before_watch < 2 {
++            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
++        }
++    })
++    .await
++    .expect("status watch did not poll the selected daemon twice");
+     watch.kill().await.unwrap();
+     watch.wait().await.unwrap();
+     assert!(requests.load(Ordering::Relaxed) - before_watch >= 2);
+@@ -263,7 +278,7 @@ async fn unreachable_target_and_remote_reindex_never_touch_client_store() {
+     let root = tempfile::tempdir().unwrap();
+     let envs = isolated_env(root.path());
+     std::fs::create_dir_all(Path::new(&envs[3].1).parent().unwrap()).unwrap();
+-    let (_healthy_local_daemon, _) = spawn_fake_daemon(Path::new(&envs[3].1));
++    let (_healthy_local_daemon, local_requests) = spawn_fake_daemon(Path::new(&envs[3].1));
+     let local_data = PathBuf::from(&envs[2].1);
+     std::fs::create_dir_all(local_data.join("search_index")).unwrap();
+     std::fs::write(local_data.join("search_index/keep"), b"client index").unwrap();
+@@ -299,6 +314,7 @@ async fn unreachable_target_and_remote_reindex_never_touch_client_store() {
+         b"client index"
+     );
+     assert!(!local_data.join("mxr.db").exists());
++    assert_eq!(local_requests.load(Ordering::Relaxed), 0);
+ 
+     let missing_status_target = root.path().join("missing-status.sock");
+     let status = run_mxr(
+@@ -322,6 +338,7 @@ async fn unreachable_target_and_remote_reindex_never_touch_client_store() {
+         b"client index"
+     );
+     assert!(!local_data.join("mxr.db").exists());
++    assert_eq!(local_requests.load(Ordering::Relaxed), 0);
+ 
+     let private_command = "mxr-nonexistent-s01-probe --token=synthetic-s01-secret";
+     let private_addr = format!("cmd://{private_command}");
+diff --git a/docs/blueprint/09-cli.md b/docs/blueprint/09-cli.md
+index 88bde4ce..4061af3e 100644
+--- a/docs/blueprint/09-cli.md
++++ b/docs/blueprint/09-cli.md
+@@ -178,7 +178,7 @@ MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio"  # off-machine, via an
+ 
+ The TUI, web bridge, and MCP server honour `MXR_DAEMON_ADDR` too, but accept `unix://` only (a `tcp://`/`cmd://` value is rejected with a clear message — use the CLI for those). Full reference: `docs/blueprint/20-transports.md`.
+ 
+-`mxr status` and `mxr doctor --check` / `--store-stats` report the daemon selected by `MXR_DAEMON_ADDR`. For an explicitly selected target, JSON places connection identity under `daemon_target` and client-machine paths under `client_local`; doctor puts the daemon-owned report or statistics under `daemon`. Any remediation or next-step commands in the doctor report are for the selected daemon host, including when they appear in JSON or table output. Connection metadata and client-generated connection errors hide `cmd://` arguments. If an explicitly selected target is unreachable, these diagnostics fail without falling back to or starting the local default daemon. `mxr doctor --reindex` remains local-default only; remote index repair must be performed on the daemon host.
++`mxr status` and `mxr doctor --check`, `--store-stats`, or `--index-stats` report the daemon selected by `MXR_DAEMON_ADDR`. For an explicitly selected target, JSON places connection identity under `daemon_target` and client-machine paths under `client_local`; doctor puts the daemon-owned report or statistics under `daemon`. Any remediation or next-step commands in the doctor report are for the selected daemon host, including when they appear in JSON or table output. Connection metadata and client-generated connection errors hide `cmd://` arguments. If an explicitly selected target is unreachable, these diagnostics fail without falling back to or starting the local default daemon. `mxr doctor --reindex` operates on the local profile. Run it on the daemon host with `MXR_DAEMON_ADDR` unset and the intended `MXR_INSTANCE` or `MXR_CONFIG_DIR`/`MXR_DATA_DIR` settings.
+ 
+ ## Output formats
+ 
+diff --git a/docs/implementation/daemon-portability/orchestration.md b/docs/implementation/daemon-portability/orchestration.md
+index d5ce9081..1b4922d5 100644
+--- a/docs/implementation/daemon-portability/orchestration.md
++++ b/docs/implementation/daemon-portability/orchestration.md
+@@ -1,6 +1,6 @@
+ # Each portability stage ships a usable workflow
+ 
+-Status: S01 is in final review; independent token-persistence work has a local candidate awaiting review, and supervised shutdown is building. No stage is reviewed, merged or released yet. The user authorized implementing the full readiness sequence and releasing each stage on 2026-10-10. [Blueprint 23](../../blueprint/23-daemon-portability.md) owns the requirements; this file owns delivery order. The program ledger is `/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/ledger.md`.
++Status: S01 passed independent Claude review and full CI at `5de44f93`; small wording and test corrections are in final checks. Independent token-persistence and supervised-shutdown candidates are awaiting final review. No stage has merged or released yet. The user authorized implementing the full readiness sequence and releasing each stage on 2026-10-10. [Blueprint 23](../../blueprint/23-daemon-portability.md) owns the requirements; this file owns delivery order. The program ledger is `/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/ledger.md`.
+ 
+ The outcome is safer existing clients across disconnects, restarts and different daemon hosts, leaving a future native SwiftUI client and personal VPS deployment possible with one active daemon owner. The iOS app, Hostinger provisioning and public HTTP exposure remain outside this readiness run.
+ 
+diff --git a/docs/research/ios-architecture.md b/docs/research/ios-architecture.md
+index 08c077a6..8d7bdb05 100644
+--- a/docs/research/ios-architecture.md
++++ b/docs/research/ios-architecture.md
+@@ -115,7 +115,7 @@ Use isolated test data and a scoped authenticated gateway. Complete only the sch
+ 
+ This research verified source and first-party documentation. It did not compile an iOS target, test remote access, measure battery use or validate an always-on deployment. No application behavior changed. The independence requirement is now settled for the initial scope: a reachable daemon is acceptable. The next implementation step is daemon preparation under [blueprint 23](../blueprint/23-daemon-portability.md), starting with durable draft identity or its independent reliability fixes. The native read/reply validation slice follows that preparation when an iOS build is requested. VPS adoption additionally requires inspecting the actual host and validating the Mac client workflows. This note is the handover and its links are the evidence.
+ 
+-BK requested a second opinion from Claude Opus 5.5 through OpenCode. The local OpenCode model inventory did not include Claude, and invoking `anthropic/claude-opus-5-5` returned `provider.no-route: Model unavailable`. The requested opinion has not been obtained; provider/host clarification is pending. No claim in this note is attributed to Opus.
++The requested Claude route is available through the existing OpenCode 1.18.35 installation. A fresh session confirmed Anthropic Claude Opus 5.5 at maximum effort with file-read/search permissions, external-directory access denied and external plugins disabled. [Routing evidence](../build-log/daemon-portability/evidence/verifier-routing.json) records the successful probe. The [orchestration ledger](../implementation/daemon-portability/orchestration.md) tracks implementation reviews separately. No global configuration or saved credentials were changed.
+ 
+ Unresolved decisions:
+ 
+diff --git a/site/src/content/docs/guides/observability.md b/site/src/content/docs/guides/observability.md
+index 281aea31..56297778 100644
+--- a/site/src/content/docs/guides/observability.md
++++ b/site/src/content/docs/guides/observability.md
+@@ -31,14 +31,14 @@ mxr doctor --check --format json >/tmp/mxr-doctor.json \
+ 
+ ### Diagnostics for a selected daemon
+ 
+-`mxr status` and `mxr doctor --check` / `--store-stats` use the daemon selected by `MXR_DAEMON_ADDR`. For an explicit target, JSON keeps ownership clear: `daemon_target` identifies the selection, `client_local` contains paths on the CLI machine, and doctor places the daemon report or statistics under `daemon`. Any remediation and next-step commands in the daemon report, including table output, must be run on the selected daemon host.
++`mxr status` and `mxr doctor --check`, `--store-stats`, or `--index-stats` use the daemon selected by `MXR_DAEMON_ADDR`. For an explicit target, JSON keeps ownership clear: `daemon_target` identifies the selection, `client_local` contains paths on the CLI machine, and doctor places the daemon report or statistics under `daemon`. Any remediation and next-step commands in the daemon report, including table output, must be run on the selected daemon host.
+ 
+ ```bash
+ MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio" mxr status --format json
+ MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio" mxr doctor --check --format json
+ ```
+ 
+-If that target cannot be reached, the diagnostic command fails without switching to or starting the local default daemon. Connection metadata and client-generated connection errors hide `cmd://` arguments. `mxr doctor --reindex` operates only on the local default profile; repair a selected remote daemon's index on its host.
++If that target cannot be reached, the diagnostic command fails without switching to or starting the local default daemon. Connection metadata and client-generated connection errors hide `cmd://` arguments. `mxr doctor --reindex` operates on the local profile. Run it on the daemon host with `MXR_DAEMON_ADDR` unset and the intended `MXR_INSTANCE` or `MXR_CONFIG_DIR`/`MXR_DATA_DIR` settings.
+ 
+ ### Is my mail current?
+ 

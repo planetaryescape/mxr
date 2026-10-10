@@ -1,0 +1,540 @@
+diff --git a/.release-please-manifest.json b/.release-please-manifest.json
+index 740ab346..ca2353cb 100644
+--- a/.release-please-manifest.json
++++ b/.release-please-manifest.json
+@@ -1,3 +1,3 @@
+ {
+-  ".": "0.6.61"
++  ".": "0.6.62"
+ }
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 4bc37181..1f27f622 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,12 @@
+ # Changelog
+ 
++## [0.6.62](https://github.com/planetaryescape/mxr/compare/v0.6.61...v0.6.62) (2026-10-10)
++
++
++### Bug Fixes
++
++* diagnose the selected daemon without local fallback ([#331](https://github.com/planetaryescape/mxr/issues/331)) ([f783d93](https://github.com/planetaryescape/mxr/commit/f783d937b3dbabb23c338f0164d96c0b875b4c89))
++
+ ## [0.6.61](https://github.com/planetaryescape/mxr/compare/v0.6.60...v0.6.61) (2026-10-09)
+ 
+ 
+diff --git a/Cargo.lock b/Cargo.lock
+index 34df4f19..fe784ea5 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -4244,7 +4244,7 @@ checksum = "2195bf6aa996a481483b29d62a7663eed3fe39600c460e323f8ff41e90bdd89b"
+ 
+ [[package]]
+ name = "mxr"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -4380,21 +4380,21 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-client"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "futures",
+  "mxr-core",
+  "mxr-protocol",
+  "mxr-transport",
+  "tempfile",
+  "thiserror 2.0.19",
+  "tokio",
+  "tokio-util",
+ ]
+ 
+ [[package]]
+ name = "mxr-compose"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "chrono",
+  "comrak",
+@@ -4421,41 +4421,41 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-config"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "chrono",
+  "dirs",
+  "libc",
+  "mxr-core",
+  "serde",
+  "temp-env",
+  "tempfile",
+  "thiserror 2.0.19",
+  "toml",
+  "tracing",
+  "uuid",
+ ]
+ 
+ [[package]]
+ name = "mxr-core"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "async-trait",
+  "bitflags 2.13.1",
+  "chrono",
+  "chrono-tz",
+  "proptest",
+  "serde",
+  "serde_bytes",
+  "serde_json",
+  "thiserror 2.0.19",
+  "utoipa",
+  "uuid",
+ ]
+ 
+ [[package]]
+ name = "mxr-deliveries"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "anyhow",
+  "async-trait",
+@@ -4475,87 +4475,87 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-export"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "chrono",
+  "insta",
+  "mailbox-formats",
+  "mxr-core",
+  "mxr-reader",
+  "mxr-test-support",
+  "pretty_assertions",
+  "serde",
+  "serde_json",
+ ]
+ 
+ [[package]]
+ name = "mxr-humanizer"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "mxr-core",
+  "serde",
+ ]
+ 
+ [[package]]
+ name = "mxr-keychain"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "keyring",
+  "security-framework 3.7.0",
+  "security-framework-sys",
+  "thiserror 2.0.19",
+  "tracing",
+ ]
+ 
+ [[package]]
+ name = "mxr-llm"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "async-trait",
+  "reqwest 0.13.4",
+  "serde",
+  "serde_json",
+  "thiserror 2.0.19",
+  "tokio",
+  "tracing",
+  "url",
+  "wiremock",
+ ]
+ 
+ [[package]]
+ name = "mxr-mail-parse"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "chrono",
+  "icalendar",
+  "insta",
+  "list-unsubscribe",
+  "mail-parser",
+  "mxr-core",
+  "mxr-test-support",
+  "regex",
+  "serde_json",
+  "thiserror 2.0.19",
+ ]
+ 
+ [[package]]
+ name = "mxr-mailmerge"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "anyhow",
+  "chrono",
+  "clap",
+  "csv",
+  "minijinja",
+  "serde",
+  "serde_json",
+  "sha2 0.11.0",
+  "tempfile",
+ ]
+ 
+ [[package]]
+ name = "mxr-mcp"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "anyhow",
+  "async-trait",
+@@ -4575,7 +4575,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-outbound"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "base64 0.22.1",
+  "chrono",
+@@ -4594,34 +4594,34 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-protocol"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "bytes",
+  "chrono",
+  "mxr-core",
+  "proptest",
+  "serde",
+  "serde_json",
+  "tokio",
+  "tokio-util",
+  "utoipa",
+ ]
+ 
+ [[package]]
+ name = "mxr-provider-fake"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "async-trait",
+  "chrono",
+  "mail-builder",
+  "mxr-core",
+  "tokio",
+  "uuid",
+ ]
+ 
+ [[package]]
+ name = "mxr-provider-gmail"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "anyhow",
+  "async-trait",
+@@ -4655,7 +4655,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-provider-imap"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "anyhow",
+  "async-native-tls",
+@@ -4680,7 +4680,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-provider-outlook"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "anyhow",
+  "async-trait",
+@@ -4700,7 +4700,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-provider-smtp"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "async-trait",
+  "chrono",
+@@ -4719,7 +4719,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-reader"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "data-url",
+  "ego-tree",
+@@ -4738,7 +4738,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-reading"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "chrono",
+  "dom_smoothie",
+@@ -4760,7 +4760,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-records"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -4782,7 +4782,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-relationship"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "anyhow",
+  "async-trait",
+@@ -4801,57 +4801,57 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-rules"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "chrono",
+  "glob-match",
+  "mxr-core",
+  "regex",
+  "serde",
+  "serde_json",
+  "thiserror 2.0.19",
+  "tokio",
+  "tracing",
+  "uuid",
+  "which",
+ ]
+ 
+ [[package]]
+ name = "mxr-safety"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "chrono",
+  "mxr-core",
+  "mxr-reader",
+  "mxr-relationship",
+  "mxr-store",
+  "once_cell",
+  "regex",
+  "serde",
+  "serde_json",
+  "sqlx",
+  "tokio",
+ ]
+ 
+ [[package]]
+ name = "mxr-search"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "chrono",
+  "mail-query",
+  "mxr-core",
+  "proptest",
+  "serde",
+  "tantivy",
+  "tempfile",
+  "thiserror 2.0.19",
+  "tokio",
+  "tracing",
+ ]
+ 
+ [[package]]
+ name = "mxr-semantic"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "anyhow",
+  "base16ct",
+@@ -4875,24 +4875,24 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-store"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "base16ct",
+  "chrono",
+  "mxr-core",
+  "serde",
+  "serde_json",
+  "sha2 0.11.0",
+  "sqlx",
+  "tempfile",
+  "tokio",
+  "tracing",
+  "uuid",
+ ]
+ 
+ [[package]]
+ name = "mxr-sync"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "async-trait",
+  "chrono",
+@@ -4910,19 +4910,19 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-test-support"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "assert_cmd",
+  "dirs",
+  "ratatui",
+  "regex",
+  "serde_json",
+  "tempfile",
+ ]
+ 
+ [[package]]
+ name = "mxr-todo"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -4944,19 +4944,19 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-transport"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "async-trait",
+  "futures",
+  "tempfile",
+  "thiserror 2.0.19",
+  "tokio",
+  "tracing",
+ ]
+ 
+ [[package]]
+ name = "mxr-tui"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -4997,19 +4997,19 @@ dependencies = [
+ 
+ [[package]]
+ name = "mxr-updates"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "chrono",
+  "once_cell",
+  "psl",
+  "regex",
+  "serde",
+  "serde_json",
+ ]
+ 
+ [[package]]
+ name = "mxr-web"
+-version = "0.6.61"
++version = "0.6.62"
+ dependencies = [
+  "axum",
+  "base64 0.22.1",
+diff --git a/Cargo.toml b/Cargo.toml
+index 9e16fded..53b26100 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -166,7 +166,7 @@ exclude = [
+ ]
+ 
+ [workspace.package]
+-version = "0.6.61"
++version = "0.6.62"
+ edition = "2021"
+ license = "MIT OR Apache-2.0"
+ rust-version = "1.94"
+diff --git a/crates/provider-gmail/src/auth_storage.rs b/crates/provider-gmail/src/auth_storage.rs
+index d9899531..8f644279 100644
+--- a/crates/provider-gmail/src/auth_storage.rs
++++ b/crates/provider-gmail/src/auth_storage.rs
+@@ -448,6 +448,7 @@ mod tests {
+         assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 1);
+     }
+ 
++    #[cfg(unix)]
+     fn token_cache_json(access_token: &str) -> String {
+         serde_json::to_string(&vec![StoredToken {
+             scopes: vec!["synthetic-scope".to_string()],
+@@ -501,7 +502,6 @@ mod tests {
+     fn set_calls_persist_in_cache_update_order() {
+         use std::sync::mpsc;
+         use std::thread;
+-        use std::time::Duration;
+ 
+         let cache = std::sync::Arc::new(Mutex::new(Vec::new()));
+         let (first_entered_tx, first_entered_rx) = mpsc::channel();
+@@ -541,9 +541,10 @@ mod tests {
+         });
+         second_entered_rx.recv().unwrap();
+ 
+-        assert!(second_persisted_rx
+-            .recv_timeout(Duration::from_millis(50))
+-            .is_err());
++        assert!(matches!(
++            cache.try_lock(),
++            Err(std::sync::TryLockError::WouldBlock)
++        ));
+         release_first_tx.send(()).unwrap();
+         let old_snapshot = persisted_rx.recv().unwrap();
+         let new_snapshot = second_persisted_rx.recv().unwrap();
+diff --git a/crates/provider-gmail/src/token_cache_file.rs b/crates/provider-gmail/src/token_cache_file.rs
+index 63746b0f..cf79e4a1 100644
+--- a/crates/provider-gmail/src/token_cache_file.rs
++++ b/crates/provider-gmail/src/token_cache_file.rs
+@@ -96,4 +96,20 @@ mod tests {
+         let parent = path.parent().unwrap();
+         assert_eq!(std::fs::read_dir(parent).unwrap().count(), 0);
+     }
++
++    #[test]
++    fn rename_failure_preserves_destination_and_cleans_up_temporary_file() {
++        let directory = tempdir().unwrap();
++        let path = directory.path().join("tokens.json");
++        std::fs::create_dir(&path).unwrap();
++
++        assert!(write(&path, "new").is_err());
++        assert!(path.is_dir());
++        let leftovers = std::fs::read_dir(directory.path())
++            .unwrap()
++            .map(|entry| entry.unwrap().file_name())
++            .filter(|name| name.to_string_lossy().starts_with(".mxr-token-cache-"))
++            .count();
++        assert_eq!(leftovers, 0);
++    }
+ }

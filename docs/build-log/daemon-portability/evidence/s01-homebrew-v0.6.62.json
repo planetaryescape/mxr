@@ -1,0 +1,7 @@
+{
+  "binary": "/opt/homebrew/bin/mxr",
+  "resolved_binary": "/opt/homebrew/Cellar/mxr/0.6.62/bin/mxr",
+  "version": "mxr 0.6.62 (Mixer)",
+  "source": "8e81648a48a726aa22f0c210dd2407b003a9331e",
+  "smoke_log": "{\"--check\": true, \"--index-stats\": true, \"--store-stats\": true, \"remote_repair_rejected\": true, \"status_target_pid\": true, \"unreachable_target_isolated\": true}\n"
+}

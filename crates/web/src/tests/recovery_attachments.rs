@@ -224,3 +224,55 @@ async fn failed_attachment_preservation_removes_partial_copies_without_touching_
     remove_compose_attachment_dir(&source).await.unwrap();
     remove_compose_attachment_dir(&destination).await.unwrap();
 }
+
+#[tokio::test]
+async fn attachment_rewrite_keeps_raw_editor_whitespace_and_context() {
+    let temp = TempDir::new().unwrap();
+    let source = temp
+        .path()
+        .join(format!("raw-source-{}.md", Uuid::now_v7()));
+    let destination = temp
+        .path()
+        .join(format!("raw-recovery-{}.md", Uuid::now_v7()));
+    let dir = compose_attachment_dir(&source).unwrap();
+    tokio::fs::create_dir_all(&dir).await.unwrap();
+    let attachment = dir.join("raw.txt");
+    tokio::fs::write(&attachment, b"raw bytes").await.unwrap();
+    let mut draft = markdown_draft(
+        &DraftId::new(),
+        &AccountId::new(),
+        "Raw",
+        "text",
+        Utc::now(),
+    );
+    draft.attachments = vec![attachment];
+    let original =
+        mxr_compose::draft_codec::draft_to_compose_file(&draft, "me@example.com").unwrap();
+    let (frontmatter, _) = parse_compose_content(&original).unwrap();
+    let raw = render_compose_file(
+        &frontmatter,
+        "  last typed text \n\n",
+        Some("original context"),
+    )
+    .unwrap();
+    let (preserved, metadata, _) = copy_recovery_attachments(&destination, &raw, &draft)
+        .await
+        .unwrap();
+    let suffix = |content: &str| {
+        content
+            .strip_prefix("---")
+            .unwrap()
+            .split_once("\n---")
+            .unwrap()
+            .1
+            .to_string()
+    };
+    assert_eq!(suffix(&preserved), suffix(&raw));
+    assert_eq!(metadata.revision, draft.revision);
+    assert_eq!(
+        tokio::fs::read(&metadata.attachments[0]).await.unwrap(),
+        b"raw bytes"
+    );
+    remove_compose_attachment_dir(&source).await.unwrap();
+    remove_compose_attachment_dir(&destination).await.unwrap();
+}

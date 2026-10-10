@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import signal
 import socket
 import subprocess
@@ -10,14 +11,21 @@ import sys
 import tempfile
 import time
 
-binary = str(Path(sys.argv[1] if len(sys.argv) > 1 else "target-cli/debug/mxr").resolve())
+source_binary = str(Path(sys.argv[1] if len(sys.argv) > 1 else "target-cli/debug/mxr").resolve())
 with tempfile.TemporaryDirectory(prefix="mxr-draft-revisions-") as temporary:
     root = Path(temporary)
+    binary = str(root / "mxr")
+    shutil.copy2(source_binary, binary)
+    home = root / "home"
+    home.mkdir()
     config = root / "config"
     config.mkdir()
     (config / "config.toml").write_text('''[general]
 sync_interval = 3600
-[semantic]
+[search.semantic]
+enabled = false
+auto_download_models = false
+[bridge]
 enabled = false
 [llm]
 enabled = false
@@ -30,7 +38,7 @@ type = "fake"
 [accounts.synthetic.send]
 type = "fake"
 ''')
-    environment = {**os.environ, "MXR_INSTANCE": "mxr-draft-revisions-smoke", "MXR_CONFIG_DIR": str(config), "MXR_DATA_DIR": str(root / "data"), "MXR_SOCKET_PATH": str(root / "mxr.sock"), "MXR_ACTIVITY": "off", "MXR_FAKE_DATASET": "small"}
+    environment = {**{key: value for key, value in os.environ.items() if not key.startswith("MXR_") and key not in {"HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"}}, "HOME": str(home), "TMPDIR": str(home), "MXR_INSTANCE": "draft-revisions-" + root.name, "MXR_CONFIG_DIR": str(config), "MXR_DATA_DIR": str(root / "data"), "MXR_SOCKET_PATH": str(root / "mxr.sock"), "MXR_ACTIVITY": "off", "MXR_FAKE_DATASET": "small"}
     environment.pop("MXR_DAEMON_ADDR", None)
     environment.pop("MXR_PROFILE", None)
     daemon = None
@@ -42,7 +50,7 @@ type = "fake"
         return result
     def start():
         global daemon
-        daemon = subprocess.Popen([binary, "daemon", "--foreground"], env=environment, stdout=log, stderr=log)
+        daemon = subprocess.Popen([binary, "daemon", "--foreground", "--no-bridge"], env=environment, stdout=log, stderr=log)
         for _ in range(100):
             if daemon.poll() is not None:
                 raise RuntimeError((root / "daemon.log").read_text())

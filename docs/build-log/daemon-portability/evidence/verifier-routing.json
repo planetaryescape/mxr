@@ -1,0 +1,40 @@
+{
+  "observed_at": "2026-10-10T01:12:09Z",
+  "cli": "/Users/bhekanik/.opencode/bin/opencode",
+  "cli_version": "1.18.35",
+  "session": "ses_edca20359ffeBFGXqhuaX8mOM0",
+  "fresh_session": true,
+  "requested_model": "anthropic/claude-opus-5-5",
+  "requested_variant": "max",
+  "reported_models": [
+    {
+      "role": "assistant",
+      "modelID": "claude-opus-5-5",
+      "providerID": "anthropic",
+      "mode": "verifier",
+      "agent": "verifier",
+      "variant": "max"
+    },
+    {
+      "role": "assistant",
+      "modelID": "claude-opus-5-5",
+      "providerID": "anthropic",
+      "mode": "verifier",
+      "agent": "verifier",
+      "variant": "max"
+    }
+  ],
+  "probe_read": "mxr-verifier-read-probe-20261010",
+  "exit_code": 0,
+  "agent_permissions": {
+    "*": "deny",
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "external_directory": "deny"
+  },
+  "external_plugins": "disabled by --pure",
+  "global_config_changed": false,
+  "credentials_exposed": false
+}

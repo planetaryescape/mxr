@@ -30,6 +30,7 @@
 | 21 | [Web Experience](21-web-experience.md) | The desk model, what shipped v0.6.34 to v0.6.42, standards every web change keeps, and the ordered plan to pass the experience rubric (D095-D102) |
 | 22 | [Email Modes](22-email-modes.md) | Email as five modes (Messages, To do, Updates, Reading, Archive), each with its own view shape, key map, index recipe and model tier; multi-mode membership and handoff; rules-first classification; to-do lead times; and the phased plan (D107-D114) |
 | 22r | Email modes research | One note per mode with sources, mockups and risks: [messages](../research/email-modes/messages.md), [to do](../research/email-modes/todo.md), [updates](../research/email-modes/updates.md), [reading](../research/email-modes/reading.md), [archive](../research/email-modes/archive.md), [now and handoff](../research/email-modes/now-and-handoff.md), plus [sign in with ChatGPT](../research/chatgpt-sign-in.md) |
+| 23 | [Daemon portability](23-daemon-portability.md) | Durable drafts, recoverable actions, portable files, API contracts, client targeting and headless restore; ordered implementation slices for a future SwiftUI client or personal VPS |
 |  | [Internal Model Audit](internal-model-audit.md) | Keep/document/tighten/adjust judgment on the current provider-agnostic mail model |
 |  | [IPC Audit](ipc-audit.md) | Current protocol inventory classified into `core-mail`, `mxr-platform`, `admin-maintenance`, and `client-specific` |
 |  | [Sync / Index Lifecycle Audit](sync-index-lifecycle-audit.md) | Code-truth audit of sync guarantees, lexical freshness, semantic chunk persistence, and repair behavior |
@@ -40,6 +41,8 @@
 This blueprint is designed to be consumed by a coding agent. Every feature is specified in detail. Every design decision includes context on what was considered and rejected. The decision log (15) exists specifically so that an agent doesn't re-debate settled decisions.
 
 Start with 00 (overview) and 14 (roadmap) for the big picture. Use 15 (decision log) as a reference when making implementation choices. Check 16 (addendum) for post-blueprint amendments that override or extend the main docs. Check 17 (release pipeline) for CI/CD and release automation. Consult the specific domain docs (02-13) for detailed specifications.
+
+For daemon portability, future native clients or running the daemon on another host, start with [23](23-daemon-portability.md). Select one ready slice and use its contract, entry points and acceptance checks.
 
 When blueprint docs conflict with the current repo, prefer code as source of truth. The IPC audit exists specifically to document current implemented contract boundaries.
 

@@ -48,6 +48,7 @@ export interface ComposeIntent {
 }
 
 export interface ComposeSaveSnapshot {
+  draftId?: string;
   revision?: number | null;
   draftPath: string;
   accountId: string;
@@ -115,6 +116,7 @@ export function draftFromSession(
 
 export function captureSaveSnapshot(draft: ComposeDraftState): ComposeSaveSnapshot {
   return {
+    draftId: draft.draftId,
     revision: draft.revision,
     draftPath: draft.draftPath,
     accountId: draft.accountId,

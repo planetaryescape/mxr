@@ -509,9 +509,9 @@ async fn compose_validation_errors_are_422_and_never_reach_the_daemon() {
     let (draft_path, account_id) =
         prepared_session(&client, addr, serde_json::json!({ "kind": "new" }), "").await;
 
+    *daemon_sends.lock().unwrap() = 0;
     for (route, extra) in [
         ("send", serde_json::json!({})),
-        ("save", serde_json::json!({})),
         (
             "schedule",
             serde_json::json!({ "send_at": "2026-10-01T09:00:00Z" }),

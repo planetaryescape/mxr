@@ -868,6 +868,7 @@ async fn send_compose_session(
         "bridge compose send requested"
     );
     // Autosave persists this session under its stable local draft identity.
+    validate_compose_session_for_submission(Path::new(&request.draft_path), false).await?;
     let draft = compose_draft_from_file(&request.draft_path, &request.account_id, None).await?;
     let draft_id = draft.id.clone();
     // The sent message id is what `POST /mail/reminders` keys on, so a client
@@ -985,6 +986,7 @@ async fn check_compose_session_safety(
     // Nothing is stored, so the id never leaves this report: the safety
     // pipeline reads recipients and body only, and override tokens are keyed
     // by blocker kind rather than by draft.
+    validate_compose_session_for_submission(Path::new(&request.draft_path), false).await?;
     let draft = compose_draft_from_file(&request.draft_path, &request.account_id, None).await?;
     match ipc_request_with_id(
         &state.config.socket_path,
@@ -1014,6 +1016,7 @@ async fn suggest_compose_collaborators(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let request_id = bridge_request_id(&headers);
     // Read-only suggestion lookup; nothing is stored under this draft's id.
+    validate_compose_session_for_submission(Path::new(&request.draft_path), false).await?;
     let draft = compose_draft_from_file(&request.draft_path, &request.account_id, None).await?;
     match ipc_request_with_id(
         &state.config.socket_path,
@@ -1056,6 +1059,7 @@ async fn save_compose_session(
         editing_stored_draft,
         "bridge compose save requested"
     );
+    validate_compose_session_for_submission(Path::new(&request.draft_path), true).await?;
     let candidate =
         compose_draft_from_file(&request.draft_path, &request.account_id, stored_draft_id).await?;
     let draft = persist_compose_draft(
@@ -1145,6 +1149,7 @@ async fn schedule_compose_session(
         editing_stored_draft,
         "bridge compose schedule requested"
     );
+    validate_compose_session_for_submission(Path::new(&request.draft_path), false).await?;
     let mut draft =
         compose_draft_from_file(&request.draft_path, &request.account_id, stored_draft_id).await?;
     draft.revision = request.expected_revision;
@@ -2589,6 +2594,35 @@ fn extract_thread_id(content: &str) -> Result<Option<String>, BridgeError> {
 /// one: carrying it through is what lets a save land on the draft the user
 /// opened instead of storing a second copy of it. A session with no stored
 /// draft behind it mints a fresh id, so saving creates one.
+async fn validate_compose_session_for_submission(
+    path: &Path,
+    saving: bool,
+) -> Result<(), BridgeError> {
+    let raw = read_compose_file(path).await?;
+    let (frontmatter, body) = parse_compose_content(&raw)?;
+    let issues = if saving {
+        mxr_compose::validate_draft_for_save(&frontmatter, &body)
+    } else {
+        validate_draft(&frontmatter, &body)
+    };
+    for issue in issues {
+        match issue {
+            ComposeValidation::MissingRecipients => {
+                return Err(BridgeError::InvalidDraft(
+                    "No recipients (to: field is empty)".into(),
+                ))
+            }
+            ComposeValidation::Error(message) => {
+                return Err(BridgeError::InvalidDraft(format!(
+                    "Draft errors: {message}"
+                )))
+            }
+            ComposeValidation::Warning(_) => {}
+        }
+    }
+    Ok(())
+}
+
 async fn compose_draft_from_file(
     draft_path: &str,
     account_id: &str,

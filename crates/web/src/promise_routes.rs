@@ -44,7 +44,13 @@ async fn detect_compose_promises(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, query.token.as_deref(), &state.config.auth_token)?;
     // Read-only: the id never leaves this request, like the safety check's.
-    let draft = compose_draft_from_file(&request.draft_path, &request.account_id, None).await?;
+    let draft = compose_draft_from_file(
+        &request.draft_path,
+        &request.account_id,
+        None,
+        ComposeDraftValidation::Send,
+    )
+    .await?;
     let response = dispatch(
         &state,
         &headers,

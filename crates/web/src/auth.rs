@@ -23,7 +23,7 @@ pub(super) enum BridgeError {
     },
     #[error("{source}")]
     ComposeRecovery {
-        source: Box<BridgeError>,
+        source: Box<Self>,
         accepted_draft: Option<AcceptedComposeDraft>,
         recovery_session: Option<RecoveredComposeSession>,
     },

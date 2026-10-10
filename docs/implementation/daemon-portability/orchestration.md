@@ -1,6 +1,6 @@
 # Each portability stage ships a usable workflow
 
-Status: S01 building; independent token-persistence work has a local candidate awaiting review. No stage is reviewed, merged or released yet. The user authorized implementing the full readiness sequence and releasing each stage on 2026-10-10. [Blueprint 23](../../blueprint/23-daemon-portability.md) owns the requirements; this file owns delivery order. The program ledger is `/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/ledger.md`.
+Status: S01 is in final review; independent token-persistence work has a local candidate awaiting review, and supervised shutdown is building. No stage is reviewed, merged or released yet. The user authorized implementing the full readiness sequence and releasing each stage on 2026-10-10. [Blueprint 23](../../blueprint/23-daemon-portability.md) owns the requirements; this file owns delivery order. The program ledger is `/Users/bhekanik/code/planetaryescape/.orchestrate/mxr-daemon-portability-20261010/ledger.md`.
 
 The outcome is safer existing clients across disconnects, restarts and different daemon hosts, leaving a future native SwiftUI client and personal VPS deployment possible with one active daemon owner. The iOS app, Hostinger provisioning and public HTTP exposure remain outside this readiness run.
 
@@ -19,12 +19,12 @@ Each row includes domain behavior, persistence where needed, client changes, CLI
 | S05 | Attach and download without shared host paths | From disjoint filesystems, upload, save, restart, preview/send, and download identical bytes on the client | S02/S03 deployed | P03 + P04 |
 | S06 | Recover mailbox state after an event gap without losing edits | Drop only WebSocket traffic, mutate through CLI, reconnect and refresh; switch workspace/recovery generation without replaying pending commands | Relevant S02-S05 contracts deployed | P05 + P04 |
 | S07 | Use the same selected daemon from CLI and TUI | Read, reply through a local editor, attach, preview and mutate over the existing remote connector; prove compatible/incompatible versions | S03-S06 deployed | P06b + P04 |
-| S08a | Stop and restart the daemon under supervision | Signal an isolated active daemon, restart it and inspect persisted/uncertain operations through CLI | Lifecycle fix independent; final action recovery uses S03/S04 | P07a |
+| S08a | Stop and restart the daemon under supervision | Send SIGTERM and SIGINT to an isolated daemon; observe orderly teardown, restart the profile and query previously acknowledged state | Independent; interrupted-action recovery is verified in S08c after S03/S04 | P07a |
 | S08b | Retain a complete disk token cache if replacement is interrupted | Inject interruption before/after atomic replacement with synthetic tokens; reload the complete old or new cache | Independent | P07b |
 | S08c | Run unattended with useful dependency diagnostics | Start isolated Linux service without GUI secrets access, interrupt/restart and remove optional model service; inspect mail readiness | S08a/S08b and S03/S04 deployed | P07c |
 | S09 | Restore useful state without accidentally executing old work | Inspect/preview a secret-free backup, restore into another profile, recover drafts/bytes/search, and verify effectful work remains paused | Durable resource and lifecycle stages deployed | P08 |
 
-Independent S08a/S08b releases may land before S02. Start S08b beside S01 because they touch separate files; the orchestrator serializes integration and release. Keep one agent slot free for review. Narrow any stage that cannot fit one working session while retaining a useful, releasable promise.
+Independent S08a/S08b releases may land before S02. S08a reuses existing teardown; it does not claim recovery of ambiguous sends before S03/S04. Build S08a/S08b beside S01 because they touch separate files; the orchestrator serializes integration and release. Keep one agent slot free for review. Narrow any stage that cannot fit one working session while retaining a useful, releasable promise.
 
 R01 is conditional on selecting a remote HTTP consumer and network policy. It must precede that consumer's first off-machine HTTP release. This readiness run does not silently turn a loopback bridge into a public service.
 

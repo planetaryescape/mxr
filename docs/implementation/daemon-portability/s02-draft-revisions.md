@@ -45,6 +45,7 @@ Focused checks for the candidate:
 
 ```sh
 scripts/cargo-test -p mxr -p mxr-web -p mxr-store -p mxr-client -p mxr-compose -p mxr-mcp -p mxr-tui --tests draft
+scripts/cargo-test -p mxr-web --lib compose_and_scheduling
 scripts/pre-pr-rust-gate
 cargo build -p mxr
 npm run typecheck --prefix apps/web
@@ -62,7 +63,8 @@ compose sessions and save/schedule responses derived from generated OpenAPI
 schemas; accepted own autosaves advance the local token without discarding newer
 in-memory edits. Generated request/success/conflict contracts cover touched compose
 and stored-delete routes. The anti-slop checker reports generator-owned response
-header dictionaries from openapi-typescript; handwritten changed lines are clear.
+header dictionaries from openapi-typescript. The final autosave tests use the
+existing API module mock convention; their final lint remains pending.
 
 ## Parent integration remains the next action
 
@@ -77,3 +79,32 @@ CAS protects content writes, while process-local draft locks serialize provider
 effects. A separate binary that ignores revisions is outside that contract.
 Provider-effect/local-SQL crash recovery remains the existing behavior; S02 does
 not add an effect journal. Managed draft/attachment lifecycle remains S05.
+
+## Final review corrections need the focused checks repeated
+
+Parent review found that a committed autosave can be marked stale by the browser
+request coordinator. Successful queued tasks now advance the accepted revision
+before UI result filtering, guarded by session path and draft identity. Two hook
+tests cover overlapping saves and a session switch while a save is in flight.
+
+Send and schedule validate the same parsed file snapshot used to construct their
+submitted draft. Autosave preserves incomplete drafts; explicit save uses the
+existing save validator, including provider draft copies. Invalid submissions
+return 422 before effectful daemon IPC. CLI transport errors also report the
+unique preserved editor path. The smoke isolates HOME, XDG and MXR settings,
+disables the bridge and copies its binary into its private fixture.
+
+Before these review corrections, the root draft suite passed 95 tests, browser
+compose/draft tests passed 86 tests, focused store/client/web revision tests and
+the Rust gate passed, and the synthetic two-editor smoke passed. Evidence is in
+`/tmp/s02-daemon-tests-final.log`, `/tmp/s02-web-unit-final2.log`,
+`/tmp/s02-revision-tests-final2.log`, `/tmp/s02-rust-gate-final2.log` and
+`/tmp/s02-smoke-owned.log`. These results do not certify the final corrections.
+
+Repeat the two hook tests, frontend typecheck, full affected
+`compose_and_scheduling` suite, focused draft suites, Rust gate, root build and
+updated isolated smoke on the final pinned source before integration. Job 4902
+was registered for the hook tests, but its caller timed out waiting on Pueue;
+inspect that job before retrying. Whole-queue status also timed out. The targeted
+compose suite did not start because the preceding queued formatting command
+timed out. No global queue settings or other jobs were changed.

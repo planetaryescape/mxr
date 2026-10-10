@@ -38,6 +38,32 @@ afterEach(() => {
 });
 
 describe("resuming a compose session", () => {
+  test("a missing stored-draft recovery file falls back to the same canonical draft", async () => {
+    const intent = {
+      key: "compose:draft:existing",
+      title: "Existing",
+      kind: "new" as const,
+      draftId: "existing",
+    };
+    rememberActiveDraft(intent.key, {
+      draftPath: "/tmp/missing-recovery",
+      recoverySourcePath: "/tmp/original",
+      accountId: "acct-1",
+    } as Parameters<typeof rememberActiveDraft>[1]);
+    api.refreshComposeSession.mockRejectedValueOnce(new Error("file missing"));
+    api.restoreComposeSession.mockResolvedValueOnce({
+      session: {
+        draftPath: "/tmp/canonical",
+        draftId: "existing",
+        bodyMarkdown: "canonical",
+      } as ComposeSessionResponse["session"],
+    });
+    const loaded = await loadInitialComposeSession(intent);
+    expect(api.restoreComposeSession).toHaveBeenCalledWith("existing");
+    expect(api.startComposeSession).not.toHaveBeenCalled();
+    expect(loaded.session.bodyMarkdown).toBe("canonical");
+  });
+
   test("keeps the account the draft was written from, which the file doesn't name", async () => {
     const intent = {
       key: "compose:reply:m1",

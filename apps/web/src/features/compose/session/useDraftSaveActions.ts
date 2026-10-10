@@ -263,9 +263,7 @@ export function useDraftSaveActions({
       setDraft(next);
       setDirty(false);
       rememberActiveDraft(intent.key, next);
-      setSaveError(
-        "These edits are preserved locally. Use Open saved draft to continue with the canonical draft.",
-      );
+      setSaveError("These edits are preserved locally. Use Retry or Open saved draft to continue.");
     } catch (error) {
       toast.error("Recovery could not be opened", { description: errorMessage(error) });
     }

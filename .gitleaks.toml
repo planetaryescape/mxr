@@ -1,0 +1,11 @@
+title = "mxr gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Git blob checksum recorded in the S06 source manifest"
+condition = "AND"
+paths = ['''^docs/build-log/daemon-portability/evidence/s06-event-recovery-audit-2c55a735\.json$''']
+regexTarget = "secret"
+regexes = ['''^80aadc8c5f301179fcb7666f6361f5a7227fb0dd$''']

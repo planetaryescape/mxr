@@ -161,6 +161,9 @@ pub(super) struct ComposeSessionRestoreRequest {
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ComposeSessionUpdateRequest {
+    /// Explicit creation retry for a private recovery with no accepted revision.
+    #[serde(default)]
+    pub(super) retry_recovery: bool,
     #[serde(default)]
     pub(super) account_id: Option<String>,
     #[serde(default)]
@@ -393,6 +396,8 @@ mod unsubscribe_preview_tests {
 #[derive(utoipa::ToSchema)]
 #[allow(dead_code)]
 pub(super) struct ComposeSessionData {
+    #[serde(rename = "preservedRecoveryPath")]
+    preserved_recovery_path: Option<String>,
     /// Private recovery destination; this session cannot mutate the canonical draft.
     #[serde(rename = "recoverySourcePath")]
     recovery_source_path: Option<String>,
@@ -446,6 +451,8 @@ pub(super) struct RecoveredComposeSession {
     pub(super) draft_path: String,
     pub(super) draft_id: mxr_core::DraftId,
     pub(super) revision: Option<i64>,
+    /// Confirmed recovery paths in submitted attachment order.
+    pub(super) attachment_paths: Vec<String>,
 }
 
 #[derive(utoipa::ToSchema)]

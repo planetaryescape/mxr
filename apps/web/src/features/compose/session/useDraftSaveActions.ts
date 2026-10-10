@@ -12,7 +12,12 @@ import { toast } from "sonner";
 import { rememberActiveDraft } from "./activeDrafts";
 import { acceptedDraftRevision } from "./acceptedDraftRevision";
 import { requestCoordinator } from "@/lib/requestCoordinator";
-import { refreshComposeSession, restoreComposeSession, saveComposeSession } from "../api";
+import {
+  refreshComposeSession,
+  restoreComposeSession,
+  saveComposeSession,
+  updateComposeSession,
+} from "../api";
 import {
   composeQueueKey,
   draftFingerprint,
@@ -73,8 +78,58 @@ export function useDraftSaveActions({
   }
 
   async function handleSaveClick() {
+    const target = draftRef.current;
+    if (!target) return;
     try {
       await saveCurrentDraft();
+      const current = draftRef.current;
+      if (
+        !current ||
+        current.draftId !== target.draftId ||
+        composeQueueKey(current.draftPath, current.recoverySourcePath) !==
+          composeQueueKey(target.draftPath, target.recoverySourcePath)
+      )
+        return;
+      if (current?.recoverySourcePath && current.revision == null) {
+        const response = await requestCoordinator.queueComposeLatest(
+          composeQueueKey(current.draftPath, current.recoverySourcePath),
+          () =>
+            updateComposeSession({
+              retryRecovery: true,
+              draftPath: current.draftPath,
+              accountId: current.accountId,
+              expectedRevision: null,
+              frontmatter: { ...current.frontmatter, attach: [...current.frontmatter.attach] },
+              body: current.bodyMarkdown,
+            }),
+        );
+        if (response.status !== "committed") return;
+        const saved = response.value.session;
+        if (saved.draftId !== current.draftId || saved.revision == null || saved.recoverySourcePath)
+          throw new Error(
+            "The retry has no confirmed canonical draft response; your edits stay preserved",
+          );
+        const latest = draftRef.current;
+        if (
+          latest?.draftPath !== current.draftPath ||
+          latest.draftId !== current.draftId ||
+          draftFingerprint(latest) !== draftFingerprint(current)
+        )
+          throw new Error(
+            "Your edits changed during the retry and remain preserved. Open the saved draft to continue.",
+          );
+        const next = {
+          ...draftFromSession(saved, current.accountId),
+          preservedRecoveryPath: current.draftPath,
+        };
+        draftRef.current = next;
+        lastSavedFingerprintRef.current = draftFingerprint(next);
+        rememberActiveDraft(intent.key, next);
+        setDraft(next);
+        setDirty(false);
+        setSaveError(null);
+        setLastSavedAt(new Date());
+      }
     } catch (error) {
       toast.error("Save failed", { description: errorMessage(error) });
       return;

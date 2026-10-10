@@ -71,7 +71,7 @@ schemas; accepted own autosaves advance the local token without discarding newer
 in-memory edits. Generated request/success/conflict contracts cover touched compose
 and stored-delete routes. The anti-slop checker reports generator-owned response
 header dictionaries from openapi-typescript. The final autosave tests use the
-existing API module mock convention; their final lint remains pending.
+existing API module mock convention; lint passed on ea37aa63 and on the round 3 correction. Execution checks remain pending.
 
 ## Parent integration remains the next action
 
@@ -103,18 +103,12 @@ disables the bridge and copies its binary into its private fixture.
 
 Before these review corrections, the root draft suite passed 95 tests, browser
 compose/draft tests passed 86 tests, focused store/client/web revision tests and
-the Rust gate passed, and the synthetic two-editor smoke passed. Evidence is in
-`/tmp/s02-daemon-tests-final.log`, `/tmp/s02-web-unit-final2.log`,
-`/tmp/s02-revision-tests-final2.log`, `/tmp/s02-rust-gate-final2.log` and
-`/tmp/s02-smoke-owned.log`. These results do not certify the final corrections.
+the Rust gate passed, and the synthetic two-editor smoke passed. Those runs used temporary logs and do not certify the final corrections.
+Durable final evidence belongs with the parent integration record.
 
 Repeat the two hook tests, frontend typecheck, full affected
 `compose_and_scheduling` suite, focused draft suites, Rust gate, root build and
-updated isolated smoke on the final pinned source before integration. Job 4902
-was registered for the hook tests, but its caller timed out waiting on Pueue;
-inspect that job before retrying. Whole-queue status also timed out. The targeted
-compose suite did not start because the preceding queued formatting command
-timed out. No global queue settings or other jobs were changed.
+updated isolated smoke on the final pinned source before integration. Job 4902 completed in an earlier round and is historical. The current scoped Rust gate and isolated dependency install remain queued while the global default group is paused. No queue policy or unrelated tasks were changed.
 
 ## Review round 2 preserves recovery paths
 
@@ -159,3 +153,35 @@ dirty state and the original error. A stable queue key follows that editor's
 recovery destination, including an already queued close save. Reopening waits
 for the queue to settle and then reads the latest active entry, so it resumes
 the last preserved snapshot rather than the shared winning file.
+
+
+## Recovery preserves one private destination and permits Close
+
+The bridge marks recovery ownership in its private draft metadata. Further edits
+reuse that destination and persist locally without canonical or provider writes.
+Explicitly reopening a recovery makes another private editable copy, so two
+tabs opening the same remembered path cannot edit or discard each other's
+file. Earlier preserved copies remain intact; user-driven opens can therefore
+leave additional private copies. Autosave creates no further copies after
+adopting its destination. Recovery Discard deletes only the marked file and its own attachment directory.
+Send, safety, scheduling and provider save reject recovery sessions even when the
+caller supplies no revision. Ordinary saved draft deletion still checks its CAS.
+
+The browser tracks locally preserved snapshots separately from canonical saved
+content. Confirmed local preservation permits Close and stops unchanged autosave
+retries. Unconfirmed connection errors keep text dirty; a confirmed daemon
+recovery or explicit save retries it. Queued Close and unmount snapshots follow
+the operation's actual recovery path, including after a session switch.
+
+Open saved draft explicitly restores current canonical content while retaining
+an Open preserved edits action and its path in the active entry. Both reload
+actions recheck identity and text after their final response so intervening
+keystrokes cannot disappear. Provider sync confirmations through either MCP
+name require the revision returned by the preview and preserve that token in
+the daemon request.
+
+Round 3 adds timer, queued snapshot, real Close/Discard/reopen and bridge/MCP
+coverage. Those new tests, final contracts, typecheck, build and the two-tab
+browser journey have not yet run while the shared queue is paused. Old/null-token
+shared-path send clients remain an upgrade boundary; S02 does not guarantee their
+reviewed content or add the S03 effect journal.

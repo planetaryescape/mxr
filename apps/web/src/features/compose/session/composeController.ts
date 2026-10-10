@@ -79,6 +79,7 @@ export interface ComposeController {
   handleSaveClick: () => Promise<void>;
   handleServerSaveClick: () => Promise<void>;
   handleRefreshClick: () => Promise<void>;
+  handleRecoveryClick: () => Promise<void>;
   handleAttachShortcut: () => void;
   handleComposeKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
   requestSend: () => void;

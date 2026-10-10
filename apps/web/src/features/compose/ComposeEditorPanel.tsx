@@ -120,6 +120,10 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
             title={controller.intent.title}
             busy={controller.busy}
             canServerSave={controller.canServerSave}
+            recovery={Boolean(controller.draft?.recoverySourcePath)}
+            onRecovery={
+              controller.draft?.preservedRecoveryPath ? controller.handleRecoveryClick : undefined
+            }
             onRefresh={controller.handleRefreshClick}
             onServerSave={controller.handleServerSaveClick}
             onDiscard={controller.requestDiscard}
@@ -392,6 +396,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
       />
       <DiscardConfirmDialog
         saved={controller.draft?.revision != null}
+        recovery={Boolean(controller.draft?.recoverySourcePath)}
         open={controller.discardConfirmOpen}
         onOpenChange={controller.setDiscardConfirmOpen}
         discarding={controller.discarding}
@@ -458,12 +463,14 @@ function AttachmentList({
 
 function DiscardConfirmDialog({
   saved,
+  recovery,
   open,
   onOpenChange,
   discarding,
   onConfirm,
 }: {
   saved: boolean;
+  recovery: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   discarding: boolean;
@@ -482,9 +489,11 @@ function DiscardConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Discard draft?</AlertDialogTitle>
           <AlertDialogDescription>
-            {saved
-              ? "This deletes the saved draft and any linked provider copy, along with this compose file and its attachments."
-              : "This deletes the local compose file and attachments for this draft."}
+            {recovery
+              ? "This deletes only your local recovery file and its attachments. The saved draft and provider copy are kept."
+              : saved
+                ? "This deletes the saved draft and any linked provider copy, along with this compose file and its attachments."
+                : "This deletes the local compose file and attachments for this draft."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

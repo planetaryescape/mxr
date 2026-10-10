@@ -9,11 +9,13 @@ import { useMutation } from "@tanstack/react-query";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { toast } from "sonner";
 
+import { rememberActiveDraft } from "./activeDrafts";
 import { acceptedDraftRevision } from "./acceptedDraftRevision";
 import { requestCoordinator } from "@/lib/requestCoordinator";
-import { refreshComposeSession, saveComposeSession } from "../api";
+import { refreshComposeSession, restoreComposeSession, saveComposeSession } from "../api";
 import {
   composeQueueKey,
+  draftFingerprint,
   draftFromSession,
   errorMessage,
   type ComposeDraftState,
@@ -29,9 +31,11 @@ interface DraftSaveActionsInput {
   isCurrentDraftSaved: (draft: ComposeDraftState) => boolean;
   setSaveError: Dispatch<SetStateAction<string | null>>;
   setLastSavedAt: Dispatch<SetStateAction<Date | null>>;
+  lastSavedFingerprintRef: MutableRefObject<string | null>;
 }
 
 export function useDraftSaveActions({
+  intent,
   draftRef,
   setDraft,
   setDirty,
@@ -39,6 +43,7 @@ export function useDraftSaveActions({
   isCurrentDraftSaved,
   setSaveError,
   setLastSavedAt,
+  lastSavedFingerprintRef,
 }: DraftSaveActionsInput) {
   const serverSave = useMutation({
     mutationFn: (target: ComposeDraftState) =>
@@ -126,11 +131,41 @@ export function useDraftSaveActions({
     const current = draftRef.current;
     if (!current) return;
     try {
-      const response = await refreshComposeSession(current.draftPath);
-      const next = draftFromSession(response.session, current.accountId);
+      if (current.recoverySourcePath) {
+        await saveCurrentDraft();
+        if (draftRef.current && draftFingerprint(draftRef.current) !== draftFingerprint(current))
+          throw new Error(
+            "Your text changed while preserving it. Open the saved draft again after saving.",
+          );
+      }
+      const response =
+        current.recoverySourcePath && current.draftId
+          ? await restoreComposeSession(current.draftId)
+          : await refreshComposeSession(current.draftPath);
+      if (
+        draftRef.current?.draftPath !== current.draftPath ||
+        draftRef.current.draftId !== current.draftId ||
+        draftFingerprint(draftRef.current) !== draftFingerprint(current)
+      )
+        throw new Error(
+          "Your text changed while opening the draft. Save it before opening another version.",
+        );
+      const next = {
+        ...draftFromSession(response.session, current.accountId),
+        preservedRecoveryPath: current.recoverySourcePath
+          ? current.draftPath
+          : current.preservedRecoveryPath,
+      };
+      draftRef.current = next;
+      lastSavedFingerprintRef.current = next.recoverySourcePath ? null : draftFingerprint(next);
+      rememberActiveDraft(intent.key, next);
       setDraft(next);
       setDirty(false);
-      setSaveError(null);
+      setSaveError(
+        next.preservedRecoveryPath
+          ? `Your rejected edits remain in ${next.preservedRecoveryPath}`
+          : null,
+      );
       setLastSavedAt(new Date());
     } catch (error) {
       toast.error("Refresh failed", { description: errorMessage(error) });
@@ -139,5 +174,40 @@ export function useDraftSaveActions({
     toast.success("Draft refreshed");
   }
 
-  return { handleSaveClick, handleServerSaveClick, handleRefreshClick };
+  async function handleRecoveryClick() {
+    const current = draftRef.current;
+    if (!current?.preservedRecoveryPath) return;
+    try {
+      await saveCurrentDraft();
+      if (
+        draftRef.current?.draftPath !== current.draftPath ||
+        draftFingerprint(draftRef.current) !== draftFingerprint(current)
+      )
+        return;
+      const response = await refreshComposeSession(current.preservedRecoveryPath);
+      if (
+        draftRef.current?.draftPath !== current.draftPath ||
+        draftRef.current.draftId !== current.draftId ||
+        draftFingerprint(draftRef.current) !== draftFingerprint(current)
+      )
+        throw new Error(
+          "Your text changed while opening preserved edits. Save it before opening another version.",
+        );
+      if (!response.session.recoverySourcePath || response.session.draftId !== current.draftId)
+        throw new Error("The preserved session belongs to another draft");
+      const next = draftFromSession(response.session, current.accountId);
+      draftRef.current = next;
+      lastSavedFingerprintRef.current = null;
+      setDraft(next);
+      setDirty(false);
+      rememberActiveDraft(intent.key, next);
+      setSaveError(
+        "These edits are preserved locally. Use Open saved draft to continue with the canonical draft.",
+      );
+    } catch (error) {
+      toast.error("Recovery could not be opened", { description: errorMessage(error) });
+    }
+  }
+
+  return { handleSaveClick, handleServerSaveClick, handleRefreshClick, handleRecoveryClick };
 }

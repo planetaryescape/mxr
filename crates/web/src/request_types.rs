@@ -393,6 +393,9 @@ mod unsubscribe_preview_tests {
 #[derive(utoipa::ToSchema)]
 #[allow(dead_code)]
 pub(super) struct ComposeSessionData {
+    /// Private recovery destination; this session cannot mutate the canonical draft.
+    #[serde(rename = "recoverySourcePath")]
+    recovery_source_path: Option<String>,
     #[serde(rename = "draftPath")]
     draft_path: String,
     #[serde(rename = "draftId")]

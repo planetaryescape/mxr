@@ -4,7 +4,12 @@
  * starting a fresh session.
  */
 
-import { refreshComposeSession, restoreComposeSession, startComposeSession } from "../api";
+import {
+  refreshComposeSession,
+  restoreComposeSession,
+  startComposeSession,
+  type ComposeSessionResponse,
+} from "../api";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 
 import { composeQueueKey, type ComposeDraftState, type ComposeIntent } from "./composeDraft";
@@ -14,11 +19,14 @@ const activeDraftStorageKey = "mxr.compose.activeDrafts";
 interface ActiveDraftEntry {
   draftPath: string;
   recoverySourcePath?: string;
+  preservedRecoveryPath?: string;
   accountId?: string;
   updatedAt: number;
 }
 
-export async function loadInitialComposeSession(intent: ComposeIntent) {
+export async function loadInitialComposeSession(
+  intent: ComposeIntent,
+): Promise<ComposeSessionResponse & { preservedRecoveryPath?: string }> {
   const active = readActiveDraft(intent.key);
   if (active?.draftPath) {
     try {
@@ -28,8 +36,10 @@ export async function loadInitialComposeSession(intent: ComposeIntent) {
         composeQueueKey(active.draftPath, active.recoverySourcePath),
       );
       const settled = readActiveDraft(intent.key) ?? active;
-      if (intent.draftId && !settled.recoverySourcePath)
-        return restoreComposeSession(intent.draftId);
+      if (intent.draftId && !settled.recoverySourcePath) {
+        const restored = await restoreComposeSession(intent.draftId);
+        return { ...restored, preservedRecoveryPath: settled.preservedRecoveryPath };
+      }
       const refreshed = await refreshComposeSession(settled.draftPath);
       if (intent.draftId && refreshed.session.draftId !== intent.draftId)
         throw new Error("The recovered session belongs to another draft");
@@ -37,6 +47,7 @@ export async function loadInitialComposeSession(intent: ComposeIntent) {
       // entry kept it. Without it the send and safety check have no account.
       return {
         ...refreshed,
+        preservedRecoveryPath: settled.preservedRecoveryPath,
         session: {
           ...refreshed.session,
           accountId: refreshed.session.accountId ?? settled.accountId,
@@ -70,6 +81,7 @@ export function rememberActiveDraft(key: string, draft: ComposeDraftState) {
     parsed[key] = {
       draftPath: draft.draftPath,
       recoverySourcePath: draft.recoverySourcePath,
+      preservedRecoveryPath: draft.preservedRecoveryPath,
       accountId: draft.accountId,
       updatedAt: Date.now(),
     };

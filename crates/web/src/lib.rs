@@ -2891,7 +2891,7 @@ async fn compose_draft_from_snapshot(
         existing.account_id = parse_account_id(account_id)?;
         return mxr_compose::draft_codec::apply_edited_compose_file(
             &existing,
-            &raw_content,
+            raw_content,
             Utc::now(),
         )
         .map_err(|error| BridgeError::InvalidDraft(error.to_string()));

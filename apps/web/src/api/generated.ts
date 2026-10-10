@@ -3720,6 +3720,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AcceptedComposeDraft: {
+            draft_id: components["schemas"]["DraftId"];
+            /** Format: int64 */
+            revision: number;
+        };
         /**
          * @description One owned email address per account. Direction inference compares
          *     `messages.from_email` against this set to decide inbound vs outbound.
@@ -4417,8 +4422,11 @@ export interface components {
             frontmatter: components["schemas"]["ComposeFrontmatter"];
             issues: components["schemas"]["ComposeIssueView"][];
             kind?: string | null;
+            preservedRecoveryPath?: string | null;
             previewHtml: string;
             rawContent: string;
+            /** @description Private recovery destination; this session cannot mutate the canonical draft. */
+            recoverySourcePath?: string | null;
             /** Format: int64 */
             revision?: number | null;
         };
@@ -4492,6 +4500,8 @@ export interface components {
             /** Format: int64 */
             expected_revision?: number | null;
             from: string;
+            /** @description Explicit creation retry for a private recovery with no accepted revision. */
+            retry_recovery?: boolean;
             subject: string;
             to: string;
         };
@@ -5197,9 +5207,11 @@ export interface components {
             expected_revision?: number | null;
         };
         DraftConflictResponse: {
+            accepted_draft?: null | components["schemas"]["AcceptedComposeDraft"];
             code: string;
             details?: null | components["schemas"]["DraftConflictDetails"];
             error: string;
+            recovery_session?: null | components["schemas"]["RecoveredComposeSession"];
         };
         /**
          * @description Documents the flattened [`DraftContent`] wire shape for OpenAPI.
@@ -7562,6 +7574,14 @@ export interface components {
             /** @description restore | dismiss | clear_fields | sender */
             kind: string;
             record_ids: string[];
+        };
+        RecoveredComposeSession: {
+            /** @description Confirmed recovery paths in submitted attachment order. */
+            attachment_paths: string[];
+            draft_id: components["schemas"]["DraftId"];
+            draft_path: string;
+            /** Format: int64 */
+            revision?: number | null;
         };
         RelationshipDriftData: {
             /** Format: date-time */
@@ -12739,21 +12759,43 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeSessionSendRequest"];
+            };
+        };
         responses: {
-            /** @description OK */
+            /** @description Compose safety report */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Missing or invalid bridge token */
+            /** @description Local recovery requires explicit canonical reopen */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Missing bridge token */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Stale draft revision; preserve unsent text */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
             };
         };
     };
@@ -12779,6 +12821,15 @@ export interface operations {
                     "application/json": components["schemas"]["SavedDraftResponse"];
                 };
             };
+            /** @description Local recovery requires explicit canonical reopen */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
             /** @description Missing bridge token */
             401: {
                 headers: {
@@ -12797,6 +12848,42 @@ export interface operations {
             };
             /** @description Invalid draft or unsupported daemon */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Daemon operation failed; may carry an accepted draft revision */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Bridge IPC failed; may carry an accepted draft revision */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Daemon connection failed; may carry an accepted draft revision */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Daemon request timed out; may carry an accepted draft revision */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12828,6 +12915,15 @@ export interface operations {
                     "application/json": components["schemas"]["ScheduledComposeResponse"];
                 };
             };
+            /** @description Local recovery requires explicit canonical reopen */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
             /** @description Missing bridge token */
             401: {
                 headers: {
@@ -12853,6 +12949,42 @@ export interface operations {
                     "application/json": components["schemas"]["DraftConflictResponse"];
                 };
             };
+            /** @description Daemon operation failed; may carry an accepted draft revision */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Bridge IPC failed; may carry an accepted draft revision */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Daemon connection failed; may carry an accepted draft revision */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Daemon request timed out; may carry an accepted draft revision */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
         };
     };
     compose_session_send: {
@@ -12862,21 +12994,43 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeSessionSendRequest"];
+            };
+        };
         responses: {
-            /** @description OK */
+            /** @description Sent compose session */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Missing or invalid bridge token */
+            /** @description Local recovery requires explicit canonical reopen */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Missing bridge token */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Stale draft revision; preserve unsent text */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
             };
         };
     };
@@ -12920,6 +13074,42 @@ export interface operations {
             };
             /** @description Invalid draft or unsupported daemon */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Daemon operation failed; may carry an accepted draft revision */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Bridge IPC failed; may carry an accepted draft revision */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Daemon connection failed; may carry an accepted draft revision */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Daemon request timed out; may carry an accepted draft revision */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };

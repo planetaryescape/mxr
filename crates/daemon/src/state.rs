@@ -36,6 +36,17 @@ struct NamedTaskHandle {
     handle: JoinHandle<()>,
 }
 
+fn log_service_shutdown_result<E: std::fmt::Display>(
+    service: &'static str,
+    result: Result<Result<(), E>, tokio::time::error::Elapsed>,
+) {
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => tracing::warn!(service, %error, "service shutdown signal failed"),
+        Err(_) => tracing::warn!(service, "service shutdown signal timed out"),
+    }
+}
+
 #[derive(Default)]
 struct RuntimeTasks {
     search_worker: ParkingMutex<Option<JoinHandle<()>>>,
@@ -1573,28 +1584,41 @@ impl AppState {
 
     pub async fn shutdown_runtime_tasks(&self, timeout: Duration) {
         let drain_started = Instant::now();
+        let deadline = tokio::time::Instant::now() + timeout;
         self.request_shutdown();
 
-        if let Err(error) = self.search.request_shutdown().await {
-            tracing::warn!("search worker shutdown signal failed: {error}");
-        }
-        if let Err(error) = self.semantic.request_shutdown().await {
-            tracing::warn!("semantic worker shutdown signal failed: {error}");
-        }
+        let (search, semantic, relationship, contacts_refresh) = tokio::join!(
+            tokio::time::timeout_at(deadline, self.search.request_shutdown()),
+            tokio::time::timeout_at(deadline, self.semantic.request_shutdown()),
+            tokio::time::timeout_at(deadline, self.relationship.request_shutdown()),
+            tokio::time::timeout_at(deadline, self.contacts_refresh.request_shutdown()),
+        );
+        log_service_shutdown_result("search", search);
+        log_service_shutdown_result("semantic", semantic);
+        log_service_shutdown_result("relationship", relationship);
+        log_service_shutdown_result("contacts refresh", contacts_refresh);
 
-        let deadline = Instant::now() + timeout;
-        for task in self.runtime_tasks.take_all() {
-            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+        for mut task in self.runtime_tasks.take_all() {
+            let Some(remaining) = deadline.checked_duration_since(tokio::time::Instant::now())
+            else {
+                if !task.handle.is_finished() {
+                    task.handle.abort();
+                }
                 tracing::warn!(task = %task.name, "runtime task drain timed out");
                 continue;
             };
 
-            match tokio::time::timeout(remaining, task.handle).await {
+            match tokio::time::timeout(remaining, &mut task.handle).await {
                 Ok(Ok(())) => tracing::trace!(task = %task.name, "runtime task stopped"),
                 Ok(Err(error)) => {
                     tracing::warn!(task = %task.name, "runtime task join failed: {error}");
                 }
-                Err(_) => tracing::warn!(task = %task.name, "runtime task drain timed out"),
+                Err(_) => {
+                    if !task.handle.is_finished() {
+                        task.handle.abort();
+                    }
+                    tracing::warn!(task = %task.name, "runtime task drain timed out");
+                }
             }
         }
 
@@ -2948,5 +2972,112 @@ use_tls = true
             !sync_in_progress(&state, &account_id).await,
             "a later claim that already finished must not be re-asserted as busy"
         );
+    }
+
+    #[tokio::test]
+    async fn runtime_shutdown_closes_relationship_and_contacts_workers() {
+        let state = AppState::in_memory().await.expect("state");
+        let relationship = state.relationship.clone();
+        let contacts_refresh = state.contacts_refresh.clone();
+
+        state.shutdown_runtime_tasks(Duration::from_secs(2)).await;
+
+        let relationship_result = tokio::time::timeout(
+            Duration::from_secs(1),
+            relationship.rebuild_contact(AccountId::new(), "shutdown-check@example.com".into()),
+        )
+        .await
+        .expect("relationship worker should already be closed")
+        .expect_err("closed relationship worker should reject new work");
+        assert_eq!(
+            relationship_result.to_string(),
+            "relationship service unavailable"
+        );
+
+        let contacts_result = tokio::time::timeout(
+            Duration::from_secs(1),
+            contacts_refresh.enqueue_accounts(&[]),
+        )
+        .await
+        .expect("contacts refresh worker should already be closed")
+        .expect_err("closed contacts worker should reject new work");
+        assert_eq!(contacts_result, "contacts refresh worker unavailable");
+    }
+
+    #[tokio::test]
+    async fn runtime_shutdown_bounds_a_blocked_relationship_request() {
+        let mut state = AppState::in_memory().await.expect("state");
+        state
+            .relationship
+            .request_shutdown()
+            .await
+            .expect("stop original relationship worker");
+        let original_worker = RuntimeTasks::take_named(
+            &state.runtime_tasks.relationship_worker,
+            "relationship_worker",
+        )
+        .expect("original relationship task should be registered");
+        original_worker
+            .handle
+            .await
+            .expect("join original relationship worker");
+
+        let (relationship, worker) = RelationshipServiceHandle::start(
+            state.store.clone(),
+            state.llm.clone(),
+            Arc::new(Semaphore::new(0)),
+        );
+        state.relationship = relationship;
+        state.runtime_tasks.set_relationship_worker(worker);
+
+        let account_id = AccountId::new();
+        state
+            .relationship
+            .enqueue_contacts(vec![(account_id, "blocked-shutdown@example.com".into())])
+            .await
+            .expect("queued contact should be acknowledged before shutdown");
+
+        let started = Instant::now();
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            state.shutdown_runtime_tasks(Duration::from_millis(100)),
+        )
+        .await
+        .expect("blocked service request must not extend the shared shutdown deadline");
+        assert!(started.elapsed() < Duration::from_secs(2));
+        let closed = tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                match state.relationship.enqueue_contacts(Vec::new()).await {
+                    Err(error) if error.to_string() == "relationship service unavailable" => {
+                        break error;
+                    }
+                    Err(_) | Ok(()) => tokio::task::yield_now().await,
+                }
+            }
+        })
+        .await
+        .expect("aborted relationship receiver should close");
+        assert_eq!(closed.to_string(), "relationship service unavailable");
+    }
+
+    #[tokio::test]
+    async fn runtime_shutdown_aborts_a_registered_task_at_its_deadline() {
+        let state = AppState::in_memory().await.expect("state");
+        let (drop_tx, drop_rx) = tokio::sync::oneshot::channel();
+        state.register_bridge_loop(tokio::spawn(async move {
+            let _drop_signal = drop_tx;
+            std::future::pending::<()>().await;
+        }));
+
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            state.shutdown_runtime_tasks(Duration::from_millis(100)),
+        )
+        .await
+        .expect("shutdown should respect its bounded deadline");
+        tokio::time::timeout(Duration::from_secs(1), drop_rx)
+            .await
+            .expect("unfinished owned task should be aborted")
+            .expect_err("pending task must be cancelled, not completed");
     }
 }

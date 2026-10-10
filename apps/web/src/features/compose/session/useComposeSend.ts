@@ -232,9 +232,14 @@ export function useComposeSend({
     const current = draftRef.current;
     if (!current || !isCurrentDraftSaved(current)) {
       releaseSendLock();
-      toast.error("Draft changed while saving", {
-        description: "Retry send after the latest save.",
-      });
+      toast.error(
+        current?.recoverySourcePath ? "Draft preserved locally" : "Draft changed while saving",
+        {
+          description: current?.recoverySourcePath
+            ? "Use Retry or Open saved draft before sending."
+            : "Retry send after the latest save.",
+        },
+      );
       return;
     }
     setCheckingSafety(true);
@@ -296,9 +301,14 @@ export function useComposeSend({
     });
     const current = draftRef.current;
     if (!current || !isCurrentDraftSaved(current)) {
-      toast.error("Draft changed while saving", {
-        description: "Retry scheduling after the latest save.",
-      });
+      toast.error(
+        current?.recoverySourcePath ? "Draft preserved locally" : "Draft changed while saving",
+        {
+          description: current?.recoverySourcePath
+            ? "Use Retry or Open saved draft before scheduling."
+            : "Retry scheduling after the latest save.",
+        },
+      );
       return;
     }
     let scheduledDraftId: string;

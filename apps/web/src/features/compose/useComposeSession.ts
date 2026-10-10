@@ -162,7 +162,7 @@ export function useComposeSession(
     setDirty(changed);
     setSaveError(
       next.recoverySourcePath
-        ? "These edits are preserved locally. Use Open saved draft to continue with the canonical draft."
+        ? "These edits are preserved locally. Use Retry or Open saved draft to continue."
         : next.preservedRecoveryPath
           ? `Your rejected edits remain in ${next.preservedRecoveryPath}`
           : null,
@@ -200,7 +200,12 @@ export function useComposeSession(
 
   const collaboratorSuggestions = useCollaboratorSuggestions(draft);
   const { runtimeAccounts, selectedAccount, accountAddresses } = useSenderAccounts(draft);
-  const saveStatus = saveStatusLabel({ saving: autosave.saving, dirty, lastSavedAt });
+  const saveStatus = saveStatusLabel({
+    saving: autosave.saving,
+    dirty,
+    lastSavedAt,
+    recovery: Boolean(draft?.recoverySourcePath),
+  });
   const visibleIssues = !draft
     ? []
     : sendAttempted
@@ -367,9 +372,7 @@ export function useComposeSession(
   }
 
   function retrySave() {
-    void saveCurrentDraft().catch((error: Error) => {
-      toast.error("Save failed", { description: error.message });
-    });
+    void handleSaveClick();
   }
 
   function removeAttachment(path: string) {
@@ -475,13 +478,16 @@ export function saveStatusLabel({
   saving,
   dirty,
   lastSavedAt,
+  recovery = false,
 }: {
   saving: boolean;
   dirty: boolean;
   lastSavedAt: Date | null;
+  recovery?: boolean;
 }): string {
-  if (saving) return "Saving…";
+  if (saving) return recovery ? "Preserving…" : "Saving…";
   if (dirty) return "Unsaved changes";
+  if (recovery) return "Edits preserved locally";
   return lastSavedAt ? savedLabel(lastSavedAt) : "";
 }
 

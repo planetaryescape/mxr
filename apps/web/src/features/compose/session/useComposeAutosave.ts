@@ -321,7 +321,7 @@ export function useComposeAutosave({
           issues: response.session.issues,
         });
       }
-      setLastSavedAt(new Date());
+      setLastSavedAt(recoverySource ? null : new Date());
       void queryClient.invalidateQueries({ queryKey: ["drafts"] });
       return response.session;
     } catch (error) {
@@ -351,7 +351,7 @@ export function useComposeAutosave({
   useEffect(() => {
     if (!dirty || !draft) return;
     if (daemonDown) {
-      setSaveError(DAEMON_DOWN_NOTE);
+      if (!draft.recoverySourcePath) setSaveError(DAEMON_DOWN_NOTE);
       return;
     }
     if (`${draft.draftPath}:${draftFingerprint(draft)}` === attemptedFingerprintRef.current) return;

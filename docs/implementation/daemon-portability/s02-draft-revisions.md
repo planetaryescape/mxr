@@ -287,3 +287,25 @@ send resurrection, ambiguous persistence/discard outcomes and CLI deletion using
 a freshly read revision rather than the preview token. Preserved explicit copies
 and the compose lock map retain their existing lifetime trade-offs. None of
 these adds an effect journal or changes the settled mixed-version boundary in S02.
+
+
+## Recovery status and visible Retry use the explicit save path
+
+The UI correction based on review of 5b490ac2 keeps a private recovery distinct
+from a saved draft across daemon disconnect and reconnect. Local preservation
+clears the canonical save timestamp; clean recoveries report preserved edits.
+The visible Retry button now invokes the existing explicit Save action with the
+editor's original observed revision. Send and schedule failures point to Retry
+or Open saved draft without automatically sending. Mounted fixtures cover
+reconnect, visible retry success and conflict, retained latest text and no false
+saved label. Hook fixtures retain the recovery warning across reconnect.
+
+Source be6a947f passed the fast workspace CI suite at run 38094341689: 3979 tests
+passed and nine were skipped, including the corrected override-token fixture.
+Those results describe the preceding source, not this UI correction; affected
+web execution and local build/browser gates remain pending. API callers must
+carry their accepted expected_revision after the first save: a null token
+conflicts against revision metadata once a canonical save has landed. No Rust,
+protocol, provider or persistence code changed in this correction, so the queued
+Rust gate at be6a947f covers the same Rust inputs. The parent owns current CI,
+independent review and integration.

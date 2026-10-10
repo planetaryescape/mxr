@@ -16,4 +16,16 @@ describe("saveStatusLabel", () => {
       "Saved just now",
     );
   });
+
+  test("a recovery timestamp never claims canonical persistence", () => {
+    expect(
+      saveStatusLabel({ saving: false, dirty: false, lastSavedAt: new Date(), recovery: true }),
+    ).toBe("Edits preserved locally");
+    expect(saveStatusLabel({ saving: true, dirty: true, lastSavedAt: null, recovery: true })).toBe(
+      "Preserving…",
+    );
+    expect(saveStatusLabel({ saving: false, dirty: true, lastSavedAt: null, recovery: true })).toBe(
+      "Unsaved changes",
+    );
+  });
 });

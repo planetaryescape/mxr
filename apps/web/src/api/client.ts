@@ -47,8 +47,8 @@ export class BridgeRequestError extends Error {
 
 /**
  * No answer from mxr's daemon: the bridge is down with it, or up but unable
- * to reach its socket, or a proxy in front of it gave up. The request never
- * completed the current daemon step. Compose operations may have persisted
+ * to reach its socket, or a proxy in front of it gave up. The current step
+ * has no usable response. Compose operations may have persisted
  * locally before a later step lost its connection; callers must inspect
  * confirmed acceptance evidence on the cause.
  */

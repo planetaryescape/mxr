@@ -135,16 +135,18 @@ export function useComposeSession(
   const attachments = useComposeAttachments({ draftRef, setDraft, setDirty });
   const assist = useDraftAssist({ intent, draftRef, setDraft, setDirty });
 
-  const { handleSaveClick, handleServerSaveClick, handleRefreshClick } = useDraftSaveActions({
-    intent,
-    draftRef,
-    setDraft,
-    setDirty,
-    saveCurrentDraft,
-    isCurrentDraftSaved,
-    setSaveError,
-    setLastSavedAt,
-  });
+  const { handleSaveClick, handleServerSaveClick, handleRefreshClick, handleRecoveryClick } =
+    useDraftSaveActions({
+      intent,
+      draftRef,
+      setDraft,
+      setDirty,
+      saveCurrentDraft,
+      isCurrentDraftSaved,
+      lastSavedFingerprintRef,
+      setSaveError,
+      setLastSavedAt,
+    });
   const discardSession = useMutation({
     mutationFn: ({ draftPath, revision }: { draftPath: string; revision?: number | null }) =>
       discardComposeSession(draftPath, revision),
@@ -154,19 +156,35 @@ export function useComposeSession(
     const session = sessionQuery.data?.session;
     if (!session) return;
     const baseDraft = draftFromSession(session);
-    const { draft: next, changed } = applyPrefill(baseDraft, intent);
+    const { draft: loaded, changed } = applyPrefill(baseDraft, intent);
+    const next = { ...loaded, preservedRecoveryPath: sessionQuery.data?.preservedRecoveryPath };
     setDraft(next);
     setDirty(changed);
-    setSaveError(null);
+    setSaveError(
+      next.recoverySourcePath
+        ? "These edits are preserved locally. Use Open saved draft to continue with the canonical draft."
+        : next.preservedRecoveryPath
+          ? `Your rejected edits remain in ${next.preservedRecoveryPath}`
+          : null,
+    );
     // Loading a session is not a save: nothing is claimed until one lands.
     setLastSavedAt(null);
-    lastSavedFingerprintRef.current = changed
-      ? draftFingerprint(baseDraft)
-      : draftFingerprint(next);
+    lastSavedFingerprintRef.current = next.recoverySourcePath
+      ? null
+      : changed
+        ? draftFingerprint(baseDraft)
+        : draftFingerprint(next);
     setShowCc(Boolean(next.frontmatter.cc.trim()));
     setShowBcc(Boolean(next.frontmatter.bcc.trim()));
     rememberActiveDraft(intent.key, next);
-  }, [intent, sessionQuery.data?.session, lastSavedFingerprintRef, setLastSavedAt, setSaveError]);
+  }, [
+    intent,
+    sessionQuery.data?.session,
+    sessionQuery.data?.preservedRecoveryPath,
+    lastSavedFingerprintRef,
+    setLastSavedAt,
+    setSaveError,
+  ]);
 
   const hasUnsavedWork = dirty || autosave.saving || send.pendingSends > 0;
   useEffect(() => {
@@ -193,7 +211,8 @@ export function useComposeSession(
         ? localComposeIssues(draft).filter(isMalformedAddressIssue)
         : [];
   const recipientCount = draft ? countRecipients(draft.frontmatter) : 0;
-  const canServerSave = Boolean(selectedAccount?.capabilities?.supports_server_drafts);
+  const canServerSave =
+    !draft?.recoverySourcePath && Boolean(selectedAccount?.capabilities?.supports_server_drafts);
   // A send in flight (including its undo window) counts as busy so Send,
   // Send later and the shortcuts cannot start a second one.
   const busy =
@@ -303,7 +322,7 @@ export function useComposeSession(
   }
 
   function requestDiscard() {
-    if (dirty || draftRef.current?.revision != null) {
+    if (dirty || draftRef.current?.revision != null || draftRef.current?.recoverySourcePath) {
       setDiscardConfirmOpen(true);
       return;
     }
@@ -409,6 +428,7 @@ export function useComposeSession(
     handleSaveClick,
     handleServerSaveClick,
     handleRefreshClick,
+    handleRecoveryClick,
     handleAttachShortcut,
     handleComposeKeyDown,
     requestSend: send.requestSend,

@@ -2719,11 +2719,14 @@ pub(crate) async fn reconcile_provider_drafts(
                 );
             }
             Ok(None) => {
-                state
+                let deleted = state
                     .store
                     .delete_draft_at_revision(&local_draft_id, local.revision.unwrap_or(0))
                     .await
                     .map_err(|error| error.to_string())?;
+                if !deleted {
+                    continue;
+                }
                 removed += 1;
                 tracing::info!(
                     %local_draft_id,

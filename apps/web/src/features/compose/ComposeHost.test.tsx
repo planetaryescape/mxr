@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { BridgeRequestError } from "@/api/client";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useUndo } from "@/state/undoStore";
 import type { ComposeSessionResponse, DraftSafetyReport } from "./api";
@@ -74,7 +75,10 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   };
 });
 
-vi.mock("@/api/client", () => ({ apiFetch: rawApi.fetch }));
+vi.mock("@/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/client")>()),
+  apiFetch: rawApi.fetch,
+}));
 vi.mock("@/features/accounts/api", () => ({
   fetchAccountAddresses: () => Promise.resolve({ addresses: [] }),
 }));
@@ -303,6 +307,102 @@ describe("ComposeHost never loses typing on the way out", () => {
     );
     expect(screen.getByLabelText("Subject")).toHaveValue("Keep me");
   });
+
+  for (const stored of [false, true]) {
+    test(`confirmed recovery closes and explicitly opens the canonical draft with rejected text retained (${stored ? "stored" : "new"})`, async () => {
+      const id = "recovery-close";
+      const canonical = session({
+        draftId: id,
+        revision: 2,
+        frontmatter: { ...session().session.frontmatter, subject: "Winner" },
+      });
+      const original = session({ draftId: id, revision: 1 });
+      let preserved = session({
+        draftId: id,
+        revision: 1,
+        draftPath: "/tmp/host-recovery",
+        recoverySourcePath: "/tmp/mxr-compose.md",
+      });
+      api.startComposeSession.mockResolvedValue(original);
+      if (stored)
+        api.restoreComposeSession.mockResolvedValueOnce(original).mockResolvedValue(canonical);
+      else api.restoreComposeSession.mockResolvedValue(canonical);
+      api.updateComposeSession.mockImplementation(async (input) => {
+        // SAFETY: only useComposeAutosave supplies this mock, using its typed update input.
+        const request = input as {
+          draftPath: string;
+          frontmatter: ComposeSessionResponse["session"]["frontmatter"];
+          body: string;
+        };
+        preserved = session({
+          ...preserved.session,
+          frontmatter: request.frontmatter,
+          bodyMarkdown: request.body,
+        });
+        if (!request.draftPath.startsWith("/tmp/host-recovery"))
+          throw new BridgeRequestError(
+            409,
+            "Winner changed; your text was preserved",
+            "draft_revision_conflict",
+            {
+              details: { current_revision: 2 },
+              recovery_session: { draft_path: "/tmp/host-recovery", draft_id: id, revision: 1 },
+            },
+          );
+        return session({ ...preserved.session, draftPath: request.draftPath });
+      });
+      let copies = 0;
+      api.refreshComposeSession.mockImplementation(async (path) =>
+        path.startsWith("/tmp/host-recovery")
+          ? session({ ...preserved.session, draftPath: `/tmp/host-recovery-copy-${++copies}` })
+          : canonical,
+      );
+      renderHost();
+      const open = () =>
+        stored
+          ? act(() => useComposeUi.getState().openCompose(draftIntent(id), "overlay"))
+          : openNewMessage();
+      open();
+      const subject = await screen.findByLabelText("Subject");
+      fireEvent.change(subject, { target: { value: "Latest rejected text" } });
+      fireEvent.click(screen.getByRole("button", { name: /close composer/i }));
+      await waitFor(() => expect(screen.queryByLabelText("Subject")).not.toBeInTheDocument());
+      expect(api.updateComposeSession).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      open();
+      expect(await screen.findByLabelText("Subject")).toHaveValue("Latest rejected text");
+      fireEvent.keyDown(screen.getByLabelText("Subject"), {
+        key: "r",
+        metaKey: true,
+        shiftKey: true,
+      });
+      await waitFor(() => expect(screen.getByLabelText("Subject")).toHaveValue("Winner"));
+      expect(preserved.session.frontmatter.subject).toBe("Latest rejected text");
+      expect(window.localStorage.getItem("mxr.compose.activeDrafts")).toContain(
+        '"preservedRecoveryPath":"/tmp/host-recovery-copy-1"',
+      );
+      expect(api.discardComposeSession).not.toHaveBeenCalled();
+      // Re-enter the preserved text through its explicit action, then discard locally.
+      const actions = screen.getByRole("button", { name: "More compose actions" });
+      fireEvent.keyDown(actions, { key: "Enter" });
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Open preserved edits" }));
+      await waitFor(() =>
+        expect(screen.getByLabelText("Subject")).toHaveValue("Latest rejected text"),
+      );
+      fireEvent.keyDown(screen.getByRole("button", { name: "More compose actions" }), {
+        key: "Backspace",
+        metaKey: true,
+      });
+      expect(await screen.findByText(/only your local recovery file/)).toBeVisible();
+      fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+      await waitFor(() => expect(screen.queryByLabelText("Subject")).not.toBeInTheDocument());
+      expect(api.discardComposeSession).toHaveBeenCalledWith("/tmp/host-recovery-copy-2", 1);
+      expect(api.sendComposeSession).not.toHaveBeenCalled();
+      expect(api.saveComposeSession).not.toHaveBeenCalled();
+    });
+  }
 
   test("switching to another reply target saves the draft being left", async () => {
     renderHost();

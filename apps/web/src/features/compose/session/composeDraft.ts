@@ -18,6 +18,7 @@ export interface ComposeDraftState {
   draftPath: string;
   /** Keeps queued saves ordered when a conflict moves this editor to a recovery file. */
   recoverySourcePath?: string;
+  preservedRecoveryPath?: string;
   rawContent: string;
   frontmatter: ComposeFrontmatter;
   bodyMarkdown: string;
@@ -100,6 +101,7 @@ export function draftFromSession(
     draftId: session.draftId ?? undefined,
     revision: session.revision,
     draftPath: session.draftPath,
+    recoverySourcePath: session.recoverySourcePath ?? undefined,
     rawContent: session.rawContent,
     frontmatter: {
       to: session.frontmatter.to ?? "",

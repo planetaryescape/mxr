@@ -192,7 +192,8 @@ export function useComposeAutosave({
               }
               if (belongsToActive || currentIntentKeyRef.current !== intentKey)
                 rememberActiveDraft(intentKey, recovered);
-              if (belongsToActive) setSaveError(errorMessage(error));
+              if (belongsToActive)
+                setSaveError(`${errorMessage(error)} Your edits are preserved locally.`);
               // The bridge confirmed this exact snapshot was preserved locally.
               // Its token is still the observed canonical token, never acceptance.
               const preserved: ComposeSessionResponse = {

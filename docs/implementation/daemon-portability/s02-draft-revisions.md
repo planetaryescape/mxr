@@ -78,8 +78,8 @@ existing API module mock convention; lint passed on ea37aa63 and on the round 3 
 The candidate worktree is `mxr-portability-stage-01/mxr`, on
 `codex/mxr-portability-draft-revisions`. Rebase uses freshly fetched HTTPS main.
 The parent owns independent Claude review, CI, merge, serialized release and the
-released-binary smoke. Draft PR335 exists for this branch. These correction commits have not been
-pushed or released, and no real mail has been sent. The shared orchestration ledger remains parent-owned.
+released-binary smoke. Draft PR335 exists for this branch. The parent pushed f8b326ea
+to draft PR335 for CI; it has not been released, and no real mail has been sent. The shared orchestration ledger remains parent-owned.
 
 The store's revision guard assumes one active daemon owns the local store; SQL
 CAS protects content writes, while process-local draft locks serialize provider
@@ -130,7 +130,7 @@ accepted token on failure before its next queued edit.
 
 Earlier round 2 typecheck passed at a dirty candidate; it does not certify the
 amendment. The resumed worker registered worktree-local dependency installation
-as task 4917 at 2026-10-10 21:33:21 UTC. Final Rust/TypeScript checks, regenerated
+as task 4917 at 2026-10-10 21:33:21 UTC. At that checkpoint, final Rust/TypeScript checks, regenerated
 contracts and consuming browser acceptance remain pending while the queue is
 paused. Installation runs from a persistent private staging directory with
 lifecycle scripts disabled, then replaces only this worktree's dependency symlink.
@@ -181,8 +181,10 @@ name require the revision returned by the preview and preserve that token in
 the daemon request.
 
 Round 3 adds timer, queued snapshot, real Close/Discard/reopen and bridge/MCP
-coverage. Those new tests, final contracts, typecheck, build and the two-tab
-browser journey have not yet run while the shared queue is paused. Old/null-token
+coverage. CI at f8b326ea generated and checked the final contracts, checked all targets,
+and typechecked/linted the web client. The affected tests require another run
+after the CI corrections below; local gates, build and the two-tab browser
+journey remain pending while the shared queue is paused. Old/null-token
 shared-path send clients remain an upgrade boundary; S02 does not guarantee their
 reviewed content or add the S03 effect journal.
 
@@ -211,5 +213,41 @@ its extra candidate privately because canonical storage may reference its bytes.
 Close and automatic saves continue to preserve locally without creation retries.
 
 The attachment and unsaved recovery correction has focused bridge and hook
-regressions, but their execution, generated schemas, frontend typecheck/build and
-the real browser journey remain pending while the shared queue is paused.
+regressions. The exact CI contract run and remaining execution gates are recorded
+below; local tests/build and the real browser journey remain pending while the
+shared queue is paused.
+
+
+## CI corrections keep recovery state and test isolation intact
+
+The parent pushed f8b326ea to draft PR335. OpenAPI Conformance run 38092169420
+passed bridge integration, mounted routes, the summary snapshot and spec lint.
+CI run 38092169276 checked all targets and typechecked/linted the web
+client. Its web suite reported 875 tests: 872 passed, three failed, plus one
+unhandled teardown error. Those results describe f8b326ea and do not certify
+this correction or full draft runtime coverage.
+
+The exact logs are `s02-ci-f8b326ea-clippy.log` and
+`s02-ci-f8b326ea-web.log` in the parent research worktree's
+`docs/build-log/daemon-portability/evidence/` directory.
+
+- MCP fixture mutex acquisition used denied unwraps. Explicit poison messages
+  retain the same failure behavior.
+- The deletion-chord fixture queried the Message body label shared by a group
+  and textarea. It now targets the textbox role without changing the assertion
+  that editing keys never request Discard.
+- TanStack passes mutation context after the update payload. The timer fixture
+  now checks the first payload directly, retaining path, revision and text
+  invariants.
+- Confirmed recovery state survived a wrapped connection error, but its visible
+  sentence only described daemon availability. That validated branch now also
+  states that edits are preserved locally; generic error adaptation and its
+  original cause remain unchanged. The fixture uses a real-shaped 503/connect
+  wrapper and still checks preserved state, text, stopped retries and Close saves.
+- MessageBody's pre-existing iframe measurement timers at 100/500 ms survived
+  HtmlDraftNotice test teardown. Production MessageBody is unchanged from main;
+  the preview fixtures now own fake timers and clear them after unmounting.
+
+Scoped format/lint checks pass. This correction needs affected execution repeated
+in CI and through the paused local queue; local build and browser acceptance
+remain mandatory before integration.

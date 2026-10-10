@@ -855,15 +855,11 @@ async fn update_compose_session(
     .await?;
     candidate.revision = request.expected_revision;
     if let Some(source) = compose_recovery_source(path).await? {
-        // A rejected editor owns this private destination, never the canonical draft.
+        // Automatic saves preserve this editor's private destination. Only an
+        // explicit retry may submit its original observed revision to the daemon.
         if request.expected_revision != metadata.revision {
             return Err(BridgeError::BadRequest(
                 "recovery revision does not match its observed token".into(),
-            ));
-        }
-        if request.retry_recovery && metadata.revision.is_some() {
-            return Err(BridgeError::BadRequest(
-                "only an unsaved recovery can retry creation".into(),
             ));
         }
         let (rendered, candidate, copied) =
@@ -892,8 +888,12 @@ async fn update_compose_session(
             let retry_draft = read_draft_session_metadata(retry_path)
                 .await?
                 .ok_or(BridgeError::UnexpectedResponse)?;
-            let accepted =
-                submit_compose_draft(&state.config.socket_path, retry_draft, None).await?;
+            let accepted = submit_compose_draft(
+                &state.config.socket_path,
+                retry_draft,
+                request.expected_revision,
+            )
+            .await?;
             write_draft_session_metadata(retry_path, &accepted)
                 .await
                 .map_err(|error| error.with_compose_evidence(Some(&accepted), None))?;
@@ -904,7 +904,7 @@ async fn update_compose_session(
     }
     if request.retry_recovery {
         return Err(BridgeError::BadRequest(
-            "creation retry requires a private unsaved recovery".into(),
+            "canonical persistence retry requires a private recovery".into(),
         ));
     }
     let accepted = match submit_compose_draft(
@@ -1200,6 +1200,7 @@ async fn save_compose_session(
         ComposeDraftValidation::Save,
     )
     .await?;
+    ensure_compose_revision(&candidate, request.expected_revision)?;
     let draft = persist_compose_draft(
         &state.config.socket_path,
         Path::new(&request.draft_path),
@@ -1300,6 +1301,7 @@ async fn schedule_compose_session(
         ComposeDraftValidation::Send,
     )
     .await?;
+    ensure_compose_revision(&candidate, request.expected_revision)?;
     let draft = persist_compose_draft(
         &state.config.socket_path,
         Path::new(&request.draft_path),
@@ -2643,9 +2645,9 @@ async fn write_draft_session_metadata(path: &Path, draft: &Draft) -> Result<(), 
 }
 
 fn ensure_compose_revision(draft: &Draft, expected: Option<i64>) -> Result<(), BridgeError> {
-    // Older send clients remain a documented upgrade boundary; revised clients
-    // must never send the contents another tab wrote into their shared path.
-    if expected.is_some() && expected != draft.revision {
+    // Two unsaved views may both observe None. Once either saves, the other
+    // must not perform effects using text now owned by a revised snapshot.
+    if expected != draft.revision {
         return Err(BridgeError::DraftConflict {
             message: "Draft changed in another editor; preserve your unsent text".into(),
             details: Some(

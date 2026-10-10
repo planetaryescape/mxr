@@ -161,7 +161,7 @@ pub(super) struct ComposeSessionRestoreRequest {
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ComposeSessionUpdateRequest {
-    /// Explicit creation retry for a private recovery with no accepted revision.
+    /// Explicit canonical persistence retry using a private recovery's observed revision.
     #[serde(default)]
     pub(super) retry_recovery: bool,
     #[serde(default)]
@@ -398,7 +398,7 @@ mod unsubscribe_preview_tests {
 pub(super) struct ComposeSessionData {
     #[serde(rename = "preservedRecoveryPath")]
     preserved_recovery_path: Option<String>,
-    /// Private recovery destination; this session cannot mutate the canonical draft.
+    /// Private recovery destination; automatic saves preserve it without canonical effects.
     #[serde(rename = "recoverySourcePath")]
     recovery_source_path: Option<String>,
     #[serde(rename = "draftPath")]

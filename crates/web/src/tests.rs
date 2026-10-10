@@ -24,6 +24,7 @@ mod compose_and_scheduling;
 mod place_routes;
 mod record_routes;
 mod recovery_attachments;
+mod recovery_retry;
 mod thread_context_routes;
 mod time_routes;
 mod todo_routes;
@@ -2673,6 +2674,7 @@ async fn compose_session_send_forwards_draft_account_id() {
         .await
         .unwrap();
     assert_eq!(update_response.status(), reqwest::StatusCode::OK);
+    let updated: serde_json::Value = update_response.json().await.unwrap();
 
     let send_response = client
         .post(format!("http://{addr}/compose/session/send"))
@@ -2680,6 +2682,7 @@ async fn compose_session_send_forwards_draft_account_id() {
         .json(&serde_json::json!({
             "draft_path": draft_path,
             "account_id": account_id,
+            "expected_revision": updated["session"]["revision"],
         }))
         .send()
         .await
@@ -2764,6 +2767,7 @@ async fn compose_session_send_propagates_daemon_error() {
         .await
         .unwrap();
     assert_eq!(update_response.status(), reqwest::StatusCode::OK);
+    let updated: serde_json::Value = update_response.json().await.unwrap();
 
     let send_response = client
         .post(format!("http://{addr}/compose/session/send"))
@@ -2771,6 +2775,7 @@ async fn compose_session_send_propagates_daemon_error() {
         .json(&serde_json::json!({
             "draft_path": draft_path,
             "account_id": account_id,
+            "expected_revision": updated["session"]["revision"],
         }))
         .send()
         .await

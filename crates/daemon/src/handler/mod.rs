@@ -1721,7 +1721,10 @@ async fn dispatch(
         Request::ExtractDraftCommitments { draft } => {
             commitments_extract::extract_request(state, draft).await
         }
-        Request::DeleteDraft { draft_id } => mutations::delete_draft(state, draft_id).await,
+        Request::DeleteDraft {
+            draft_id,
+            expected_revision,
+        } => mutations::delete_draft(state, draft_id, *expected_revision).await,
         Request::GetDraft { draft_id } => mutations::get_draft(state, draft_id).await,
         Request::UpdateDraft { draft } => mutations::update_draft(state, draft).await,
         Request::SaveDraftToServer { draft } => mutations::save_draft_to_server(state, draft).await,

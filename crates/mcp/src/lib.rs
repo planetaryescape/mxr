@@ -756,7 +756,7 @@ impl MxrMcpServer {
 
     #[tool(
         name = "mxr_update_draft",
-        description = "Replace an existing mxr draft with a complete Draft object from mxr_get_draft. Change only the intended fields and preserve the rest, especially id, account_id, reply_headers, intent, and body kind. If linked to Gmail, this updates that Gmail draft first; provider failure leaves the local draft unchanged."
+        description = "Replace an existing mxr draft with a complete Draft object from mxr_get_draft. Change only the intended fields and preserve the rest, especially revision, id, account_id, reply_headers, intent, and body kind. Stale revisions conflict before provider effects. If linked to Gmail, this updates that Gmail draft first; provider failure leaves the local draft unchanged."
     )]
     pub async fn update_draft(
         &self,
@@ -792,7 +792,7 @@ impl MxrMcpServer {
 
     #[tool(
         name = "mxr_delete_draft",
-        description = "Preview or permanently delete one mxr draft. A confirmed delete also deletes its linked provider draft, if present. With confirm omitted/false, returns the exact draft and does not mutate. Set confirm=true only after reviewing that preview."
+        description = "Preview or permanently delete one mxr draft. A confirmed delete also deletes its linked provider draft, if present. With confirm omitted/false, returns the exact draft and does not mutate. Set confirm=true and expected_revision from the preview only after reviewing it."
     )]
     pub async fn delete_draft(
         &self,
@@ -807,7 +807,11 @@ impl MxrMcpServer {
                 "draft": draft,
             })));
         }
-        self.daemon_json(Request::DeleteDraft { draft_id }).await
+        self.daemon_json(Request::DeleteDraft {
+            draft_id,
+            expected_revision: input.expected_revision,
+        })
+        .await
     }
 
     #[tool(
@@ -998,9 +1002,14 @@ fn default_socket_path() -> anyhow::Result<std::path::PathBuf> {
 fn response_to_json(response: Response) -> Result<Value, ErrorData> {
     match response {
         Response::Ok { data } => serde_json::to_value(data).map_err(mcp_error),
-        Response::Error { message, code, .. } => Err(ErrorData::internal_error(
+        Response::Error {
+            message,
+            code,
+            details,
+            ..
+        } => Err(ErrorData::internal_error(
             format!("daemon error {code}: {message}"),
-            None,
+            Some(json!({"code": code, "details": details})),
         )),
     }
 }
@@ -1394,6 +1403,8 @@ pub struct DraftIdInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DraftActionInput {
+    /// Revision from the returned draft preview; required for confirmed deletion.
+    pub expected_revision: Option<i64>,
     pub draft_id: String,
     pub confirm: Option<bool>,
 }
@@ -1696,6 +1707,7 @@ mod tests {
         });
         let result = server
             .delete_draft(Parameters(DraftActionInput {
+                expected_revision: Some(1),
                 draft_id: draft.id.as_str(),
                 confirm: None,
             }))

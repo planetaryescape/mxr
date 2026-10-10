@@ -976,6 +976,7 @@ async fn dispatch_status() {
         IpcPayload::Response(Response::Ok {
             data:
                 ResponseData::Status {
+                    draft_revision_supported: true,
                     uptime_secs: _,
                     accounts,
                     total_messages: _,

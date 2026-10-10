@@ -367,7 +367,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::SendStoredDraft { draft_id, .. }
         | Request::ScheduleSend { draft_id, .. }
         | Request::CancelScheduledSend { draft_id }
-        | Request::DeleteDraft { draft_id }
+        | Request::DeleteDraft { draft_id, .. }
         | Request::GetDraft { draft_id }
         | Request::ResetOrphanedDraft { draft_id } => Targets(vec![T::Draft(draft_id)]),
 
@@ -877,6 +877,7 @@ pub(super) async fn scope_response(
 ) -> Result<ResponseData, String> {
     match data {
         ResponseData::Status {
+            draft_revision_supported,
             uptime_secs,
             accounts: _,
             total_messages,
@@ -910,6 +911,7 @@ pub(super) async fn scope_response(
                     .sum()
             };
             Ok(ResponseData::Status {
+                draft_revision_supported,
                 uptime_secs,
                 accounts: allowed
                     .iter()

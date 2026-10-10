@@ -89,6 +89,7 @@ impl FixtureDataset {
 
 pub fn sample_draft(account_id: AccountId) -> Draft {
     Draft {
+        revision: None,
         id: DraftId::new(),
         account_id,
         from: None,

@@ -121,7 +121,7 @@ pub(super) struct ReadRequest {
     pub(super) read: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum ComposeSessionKindRequest {
     New,
@@ -134,7 +134,7 @@ pub(super) enum ComposeSessionKindRequest {
     InviteReply,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ComposeSessionStartRequest {
     pub(super) kind: ComposeSessionKindRequest,
     #[serde(default)]
@@ -147,18 +147,24 @@ pub(super) struct ComposeSessionStartRequest {
     pub(super) action: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ComposeSessionPathRequest {
+    #[serde(default)]
+    pub(super) expected_revision: Option<i64>,
     pub(super) draft_path: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ComposeSessionRestoreRequest {
     pub(super) draft_id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ComposeSessionUpdateRequest {
+    #[serde(default)]
+    pub(super) account_id: Option<String>,
+    #[serde(default)]
+    pub(super) expected_revision: Option<i64>,
     pub(super) draft_path: String,
     pub(super) to: String,
     pub(super) cc: String,
@@ -171,8 +177,10 @@ pub(super) struct ComposeSessionUpdateRequest {
     pub(super) body: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ComposeSessionSendRequest {
+    #[serde(default)]
+    pub(super) expected_revision: Option<i64>,
     pub(super) draft_path: String,
     pub(super) account_id: String,
     /// The stored draft this session was restored from, when it was one — the
@@ -191,8 +199,10 @@ pub(super) struct ComposeSessionSendRequest {
     pub(super) override_safety_token: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ComposeSessionScheduleRequest {
+    #[serde(default)]
+    pub(super) expected_revision: Option<i64>,
     pub(super) draft_path: String,
     pub(super) account_id: String,
     /// The stored draft this session was restored from, if any. With it the
@@ -378,4 +388,68 @@ mod unsubscribe_preview_tests {
         assert!(!keep.archive);
         assert_eq!(keep.preview_token, "tok");
     }
+}
+
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+pub(super) struct ComposeSessionData {
+    #[serde(rename = "draftPath")]
+    draft_path: String,
+    #[serde(rename = "draftId")]
+    draft_id: Option<String>,
+    revision: Option<i64>,
+    #[serde(rename = "accountId")]
+    account_id: Option<String>,
+    #[serde(rename = "rawContent")]
+    raw_content: String,
+    frontmatter: mxr_compose::frontmatter::ComposeFrontmatter,
+    #[serde(rename = "bodyMarkdown")]
+    body_markdown: String,
+    #[serde(rename = "previewHtml")]
+    preview_html: String,
+    issues: Vec<super::ComposeIssueView>,
+    kind: Option<String>,
+    #[serde(rename = "editorCommand")]
+    editor_command: Option<String>,
+    #[serde(rename = "cursorLine")]
+    cursor_line: Option<usize>,
+}
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+pub(super) struct ComposeSessionResponse {
+    session: ComposeSessionData,
+}
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+pub(super) struct SavedDraftResponse {
+    ok: bool,
+    draft_id: mxr_core::DraftId,
+    revision: Option<i64>,
+}
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+pub(super) struct DraftConflictDetails {
+    expected_revision: Option<i64>,
+    current_revision: Option<i64>,
+}
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+pub(super) struct DraftConflictResponse {
+    error: String,
+    code: String,
+    details: Option<DraftConflictDetails>,
+}
+
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+pub(super) struct ScheduledComposeResponse {
+    ok: bool,
+    draft_id: mxr_core::DraftId,
+    send_at: chrono::DateTime<chrono::Utc>,
+    cleanup_warnings: Vec<String>,
+}
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+pub(super) struct DiscardedComposeResponse {
+    ok: bool,
 }

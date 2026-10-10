@@ -462,6 +462,7 @@ pub(super) async fn ack_at(
     }
     let target = prepared.plan.reply_to_message_id.clone();
     let draft = Draft {
+        revision: None,
         id: DraftId::new(),
         account_id: prepared.plan.account_id.clone(),
         from: prepared.from,

@@ -69,6 +69,7 @@ mod tests {
 
     fn draft_with(body: &str) -> Draft {
         Draft {
+            revision: Some(1),
             id: DraftId::new(),
             account_id: AccountId::new(),
             from: None,

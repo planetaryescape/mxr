@@ -358,7 +358,7 @@ pub fn map_request(
             Some(draft.id.as_str().clone()),
             None,
         ),
-        Request::DeleteDraft { draft_id } => (
+        Request::DeleteDraft { draft_id, .. } => (
             "draft.discard",
             Some("draft"),
             Some(draft_id.as_str().clone()),
@@ -1344,6 +1344,7 @@ mod tests {
         inline_assets: Vec<mxr_core::types::InlineAsset>,
     ) -> mxr_core::types::Draft {
         mxr_core::types::Draft {
+            revision: Some(1),
             id: mxr_core::DraftId::new(),
             account_id: mxr_core::AccountId::new(),
             from: None,

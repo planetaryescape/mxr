@@ -381,6 +381,9 @@ fn print_report_with_context(
                 "Client data: {}",
                 local["data_dir"].as_str().unwrap_or("unknown")
             );
+            println!(
+                "Remediation and next commands below must be run on the selected daemon host."
+            );
             print_report(report, format, verbose)
         }
     }

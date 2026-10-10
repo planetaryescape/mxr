@@ -90,7 +90,10 @@ fn spawn_fake_daemon(path: &Path) -> (tokio::task::JoinHandle<()>, Arc<AtomicUsi
                                 "sync_statuses": [],
                                 "recent_sync_events": [],
                                 "recent_error_logs": [],
-                                "recommended_next_steps": []
+                                "recommended_next_steps": [
+                                    "mxr doctor --reindex",
+                                    "mxr daemon --foreground"
+                                ]
                             }))
                             .unwrap();
                             ResponseData::DoctorReport { report }
@@ -203,6 +206,22 @@ async fn cmd_target_diagnostics_report_target_and_separate_local_profile() {
         stats["daemon"]["database_path"],
         "/target-profile/data/mxr.db"
     );
+
+    let table = run_mxr(&envs, &["doctor", "--format", "table"], &addr).await;
+    assert!(
+        table.status.success(),
+        "{}",
+        String::from_utf8_lossy(&table.stderr)
+    );
+    let table = String::from_utf8(table.stdout).unwrap();
+    assert!(
+        table.contains(
+            "Remediation and next commands below must be run on the selected daemon host."
+        ),
+        "{table}"
+    );
+    assert!(table.contains("mxr doctor --reindex"), "{table}");
+    assert!(table.contains("mxr daemon --foreground"), "{table}");
 
     let before_watch = requests.load(Ordering::Relaxed);
     let mut watch = tokio::process::Command::new(MXR_BIN)

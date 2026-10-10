@@ -31,7 +31,7 @@ mxr doctor --check --format json >/tmp/mxr-doctor.json \
 
 ### Diagnostics for a selected daemon
 
-`mxr status` and `mxr doctor --check` / `--store-stats` use the daemon selected by `MXR_DAEMON_ADDR`. For an explicit target, JSON keeps ownership clear: `daemon_target` identifies the selection, `client_local` contains paths on the CLI machine, and doctor places the daemon report or statistics under `daemon`.
+`mxr status` and `mxr doctor --check` / `--store-stats` use the daemon selected by `MXR_DAEMON_ADDR`. For an explicit target, JSON keeps ownership clear: `daemon_target` identifies the selection, `client_local` contains paths on the CLI machine, and doctor places the daemon report or statistics under `daemon`. Any remediation and next-step commands in the daemon report, including table output, must be run on the selected daemon host.
 
 ```bash
 MXR_DAEMON_ADDR="cmd://ssh -T host mxr daemon dial-stdio" mxr status --format json

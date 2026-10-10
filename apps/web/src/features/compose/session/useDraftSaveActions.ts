@@ -94,21 +94,24 @@ export function useDraftSaveActions({
         });
         return;
       }
-      await requestCoordinator.queueComposeLatest(composeQueueKey(current.draftPath), async () => {
-        const active = draftRef.current;
-        const submitted =
-          active?.draftPath === current.draftPath && active.draftId === current.draftId
-            ? { ...current, revision: active.revision }
-            : current;
-        try {
-          const response = await serverSave.mutateAsync(submitted);
-          adoptRevision(current, response.draft_id, response.revision);
-        } catch (error) {
-          const accepted = acceptedDraftRevision(error);
-          if (accepted) adoptRevision(current, accepted.draft_id, accepted.revision);
-          throw error;
-        }
-      });
+      await requestCoordinator.queueComposeLatest(
+        composeQueueKey(current.draftPath, current.recoverySourcePath),
+        async () => {
+          const active = draftRef.current;
+          const submitted =
+            active?.draftPath === current.draftPath && active.draftId === current.draftId
+              ? { ...current, revision: active.revision }
+              : current;
+          try {
+            const response = await serverSave.mutateAsync(submitted);
+            adoptRevision(current, response.draft_id, response.revision);
+          } catch (error) {
+            const accepted = acceptedDraftRevision(error);
+            if (accepted) adoptRevision(current, accepted.draft_id, accepted.revision);
+            throw error;
+          }
+        },
+      );
     } catch (error) {
       toast.error("Server draft save failed", { description: errorMessage(error) });
       return;

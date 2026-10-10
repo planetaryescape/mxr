@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 import { BridgeRequestError, DaemonUnavailableError } from "@/api/client";
 import type { ComposeSessionResponse } from "../api";
+import { loadInitialComposeSession, rememberActiveDraft } from "./activeDrafts";
 import { draftFingerprint, draftFromSession, type ComposeDraftState } from "./composeDraft";
 import { useComposeAutosave } from "./useComposeAutosave";
 import { useDraftSaveActions } from "./useDraftSaveActions";
@@ -73,7 +74,7 @@ function setup(path: string) {
       useEffect(() => {
         if (draftRef.current)
           autosave.lastSavedFingerprintRef.current = draftFingerprint(draftRef.current);
-      }, []);
+      }, [autosave.lastSavedFingerprintRef]);
       const intent = { key: path, kind: "new" as const, title: "Restored" };
       const saves = useDraftSaveActions({ intent, draftRef, setDraft, setDirty, ...autosave });
       const send = useComposeSend({
@@ -87,12 +88,22 @@ function setup(path: string) {
         markSendAttempted: () => {},
         onValidationBlocked: () => {},
       });
-      return { ...autosave, ...saves, scheduleSend: send.scheduleSend, draft, draftRef, setDraft };
+      return {
+        ...autosave,
+        ...saves,
+        scheduleSend: send.scheduleSend,
+        draft,
+        draftRef,
+        setDraft,
+        dirty,
+        setDirty,
+      };
     },
     { wrapper },
   );
 }
 beforeEach(() => {
+  window.localStorage.clear();
   for (const mock of Object.values(api)) mock.mockReset();
 });
 
@@ -268,3 +279,190 @@ test("a provider failure adopts its own accepted revision when another tab advan
   hook.result.current.markSessionFinished();
   hook.unmount();
 });
+
+for (const latestText of ["last typed before close", " original whitespace \n"]) {
+  test(`queued close reopens recovery text ${JSON.stringify(latestText)} at the observed token`, async () => {
+    const path = "/tmp/shared-close";
+    const firstRecovery = "/tmp/shared-close-recovery-1";
+    const lastRecovery = "/tmp/shared-close-recovery-2";
+    const first = deferred<ComposeSessionResponse>();
+    const persisted = new Map([[path, session(path, 2, "winning tab text")]]);
+    api.updateComposeSession.mockReturnValueOnce(first.promise);
+    api.updateComposeSession.mockImplementationOnce(async (request) => {
+      expect(request).toMatchObject({
+        draftPath: firstRecovery,
+        expectedRevision: 1,
+        body: latestText,
+      });
+      const recovered = session(lastRecovery, 1, request.body ?? "");
+      recovered.session.draftId = path;
+      persisted.set(lastRecovery, recovered);
+      throw new BridgeRequestError(409, "stale on close", "draft_revision_conflict", {
+        details: { current_revision: 2 },
+        recovery_session: { draft_path: lastRecovery, draft_id: path, revision: 1 },
+      });
+    });
+    api.refreshComposeSession.mockImplementation(async (target) => {
+      const restored = persisted.get(target);
+      if (!restored) throw new Error("missing recovery file");
+      return restored;
+    });
+    const hook = setup(path);
+    const openDraft = hook.result.current.draft;
+    expect(openDraft).not.toBeNull();
+    if (openDraft) rememberActiveDraft(path, openDraft);
+    act(() => {
+      hook.result.current.setDraft((draft) =>
+        draft ? { ...draft, bodyMarkdown: "first losing edit" } : draft,
+      );
+      hook.result.current.setDirty(true);
+    });
+    let saving!: Promise<unknown>;
+    act(() => {
+      saving = hook.result.current.saveCurrentDraft().catch(() => {});
+    });
+    await waitFor(() => expect(api.updateComposeSession).toHaveBeenCalledTimes(1));
+    act(() =>
+      hook.result.current.setDraft((draft) =>
+        draft ? { ...draft, bodyMarkdown: latestText } : draft,
+      ),
+    );
+    let closing!: Promise<unknown>;
+    act(() => {
+      closing = hook.result.current.saveCurrentDraft().catch(() => {});
+    });
+    const reopening = loadInitialComposeSession({ key: path, title: "Reopened", kind: "new" });
+    await act(async () => {
+      const recovered = session(firstRecovery, 1, "first losing edit");
+      recovered.session.draftId = path;
+      persisted.set(firstRecovery, recovered);
+      first.reject(
+        new BridgeRequestError(409, "first stale edit", "draft_revision_conflict", {
+          details: { current_revision: 2 },
+          recovery_session: { draft_path: firstRecovery, draft_id: path, revision: 1 },
+        }),
+      );
+      await saving;
+      await closing;
+    });
+    const resumed = await reopening;
+    expect(resumed.session).toMatchObject({
+      draftPath: lastRecovery,
+      draftId: path,
+      revision: 1,
+      bodyMarkdown: latestText,
+    });
+    expect(hook.result.current.draft).toMatchObject({
+      draftPath: lastRecovery,
+      revision: 1,
+      bodyMarkdown: latestText,
+    });
+    expect(hook.result.current.dirty).toBe(true);
+    expect(hook.result.current.saveError).toBe("stale on close");
+    expect(persisted.get(path)?.session).toMatchObject({
+      revision: 2,
+      bodyMarkdown: "winning tab text",
+    });
+    api.updateComposeSession.mockRejectedValue(
+      new BridgeRequestError(409, "still stale", "draft_revision_conflict", {
+        details: { current_revision: 2 },
+      }),
+    );
+    await act(async () => {
+      await hook.result.current.saveCurrentDraft().catch(() => {});
+    });
+    expect(api.updateComposeSession.mock.calls[2]?.[0]).toMatchObject({
+      draftPath: lastRecovery,
+      expectedRevision: 1,
+      body: latestText,
+    });
+    expect(persisted.get(path)?.session).toMatchObject({
+      revision: 2,
+      bodyMarkdown: "winning tab text",
+    });
+    hook.result.current.markSessionFinished();
+    hook.unmount();
+  });
+}
+
+test("unmount flushes text typed after an in-flight conflict into the reopening recovery session", async () => {
+  const path = "/tmp/shared-unmount";
+  const first = deferred<ComposeSessionResponse>();
+  api.updateComposeSession.mockReturnValueOnce(first.promise);
+  api.updateComposeSession.mockImplementationOnce(async (request) => {
+    expect(request).toMatchObject({
+      draftPath: "/tmp/unmount-first-recovery",
+      expectedRevision: 1,
+      body: "last unmounted text",
+    });
+    throw new BridgeRequestError(409, "stale close", "draft_revision_conflict", {
+      recovery_session: { draft_path: "/tmp/unmount-last-recovery", draft_id: path, revision: 1 },
+    });
+  });
+  api.refreshComposeSession.mockImplementation(async (target) => {
+    expect(target).toBe("/tmp/unmount-last-recovery");
+    return { session: { ...session(target, 1, "last unmounted text").session, draftId: path } };
+  });
+  const hook = setup(path);
+  const openDraft = hook.result.current.draft;
+  if (openDraft) rememberActiveDraft(path, openDraft);
+  act(() =>
+    hook.result.current.setDraft((draft) =>
+      draft ? { ...draft, bodyMarkdown: "first unmounted edit" } : draft,
+    ),
+  );
+  let saving!: Promise<unknown>;
+  act(() => {
+    saving = hook.result.current.saveCurrentDraft().catch(() => {});
+  });
+  await waitFor(() => expect(api.updateComposeSession).toHaveBeenCalledTimes(1));
+  act(() =>
+    hook.result.current.setDraft((draft) =>
+      draft ? { ...draft, bodyMarkdown: "last unmounted text" } : draft,
+    ),
+  );
+  hook.unmount();
+  const reopened = loadInitialComposeSession({ key: path, title: "After close", kind: "new" });
+  first.reject(
+    new BridgeRequestError(409, "first conflict", "draft_revision_conflict", {
+      recovery_session: { draft_path: "/tmp/unmount-first-recovery", draft_id: path, revision: 1 },
+    }),
+  );
+  await saving;
+  expect((await reopened).session).toMatchObject({
+    draftId: path,
+    revision: 1,
+    bodyMarkdown: "last unmounted text",
+  });
+  expect(api.updateComposeSession).toHaveBeenCalledTimes(2);
+});
+
+for (const invalid of [
+  { draft_id: "/tmp/someone-else", revision: 1 },
+  { draft_id: "/tmp/invalid-recovery", revision: 8 },
+]) {
+  test(`cannot adopt another operation's recovery ${JSON.stringify(invalid)}`, async () => {
+    const path = "/tmp/invalid-recovery";
+    api.updateComposeSession.mockRejectedValue(
+      new BridgeRequestError(409, "conflict", "draft_revision_conflict", {
+        recovery_session: { draft_path: "/tmp/unowned-recovery", ...invalid },
+      }),
+    );
+    const hook = setup(path);
+    act(() =>
+      hook.result.current.setDraft((draft) =>
+        draft ? { ...draft, bodyMarkdown: "retained" } : draft,
+      ),
+    );
+    await act(async () => {
+      await hook.result.current.saveCurrentDraft().catch(() => {});
+    });
+    expect(hook.result.current.draft).toMatchObject({
+      draftPath: path,
+      revision: 1,
+      bodyMarkdown: "retained",
+    });
+    hook.result.current.markSessionFinished();
+    hook.unmount();
+  });
+}

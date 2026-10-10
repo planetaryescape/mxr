@@ -78,8 +78,8 @@ existing API module mock convention; their final lint remains pending.
 The candidate worktree is `mxr-portability-stage-01/mxr`, on
 `codex/mxr-portability-draft-revisions`. Rebase uses freshly fetched HTTPS main.
 The parent owns independent Claude review, CI, merge, serialized release and the
-released-binary smoke. No branch has been pushed, no release has been created and
-no real mail has been sent. The shared orchestration ledger remains parent-owned.
+released-binary smoke. Draft PR335 exists for this branch. These correction commits have not been
+pushed or released, and no real mail has been sent. The shared orchestration ledger remains parent-owned.
 
 The store's revision guard assumes one active daemon owns the local store; SQL
 CAS protects content writes, while process-local draft locks serialize provider
@@ -151,3 +151,11 @@ error's cause), keeps current editor text, and never refreshes a shared sidecar 
 infer acceptance. Revised send/safety requests also carry their observed revision
 so a shared-path update cannot substitute another tab's message before sending.
 The existing old-running-client upgrade boundary still applies.
+
+
+On a rejected browser update, the editor adopts only the recovery path carrying
+its submitted draft identity and observed revision. It retains newer typed text,
+dirty state and the original error. A stable queue key follows that editor's
+recovery destination, including an already queued close save. Reopening waits
+for the queue to settle and then reads the latest active entry, so it resumes
+the last preserved snapshot rather than the shared winning file.

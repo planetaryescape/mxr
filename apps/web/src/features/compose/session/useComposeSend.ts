@@ -130,40 +130,43 @@ export function useComposeSend({
       const current = draftRef.current;
       if (!current) throw new Error("No draft is open");
       let scheduledId: string | undefined;
-      await requestCoordinator.queueComposeLatest(composeQueueKey(current.draftPath), async () => {
-        const active = draftRef.current;
-        const revision =
-          active?.draftPath === current.draftPath && active.draftId === current.draftId
-            ? active.revision
-            : current.revision;
-        try {
-          const response = await scheduleComposeSession({
-            draftPath: current.draftPath,
-            accountId: current.accountId,
-            draftId: current.draftId,
-            expectedRevision: revision,
-            sendAt: at,
-          });
-          scheduledId = response.draft_id;
-        } catch (error) {
-          const accepted = acceptedDraftRevision(error);
-          const latest = draftRef.current;
-          if (
-            accepted &&
-            accepted.draft_id === current.draftId &&
-            latest?.draftPath === current.draftPath &&
-            latest.draftId === current.draftId
-          ) {
-            draftRef.current = { ...latest, revision: accepted.revision };
-            setDraft((value) =>
-              value?.draftPath === current.draftPath && value.draftId === current.draftId
-                ? { ...value, revision: accepted.revision }
-                : value,
-            );
+      await requestCoordinator.queueComposeLatest(
+        composeQueueKey(current.draftPath, current.recoverySourcePath),
+        async () => {
+          const active = draftRef.current;
+          const revision =
+            active?.draftPath === current.draftPath && active.draftId === current.draftId
+              ? active.revision
+              : current.revision;
+          try {
+            const response = await scheduleComposeSession({
+              draftPath: current.draftPath,
+              accountId: current.accountId,
+              draftId: current.draftId,
+              expectedRevision: revision,
+              sendAt: at,
+            });
+            scheduledId = response.draft_id;
+          } catch (error) {
+            const accepted = acceptedDraftRevision(error);
+            const latest = draftRef.current;
+            if (
+              accepted &&
+              accepted.draft_id === current.draftId &&
+              latest?.draftPath === current.draftPath &&
+              latest.draftId === current.draftId
+            ) {
+              draftRef.current = { ...latest, revision: accepted.revision };
+              setDraft((value) =>
+                value?.draftPath === current.draftPath && value.draftId === current.draftId
+                  ? { ...value, revision: accepted.revision }
+                  : value,
+              );
+            }
+            throw error;
           }
-          throw error;
-        }
-      });
+        },
+      );
       // A later autosave can make the coordinator's UI result stale even
       // though the scheduling request succeeded.
       if (!scheduledId) throw new Error("Scheduling returned no draft identity");

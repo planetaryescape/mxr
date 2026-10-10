@@ -816,13 +816,13 @@ impl MxrMcpServer {
 
     #[tool(
         name = "mxr_copy_draft_to_provider",
-        description = "Compatibility name for provider draft sync. Preview or link one local mxr draft to a supported provider mailbox (for example Gmail Drafts). The first confirmed call creates the provider draft; later calls and local edits update that same draft. Provider edits and deletions reconcile locally on sync."
+        description = "Compatibility name for provider draft sync. Preview or link one local mxr draft to a supported provider mailbox (for example Gmail Drafts). Confirmed calls require expected_revision from the preview. The first confirmed call creates the provider draft; later calls and local edits update that same draft. Provider edits and deletions reconcile locally on sync."
     )]
     pub async fn copy_draft_to_provider(
         &self,
         Parameters(input): Parameters<DraftActionInput>,
     ) -> Result<McpJson<Value>, ErrorData> {
-        let draft = self
+        let mut draft = self
             .stored_draft(parse_id::<DraftId>(&input.draft_id)?)
             .await?;
         let provider = self.server_draft_provider(&draft.account_id).await?;
@@ -835,18 +835,28 @@ impl MxrMcpServer {
                 "draft": draft,
             })));
         }
+        let expected = input.expected_revision.ok_or_else(|| {
+            ErrorData::invalid_params("expected_revision from the preview is required", None)
+        })?;
+        if draft.revision != Some(expected) {
+            return Err(ErrorData::invalid_params(
+                "draft changed since the preview; preview again",
+                None,
+            ));
+        }
+        draft.revision = Some(expected);
         self.daemon_json(Request::SaveDraftToServer { draft }).await
     }
 
     #[tool(
         name = "mxr_sync_draft_to_provider",
-        description = "Preview or link one local mxr draft to a supported provider mailbox (currently Gmail Drafts). The first confirmed call creates the provider draft; later calls and local edits update it in place. Provider edits and deletions reconcile locally on sync."
+        description = "Preview or link one local mxr draft to a supported provider mailbox (currently Gmail Drafts). Confirmed calls require expected_revision from the preview. The first confirmed call creates the provider draft; later calls and local edits update it in place. Provider edits and deletions reconcile locally on sync."
     )]
     pub async fn sync_draft_to_provider(
         &self,
         Parameters(input): Parameters<DraftActionInput>,
     ) -> Result<McpJson<Value>, ErrorData> {
-        let draft = self
+        let mut draft = self
             .stored_draft(parse_id::<DraftId>(&input.draft_id)?)
             .await?;
         let provider = self.server_draft_provider(&draft.account_id).await?;
@@ -859,6 +869,16 @@ impl MxrMcpServer {
                 "draft": draft,
             })));
         }
+        let expected = input.expected_revision.ok_or_else(|| {
+            ErrorData::invalid_params("expected_revision from the preview is required", None)
+        })?;
+        if draft.revision != Some(expected) {
+            return Err(ErrorData::invalid_params(
+                "draft changed since the preview; preview again",
+                None,
+            ));
+        }
+        draft.revision = Some(expected);
         self.daemon_json(Request::SaveDraftToServer { draft }).await
     }
 
@@ -1403,7 +1423,7 @@ pub struct DraftIdInput {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DraftActionInput {
-    /// Revision from the returned draft preview; required for confirmed deletion.
+    /// Revision from the returned draft preview; required for confirmed deletion or provider sync.
     pub expected_revision: Option<i64>,
     pub draft_id: String,
     pub confirm: Option<bool>,
@@ -1716,6 +1736,84 @@ mod tests {
 
         assert_eq!(result.0["dry_run"], true);
         assert_eq!(result.0["draft"]["id"], draft.id.as_str());
+    }
+
+    #[derive(Debug)]
+    struct ProviderDraftRequester {
+        draft: Draft,
+        submitted: Mutex<Vec<Draft>>,
+    }
+
+    #[async_trait]
+    impl DaemonRequester for ProviderDraftRequester {
+        async fn request(&self, request: Request) -> anyhow::Result<Response> {
+            let data = match request {
+                Request::GetDraft { .. } => ResponseData::Draft {
+                    draft: self.draft.clone(),
+                },
+                Request::ListAccounts => ResponseData::Accounts {
+                    accounts: vec![mxr_protocol::AccountSummaryData {
+                        account_id: self.draft.account_id.clone(),
+                        key: None,
+                        name: "Test".into(),
+                        email: "me@example.com".into(),
+                        provider_kind: "gmail".into(),
+                        sync_kind: None,
+                        send_kind: None,
+                        enabled: true,
+                        is_default: true,
+                        source: mxr_protocol::AccountSourceData::Runtime,
+                        editable: mxr_protocol::AccountEditModeData::Full,
+                        sync: None,
+                        send: None,
+                        capabilities: mxr_protocol::AccountCapabilitiesData {
+                            supports_server_drafts: true,
+                            ..Default::default()
+                        },
+                    }],
+                },
+                Request::SaveDraftToServer { draft } => {
+                    self.submitted.lock().unwrap().push(draft.clone());
+                    ResponseData::Draft { draft }
+                }
+                _ => ResponseData::Pong,
+            };
+            Ok(Response::Ok { data })
+        }
+    }
+
+    #[tokio::test]
+    async fn both_provider_confirm_names_require_the_previewed_revision() {
+        for compatibility_name in [false, true] {
+            let mut draft = draft_fixture();
+            draft.revision = Some(2);
+            let requester = Arc::new(ProviderDraftRequester {
+                draft: draft.clone(),
+                submitted: Mutex::new(Vec::new()),
+            });
+            let server = MxrMcpServer::from_requester(requester.clone());
+            for expected in [None, Some(1), Some(2)] {
+                let input = Parameters(DraftActionInput {
+                    draft_id: draft.id.as_str(),
+                    confirm: Some(true),
+                    expected_revision: expected,
+                });
+                let result = if compatibility_name {
+                    server.copy_draft_to_provider(input).await
+                } else {
+                    server.sync_draft_to_provider(input).await
+                };
+                assert_eq!(result.is_ok(), expected == Some(2));
+            }
+            let submitted = requester.submitted.lock().unwrap();
+            assert_eq!(
+                submitted.len(),
+                1,
+                "missing or stale previews never cause provider effects"
+            );
+            assert_eq!(submitted[0].revision, Some(2));
+            assert_eq!(submitted[0].content, draft.content);
+        }
     }
 
     #[tokio::test]

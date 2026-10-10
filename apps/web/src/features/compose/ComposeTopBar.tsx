@@ -22,6 +22,8 @@ interface ComposeTopBarProps {
   title: string;
   busy: boolean;
   canServerSave: boolean;
+  recovery?: boolean;
+  onRecovery?: () => void;
   onRefresh: () => void;
   onServerSave: () => void;
   onDiscard: () => void;
@@ -37,6 +39,8 @@ export function ComposeTopBar({
   title,
   busy,
   canServerSave,
+  recovery,
+  onRecovery,
   onRefresh,
   onServerSave,
   onDiscard,
@@ -71,9 +75,15 @@ export function ComposeTopBar({
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem disabled={busy} onSelect={() => onRefresh()}>
                 <RefreshCw className="size-3.5" />
-                Refresh from daemon
+                {recovery ? "Open saved draft" : "Refresh from daemon"}
                 <DropdownMenuShortcut>⇧⌘R</DropdownMenuShortcut>
               </DropdownMenuItem>
+              {onRecovery ? (
+                <DropdownMenuItem disabled={busy} onSelect={() => onRecovery()}>
+                  <RefreshCw className="size-3.5" />
+                  Open preserved edits
+                </DropdownMenuItem>
+              ) : null}
               {canServerSave ? (
                 <DropdownMenuItem disabled={busy} onSelect={() => onServerSave()}>
                   <Cloud className="size-3.5" />

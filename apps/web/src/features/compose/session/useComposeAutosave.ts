@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { DaemonUnavailableError } from "@/api/client";
 import { useDaemonDown } from "@/lib/daemonAvailability";
 import { requestCoordinator } from "@/lib/requestCoordinator";
-import { updateComposeSession } from "../api";
+import { updateComposeSession, type ComposeSessionResponse } from "../api";
 import { acceptedDraftRevision, recoveredComposeSession } from "./acceptedDraftRevision";
 import { rememberActiveDraft } from "./activeDrafts";
 import {
@@ -60,6 +60,8 @@ export function useComposeAutosave({
   const currentIntentKeyRef = useRef(intentKey);
   currentIntentKeyRef.current = intentKey;
   const lastSavedFingerprintRef = useRef<string | null>(null);
+  const preservedFingerprintRef = useRef<string | null>(null);
+  const attemptedFingerprintRef = useRef<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const updateSession = useMutation({ mutationFn: updateComposeSession });
@@ -73,12 +75,16 @@ export function useComposeAutosave({
     const snapshot = captureSaveSnapshot(current);
     const queueKey = composeQueueKey(snapshot.draftPath, snapshot.recoverySourcePath);
     const sourcePath = snapshot.recoverySourcePath ?? snapshot.draftPath;
-    if (snapshot.fingerprint === lastSavedFingerprintRef.current && pendingSavesRef.current === 0) {
+    const unchanged = current.recoverySourcePath
+      ? preservedFingerprintRef.current === `${current.draftPath}:${snapshot.fingerprint}`
+      : snapshot.fingerprint === lastSavedFingerprintRef.current;
+    if (unchanged && pendingSavesRef.current === 0) {
       setDirty(false);
-      setSaveError(null);
+      if (!current.recoverySourcePath) setSaveError(null);
       return undefined;
     }
-    setSaveError(null);
+    if (!current.recoverySourcePath) setSaveError(null);
+    attemptedFingerprintRef.current = `${snapshot.draftPath}:${snapshot.fingerprint}`;
     pendingSavesRef.current += 1;
     try {
       const result = await requestCoordinator.queueComposeLatest(queueKey, async () => {
@@ -167,6 +173,25 @@ export function useComposeAutosave({
               }
               if (belongsToActive || currentIntentKeyRef.current !== intentKey)
                 rememberActiveDraft(intentKey, recovered);
+              if (belongsToActive) setSaveError(errorMessage(error));
+              // The bridge confirmed this exact snapshot was preserved locally.
+              // Its token is still the observed canonical token, never acceptance.
+              const preserved: ComposeSessionResponse = {
+                session: {
+                  draftPath: recovery.draft_path,
+                  draftId: recovery.draft_id,
+                  revision: recovery.revision,
+                  recoverySourcePath: sourcePath,
+                  accountId: snapshot.accountId,
+                  rawContent: "",
+                  frontmatter: snapshot.frontmatter,
+                  bodyMarkdown: snapshot.body,
+                  previewHtml: "",
+                  issues: [],
+                  kind: "recovery",
+                },
+              };
+              return preserved;
             } else if (
               accepted &&
               accepted.draft_id === snapshot.draftId &&
@@ -190,7 +215,7 @@ export function useComposeAutosave({
           throw new Error("The saved response belongs to another draft; your text stays here");
         recoveryTargetRef.current = {
           sourcePath,
-          draftPath: submittedPath,
+          draftPath: response.session.draftPath,
           draftId: response.session.draftId ?? snapshot.draftId,
           revision: response.session.revision,
         };
@@ -228,15 +253,22 @@ export function useComposeAutosave({
         (snapshot.draftId != null && draftRef.current.draftId !== snapshot.draftId)
       )
         return undefined;
-      lastSavedFingerprintRef.current = snapshot.fingerprint;
+      const recoverySource =
+        response.session.recoverySourcePath ?? draftRef.current.recoverySourcePath;
+      if (recoverySource)
+        preservedFingerprintRef.current = `${response.session.draftPath}:${snapshot.fingerprint}`;
+      else lastSavedFingerprintRef.current = snapshot.fingerprint;
       const latest = draftRef.current;
       if (latest && draftFingerprint(latest) === snapshot.fingerprint) {
         const next = {
           ...draftFromSession(response.session, snapshot.accountId),
-          recoverySourcePath: latest.recoverySourcePath,
+          recoverySourcePath: recoverySource,
+          preservedRecoveryPath: latest.preservedRecoveryPath,
         };
         setDraft(next);
-        lastSavedFingerprintRef.current = draftFingerprint(next);
+        if (recoverySource)
+          preservedFingerprintRef.current = `${next.draftPath}:${draftFingerprint(next)}`;
+        else lastSavedFingerprintRef.current = draftFingerprint(next);
         setDirty(false);
         rememberActiveDraft(intentKey, next);
       } else if (latest) {
@@ -268,7 +300,10 @@ export function useComposeAutosave({
   // which stays dirty, so the debounce below runs again once it's back.
   const daemonDown = useDaemonDown();
   useEffect(() => {
-    if (!daemonDown) setSaveError((shown) => (shown === DAEMON_DOWN_NOTE ? null : shown));
+    if (!daemonDown) {
+      attemptedFingerprintRef.current = null;
+      setSaveError((shown) => (shown === DAEMON_DOWN_NOTE ? null : shown));
+    }
   }, [daemonDown]);
 
   useEffect(() => {
@@ -277,6 +312,7 @@ export function useComposeAutosave({
       setSaveError(DAEMON_DOWN_NOTE);
       return;
     }
+    if (`${draft.draftPath}:${draftFingerprint(draft)}` === attemptedFingerprintRef.current) return;
     const handle = window.setTimeout(() => {
       void saveCurrentDraft().catch((error: Error) => {
         // The daemon just went away; the note above replaces this once
@@ -322,7 +358,9 @@ export function useComposeAutosave({
   }
 
   function isCurrentDraftSaved(current: ComposeDraftState): boolean {
-    return draftFingerprint(current) === lastSavedFingerprintRef.current;
+    return (
+      !current.recoverySourcePath && draftFingerprint(current) === lastSavedFingerprintRef.current
+    );
   }
 
   return {

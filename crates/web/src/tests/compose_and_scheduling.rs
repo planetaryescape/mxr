@@ -961,9 +961,23 @@ async fn overlapping_shared_session_updates_keep_each_snapshot_with_its_observed
         "original",
         Utc::now(),
     )]);
+    let effects = Arc::new(Mutex::new(0));
+    let seen = effects.clone();
+    let responder = draft_store_responder(store.clone(), sample_account(&account));
     let _ipc = spawn_fake_ipc_server(
         &socket,
-        draft_store_responder(store.clone(), sample_account(&account)),
+        move |request| {
+            if matches!(
+                &request,
+                Request::SendDraft { .. }
+                    | Request::SaveDraftToServer { .. }
+                    | Request::ScheduleSend { .. }
+                    | Request::DeleteDraft { .. }
+            ) {
+                *seen.lock().unwrap() += 1;
+            }
+            responder(request)
+        },
         None,
     )
     .await;
@@ -1002,8 +1016,109 @@ async fn overlapping_shared_session_updates_keep_each_snapshot_with_its_observed
     let losing_session = load_compose_session(Path::new(recovered)).await.unwrap();
     assert_eq!(losing_session["bodyMarkdown"], losing);
     assert_eq!(losing_session["revision"], 1);
+    assert_eq!(losing_session["recoverySourcePath"], path);
+    for body in ["latest before close", "latest before close"] {
+        let response = client.post(format!("http://{addr}/api/v1/mail/compose/session/update"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&json!({"draft_path": recovered, "account_id": account, "expected_revision": 1,
+                "to": "alice@example.com", "cc": "", "bcc": "", "subject": "Shared", "from": "me@example.com", "body": body}))
+            .send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let local: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(local["session"]["draftPath"], recovered);
+        assert_eq!(local["session"]["revision"], 1);
+        assert_eq!(local["session"]["bodyMarkdown"], body);
+        assert_eq!(store.snapshot()[0].revision, Some(2));
+        assert_eq!(store.snapshot()[0].content.analysis_text(), winning);
+    }
+    // Recovery cannot cause effects, including requests from null-token clients.
+    for endpoint in ["send", "save", "schedule", "safety-check"] {
+        let blocked = client.post(format!("http://{addr}/api/v1/mail/compose/session/{endpoint}"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&json!({"draft_path": recovered, "account_id": account, "draft_id": id,
+                "expected_revision": null, "save_to_server": true, "send_at": "2026-12-01T12:00:00Z"}))
+            .send().await.unwrap();
+        assert_eq!(
+            blocked.status(),
+            reqwest::StatusCode::BAD_REQUEST,
+            "{endpoint}"
+        );
+    }
+    // Explicit canonical restore does not erase the rejected editor's text.
+    let reopened = restore_session_path(&client, addr, &id).await;
+    let canonical = load_compose_session(Path::new(&reopened)).await.unwrap();
+    assert_eq!(canonical["bodyMarkdown"], winning);
+    assert_eq!(canonical["revision"], 2);
+    assert_eq!(
+        load_compose_session(Path::new(recovered)).await.unwrap()["bodyMarkdown"],
+        "latest before close"
+    );
+    // Two explicit reopens own independent editable copies, even when they
+    // began with the same remembered recovery path.
+    let mut opened = Vec::new();
+    for _ in 0..2 {
+        let response: serde_json::Value = client
+            .post(format!("http://{addr}/api/v1/mail/compose/session/refresh"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&json!({"draft_path": recovered}))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let copy = response["session"]["draftPath"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_ne!(copy, recovered);
+        opened.push(copy);
+    }
+    assert_ne!(opened[0], opened[1]);
+    for (copy, body) in opened
+        .iter()
+        .zip(["first reopened editor", "second reopened editor"])
+    {
+        let response = client.post(format!("http://{addr}/api/v1/mail/compose/session/update"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&json!({"draft_path": copy, "account_id": account, "expected_revision": 1,
+                "to": "alice@example.com", "cc": "", "bcc": "", "subject": "Shared", "from": "me@example.com", "body": body}))
+            .send().await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+    }
+    assert_eq!(
+        load_compose_session(Path::new(recovered)).await.unwrap()["bodyMarkdown"],
+        "latest before close"
+    );
+    let deleted_copy = client
+        .post(format!("http://{addr}/api/v1/mail/compose/session/discard"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&json!({"draft_path": opened[0], "expected_revision": 1}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(deleted_copy.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        load_compose_session(Path::new(&opened[1])).await.unwrap()["bodyMarkdown"],
+        "second reopened editor"
+    );
+    assert_eq!(store.snapshot()[0].revision, Some(2));
+    remove_compose_file(Path::new(&opened[1])).await.unwrap();
+    let discarded = client
+        .post(format!("http://{addr}/api/v1/mail/compose/session/discard"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&json!({"draft_path": recovered, "expected_revision": 1}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(discarded.status(), reqwest::StatusCode::OK);
+    assert!(!Path::new(recovered).exists());
+    assert_eq!(store.snapshot()[0].revision, Some(2));
+    assert_eq!(*effects.lock().unwrap(), 0);
     remove_compose_file(Path::new(&path)).await.unwrap();
-    remove_compose_file(Path::new(recovered)).await.unwrap();
+    if reopened != path {
+        remove_compose_file(Path::new(&reopened)).await.unwrap();
+    }
 }
 
 #[tokio::test]

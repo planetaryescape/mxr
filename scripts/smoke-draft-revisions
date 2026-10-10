@@ -123,6 +123,17 @@ path.write_text(path.read_text().replace("original smoke body", os.environ["MXR_
             current = next(draft for draft in json.loads(cli("drafts", "--format", "json").stdout) if draft["id"] == draft_id)
             assert current["revision"] == 2 and current["body_markdown"] == "editor B accepted text", current
             print("Canonical saved content:", json.dumps(current))
+            malformed_editor = root / "malformed-editor"
+            malformed_ready = root / "malformed-ready"
+            malformed_editor.write_text("#!/usr/bin/env python3\nimport pathlib,sys\npath=pathlib.Path(sys.argv[-1])\npathlib.Path(" + repr(str(malformed_ready)) + ").write_text(str(path))\npath.write_text('---\\nto: [broken yaml\\n---\\nunsent malformed edit')\n")
+            malformed_editor.chmod(0o700)
+            malformed = cli("drafts", "edit", draft_id, extra={"EDITOR": str(malformed_editor)}, check=False)
+            malformed_path = Path(malformed_ready.read_text())
+            assert malformed.returncode != 0 and str(malformed_path) in malformed.stderr, malformed.stderr
+            assert "unsent malformed edit" in malformed_path.read_text(), malformed_path
+            after_malformed = next(draft for draft in json.loads(cli("drafts", "--format", "json").stdout) if draft["id"] == draft_id)
+            assert after_malformed["revision"] == 2 and after_malformed["body_markdown"] == "editor B accepted text", after_malformed
+            print("Malformed edit preserved:", malformed.stderr.strip())
             preview = cli("drafts", "--format", "json", "delete", draft_id, "--dry-run")
             print("Delete preview:", preview.stdout.strip())
             assert next(draft for draft in json.loads(cli("drafts", "--format", "json").stdout) if draft["id"] == draft_id)["revision"] == 2

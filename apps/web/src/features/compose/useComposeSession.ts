@@ -122,6 +122,7 @@ export function useComposeSession(
     navigate,
     queryClient,
     draftRef,
+    setDraft,
     saveCurrentDraft,
     isCurrentDraftSaved,
     markSessionFinished: autosave.markSessionFinished,
@@ -302,7 +303,7 @@ export function useComposeSession(
   }
 
   function requestDiscard() {
-    if (dirty) {
+    if (dirty || draftRef.current?.revision != null) {
       setDiscardConfirmOpen(true);
       return;
     }

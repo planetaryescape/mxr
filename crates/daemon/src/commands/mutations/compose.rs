@@ -1113,27 +1113,30 @@ pub async fn drafts_edit(draft_id: String, account: Option<String>) -> anyhow::R
     ));
     mxr_compose::private_tmp::write_private(&path, content.as_bytes())?;
 
-    let editor = mxr_compose::editor::resolve_editor(None);
-    mxr_compose::editor::spawn_editor(&editor, &path, None).await?;
-
-    let edited = std::fs::read_to_string(&path)?;
-    let (frontmatter, body) = mxr_compose::frontmatter::parse_compose_file(&edited)?;
-    validate_compose_draft(&frontmatter, &body, false)?;
-
-    let updated =
-        mxr_compose::draft_codec::apply_edited_compose_file(&draft, &edited, chrono::Utc::now())?;
-
-    expect_ack(
-        client
-            .request(Request::UpdateDraft {
-                draft: updated.clone(),
-            })
-            .await
-            .map_err(|error| {
-                anyhow::anyhow!("{error}\nYour unsent edits remain at {}", path.display())
-            })?,
-    )
-    .map_err(|error| anyhow::anyhow!("{error}\nYour unsent edits remain at {}", path.display()))?;
+    let edit_result: anyhow::Result<Draft> = async {
+        let editor = mxr_compose::editor::resolve_editor(None);
+        mxr_compose::editor::spawn_editor(&editor, &path, None).await?;
+        let edited = std::fs::read_to_string(&path)?;
+        let (frontmatter, body) = mxr_compose::frontmatter::parse_compose_file(&edited)?;
+        validate_compose_draft(&frontmatter, &body, false)?;
+        let updated = mxr_compose::draft_codec::apply_edited_compose_file(
+            &draft,
+            &edited,
+            chrono::Utc::now(),
+        )?;
+        expect_ack(
+            client
+                .request(Request::UpdateDraft {
+                    draft: updated.clone(),
+                })
+                .await?,
+        )?;
+        Ok(updated)
+    }
+    .await;
+    let updated = edit_result.map_err(|error| {
+        anyhow::anyhow!("{error}\nYour unsent edits remain at {}", path.display())
+    })?;
 
     let _ = std::fs::remove_file(&path);
     println!(

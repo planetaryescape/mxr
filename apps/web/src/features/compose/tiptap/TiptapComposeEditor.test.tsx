@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { TiptapComposeEditor } from "./TiptapComposeEditor";
 
 describe("TiptapComposeEditor held keys", () => {
-  it("held ⌘↵ and ⌘⇧⌫ run once; the editor's own chords repeat", async () => {
+  it("held ⌘↵ runs once; deletion and the editor's own chords stay in the editor", async () => {
     const onSend = vi.fn<() => void>();
     const onDiscard = vi.fn<() => void>();
     const { container } = render(
@@ -26,7 +26,7 @@ describe("TiptapComposeEditor held keys", () => {
     press("Backspace", true, false);
     press("Backspace", true, true);
     expect(onSend).toHaveBeenCalledTimes(1);
-    expect(onDiscard).toHaveBeenCalledTimes(1);
+    expect(onDiscard).not.toHaveBeenCalled();
 
     const native = [
       ["z", false],

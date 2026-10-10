@@ -1,0 +1,165 @@
+{
+  "pr": "https://github.com/planetaryescape/mxr/pull/332",
+  "base": "f783d937b3dbabb23c338f0164d96c0b875b4c89",
+  "head": "151b18c486eb7a93ac4e182edb04b90e5cdf259f",
+  "tree": "84d77bb6fb8c8b6c7d87a1add5ddd7964492ac3e",
+  "files": [
+    ".release-please-manifest.json",
+    "CHANGELOG.md",
+    "Cargo.lock",
+    "Cargo.toml"
+  ],
+  "checks": [
+    {
+      "name": "approve-and-enable",
+      "result": "SKIPPED",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Detect Changes",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Secret Scan",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Release Gate Scripts",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "cargo deny",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Check",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Architecture Boundaries",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Adapter Skeleton Example",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Transport Skeleton Example",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Format",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Clippy",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Test (fast / no semantic)",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Test (semantic-local)",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Test Quality Audit (non-blocking)",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Test Quality Gate (changed files)",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Web Unit Tests",
+      "result": "SKIPPED",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Web E2E",
+      "result": "SKIPPED",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Coverage",
+      "result": "SKIPPED",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "SQLx Offline",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Docs Build",
+      "result": "SKIPPED",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Build",
+      "result": "SKIPPED",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Rustdoc",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "MSRV (1.94)",
+      "result": "SKIPPED",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Install Smoke Test",
+      "result": "SKIPPED",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "Vercel Agent Review",
+      "result": "NEUTRAL",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "cubic \u00b7 AI code reviewer",
+      "result": "NEUTRAL",
+      "status": "COMPLETED"
+    },
+    {
+      "name": "CodeRabbit",
+      "result": "SUCCESS",
+      "status": "SUCCESS"
+    },
+    {
+      "name": "Vercel",
+      "result": "SUCCESS",
+      "status": "SUCCESS"
+    },
+    {
+      "name": "Vercel Preview Comments",
+      "result": "SUCCESS",
+      "status": "COMPLETED"
+    }
+  ],
+  "authoritative_patch_matches": true,
+  "merge_tree_matches": true,
+  "unready": [],
+  "merged_commit": "8e81648a48a726aa22f0c210dd2407b003a9331e",
+  "current_main": "8e81648a48a726aa22f0c210dd2407b003a9331e",
+  "integrated_tree_matches": true
+}

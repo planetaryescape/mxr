@@ -1,0 +1,25 @@
+{
+  "source": "8e81648a48a726aa22f0c210dd2407b003a9331e",
+  "version": "mxr 0.6.62 (Mixer)",
+  "binary": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.62/bin/mxr",
+  "archives": [
+    {
+      "name": "mxr-v0.6.62-linux-x86_64.tar.gz",
+      "sha256": "bb7b9054febe1694d9b87d4413b019947de2b7390db3b4b344b031301cadea6f",
+      "bytes": 63550758
+    },
+    {
+      "name": "mxr-v0.6.62-macos-aarch64.tar.gz",
+      "sha256": "1200dca2e58f7993e13d610c63fd6f02961d051a3af8d6b2d604226121c74509",
+      "bytes": 58724378
+    }
+  ],
+  "smoke": {
+    "--check": true,
+    "--index-stats": true,
+    "--store-stats": true,
+    "remote_repair_rejected": true,
+    "status_target_pid": true,
+    "unreachable_target_isolated": true
+  }
+}

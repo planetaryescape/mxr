@@ -1,0 +1,27 @@
+{
+  "source": "2c55a735e2b013910cb7222211fa8d6156d6204c",
+  "version": "mxr 0.6.63",
+  "binary": "/Users/bhekanik/.codex/worktrees/ios-architecture-research/mxr/target/portability-releases/v0.6.63/bin/mxr",
+  "archives": [
+    {
+      "name": "mxr-v0.6.63-linux-x86_64.tar.gz",
+      "sha256": "dfe3b7d959d17789cd97021464779c15d5e52c13ee2462393c892602240450e1",
+      "bytes": 63556629
+    },
+    {
+      "name": "mxr-v0.6.63-macos-aarch64.tar.gz",
+      "sha256": "f7ca00a3d4ec8dbb78eca77f536fc6ff241c9992ad29f022081822c37dc2dfaa",
+      "bytes": 58724988
+    }
+  ],
+  "packaging_smoke": {
+    "--check": true,
+    "--index-stats": true,
+    "--store-stats": true,
+    "remote_repair_rejected": true,
+    "status_target_pid": true,
+    "unreachable_target_isolated": true
+  },
+  "token_persistence_evidence": "exact-release-source provider tests; no live Gmail refresh attempted",
+  "harness_correction": "Initial literal version check wrongly required optional (Mixer) suffix; actual version output is captured above."
+}

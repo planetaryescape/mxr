@@ -1,0 +1,172 @@
+{
+  "run_id": 38013781257,
+  "url": "https://github.com/planetaryescape/mxr/actions/runs/38013781257",
+  "head": "5de44f93a8ae3cf8ff90d6a53738ea98bf2366db",
+  "status": "completed",
+  "conclusion": "success",
+  "created_at": "2026-10-10T01:35:44Z",
+  "updated_at": "2026-10-10T01:43:02Z",
+  "jobs": [
+    {
+      "name": "Secret Scan",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:35:52Z",
+      "completedAt": "2026-10-10T01:36:22Z"
+    },
+    {
+      "name": "Detect Changes",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:35:53Z",
+      "completedAt": "2026-10-10T01:35:59Z"
+    },
+    {
+      "name": "Release Gate Scripts",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:35:52Z",
+      "completedAt": "2026-10-10T01:36:01Z"
+    },
+    {
+      "name": "Check",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:36:06Z",
+      "completedAt": "2026-10-10T01:38:15Z"
+    },
+    {
+      "name": "cargo deny",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:36:06Z",
+      "completedAt": "2026-10-10T01:36:35Z"
+    },
+    {
+      "name": "Adapter Skeleton Example",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:36:06Z",
+      "completedAt": "2026-10-10T01:36:30Z"
+    },
+    {
+      "name": "Format",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:36:06Z",
+      "completedAt": "2026-10-10T01:36:21Z"
+    },
+    {
+      "name": "Transport Skeleton Example",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:36:07Z",
+      "completedAt": "2026-10-10T01:36:30Z"
+    },
+    {
+      "name": "Architecture Boundaries",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:36:08Z",
+      "completedAt": "2026-10-10T01:36:15Z"
+    },
+    {
+      "name": "Test Quality Gate (changed files)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:36:07Z",
+      "completedAt": "2026-10-10T01:36:14Z"
+    },
+    {
+      "name": "Test (fast / no semantic)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:36:07Z",
+      "completedAt": "2026-10-10T01:42:09Z"
+    },
+    {
+      "name": "Test (semantic-local)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:36:07Z",
+      "completedAt": "2026-10-10T01:43:01Z"
+    },
+    {
+      "name": "SQLx Offline",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:36:07Z",
+      "completedAt": "2026-10-10T01:37:50Z"
+    },
+    {
+      "name": "Docs Build",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:36:08Z",
+      "completedAt": "2026-10-10T01:37:19Z"
+    },
+    {
+      "name": "Rustdoc",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:36:07Z",
+      "completedAt": "2026-10-10T01:37:51Z"
+    },
+    {
+      "name": "Clippy",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:36:07Z",
+      "completedAt": "2026-10-10T01:38:08Z"
+    },
+    {
+      "name": "Test Quality Audit (non-blocking)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-10T01:36:08Z",
+      "completedAt": "2026-10-10T01:36:41Z"
+    },
+    {
+      "name": "Build",
+      "status": "completed",
+      "conclusion": "skipped",
+      "startedAt": "2026-10-10T01:36:00Z",
+      "completedAt": "2026-10-10T01:35:59Z"
+    },
+    {
+      "name": "Coverage",
+      "status": "completed",
+      "conclusion": "skipped",
+      "startedAt": "2026-10-10T01:36:00Z",
+      "completedAt": "2026-10-10T01:35:59Z"
+    },
+    {
+      "name": "MSRV (1.94)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "startedAt": "2026-10-10T01:36:00Z",
+      "completedAt": "2026-10-10T01:35:59Z"
+    },
+    {
+      "name": "Web Unit Tests",
+      "status": "completed",
+      "conclusion": "skipped",
+      "startedAt": "2026-10-10T01:36:00Z",
+      "completedAt": "2026-10-10T01:35:59Z"
+    },
+    {
+      "name": "Install Smoke Test",
+      "status": "completed",
+      "conclusion": "skipped",
+      "startedAt": "2026-10-10T01:36:00Z",
+      "completedAt": "2026-10-10T01:35:59Z"
+    },
+    {
+      "name": "Web E2E",
+      "status": "completed",
+      "conclusion": "skipped",
+      "startedAt": "2026-10-10T01:36:00Z",
+      "completedAt": "2026-10-10T01:35:59Z"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "binary": "/opt/homebrew/bin/mxr",
+  "resolved_binary": "/opt/homebrew/Cellar/mxr/0.6.63/bin/mxr",
+  "version": "mxr 0.6.63",
+  "source": "2c55a735e2b013910cb7222211fa8d6156d6204c",
+  "packaging_smoke": {
+    "--check": true,
+    "--index-stats": true,
+    "--store-stats": true,
+    "remote_repair_rejected": true,
+    "status_target_pid": true,
+    "unreachable_target_isolated": true
+  }
+}

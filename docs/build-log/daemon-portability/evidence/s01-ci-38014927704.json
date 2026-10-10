@@ -1,0 +1,1641 @@
+{
+  "conclusion": "success",
+  "createdAt": "2026-10-10T01:53:46Z",
+  "headSha": "25f70c7d297d67ec32220e927f607ba8d195093e",
+  "jobs": [
+    {
+      "completedAt": "2026-10-10T01:54:23Z",
+      "conclusion": "success",
+      "databaseId": 114102975967,
+      "name": "Secret Scan",
+      "startedAt": "2026-10-10T01:53:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:53:56Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:53:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:56Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:53:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:59Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:53:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:59Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-go@v6",
+          "number": 4,
+          "startedAt": "2026-10-10T01:53:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:12Z",
+          "conclusion": "success",
+          "name": "Install gitleaks",
+          "number": 5,
+          "startedAt": "2026-10-10T01:53:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:16Z",
+          "conclusion": "success",
+          "name": "Scan checked-in files",
+          "number": 6,
+          "startedAt": "2026-10-10T01:54:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:20Z",
+          "conclusion": "success",
+          "name": "Scan git history",
+          "number": 7,
+          "startedAt": "2026-10-10T01:54:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:20Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-go@v6",
+          "number": 12,
+          "startedAt": "2026-10-10T01:54:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:20Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 13,
+          "startedAt": "2026-10-10T01:54:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:20Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 14,
+          "startedAt": "2026-10-10T01:54:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:20Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-10-10T01:54:20Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114102975967"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:03Z",
+      "conclusion": "success",
+      "databaseId": 114102976135,
+      "name": "Release Gate Scripts",
+      "startedAt": "2026-10-10T01:53:55Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:53:56Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:53:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:56Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:53:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:59Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:53:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:59Z",
+          "conclusion": "success",
+          "name": "Run bash scripts/release_version_gate_test.sh",
+          "number": 4,
+          "startedAt": "2026-10-10T01:53:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:59Z",
+          "conclusion": "success",
+          "name": "Run bash scripts/pre_pr_rust_gate_test.sh",
+          "number": 5,
+          "startedAt": "2026-10-10T01:53:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:59Z",
+          "conclusion": "success",
+          "name": "Run bash scripts/release_gmail_oauth_gate_test.sh",
+          "number": 6,
+          "startedAt": "2026-10-10T01:53:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:59Z",
+          "conclusion": "success",
+          "name": "Run bash scripts/release_workflow_test.sh",
+          "number": 7,
+          "startedAt": "2026-10-10T01:53:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:59Z",
+          "conclusion": "success",
+          "name": "Run bash scripts/publish_github_release_test.sh",
+          "number": 8,
+          "startedAt": "2026-10-10T01:53:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:59Z",
+          "conclusion": "success",
+          "name": "Run bash scripts/provider_smoke_workflow_test.sh",
+          "number": 9,
+          "startedAt": "2026-10-10T01:53:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:59Z",
+          "conclusion": "success",
+          "name": "Run bash scripts/ci_workflow_test.sh",
+          "number": 10,
+          "startedAt": "2026-10-10T01:53:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:59Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 19,
+          "startedAt": "2026-10-10T01:53:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:59Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 20,
+          "startedAt": "2026-10-10T01:53:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:59Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 21,
+          "startedAt": "2026-10-10T01:53:59Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114102976135"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:04Z",
+      "conclusion": "success",
+      "databaseId": 114102976231,
+      "name": "Detect Changes",
+      "startedAt": "2026-10-10T01:53:56Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:53:57Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:53:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:53:57Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:53:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:00Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:53:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:00Z",
+          "conclusion": "success",
+          "name": "Run set -euo pipefail",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:01Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 7,
+          "startedAt": "2026-10-10T01:54:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:01Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 8,
+          "startedAt": "2026-10-10T01:54:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:01Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 9,
+          "startedAt": "2026-10-10T01:54:01Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114102976231"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:17Z",
+      "conclusion": "success",
+      "databaseId": 114103030225,
+      "name": "Architecture Boundaries",
+      "startedAt": "2026-10-10T01:54:11Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:54:12Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:54:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:12Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:54:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:54:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Run scripts/check_architecture_boundaries.sh",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 7,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 8,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 9,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103030225"
+    },
+    {
+      "completedAt": "2026-10-10T02:00:36Z",
+      "conclusion": "success",
+      "databaseId": 114103030232,
+      "name": "Test (fast / no semantic)",
+      "startedAt": "2026-10-10T01:54:11Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:54:13Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:54:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:13Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:54:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:16Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:54:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:22Z",
+          "conclusion": "success",
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:24Z",
+          "conclusion": "success",
+          "name": "Run Swatinem/rust-cache@v2",
+          "number": 5,
+          "startedAt": "2026-10-10T01:54:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:24Z",
+          "conclusion": "success",
+          "name": "Run taiki-e/install-action@nextest",
+          "number": 6,
+          "startedAt": "2026-10-10T01:54:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:29Z",
+          "conclusion": "success",
+          "name": "Run sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config",
+          "number": 7,
+          "startedAt": "2026-10-10T01:54:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T02:00:33Z",
+          "conclusion": "success",
+          "name": "Run cargo nextest run --workspace",
+          "number": 8,
+          "startedAt": "2026-10-10T01:54:29Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T02:00:33Z",
+          "conclusion": "success",
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "number": 14,
+          "startedAt": "2026-10-10T02:00:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T02:00:33Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 15,
+          "startedAt": "2026-10-10T02:00:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T02:00:33Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 16,
+          "startedAt": "2026-10-10T02:00:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T02:00:33Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 17,
+          "startedAt": "2026-10-10T02:00:33Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103030232"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:35Z",
+      "conclusion": "success",
+      "databaseId": 114103030241,
+      "name": "Transport Skeleton Example",
+      "startedAt": "2026-10-10T01:54:12Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:54:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:16Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:23Z",
+          "conclusion": "success",
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:23Z",
+          "conclusion": "success",
+          "name": "Run Swatinem/rust-cache@v2",
+          "number": 5,
+          "startedAt": "2026-10-10T01:54:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:27Z",
+          "conclusion": "success",
+          "name": "Run cargo clippy --all-targets -- -D warnings",
+          "number": 6,
+          "startedAt": "2026-10-10T01:54:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:33Z",
+          "conclusion": "success",
+          "name": "Run cargo test",
+          "number": 7,
+          "startedAt": "2026-10-10T01:54:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:33Z",
+          "conclusion": "success",
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "number": 12,
+          "startedAt": "2026-10-10T01:54:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:33Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 13,
+          "startedAt": "2026-10-10T01:54:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:33Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 14,
+          "startedAt": "2026-10-10T01:54:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:33Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-10-10T01:54:33Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103030241"
+    },
+    {
+      "completedAt": "2026-10-10T01:55:19Z",
+      "conclusion": "success",
+      "databaseId": 114103030259,
+      "name": "Docs Build",
+      "startedAt": "2026-10-10T01:54:11Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:54:13Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:54:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:13Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:54:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:15Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:54:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:17Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v6",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:20Z",
+          "conclusion": "success",
+          "name": "Run npm ci",
+          "number": 5,
+          "startedAt": "2026-10-10T01:54:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:21Z",
+          "conclusion": "success",
+          "name": "Run node ../scripts/check-npm-audit.mjs audit-allowlist.json",
+          "number": 6,
+          "startedAt": "2026-10-10T01:54:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:16Z",
+          "conclusion": "success",
+          "name": "Run npm run build",
+          "number": 7,
+          "startedAt": "2026-10-10T01:54:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:16Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v6",
+          "number": 12,
+          "startedAt": "2026-10-10T01:55:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:16Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 13,
+          "startedAt": "2026-10-10T01:55:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:16Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 14,
+          "startedAt": "2026-10-10T01:55:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:16Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-10-10T01:55:16Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103030259"
+    },
+    {
+      "completedAt": "2026-10-10T02:01:12Z",
+      "conclusion": "success",
+      "databaseId": 114103030264,
+      "name": "Test (semantic-local)",
+      "startedAt": "2026-10-10T01:54:11Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:54:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:17Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:24Z",
+          "conclusion": "success",
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:25Z",
+          "conclusion": "success",
+          "name": "Run Swatinem/rust-cache@v2",
+          "number": 5,
+          "startedAt": "2026-10-10T01:54:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:26Z",
+          "conclusion": "success",
+          "name": "Run taiki-e/install-action@nextest",
+          "number": 6,
+          "startedAt": "2026-10-10T01:54:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:31Z",
+          "conclusion": "success",
+          "name": "Run sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config",
+          "number": 7,
+          "startedAt": "2026-10-10T01:54:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T02:01:09Z",
+          "conclusion": "success",
+          "name": "Run cargo nextest run --workspace --features semantic-local",
+          "number": 8,
+          "startedAt": "2026-10-10T01:54:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T02:01:09Z",
+          "conclusion": "success",
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "number": 14,
+          "startedAt": "2026-10-10T02:01:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T02:01:09Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 15,
+          "startedAt": "2026-10-10T02:01:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T02:01:09Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 16,
+          "startedAt": "2026-10-10T02:01:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T02:01:09Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 17,
+          "startedAt": "2026-10-10T02:01:09Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103030264"
+    },
+    {
+      "completedAt": "2026-10-10T01:55:51Z",
+      "conclusion": "success",
+      "databaseId": 114103030269,
+      "name": "Rustdoc",
+      "startedAt": "2026-10-10T01:54:11Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:54:13Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:54:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:13Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:54:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:15Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:54:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:22Z",
+          "conclusion": "success",
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:23Z",
+          "conclusion": "success",
+          "name": "Run Swatinem/rust-cache@v2",
+          "number": 5,
+          "startedAt": "2026-10-10T01:54:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:28Z",
+          "conclusion": "success",
+          "name": "Run sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config",
+          "number": 6,
+          "startedAt": "2026-10-10T01:54:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:48Z",
+          "conclusion": "success",
+          "name": "Run cargo doc --workspace --no-deps",
+          "number": 7,
+          "startedAt": "2026-10-10T01:54:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:48Z",
+          "conclusion": "success",
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "number": 12,
+          "startedAt": "2026-10-10T01:55:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:48Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 13,
+          "startedAt": "2026-10-10T01:55:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:48Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 14,
+          "startedAt": "2026-10-10T01:55:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:48Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-10-10T01:55:48Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103030269"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:40Z",
+      "conclusion": "success",
+      "databaseId": 114103030281,
+      "name": "cargo deny",
+      "startedAt": "2026-10-10T01:54:12Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:54:13Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:54:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:13Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:54:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:16Z",
+          "conclusion": "success",
+          "name": "Build EmbarkStudios/cargo-deny-action@v2",
+          "number": 3,
+          "startedAt": "2026-10-10T01:54:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:19Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:37Z",
+          "conclusion": "success",
+          "name": "Run EmbarkStudios/cargo-deny-action@v2",
+          "number": 5,
+          "startedAt": "2026-10-10T01:54:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:37Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 9,
+          "startedAt": "2026-10-10T01:54:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:38Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 10,
+          "startedAt": "2026-10-10T01:54:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:38Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-10-10T01:54:38Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103030281"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:35Z",
+      "conclusion": "success",
+      "databaseId": 114103030283,
+      "name": "Adapter Skeleton Example",
+      "startedAt": "2026-10-10T01:54:12Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:54:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:16Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:23Z",
+          "conclusion": "success",
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:23Z",
+          "conclusion": "success",
+          "name": "Run Swatinem/rust-cache@v2",
+          "number": 5,
+          "startedAt": "2026-10-10T01:54:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:28Z",
+          "conclusion": "success",
+          "name": "Run cargo clippy --all-targets -- -D warnings",
+          "number": 6,
+          "startedAt": "2026-10-10T01:54:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:32Z",
+          "conclusion": "success",
+          "name": "Run cargo test",
+          "number": 7,
+          "startedAt": "2026-10-10T01:54:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:32Z",
+          "conclusion": "success",
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "number": 12,
+          "startedAt": "2026-10-10T01:54:32Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:32Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 13,
+          "startedAt": "2026-10-10T01:54:32Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:32Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 14,
+          "startedAt": "2026-10-10T01:54:32Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:32Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-10-10T01:54:32Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103030283"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:27Z",
+      "conclusion": "success",
+      "databaseId": 114103030291,
+      "name": "Format",
+      "startedAt": "2026-10-10T01:54:12Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:54:13Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:54:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:13Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:54:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:16Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:54:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:22Z",
+          "conclusion": "success",
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:24Z",
+          "conclusion": "success",
+          "name": "Run cargo fmt --all -- --check",
+          "number": 5,
+          "startedAt": "2026-10-10T01:54:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:24Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 9,
+          "startedAt": "2026-10-10T01:54:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:24Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 10,
+          "startedAt": "2026-10-10T01:54:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:24Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-10-10T01:54:24Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103030291"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:41Z",
+      "conclusion": "success",
+      "databaseId": 114103030293,
+      "name": "Test Quality Audit (non-blocking)",
+      "startedAt": "2026-10-10T01:54:12Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:54:13Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:54:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:54:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:17Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:17Z",
+          "conclusion": "success",
+          "name": "Run scripts/test_quality_audit_test.sh",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:37Z",
+          "conclusion": "success",
+          "name": "Run scripts/test_quality_audit.sh",
+          "number": 5,
+          "startedAt": "2026-10-10T01:54:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:39Z",
+          "conclusion": "success",
+          "name": "Run actions/upload-artifact@v7",
+          "number": 6,
+          "startedAt": "2026-10-10T01:54:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:39Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 11,
+          "startedAt": "2026-10-10T01:54:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:39Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 12,
+          "startedAt": "2026-10-10T01:54:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:39Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "startedAt": "2026-10-10T01:54:39Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103030293"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:17Z",
+      "conclusion": "success",
+      "databaseId": 114103030295,
+      "name": "Test Quality Gate (changed files)",
+      "startedAt": "2026-10-10T01:54:11Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:54:12Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:54:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:12Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:54:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:54:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:15Z",
+          "conclusion": "success",
+          "name": "Run scripts/test_quality_audit_test.sh",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:15Z",
+          "conclusion": "success",
+          "name": "Run scripts/test_quality_audit.sh --strict --changed-only --base-ref origin/main",
+          "number": 5,
+          "startedAt": "2026-10-10T01:54:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:15Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 9,
+          "startedAt": "2026-10-10T01:54:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:15Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 10,
+          "startedAt": "2026-10-10T01:54:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:15Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-10-10T01:54:15Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103030295"
+    },
+    {
+      "completedAt": "2026-10-10T01:56:11Z",
+      "conclusion": "success",
+      "databaseId": 114103030306,
+      "name": "SQLx Offline",
+      "startedAt": "2026-10-10T01:54:12Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:54:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:16Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:23Z",
+          "conclusion": "success",
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:26Z",
+          "conclusion": "success",
+          "name": "Run Swatinem/rust-cache@v2",
+          "number": 5,
+          "startedAt": "2026-10-10T01:54:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:31Z",
+          "conclusion": "success",
+          "name": "Run sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config",
+          "number": 6,
+          "startedAt": "2026-10-10T01:54:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:31Z",
+          "conclusion": "success",
+          "name": "Run cargo install sqlx-cli --version 0.9.0 --locked --no-default-features --features sqlite,rustls",
+          "number": 7,
+          "startedAt": "2026-10-10T01:54:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:56:08Z",
+          "conclusion": "success",
+          "name": "Run db_path=\"${RUNNER_TEMP}/mxr-sqlx-check.db\"",
+          "number": 8,
+          "startedAt": "2026-10-10T01:54:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:56:08Z",
+          "conclusion": "success",
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "number": 14,
+          "startedAt": "2026-10-10T01:56:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:56:08Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 15,
+          "startedAt": "2026-10-10T01:56:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:56:09Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 16,
+          "startedAt": "2026-10-10T01:56:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:56:09Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 17,
+          "startedAt": "2026-10-10T01:56:09Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103030306"
+    },
+    {
+      "completedAt": "2026-10-10T01:55:49Z",
+      "conclusion": "success",
+      "databaseId": 114103030321,
+      "name": "Check",
+      "startedAt": "2026-10-10T01:54:13Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:54:15Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:54:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:15Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:54:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:16Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:54:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:22Z",
+          "conclusion": "success",
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:23Z",
+          "conclusion": "success",
+          "name": "Run Swatinem/rust-cache@v2",
+          "number": 5,
+          "startedAt": "2026-10-10T01:54:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:29Z",
+          "conclusion": "success",
+          "name": "Run sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config",
+          "number": 6,
+          "startedAt": "2026-10-10T01:54:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:46Z",
+          "conclusion": "success",
+          "name": "Run cargo check --workspace --all-targets",
+          "number": 7,
+          "startedAt": "2026-10-10T01:54:29Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:46Z",
+          "conclusion": "success",
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "number": 12,
+          "startedAt": "2026-10-10T01:55:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:46Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 13,
+          "startedAt": "2026-10-10T01:55:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:46Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 14,
+          "startedAt": "2026-10-10T01:55:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:55:47Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-10-10T01:55:47Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103030321"
+    },
+    {
+      "completedAt": "2026-10-10T01:56:11Z",
+      "conclusion": "success",
+      "databaseId": 114103030360,
+      "name": "Clippy",
+      "startedAt": "2026-10-10T01:54:12Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-10T01:54:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:14Z",
+          "conclusion": "success",
+          "name": "Set up runner",
+          "number": 2,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:17Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v6",
+          "number": 3,
+          "startedAt": "2026-10-10T01:54:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:24Z",
+          "conclusion": "success",
+          "name": "Run dtolnay/rust-toolchain@stable",
+          "number": 4,
+          "startedAt": "2026-10-10T01:54:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:27Z",
+          "conclusion": "success",
+          "name": "Run Swatinem/rust-cache@v2",
+          "number": 5,
+          "startedAt": "2026-10-10T01:54:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:54:34Z",
+          "conclusion": "success",
+          "name": "Run sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config",
+          "number": 6,
+          "startedAt": "2026-10-10T01:54:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:56:08Z",
+          "conclusion": "success",
+          "name": "Run cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+          "number": 7,
+          "startedAt": "2026-10-10T01:54:34Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:56:08Z",
+          "conclusion": "success",
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "number": 12,
+          "startedAt": "2026-10-10T01:56:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:56:08Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v6",
+          "number": 13,
+          "startedAt": "2026-10-10T01:56:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:56:08Z",
+          "conclusion": "success",
+          "name": "Complete runner",
+          "number": 14,
+          "startedAt": "2026-10-10T01:56:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-10T01:56:08Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-10-10T01:56:08Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103030360"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:04Z",
+      "conclusion": "skipped",
+      "databaseId": 114103031217,
+      "name": "Coverage",
+      "startedAt": "2026-10-10T01:54:04Z",
+      "status": "completed",
+      "steps": [],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103031217"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:04Z",
+      "conclusion": "skipped",
+      "databaseId": 114103031221,
+      "name": "Build",
+      "startedAt": "2026-10-10T01:54:04Z",
+      "status": "completed",
+      "steps": [],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103031221"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:04Z",
+      "conclusion": "skipped",
+      "databaseId": 114103031304,
+      "name": "MSRV (1.94)",
+      "startedAt": "2026-10-10T01:54:04Z",
+      "status": "completed",
+      "steps": [],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103031304"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:04Z",
+      "conclusion": "skipped",
+      "databaseId": 114103031334,
+      "name": "Web Unit Tests",
+      "startedAt": "2026-10-10T01:54:04Z",
+      "status": "completed",
+      "steps": [],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103031334"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:04Z",
+      "conclusion": "skipped",
+      "databaseId": 114103031454,
+      "name": "Install Smoke Test",
+      "startedAt": "2026-10-10T01:54:04Z",
+      "status": "completed",
+      "steps": [],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103031454"
+    },
+    {
+      "completedAt": "2026-10-10T01:54:04Z",
+      "conclusion": "skipped",
+      "databaseId": 114103031514,
+      "name": "Web E2E",
+      "startedAt": "2026-10-10T01:54:04Z",
+      "status": "completed",
+      "steps": [],
+      "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704/job/114103031514"
+    }
+  ],
+  "status": "completed",
+  "updatedAt": "2026-10-10T02:01:13Z",
+  "url": "https://github.com/planetaryescape/mxr/actions/runs/38014927704"
+}

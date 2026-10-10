@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { BridgeRequestError, DaemonUnavailableError } from "@/api/client";
-import { acceptedDraftRevision } from "./acceptedDraftRevision";
+import { acceptedDraftRevision, recoveredComposeSession } from "./acceptedDraftRevision";
 
 for (const evidence of [
   null,
@@ -35,3 +35,20 @@ test("an unavailable transport provides no acceptance evidence", () => {
     acceptedDraftRevision(new DaemonUnavailableError({ cause: new TypeError("network") })),
   ).toBeUndefined();
 });
+
+for (const paths of [null, "path", [2], [""]]) {
+  test(`rejects malformed attachment recovery evidence ${JSON.stringify(paths)}`, () => {
+    expect(
+      recoveredComposeSession(
+        new BridgeRequestError(409, "conflict", "draft_conflict", {
+          recovery_session: {
+            draft_path: "/recovery",
+            draft_id: "draft",
+            revision: null,
+            attachment_paths: paths,
+          },
+        }),
+      ),
+    ).toBeUndefined();
+  });
+}

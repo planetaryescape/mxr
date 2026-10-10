@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { DaemonUnavailableError } from "@/api/client";
 import { useDaemonDown } from "@/lib/daemonAvailability";
 import { requestCoordinator } from "@/lib/requestCoordinator";
-import { updateComposeSession, type ComposeSessionResponse } from "../api";
+import { updateComposeSession, type ComposeSessionResponse, type ComposeFrontmatter } from "../api";
 import { acceptedDraftRevision, recoveredComposeSession } from "./acceptedDraftRevision";
 import { rememberActiveDraft } from "./activeDrafts";
 import {
@@ -53,7 +53,13 @@ export function useComposeAutosave({
   setDirty,
 }: ComposeAutosaveInput) {
   const recoveryTargetRef = useRef<
-    | { sourcePath: string; draftPath: string; draftId?: string; revision?: number | null }
+    | {
+        sourcePath: string;
+        draftPath: string;
+        draftId?: string;
+        revision?: number | null;
+        attachmentPaths?: Map<string, string>;
+      }
     | undefined
   >(undefined);
   const pendingSavesRef = useRef(0);
@@ -108,12 +114,15 @@ export function useComposeAutosave({
           : recoveryTarget
             ? recoveryTarget.revision
             : snapshot.revision;
+        const submittedAttachments = snapshot.frontmatter.attach.map(
+          (path) => recoveryTarget?.attachmentPaths?.get(path) ?? path,
+        );
         const response = await (async () => {
           try {
             return await updateSession.mutateAsync({
               accountId: snapshot.accountId,
               draftPath: submittedPath,
-              frontmatter: snapshot.frontmatter,
+              frontmatter: { ...snapshot.frontmatter, attach: submittedAttachments },
               body: snapshot.body,
               expectedRevision,
             });
@@ -123,6 +132,7 @@ export function useComposeAutosave({
             const latest = draftRef.current;
             if (
               recovery &&
+              recovery.attachment_paths.length === snapshot.frontmatter.attach.length &&
               recovery.draft_id === snapshot.draftId &&
               recovery.revision ===
                 (accepted && accepted.draft_id === snapshot.draftId
@@ -130,7 +140,13 @@ export function useComposeAutosave({
                   : expectedRevision) &&
               recovery.draft_path !== submittedPath
             ) {
+              const attachmentPaths = new Map(recoveryTarget?.attachmentPaths);
+              snapshot.frontmatter.attach.forEach((path, index) => {
+                const preserved = recovery.attachment_paths[index];
+                if (preserved != null) attachmentPaths.set(path, preserved);
+              });
               recoveryTargetRef.current = {
+                attachmentPaths,
                 sourcePath,
                 draftPath: recovery.draft_path,
                 draftId: snapshot.draftId,
@@ -138,6 +154,7 @@ export function useComposeAutosave({
               };
               const recovered = {
                 ...snapshot,
+                frontmatter: remapAttachments(snapshot.frontmatter, attachmentPaths),
                 draftPath: recovery.draft_path,
                 recoverySourcePath: sourcePath,
                 bodyMarkdown: snapshot.body,
@@ -154,6 +171,7 @@ export function useComposeAutosave({
                 lastSavedFingerprintRef.current = null;
                 draftRef.current = {
                   ...latest,
+                  frontmatter: remapAttachments(latest.frontmatter, attachmentPaths),
                   draftPath: recovery.draft_path,
                   recoverySourcePath: sourcePath,
                   revision: recovery.revision,
@@ -164,6 +182,7 @@ export function useComposeAutosave({
                   value.draftId === snapshot.draftId
                     ? {
                         ...value,
+                        frontmatter: remapAttachments(value.frontmatter, attachmentPaths),
                         draftPath: recovery.draft_path,
                         recoverySourcePath: sourcePath,
                         revision: recovery.revision,
@@ -184,7 +203,7 @@ export function useComposeAutosave({
                   recoverySourcePath: sourcePath,
                   accountId: snapshot.accountId,
                   rawContent: "",
-                  frontmatter: snapshot.frontmatter,
+                  frontmatter: remapAttachments(snapshot.frontmatter, attachmentPaths),
                   bodyMarkdown: snapshot.body,
                   previewHtml: "",
                   issues: [],
@@ -213,7 +232,21 @@ export function useComposeAutosave({
         })();
         if (snapshot.draftId != null && response.session.draftId !== snapshot.draftId)
           throw new Error("The saved response belongs to another draft; your text stays here");
+        const receivedAttachments = response.session.frontmatter.attach ?? [];
+        if (receivedAttachments.length !== snapshot.frontmatter.attach.length)
+          throw new Error("The saved response does not confirm this snapshot's attachments");
+        const knownTarget = recoveryTargetRef.current;
+        const attachmentPaths = new Map(
+          knownTarget?.sourcePath === sourcePath && knownTarget.draftId === snapshot.draftId
+            ? knownTarget.attachmentPaths
+            : undefined,
+        );
+        snapshot.frontmatter.attach.forEach((path, index) => {
+          const preserved = receivedAttachments[index];
+          if (preserved != null) attachmentPaths.set(path, preserved);
+        });
         recoveryTargetRef.current = {
+          attachmentPaths,
           sourcePath,
           draftPath: response.session.draftPath,
           draftId: response.session.draftId ?? snapshot.draftId,
@@ -227,6 +260,7 @@ export function useComposeAutosave({
         ) {
           draftRef.current = {
             ...latest,
+            frontmatter: remapAttachments(latest.frontmatter, attachmentPaths),
             draftId: response.session.draftId ?? undefined,
             revision: response.session.revision,
           };
@@ -236,6 +270,7 @@ export function useComposeAutosave({
             (snapshot.draftId == null || active.draftId === snapshot.draftId)
               ? {
                   ...active,
+                  frontmatter: remapAttachments(active.frontmatter, attachmentPaths),
                   draftId: response.session.draftId ?? undefined,
                   revision: response.session.revision,
                 }
@@ -253,13 +288,19 @@ export function useComposeAutosave({
         (snapshot.draftId != null && draftRef.current.draftId !== snapshot.draftId)
       )
         return undefined;
+      const savedFingerprint = draftFingerprint({
+        ...draftRef.current,
+        accountId: snapshot.accountId,
+        bodyMarkdown: snapshot.body,
+        frontmatter: { ...snapshot.frontmatter, attach: response.session.frontmatter.attach ?? [] },
+      });
       const recoverySource =
         response.session.recoverySourcePath ?? draftRef.current.recoverySourcePath;
       if (recoverySource)
-        preservedFingerprintRef.current = `${response.session.draftPath}:${snapshot.fingerprint}`;
-      else lastSavedFingerprintRef.current = snapshot.fingerprint;
+        preservedFingerprintRef.current = `${response.session.draftPath}:${savedFingerprint}`;
+      else lastSavedFingerprintRef.current = savedFingerprint;
       const latest = draftRef.current;
-      if (latest && draftFingerprint(latest) === snapshot.fingerprint) {
+      if (latest && draftFingerprint(latest) === savedFingerprint) {
         const next = {
           ...draftFromSession(response.session, snapshot.accountId),
           recoverySourcePath: recoverySource,
@@ -374,4 +415,11 @@ export function useComposeAutosave({
     saving: updateSession.isPending,
     markSessionFinished,
   };
+}
+
+function remapAttachments(
+  frontmatter: ComposeFrontmatter,
+  paths: ReadonlyMap<string, string>,
+): ComposeFrontmatter {
+  return { ...frontmatter, attach: frontmatter.attach.map((path) => paths.get(path) ?? path) };
 }

@@ -1,0 +1,85 @@
+{
+  "observed_at": "2026-10-10T03:31:20.119282+00:00",
+  "old": "80606f4833b651bf9b07975ddd49083d7cb2568a",
+  "new": "2c55a735e2b013910cb7222211fa8d6156d6204c",
+  "files": [
+    {
+      "path": "crates/daemon/src/handler/mutations.rs",
+      "old_blob": "5dee0eb66573b22449bae417ba7a25cca15e1acf",
+      "new_blob": "5dee0eb66573b22449bae417ba7a25cca15e1acf",
+      "identical": true
+    },
+    {
+      "path": "crates/store/src/draft.rs",
+      "old_blob": "2afa424c3f7866a37045a89023f8cd9a5d3e102f",
+      "new_blob": "2afa424c3f7866a37045a89023f8cd9a5d3e102f",
+      "identical": true
+    },
+    {
+      "path": "crates/store/src/draft_recovery.rs",
+      "old_blob": "671a598436d985bbd39708b6433675ae0325f370",
+      "new_blob": "671a598436d985bbd39708b6433675ae0325f370",
+      "identical": true
+    },
+    {
+      "path": "crates/store/src/scheduled_sends.rs",
+      "old_blob": "1113b79404cba9541321a85dd27eef151b7dce17",
+      "new_blob": "1113b79404cba9541321a85dd27eef151b7dce17",
+      "identical": true
+    },
+    {
+      "path": "crates/core/src/provider.rs",
+      "old_blob": "2b1e819c2dfb1c2e8e7db88fd7a95ef80ce6bb94",
+      "new_blob": "2b1e819c2dfb1c2e8e7db88fd7a95ef80ce6bb94",
+      "identical": true
+    },
+    {
+      "path": "crates/core/src/error.rs",
+      "old_blob": "1b982a12ab9167e439e0f28e202a2d4023d6ecd0",
+      "new_blob": "1b982a12ab9167e439e0f28e202a2d4023d6ecd0",
+      "identical": true
+    },
+    {
+      "path": "crates/provider-fake/src/lib.rs",
+      "old_blob": "c9a773cde44248b8062d6e6ef81c1641e2eb5f39",
+      "new_blob": "c9a773cde44248b8062d6e6ef81c1641e2eb5f39",
+      "identical": true
+    },
+    {
+      "path": "crates/provider-smtp/src/lib.rs",
+      "old_blob": "73c3f3a89e01170cbe9f5c3649025c2a5727b12c",
+      "new_blob": "73c3f3a89e01170cbe9f5c3649025c2a5727b12c",
+      "identical": true
+    },
+    {
+      "path": "crates/provider-outlook/src/smtp.rs",
+      "old_blob": "d64d285e5961011159f5cfdeff0645e89fbbeeda",
+      "new_blob": "d64d285e5961011159f5cfdeff0645e89fbbeeda",
+      "identical": true
+    },
+    {
+      "path": "crates/provider-gmail/src/client.rs",
+      "old_blob": "df11bca4a9bc241d01146a2fce3eb5f35481860c",
+      "new_blob": "df11bca4a9bc241d01146a2fce3eb5f35481860c",
+      "identical": true
+    },
+    {
+      "path": "crates/provider-gmail/src/error.rs",
+      "old_blob": "8866755f207098e8cd448ed0458237948585eef7",
+      "new_blob": "8866755f207098e8cd448ed0458237948585eef7",
+      "identical": true
+    },
+    {
+      "path": "crates/daemon/src/loops.rs",
+      "old_blob": "c72a4a2d986ddb16c6c47c5fdc3d9943ff3090da",
+      "new_blob": "c72a4a2d986ddb16c6c47c5fdc3d9943ff3090da",
+      "identical": true
+    },
+    {
+      "path": "crates/daemon/src/server.rs",
+      "old_blob": "76e163063ae56b96d142a3b1812cf4b081484a45",
+      "new_blob": "76e163063ae56b96d142a3b1812cf4b081484a45",
+      "identical": true
+    }
+  ]
+}

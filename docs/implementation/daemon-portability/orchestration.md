@@ -36,6 +36,8 @@ Reject unsupported remote local repair before any effect, including mixed flags.
 
 Worker ownership: status/doctor commands, focused targeting tests and their source docs. Existing server/client helpers only where necessary. The orchestrator owns blueprint, ledger and release integration. New IPC types, draft work and broader client transport changes are outside S01.
 
+Read-only preparation is recorded in the [send outcome audit](../../build-log/daemon-portability/evidence/s03-send-audit.md), [mailbox mutation audit](../../build-log/daemon-portability/evidence/s04-mutation-audit.md), [attachment boundary audit](../../build-log/daemon-portability/evidence/s05-attachment-audit.md), [event recovery audit](../../build-log/daemon-portability/evidence/s06-event-recovery-audit.md) and [analytics recovery audit](../../build-log/daemon-portability/evidence/s08c-analytics-recovery-audit.md). Each pins its source and must be rechecked after prerequisite releases; none marks its stage implemented or tested.
+
 ## Full verification follows the exact candidate
 
 Every listed implementation stage is Full tier because it changes persistence, credentials/privacy, a public contract or shared mutable state. Each needs worker tests and applicable adversarial self-checks, inline code-simplifier, TypeScript review when relevant, orchestrator adversarial review and independent Claude verification through OpenCode. A changed candidate loses previous review status. Findings block only for concrete contradictions, data loss/duplication, failed user journeys/checks or security/privacy leaks.

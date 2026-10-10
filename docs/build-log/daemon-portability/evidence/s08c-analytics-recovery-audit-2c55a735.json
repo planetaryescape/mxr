@@ -1,0 +1,17 @@
+{
+  "checked_at": "2026-10-10T22:12:23.252691+00:00",
+  "base": "2c55a735e2b013910cb7222211fa8d6156d6204c",
+  "kind": "source audit; no runtime proof",
+  "blobs": {
+    "crates/relationship/src/service.rs": "8c4d255cfdf271a7323409d18bb41610abed2732",
+    "crates/daemon/src/loops.rs": "c72a4a2d986ddb16c6c47c5fdc3d9943ff3090da",
+    "crates/daemon/src/state.rs": "aa7625b756eb06b1f2452d8d0d47f635bc10cc7c",
+    "crates/daemon/src/server.rs": "76e163063ae56b96d142a3b1812cf4b081484a45",
+    "crates/daemon/src/commands/profile.rs": "623307a83af6f519a33c02692045a2bfe97f6c4d",
+    "crates/daemon/src/handler/relationship_profile.rs": "37ecdf80e23b4705e3a65431df30b43f4a8730cb",
+    "crates/daemon/src/handler/draft_context.rs": "d8194d9fd352d78b988f7ffe927400b75186be11",
+    "crates/daemon/src/handler/draft_compose.rs": "c1c6396810f3c08345f580a9815419a20f119313",
+    "crates/daemon/src/handler/diagnostics/mod.rs": "a3ee5ca99657865a454e8b980100fe5f53d1d7c1"
+  },
+  "s08a_candidate": "62421fe6d87692e2d2c780713b3bb49c98eb7d09"
+}

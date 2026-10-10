@@ -1,0 +1,27 @@
+{
+  "observed_at": "2026-10-10T22:29:15.909577+00:00",
+  "ref": "origin/main",
+  "sha": "2c55a735e2b013910cb7222211fa8d6156d6204c",
+  "mode": "source-only; no builds, tests or runtime reproduction",
+  "worker": {
+    "tier": "Fast",
+    "model": "gpt-6-luna",
+    "effort": "high"
+  },
+  "parent_review": "Critical control flow and claimed reusable seams checked directly with git show; remote switch requires existing user confirmation; compose tasks serialize but are not coalesced or cancelled by cancelAll",
+  "blobs": {
+    "apps/web/src/lib/ws.ts": "50053e1b98890ebc9e2ad8fee396f39ab8a6481f",
+    "apps/web/src/lib/daemonAvailability.ts": "5f7e0dc2db93f0204c3c01d413f2f4a758703750",
+    "apps/web/src/lib/daemonAvailability.test.ts": "7e8dca315d34ee736cc1b75c1f46617479249d97",
+    "apps/web/src/hooks/useDaemonEventInvalidation.ts": "ceca1e3c81906645659b08db494f82d2f05de6e5",
+    "apps/web/src/lib/queryClient.ts": "6e92a9e8fb6447ee595bc307fbed82d697587416",
+    "apps/web/src/lib/localHandshake.ts": "03286f754d948f917f660c9889c0aa11509d6986",
+    "apps/web/src/lib/tokenStorage.ts": "80aadc8c5f301179fcb7666f6361f5a7227fb0dd",
+    "apps/web/src/features/compose/session/activeDrafts.ts": "dff4f9dcad7b2fb7097301f60a9279b4b139fbbf",
+    "apps/web/src/features/compose/useComposeSession.ts": "d96e02ecdbc96a407614cbdeeb1e1ba029e696da",
+    "apps/web/src/lib/requestCoordinator.ts": "9a811c698cf773718693d9d647995d33e124155e",
+    "crates/daemon/src/serve.rs": "f01f4e5745eb833fd2e66ee195f6ca3d77201c6c",
+    "crates/web/src/admin_handlers.rs": "24448b38a920e373787f03eecefd3b4eda8d22e6",
+    "crates/config/src/resolve.rs": "c84ec883a96aa1acc42335bdc88104c14a1abba8"
+  }
+}

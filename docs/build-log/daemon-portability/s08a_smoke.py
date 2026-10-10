@@ -197,6 +197,12 @@ def stop_and_check(
     marker = "SIGTERM received" if sig == signal.SIGTERM else "SIGINT received"
     if marker not in log or "daemon shutdown drain completed" not in log:
         fail(f"{sig.name} did not show the ordered shutdown in daemon log:\n{log}")
+    drain_timeouts = (
+        "client connection drain timed out",
+        "runtime task drain timed out",
+    )
+    if any(timeout in log for timeout in drain_timeouts):
+        fail(f"{sig.name} shutdown reported a drain timeout:\n{log}")
 
 
 def start_daemon(binary: Path, env: dict[str, str], log_handle) -> subprocess.Popen[bytes]:

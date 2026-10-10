@@ -393,7 +393,7 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
         }
         Err(error) => format!("could not read fixture daemon stderr: {error}"),
     };
-    let mut wait_ready = |child: &mut Child, daemon: &mut TestDaemon| {
+    let wait_ready = |child: &mut Child, daemon: &mut TestDaemon| {
         let deadline = std::time::Instant::now() + Duration::from_secs(30);
         let mut last_status = String::from("status command has not run");
         loop {

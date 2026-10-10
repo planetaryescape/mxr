@@ -945,7 +945,7 @@ describe("saved draft discard preview", () => {
       act(() => useConnectionStore.getState().setState({ daemonDown: false }));
       expect(screen.getByRole("alert")).toHaveTextContent("preserved locally");
       expect(screen.queryByText("Saved just now")).not.toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "Retry", exact: true }));
+      fireEvent.click(screen.getByRole("button", { name: /^Retry$/ }));
       await waitFor(() => expect(api.updateComposeSession).toHaveBeenCalledTimes(3));
       expect(api.updateComposeSession.mock.calls[2]?.[0]).toMatchObject({
         retryRecovery: true,
@@ -967,7 +967,7 @@ describe("saved draft discard preview", () => {
         ),
       );
       await waitFor(() => expect(Boolean(screen.queryByText("Saved just now"))).toBe(!conflict));
-      expect(Boolean(screen.queryByRole("button", { name: "Retry", exact: true }))).toBe(conflict);
+      expect(Boolean(screen.queryByRole("button", { name: /^Retry$/ }))).toBe(conflict);
     });
   }
   test("keyboard Save never reports canonical success for a conflicted preserved recovery", async () => {

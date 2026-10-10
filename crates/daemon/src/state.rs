@@ -3063,7 +3063,7 @@ use_tls = true
     #[tokio::test]
     async fn runtime_shutdown_aborts_a_registered_task_at_its_deadline() {
         let state = AppState::in_memory().await.expect("state");
-        let (drop_tx, drop_rx) = tokio::sync::oneshot::channel();
+        let (drop_tx, drop_rx) = tokio::sync::oneshot::channel::<()>();
         state.register_bridge_loop(tokio::spawn(async move {
             let _drop_signal = drop_tx;
             std::future::pending::<()>().await;

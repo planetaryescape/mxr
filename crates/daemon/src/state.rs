@@ -38,7 +38,7 @@ struct NamedTaskHandle {
 
 fn log_service_shutdown_result<E: std::fmt::Display>(
     service: &'static str,
-    result: Result<Result<(), E>, tokio::time::error::Elapsed>,
+    result: std::result::Result<std::result::Result<(), E>, tokio::time::error::Elapsed>,
 ) {
     match result {
         Ok(Ok(())) => {}

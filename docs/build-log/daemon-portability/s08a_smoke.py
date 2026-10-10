@@ -72,14 +72,38 @@ def search_message_ids(binary: Path, env: dict[str, str]) -> list[str]:
     return ids
 
 
-def read_exact(stream: socket.socket, size: int) -> bytes:
+def read_exact(stream: socket.socket, size: int, deadline: float) -> bytes:
     chunks = bytearray()
     while len(chunks) < size:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            fail("timed out while reading daemon IPC frame")
+        stream.settimeout(remaining)
         part = stream.recv(size - len(chunks))
         if not part:
-            fail("daemon closed IPC connection before completing the Ping response")
+            fail("daemon closed IPC connection before completing an IPC frame")
         chunks.extend(part)
     return bytes(chunks)
+
+
+def read_frame(stream: socket.socket, deadline: float) -> dict[str, object] | None:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        fail("timed out while waiting for daemon IPC frame or EOF")
+    stream.settimeout(remaining)
+    first = stream.recv(4)
+    if not first:
+        return None
+    if len(first) < 4:
+        first += read_exact(stream, 4 - len(first), deadline)
+    length = struct.unpack(">I", first)[0]
+    try:
+        frame = json.loads(read_exact(stream, length, deadline))
+    except json.JSONDecodeError as error:
+        fail(f"daemon returned invalid IPC JSON: {error}")
+    if not isinstance(frame, dict):
+        fail(f"daemon returned a non-object IPC frame: {frame!r}")
+    return frame
 
 
 def ping_and_hold(socket_path: Path) -> socket.socket:
@@ -95,21 +119,27 @@ def ping_and_hold(socket_path: Path) -> socket.socket:
         separators=(",", ":"),
     ).encode()
     client.sendall(struct.pack(">I", len(frame)) + frame)
-    length = struct.unpack(">I", read_exact(client, 4))[0]
+    deadline = time.monotonic() + 5
     try:
-        response = json.loads(read_exact(client, length))
-    except json.JSONDecodeError as error:
-        fail(f"daemon returned invalid Ping JSON: {error}")
-    payload = response.get("payload", {})
-    data = payload.get("data", {})
-    if (
-        response.get("id") != 1
-        or payload.get("type") != "Response"
-        or payload.get("status") != "Ok"
-        or data.get("kind") != "Pong"
-    ):
-        fail(f"daemon returned an unexpected Ping response: {response!r}")
-    return client
+        while True:
+            response = read_frame(client, deadline)
+            if response is None:
+                fail("daemon closed IPC connection before Ping response")
+            payload = response.get("payload", {})
+            if response.get("id") == 0 and payload.get("type") == "Event":
+                continue
+            data = payload.get("data", {})
+            if (
+                response.get("id") == 1
+                and payload.get("type") == "Response"
+                and payload.get("status") == "Ok"
+                and data.get("kind") == "Pong"
+            ):
+                return client
+            fail(f"daemon returned an unexpected Ping response: {response!r}")
+    except Exception:
+        client.close()
+        raise
 
 
 def wait_ready(binary: Path, env: dict[str, str], process: subprocess.Popen[bytes], socket_path: Path, pid_path: Path, log_path: Path) -> None:
@@ -140,6 +170,7 @@ def stop_and_check(
     pid_path: Path,
     client: socket.socket,
     log_path: Path,
+    log_offset: int,
 ) -> None:
     os.kill(process.pid, sig)
     try:
@@ -153,10 +184,16 @@ def stop_and_check(
         fail(f"daemon exited {return_code} after {sig.name}; log:\n{log_path.read_text(errors='replace')}")
     if socket_path.exists() or pid_path.exists():
         fail(f"{sig.name} left daemon-owned runtime files: socket={socket_path.exists()} pid={pid_path.exists()}")
-    client.settimeout(5)
-    if client.recv(1) != b"":
-        fail("daemon sent unexpected bytes instead of closing the held IPC connection")
-    log = log_path.read_text(errors="replace")
+    deadline = time.monotonic() + 10
+    while True:
+        frame = read_frame(client, deadline)
+        if frame is None:
+            break
+        payload = frame.get("payload", {})
+        if frame.get("id") == 0 and payload.get("type") == "Event":
+            continue
+        fail(f"daemon sent an unexpected IPC frame during shutdown: {frame!r}")
+    log = log_path.read_bytes()[log_offset:].decode(errors="replace")
     marker = "SIGTERM received" if sig == signal.SIGTERM else "SIGINT received"
     if marker not in log or "daemon shutdown drain completed" not in log:
         fail(f"{sig.name} did not show the ordered shutdown in daemon log:\n{log}")
@@ -222,21 +259,23 @@ def main() -> int:
         with log_path.open("wb") as log_handle:
             try:
                 process = start_daemon(binary, env, log_handle)
+                first_log_offset = 0
                 wait_ready(binary, env, process, socket_path, pid_path, log_path)
                 run_cli(binary, env, "sync", "--wait", "--wait-timeout-secs", "30")
                 before_ids = search_message_ids(binary, env)
                 client = ping_and_hold(socket_path)
-                stop_and_check(process, signal.SIGTERM, socket_path, pid_path, client, log_path)
+                stop_and_check(process, signal.SIGTERM, socket_path, pid_path, client, log_path, first_log_offset)
                 client.close()
                 client = None
 
+                second_log_offset = log_path.stat().st_size
                 process = start_daemon(binary, env, log_handle)
                 wait_ready(binary, env, process, socket_path, pid_path, log_path)
                 after_ids = search_message_ids(binary, env)
                 if after_ids != before_ids:
                     fail(f"restart changed acknowledged message IDs: before={before_ids!r}, after={after_ids!r}")
                 client = ping_and_hold(socket_path)
-                stop_and_check(process, signal.SIGINT, socket_path, pid_path, client, log_path)
+                stop_and_check(process, signal.SIGINT, socket_path, pid_path, client, log_path, second_log_offset)
                 client.close()
                 client = None
             except Exception as error:

@@ -334,11 +334,20 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
     std::fs::write(&config_path, config).expect("disable model downloads for fixture");
     let mut daemon = TestDaemon::new(socket_path.clone(), pid_path.clone());
     let inherited_env = std::env::vars_os()
-        .filter(|(key, _)| !key.to_string_lossy().starts_with("MXR_"))
+        .filter(|(key, _)| {
+            let key = key.to_string_lossy();
+            !key.starts_with("MXR_") && key != "RUST_LOG"
+        })
         .collect::<Vec<_>>();
+    let stderr_path = data_dir.join("foreground.stderr.log");
 
     let spawn = || {
         let mut command = StdCommand::new(env!("CARGO_BIN_EXE_mxr"));
+        let stderr = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&stderr_path)
+            .expect("open fixture daemon stderr log");
         command
             .env_clear()
             .envs(inherited_env.clone())
@@ -351,7 +360,8 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
             .env("MXR_SOCKET_PATH", &socket_path)
             .env("MXR_ACTIVITY", "off")
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::from(stderr))
+            .env("RUST_LOG", "info")
             .spawn()
             .expect("spawn foreground daemon")
     };
@@ -371,42 +381,93 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
             .output()
             .expect("run mxr against isolated daemon")
     };
-    let wait_ready = |child: &mut Child| {
+    let stop_owned_child = |child: &mut Child, daemon: &mut TestDaemon| {
+        let _ = child.kill();
+        let _ = child.wait();
+        daemon.clear_pid();
+    };
+    let read_stderr = || match std::fs::read(&stderr_path) {
+        Ok(bytes) => {
+            let start = bytes.len().saturating_sub(8 * 1024);
+            String::from_utf8_lossy(&bytes[start..]).into_owned()
+        }
+        Err(error) => format!("could not read fixture daemon stderr: {error}"),
+    };
+    let mut wait_ready = |child: &mut Child, daemon: &mut TestDaemon| {
         let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        let mut last_status = String::from("status command has not run");
         loop {
-            assert!(
-                child.try_wait().expect("poll daemon").is_none(),
-                "foreground daemon exited before readiness"
-            );
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    daemon.clear_pid();
+                    panic!(
+                        "foreground daemon exited before readiness: {status}; stderr: {}",
+                        read_stderr()
+                    );
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    stop_owned_child(child, daemon);
+                    panic!("could not poll foreground daemon: {error}");
+                }
+            }
             if socket_path.exists() && pid_path.exists() {
                 let output = run_cli(&["status", "--format", "json"]);
                 if output.status.success() {
                     return;
                 }
+                last_status = format!(
+                    "exit={}; stdout={:?}; stderr={:?}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
             }
-            assert!(
-                std::time::Instant::now() < deadline,
-                "daemon did not become ready"
-            );
+            if std::time::Instant::now() >= deadline {
+                let last_child_status = child.try_wait();
+                if let Ok(Some(status)) = &last_child_status {
+                    daemon.clear_pid();
+                    panic!(
+                        "foreground daemon exited before readiness: {status}; last status: {last_status}; stderr: {}",
+                        read_stderr()
+                    );
+                }
+                stop_owned_child(child, daemon);
+                panic!(
+                    "daemon did not become ready; last child try_wait: {last_child_status:?}; last status: {last_status}; stderr: {}",
+                    read_stderr()
+                );
+            }
             sleep(Duration::from_millis(25));
         }
     };
-    let stop_and_wait = |child: &mut Child, signal: Signal| {
+    let stop_and_wait = |child: &mut Child, daemon: &mut TestDaemon, signal: Signal| {
         let pid = Pid::from_raw(child.id() as i32);
-        kill(pid, signal).expect("send signal to fixture daemon child");
+        if let Err(error) = kill(pid, signal) {
+            stop_owned_child(child, daemon);
+            panic!("send {signal} to fixture daemon child: {error}");
+        }
         let deadline = std::time::Instant::now() + Duration::from_secs(20);
         loop {
-            if let Some(status) = child.try_wait().expect("poll stopped daemon") {
+            let status = match child.try_wait() {
+                Ok(status) => status,
+                Err(error) => {
+                    stop_owned_child(child, daemon);
+                    panic!("could not poll stopped daemon: {error}");
+                }
+            };
+            if let Some(status) = status {
+                daemon.clear_pid();
                 assert!(
                     status.success(),
                     "signal shutdown should exit successfully: {status}"
                 );
                 break;
             }
-            assert!(
-                std::time::Instant::now() < deadline,
-                "daemon shutdown exceeded bound"
-            );
+            if std::time::Instant::now() >= deadline {
+                stop_owned_child(child, daemon);
+                panic!("daemon shutdown exceeded bound");
+            }
             sleep(Duration::from_millis(25));
         }
         assert!(!socket_path.exists(), "shutdown should remove owned socket");
@@ -415,7 +476,7 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
 
     let mut first = spawn();
     daemon.set_pid(first.id() as u64);
-    wait_ready(&mut first);
+    wait_ready(&mut first, &mut daemon);
     let sync = run_cli(&["sync", "--wait", "--wait-timeout-secs", "30"]);
     assert!(
         sync.status.success(),
@@ -457,19 +518,29 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
         })
         .await
         .expect("send ping on active client");
-    assert!(matches!(
-        tokio::time::timeout(Duration::from_secs(5), active_client.next())
+    let ping_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let message = tokio::time::timeout_at(ping_deadline, active_client.next())
             .await
-            .expect("active client ping timed out"),
-        Some(Ok(IpcMessage {
-            payload: IpcPayload::Response(Response::Ok {
-                data: ResponseData::Pong
-            }),
-            ..
-        }))
-    ));
-    stop_and_wait(&mut first, Signal::SIGTERM);
-    daemon.clear_pid();
+            .expect("active client ping timed out")
+            .expect("daemon closed active client before Ping response")
+            .expect("active client Ping frame should decode");
+        if message.id == 0 && matches!(&message.payload, IpcPayload::Event(_)) {
+            continue;
+        }
+        assert!(matches!(
+            message,
+            IpcMessage {
+                id: 1,
+                payload: IpcPayload::Response(Response::Ok {
+                    data: ResponseData::Pong
+                }),
+                ..
+            }
+        ));
+        break;
+    }
+    stop_and_wait(&mut first, &mut daemon, Signal::SIGTERM);
     drop(active_client);
     let log = std::fs::read_to_string(data_dir.join("logs").join("mxr.log"))
         .expect("read daemon shutdown log");
@@ -481,7 +552,7 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
 
     let mut second = spawn();
     daemon.set_pid(second.id() as u64);
-    wait_ready(&mut second);
+    wait_ready(&mut second, &mut daemon);
     let after = run_cli(&["search", "deployment", "--format", "json", "--limit", "50"]);
     assert!(
         after.status.success(),
@@ -504,8 +575,7 @@ async fn foreground_daemon_stops_on_signals_and_preserves_synced_state() {
         "restart should retain the acknowledged search results"
     );
 
-    stop_and_wait(&mut second, Signal::SIGINT);
-    daemon.clear_pid();
+    stop_and_wait(&mut second, &mut daemon, Signal::SIGINT);
 }
 
 fn daemon_lifecycle_guard() -> MutexGuard<'static, ()> {

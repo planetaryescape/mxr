@@ -191,7 +191,8 @@ reviewed content or add the S03 effect journal.
 
 Conflict preservation and explicit recovery opens copy uploaded attachments into
 their new private compose directory. Frontmatter, draft metadata and the response
-name those copies in the submitted order. Equal basenames retain distinct bytes;
+name those copies in the submitted order. Rewriting the header keeps the raw
+body and context suffix verbatim, including editor whitespace. Equal basenames retain distinct bytes;
 repeated references reuse a copy. The browser applies only this operation's path
 evidence, including attachments added while a conflict and Close save are queued.
 Discarding an earlier recovery therefore leaves each reopened editor's bytes
